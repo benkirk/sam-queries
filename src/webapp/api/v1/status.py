@@ -218,7 +218,9 @@ def ingest_derecho():
     """
     POST /api/v1/status/derecho - Ingest Derecho system metrics.
 
-    Requires MANAGE_SYSTEM_STATUS permission.
+    Authenticated by API token (HTTP Basic, @api_key_required) — this is an
+    M2M collector endpoint. No RBAC permission is checked; MANAGE_SYSTEM_STATUS
+    does not apply here.
 
     JSON body should contain:
         - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
@@ -252,7 +254,9 @@ def ingest_casper():
     """
     POST /api/v1/status/casper - Ingest Casper system metrics.
 
-    Requires MANAGE_SYSTEM_STATUS permission.
+    Authenticated by API token (HTTP Basic, @api_key_required) — this is an
+    M2M collector endpoint. No RBAC permission is checked; MANAGE_SYSTEM_STATUS
+    does not apply here.
 
     JSON body should contain:
         - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
@@ -287,7 +291,9 @@ def ingest_jupyterhub():
     """
     POST /api/v1/status/jupyterhub - Ingest JupyterHub metrics.
 
-    Requires MANAGE_SYSTEM_STATUS permission.
+    Authenticated by API token (HTTP Basic, @api_key_required) — this is an
+    M2M collector endpoint. No RBAC permission is checked; MANAGE_SYSTEM_STATUS
+    does not apply here.
 
     JSON body should contain:
         - timestamp (optional): ISO format or 'YYYY-MM-DD HH:MM:SS', defaults to now
@@ -331,7 +337,9 @@ def report_outage():
     """
     POST /api/v1/status/outage - Report a system outage or degradation.
 
-    Requires MANAGE_SYSTEM_STATUS permission.
+    Authenticated by API token (HTTP Basic, @api_key_required) — this is an
+    M2M collector endpoint. No RBAC permission is checked; MANAGE_SYSTEM_STATUS
+    does not apply here.
 
     JSON body should contain:
         - system_name (required): System identifier (e.g., 'derecho', 'casper')

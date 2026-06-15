@@ -1,6 +1,6 @@
 """
 Profiling script for the Resource Usage Details (disk) route
-``/user/resource-details?projcode=...&resource=Campaign_Store``.
+``/user/resource-details/<projcode>?resource=Campaign_Store``.
 
 Mirrors the structure of profile_user_dashboard.py — fetches data and
 renders the disk template in the same request context so SQLAlchemy
@@ -181,7 +181,7 @@ def run_scenario(app, engine, username: str, projcode: str, resource_name: str):
 
     Returns a dict with phase metrics and tree shape info.
     """
-    url = f'/user/resource-details?projcode={projcode}&resource={resource_name}'
+    url = f'/user/resource-details/{projcode}?resource={resource_name}'
 
     with app.test_request_context(url):
         session = db.session

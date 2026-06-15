@@ -40,7 +40,7 @@ def test_resource_details_disk_route(
 
     with route_count_queries() as stats:
         response = auth_client.get(
-            f'/user/resource-details?projcode={projcode}&resource={resource_name}'
+            f'/user/resource-details/{projcode}?resource={resource_name}'
         )
 
     assert response.status_code == 200, (
