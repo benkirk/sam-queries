@@ -12,6 +12,10 @@ Notes:
 - Referrer-Policy must stay at strict-origin-when-cross-origin (not
   stricter): Flask-WTF's CSRF referrer check on HTTPS POSTs requires
   same-origin requests to carry a referrer.
+- Cross-Origin-Resource-Policy and Permissions-Policy ride every response
+  unconditionally (scheme-independent, safe in dev + prod). They closed the
+  two residual Low findings from the 2026-06 ZAP re-scan; see
+  docs/nrit-review-2026-05/09_zap_rescan-2026-06.md.
 - X-Frame-Options is superseded by the policy's frame-ancestors 'self'
   once CSP enforces; in report-only/off modes it must survive, because
   browsers ignore frame-ancestors in a Report-Only policy.
@@ -48,6 +52,12 @@ def init_security_headers(app):
         h = response.headers
         h.setdefault('X-Content-Type-Options', 'nosniff')
         h.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        # Defense-in-depth, scheme-independent (safe in dev + prod): isolate our
+        # resources from cross-origin embedders, and disable powerful browser
+        # features this dashboard never uses.
+        h.setdefault('Cross-Origin-Resource-Policy', 'same-origin')
+        h.setdefault('Permissions-Policy',
+                     'geolocation=(), camera=(), microphone=(), payment=(), usb=()')
         if mode != 'enforce':
             h.setdefault('X-Frame-Options', 'SAMEORIGIN')
         if hsts:
