@@ -314,6 +314,15 @@ def create_app(*, config_overrides: dict | None = None):
     from webapp.vendor_assets import vendor_assets_context_processor
     app.context_processor(vendor_assets_context_processor)
 
+    # Expose runtime feature flags to all templates
+    @app.context_processor
+    def feature_flags_context_processor():
+        return {
+            'feature_flags': {
+                'create_projects_enabled': app.config.get('CREATE_PROJECTS_ENABLED', True),
+            }
+        }
+
     # Expose optional build provenance (set by CI via Docker build args) to all templates
     @app.context_processor
     def build_info_context_processor():

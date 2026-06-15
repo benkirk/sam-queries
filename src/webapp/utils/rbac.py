@@ -101,7 +101,6 @@ class Permission(Enum):
     ACCESS_ADMIN_DASHBOARD = "access_admin_dashboard"  # Land on /admin/ and see the navbar tab
     MANAGE_ROLES = "manage_roles"
     IMPERSONATE_USERS = "impersonate_users"  # Actually log in as another user
-    VIEW_SYSTEM_STATUS = "view_system_status"
     # The user/project queue-load chart itself is visible to any logged-in
     # user on the status dashboard. This permission narrows to two
     # operator-only enrichments on top of that:
@@ -154,9 +153,6 @@ ALL_DELETE = _perms_with_action('delete')
 GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     # ---- Real POSIX group bundles (provisional) ----
 
-    # csg: full access (admin-equivalent).
-    #'csg': set(Permission),
-
     # nusd: read, edit,everything + write to projects, allocations
     # and system status. Does NOT confer write on users/groups/facilities/
     # org_metadata (those remain admin-only). May impersonate any user
@@ -170,8 +166,8 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     },
 
     # hsg: read-only across the board,
-    # resources permissions, and edit system status (for outages etc...)
-    'hsg': ALL_VIEW | {
+    # resources permissions, and edit system status (for outages...)
+    'ssg': ALL_VIEW | {
         Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.EDIT_RESOURCES, Permission.CREATE_RESOURCES,
         Permission.EDIT_SYSTEM_STATUS

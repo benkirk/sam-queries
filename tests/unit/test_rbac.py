@@ -40,20 +40,20 @@ class _StubUser:
 
 class TestGroupBundleComposition:
     def test_single_group_resolves_to_bundle_permissions(self):
-        user = _StubUser(roles=['hsg'])
+        user = _StubUser(roles=['ssg'])
         perms = get_user_permissions(user)
-        assert perms == set(GROUP_PERMISSIONS['hsg'])
+        assert perms == set(GROUP_PERMISSIONS['ssg'])
 
     def test_multiple_groups_union(self):
-        user = _StubUser(roles=['hsg', 'nusd'])
+        user = _StubUser(roles=['ssg', 'nusd'])
         perms = get_user_permissions(user)
-        expected = set(GROUP_PERMISSIONS['hsg']) | set(GROUP_PERMISSIONS['nusd'])
+        expected = set(GROUP_PERMISSIONS['ssg']) | set(GROUP_PERMISSIONS['nusd'])
         assert perms == expected
 
     def test_unknown_group_contributes_nothing(self):
-        user = _StubUser(roles=['hsg', 'no_such_group'])
+        user = _StubUser(roles=['ssg', 'no_such_group'])
         perms = get_user_permissions(user)
-        assert perms == set(GROUP_PERMISSIONS['hsg'])
+        assert perms == set(GROUP_PERMISSIONS['ssg'])
 
     def test_no_groups_yields_empty_permissions(self):
         user = _StubUser(roles=[])
@@ -62,7 +62,7 @@ class TestGroupBundleComposition:
     def test_admin_testing_only_bundle_grants_every_permission(self):
         # 'admin-testing-only' is the synthetic test-session bundle
         # (registered by the autouse fixture in tests/conftest.py) that
-        # carries every Permission. Real production bundles (csg/nusd/hsg)
+        # carries every Permission. Real production bundles (csg/nusd/ssg)
         # may grow or shrink — tests that need 'full admin' semantics
         # should depend on this bundle, not on csg's exact contents.
         user = _StubUser(roles=['admin-testing-only'])
@@ -80,7 +80,7 @@ class TestUserPermissionOverrides:
             'USER_PERMISSION_OVERRIDES',
             {'alice': {Permission.EXPORT_DATA}},
         )
-        user = _StubUser(roles=['hsg'], username='alice')
+        user = _StubUser(roles=['ssg'], username='alice')
         perms = get_user_permissions(user)
         assert Permission.EXPORT_DATA in perms
         # Baseline still present
@@ -102,7 +102,7 @@ class TestUserPermissionOverrides:
             'USER_PERMISSION_OVERRIDES',
             {'someone_else': {Permission.SYSTEM_ADMIN}},
         )
-        user = _StubUser(roles=['hsg'], username='alice')
+        user = _StubUser(roles=['ssg'], username='alice')
         perms = get_user_permissions(user)
         assert Permission.SYSTEM_ADMIN not in perms
 
@@ -113,27 +113,27 @@ class TestUserPermissionOverrides:
 
 class TestPredicates:
     def test_has_permission_true_when_in_bundle(self):
-        user = _StubUser(roles=['hsg'])
+        user = _StubUser(roles=['ssg'])
         assert has_permission(user, Permission.VIEW_PROJECTS)
 
     def test_has_permission_false_when_not_granted(self):
-        user = _StubUser(roles=['hsg'])
+        user = _StubUser(roles=['ssg'])
         assert not has_permission(user, Permission.SYSTEM_ADMIN)
 
     def test_has_any_permission_short_circuits_on_match(self):
-        user = _StubUser(roles=['hsg'])
+        user = _StubUser(roles=['ssg'])
         assert has_any_permission(
             user, Permission.SYSTEM_ADMIN, Permission.VIEW_PROJECTS
         )
 
     def test_has_any_permission_false_when_none_match(self):
-        user = _StubUser(roles=['hsg'])
+        user = _StubUser(roles=['ssg'])
         assert not has_any_permission(
             user, Permission.SYSTEM_ADMIN, Permission.MANAGE_ROLES
         )
 
     def test_has_all_permissions_requires_full_intersection(self):
-        user = _StubUser(roles=['hsg'])
+        user = _StubUser(roles=['ssg'])
         assert has_all_permissions(
             user, Permission.VIEW_PROJECTS, Permission.VIEW_ALLOCATIONS
         )
@@ -183,7 +183,7 @@ class TestCanImpersonate:
             {'super': set(Permission)},
         )
         caller = _StubUser(roles=[], username='super')
-        for target_roles in (['nusd'], ['hsg'], []):
+        for target_roles in (['nusd'], ['ssg'], []):
             target = _StubUser(roles=target_roles, username='someone')
             assert can_impersonate(caller, target)
 

@@ -355,14 +355,17 @@ def _group_access_by_branch(session, username):
     return by_branch
 
 
-@bp.route('/resource-details')
+@bp.route('/resource-details/<projcode>')
 @login_required
-def resource_details():
+@require_project_access(include_ancestors=True)
+def resource_details(project):
     """
     Resource usage detail view showing charts and job history.
 
+    Path parameters:
+        projcode: Project code (access-checked by @require_project_access)
+
     Query parameters:
-        projcode: Project code
         resource: Resource name
         start_date: Optional start date (default: 90 days ago)
         end_date: Optional end date (default: today)
@@ -370,11 +373,11 @@ def resource_details():
     Returns:
         HTML page with server-rendered charts and usage data
     """
-    projcode = request.args.get('projcode')
+    projcode = project.projcode
     resource_name = request.args.get('resource')
 
-    if not projcode or not resource_name:
-        flash('Missing project code or resource name', 'error')
+    if not resource_name:
+        flash('Missing resource name', 'error')
         return redirect(url_for('user_dashboard.index'))
 
     # Parse date range (default to last 90 days)
@@ -404,11 +407,7 @@ def resource_details():
     rolling_is_inheriting = rolling_resource.get('is_inheriting', False)
     rolling_root_projcode = rolling_resource.get('root_projcode')
 
-    # Load root project
-    project = Project.get_by_projcode(db.session, projcode)
-    if not project:
-        flash(f'Project {projcode} not found', 'error')
-        return redirect(url_for('user_dashboard.index'))
+    # `project` is supplied (and access-checked) by @require_project_access.
 
     # Disk has different semantics than HPC/DAV (capacity, not burn-rate)
     # so it gets its own template + data assembly. Branch here once the

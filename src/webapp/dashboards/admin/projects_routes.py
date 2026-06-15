@@ -12,7 +12,7 @@ from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
 from webapp.extensions import db
-from flask import abort
+from flask import abort, current_app
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility,
     has_permission, has_permission_for_facility,
@@ -341,6 +341,11 @@ def htmx_project_next_projcode():
 @require_permission_any_facility(Permission.CREATE_PROJECTS)
 def htmx_project_create():
     """Validate form and create a new project."""
+    # Soft feature flag: when project creation is disabled the modal renders a
+    # disabled submit button, but refuse here too in case a request is forged.
+    if not current_app.config.get('CREATE_PROJECTS_ENABLED', True):
+        abort(403)
+
     from sam.projects.projects import Project
     from sam.projects.areas import AreaOfInterest
     from sam.projects.contracts import Contract, ProjectContract
@@ -2171,9 +2176,18 @@ def _render_project_directories_card(*, active_only: bool):
 
 @bp.route('/htmx/admin/project-directories')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def htmx_admin_project_directories():
-    """Render the cross-project Project Directories table."""
+    """Render the cross-project Project Directories table.
+
+    Read-only view gated on VIEW_PROJECTS (any-facility), matching the
+    sibling reference-data cards (Facilities/Orgs/Resources). The
+    edit/add/deactivate controls inside the card remain gated on
+    EDIT_PROJECTS/DELETE_PROJECTS in the template, so facility-scoped
+    admins (e.g. WNA) see the table without the action buttons — and
+    without the on-load 403 that the old system-wide EDIT_PROJECTS gate
+    produced for them.
+    """
     # Match the canonical "Active only" toggle pattern used by the
     # Resources / Organizations / Facilities cards: when the checkbox is
     # checked, hx-include sends active_only=1; when unchecked, no param,
