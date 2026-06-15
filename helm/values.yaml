@@ -67,7 +67,7 @@ webapp:
     fqdn: samuel.k8s.ucar.edu             # Must be unique and end in .k8s.ucar.edu
     secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
   ingress:
-    visibility: internal                  # internal or external
+    visibility: external                  # internal or external
   # Kubernetes probes. Endpoints from src/webapp/api/v1/health.py:
   #   /live  -> process up, no DB call          (liveness + startup)
   #   /ready -> DB-gated, 200 healthy / 503 not  (readiness: gates rollout
