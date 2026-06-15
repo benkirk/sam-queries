@@ -102,16 +102,63 @@ alone; `COEP` warrants its own validation pass.
   forms / any filter carrying sensitive values. Tracked as a minor follow-up,
   not part of this baseline's remediation.
 
+## Active scan (scoped) — 2026-06-15
+
+Beyond the passive baseline above, a **scoped active scan** was run to probe for
+injection-class bugs (the kind passive scanning cannot find):
+
+```bash
+./scripts/zap_probe_docker.sh --scoped --max-mins 45
+```
+
+`--scoped` runs an ACTIVE scan via ZAP's Automation Framework, time-boxed and
+scoped by exclusion to the parameterized routes (it skips the heavy read-only
+`/status`, `/admin/htmx/*`, `/static`, `/auth/logout` paths so it completes in
+tens of minutes instead of the hours an unbounded `--full` takes). The run spent
+~48 min deeply fuzzing the primary attack surface — `/admin/` filters,
+`/admin/project/<code>/edit` (×5 projects), `/allocations/`, `/user/`.
+
+**Result: no exploitable findings.** The only active-class alert was:
+
+- **SQL Injection [rule 40018] ×35 — VERIFIED FALSE POSITIVE.** Independently
+  code-traced end-to-end. The flagged params reach the DB only as bound ORM
+  expressions or coerced form fields, never string-interpolated SQL:
+  - `/admin/` filters → `Facility.facility_name.in_(...)` / `Resource.resource_name == …`
+    (bound); `time_range` is used only as a dict key.
+  - `/admin/project/<code>/edit` → `EditProjectForm` type-coerces every field
+    (`active=3-2` fails `Bool` → HTTP 400 before any query), then ORM attribute
+    assignment.
+  - The only `text(f"…")` SQL in the codebase (`projects.py`, `base.py`)
+    interpolates *only* loop-index placeholder names and hardcoded
+    `__tablename__`; all values are bound. `system_status` queries are pure ORM
+    `select()`.
+  ZAP's boolean/expression heuristic fired on response-size differences from
+  filtered/validated endpoints, not SQL parsing. (Optional regression guard: a
+  CI grep asserting no `text(f"…")` interpolates request-derived data.)
+
+No XSS, path-traversal, command-injection, or other active rules fired. The
+`style-src 'unsafe-inline'` Medium and the info/noise items match the passive
+baseline above.
+
+**Coverage caveat:** the scoped scan uses the regular (JS-blind) spider, so it
+focused on the main routed endpoints; HTMX-fragment routes are excluded by
+design. The passive baseline's AJAX spider is what covered the broader 131-URL
+surface for the header/passive checks. The injection-relevant surface (filters +
+edit/mutation forms) was the part actively fuzzed.
+
 ## Caveats
 
 - A **local** scan proves the code path emits the headers; the **prod**
   confirmation is `cirrus_healthcheck.sh` § 7 against the live HTTPS edge (run
   post `main→cirrus`).
-- Re-run any time with `./scripts/zap_probe_docker.sh`; `--full` adds an active
-  scan (local-only, prod-guarded).
+- Re-run any time: `./scripts/zap_probe_docker.sh` (passive baseline),
+  `--scoped` (time-boxed active, recommended), or `--full` (unbounded whole-app
+  active). All active modes are local-only / prod-guarded.
 
 ## Bottom line
 
 0 High, 0 unaccepted Medium, 0 unaccepted Low. All original NRIT findings closed;
-HSTS confirmed live. Two residuals are explicitly risk-accepted/deferred with
-rationale above (`style-src 'unsafe-inline'`; COOP/COEP site isolation).
+HSTS confirmed live; a scoped active scan of the parameterized surface found no
+exploitable injection (the one High SQLi is a verified false positive). Two
+residuals are explicitly risk-accepted/deferred with rationale above
+(`style-src 'unsafe-inline'`; COOP/COEP site isolation).
