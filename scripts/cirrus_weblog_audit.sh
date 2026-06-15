@@ -74,9 +74,13 @@ done
 setup_colors
 build_kctl
 
-# Scanner/abuse fingerprints. Probe PATHS first, then probe USER-AGENTS.
+# Scanner/abuse fingerprints. Probe PATHS first, then USER-AGENTS.
 PROBE_PATH_RE='/\.env|/\.git|/wp-login|/wp-admin|/phpmyadmin|/\.aws|/actuator|/vendor/|/cgi-bin/|\.php([?/]|$)|/xmlrpc|/config\.(json|php)|/\.ssh|/server-status|/solr/|/owa/|/boaform|/\.well-known/security'
-SCANNER_UA_RE='nikto|sqlmap|nmap|masscan|zgrab|nuclei|wpscan|dirbuster|gobuster|semrush|censys|python-requests|curl/|go-http-client|libwww-perl'
+# Aggressive scanners / exploitation tools — flagged as WARN.
+SCANNER_UA_RE='nikto|sqlmap|nmap|masscan|zgrab|nuclei|wpscan|dirbuster|gobuster|hydra|fimap|acunetix'
+# Generic CLI / library / crawler agents — usually benign automation (legit
+# uptime monitors and this repo's own scripts use curl), so reported as info.
+CLI_UA_RE='python-requests|curl/|wget/|go-http-client|libwww-perl|semrush|censys'
 
 # Convert a kubectl --since duration (e.g. 30m, 6h, 2d, 90s) to minutes;
 # echoes "" if unparseable (rate line is then skipped).
@@ -142,9 +146,10 @@ LOGS=$("${KCTL_NS[@]}" logs -l "app=$WEBAPP_NAME" --since="$SINCE" \
 # which app-logger lines never carry — robust against stray quotes in messages.
 ACCESS_TSV=$(printf '%s\n' "$LOGS" | awk -F'"' '
     $2 ~ /^(GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS|CONNECT|TRACE) / {
-        split($1, a, " "); ip = a[1];
         split($2, r, " "); method = r[1]; path = r[2];
         sub(/\?.*/, "", path);                 # drop query string for grouping
+        if (path ~ /^\/api\/v[0-9]+\/health(\/|$)/) next;   # infra probe noise, not traffic
+        split($1, a, " "); ip = a[1];
         split($3, s, " "); status = s[1];
         ua = $6; if (ua == "") ua = "-";
         printf "%s\t%s\t%s\t%s\t%s\n", ip, status, method, path, ua
@@ -214,14 +219,18 @@ else
     printf '%s\n' "$ACCESS_TSV" | cut -f5 | top_list
 
     SCAN_UA=$(printf '%s\n' "$ACCESS_TSV" | cut -f5 | grep -ciE "$SCANNER_UA_RE" || true)
+    CLI_UA=$(printf '%s\n'  "$ACCESS_TSV" | cut -f5 | grep -ciE "$CLI_UA_RE" || true)
     if [[ "$SCAN_UA" -gt 0 ]]; then
-        warn "$SCAN_UA request(s) from known scanner/CLI user-agents"
+        warn "$SCAN_UA request(s) from known exploitation/scanner tools"
         if [[ $VERBOSE -eq 1 ]]; then
             printf '%s\n' "$ACCESS_TSV" | awk -F'\t' -v re="$SCANNER_UA_RE" 'tolower($5) ~ re {print $1"\t"$5}' \
                 | sort | uniq -c | sort -rn | head -n "$TOP" | sed 's/^/      /'
         fi
     else
-        pass "no obvious scanner/CLI user-agents"
+        pass "no exploitation/scanner-tool user-agents"
+    fi
+    if [[ "$CLI_UA" -gt 0 ]]; then
+        info "$CLI_UA request(s) from generic CLI/crawler agents (curl, python-requests, …) — usually benign"
     fi
 fi
 
