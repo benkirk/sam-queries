@@ -618,7 +618,57 @@ else
 fi
 
 # ============================================================================
-section "7. ExternalSecrets (OpenBao sync)"
+section "7. Edge security headers (HSTS / CSP / nosniff)"
+# ============================================================================
+
+explain "Fetches response headers from the public HTTPS edge (https://$INGRESS_HOST/)
+  and checks the browser-defense headers the app emits via
+  src/webapp/utils/security_headers.py. HSTS in particular can ONLY be observed
+  over HTTPS, so this is the canonical place to verify it post-deploy (a local /
+  HTTP scan can't). Needs the ingress reachable from where you run this (VPN)."
+
+if ! command -v curl >/dev/null 2>&1; then
+    warn "curl not found — skipping edge security-header checks"
+else
+    HDR_URL="https://${INGRESS_HOST}/"
+    # -D - dumps response headers; we read the first response (security headers
+    # ride every response incl. the unauthenticated 302 → /status, so no -L).
+    if ! HDRS=$(curl -sS -m 15 -D - -o /dev/null "$HDR_URL" 2>/dev/null); then
+        warn "could not reach ${HDR_URL} — is the ingress reachable from here (VPN)? Skipping header checks"
+    else
+        HDRS_LC=$(printf '%s' "$HDRS" | tr 'A-Z' 'a-z')
+        have() { printf '%s' "$HDRS_LC" | grep -q "^$1:"; }
+        hval() { printf '%s' "$HDRS" | awk -F': ' -v k="$1" 'tolower($1)==k{sub(/\r$/,"",$2); print $2; exit}'; }
+
+        # HSTS is the security-critical one and the whole reason for this section.
+        if have 'strict-transport-security'; then
+            pass "HSTS present — Strict-Transport-Security: $(hval strict-transport-security)"
+        else
+            fail "HSTS missing — no Strict-Transport-Security at the edge (expected in prod; app gates it on SESSION_COOKIE_SECURE)"
+        fi
+
+        # Defense-in-depth headers — advisory (WARN) if absent.
+        for hdr in content-security-policy x-content-type-options referrer-policy \
+                   cross-origin-resource-policy permissions-policy; do
+            if have "$hdr"; then
+                pass "${hdr} present"
+            else
+                warn "${hdr} missing from edge response"
+            fi
+        done
+
+        if [[ $VERBOSE -eq 1 ]]; then
+            echo
+            echo "  Raw security headers:"
+            printf '%s\n' "$HDRS" \
+                | grep -iE 'strict-transport|content-security|x-content-type|referrer-policy|cross-origin|permissions-policy|x-frame' \
+                | sed 's/^/    /'
+        fi
+    fi
+fi
+
+# ============================================================================
+section "8. ExternalSecrets (OpenBao sync)"
 # ============================================================================
 
 if ! "${KCTL_NS[@]}" get externalsecret >/dev/null 2>&1; then
@@ -658,7 +708,7 @@ else
 fi
 
 # ============================================================================
-section "8. In-pod HTTP health probe"
+section "9. In-pod HTTP health probe"
 # ============================================================================
 
 WEBAPP_POD=$("${KCTL_NS[@]}" get pod -l "app=$WEBAPP_NAME" \
@@ -731,7 +781,7 @@ except Exception as e:
 fi
 
 # ============================================================================
-section "9. Recent logs"
+section "10. Recent logs"
 # ============================================================================
 
 echo "  webapp (last 500 lines, scanning for ERROR/CRITICAL/Exception/Traceback):"
@@ -766,7 +816,7 @@ else
 fi
 
 # ============================================================================
-section "10. Recent namespace events"
+section "11. Recent namespace events"
 # ============================================================================
 
 EV=$("${KCTL_NS[@]}" get events --sort-by=.lastTimestamp 2>/dev/null | tail -20 || echo "")
