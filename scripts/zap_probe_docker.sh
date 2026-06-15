@@ -46,16 +46,20 @@
 
 set -euo pipefail
 
-# ── Colors ────────────────────────────────────────────────────────────────
-BLUE='\033[0;34m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
+# ── Shared helpers ──────────────────────────────────────────────────────────
+_LIBDIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib"
+# shellcheck source=lib/common.sh
+source "${_LIBDIR}/common.sh"
+setup_colors   # TTY/NO_COLOR-aware palette (set NO_COLOR=1 to disable)
+
+# This tool uses a lighter, non-verdict log style than the cirrus check
+# scripts, so it keeps its own info/ok/warn; die() comes from common.sh.
 info()  { echo -e "${BLUE}==>${NC} $*"; }
 ok()    { echo -e "${GREEN}OK:${NC} $*"; }
 warn()  { echo -e "${YELLOW}WARN:${NC} $*" >&2; }
-die()   { echo -e "${RED}ERROR:${NC} $*" >&2; exit 1; }
 
 # ── Paths ─────────────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+repo_paths   # sets SCRIPT_DIR + REPO_ROOT
 COMPOSE_FILE="${REPO_ROOT}/compose.yaml"
 WRKDIR="${REPO_ROOT}/docs/nrit-review-2026-05"   # holds gen.conf + the saved baseline
 
@@ -72,9 +76,9 @@ KEEP_APP=""
 EXTERNAL_TARGET=""
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
-# Print the leading comment header (everything from line 2 up to the first
-# non-comment line), stripping the "# " prefix. Robust to header length.
-usage() { awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "${BASH_SOURCE[0]}"; exit "${1:-0}"; }
+# Help text is the leading comment header; usage_from_header (common.sh) prints
+# it. Wrapped so callers can pass an explicit exit code.
+usage() { usage_from_header "${BASH_SOURCE[0]}"; exit "${1:-0}"; }
 
 # ── Arg parsing ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
