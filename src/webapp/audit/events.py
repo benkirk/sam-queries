@@ -14,7 +14,7 @@ from .logger import get_audit_logger
 _AUDIT_EVENTS_REGISTERED = False
 
 
-def init_audit_events(app, db, logfile_path):
+def init_audit_events(app, db, logfile_path, stdout=True):
     """
     Initialize SQLAlchemy event handlers for audit logging.
 
@@ -25,6 +25,7 @@ def init_audit_events(app, db, logfile_path):
         app: Flask application instance
         db: Flask-SQLAlchemy instance
         logfile_path: Path to audit log file
+        stdout: Also emit audit entries to STDOUT (default True)
     """
     global _AUDIT_EVENTS_REGISTERED
 
@@ -32,7 +33,7 @@ def init_audit_events(app, db, logfile_path):
     if _AUDIT_EVENTS_REGISTERED:
         return
 
-    logger = get_audit_logger(logfile_path)
+    logger = get_audit_logger(logfile_path, stdout=stdout)
 
     # Security-sensitive models to exclude
     EXCLUDED_MODELS = {'ApiCredentials'}

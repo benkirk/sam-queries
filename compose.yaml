@@ -71,6 +71,7 @@ services:
       - "FLASK_DEBUG=0"
       - "AUDIT_ENABLED=1"
       - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
+      - "AUDIT_LOG_STDOUT=1"        # Mirror audit log to STDOUT (durable 45d capture in CIRRUS/k8s)
       # ── Sensible defaults — overridable via .env
       - "FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-only-insecure-key-change-for-production}"
       - "GUNICORN_WORKERS=${GUNICORN_WORKERS:-4}"   # Pin small default; gunicorn_config.py would otherwise spawn 2·host_cpus+1
@@ -147,6 +148,7 @@ services:
       - "FLASK_DEBUG=1"
       - "AUDIT_ENABLED=1"
       - "AUDIT_LOG_PATH=/var/log/sam/model_audit.log"
+      - "AUDIT_LOG_STDOUT=1"        # Mirror audit log to STDOUT (durable 45d capture in CIRRUS/k8s)
       # ── Sensible defaults — overridable via .env
       - "FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-dev-only-insecure-key-change-for-production}"
       - "JUPYTERHUB_API_URL=${JUPYTERHUB_API_URL:-https://jupyterhub.hpc.ucar.edu}"
