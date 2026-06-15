@@ -1,5 +1,9 @@
 # ZAP re-scan — 2026-06-15 (post-hardening verification)
 
+> **Superseded by [`10_zap_baseline-2026-06.md`](10_zap_baseline-2026-06.md)**
+> — the canonical post-#312 baseline. This note is the interim run that still
+> showed CORP / Permissions-Policy open; kept for history.
+
 **Purpose:** verify that the browser-defense findings from the original NRIT ZAP
 scan (`zap-basic-report.html`, base commit `b166d9b`, 2026-05) were actually
 closed by the hardening that has since landed in `main` — CSP enforce-by-default
