@@ -198,6 +198,34 @@ else
     else
         pass "4xx rate ${PCT4}% within tolerance"
     fi
+
+    # Edge rate-limit headroom (R1). Compares observed peak load to the live
+    # ingress limit-rps. On this controller the limit is a GLOBAL bucket (every
+    # client = 127.0.0.1), so peak-vs-ceiling is the signal for whether to raise
+    # it. NOTE: actual edge rejections are 503s returned by the controller and
+    # do NOT appear in these app logs — this is a headroom indicator, not a
+    # rejection count.
+    EDGE_RPS=$("${KCTL_NS[@]}" get ingress "$WEBAPP_NAME" \
+        -o jsonpath='{.metadata.annotations.nginx\.ingress\.kubernetes\.io/limit-rps}' 2>/dev/null || true)
+    if [[ "$EDGE_RPS" =~ ^[0-9]+$ && "$EDGE_RPS" -gt 0 ]]; then
+        PEAK_RPS=$(printf '%s\n' "$LOGS" | awk -F'"' '
+            $2 ~ /^(GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS|CONNECT|TRACE) / {
+                if (match($1, /\[[^]]+\]/)) {
+                    ts = substr($1, RSTART+1, RLENGTH-2); sub(/ .*/, "", ts); c[ts]++
+                }
+            }
+            END { m = 0; for (k in c) if (c[k] > m) m = c[k]; print m + 0 }')
+        echo
+        echo "  Edge limit-rps: ${EDGE_RPS}/s (global) · observed peak: ${PEAK_RPS}/s in a single second"
+        if [[ "$PEAK_RPS" -ge "$EDGE_RPS" ]]; then
+            warn "peak load ${PEAK_RPS}/s ≥ edge limit ${EDGE_RPS}/s — legit traffic may be hitting 503s at the ingress; raise webapp.ingress.rateLimit.rps"
+        elif awk -v p="$PEAK_RPS" -v l="$EDGE_RPS" 'BEGIN{exit !(p >= 0.8*l)}'; then
+            warn "peak load ${PEAK_RPS}/s within 80% of edge limit ${EDGE_RPS}/s — consider raising webapp.ingress.rateLimit.rps"
+        else
+            pass "peak load ${PEAK_RPS}/s well under edge limit ${EDGE_RPS}/s"
+        fi
+        explain "Edge-limit 503s are returned by the controller and aren't in app logs; this compares observed load to the ceiling."
+    fi
 fi
 
 # ============================================================================
