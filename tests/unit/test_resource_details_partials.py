@@ -211,3 +211,52 @@ class TestDaySubtreeRoute:
         assert resp.status_code == 200
         body = resp.get_data(as_text=True)
         assert 'No activity for this day' in body
+
+
+# ---------------------------------------------------------------------------
+# /user/resource-details/<projcode>  (main page — access control)
+# ---------------------------------------------------------------------------
+
+class TestResourceDetailsAccessControl:
+    """The main page must enforce ``@require_project_access(include_ancestors=True)``
+    like its sibling partials. Regression guard for the pre-hardening
+    defect where the page was ``@login_required`` only and any
+    authenticated user could read any project's usage / per-user charge
+    breakdown / allocation history by changing the query string.
+    """
+
+    def test_non_member_is_forbidden(self, non_admin_client, session):
+        from sam import User, Project
+
+        # Mirror the non_admin_client fixture's user selection so we can
+        # find a project this no-permission user is definitely not on.
+        user = (
+            session.query(User)
+            .filter(User.active == True, User.username != "benkirk")
+            .order_by(User.user_id)
+            .first()
+        )
+        member_projcodes = {p.projcode for p in user.all_projects} or {"__none__"}
+        target = (
+            session.query(Project)
+            .filter(Project.is_active, Project.projcode.notin_(member_projcodes))
+            .order_by(Project.projcode)
+            .first()
+        )
+        assert target is not None, (
+            "snapshot needs an active project the non-admin user isn't on"
+        )
+
+        resp = non_admin_client.get(
+            f'/user/resource-details/{target.projcode}?resource=Derecho'
+        )
+        assert resp.status_code == 403
+
+    def test_authorized_user_is_not_forbidden(self, auth_client, active_project):
+        # benkirk holds VIEW_PROJECTS system-wide → the decorator admits.
+        # 200 when the resource resolves, else a friendly redirect for a
+        # missing/mismatched resource — but never 401/403.
+        resp = auth_client.get(
+            f'/user/resource-details/{active_project.projcode}?resource=Derecho'
+        )
+        assert resp.status_code not in (401, 403)

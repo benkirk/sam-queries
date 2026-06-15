@@ -1066,8 +1066,8 @@ def test_resource_details_includes_jobs_fragment_url(
     # drill-down data may be empty depending on the fixture's seed data.
     # The template still renders the page, just without rows.
     resp = auth_client.get(
-        f'/dashboards/user/resource-details'
-        f'?projcode={active_project.projcode}&resource=Derecho'
+        f'/user/resource-details/{active_project.projcode}'
+        f'?resource=Derecho'
     )
     # Either 200 (page rendered) or a redirect (no matching resource in
     # fixtures). We only assert the URL pattern when the page renders.
@@ -1097,8 +1097,8 @@ def test_resource_details_user_table_is_sortable(
     is verified end-to-end via Playwright. Skip the assertion when
     the page redirects (no matching resource in the snapshot)."""
     resp = auth_client.get(
-        f'/dashboards/user/resource-details'
-        f'?projcode={active_project.projcode}&resource=Derecho'
+        f'/user/resource-details/{active_project.projcode}'
+        f'?resource=Derecho'
     )
     if resp.status_code != 200:
         return  # snapshot doesn't have this resource — nothing to check

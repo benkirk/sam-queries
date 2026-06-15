@@ -2176,9 +2176,18 @@ def _render_project_directories_card(*, active_only: bool):
 
 @bp.route('/htmx/admin/project-directories')
 @login_required
-@require_permission(Permission.EDIT_PROJECTS)
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
 def htmx_admin_project_directories():
-    """Render the cross-project Project Directories table."""
+    """Render the cross-project Project Directories table.
+
+    Read-only view gated on VIEW_PROJECTS (any-facility), matching the
+    sibling reference-data cards (Facilities/Orgs/Resources). The
+    edit/add/deactivate controls inside the card remain gated on
+    EDIT_PROJECTS/DELETE_PROJECTS in the template, so facility-scoped
+    admins (e.g. WNA) see the table without the action buttons — and
+    without the on-load 403 that the old system-wide EDIT_PROJECTS gate
+    produced for them.
+    """
     # Match the canonical "Active only" toggle pattern used by the
     # Resources / Organizations / Facilities cards: when the checkbox is
     # checked, hx-include sends active_only=1; when unchecked, no param,

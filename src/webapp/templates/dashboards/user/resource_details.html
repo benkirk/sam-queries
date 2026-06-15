@@ -346,10 +346,10 @@
 
 {% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
 {{ date_range_picker(
-    action=url_for('user_dashboard.resource_details'),
+    action=url_for('user_dashboard.resource_details', projcode=projcode),
     start_date=start_date,
     end_date=end_date,
-    hidden_fields={'projcode': projcode, 'resource': resource_name, 'scope': scope},
+    hidden_fields={'resource': resource_name, 'scope': scope},
     epoch_date=alloc_start_date
 ) }}
 

@@ -101,7 +101,6 @@ class Permission(Enum):
     ACCESS_ADMIN_DASHBOARD = "access_admin_dashboard"  # Land on /admin/ and see the navbar tab
     MANAGE_ROLES = "manage_roles"
     IMPERSONATE_USERS = "impersonate_users"  # Actually log in as another user
-    VIEW_SYSTEM_STATUS = "view_system_status"
     # The user/project queue-load chart itself is visible to any logged-in
     # user on the status dashboard. This permission narrows to two
     # operator-only enrichments on top of that:
