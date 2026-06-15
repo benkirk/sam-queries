@@ -33,16 +33,16 @@
 # ── Hardening recommendations (NOT enforced by this script) ──────────────────
 # This audit only surfaces signals; the layered defenses below are follow-ups
 # tracked in docs/plans (see the approved plan). Quick reference:
-#   R1  Edge rate limiting — configurable via webapp.ingress.rateLimit in
-#       helm/values.yaml (limit-rps / limit-connections / limit-burst-multiplier
-#       on the ingress): a per-client-IP guardrail ahead of Flask-Limiter that
-#       sheds floods before they cost a worker. Tune to expected burst; rps: 0
-#       disables it.
-#   R2  Real client IP — the access log now carries xff="…" and the ProxyFix
-#       hop depth is set by PROXYFIX_X_FOR (helm webapp.proxyFixForwardedHops).
-#       Confirm the count against the logged X-Forwarded-For chain — too high
-#       lets clients spoof their IP. Section 2 warns if xff is missing or still
-#       collapses to ≤2 IPs.
+#   R1  Edge rate limiting — webapp.ingress.rateLimit in helm/values.yaml
+#       (limit-rps / limit-connections / limit-burst-multiplier). NOTE: on the
+#       nwc1 controller every client collapses to 127.0.0.1 (see R2), so these
+#       act as a GLOBAL bucket, not per-IP — set high as a flood backstop.
+#       rps: 0 disables it.
+#   R2  Real client IP — CONFIRMED lost upstream: the nginx-external controller
+#       hands the app X-Forwarded-For: 127.0.0.1 (verified from an external,
+#       off-VPN request). Not fixable here — needs the controller's
+#       use-forwarded-headers / use-proxy-protocol config. PROXYFIX_X_FOR stays
+#       1 (there is no real client IP to recover). Section 2 flags the symptom.
 #   R3  Scheduling — run on a cron/CI runner with --no-color and alert on a
 #       non-zero exit (wire into scripts/cron/).
 #   R4  CSP reporting — add a report-uri so injection attempts become a
@@ -210,9 +210,17 @@ else
     N_IPS=$(printf '%s\n' "$ACCESS_TSV" | cut -f1 | sort -u | grep -c . || true)
     echo "  Distinct source IPs: $N_IPS"
     XFF_SEEN=$(printf '%s\n' "$LOGS" | grep -cE 'xff="[0-9a-fA-F]' || true)
+    # Public = not loopback/RFC1918/link-local. Zero public IPs on a public site
+    # means the real client IP never reached the app (controller not forwarding).
+    N_PUBLIC=$(printf '%s\n' "$ACCESS_TSV" | cut -f1 | sort -u \
+        | grep -vE '^(127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|::1|fe80|f[cd])' \
+        | grep -c . || true)
     if [[ "$XFF_SEEN" -eq 0 ]]; then
         warn "access log carries no X-Forwarded-For — IPs above are the in-cluster proxy, not real clients"
         explain "Deploy the R2 gunicorn change (xff logging) so this attributes real clients; see R2 in --help."
+    elif [[ "$N_PUBLIC" -eq 0 && "$N_ACCESS" -ge 10 ]]; then
+        warn "no public client IPs across $N_ACCESS requests — real client IP not propagated by the ingress"
+        explain "The controller hands the app X-Forwarded-For: 127.0.0.1; the fix is controller-side (R2 in --help)."
     elif [[ "$N_IPS" -le 2 && "$N_ACCESS" -ge 50 ]]; then
         warn "only $N_IPS distinct client IP(s) across $N_ACCESS requests despite X-Forwarded-For"
         explain "Either genuinely few clients, or PROXYFIX_X_FOR hop depth is still mis-set (see R2 in --help)."

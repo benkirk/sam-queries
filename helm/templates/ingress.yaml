@@ -9,7 +9,8 @@ metadata:
     cert-manager.io/cluster-issuer: "incommon"
     {{- with .Values.webapp.ingress.rateLimit }}
     {{- if gt (int .rps) 0 }}
-    # Edge rate limiting — per-client-IP guardrail ahead of Flask-Limiter.
+    # Edge rate limiting ahead of Flask-Limiter (currently a GLOBAL bucket on
+    # this controller — see values.yaml webapp.ingress.rateLimit).
     nginx.ingress.kubernetes.io/limit-rps: {{ .rps | quote }}
     nginx.ingress.kubernetes.io/limit-connections: {{ .connections | quote }}
     nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .burstMultiplier | quote }}

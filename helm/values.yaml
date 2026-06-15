@@ -68,14 +68,17 @@ webapp:
     secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
   ingress:
     visibility: external                  # internal or external
-    # Edge rate limiting (nginx ingress controller). A coarse per-client-IP
-    # guardrail IN FRONT of the app-layer Flask-Limiter that sheds floods
-    # before they reach a gunicorn worker. Effectiveness depends on the
-    # controller seeing real client IPs (same X-Forwarded-For concern as
-    # proxyFixForwardedHops below). Set rps: 0 to disable all three annotations.
+    # Edge rate limiting (nginx ingress controller), IN FRONT of the app-layer
+    # Flask-Limiter. IMPORTANT: on the nwc1 nginx-external controller every
+    # client currently presents as 127.0.0.1 — X-Forwarded-For is not
+    # propagated to the controller (see proxyFixForwardedHops) — so limit-rps /
+    # limit-connections act as ONE GLOBAL bucket, NOT per-client. Values below
+    # are a deliberately HIGH blunt flood-backstop that legitimate aggregate
+    # traffic should not reach; revisit to proper per-IP values once the
+    # controller forwards real client IPs. Set rps: 0 to disable all three.
     rateLimit:
-      rps: 20                             # requests/sec per client IP (limit-rps)
-      connections: 20                     # concurrent connections per IP (limit-connections)
+      rps: 100                            # global req/sec backstop (limit-rps)
+      connections: 200                    # global concurrent connections (limit-connections)
       burstMultiplier: 5                  # short-burst allowance = rps * this (limit-burst-multiplier)
   # Trusted proxy hops for ProxyFix (X-Forwarded-For depth). Sets PROXYFIX_X_FOR.
   # MUST equal the exact number of proxies that append to X-Forwarded-For, or a
