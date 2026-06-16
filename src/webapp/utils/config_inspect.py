@@ -476,7 +476,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     }
 
     # --- Recent audit entries (None if missing/unreadable)
-    audit_tail = tail_audit_log(audit_path, n=25)
+    audit_tail = tail_audit_log(audit_path, n=500)
 
     return {
         'application':   application,
