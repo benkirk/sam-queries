@@ -9,6 +9,8 @@ metadata:
     group: {{ .Values.webapp.group }}
 spec:
   replicas: 1
+  # Trim old scaled-to-0 ReplicaSets (rollback history) to cut ArgoCD clutter.
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 3 }}
   selector:
     matchLabels:
       app: {{ .Values.cache.name }}

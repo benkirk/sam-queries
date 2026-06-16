@@ -7,6 +7,13 @@ Organized scripts for SAM Queries project setup, maintenance, and utilities.
 ```
 scripts/
 ├── README.md                    # This file
+├── cirrus_healthcheck.sh        # CIRRUS/k8s health probe (samuel release)
+├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
+├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
+├── lib/                         # Sourceable shell helpers (see below)
+│   ├── common.sh               # Generic: colors, log/verdict helpers, usage
+│   ├── cirrus_common.sh        # CIRRUS layer: release names, KCTL, arg parse
+│   └── prereqs.sh              # Dependency checks (require_cmd, check_docker…)
 ├── setup/                       # Setup and utility scripts
 │   ├── README.md               # Setup scripts documentation
 │   ├── switch_to_production_db.sh
@@ -27,6 +34,55 @@ scripts/
 ```
 
 ## Script Categories
+
+### Cluster Operations (CIRRUS / `nwc1`)
+
+Read-only operator tools for the public `samuel` release on the `nwc1`
+cluster. All use the same idioms: colored PASS/WARN/FAIL output, exit codes
+`0` (all pass) / `1` (≥1 warn) / `2` (≥1 fail), and the shared `--no-color`,
+`-n/--namespace`, `-r/--release`, `--context`, `-v/--verbose`, `-h/--help`
+flags.
+
+- **`cirrus_healthcheck.sh`** — "is the cluster healthy?" 11-section probe of
+  the Helm release: pods, rollout safety, Redis, resource usage, ingress/TLS,
+  edge security headers, ExternalSecrets, the in-pod health endpoint, recent
+  logs, and events.
+
+- **`cirrus_weblog_audit.sh`** — "who's hitting the public site, and is anything
+  abusive getting through?" Harvests the webapp's stdout (and the Redis
+  `ratelimit:events` set) and reports traffic volume + status mix, top talkers,
+  vulnerability-probe path signatures, rate-limit (429) offenders, and
+  auth/CSRF failures. Built for the public-exposure cutover.
+
+  ```bash
+  scripts/cirrus_weblog_audit.sh --since 6h          # last 6 hours
+  scripts/cirrus_weblog_audit.sh --since 24h --top 25 -v
+  ```
+
+  Its `--help` also lists hardening recommendations (R1–R5: edge rate limiting,
+  ProxyFix/X-Forwarded-For, scheduling, CSP reporting, durable log shipping)
+  that the audit surfaces but does not enforce.
+
+- **`zap_probe_docker.sh`** — Dockerized OWASP ZAP passive/active scan of the
+  webapp (local throwaway target by default). See its `--help`.
+
+### Shared Library (`lib/`)
+
+Sourceable helpers so the cluster scripts stop duplicating boilerplate. Two
+layers:
+
+- **`lib/common.sh`** — generic, no Kubernetes knowledge: `setup_colors`
+  (TTY/`NO_COLOR`-aware), plain log primitives (`info`/`ok`/`die`), verdict
+  primitives with PASS/WARN/FAIL counters (`section`/`pass`/`warn`/`fail`/`run`)
+  + `verdict_exit`, `usage_from_header`, and `repo_paths`.
+- **`lib/cirrus_common.sh`** — the CIRRUS layer (sources `common.sh`): baked-in
+  release/object names, `build_kctl` (KCTL/KCTL_NS arrays), `handle_common_arg`
+  (shared flag parsing), and K8s resource-unit converters.
+
+`cirrus_healthcheck.sh` and `cirrus_weblog_audit.sh` source
+`cirrus_common.sh`; `zap_probe_docker.sh` sources only `common.sh`.
+`lib/prereqs.sh` (`require_cmd`, `check_vpn`, `check_docker`, `check_aws_cli`)
+remains the dependency-check helper used by the setup/infra scripts.
 
 ### Setup Scripts (`setup/`)
 

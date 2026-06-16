@@ -8,6 +8,8 @@ metadata:
     group: {{ .Values.webapp.group }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  # Trim old scaled-to-0 ReplicaSets (rollback history) to cut ArgoCD clutter.
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 3 }}
   {{- if .Values.rollout }}
   strategy:
     type: RollingUpdate
@@ -63,6 +65,11 @@ spec:
           # spawn ~129 workers on a 64-core node and OOM the pod.
           - name: GUNICORN_WORKERS
             value: {{ mul (.Values.webapp.container.limits.cpu | int) 2 | add 1 | quote }}
+          # Number of trusted proxy hops for ProxyFix (X-Forwarded-For depth).
+          # Must match the real proxy chain exactly — too high allows client IP
+          # spoofing. Confirm from the gunicorn access log's xff="…" field.
+          - name: PROXYFIX_X_FOR
+            value: {{ .Values.webapp.proxyFixForwardedHops | default 1 | quote }}
           {{- if .Values.cache.enabled }}
           # Centralized Redis: DB 0 for cache, DB 1 for rate-limit counters.
           - name: CACHE_REDIS_URL

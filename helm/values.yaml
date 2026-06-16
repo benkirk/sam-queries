@@ -10,6 +10,11 @@ rollout:
   maxUnavailable: 0
   maxSurge: 1
 
+# Old (scaled-to-0) ReplicaSets retained per Deployment for rollback history.
+# k8s defaults to 10, which clutters the ArgoCD view; GitOps rollback is via
+# git revert + resync, so keep a small number. Applies to webapp AND redis.
+revisionHistoryLimit: 3
+
 # PodDisruptionBudget — keep >=minAvailable webapp pods serving during
 # VOLUNTARY disruptions (node drains, cluster maintenance). Without this, a
 # single node drain can evict both replicas at once and take the app down.
@@ -68,6 +73,23 @@ webapp:
     secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
   ingress:
     visibility: external                  # internal or external
+    # Edge rate limiting (nginx ingress controller), IN FRONT of the app-layer
+    # Flask-Limiter. IMPORTANT: on the nwc1 nginx-external controller every
+    # client currently presents as 127.0.0.1 — X-Forwarded-For is not
+    # propagated to the controller (see proxyFixForwardedHops) — so limit-rps /
+    # limit-connections act as ONE GLOBAL bucket, NOT per-client. Values below
+    # are a deliberately HIGH blunt flood-backstop that legitimate aggregate
+    # traffic should not reach; revisit to proper per-IP values once the
+    # controller forwards real client IPs. Set rps: 0 to disable all three.
+    rateLimit:
+      rps: 100                            # global req/sec backstop (limit-rps)
+      connections: 200                    # global concurrent connections (limit-connections)
+      burstMultiplier: 5                  # short-burst allowance = rps * this (limit-burst-multiplier)
+  # Trusted proxy hops for ProxyFix (X-Forwarded-For depth). Sets PROXYFIX_X_FOR.
+  # MUST equal the exact number of proxies that append to X-Forwarded-For, or a
+  # client can spoof its IP. Start at 1 (safe), then confirm the real depth from
+  # the gunicorn access-log xff="…" field and bump to match. See webapp/run.py.
+  proxyFixForwardedHops: 1
   # Kubernetes probes. Endpoints from src/webapp/api/v1/health.py:
   #   /live  -> process up, no DB call          (liveness + startup)
   #   /ready -> DB-gated, 200 healthy / 503 not  (readiness: gates rollout
