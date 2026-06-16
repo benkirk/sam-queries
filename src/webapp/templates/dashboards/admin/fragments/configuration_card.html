@@ -360,7 +360,7 @@
 
                     <h6 class="mb-2">
                         <i class="fas fa-history me-1"></i> Recent audit entries
-                        <small class="text-muted fw-normal ms-1">(last 25)</small>
+                        {% if state.audit_tail %}<small class="text-muted fw-normal ms-1">(last {{ state.audit_tail | length }})</small>{% endif %}
                     </h6>
                     {% if state.audit_tail is none %}
                         <p class="text-muted small mb-0 h-100">

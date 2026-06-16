@@ -267,6 +267,7 @@ def update_allocation(
     user_id: int,
     *,
     comment: Optional[str] = None,
+    log_audit_row: bool = True,
     **updates
 ) -> Allocation:
     """
@@ -287,6 +288,13 @@ def update_allocation(
                  the *reason* for the edit; do NOT smuggle it into
                  ``description=`` — that field describes what the
                  allocation is for, not why it was last edited.
+        log_audit_row: When True (default), log this allocation's own
+                 EDIT→ADJUSTMENT audit row. Set False when the *caller*
+                 records this allocation's change itself with a more
+                 specific row (e.g. ``exchange_allocations`` writes a
+                 paired TRANSFER) — this avoids a double-counted, additive
+                 row in legacy replay. Inheriting-child cascade rows are
+                 ALWAYS written regardless of this flag.
         **updates: Fields to update (amount, start_date, end_date, description)
 
     Returns:
@@ -353,15 +361,19 @@ def update_allocation(
 
     session.flush()
 
-    # Create audit trail entry
-    log_allocation_transaction(
-        session,
-        allocation,
-        user_id,
-        AllocationTransactionType.EDIT,
-        comment=comment,
-        old_values=old_values,
-    )
+    # Create audit trail entry for THIS allocation. Skipped when the caller
+    # records the change itself with a more specific row (e.g. exchange's
+    # paired TRANSFER) — otherwise legacy replay would sum two additive rows
+    # for one change. The child cascade below is unaffected.
+    if log_audit_row:
+        log_allocation_transaction(
+            session,
+            allocation,
+            user_id,
+            AllocationTransactionType.EDIT,
+            comment=comment,
+            old_values=old_values,
+        )
 
     # Cascade amount and date changes to all inheriting descendants.
     # description is NOT cascaded — children belong to different projects.
@@ -409,9 +421,13 @@ def exchange_allocations(
     inheriting) allocations on the same resource. Inheriting children of
     either side cascade automatically via ``update_allocation``.
 
-    Writes two paired ``AllocationTransaction(TRANSFER)`` audit rows so
-    the operation is greppable as a single logical event, in addition to
-    the ``EDIT`` rows produced by the underlying updates.
+    Writes two paired ``AllocationTransaction(TRANSFER)`` audit rows (cross-
+    linked via ``related_transaction_id``) — the sole audit row for each of
+    the two dedicated allocations. The underlying ``update_allocation`` calls
+    are told NOT to log their own EDIT row (``log_audit_row=False``), since a
+    ``TRANSFER`` and an ``ADJUSTMENT`` are both additive in legacy replay and
+    two rows per side would double-count the amount. (Inheriting children of
+    either side still get their propagated cascade rows.)
 
     Does NOT commit — caller wraps in ``management_transaction``.
 
@@ -479,13 +495,18 @@ def exchange_allocations(
     new_from = from_alloc.amount - amount
     new_to = to_alloc.amount + amount
 
-    update_allocation(session, from_allocation_id, user_id, amount=new_from)
-    update_allocation(session, to_allocation_id, user_id, amount=new_to)
+    # log_audit_row=False: the paired TRANSFER rows below are the audit record
+    # for these two allocations. Letting update_allocation also log an EDIT→
+    # ADJUSTMENT would double-count under legacy replay (both are additive).
+    # The inheriting-child cascade rows are still written.
+    update_allocation(session, from_allocation_id, user_id, amount=new_from,
+                      log_audit_row=False)
+    update_allocation(session, to_allocation_id, user_id, amount=new_to,
+                      log_audit_row=False)
 
-    # Paired TRANSFER audit rows (in addition to the EDIT rows that
-    # update_allocation writes). They cross-reference each other via
-    # related_transaction_id so the exchange is greppable as a single
-    # logical operation.
+    # Paired TRANSFER audit rows — the single additive row per allocation.
+    # They cross-reference each other via related_transaction_id so the
+    # exchange is greppable as a single logical operation.
     debit = AllocationTransaction(
         allocation_id=from_alloc.allocation_id,
         user_id=user_id,
@@ -762,6 +783,10 @@ def link_allocation_to_parent(
     child.end_date = parent.end_date
     session.flush()
 
+    # LINK is a 0.0 topology marker, not an amount event: a re-linked child
+    # becomes an inheriting (shared-pool) member whose amount is, by definition,
+    # the parent's — kept in sync by the parent's cascades. The child's prior
+    # standalone amount is intentionally adopted-as-is, so no delta is recorded.
     log_allocation_transaction(
         session, child, user_id,
         AllocationTransactionType.LINK,
