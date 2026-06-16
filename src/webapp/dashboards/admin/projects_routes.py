@@ -437,6 +437,7 @@ def edit_project_page(project):
     (``can_access_edit_project_page``). Non-admin stewards see every
     tab but a limited edit surface gated by ``can_edit_governance``.
     """
+    from datetime import datetime
     from sam.queries.dashboard import get_project_dashboard_data
 
     project_data = get_project_dashboard_data(db.session, project.projcode)
@@ -464,6 +465,11 @@ def edit_project_page(project):
     from webapp.utils.rbac import has_permission_any_facility
     can_access_admin = has_permission_any_facility(current_user, Permission.ACCESS_ADMIN_DASHBOARD)
 
+    # Initial value for the Allocations tab "Active at" date picker (today).
+    # ISO YYYY-MM-DD is the machine value an <input type="date"> requires, not
+    # human display — mirrors the now_str line in htmx_project_allocation_tree.
+    now_str = datetime.now().strftime('%Y-%m-%d')
+
     return render_template(
         'dashboards/admin/edit_project.html',
         project=project,
@@ -473,6 +479,7 @@ def edit_project_page(project):
         can_edit_governance=can_edit_governance,
         can_modify_allocations=can_modify_allocs,
         can_access_admin=can_access_admin,
+        now_str=now_str,
         **form_data,
     )
 
