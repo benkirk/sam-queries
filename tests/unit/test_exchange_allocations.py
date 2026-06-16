@@ -15,6 +15,7 @@ from sam.accounting.allocations import (
     AllocationTransaction,
     AllocationTransactionType,
     InheritingAllocationException,
+    replay_amount,
 )
 from sam.manage.allocations import exchange_allocations
 from sam.schemas.forms import ExchangeAllocationForm
@@ -22,6 +23,7 @@ from sam.schemas.forms import ExchangeAllocationForm
 from factories import (
     make_account,
     make_allocation,
+    make_allocation_transaction,
     make_project,
     make_resource,
     make_user,
@@ -309,3 +311,103 @@ class TestExchangeAllocationsErrors:
                 amount=100.0,
                 user_id=acting_user.user_id,
             )
+
+
+class TestExchangeAllocationsAuditTrail:
+    """Regression guards for the audit-trail double-count bug.
+
+    An exchange must write exactly ONE additive row per dedicated allocation —
+    the signed TRANSFER. The earlier implementation ALSO let update_allocation
+    log an EDIT→ADJUSTMENT row; since legacy replay sums both TRANSFER and
+    ADJUSTMENT (addAmount), that double-counted the change (±2×amount) and broke
+    the invariant replay(history) == allocation.amount.
+    """
+
+    def _seed_new_baseline(self, session, alloc, user):
+        """Seed the NEW row create_allocation would have written, so the full
+        legacy-replay invariant can be exercised against the factory-built
+        allocation (which has no transaction history of its own)."""
+        return make_allocation_transaction(
+            session, allocation=alloc, user=user,
+            transaction_type=AllocationTransactionType.NEW,
+            transaction_amount=alloc.amount,
+        )
+
+    def test_no_adjustment_rows_on_exchanged_allocations(
+        self, session, exchange_pair, acting_user
+    ):
+        from_alloc, to_alloc, _ = exchange_pair
+        exchange_allocations(
+            session,
+            from_allocation_id=from_alloc.allocation_id,
+            to_allocation_id=to_alloc.allocation_id,
+            amount=150_000.0,
+            user_id=acting_user.user_id,
+        )
+        # The two dedicated allocations carry ONLY the TRANSFER row — no
+        # additive ADJUSTMENT row that would double-count under replay.
+        for alloc in (from_alloc, to_alloc):
+            adjustments = (
+                session.query(AllocationTransaction)
+                .filter_by(
+                    allocation_id=alloc.allocation_id,
+                    transaction_type=AllocationTransactionType.ADJUSTMENT,
+                )
+                .all()
+            )
+            assert adjustments == []
+
+    def test_replay_reproduces_amount(self, session, exchange_pair, acting_user):
+        from_alloc, to_alloc, _ = exchange_pair
+        self._seed_new_baseline(session, from_alloc, acting_user)
+        self._seed_new_baseline(session, to_alloc, acting_user)
+
+        exchange_allocations(
+            session,
+            from_allocation_id=from_alloc.allocation_id,
+            to_allocation_id=to_alloc.allocation_id,
+            amount=150_000.0,
+            user_id=acting_user.user_id,
+        )
+        session.refresh(from_alloc)
+        session.refresh(to_alloc)
+
+        for alloc in (from_alloc, to_alloc):
+            txns = (
+                session.query(AllocationTransaction)
+                .filter_by(allocation_id=alloc.allocation_id)
+                .all()
+            )
+            assert replay_amount(txns) == pytest.approx(alloc.amount)
+
+    def test_inheriting_child_cascade_replays(self, session, exchange_pair, acting_user):
+        """A cascaded inheriting child of an exchanged allocation still replays
+        to its (parent-mirrored) amount — the cascade writes a propagated
+        ADJUSTMENT delta relative to the child's own pre-mutation amount."""
+        from_alloc, to_alloc, _ = exchange_pair
+        # Inheriting child sharing to_alloc's pool (same account, linked parent).
+        child = make_allocation(
+            session, account=to_alloc.account,
+            amount=to_alloc.amount, parent=to_alloc,
+        )
+        self._seed_new_baseline(session, to_alloc, acting_user)
+        self._seed_new_baseline(session, child, acting_user)
+
+        exchange_allocations(
+            session,
+            from_allocation_id=from_alloc.allocation_id,
+            to_allocation_id=to_alloc.allocation_id,
+            amount=150_000.0,
+            user_id=acting_user.user_id,
+        )
+        session.refresh(to_alloc)
+        session.refresh(child)
+
+        # Child amount tracks the parent (shared pool) and replays correctly.
+        assert child.amount == pytest.approx(to_alloc.amount)
+        child_txns = (
+            session.query(AllocationTransaction)
+            .filter_by(allocation_id=child.allocation_id)
+            .all()
+        )
+        assert replay_amount(child_txns) == pytest.approx(child.amount)
