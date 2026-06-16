@@ -97,9 +97,14 @@
                                 hx-confirm="Make {{ member.display_name }} the project admin?"
                                 data-confirm-title="Change admin role"
                                 data-confirm-variant="warning"
-                                data-confirm-label="Make admin">
+                                data-confirm-label="Make admin"
+                                data-confirm-body="#confirm-admin-{{ member.username }}">
                             <i class="fas fa-user-shield"></i>
                         </button>
+                        <template id="confirm-admin-{{ member.username }}">
+                            <p>Make <strong>{{ member.display_name }}</strong> the project admin?</p>
+                            <p class="mb-0 text-muted small">A project can have only one admin. Project admins can control project membership.</p>
+                        </template>
                         {% endif %}
                         <button class="btn btn-sm btn-outline-danger"
                                 title="Remove from project"
