@@ -10,6 +10,11 @@ rollout:
   maxUnavailable: 0
   maxSurge: 1
 
+# Old (scaled-to-0) ReplicaSets retained per Deployment for rollback history.
+# k8s defaults to 10, which clutters the ArgoCD view; GitOps rollback is via
+# git revert + resync, so keep a small number. Applies to webapp AND redis.
+revisionHistoryLimit: 3
+
 # PodDisruptionBudget — keep >=minAvailable webapp pods serving during
 # VOLUNTARY disruptions (node drains, cluster maintenance). Without this, a
 # single node drain can evict both replicas at once and take the app down.
