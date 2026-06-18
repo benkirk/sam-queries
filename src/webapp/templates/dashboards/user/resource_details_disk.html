@@ -333,10 +333,12 @@
 {# ── Filesystem Scans card ──────────────────────────────────────────── #}
 {# Shown only when the fs-scans plugin is loaded AND this resource maps to
    a live scan collection (show_scans, set in the route). Collapsed by
-   default + data-no-persist so the (potentially slow, 30-200s for a
-   fileset drill-down) scans only run when the user opts in by expanding.
-   Each tab lazy-loads its fragment once; the active tab fires on
-   card-open via htmx `from:#collapseDiskScans`. #}
+   default; once opened, the expanded state AND active tab persist across
+   reloads via nav-view-persistence.js (collapse:<id> + tab:<tablistId>).
+   On restore the active tab re-fires its lazy-load — fast for project-root
+   scope (pre-computed); a fileset drill-down re-runs its on-the-fly scan.
+   Each tab loads its fragment once; the active tab fires on card-open via
+   htmx `from:#collapseDiskScans`. #}
 {% if show_scans %}
 <div class="card mb-4">
     <div class="card-header cursor-pointer"
@@ -364,7 +366,7 @@
             <i class="fas fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
-    <div id="collapseDiskScans" class="collapse" data-no-persist>
+    <div id="collapseDiskScans" class="collapse">
         <div class="card-body">
             <ul class="nav nav-tabs mb-0" id="diskScansTabs" role="tablist">
                 <li class="nav-item" role="presentation">

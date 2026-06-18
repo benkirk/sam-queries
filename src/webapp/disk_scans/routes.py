@@ -43,9 +43,10 @@ bp = Blueprint('disk_scans', __name__)
 
 # scan_directories sort keys the facade understands (see
 # fs_scans/queries/facade.py:_DIR_SORT_KEYS). The facade fixes the sort
-# direction per key (size/files/atime/depth descending, path ascending),
-# so the UI only switches the active key, not a direction.
-_DIR_SORT_WHITELIST = {'size', 'files', 'atime_r', 'path', 'depth'}
+# direction per key (size/files/atime/dirs descending, path ascending),
+# so the UI only switches the active key, not a direction. 'dirs' maps to
+# the recursive subdirectory count (dir_count_r).
+_DIR_SORT_WHITELIST = {'size', 'files', 'atime_r', 'path', 'dirs'}
 _DEFAULT_DIR_SORT = 'size'
 
 _DEFAULT_LIMIT = 50

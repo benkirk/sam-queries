@@ -7,6 +7,11 @@
     resource_name, scope, fileset, enabled, error
   Each row: path, depth, total_size_r, file_count_r, dir_count_r,
             max_atime_r, owner_uid, owner_gid, filesystem.
+
+  Server-side sorting (re-fetches the true top-N for the chosen key) — the
+  foundation for a future filter panel (search path / by user / leaves-only
+  / accessed-before), which are all DB-level filters applied before the
+  top-N limit. Mirrors the jobs_fragment pattern.
 #}
 
 {# (sort_key, label, row-attr, numeric?) — the facade fixes sort direction
@@ -14,9 +19,9 @@
 {% set _cols = [
   ('path',    'Path',        'path',         false),
   ('size',    'Size',        'total_size_r', true),
-  ('files',   'Files',       'file_count_r', true),
-  ('depth',   'Depth',       'depth',        true),
-  ('atime_r', 'Last Access', 'max_atime_r',  false),
+  ('files',   'Files',         'file_count_r', true),
+  ('dirs',    'Subdirectories', 'dir_count_r', true),
+  ('atime_r', 'Last Access',   'max_atime_r',  false),
 ] %}
 
 {% macro dir_sort_link(key, label) %}
@@ -74,7 +79,7 @@
               <td class="text-nowrap small"><code>{{ r.path }}</code></td>
               <td class="text-end font-monospace">{{ r.total_size_r | fmt_size }}</td>
               <td class="text-end">{{ r.file_count_r | fmt_number }}</td>
-              <td class="text-end">{{ r.depth | fmt_number }}</td>
+              <td class="text-end">{{ r.dir_count_r | fmt_number }}</td>
               <td class="text-end text-nowrap small">
                 {%- set a = r.max_atime_r -%}
                 {%- if a is none or a == '' -%}<span class="text-muted">—</span>
