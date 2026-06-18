@@ -50,7 +50,7 @@ from webapp.api.access_control import (
 )
 from ..charts import generate_usage_timeseries_matplotlib, generate_disk_usage_stacked_area
 from webapp.disk_scans import is_enabled as is_fs_scans_enabled
-from webapp.disk_scans.scope import resolve_scan_scope
+from webapp.disk_scans import service as disk_scans_service
 
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
@@ -980,13 +980,14 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
                 (r['bytes'] / used_bytes * 100) if used_bytes > 0 else 0.0,
         } for r in breakdown]
 
-    # Filesystem Scans card visibility: only when the fs-scans plugin is
-    # loaded AND the viewed resource resolves to a live scan collection
-    # (Campaign_Store today; Destor later). resolve_scan_scope is in-memory
-    # string work over the disk subtree — cheap. Scoped to the page's
-    # current ?scope= node so the card hides when a child scope owns no
+    # Filesystem Scans card: shown only when the fs-scans plugin is loaded
+    # AND the viewed resource resolves to a live scan collection
+    # (Campaign_Store today; Destor later). One scoped call also yields the
+    # per-collection scan dates for the header freshness badge. Scoped to the
+    # page's current ?scope= node so the card hides when a child scope owns no
     # scannable dirs even if the root project does.
     show_scans = False
+    scan_info = None
     if is_fs_scans_enabled():
         # `scope` was already validated to be in this project's tree (or
         # reset to the root projcode), so a non-root scope is a known code.
@@ -995,10 +996,10 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
             else Project.get_by_projcode(db.session, scope)
         )
         try:
-            _, _scan_collections = resolve_scan_scope(
+            scan_info = disk_scans_service.scan_overview(
                 db.session, scope_project, resource_name,
             )
-            show_scans = bool(_scan_collections)
+            show_scans = bool(scan_info['collections'])
         except Exception:
             current_app.logger.exception(
                 'disk scans: scope resolution failed for project=%s resource=%s',
@@ -1031,6 +1032,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         end_date=end_date.strftime('%Y-%m-%d'),
         usage_chart=usage_chart,
         show_scans=show_scans,
+        scan_info=scan_info,
         capacity={
             'allocated_tib':  allocated_tib,
             'used_tib':       used_tib,

@@ -243,3 +243,12 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 /* resource_details: collapse chevron rotation */
 .collapse-icon { transition: transform 0.2s ease; }
 [aria-expanded="true"] .collapse-icon { transform: rotate(90deg); }
+
+/* Sortable table headers (sortable_table.js, loaded globally in base.html).
+   Pairs the global JS with its indicator so any `.sortable-header` shows a
+   neutral up/down cue (click to sort) and an arrow for the active column.
+   Mirrors the rule duplicated in admin.css / allocations.css. */
+.sortable-header { cursor: pointer; user-select: none; white-space: nowrap; }
+.sortable-header::after { content: ' \2195'; color: #adb5bd; font-size: 0.8em; }
+.sortable-header.sort-asc::after { content: ' \2191'; color: #495057; }
+.sortable-header.sort-desc::after { content: ' \2193'; color: #495057; }

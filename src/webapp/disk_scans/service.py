@@ -86,6 +86,31 @@ def _scoped(
     return mod, path_prefixes, collections
 
 
+def scan_overview(session, project, resource_name: str) -> Dict[str, Any]:
+    """Page-render summary for the Filesystem Scans card header.
+
+    Returns the warmed collections *project* spans on *resource_name* plus
+    their latest scan dates — enough for the caller to (a) decide whether to
+    show the card (``collections`` non-empty) and (b) render a "scanned
+    <date>" freshness badge in the header without lazy-loading a tab.
+
+    ``{'collections': [...], 'scan_dates': {collection: datetime|None},
+       'reference': datetime|None}`` — ``reference`` is the most recent scan
+    date across the project's collections. Cheap: one scoped subtree build
+    plus one ``scan_metadata`` lookup per collection (1-2 in practice).
+    """
+    mod, path_prefixes, collections = _scoped(session, project, resource_name)
+    if not collections:
+        return {'collections': [], 'scan_dates': {}, 'reference': None}
+    q = mod.FsScanQueries(filesystems=collections)
+    scan_dates = {}
+    for c in collections:
+        dates = q.scan_dates(filesystems=[c])
+        scan_dates[c] = max(dates) if dates else None
+    reference = max((d for d in scan_dates.values() if d), default=None)
+    return {'collections': collections, 'scan_dates': scan_dates, 'reference': reference}
+
+
 def scan_directories(
     session,
     project,

@@ -55,28 +55,32 @@
   {% if not rows %}
     {{ scans_empty('No ' ~ ('user' if _is_owner else 'group') ~ ' usage recorded for this scope.') }}
   {% else %}
+    {# Client-side sortable (sortable_table.js, house style for small read-only
+       tables): sort by name (text), or Size/Files/Directories (numeric).
+       Size sorts by raw bytes via data-sort-value while rendering fmt_size.
+       Default order is Size desc, matching the facade's result order. #}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-light">
           <tr>
-            <th>{{ 'User' if _is_owner else 'Group' }}</th>
-            <th class="text-end">Size</th>
-            <th class="text-end">Files</th>
-            <th class="text-end">Directories</th>
+            <th class="sortable-header" data-sort="text">{{ 'User' if _is_owner else 'Group' }}</th>
+            <th class="sortable-header text-end sort-desc" data-sort="numeric">Size</th>
+            <th class="sortable-header text-end" data-sort="numeric">Files</th>
+            <th class="sortable-header text-end" data-sort="numeric">Directories</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
+            {% set name = r[_name_attr] %}
             <tr>
-              <td>
-                {% set name = r[_name_attr] %}
+              <td data-sort-value="{{ name if name else (r[_id_attr] | string) }}">
                 {% if name %}<code>{{ name }}</code>
                 {% else %}<span class="text-muted" title="unresolved {{ 'UID' if _is_owner else 'GID' }}">
                   {{ 'uid' if _is_owner else 'gid' }} {{ r[_id_attr] }}</span>{% endif %}
               </td>
-              <td class="text-end font-monospace">{{ r.total_size | fmt_size }}</td>
-              <td class="text-end">{{ r.total_files | fmt_number }}</td>
-              <td class="text-end">{{ r.directory_count | fmt_number }}</td>
+              <td class="text-end font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
+              <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
+              <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
             </tr>
           {% endfor %}
         </tbody>
