@@ -132,6 +132,15 @@ class SAMWebappConfig(SAMConfig):
         'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  600)),
     }
 
+    # fs-scans plugin (filesystem-scan analytics over the CNPG backend).
+    # Master switch only — the plugin reads its own connection settings
+    # (FS_SCAN_DB_BACKEND, FS_SCAN_PG_*) from the environment. Collections
+    # are discovered at startup, so there's no per-collection list here.
+    # Disable (TestingConfig does) to skip plugin load entirely.
+    FS_SCANS_ENABLED = os.getenv('FS_SCANS_ENABLED', '1').lower() not in (
+        '0', 'false', 'no', '',
+    )
+
     # Session cookies (common defaults; subclasses tighten for prod)
     SESSION_COOKIE_HTTPONLY    = True
     SESSION_COOKIE_SAMESITE    = 'Lax'
@@ -259,6 +268,11 @@ class TestingConfig(SAMWebappConfig):
     # Empty machine list disables eager engine init at startup; route-
     # level tests stub the service layer instead.
     JOB_HISTORY_MACHINES = []
+
+    # The fs-scans plugin talks to a separate CNPG/PostgreSQL backend the
+    # test container does not provide. Disable eager load at startup;
+    # route-level tests stub the service layer instead.
+    FS_SCANS_ENABLED = False
 
 
 _configs = {
