@@ -191,9 +191,8 @@ USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]] = {
 }
 
 # full permissions for some other app/dev/investigators:
-USER_PERMISSION_OVERRIDES['dattilo'] = USER_PERMISSION_OVERRIDES['benkirk']
-USER_PERMISSION_OVERRIDES['dvance'] = USER_PERMISSION_OVERRIDES['benkirk']
 USER_PERMISSION_OVERRIDES['kyledavis'] = USER_PERMISSION_OVERRIDES['benkirk']
+#USER_PERMISSION_OVERRIDES['mtrahan'] = USER_PERMISSION_OVERRIDES['benkirk']
 
 
 # Per-user, per-facility permission grants — the third RBAC tier.
