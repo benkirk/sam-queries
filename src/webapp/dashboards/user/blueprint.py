@@ -7,7 +7,7 @@ Refactored to use server-side rendering with direct ORM queries instead of
 JavaScript API calls for improved performance and simplicity.
 """
 
-from flask import Blueprint, abort, render_template, request, flash, redirect, url_for, session, jsonify, make_response
+from flask import Blueprint, abort, render_template, request, flash, redirect, url_for, session, jsonify, make_response, current_app
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
 from marshmallow import ValidationError
@@ -49,6 +49,8 @@ from webapp.api.access_control import (
     require_threshold_edit,
 )
 from ..charts import generate_usage_timeseries_matplotlib, generate_disk_usage_stacked_area
+from webapp.disk_scans import is_enabled as is_fs_scans_enabled
+from webapp.disk_scans.scope import resolve_scan_scope
 
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
@@ -978,6 +980,31 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
                 (r['bytes'] / used_bytes * 100) if used_bytes > 0 else 0.0,
         } for r in breakdown]
 
+    # Filesystem Scans card visibility: only when the fs-scans plugin is
+    # loaded AND the viewed resource resolves to a live scan collection
+    # (Campaign_Store today; Destor later). resolve_scan_scope is in-memory
+    # string work over the disk subtree — cheap. Scoped to the page's
+    # current ?scope= node so the card hides when a child scope owns no
+    # scannable dirs even if the root project does.
+    show_scans = False
+    if is_fs_scans_enabled():
+        # `scope` was already validated to be in this project's tree (or
+        # reset to the root projcode), so a non-root scope is a known code.
+        scope_project = (
+            project if scope == project.projcode
+            else Project.get_by_projcode(db.session, scope)
+        )
+        try:
+            _, _scan_collections = resolve_scan_scope(
+                db.session, scope_project, resource_name,
+            )
+            show_scans = bool(_scan_collections)
+        except Exception:
+            current_app.logger.exception(
+                'disk scans: scope resolution failed for project=%s resource=%s',
+                scope_node['projcode'], resource_name,
+            )
+
     percent_used = (used_tib / allocated_tib * 100) if allocated_tib > 0 else 0.0
     # Operators (VIEW_USERS) get clickable legend usernames that pop the
     # user-details modal; non-operators get plain text since the modal
@@ -1003,6 +1030,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
         usage_chart=usage_chart,
+        show_scans=show_scans,
         capacity={
             'allocated_tib':  allocated_tib,
             'used_tib':       used_tib,

@@ -1,0 +1,90 @@
+{% from 'dashboards/user/partials/_disk_scans_macros.html'
+   import scans_disabled, scans_error, scans_empty, scans_scope_note %}
+{#
+  Largest-directories fragment — embedded via hx-get from the Filesystem
+  Scans card. Context (set in webapp/disk_scans/routes.py):
+    rows, sort, sortable_columns, fragment_url, target_id,
+    resource_name, scope, fileset, enabled, error
+  Each row: path, depth, total_size_r, file_count_r, dir_count_r,
+            max_atime_r, owner_uid, owner_gid, filesystem.
+#}
+
+{# (sort_key, label, row-attr, numeric?) — the facade fixes sort direction
+   per key, so a header click only switches the active key. #}
+{% set _cols = [
+  ('path',    'Path',        'path',         false),
+  ('size',    'Size',        'total_size_r', true),
+  ('files',   'Files',       'file_count_r', true),
+  ('depth',   'Depth',       'depth',        true),
+  ('atime_r', 'Last Access', 'max_atime_r',  false),
+] %}
+
+{% macro dir_sort_link(key, label) %}
+  {%- if key in sortable_columns -%}
+    {%- set is_active = (sort.sort_by == key) -%}
+    <a class="text-decoration-none" href="#"
+       hx-get="{{ fragment_url }}?sort_by={{ key }}"
+       hx-target="#{{ target_id }}"
+       hx-include="#disk-scans-dir-params-{{ target_id }}"
+       hx-swap="innerHTML">
+      {{ label }}
+      {%- if is_active %} <i class="fas fa-caret-down ms-1"></i>
+      {%- else %} <i class="fas fa-sort text-muted small ms-1"></i>{% endif -%}
+    </a>
+  {%- else -%}
+    {{ label }}
+  {%- endif -%}
+{% endmacro %}
+
+{% if not enabled %}
+  {{ scans_disabled() }}
+{% elif error %}
+  {{ scans_error(error) }}
+{% else %}
+  {# Round-trip the scope params so every sort re-fetch stays scoped. #}
+  <form id="disk-scans-dir-params-{{ target_id }}" class="d-none">
+    <input type="hidden" name="resource" value="{{ resource_name }}">
+    <input type="hidden" name="scope" value="{{ scope }}">
+    {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
+    <input type="hidden" name="target_id" value="{{ target_id }}">
+  </form>
+
+  <div class="d-flex align-items-center mb-2">
+    {{ scans_scope_note(fileset) }}
+    <span class="ms-auto text-muted small">
+      {{ rows | length | fmt_number }} director{{ 'y' if rows | length == 1 else 'ies' }}
+    </span>
+  </div>
+
+  {% if not rows %}
+    {{ scans_empty('No scanned directories for this scope.') }}
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            {% for key, label, attr, numeric in _cols %}
+              <th class="{% if numeric %}text-end{% endif %}">{{ dir_sort_link(key, label) }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td class="text-nowrap small"><code>{{ r.path }}</code></td>
+              <td class="text-end font-monospace">{{ r.total_size_r | fmt_size }}</td>
+              <td class="text-end">{{ r.file_count_r | fmt_number }}</td>
+              <td class="text-end">{{ r.depth | fmt_number }}</td>
+              <td class="text-end text-nowrap small">
+                {%- set a = r.max_atime_r -%}
+                {%- if a is none or a == '' -%}<span class="text-muted">—</span>
+                {%- elif a is string -%}{{ a[:10] }}
+                {%- else -%}{{ a | fmt_date }}{%- endif -%}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endif %}

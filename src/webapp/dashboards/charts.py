@@ -281,6 +281,7 @@ def generate_usage_timeseries_matplotlib(daily_data, link_to_day_rows=False,
 # 1b. Disk usage stacked-area chart (Resource Usage Details — DISK)
 # ---------------------------------------------------------------------------
 
+_BYTES_PER_GIB = 1024 ** 3
 _BYTES_PER_TIB = 1024 ** 4
 _BYTES_PER_PIB = 1024 ** 5
 
@@ -515,6 +516,76 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
             text.set_url(url)
 
     fig.autofmt_xdate()
+
+    svg_io = StringIO()
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
+    plt.close(fig)
+    return svg_io.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# 1c. Access-time distribution histogram (Filesystem Scans — DISK)
+# ---------------------------------------------------------------------------
+
+def _access_history_cache_key(hist):
+    """Stable key from the per-bucket data/file totals + reference date.
+
+    Hashes only what the rendered bars depend on (bucket order, data and
+    file counts, and the snapshot date in the title) — not the full
+    per-owner breakdown, which doesn't affect the chart.
+    """
+    labels = list((hist or {}).get('bucket_labels', []))
+    buckets = (hist or {}).get('buckets', {})
+    payload = [
+        (lbl,
+         buckets.get(lbl, {}).get('data', 0),
+         buckets.get(lbl, {}).get('files', 0))
+        for lbl in labels
+    ]
+    return _content_hash([payload, str((hist or {}).get('reference_scan_date', ''))])
+
+
+@caching.chart_cached(name='access_history_histogram', maxsize=128,
+                      key_fn=_access_history_cache_key)
+def generate_access_history_histogram(hist) -> str:
+    """Render a bar chart of data volume across access-time buckets.
+
+    Args:
+        hist: the dict returned by
+            ``webapp.disk_scans.service.scan_access_history`` —
+            ``{'bucket_labels': [...10 bands...],
+               'buckets': {label: {'data', 'files', 'owners'}}, ...}``.
+            Bars plot ``data`` (bytes) per bucket; ``files``/``owners`` are
+            surfaced in the surrounding table, not the chart.
+
+    Y-axis auto-scales to GiB / TiB / PiB based on the peak bucket. Bars
+    use the Unity 10-color stacked palette in band order (recent → stale).
+    Returns a "no data" placeholder div when the histogram is empty.
+    """
+    if not hist or not hist.get('bucket_labels'):
+        return '<div class="text-center text-muted">No access-history data for this scope</div>'
+
+    labels = list(hist['bucket_labels'])
+    buckets = hist.get('buckets', {})
+    data_vals = [buckets.get(lbl, {}).get('data', 0) or 0 for lbl in labels]
+
+    peak = max(data_vals) if data_vals else 0
+    if peak >= _BYTES_PER_PIB:
+        scale, unit_label = _BYTES_PER_PIB, 'PiB'
+    elif peak >= _BYTES_PER_TIB:
+        scale, unit_label = _BYTES_PER_TIB, 'TiB'
+    else:
+        scale, unit_label = _BYTES_PER_GIB, 'GiB'
+    scaled = [v / scale for v in data_vals]
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)] for i in range(len(labels))]
+    ax.bar(range(len(labels)), scaled, color=colors,
+           edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=30, ha='right')
+    ax.set_ylabel(f'Data ({unit_label})')
+    ax.grid(True, axis='y', alpha=0.3)
 
     svg_io = StringIO()
     fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)

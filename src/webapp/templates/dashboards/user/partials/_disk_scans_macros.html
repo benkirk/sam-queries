@@ -1,0 +1,44 @@
+{#
+  Shared banners for the Filesystem Scans fragments. Mirrors the
+  disabled / error / empty shape of jobs_fragment.html so all three
+  scan tabs degrade identically.
+#}
+
+{# Plugin not loaded / no reachable collection — graceful "unavailable"
+   notice (the page may hx-get this unconditionally), never a 404. #}
+{% macro scans_disabled() %}
+  <div class="alert alert-secondary py-2 mb-0" role="status">
+    <small>
+      Filesystem-scan data is unavailable: the
+      <code>fs-scans</code> plugin is not loaded or has no reachable
+      collection for this resource.
+      <a href="/dashboards/admin/configuration"
+         target="_blank" rel="noopener">
+        Check the Database card on the Admin → Configuration page
+      </a>
+      for plugin/DB health.
+    </small>
+  </div>
+{% endmacro %}
+
+{# A scan query raised (transient plugin/DB issue) — warn inline. #}
+{% macro scans_error(error) %}
+  <div class="alert alert-warning py-2 mb-0" role="alert">
+    <small>Could not load filesystem-scan data: {{ error }}</small>
+  </div>
+{% endmacro %}
+
+{# Scope resolved but the scan returned nothing. #}
+{% macro scans_empty(message) %}
+  <p class="text-muted small mb-0">{{ message }}</p>
+{% endmacro %}
+
+{# A small "scoped to <fileset>" note shown when drilled into one fileset
+   (the slow on-the-fly path). #}
+{% macro scans_scope_note(fileset) %}
+  {% if fileset %}
+    <span class="badge bg-light text-dark border me-1">
+      <i class="fas fa-folder-open me-1"></i><code>{{ fileset }}</code>
+    </span>
+  {% endif %}
+{% endmacro %}

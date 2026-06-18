@@ -1,0 +1,64 @@
+{% from 'dashboards/user/partials/_disk_scans_macros.html'
+   import scans_disabled, scans_error, scans_empty, scans_scope_note %}
+{#
+  Access-time histogram fragment — embedded via hx-get from the Filesystem
+  Scans card. Context (set in webapp/disk_scans/routes.py):
+    hist (dict|None), chart_svg (str|None), enabled, error,
+    resource_name, scope, fileset, target_id
+  hist: bucket_labels, buckets{label:{data,files,owners}},
+        total_data, total_files, directory, fast_path, reference_scan_date.
+#}
+
+{% if not enabled %}
+  {{ scans_disabled() }}
+{% elif error %}
+  {{ scans_error(error) }}
+{% elif not hist %}
+  {{ scans_empty('No access-history data for this scope.') }}
+{% else %}
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    {{ scans_scope_note(fileset) }}
+    <span class="text-muted small">
+      Total: <strong>{{ hist.total_data | fmt_size }}</strong>
+      across <strong>{{ hist.total_files | fmt_number }}</strong> files
+    </span>
+    {% if hist.reference_scan_date %}
+      <span class="text-muted small">| as of {{ hist.reference_scan_date | fmt_date }}</span>
+    {% endif %}
+    {% if hist.fast_path %}
+      <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"
+            title="Read from pre-computed tables">fast path</span>
+    {% else %}
+      <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+            title="Computed on the fly from directory stats">on-the-fly</span>
+    {% endif %}
+  </div>
+
+  <div class="chart-container">
+    {{ chart_svg | safe }}
+  </div>
+
+  <div class="table-responsive mt-3">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Last accessed</th>
+          <th class="text-end">Data</th>
+          <th class="text-end">Files</th>
+          <th class="text-end">Owners</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for label in hist.bucket_labels %}
+          {% set b = hist.buckets.get(label, {}) %}
+          <tr>
+            <td>{{ label }}</td>
+            <td class="text-end font-monospace">{{ b.get('data', 0) | fmt_size }}</td>
+            <td class="text-end">{{ b.get('files', 0) | fmt_number }}</td>
+            <td class="text-end">{{ (b.get('owners') or {}) | length | fmt_number }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}

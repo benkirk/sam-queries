@@ -1,0 +1,86 @@
+{% from 'dashboards/user/partials/_disk_scans_macros.html'
+   import scans_disabled, scans_error, scans_empty, scans_scope_note %}
+{#
+  Owner/group rollup fragment — embedded via hx-get from the Filesystem
+  Scans card. Context (set in webapp/disk_scans/routes.py):
+    rows, kind ('owner'|'group'), fragment_url, target_id,
+    resource_name, scope, fileset, enabled, error
+  Owner rows: owner_uid, total_size, total_files, directory_count,
+              filesystem, username.
+  Group rows: owner_gid + groupname (same shape otherwise).
+#}
+
+{% set _is_owner = (kind == 'owner') %}
+{% set _id_attr = 'owner_uid' if _is_owner else 'owner_gid' %}
+{% set _name_attr = 'username' if _is_owner else 'groupname' %}
+
+{% if not enabled %}
+  {{ scans_disabled() }}
+{% elif error %}
+  {{ scans_error(error) }}
+{% else %}
+  <form id="disk-scans-ent-params-{{ target_id }}" class="d-none">
+    <input type="hidden" name="resource" value="{{ resource_name }}">
+    <input type="hidden" name="scope" value="{{ scope }}">
+    {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
+    <input type="hidden" name="target_id" value="{{ target_id }}">
+  </form>
+
+  <div class="d-flex align-items-center mb-2">
+    {# Owner ↔ group sub-toggle — re-fetches this same pane with ?kind=. #}
+    <div class="btn-group btn-group-sm me-3" role="group" aria-label="Owner or group">
+      <button type="button"
+              class="btn btn-outline-secondary {% if _is_owner %}active{% endif %}"
+              hx-get="{{ fragment_url }}?kind=owner"
+              hx-target="#{{ target_id }}"
+              hx-include="#disk-scans-ent-params-{{ target_id }}"
+              hx-swap="innerHTML">
+        <i class="fas fa-user me-1"></i> By user
+      </button>
+      <button type="button"
+              class="btn btn-outline-secondary {% if not _is_owner %}active{% endif %}"
+              hx-get="{{ fragment_url }}?kind=group"
+              hx-target="#{{ target_id }}"
+              hx-include="#disk-scans-ent-params-{{ target_id }}"
+              hx-swap="innerHTML">
+        <i class="fas fa-users me-1"></i> By group
+      </button>
+    </div>
+    {{ scans_scope_note(fileset) }}
+    <span class="ms-auto text-muted small">
+      {{ rows | length | fmt_number }} {{ 'user' if _is_owner else 'group' }}{{ '' if rows | length == 1 else 's' }}
+    </span>
+  </div>
+
+  {% if not rows %}
+    {{ scans_empty('No ' ~ ('user' if _is_owner else 'group') ~ ' usage recorded for this scope.') }}
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>{{ 'User' if _is_owner else 'Group' }}</th>
+            <th class="text-end">Size</th>
+            <th class="text-end">Files</th>
+            <th class="text-end">Directories</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>
+                {% set name = r[_name_attr] %}
+                {% if name %}<code>{{ name }}</code>
+                {% else %}<span class="text-muted" title="unresolved {{ 'UID' if _is_owner else 'GID' }}">
+                  {{ 'uid' if _is_owner else 'gid' }} {{ r[_id_attr] }}</span>{% endif %}
+              </td>
+              <td class="text-end font-monospace">{{ r.total_size | fmt_size }}</td>
+              <td class="text-end">{{ r.total_files | fmt_number }}</td>
+              <td class="text-end">{{ r.directory_count | fmt_number }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% endif %}

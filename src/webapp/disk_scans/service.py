@@ -24,7 +24,12 @@ from webapp.disk_scans.scope import resolve_scan_scope
 from webapp.disk_scans.session import get_collections, get_module
 
 
-def _scoped(session, project, resource_name: str) -> Tuple[Optional[Any], List[str], List[str]]:
+def _scoped(
+    session,
+    project,
+    resource_name: str,
+    subpath: Optional[str] = None,
+) -> Tuple[Optional[Any], List[str], List[str]]:
     """Resolve ``(module, path_prefixes, collections)`` for a scan query.
 
     ``collections`` is intersected with the warmed/reachable set so we
@@ -34,12 +39,34 @@ def _scoped(session, project, resource_name: str) -> Tuple[Optional[Any], List[s
     collection list — whenever the query would otherwise be unscoped or
     unsatisfiable; callers MUST treat an empty collection list as "no
     results" and not call the facade.
+
+    ``subpath`` narrows the scope to a single fileset path (the disk page's
+    ``?fileset=`` drill-down). It is kept only if it equals — or is a
+    descendant of — one of the project's already-resolved directory
+    prefixes, so it can never widen scope beyond what the project owns;
+    a stray value simply yields no results. Narrowing to a non-root
+    sub-path defeats the whole-collection-root fast path, so this is the
+    inherently slow on-the-fly query (callers lazy-load it).
     """
     mod = get_module()
     if mod is None:
         return None, [], []
 
     path_prefixes, collections = resolve_scan_scope(session, project, resource_name)
+
+    # Fileset drill-down: keep only prefixes equal to / under `subpath`,
+    # then recompute the owning collections from what survives.
+    if subpath:
+        s = subpath.rstrip('/')
+        path_prefixes = [
+            p for p in path_prefixes
+            if p.rstrip('/') == s or p.startswith(s + '/')
+        ]
+        collections = sorted({
+            coll
+            for p in path_prefixes
+            if (coll := mod.collection_for_path(p)) is not None
+        })
 
     # Keep only collections that are actually reachable (the warmed set).
     collections = [c for c in collections if c in set(get_collections())]
@@ -69,13 +96,15 @@ def scan_directories(
     single_owner: bool = False,
     min_depth: Optional[int] = None,
     max_depth: Optional[int] = None,
+    subpath: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Largest directories for *project* on *resource_name* (sortable view).
 
-    Always scoped to the project's directory paths. Returns ``[]`` when the
-    project has no scannable directories or the plugin is unavailable.
+    Always scoped to the project's directory paths (optionally narrowed to
+    one fileset via *subpath*). Returns ``[]`` when the project has no
+    scannable directories or the plugin is unavailable.
     """
-    mod, path_prefixes, collections = _scoped(session, project, resource_name)
+    mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
     q = mod.FsScanQueries(filesystems=collections)
@@ -95,13 +124,15 @@ def scan_owner_summary(
     resource_name: str,
     *,
     limit: Optional[int] = 50,
+    subpath: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Per-owner (UID) rollup for *project*, with usernames resolved.
 
-    Always scoped to the project's directory paths. Each row gains a
-    ``username`` key (``None`` if the UID can't be resolved).
+    Always scoped to the project's directory paths (optionally narrowed to
+    one fileset via *subpath*). Each row gains a ``username`` key (``None``
+    if the UID can't be resolved).
     """
-    mod, path_prefixes, collections = _scoped(session, project, resource_name)
+    mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
     q = mod.FsScanQueries(filesystems=collections)
@@ -119,13 +150,15 @@ def scan_group_summary(
     resource_name: str,
     *,
     limit: Optional[int] = 50,
+    subpath: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Per-group (GID) rollup for *project*, with group names resolved.
 
-    Always scoped to the project's directory paths. Each row gains a
-    ``groupname`` key (``None`` if the GID can't be resolved).
+    Always scoped to the project's directory paths (optionally narrowed to
+    one fileset via *subpath*). Each row gains a ``groupname`` key (``None``
+    if the GID can't be resolved).
     """
-    mod, path_prefixes, collections = _scoped(session, project, resource_name)
+    mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
     q = mod.FsScanQueries(filesystems=collections)
@@ -143,15 +176,17 @@ def scan_access_history(
     resource_name: str,
     *,
     owner_uid: Optional[int] = None,
+    subpath: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Access-time histogram dict for *project* (or ``None``).
 
-    Always scoped to the project's directory paths. Returns ``None`` when
-    the project has no scannable directories, the plugin is unavailable, or
-    no scan dates exist for the targeted collections. The returned dict
-    already carries its own ``username_map`` for rendering.
+    Always scoped to the project's directory paths (optionally narrowed to
+    one fileset via *subpath*). Returns ``None`` when the project has no
+    scannable directories, the plugin is unavailable, or no scan dates
+    exist for the targeted collections. The returned dict already carries
+    its own ``username_map`` for rendering.
     """
-    mod, path_prefixes, collections = _scoped(session, project, resource_name)
+    mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return None
     q = mod.FsScanQueries(filesystems=collections)
