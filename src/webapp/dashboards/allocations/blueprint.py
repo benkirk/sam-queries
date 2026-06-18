@@ -240,11 +240,11 @@ def get_resource_types(session) -> Dict[str, str]:
     return {r.resource_name: r.resource_type for r in resources}
 
 
-@bp.route('/')
+@bp.route('/projects')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
 @cache.cached(make_cache_key=user_aware_cache_key)
-def index():
+def projects():
     """
     Main allocations dashboard page.
 
@@ -460,7 +460,7 @@ def index():
     audit_start_date = audit_end_date - timedelta(days=30)
 
     return render_template(
-        'dashboards/allocations/dashboard.html',
+        'dashboards/allocations/projects.html',
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
         resource_usage_overviews=resource_usage_overviews,
@@ -475,6 +475,44 @@ def index():
         audit_end_date=audit_end_date.strftime('%Y-%m-%d'),
         allowed_facility_names=allowed_facility_names,
         selected_facilities=effective_facilities,
+    )
+
+
+@bp.route('/')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def index():
+    """Redirect to projects view."""
+    return redirect(url_for('allocations_dashboard.projects'))
+
+
+@bp.route('/transactions')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def transactions():
+    """Transactions audit log page."""
+    audit_end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    audit_start_date = audit_end_date - timedelta(days=30)
+
+    return render_template(
+        'dashboards/allocations/transactions.html',
+        audit_start_date=audit_start_date.strftime('%Y-%m-%d'),
+        audit_end_date=audit_end_date.strftime('%Y-%m-%d'),
+    )
+
+
+@bp.route('/adjustments')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def adjustments():
+    """Charge adjustments audit log page."""
+    audit_end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    audit_start_date = audit_end_date - timedelta(days=30)
+
+    return render_template(
+        'dashboards/allocations/adjustments.html',
+        audit_start_date=audit_start_date.strftime('%Y-%m-%d'),
+        audit_end_date=audit_end_date.strftime('%Y-%m-%d'),
     )
 
 

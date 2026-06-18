@@ -104,8 +104,16 @@
                                 <a class="nav-link {{ nav_active('status_dashboard') }}" href="{{ url_for('status_dashboard.index') }}"{% if request.blueprint == 'status_dashboard' %} aria-current="page"{% endif %}>System Status</a>
                             </li>
                             {% if has_permission_any_facility(Permission.VIEW_PROJECTS) %}
-                            <li class="nav-item">
-                                <a class="nav-link {{ nav_active('allocations_dashboard') }}" href="{{ url_for('allocations_dashboard.index') }}"{% if request.blueprint == 'allocations_dashboard' %} aria-current="page"{% endif %}>Allocations</a>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle {{ nav_active('allocations_dashboard') }}" href="#" id="allocationsDropdown" role="button"
+                                   data-bs-toggle="dropdown" aria-expanded="false">
+                                    Allocations
+                                </a>
+                                <ul class="dropdown-menu" aria-labelledby="allocationsDropdown">
+                                    <li><a class="dropdown-item{% if request.endpoint == 'allocations_dashboard.projects' %} active{% endif %}" href="{{ url_for('allocations_dashboard.projects') }}">Projects</a></li>
+                                    <li><a class="dropdown-item{% if request.endpoint == 'allocations_dashboard.transactions' %} active{% endif %}" href="{{ url_for('allocations_dashboard.transactions') }}">Transactions</a></li>
+                                    <li><a class="dropdown-item{% if request.endpoint == 'allocations_dashboard.adjustments' %} active{% endif %}" href="{{ url_for('allocations_dashboard.adjustments') }}">Adjustments</a></li>
+                                </ul>
                             </li>
                             {% endif %}
                             {% if has_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD) %}

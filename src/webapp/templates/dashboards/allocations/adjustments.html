@@ -1,0 +1,104 @@
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/audit_filters.html' import audit_filters %}
+
+{% block title %}Charge Adjustments - SAM{% endblock %}
+
+{% block extra_css %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/allocations.css') }}">
+{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Charge Adjustments</h1>
+        {% if has_permission(Permission.EDIT_ALLOCATIONS) %}
+            <button type="button" class="btn btn-primary"
+                    data-bs-toggle="modal" data-bs-target="#createAdjustmentModal"
+                    hx-get="{{ url_for('allocations_dashboard.htmx_create_adjustment_form') }}"
+                    hx-target="#createAdjustmentFormContainer"
+                    hx-swap="innerHTML">
+                <i class="fas fa-plus"></i> Create Adjustment
+            </button>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+
+    <div class="filter-sidebar mb-3">
+        {{ audit_filters(
+        form_id='adj-filters',
+        fragment_url=url_for('allocations_dashboard.adjustments_fragment'),
+        target_id='alloc-adjustments-fragment',
+        start_date=audit_start_date, end_date=audit_end_date,
+        all_resources=all_resources, selected_resources=[]) }}
+    </div>
+
+    <div id="alloc-adjustments-fragment"
+         data-refresh-url="{{ url_for('allocations_dashboard.adjustments_fragment') }}"
+         hx-get="{{ url_for('allocations_dashboard.adjustments_fragment') }}"
+         hx-trigger="load"
+         hx-include="#adj-filters"
+         hx-swap="innerHTML">
+        <div class="text-center text-muted py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="sr-only">Loading…</span>
+            </div>
+        </div>
+    </div>
+
+        </div>
+    </div>
+
+    {% if has_permission(Permission.EDIT_ALLOCATIONS) %}
+        <!-- Create Adjustment modal -->
+        <div class="modal fade" id="createAdjustmentModal" tabindex="-1" role="dialog" aria-hidden="true">
+            <div class="modal-dialog modal-lg" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="fas fa-plus"></i> Create Charge Adjustment</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div id="createAdjustmentFormContainer">
+                        <div class="modal-body text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="sr-only">Loading…</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Audit row-detail modal -->
+    <div class="modal fade" id="auditDetailsModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="auditDetailsModalTitle">Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="auditDetailsModalBody">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="sr-only">Loading…</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block extra_js %}
+    <script>
+        // Refresh adjustments after creating a new one
+        window.refreshAdjustmentsTab = function () {
+            var fragment = document.getElementById('alloc-adjustments-fragment');
+            if (fragment) {
+                htmx.trigger(fragment, 'load');
+            }
+        };
+    </script>
+{% endblock %}

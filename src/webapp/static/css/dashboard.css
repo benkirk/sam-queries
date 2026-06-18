@@ -180,9 +180,81 @@ body {
         padding-right: 1.125rem;
     }
 
+    /* Unity dropdown styling */
+    .dropdown-header {
+        border-bottom: 1px solid #000;
+        font-size: 0.875rem;
+        line-height: 1rem;
+        text-transform: uppercase;
+    }
+
+    .navbar .nav-item.dropdown .dropdown-menu {
+        --bs-dropdown-zindex: 1000;
+        --bs-dropdown-min-width: 18.75rem;
+        --bs-dropdown-padding-x: 0;
+        --bs-dropdown-padding-y: 0.5rem;
+        --bs-dropdown-spacer: 0.125rem;
+        --bs-dropdown-font-size: 1rem;
+        --bs-dropdown-color: #011837;
+        --bs-dropdown-bg: #00357a;
+        --bs-dropdown-border-color: var(--bs-border-color-translucent);
+        --bs-dropdown-border-radius: 0;
+        --bs-dropdown-border-width: 0;
+
+        background-color: var(--ncar-navy);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        min-width: 18.75rem;
+        flex-basis: 100%;
+        margin: 0;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        border-radius: 0;
+    }
+
+    .navbar .dropdown-toggle::after {
+        content: '\f107';
+        font-family: 'Font Awesome 6 Free';
+        font-weight: 900;
+        border: 0;
+        float: right;
+        font-size: 0.75rem;
+        margin-left: 0.5rem;
+        vertical-align: middle;
+    }
+
+    .navbar .dropdown-toggle[aria-expanded="true"]::after {
+        transform: rotate(180deg);
+    }
+
+    .navbar .nav-item.dropdown .dropdown-item {
+        color: #fff;
+        padding: 0.5rem 1rem;
+        font-weight: 400;
+        line-height: 1.313rem;
+        text-transform: capitalize;
+        white-space: normal;
+    }
+
+    .navbar .nav-item.dropdown .dropdown-item:hover,
+    .navbar .nav-item.dropdown .dropdown-item:focus {
+        background-color: transparent;
+        color: var(--ncar-sky);
+    }
+
+    .navbar .nav-item.dropdown .dropdown-item.active {
+        background-color: transparent;
+        color: #fff;
+    }
+
+    .navbar .nav-item.dropdown .dropdown-item.active:hover,
+    .navbar .nav-item.dropdown .dropdown-item.active:focus {
+        background-color: transparent;
+        color: var(--ncar-sky);
+    }
+
     .navbar .navbar-collapse {
         padding-left: calc(var(--bs-gutter-x) / 2);
         padding-right: calc(var(--bs-gutter-x) / 2);
+        transition: none !important;
     }
 
     .navbar .nav-link {
