@@ -20,8 +20,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from webapp.fs_scans.scope import resolve_scan_scope
-from webapp.fs_scans.session import get_collections, get_module
+from webapp.disk_scans.scope import resolve_scan_scope
+from webapp.disk_scans.session import get_collections, get_module
 
 
 def _scoped(session, project, resource_name: str) -> Tuple[Optional[Any], List[str], List[str]]:

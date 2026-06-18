@@ -421,7 +421,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     # disk resource (campaign → Campaign_Store today; desc1 → Destor later),
     # so we render ONE health row per database — keeping the card compact and
     # naturally extensible — and hang per-collection scan-date freshness off
-    # each. Registered on app.extensions by webapp.fs_scans.init_fs_scans;
+    # each. Registered on app.extensions by webapp.disk_scans.init_fs_scans;
     # absent / empty when the plugin is disabled, in which case no rows appear.
     fs_state = app.extensions.get('fs_scans') or {}
     fs_engines = fs_state.get('engines') or {}

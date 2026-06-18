@@ -18,7 +18,7 @@ exploration + design is in `~/.claude/plans/consider-our-peer-repo-s-wondrous-ca
 
 ## The service API to consume (already built, Phase 1)
 
-`src/webapp/fs_scans/service.py` — all project-scoped, refuse unscoped queries,
+`src/webapp/disk_scans/service.py` — all project-scoped, refuse unscoped queries,
 return `[]`/`None` when the project has no scannable dirs or the plugin is off:
 
 - `scan_directories(session, project, resource_name, *, sort_by='size', limit=50, single_owner=False, min_depth=None, max_depth=None) -> list[dict]`
@@ -30,7 +30,7 @@ return `[]`/`None` when the project has no scannable dirs or the plugin is off:
   Dict: `bucket_labels` (10 bands `< 1 Month` … `7+ Years`), `buckets[label] = {data, files, owners}`,
   `total_data, total_files, directory, fast_path, username_map`.
 
-Gating: `from webapp.fs_scans import is_enabled` (checks plugin loaded + ≥1
+Gating: `from webapp.disk_scans import is_enabled` (checks plugin loaded + ≥1
 collection reachable). `session` = `db.session`.
 
 **Perf:** scoping is fast for whole-collection roots (lab-parent projects) via
@@ -71,11 +71,18 @@ tab** and consider a spinner + the existing nav-persistence `data-no-persist`.
 
 ## New files (suggested)
 
-- `src/webapp/fs_scans/routes.py` — Blueprint `fs_scans`, one fragment route per
-  tab, `@login_required @require_project_access`, gate on `is_enabled()`.
-  Register in `run.py` (url_prefix e.g. `/dashboards/user/fs-scans`).
-- `templates/dashboards/user/partials/fs_scans_*.html` (one per tab) +
-  optional `_fs_scans_macros.html`.
+- `src/webapp/disk_scans/routes.py` — Blueprint `disk_scans`, one fragment route
+  per tab, `@login_required @require_project_access`, gate on `is_enabled()`.
+  Register in `run.py` (url_prefix e.g. `/dashboards/user/disk-scans`).
+- `templates/dashboards/user/partials/disk_scans_*.html` (one per tab) +
+  optional `_disk_scans_macros.html`.
+
+> **Naming gotcha (Phase 1 lesson):** the webapp package is `webapp/disk_scans`,
+> NOT `webapp/fs_scans` — the latter top-level-shadows the installed `fs_scans`
+> plugin on the dev server's `sys.path` (`/code/src/webapp`), so
+> `import fs_scans` resolved to our package and the loader silently disabled.
+> Mirror the `jobs` ↔ `job_history` split: never name a webapp package the same
+> as the plugin it wraps.
 
 ## Open decisions
 

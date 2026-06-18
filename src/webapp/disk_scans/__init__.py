@@ -19,7 +19,7 @@ per-request session context manager — the service layer constructs
 ``FsScanQueries`` directly over the plugin's memoized engine cache.
 """
 
-from webapp.fs_scans.session import (
+from webapp.disk_scans.session import (
     get_collections,
     get_engines,
     get_module,

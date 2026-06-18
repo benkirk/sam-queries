@@ -361,7 +361,7 @@ def create_app(*, config_overrides: dict | None = None):
     # package, discovers the available collection schemas, and pre-warms
     # one Engine per collection on the CNPG backend. Disabled in tests
     # (TestingConfig.FS_SCANS_ENABLED = False).
-    from webapp.fs_scans import init_fs_scans
+    from webapp.disk_scans import init_fs_scans
     init_fs_scans(app)
 
     # Register blueprints

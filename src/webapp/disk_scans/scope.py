@@ -20,7 +20,7 @@ from typing import List, Tuple
 
 from sam.queries.disk_usage import build_disk_subtree
 
-from webapp.fs_scans.session import get_module
+from webapp.disk_scans.session import get_module
 
 
 def _collect_fileset_paths(node) -> List[str]:
