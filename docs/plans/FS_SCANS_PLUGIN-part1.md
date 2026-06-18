@@ -112,7 +112,7 @@ FS_SCANS = Plugin(
 )
 ```
 
-### 1.3 Loader — `src/webapp/scans/session.py` (mirror `jobs/session.py`)
+### 1.3 Loader — `src/webapp/fs_scans/session.py` (mirror `jobs/session.py`)
 - `init_fs_scans(app)` called once from `create_app` (`src/webapp/run.py`, next to
   `init_job_history(app)`):
   - Read config: `FS_SCANS_ENABLED` / collection list, `FS_SCAN_DB_BACKEND`, and
@@ -128,7 +128,7 @@ FS_SCANS = Plugin(
 - Expose `is_enabled(app=None)` and `get_module(app=None)`.
 
 ### 1.4 Project → path-prefixes + collections — scoping helper
-New `src/webapp/scans/scope.py` (or a function in `service.py`):
+New `src/webapp/fs_scans/scope.py` (or a function in `service.py`):
 ```
 resolve_scan_scope(session, project, resource_name)
   -> (path_prefixes: list[str], collections: list[str])
@@ -142,7 +142,7 @@ resolve_scan_scope(session, project, resource_name)
 - If `collections` is empty (project has no scannable dirs) → caller renders an
   empty/disabled state, never an unscoped query.
 
-### 1.5 Service layer — `src/webapp/scans/service.py` (mirror `jobs/service.py`)
+### 1.5 Service layer — `src/webapp/fs_scans/service.py` (mirror `jobs/service.py`)
 Project-scoped wrappers that **refuse to run without path_prefixes** (the
 fs_scans analogue of the job service's account pin — prevents cross-project
 leakage):
@@ -191,8 +191,8 @@ section with three Bootstrap nav-tabs, each lazy-loaded via
 3. **Access history** → `scan_access_history` (render the 10 bucket bands;
    reuse/adapt the existing histogram rendering).
 
-- New blueprint `src/webapp/scans/routes.py` mirroring `jobs/routes.py`:
-  `@require_project_access`, gate on `scans.session.is_enabled()`, render a
+- New blueprint `src/webapp/fs_scans/routes.py` mirroring `jobs/routes.py`:
+  `@require_project_access`, gate on `fs_scans.session.is_enabled()`, render a
   graceful "fs-scans plugin not loaded" partial when disabled (mirror
   `partials/jobs_fragment.html`).
 - New partials under `templates/dashboards/user/partials/` (one per tab) +
@@ -207,16 +207,16 @@ section with three Bootstrap nav-tabs, each lazy-loaded via
 
 **Part 1**
 - `src/sam/plugins.py` — add `FS_SCANS` descriptor (modify).
-- `src/webapp/scans/__init__.py`, `session.py`, `service.py`, `scope.py` (create).
+- `src/webapp/fs_scans/__init__.py`, `session.py`, `service.py`, `scope.py` (create).
 - `src/webapp/run.py` — call `init_fs_scans(app)` near `init_job_history(app)` (modify).
 - `compose.yaml`, `.env.example` — `FS_SCAN_*` / `FS_SCANS_ENABLED` block (modify).
 - Peer repo `fs_scans/__init__.py` (+ small helper) — add `collection_for_path`
   and confirm public exports (modify, in tandem).
 
 **Part 2**
-- `src/webapp/scans/routes.py` (create); register blueprint in `run.py`.
+- `src/webapp/fs_scans/routes.py` (create); register blueprint in `run.py`.
 - `templates/dashboards/user/resource_details_disk.html` — tabs section (modify).
-- `templates/dashboards/user/partials/scans_*.html` (+ macros) (create).
+- `templates/dashboards/user/partials/fs_scans_*.html` (+ macros) (create).
 - `src/webapp/dashboards/user/blueprint.py` — pass scans context in
   `_render_disk_resource_details()` (modify).
 
