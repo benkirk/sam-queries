@@ -49,6 +49,10 @@
   ('files', '# Files',   'fa-hashtag'),
   ('dirs',  '# Subdirs', 'fa-folder-tree'),
 ] %}
+{# Recursive subdirectory count (dir_count_r) is 0 by definition for leaves,
+   so the Subdirectories column + its sort pill are meaningless (and would
+   degenerate the sort) under the leaves-only filter — drop both. #}
+{% set _show_dirs = not filters.leaves_only %}
 
 {% if not enabled %}
   {{ scans_disabled() }}
@@ -73,6 +77,7 @@
   <div class="d-flex align-items-center mb-2 flex-wrap gap-2">
     <div class="btn-group btn-group-sm" role="group" aria-label="Sort directories by">
       {% for key, label, icon in _pills %}
+        {% if key != 'dirs' or _show_dirs %}
         <button type="button"
                 class="btn btn-outline-secondary {% if sort.sort_by == key %}active{% endif %}"
                 hx-get="{{ fragment_url }}?sort_by={{ key }}"
@@ -81,6 +86,7 @@
                 hx-swap="innerHTML">
           <i class="fas {{ icon }} me-1"></i>{{ label }}
         </button>
+        {% endif %}
       {% endfor %}
     </div>
     {{ scans_scope_note(fileset) }}
@@ -108,7 +114,9 @@
         <thead class="table-light">
           <tr>
             {% for key, label, attr, numeric in _cols %}
+              {% if key != 'dirs' or _show_dirs %}
               <th class="{% if numeric %}text-end{% endif %}">{{ dir_sort_link(key, label) }}</th>
+              {% endif %}
             {% endfor %}
           </tr>
         </thead>
@@ -118,7 +126,7 @@
               <td class="text-nowrap small"><code>{{ r.path }}</code></td>
               <td class="text-end font-monospace">{{ r.total_size_r | fmt_size }}</td>
               <td class="text-end">{{ r.file_count_r | fmt_number }}</td>
-              <td class="text-end">{{ r.dir_count_r | fmt_number }}</td>
+              {% if _show_dirs %}<td class="text-end">{{ r.dir_count_r | fmt_number }}</td>{% endif %}
               <td class="text-end text-nowrap small">
                 {%- set a = r.max_atime_r -%}
                 {%- if a is none or a == '' -%}<span class="text-muted">—</span>

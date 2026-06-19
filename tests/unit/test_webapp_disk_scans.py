@@ -694,6 +694,28 @@ def test_directories_owner_filter_and_form(app, auth_client, active_project, mon
     assert 'name="accessed_before" value="2026-01-01"' in body
 
 
+def test_directories_subdirs_column_hidden_under_leaves_only(
+        app, auth_client, active_project, monkeypatch):
+    """Recursive subdir count is 0 for leaves — hide the column + its pill."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
+        'path': '/glade/campaign/cisl/csg/leaf', 'depth': 5,
+        'total_size_r': 1024 ** 4, 'file_count_r': 3, 'dir_count_r': 0,
+        'max_atime_r': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
+    }])
+
+    base = f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
+    # Without the filter the Subdirectories column + # Subdirs pill are present.
+    on = auth_client.get(base).get_data(as_text=True)
+    assert 'Subdirectories' in on
+    assert '# Subdirs' in on
+    # With leaves-only, both are suppressed.
+    off = auth_client.get(base + '&leaves_only=1').get_data(as_text=True)
+    assert 'Subdirectories' not in off
+    assert '# Subdirs' not in off
+
+
 def test_directories_page_renders(auth_client, active_project):
     """The standalone explorer page shows the filters panel (project mode)."""
     resp = auth_client.get(
