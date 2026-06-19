@@ -25,9 +25,9 @@
 {% elif not hist %}
   {{ scans_empty('No distribution data for this scope.') }}
 {% else %}
-  {% if metric_toggle %}
-    {# Carry scope/resource/fileset on the pill re-fetch — same hidden-form +
-       hx-include pattern as the owner↔group toggle. #}
+  {% if metric_toggle or log_toggle %}
+    {# Carry scope/resource/fileset on the pill / switch re-fetch — same
+       hidden-form + hx-include pattern as the owner↔group toggle. #}
     <form id="disk-scans-metric-params-{{ target_id }}" class="d-none">
       <input type="hidden" name="resource" value="{{ resource_name }}">
       <input type="hidden" name="scope" value="{{ scope }}">
@@ -36,13 +36,15 @@
     </form>
   {% endif %}
 
+  {% set _log_q = '&log=1' if log_on else '' %}
   <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
     {% if metric_toggle %}
-      {# Data ↔ Files metric pill — re-fetches this same pane with ?metric=. #}
+      {# Data ↔ Files metric pill — re-fetches this same pane with ?metric=,
+         preserving the current log-scale state. #}
       <div class="btn-group btn-group-sm me-1" role="group" aria-label="Chart metric">
         <button type="button"
                 class="btn btn-outline-secondary {% if not _by_files %}active{% endif %}"
-                hx-get="{{ fragment_url }}?metric=data"
+                hx-get="{{ fragment_url }}?metric=data{{ _log_q }}"
                 hx-target="#{{ target_id }}"
                 hx-include="#disk-scans-metric-params-{{ target_id }}"
                 hx-swap="innerHTML">
@@ -50,12 +52,30 @@
         </button>
         <button type="button"
                 class="btn btn-outline-secondary {% if _by_files %}active{% endif %}"
-                hx-get="{{ fragment_url }}?metric=files"
+                hx-get="{{ fragment_url }}?metric=files{{ _log_q }}"
                 hx-target="#{{ target_id }}"
                 hx-include="#disk-scans-metric-params-{{ target_id }}"
                 hx-swap="innerHTML">
           <i class="fas fa-hashtag me-1"></i> Files
         </button>
+      </div>
+    {% endif %}
+    {% if log_toggle %}
+      {# Log-scale switch — re-fetches with ?log=, preserving the metric. A log
+         y-axis can't stack, so this trades the per-user gradient for legible
+         small bands (see disk_scans/routes.py). #}
+      <div class="form-check form-switch form-check-inline mb-0 me-1"
+           title="Log y-axis — reveals small bands but flattens the per-user breakdown">
+        <input class="form-check-input" type="checkbox" role="switch"
+               id="disk-scans-log-{{ target_id }}"
+               {% if log_on %}checked{% endif %}
+               hx-get="{{ fragment_url }}?metric={{ _metric }}&log={{ '0' if log_on else '1' }}"
+               hx-target="#{{ target_id }}"
+               hx-include="#disk-scans-metric-params-{{ target_id }}"
+               hx-swap="innerHTML">
+        <label class="form-check-label small text-muted" for="disk-scans-log-{{ target_id }}">
+          Log scale
+        </label>
       </div>
     {% endif %}
     {{ scans_scope_note(fileset) }}

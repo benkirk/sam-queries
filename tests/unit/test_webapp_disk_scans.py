@@ -419,6 +419,10 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     # Data ↔ Files metric pill present (file-sizes only) and defaults to Data.
     assert 'metric=files' in body
     assert 'Top users by data' in body
+    # Log-scale switch present and off by default.
+    assert 'Log scale' in body
+    assert 'disk-scans-log-' in body
+    assert 'checked' not in body
 
     # Switching the pill re-renders the same fragment by file count.
     resp2 = auth_client.get(
@@ -429,6 +433,18 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     body2 = resp2.get_data(as_text=True)
     assert '<svg' in body2
     assert 'Top users by files' in body2   # per-user table re-sorted by metric
+
+    # Log scale on → still renders (solid bars), switch reflects checked state,
+    # and the bar→row drill-down anchor survives.
+    resp3 = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}'
+        f'/file-sizes?resource={_RES}&log=1'
+    )
+    assert resp3.status_code == 200
+    body3 = resp3.get_data(as_text=True)
+    assert '<svg' in body3
+    assert 'checked' in body3              # switch reflects log_on
+    assert '#ah-bar-0' in body3            # drill-down preserved under log
 
 
 def test_fragment_missing_resource_is_graceful(app, auth_client, active_project, monkeypatch):

@@ -188,25 +188,36 @@ def entities_fragment(project):
 _METRIC_WHITELIST = {'data', 'files'}
 
 
+def _truthy(v) -> bool:
+    return (v or '').strip().lower() in ('1', 'true', 'on', 'yes')
+
+
 def _render_distribution(project, *, service_fn, endpoint, kind,
-                         bucket_header, metric_toggle=False, log_y=False):
+                         bucket_header, metric_toggle=False, log_toggle=False):
     """Shared body for the two distribution histogram fragments.
 
     The Access-history and File-size tabs are identical end to end — same
     ``{bucket_labels, buckets{...}, owners, username_map}`` shape, same
     template, same chart — differing only in the service query, the bucket
-    column header, and (file-sizes only) a Data ↔ Files metric pill that
-    re-fetches the pane with ``?metric=``. ``kind`` is used only for logging.
+    column header, and (file-sizes only) a Data ↔ Files metric pill plus a
+    Log-scale switch, both of which re-fetch the pane via ``?metric=`` /
+    ``?log=``. ``kind`` is used only for logging.
+
+    A log y-axis can't represent a stack, so ``log_y`` renders solid bars
+    (no per-user gradient); it's offered only where the metric is skewed
+    enough to need it (file-sizes), hence gated on *log_toggle*.
     """
     ctx = _common_ctx(project)
 
     metric = (request.args.get('metric') or 'data').strip().lower()
     if not metric_toggle or metric not in _METRIC_WHITELIST:
         metric = 'data'
-    # url the metric pill re-fetches (carries scope/resource/fileset via the
+    log_on = log_toggle and _truthy(request.args.get('log'))
+    # urls the pill / switch re-fetch (carry scope/resource/fileset via the
     # pane's hidden form + hx-include, exactly like the owner↔group toggle).
     fragment_url = url_for(endpoint, projcode=project.projcode)
     extra = dict(metric=metric, metric_toggle=metric_toggle,
+                 log_on=log_on, log_toggle=log_toggle,
                  bucket_header=bucket_header, fragment_url=fragment_url)
 
     if not is_enabled() or not ctx['resource_name']:
@@ -225,7 +236,7 @@ def _render_distribution(project, *, service_fn, endpoint, kind,
         )
         if hist:
             chart_svg = generate_distribution_histogram(
-                hist, log_y=log_y, metric=metric)
+                hist, log_y=log_on, metric=metric)
     except Exception as exc:
         current_app.logger.exception(
             'disk_scans.%s: scan failed for project=%s resource=%s',
@@ -259,10 +270,12 @@ def file_sizes_fragment(project):
     """HTMX fragment: file-size distribution histogram (server-rendered SVG).
 
     Carries a Data ↔ Files metric pill (``?metric=``) since a file-size
-    distribution is equally meaningful by volume or by file count.
+    distribution is equally meaningful by volume or by file count, plus a
+    Log-scale switch (``?log=``) because file-size *data* spans many orders
+    of magnitude — at the cost of the per-user stack gradient.
     """
     return _render_distribution(
         project, service_fn=service.scan_file_sizes,
         endpoint='disk_scans.file_sizes_fragment', kind='file_sizes',
-        bucket_header='File size', metric_toggle=True,
+        bucket_header='File size', metric_toggle=True, log_toggle=True,
     )
