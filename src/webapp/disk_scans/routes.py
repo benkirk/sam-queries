@@ -40,7 +40,8 @@ from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
 from webapp.dashboards.charts import generate_distribution_histogram
 from webapp.disk_scans import service
-from webapp.disk_scans.session import is_enabled
+from webapp.disk_scans.scope import resolve_scan_scope
+from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
 from webapp.utils.rbac import Permission, require_permission
 
@@ -183,12 +184,14 @@ def _user_search_url() -> str:
     return url_for('admin_dashboard.htmx_search_users', context='fk')
 
 
-def _initial_fragment_url(fragment_url: str, ctx: dict, flt: dict) -> str:
+def _initial_fragment_url(fragment_url: str, ctx: dict, flt: dict,
+                          browse: bool = False) -> str:
     """Fragment URL pre-loaded by the explorer page (carries current filters).
 
     The page's table container ``hx-get``s this on load so a deep-link / reload
     lands on the same filtered view the panel shows. Subsequent panel submits
-    and in-table sorts re-fetch via ``hx-include`` of the live forms.
+    and in-table sorts re-fetch via ``hx-include`` of the live forms. ``browse``
+    turns on the file-browser affordances (clickable rows + breadcrumb).
     """
     params = {
         'resource': ctx['resource_name'],
@@ -196,6 +199,8 @@ def _initial_fragment_url(fragment_url: str, ctx: dict, flt: dict) -> str:
         'sort_by': flt['sort_by'],
         'limit': flt['limit'],
     }
+    if browse:
+        params['browse'] = '1'
     if ctx.get('scope'):
         params['scope'] = ctx['scope']
     if ctx.get('fileset'):
@@ -209,6 +214,75 @@ def _initial_fragment_url(fragment_url: str, ctx: dict, flt: dict) -> str:
     if flt['accessed_after_str']:
         params['accessed_after'] = flt['accessed_after_str']
     return f'{fragment_url}?{urlencode(params)}'
+
+
+def _dir_breadcrumb(mode: str, ctx: dict, fragment_url: str, flt: dict):
+    """Ancestry breadcrumb items (normalized space) for the explorer drill-down.
+
+    Home clears the fileset (whole scope); each deeper crumb re-anchors the
+    fragment at that path. Bounded at the scan root: the project's prefix
+    (project mode — collapsed to one crumb) or the collection-root first segment
+    (resource mode). Returns a list shaped for the shared ``breadcrumb()`` macro,
+    or ``None`` when the plugin is unavailable.
+    """
+    mod = get_module()
+    if mod is None:
+        return None
+    target_id = ctx['target_id']
+
+    def _attrs(fileset):
+        q = {'sort_by': flt['sort_by']}
+        if fileset:
+            q['fileset'] = fileset
+        return {
+            'hx-get': f'{fragment_url}?{urlencode(q)}',
+            'hx-target': f'#{target_id}',
+            'hx-include': f'#disk-scans-dir-params-{target_id}',
+            'hx-swap': 'innerHTML',
+            'href': '#',
+            'style': 'cursor:pointer',
+        }
+
+    fileset = ctx.get('fileset')
+    home_label = ctx['resource_name'] if mode == 'resource' else 'All'
+    items = [{'label': home_label,
+              'attrs': _attrs(None) if fileset else None,
+              'active': not fileset}]
+    if not fileset:
+        return items
+
+    s = mod.normalize_path(fileset).strip('/')
+    segs = s.split('/')
+
+    # Project mode: collapse everything up to the owning project prefix into a
+    # single crumb (you can't navigate above what the project owns); resource
+    # mode shows every segment from the collection root down.
+    start = 0
+    if mode == 'project':
+        prefixes, _ = resolve_scan_scope(db.session, ctx['scoped_project'],
+                                         ctx['resource_name'])
+        base = ''
+        for p in prefixes:
+            pn = mod.normalize_path(p).strip('/')
+            if pn and (pn == s or s.startswith(pn + '/')) and len(pn) > len(base):
+                base = pn
+        if base:
+            base_segs = base.split('/')
+            start = len(base_segs)
+            acc = '/' + '/'.join(base_segs)
+            last = (start == len(segs))
+            items.append({'label': base_segs[-1],
+                          'attrs': None if last else _attrs(acc),
+                          'active': last})
+
+    acc = '/' + '/'.join(segs[:start]) if start else ''
+    for i in range(start, len(segs)):
+        acc = acc + '/' + segs[i]
+        last = (i == len(segs) - 1)
+        items.append({'label': segs[i],
+                      'attrs': None if last else _attrs(acc),
+                      'active': last})
+    return items
 
 
 def _resource_ctx(resource_name: str) -> dict:
@@ -230,19 +304,24 @@ def _resource_ctx(resource_name: str) -> dict:
     }
 
 
-def _render_directories_fragment(ctx, fragment_url, *, mode, scan_call, log_label):
+def _render_directories_fragment(ctx, fragment_url, *, mode, scan_call,
+                                 log_label, browse=False):
     """Shared body for the project + resource directory fragments.
 
     Both render the *same* ``disk_scans_directories.html`` partial; they differ
     only in scope context, which fragment URL the sort pill / headers re-fetch,
     and the (already scope-resolved) ``scan_call``. A plugin/DB hiccup degrades
-    to an inline error banner, never a 500.
+    to an inline error banner, never a 500. ``browse`` turns on the file-browser
+    drill-down (clickable rows + ancestry breadcrumb), explorer-page only.
     """
     flt = _dir_filters()
+    breadcrumb_items = (_dir_breadcrumb(mode, ctx, fragment_url, flt)
+                        if browse and is_enabled() else None)
     base = dict(
         sort={'sort_by': flt['sort_by']},
         sortable_columns=sorted(_DIR_SORT_WHITELIST),
-        fragment_url=fragment_url, filters=flt, mode=mode, **ctx,
+        fragment_url=fragment_url, filters=flt, mode=mode,
+        browse=browse, breadcrumb_items=breadcrumb_items, **ctx,
     )
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
@@ -289,6 +368,7 @@ def directories_fragment(project):
     return _render_directories_fragment(
         ctx, fragment_url, mode='project', scan_call=_scan,
         log_label=f"project={ctx['scoped_project'].projcode}",
+        browse=_truthy(request.args.get('browse')),
     )
 
 
@@ -310,9 +390,9 @@ def directories_page(project):
     return render_template(
         'dashboards/user/disk_scans_directories_page.html',
         mode='project', fragment_url=fragment_url,
-        initial_url=_initial_fragment_url(fragment_url, ctx, flt),
+        initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
-        limit_options=_LIMIT_OPTIONS, **ctx,
+        limit_options=_LIMIT_OPTIONS, browse=True, **ctx,
     )
 
 
@@ -343,6 +423,7 @@ def directories_resource_fragment(resource):
     return _render_directories_fragment(
         ctx, fragment_url, mode='resource', scan_call=_scan,
         log_label='resource-wide',
+        browse=_truthy(request.args.get('browse')),
     )
 
 
@@ -363,9 +444,9 @@ def directories_resource_page(resource):
     return render_template(
         'dashboards/user/disk_scans_directories_page.html',
         mode='resource', fragment_url=fragment_url,
-        initial_url=_initial_fragment_url(fragment_url, ctx, flt),
+        initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
-        limit_options=_LIMIT_OPTIONS, **ctx,
+        limit_options=_LIMIT_OPTIONS, browse=True, **ctx,
     )
 
 

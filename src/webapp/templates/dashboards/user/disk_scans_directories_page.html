@@ -37,23 +37,8 @@
     {% endif %}
   </div>
 
-  {% if mode == 'resource' %}
-    {# Fileset breadcrumb — the file-browser entry point. Each crumb re-roots
-       the explorer at a collection sub-path via ?fileset=. #}
-    <nav aria-label="breadcrumb" class="mb-3">
-      <ol class="breadcrumb small mb-0">
-        <li class="breadcrumb-item">
-          <a href="{{ url_for('disk_scans.directories_resource_page',
-                              resource=resource_name) }}">{{ resource_name }}</a>
-        </li>
-        {% if fileset %}
-          <li class="breadcrumb-item active" aria-current="page">
-            <code>{{ fileset }}</code>
-          </li>
-        {% endif %}
-      </ol>
-    </nav>
-  {% endif %}
+  {# The live, drill-aware ancestry breadcrumb is rendered inside the table
+     fragment (disk_scans_directories.html) so it updates on every drill. #}
 
   <div class="card mb-3">
     <div class="card-body">

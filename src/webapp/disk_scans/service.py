@@ -46,13 +46,23 @@ def _scoped(
     unsatisfiable; callers MUST treat an empty collection list as "no
     results" and not call the facade.
 
-    ``subpath`` narrows the scope to a single fileset path (the disk page's
-    ``?fileset=`` drill-down). It is kept only if it equals — or is a
-    descendant of — one of the project's already-resolved directory
-    prefixes, so it can never widen scope beyond what the project owns;
-    a stray value simply yields no results. Narrowing to a non-root
-    sub-path defeats the whole-collection-root fast path, so this is the
-    inherently slow on-the-fly query (callers lazy-load it).
+    ``subpath`` narrows the scope to a fileset path. Matching is done in
+    NORMALIZED (mount-stripped) space via ``mod.normalize_path`` so it works
+    whether ``subpath`` arrives absolute (the disk page's ``?fileset=``, a
+    ``ProjectDirectory`` path) or already normalized (the explorer's row /
+    breadcrumb drill, which surfaces normalized scan paths — see
+    ``project_fs_scans_paths_normalized``). Two in-scope cases:
+
+      * **Selection** — ``subpath`` equals / is an ancestor of the project's
+        filesets: keep the project prefixes at or under it (pick among the
+        project's own directories).
+      * **Descent** — ``subpath`` is a descendant of a project prefix (a real
+        subdirectory below a registered fileset): query that deeper subtree.
+
+    Anything outside the project's scope yields no results, so this can never
+    widen beyond what the project owns. Narrowing to a non-root sub-path
+    defeats the whole-collection-root fast path, so this is the inherently slow
+    on-the-fly query (callers lazy-load it).
     """
     mod = get_module()
     if mod is None:
@@ -60,14 +70,18 @@ def _scoped(
 
     path_prefixes, collections = resolve_scan_scope(session, project, resource_name)
 
-    # Fileset drill-down: keep only prefixes equal to / under `subpath`,
-    # then recompute the owning collections from what survives.
+    # Fileset drill-down, matched in normalized space, then recompute the
+    # owning collections from what survives.
     if subpath:
-        s = subpath.rstrip('/')
-        path_prefixes = [
-            p for p in path_prefixes
-            if p.rstrip('/') == s or p.startswith(s + '/')
-        ]
+        s = mod.normalize_path(subpath).rstrip('/')
+        norm = {p: mod.normalize_path(p).rstrip('/') for p in path_prefixes}
+        under = [p for p, pn in norm.items() if pn == s or pn.startswith(s + '/')]
+        if under:                                              # selection
+            path_prefixes = under
+        elif any(s == pn or s.startswith(pn + '/') for pn in norm.values()):
+            path_prefixes = [s]                                # descent
+        else:
+            path_prefixes = []                                 # out of scope
         collections = sorted({
             coll
             for p in path_prefixes

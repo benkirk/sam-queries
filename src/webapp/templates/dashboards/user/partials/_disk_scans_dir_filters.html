@@ -30,6 +30,8 @@
   {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
   <input type="hidden" name="target_id" value="{{ target_id }}">
   <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+  {# Explorer-only panel → always file-browser mode (clickable rows + breadcrumb). #}
+  <input type="hidden" name="browse" value="1">
 
   <div class="d-flex flex-wrap align-items-end gap-3">
     <div>

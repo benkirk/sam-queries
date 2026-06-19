@@ -1,5 +1,6 @@
 {% from 'dashboards/user/partials/_disk_scans_macros.html'
    import scans_disabled, scans_error, scans_empty, scans_scope_note %}
+{% from 'dashboards/fragments/_breadcrumb.html' import breadcrumb %}
 {#
   Largest-directories fragment — embedded via hx-get from the Filesystem
   Scans card. Context (set in webapp/disk_scans/routes.py):
@@ -28,7 +29,7 @@
   {%- if key in sortable_columns -%}
     {%- set is_active = (sort.sort_by == key) -%}
     <a class="text-decoration-none" href="#"
-       hx-get="{{ fragment_url }}?sort_by={{ key }}"
+       hx-get="{{ fragment_url }}?sort_by={{ key }}{% if fileset %}&fileset={{ fileset | urlencode }}{% endif %}"
        hx-target="#{{ target_id }}"
        hx-include="#disk-scans-dir-params-{{ target_id }}"
        hx-swap="innerHTML">
@@ -62,11 +63,14 @@
   {# Round-trip the scope + active filters so every sort / pill re-fetch stays
      scoped AND keeps the current filter selection. ``owner_uid`` is the
      canonical (resolved) unix UID; the filter panel feeds it via owner_user_id. #}
+  {# NB: ``fileset`` is deliberately NOT in this form — every path-changing
+     control (sort links, pill, drill rows, breadcrumb) carries ``fileset`` in
+     its own URL, so keeping it here too would send it twice. #}
   <form id="disk-scans-dir-params-{{ target_id }}" class="d-none">
     <input type="hidden" name="resource" value="{{ resource_name }}">
     {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
-    {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
     <input type="hidden" name="target_id" value="{{ target_id }}">
+    {% if browse %}<input type="hidden" name="browse" value="1">{% endif %}
     <input type="hidden" name="limit" value="{{ filters.limit }}">
     {% if filters.owner_uid is not none %}<input type="hidden" name="owner_uid" value="{{ filters.owner_uid }}">{% endif %}
     {% if filters.leaves_only %}<input type="hidden" name="leaves_only" value="1">{% endif %}
@@ -74,13 +78,19 @@
     {% if filters.accessed_after_str %}<input type="hidden" name="accessed_after" value="{{ filters.accessed_after_str }}">{% endif %}
   </form>
 
+  {# File-browser ancestry (explorer/browse mode only). Click a crumb to
+     re-anchor; Home clears the fileset back to the whole scope. #}
+  {% if breadcrumb_items %}
+    {{ breadcrumb(breadcrumb_items) }}
+  {% endif %}
+
   <div class="d-flex align-items-center mb-2 flex-wrap gap-2">
     <div class="btn-group btn-group-sm" role="group" aria-label="Sort directories by">
       {% for key, label, icon in _pills %}
         {% if key != 'dirs' or _show_dirs %}
         <button type="button"
                 class="btn btn-outline-secondary {% if sort.sort_by == key %}active{% endif %}"
-                hx-get="{{ fragment_url }}?sort_by={{ key }}"
+                hx-get="{{ fragment_url }}?sort_by={{ key }}{% if fileset %}&fileset={{ fileset | urlencode }}{% endif %}"
                 hx-target="#{{ target_id }}"
                 hx-include="#disk-scans-dir-params-{{ target_id }}"
                 hx-swap="innerHTML">
@@ -123,7 +133,22 @@
         <tbody>
           {% for r in rows %}
             <tr>
-              <td class="text-nowrap small"><code>{{ r.path }}</code></td>
+              <td class="text-nowrap small">
+                {%- if browse and not filters.leaves_only and r.dir_count_r -%}
+                  {# Drill into this directory's subtree, keeping the active
+                     filters (the params form). Leaves (dir_count_r == 0) and
+                     the static card tab render a plain path. #}
+                  <a class="text-decoration-none" href="#"
+                     hx-get="{{ fragment_url }}?fileset={{ r.path | urlencode }}&sort_by={{ sort.sort_by }}"
+                     hx-target="#{{ target_id }}"
+                     hx-include="#disk-scans-dir-params-{{ target_id }}"
+                     hx-swap="innerHTML">
+                    <i class="fas fa-folder me-1 text-muted"></i><code>{{ r.path }}</code>
+                  </a>
+                {%- else -%}
+                  <code>{{ r.path }}</code>
+                {%- endif -%}
+              </td>
               <td class="text-end font-monospace">{{ r.total_size_r | fmt_size }}</td>
               <td class="text-end">{{ r.file_count_r | fmt_number }}</td>
               {% if _show_dirs %}<td class="text-end">{{ r.dir_count_r | fmt_number }}</td>{% endif %}

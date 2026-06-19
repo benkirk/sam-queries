@@ -27,6 +27,26 @@ from datetime import datetime
 import pytest
 
 
+# Mirror the plugin's normalize_path / collection_for_path lexical helpers so the
+# fake module behaves like the real one for scope matching (see
+# project_fs_scans_paths_normalized).
+_FAKE_MOUNTS = ('/glade/campaign', '/gpfs/csfs1', '/glade/derecho/scratch', '/lustre/desc1')
+
+
+def _fake_normalize(p):
+    p = (p or '').rstrip('/')
+    for pre in _FAKE_MOUNTS:
+        if p.startswith(pre):
+            s = p[len(pre):]
+            return s if s.startswith('/') else '/' + s
+    return p
+
+
+def _fake_collection_for_path(p):
+    n = _fake_normalize(p).strip('/')
+    return n.split('/', 1)[0].lower() if n else None
+
+
 @pytest.fixture(autouse=True)
 def _disable_fs_scans_cache():
     """Disable the scan-result cache for these tests by default.
@@ -70,7 +90,10 @@ def _wire_service(monkeypatch, *, prefixes, collections, warmed,
 
     mod = types.SimpleNamespace(
         FsScanQueries=_FakeQueries,
-        collection_for_path=lambda p: collection_map.get(p),
+        # Explicit map wins; fall back to the computed (normalize + first
+        # segment) form so normalized descent paths (/cisl/csg/sub) resolve too.
+        collection_for_path=lambda p: collection_map.get(p) or _fake_collection_for_path(p),
+        normalize_path=_fake_normalize,
     )
     monkeypatch.setattr(service, 'get_module', lambda: mod)
     monkeypatch.setattr(service, 'get_collections', lambda: list(warmed))
@@ -807,3 +830,163 @@ def test_view_all_filesystem_data_grants():
     for bundle in ('nusd', 'csg', 'ssg'):
         assert p in GROUP_PERMISSIONS[bundle], bundle
     assert p not in USER_FACILITY_PERMISSIONS['sureshm']['WNA']
+
+
+# ---------------------------------------------------------------------------
+# File-browser drill-down — _scoped descent/normalized matching, browse rows,
+# breadcrumb, shared macro
+# ---------------------------------------------------------------------------
+
+def test_scoped_normalized_subpath_selects_fileset(monkeypatch):
+    """A normalized subpath selects the matching absolute project fileset."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg', '/glade/campaign/cisl/other'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl',
+                        '/glade/campaign/cisl/other': 'cisl'},
+        capture=cap,
+    )
+    svc.scan_directories(None, object(), 'Campaign_Store', subpath='/cisl/csg')
+    assert cap['list_kwargs']['path_prefixes'] == ['/glade/campaign/cisl/csg']
+
+
+def test_scoped_descent_into_subdir(monkeypatch):
+    """A subpath BELOW a registered fileset queries that deeper subtree."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl'},
+        capture=cap,
+    )
+    svc.scan_directories(None, object(), 'Campaign_Store', subpath='/cisl/csg/sub')
+    assert cap['list_kwargs']['path_prefixes'] == ['/cisl/csg/sub']
+
+
+def test_scoped_out_of_scope_subpath_empty(monkeypatch):
+    """A subpath neither ancestor nor descendant of a project prefix → []."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl'},
+        capture=cap,
+    )
+    assert svc.scan_directories(None, object(), 'Campaign_Store',
+                                subpath='/mmm/foo') == []
+    assert 'list_kwargs' not in cap
+
+
+_DRILL_ROW = {
+    'path': '/cisl/csg/sub', 'depth': 5, 'total_size_r': 1024 ** 4,
+    'file_count_r': 1, 'dir_count_r': 3, 'max_atime_r': None,
+    'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
+}
+_DRILL_MARKER = 'fa-folder me-1'   # unique to a drillable row's link
+
+
+def test_directories_browse_rows_drillable(app, auth_client, active_project, monkeypatch):
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [_DRILL_ROW])
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
+        f'?resource={_RES}&browse=1'
+    )
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert _DRILL_MARKER in body                       # row is a drill link
+    # The drill link carries the row path as the new fileset (Jinja's urlencode
+    # may or may not %-escape slashes depending on version).
+    assert ('fileset=/cisl/csg/sub' in body
+            or 'fileset=%2Fcisl%2Fcsg%2Fsub' in body)
+
+
+def test_directories_card_tab_rows_not_drillable(app, auth_client, active_project, monkeypatch):
+    """Without browse (the resource-details card tab) rows stay plain text."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [_DRILL_ROW])
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
+    )
+    body = resp.get_data(as_text=True)
+    assert _DRILL_MARKER not in body
+    assert '/cisl/csg/sub' in body                      # path still shown
+
+
+def test_directories_leaves_only_not_drillable(app, auth_client, active_project, monkeypatch):
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [_DRILL_ROW])
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
+        f'?resource={_RES}&browse=1&leaves_only=1'
+    )
+    assert _DRILL_MARKER not in resp.get_data(as_text=True)
+
+
+def test_resource_browse_breadcrumb_and_pill_fileset(app, auth_client, monkeypatch):
+    """Resource-mode drill: breadcrumb (Home=resource + segments) + sort pill
+    carries the active fileset."""
+    from webapp.disk_scans import routes, service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories_resource', lambda r, **kw: [])
+    monkeypatch.setattr(routes, 'get_module',
+                        lambda: types.SimpleNamespace(normalize_path=lambda p: p))
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/directories'
+        f'?browse=1&fileset=/cisl/csg'
+    )
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert 'aria-label="breadcrumb"' in body
+    assert _RES in body                                # Home crumb = resource name
+    assert '>cisl<' in body and '>csg<' in body        # path segments
+    assert ('fileset=/cisl/csg' in body
+            or 'fileset=%2Fcisl%2Fcsg' in body)        # sort pill keeps the anchor
+
+
+def test_project_breadcrumb_bounded_at_scan_root(app, auth_client, active_project, monkeypatch):
+    """Project-mode breadcrumb collapses everything up to the project prefix:
+    All / csg / sub — NOT All / cisl / csg / sub."""
+    from webapp.disk_scans import routes, service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [])
+    monkeypatch.setattr(routes, 'get_module',
+                        lambda: types.SimpleNamespace(normalize_path=lambda p: p))
+    monkeypatch.setattr(routes, 'resolve_scan_scope',
+                        lambda s, proj, res: (['/cisl/csg'], ['cisl']))
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
+        f'?resource={_RES}&browse=1&fileset=/cisl/csg/sub'
+    )
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert body.count('breadcrumb-item') == 3          # All, csg, sub (bounded)
+
+
+def test_breadcrumb_macro_renders_href_and_htmx(app):
+    """The shared macro renders href items, htmx items, and a plain active item."""
+    from flask import render_template_string
+    with app.test_request_context():
+        out = render_template_string(
+            "{% from 'dashboards/fragments/_breadcrumb.html' import breadcrumb %}"
+            "{{ breadcrumb(["
+            "{'label':'Admin','attrs':{'href':'/admin'}},"
+            "{'label':'Go','attrs':{'hx-get':'/x','hx-target':'#t'}},"
+            "{'label':'Here','active':True}]) }}"
+        )
+    assert 'href="/admin"' in out
+    assert 'hx-get="/x"' in out
+    assert 'aria-current="page"' in out
+    assert '>Here<' in out
