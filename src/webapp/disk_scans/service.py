@@ -235,3 +235,32 @@ def scan_access_history(
         'access_history', q, collections, path_prefixes, {'owner_uid': owner_uid},
         lambda: q.access_history(path_prefixes=path_prefixes, owner_uid=owner_uid),
     )
+
+
+def scan_file_sizes(
+    session,
+    project,
+    resource_name: str,
+    *,
+    owner_uid: Optional[int] = None,
+    subpath: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """File-size histogram dict for *project* (or ``None``).
+
+    Identical contract to :func:`scan_access_history` — same return shape
+    (``bucket_labels``, ``buckets{label:{data,files,owners}}``,
+    ``total_data``, ``total_files``, ``username_map``, ``reference_scan_date``,
+    ``fast_path``) — but the buckets are file-size bands rather than
+    access-time bands. Always scoped to the project's directory paths
+    (optionally narrowed to one fileset via *subpath*). Returns ``None`` when
+    the project has no scannable directories, the plugin is unavailable, or
+    no scan dates exist for the targeted collections.
+    """
+    mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
+    if not collections:
+        return None
+    q = mod.FsScanQueries(filesystems=collections)
+    return cached_scan(
+        'file_sizes', q, collections, path_prefixes, {'owner_uid': owner_uid},
+        lambda: q.file_size_histogram(path_prefixes=path_prefixes, owner_uid=owner_uid),
+    )

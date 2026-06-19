@@ -157,6 +157,7 @@ def test_scoped_returns_empty_when_module_missing(monkeypatch):
     monkeypatch.setattr(service, 'get_module', lambda: None)
     assert service.scan_directories(None, object(), 'Campaign_Store') == []
     assert service.scan_access_history(None, object(), 'Campaign_Store') is None
+    assert service.scan_file_sizes(None, object(), 'Campaign_Store') is None
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +381,54 @@ def test_access_history_empty_when_none(app, auth_client, active_project, monkey
         f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
     )
     assert resp.status_code == 200
-    assert 'No access-history data' in resp.get_data(as_text=True)
+    assert 'No distribution data' in resp.get_data(as_text=True)
+
+
+def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
+    """File-size tab is the access-history tab's twin: same shape, same
+    template/chart, different service query (scan_file_sizes)."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    hist = {
+        'bucket_labels': ['0 - 1 KiB', '1 KiB - 10 KiB', '100 GiB+'],
+        'buckets': {
+            '0 - 1 KiB':     {'data': 127 * 1024 ** 3, 'files': 4 * 10 ** 8,
+                              'owners': {1001: {'data': 64 * 1024 ** 3, 'files': 3 * 10 ** 8},
+                                         1002: {'data': 63 * 1024 ** 3, 'files': 10 ** 8}}},
+            '1 KiB - 10 KiB': {'data': 693 * 1024 ** 3, 'files': 3 * 10 ** 8,
+                               'owners': {1001: {'data': 693 * 1024 ** 3, 'files': 3 * 10 ** 8}}},
+            '100 GiB+':      {'data': 8 * 1024 ** 5, 'files': 35000, 'owners': {}},
+        },
+        'total_data': 8 * 1024 ** 5, 'total_files': 7 * 10 ** 8,
+        'directory': '/glade/campaign/cisl', 'fast_path': True,
+        'reference_scan_date': datetime(2026, 6, 1),
+        'username_map': {1001: 'fasullo', 1002: 'schwartz'},
+    }
+    monkeypatch.setattr(service, 'scan_file_sizes', lambda s, p, r, **kw: hist)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/file-sizes?resource={_RES}'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert '<svg' in body                 # matplotlib SVG rendered
+    assert '100 GiB+' in body             # file-size bucket label in the table
+    assert 'fasullo' in body              # per-user breakdown resolved
+    assert '#ah-bar-0' in body            # bar→row drill-down anchor (shared scheme)
+    assert 'data-ah-bucket="0"' in body
+    # Data ↔ Files metric pill present (file-sizes only) and defaults to Data.
+    assert 'metric=files' in body
+    assert 'Top users by data' in body
+
+    # Switching the pill re-renders the same fragment by file count.
+    resp2 = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}'
+        f'/file-sizes?resource={_RES}&metric=files'
+    )
+    assert resp2.status_code == 200
+    body2 = resp2.get_data(as_text=True)
+    assert '<svg' in body2
+    assert 'Top users by files' in body2   # per-user table re-sorted by metric
 
 
 def test_fragment_missing_resource_is_graceful(app, auth_client, active_project, monkeypatch):

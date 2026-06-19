@@ -37,12 +37,15 @@
     var BAR_DAY_PREFIX = '#day-bar-';
     var BAR_AH_PREFIX = '#ah-bar-';
 
-    // Access-history histogram → expand the matching bucket's per-user
-    // detail row. The bucket <tr> carries data-ah-bucket="<index>" and a
-    // data-bs-target pointing at its collapse row (see
-    // disk_scans_access_history.html).
-    function openBucketRow(index) {
-        var row = document.querySelector('tr[data-ah-bucket="' + index + '"]');
+    // Distribution histogram (Access-history / File-size tabs) → expand the
+    // matching bucket's per-user detail row. The bucket <tr> carries
+    // data-ah-bucket="<index>" and a data-bs-target pointing at its collapse
+    // row (see disk_scans_distribution.html). The lookup is scoped to the
+    // tab pane the clicked bar lives in, so the two tabs' identical
+    // #ah-bar-<index> anchors never cross-fire.
+    function openBucketRow(index, scopeEl) {
+        var root = scopeEl || document;
+        var row = root.querySelector('tr[data-ah-bucket="' + index + '"]');
         if (!row || !window.bootstrap) return;
         var targetSel = row.getAttribute('data-bs-target');
         if (!targetSel) return;
@@ -109,12 +112,12 @@
             return;
         }
 
-        // Bar → Access-history bucket per-user detail row
+        // Bar → distribution bucket per-user detail row (scoped to this pane)
         if (href.indexOf(BAR_AH_PREFIX) === 0) {
             var idx = href.slice(BAR_AH_PREFIX.length);
             if (idx === '') return;
             e.preventDefault();
-            openBucketRow(idx);
+            openBucketRow(idx, a.closest('.tab-pane'));
             return;
         }
 

@@ -5,6 +5,7 @@ Endpoints (url_prefix ``/dashboards/user/disk-scans``):
   GET /<projcode>/directories     — largest directories (sortable)
   GET /<projcode>/entities        — owner|group rollups (?kind=)
   GET /<projcode>/access-history  — access-time histogram (SVG)
+  GET /<projcode>/file-sizes      — file-size histogram (SVG)
 
 Each fragment is lazy-loaded on first tab show (see
 ``resource_details_disk.html``). Access control mirrors the rest of the
@@ -34,7 +35,7 @@ from flask_login import login_required
 
 from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
-from webapp.dashboards.charts import generate_access_history_histogram
+from webapp.dashboards.charts import generate_distribution_histogram
 from webapp.disk_scans import service
 from webapp.disk_scans.session import is_enabled
 from webapp.extensions import db
@@ -184,37 +185,84 @@ def entities_fragment(project):
     )
 
 
-@bp.route('/<projcode>/access-history')
-@login_required
-@require_project_access
-def access_history_fragment(project):
-    """HTMX fragment: access-time histogram (server-rendered SVG)."""
+_METRIC_WHITELIST = {'data', 'files'}
+
+
+def _render_distribution(project, *, service_fn, endpoint, kind,
+                         bucket_header, metric_toggle=False, log_y=False):
+    """Shared body for the two distribution histogram fragments.
+
+    The Access-history and File-size tabs are identical end to end — same
+    ``{bucket_labels, buckets{...}, owners, username_map}`` shape, same
+    template, same chart — differing only in the service query, the bucket
+    column header, and (file-sizes only) a Data ↔ Files metric pill that
+    re-fetches the pane with ``?metric=``. ``kind`` is used only for logging.
+    """
     ctx = _common_ctx(project)
+
+    metric = (request.args.get('metric') or 'data').strip().lower()
+    if not metric_toggle or metric not in _METRIC_WHITELIST:
+        metric = 'data'
+    # url the metric pill re-fetches (carries scope/resource/fileset via the
+    # pane's hidden form + hx-include, exactly like the owner↔group toggle).
+    fragment_url = url_for(endpoint, projcode=project.projcode)
+    extra = dict(metric=metric, metric_toggle=metric_toggle,
+                 bucket_header=bucket_header, fragment_url=fragment_url)
+
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
-            'dashboards/user/partials/disk_scans_access_history.html',
+            'dashboards/user/partials/disk_scans_distribution.html',
             hist=None, chart_svg=None,
-            enabled=is_enabled(), error=None, **ctx,
+            enabled=is_enabled(), error=None, **ctx, **extra,
         )
 
     owner_uid = request.args.get('owner_uid', type=int)
     hist, chart_svg, error = None, None, None
     try:
-        hist = service.scan_access_history(
+        hist = service_fn(
             db.session, ctx['scoped_project'], ctx['resource_name'],
             owner_uid=owner_uid, subpath=ctx['fileset'],
         )
         if hist:
-            chart_svg = generate_access_history_histogram(hist)
+            chart_svg = generate_distribution_histogram(
+                hist, log_y=log_y, metric=metric)
     except Exception as exc:
         current_app.logger.exception(
-            'disk_scans.access_history: scan failed for project=%s resource=%s',
-            ctx['scoped_project'].projcode, ctx['resource_name'],
+            'disk_scans.%s: scan failed for project=%s resource=%s',
+            kind, ctx['scoped_project'].projcode, ctx['resource_name'],
         )
         error = str(exc)
 
     return render_template(
-        'dashboards/user/partials/disk_scans_access_history.html',
+        'dashboards/user/partials/disk_scans_distribution.html',
         hist=hist, chart_svg=chart_svg,
-        enabled=True, error=error, **ctx,
+        enabled=True, error=error, **ctx, **extra,
+    )
+
+
+@bp.route('/<projcode>/access-history')
+@login_required
+@require_project_access
+def access_history_fragment(project):
+    """HTMX fragment: access-time distribution histogram (server-rendered SVG)."""
+    return _render_distribution(
+        project, service_fn=service.scan_access_history,
+        endpoint='disk_scans.access_history_fragment', kind='access_history',
+        bucket_header='Last accessed',
+    )
+
+
+@bp.route('/<projcode>/file-sizes')
+@login_required
+@require_project_access
+def file_sizes_fragment(project):
+    """HTMX fragment: file-size distribution histogram (server-rendered SVG).
+
+    Carries a Data ↔ Files metric pill (``?metric=``) since a file-size
+    distribution is equally meaningful by volume or by file count.
+    """
+    return _render_distribution(
+        project, service_fn=service.scan_file_sizes,
+        endpoint='disk_scans.file_sizes_fragment', kind='file_sizes',
+        bucket_header='File size', metric_toggle=True,
     )

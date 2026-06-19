@@ -411,6 +411,20 @@
                         <i class="fas fa-clock-rotate-left me-1"></i> Access history
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="disk-scans-files-tab"
+                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-files"
+                            type="button" role="tab"
+                            hx-get="{{ url_for('disk_scans.file_sizes_fragment',
+                                               projcode=projcode, resource=resource_name,
+                                               scope=scope, fileset=fileset,
+                                               target_id='disk-scans-files') }}"
+                            hx-target="#disk-scans-files"
+                            hx-swap="innerHTML"
+                            hx-trigger="shown.bs.tab once">
+                        <i class="fas fa-ruler me-1"></i> File sizes
+                    </button>
+                </li>
             </ul>
             <div class="tab-content border border-top-0 rounded-bottom p-3"
                  id="diskScansTabsContent">
@@ -432,6 +446,13 @@
                     <div id="disk-scans-access">
                         <p class="text-muted small mb-0">
                             <i class="fas fa-spinner fa-spin me-1"></i> Loading access history…
+                        </p>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="tab-disk-scans-files" role="tabpanel">
+                    <div id="disk-scans-files">
+                        <p class="text-muted small mb-0">
+                            <i class="fas fa-spinner fa-spin me-1"></i> Loading file sizes…
                         </p>
                     </div>
                 </div>

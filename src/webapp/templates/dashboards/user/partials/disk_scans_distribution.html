@@ -1,22 +1,63 @@
 {% from 'dashboards/user/partials/_disk_scans_macros.html'
    import scans_disabled, scans_error, scans_empty, scans_scope_note %}
 {#
-  Access-time histogram fragment — embedded via hx-get from the Filesystem
-  Scans card. Context (set in webapp/disk_scans/routes.py):
+  Distribution-histogram fragment — shared by the Access-history and
+  File-size tabs (they have an identical hist shape). Embedded via hx-get
+  from the Filesystem Scans card. Context (set in webapp/disk_scans/routes.py):
     hist (dict|None), chart_svg (str|None), enabled, error,
-    resource_name, scope, fileset, target_id
+    resource_name, scope, fileset, target_id,
+    bucket_header (x-axis column label), metric ('data'|'files'),
+    metric_toggle (bool — show the Data↔Files pill), fragment_url.
   hist: bucket_labels, buckets{label:{data,files,owners}},
-        total_data, total_files, directory, fast_path, reference_scan_date.
+        total_data, total_files, directory, fast_path, reference_scan_date,
+        username_map.
+  The bar→row drill-down (#ah-bar-<i> / data-ah-bucket=<i>) is pane-scoped in
+  svg-chart-links.js, so both tabs can use the same anchor scheme.
 #}
+
+{% set _metric = metric or 'data' %}
+{% set _by_files = (_metric == 'files') %}
 
 {% if not enabled %}
   {{ scans_disabled() }}
 {% elif error %}
   {{ scans_error(error) }}
 {% elif not hist %}
-  {{ scans_empty('No access-history data for this scope.') }}
+  {{ scans_empty('No distribution data for this scope.') }}
 {% else %}
+  {% if metric_toggle %}
+    {# Carry scope/resource/fileset on the pill re-fetch — same hidden-form +
+       hx-include pattern as the owner↔group toggle. #}
+    <form id="disk-scans-metric-params-{{ target_id }}" class="d-none">
+      <input type="hidden" name="resource" value="{{ resource_name }}">
+      <input type="hidden" name="scope" value="{{ scope }}">
+      {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
+      <input type="hidden" name="target_id" value="{{ target_id }}">
+    </form>
+  {% endif %}
+
   <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    {% if metric_toggle %}
+      {# Data ↔ Files metric pill — re-fetches this same pane with ?metric=. #}
+      <div class="btn-group btn-group-sm me-1" role="group" aria-label="Chart metric">
+        <button type="button"
+                class="btn btn-outline-secondary {% if not _by_files %}active{% endif %}"
+                hx-get="{{ fragment_url }}?metric=data"
+                hx-target="#{{ target_id }}"
+                hx-include="#disk-scans-metric-params-{{ target_id }}"
+                hx-swap="innerHTML">
+          <i class="fas fa-hard-drive me-1"></i> Data
+        </button>
+        <button type="button"
+                class="btn btn-outline-secondary {% if _by_files %}active{% endif %}"
+                hx-get="{{ fragment_url }}?metric=files"
+                hx-target="#{{ target_id }}"
+                hx-include="#disk-scans-metric-params-{{ target_id }}"
+                hx-swap="innerHTML">
+          <i class="fas fa-hashtag me-1"></i> Files
+        </button>
+      </div>
+    {% endif %}
     {{ scans_scope_note(fileset) }}
     <span class="text-muted small">
       Total: <strong>{{ hist.total_data | fmt_size }}</strong>
@@ -47,7 +88,7 @@
       <thead class="table-light">
         <tr>
           <th style="width:1.5rem;" aria-label="Expand"></th>
-          <th>Last accessed</th>
+          <th>{{ bucket_header or 'Bucket' }}</th>
           <th class="text-end">Data</th>
           <th class="text-end">Files</th>
           <th class="text-end">Owners</th>
@@ -76,11 +117,13 @@
             <td class="text-end">{{ owners | length | fmt_number }}</td>
           </tr>
           {% if owners %}
-            {% set ranked = owners.items() | sort(attribute='1.data', reverse=true) %}
+            {# Sort the per-user breakdown by the active chart metric so the
+               table order matches the stacked bar. #}
+            {% set ranked = owners.items() | sort(attribute='1.' ~ _metric, reverse=true) %}
             <tr class="collapse" id="{{ rowid }}">
               <td colspan="5" class="bg-light">
                 <div class="small text-muted mb-1">
-                  Top users by data in <strong>{{ label }}</strong>
+                  Top users by {{ 'files' if _by_files else 'data' }} in <strong>{{ label }}</strong>
                   ({{ owners | length | fmt_number }} total)
                 </div>
                 <table class="table table-sm align-middle mb-0">
