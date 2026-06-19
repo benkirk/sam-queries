@@ -199,6 +199,26 @@ def get_collections(app: Optional[Flask] = None) -> List[str]:
     return state.get('collections') or []
 
 
+def collections_for_resource(
+    resource_name: str, app: Optional[Flask] = None
+) -> List[str]:
+    """Warmed collection schemas that make up a disk *resource*, unscoped.
+
+    The single decision point for resource→collections when a query is **not**
+    project-scoped (resource mode). Today every warmed collection lives in the
+    one ``campaign`` CNPG database (one DB per resource via the plugin's
+    ``FS_SCAN_PG_DB``), so this returns :func:`get_collections` verbatim — i.e.
+    the whole resource.
+
+    This is the **seam** where a future resource→database map plugs in: once a
+    second resource (e.g. Destor) ships its own collections, branch here on
+    *resource_name* rather than scattering the mapping across callers. Returns
+    ``[]`` when the plugin is off (so resource-mode callers degrade to "no
+    results", same as project mode).
+    """
+    return get_collections(app)
+
+
 def get_engines(app: Optional[Flask] = None) -> Dict[str, Any]:
     """Return ``{collection: Engine}`` for warmed collections (possibly empty).
 

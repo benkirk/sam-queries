@@ -362,6 +362,7 @@ def create_app(*, config_overrides: dict | None = None):
     # one Engine per collection on the CNPG backend. Disabled in tests
     # (TestingConfig.FS_SCANS_ENABLED = False).
     from webapp.disk_scans import init_fs_scans
+    from webapp.disk_scans.routes import bp as disk_scans_bp
     init_fs_scans(app)
 
     # Register blueprints
@@ -372,6 +373,7 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(allocations_dashboard_bp)
     app.register_blueprint(project_members_bp)
     app.register_blueprint(jobs_bp, url_prefix='/dashboards/user/jobs')
+    app.register_blueprint(disk_scans_bp, url_prefix='/dashboards/user/disk-scans')
     # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
     # app.register_blueprint(admin_bp, url_prefix='/database')
 
