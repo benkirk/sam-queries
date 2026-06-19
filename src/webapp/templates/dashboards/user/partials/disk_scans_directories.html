@@ -41,21 +41,60 @@
   {%- endif -%}
 {% endmacro %}
 
+{# Sort pill — mirrors the File Sizes Data/Files pill. Each click re-queries
+   the server for the true top-N by that key (top-by-size ≠ top-by-files), so
+   it is NOT a client re-sort; the column headers remain available too. #}
+{% set _pills = [
+  ('size',  'Size',      'fa-hard-drive'),
+  ('files', '# Files',   'fa-hashtag'),
+  ('dirs',  '# Subdirs', 'fa-folder-tree'),
+] %}
+
 {% if not enabled %}
   {{ scans_disabled() }}
 {% elif error %}
   {{ scans_error(error) }}
 {% else %}
-  {# Round-trip the scope params so every sort re-fetch stays scoped. #}
+  {# Round-trip the scope + active filters so every sort / pill re-fetch stays
+     scoped AND keeps the current filter selection. ``owner_uid`` is the
+     canonical (resolved) unix UID; the filter panel feeds it via owner_user_id. #}
   <form id="disk-scans-dir-params-{{ target_id }}" class="d-none">
     <input type="hidden" name="resource" value="{{ resource_name }}">
-    <input type="hidden" name="scope" value="{{ scope }}">
+    {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
     {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
     <input type="hidden" name="target_id" value="{{ target_id }}">
+    <input type="hidden" name="limit" value="{{ filters.limit }}">
+    {% if filters.owner_uid is not none %}<input type="hidden" name="owner_uid" value="{{ filters.owner_uid }}">{% endif %}
+    {% if filters.leaves_only %}<input type="hidden" name="leaves_only" value="1">{% endif %}
+    {% if filters.accessed_before_str %}<input type="hidden" name="accessed_before" value="{{ filters.accessed_before_str }}">{% endif %}
+    {% if filters.accessed_after_str %}<input type="hidden" name="accessed_after" value="{{ filters.accessed_after_str }}">{% endif %}
   </form>
 
-  <div class="d-flex align-items-center mb-2">
+  <div class="d-flex align-items-center mb-2 flex-wrap gap-2">
+    <div class="btn-group btn-group-sm" role="group" aria-label="Sort directories by">
+      {% for key, label, icon in _pills %}
+        <button type="button"
+                class="btn btn-outline-secondary {% if sort.sort_by == key %}active{% endif %}"
+                hx-get="{{ fragment_url }}?sort_by={{ key }}"
+                hx-target="#{{ target_id }}"
+                hx-include="#disk-scans-dir-params-{{ target_id }}"
+                hx-swap="innerHTML">
+          <i class="fas {{ icon }} me-1"></i>{{ label }}
+        </button>
+      {% endfor %}
+    </div>
     {{ scans_scope_note(fileset) }}
+    {% if filters.owner_uid is not none or filters.leaves_only
+          or filters.accessed_before_str or filters.accessed_after_str %}
+      <span class="badge bg-info-subtle text-dark border">
+        <i class="fas fa-filter me-1"></i>
+        {%- if filters.owner_label %}{{ filters.owner_label }}
+        {%- elif filters.owner_uid is not none %}uid {{ filters.owner_uid }}{% endif -%}
+        {%- if filters.leaves_only %} · leaves only{% endif -%}
+        {%- if filters.accessed_after_str %} · after {{ filters.accessed_after_str }}{% endif -%}
+        {%- if filters.accessed_before_str %} · before {{ filters.accessed_before_str }}{% endif -%}
+      </span>
+    {% endif %}
     <span class="ms-auto text-muted small">
       {{ rows | length | fmt_number }} director{{ 'y' if rows | length == 1 else 'ies' }}
     </span>

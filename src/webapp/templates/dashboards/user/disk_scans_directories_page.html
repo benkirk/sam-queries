@@ -1,0 +1,80 @@
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/user/partials/_disk_scans_dir_filters.html' import dir_filters %}
+{#
+  Standalone directory-explorer page — both modes, parameterized by *mode*
+  ('project'|'resource') and *fragment_url* (which directory fragment to
+  lazy-load). Renders a filters panel above a table container; the container
+  hx-get's *initial_url* (fragment_url pre-loaded with the current filters)
+  on load, and the filter panel / in-table sort re-fetch into the same
+  container thereafter.
+
+  Context (set in webapp/disk_scans/routes.py directories_page /
+  directories_resource_page): mode, fragment_url, initial_url, filters,
+  user_search_url, limit_options, plus the scope context (project,
+  scoped_project, resource_name, scope, fileset, target_id).
+#}
+
+{% block title %}Directory explorer — SAM{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    <h3 class="mb-0">
+      <i class="fas fa-folder-tree me-2"></i>
+      {% if mode == 'resource' %}
+        {{ resource_name }}
+        <small class="text-muted fw-normal">— all directories</small>
+      {% else %}
+        {{ scoped_project.projcode if scoped_project else project.projcode }}
+        <small class="text-muted fw-normal">directories on {{ resource_name }}</small>
+      {% endif %}
+    </h3>
+    {% if mode == 'resource' %}
+      <span class="badge bg-warning-subtle text-dark border">
+        <i class="fas fa-shield-halved me-1"></i> Resource-wide (operator view)
+      </span>
+    {% endif %}
+  </div>
+
+  {% if mode == 'resource' %}
+    {# Fileset breadcrumb — the file-browser entry point. Each crumb re-roots
+       the explorer at a collection sub-path via ?fileset=. #}
+    <nav aria-label="breadcrumb" class="mb-3">
+      <ol class="breadcrumb small mb-0">
+        <li class="breadcrumb-item">
+          <a href="{{ url_for('disk_scans.directories_resource_page',
+                              resource=resource_name) }}">{{ resource_name }}</a>
+        </li>
+        {% if fileset %}
+          <li class="breadcrumb-item active" aria-current="page">
+            <code>{{ fileset }}</code>
+          </li>
+        {% endif %}
+      </ol>
+    </nav>
+  {% endif %}
+
+  <div class="card mb-3">
+    <div class="card-body">
+      {{ dir_filters('disk-scans-filters-' ~ target_id, fragment_url, target_id,
+                     filters, user_search_url, resource_name, scope, fileset,
+                     limit_options) }}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-2">
+      <div id="{{ target_id }}"
+           hx-get="{{ initial_url }}"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+        <p class="text-muted small mb-0 p-2">
+          <i class="fas fa-spinner fa-spin me-1"></i> Loading directories…
+        </p>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

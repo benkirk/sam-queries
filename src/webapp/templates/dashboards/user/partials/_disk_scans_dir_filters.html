@@ -1,0 +1,77 @@
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
+{#
+  Reusable Large-directories filter panel (audit_filters house style),
+  mode-agnostic. Rendered above the table container on the standalone
+  explorer page; on submit it hx-get's *fragment_url* (the project- or
+  resource-mode directory fragment) into #target_id with all of its fields.
+
+  Args:
+    form_id         unique id for this form instance
+    fragment_url    the directory fragment to fetch (project or resource mode)
+    target_id       container the fragment swaps into
+    filters         the parsed _dir_filters() dict (current values)
+    user_search_url fk-picker search endpoint (admin_dashboard.htmx_search_users, fk)
+    resource_name / scope / fileset   scope context echoed back on submit
+    limit_options   row-count choices for the limit selector
+
+  The user picker stores a SAM user_id under ``owner_user_id``; the route
+  resolves it to the unix UID the scan data is keyed on (see _resolve_owner).
+#}
+{% macro dir_filters(form_id, fragment_url, target_id, filters, user_search_url,
+                     resource_name, scope, fileset, limit_options) %}
+<form id="{{ form_id }}"
+      hx-get="{{ fragment_url }}"
+      hx-target="#{{ target_id }}"
+      hx-swap="innerHTML"
+      hx-trigger="submit">
+  {# Scope context — submitted alongside the visible filter controls. #}
+  <input type="hidden" name="resource" value="{{ resource_name }}">
+  {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
+  {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
+  <input type="hidden" name="target_id" value="{{ target_id }}">
+  <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+
+  <div class="d-flex flex-wrap align-items-end gap-3">
+    <div>
+      <label class="form-label mb-1"><strong>Accessed after</strong></label>
+      <input type="date" class="form-control form-control-sm"
+             name="accessed_after" value="{{ filters.accessed_after_str }}"
+             style="width:160px;">
+    </div>
+    <div>
+      <label class="form-label mb-1"><strong>Accessed before</strong></label>
+      <input type="date" class="form-control form-control-sm"
+             name="accessed_before" value="{{ filters.accessed_before_str }}"
+             style="width:160px;">
+    </div>
+
+    <div style="min-width:240px;">
+      {{ fk_search_field('owner_user_id', 'User', user_search_url,
+                         placeholder='Search users…',
+                         selected_id=filters.owner_user_id or '',
+                         selected_label=filters.owner_label or '',
+                         label_class='form-label mb-1') }}
+    </div>
+
+    <div class="form-check form-switch mb-2">
+      <input class="form-check-input" type="checkbox" role="switch"
+             id="{{ form_id }}-leaves" name="leaves_only" value="1"
+             {% if filters.leaves_only %}checked{% endif %}>
+      <label class="form-check-label" for="{{ form_id }}-leaves">Leaves only</label>
+    </div>
+
+    <div>
+      <label class="form-label mb-1"><strong>Rows</strong></label>
+      <select class="form-select form-select-sm" name="limit" style="width:100px;">
+        {% for n in limit_options %}
+          <option value="{{ n }}" {% if filters.limit == n %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary mb-2">
+      <i class="fas fa-filter me-1"></i> Apply
+    </button>
+  </div>
+</form>
+{% endmacro %}

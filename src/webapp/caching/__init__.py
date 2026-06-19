@@ -118,8 +118,9 @@ class Caching:
         """All adapters known to the facade, including the proxied usage cache.
 
         Order: flask first, then chart caches in registration order, then
-        the usage cache (if enabled). Stable across processes since
-        registration order is deterministic.
+        the usage cache (if enabled), then the two fs-scans buckets (default,
+        filtered). Stable across processes since registration order is
+        deterministic.
         """
         out: List[CacheBase] = [self._flask_adapter, *self._chart_caches]
         try:
@@ -130,12 +131,15 @@ class Caching:
         if usage:
             out.append(usage)
         try:
-            from webapp.disk_scans.cache import get_cache_adapter as get_scans_adapter
-            scans = get_scans_adapter()
+            from webapp.disk_scans.cache import (
+                _BUCKETS, get_cache_adapter as get_scans_adapter,
+            )
+            for bucket in _BUCKETS:
+                scans = get_scans_adapter(bucket)
+                if scans:
+                    out.append(scans)
         except Exception:
-            scans = None
-        if scans:
-            out.append(scans)
+            pass
         return out
 
     def stats(self) -> dict:

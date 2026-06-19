@@ -97,6 +97,18 @@ class Permission(Enum):
     MANAGE_CHARGE_SUMMARIES = "manage_charge_summaries"  # Write charge summary records
     EXPORT_DATA = "export_data"
 
+    # Filesystem scans (elevated)
+    # Browse all filesystem-scan data across a disk resource, UNSCOPED — every
+    # user's paths / sizes / owner UIDs, cross-project and cross-user. The
+    # project-scoped fs-scans card needs no permission (members see their own
+    # tree); this gates only the resource-wide explorer. Named ``view_*`` so
+    # it is auto-granted to the operator bundles via ``ALL_VIEW`` (today exactly
+    # nusd/csg/ssg) and NOT to the facility-scoped tier, which enumerates its
+    # VIEW_* grants explicitly. Campaign collections don't map onto
+    # UNIV/WNA/NCAR facilities, so this is intentionally global, not
+    # facility-scoped.
+    VIEW_ALL_FILESYSTEM_DATA = "view_all_filesystem_data"
+
     # System administration
     ACCESS_ADMIN_DASHBOARD = "access_admin_dashboard"  # Land on /admin/ and see the navbar tab
     MANAGE_ROLES = "manage_roles"

@@ -253,7 +253,19 @@
                     {% if state.caching.scans %}
                     <hr class="my-3">
                     <div class="text-muted small mb-2"><strong>Filesystem-scan cache</strong></div>
-                    {{ cache_row(state.caching.scans) }}
+                    {# Two buckets: the long-lived default (passive/landing +
+                       tab pill) and the short-TTL explorer (filtered) bucket.
+                       Looping surfaces each bucket's TTL so the 30-min explorer
+                       TTL is visible next to the 8-day default. #}
+                    {% for _b in state.caching.scans %}
+                      <div class="text-muted small mb-1">
+                        {{ 'Explorer (filtered)' if _b.name == 'fs_scans_filtered'
+                           else 'Default (passive)' }}
+                        <code class="ms-1">{{ _b.name }}</code>
+                      </div>
+                      {{ cache_row(_b) }}
+                      {% if not loop.last %}<div class="mb-2"></div>{% endif %}
+                    {% endfor %}
                     {% endif %}
 
                     {% if state.caching.flask %}

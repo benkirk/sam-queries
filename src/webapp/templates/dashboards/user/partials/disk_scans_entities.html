@@ -11,8 +11,6 @@
 #}
 
 {% set _is_owner = (kind == 'owner') %}
-{% set _id_attr = 'owner_uid' if _is_owner else 'owner_gid' %}
-{% set _name_attr = 'username' if _is_owner else 'groupname' %}
 
 {% if not enabled %}
   {{ scans_disabled() }}
@@ -55,10 +53,15 @@
   {% if not rows %}
     {{ scans_empty('No ' ~ ('user' if _is_owner else 'group') ~ ' usage recorded for this scope.') }}
   {% else %}
-    {# Client-side sortable (sortable_table.js, house style for small read-only
-       tables): sort by name (text), or Size/Files/Directories (numeric).
-       Size sorts by raw bytes via data-sort-value while rendering fmt_size.
-       Default order is Size desc, matching the facade's result order. #}
+    {# Client-side sortable (sortable_table.js): sort by name (text), or
+       Size/Files/Directories (numeric). Size sorts by raw bytes via
+       data-sort-value while rendering fmt_size. Default order is Size desc,
+       matching the facade's result order.
+
+       Owner mode uses MULTI-TBODY (``tbody.sortable-group``): each user's row
+       and its lazy drill-down detail row reorder together under client sort.
+       Group mode stays a single tbody (no per-group directory drill-down —
+       the facade filters directories by owner UID only). #}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-light">
@@ -69,21 +72,62 @@
             <th class="sortable-header text-end" data-sort="numeric">Directories</th>
           </tr>
         </thead>
-        <tbody>
+        {% if _is_owner %}
           {% for r in rows %}
-            {% set name = r[_name_attr] %}
-            <tr>
-              <td data-sort-value="{{ name if name else (r[_id_attr] | string) }}">
-                {% if name %}<code>{{ name }}</code>
-                {% else %}<span class="text-muted" title="unresolved {{ 'UID' if _is_owner else 'GID' }}">
-                  {{ 'uid' if _is_owner else 'gid' }} {{ r[_id_attr] }}</span>{% endif %}
-              </td>
-              <td class="text-end font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
-              <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
-              <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
-            </tr>
+            {% set name = r.username %}
+            {% set _oid = target_id ~ '-owner-' ~ r.owner_uid %}
+            <tbody class="sortable-group">
+              <tr>
+                <td data-sort-value="{{ name if name else (r.owner_uid | string) }}">
+                  <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
+                          type="button" data-bs-toggle="collapse"
+                          data-bs-target="#{{ _oid }}-row"
+                          aria-expanded="false" aria-controls="{{ _oid }}-row">
+                    <i class="fas fa-chevron-right collapse-icon small"></i>
+                  </button>
+                  {% if name %}<code>{{ name }}</code>
+                  {% else %}<span class="text-muted" title="unresolved UID">uid {{ r.owner_uid }}</span>{% endif %}
+                </td>
+                <td class="text-end font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
+                <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
+                <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
+              </tr>
+              <tr class="collapse" id="{{ _oid }}-row">
+                <td colspan="4" class="p-0 border-0">
+                  {# Lazy-load this user's top directories on first expand
+                     (owner_uid filter → short-TTL 'filtered' cache bucket).
+                     Bind to shown.bs.collapse (not click) so it fires under
+                     nav-view-persistence restore too. #}
+                  <div class="p-2 bg-light"
+                       id="{{ _oid }}"
+                       hx-get="{{ url_for('disk_scans.directories_fragment', projcode=project.projcode) }}?owner_uid={{ r.owner_uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _oid }}&limit=20"
+                       hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+                       hx-swap="innerHTML">
+                    <p class="text-muted small mb-0">
+                      <i class="fas fa-spinner fa-spin me-1"></i>
+                      Loading {{ name or ('uid ' ~ r.owner_uid) }}'s directories…
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
           {% endfor %}
-        </tbody>
+        {% else %}
+          <tbody>
+            {% for r in rows %}
+              {% set name = r.groupname %}
+              <tr>
+                <td data-sort-value="{{ name if name else (r.owner_gid | string) }}">
+                  {% if name %}<code>{{ name }}</code>
+                  {% else %}<span class="text-muted" title="unresolved GID">gid {{ r.owner_gid }}</span>{% endif %}
+                </td>
+                <td class="text-end font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
+                <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
+                <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        {% endif %}
       </table>
     </div>
   {% endif %}

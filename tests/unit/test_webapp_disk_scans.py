@@ -37,11 +37,10 @@ def _disable_fs_scans_cache():
     affected by the process-wide adapter singleton.
     """
     from webapp.disk_scans import cache as _c
-    _c._adapter = None
-    _c._disabled = True
+    # A stored None per bucket means "initialised but disabled".
+    _c._adapters = {b: None for b in _c._BUCKETS}
     yield
-    _c._adapter = None
-    _c._disabled = False
+    _c._adapters = {}   # clear → buckets re-init on next use
 
 
 # ---------------------------------------------------------------------------
@@ -478,8 +477,7 @@ class _FakeQ:
 def test_cached_scan_hit_miss_and_scan_date_invalidation(monkeypatch):
     from webapp.disk_scans import cache as c
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
-    c._adapter = None
-    c._disabled = False  # re-enable (the autouse fixture disabled it)
+    c._adapters.clear()  # re-enable (the autouse fixture disabled all buckets)
 
     calls = {'n': 0}
     def compute():
@@ -512,8 +510,7 @@ def test_cached_scan_skips_when_no_scan_dates(monkeypatch):
     """Without a scan date there's no freshness to key on — never cache."""
     from webapp.disk_scans import cache as c
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
-    c._adapter = None
-    c._disabled = False
+    c._adapters.clear()
 
     calls = {'n': 0}
     def compute():
@@ -531,8 +528,7 @@ def test_cached_scan_disabled_passes_through(monkeypatch):
     from webapp.disk_scans import cache as c
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
     monkeypatch.setenv('FS_SCANS_CACHE_TTL', '0')
-    c._adapter = None
-    c._disabled = False  # force re-init under the TTL=0 env
+    c._adapters.clear()  # force re-init under the TTL=0 env
 
     calls = {'n': 0}
     def compute():
@@ -544,3 +540,248 @@ def test_cached_scan_disabled_passes_through(monkeypatch):
     c.cached_scan('directories', q, ['mmm'], ['/mmm'], {'limit': 50}, compute)
     assert calls['n'] == 2
     assert c.get_cache_adapter() is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — directory filters, two cache buckets, resource mode, drill-down
+# ---------------------------------------------------------------------------
+
+def test_scan_directories_forwards_filters(monkeypatch):
+    """The four new filters reach the facade with the right kwarg names."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl'},
+        capture=cap,
+    )
+    svc.scan_directories(
+        None, object(), 'Campaign_Store',
+        owner_uid=4242, leaves_only=True,
+        accessed_before=datetime(2026, 1, 1), accessed_after=datetime(2025, 1, 1),
+    )
+    kw = cap['list_kwargs']
+    assert kw['owner_id'] == 4242            # facade param is owner_id
+    assert kw['leaves_only'] is True
+    assert kw['accessed_before'] == datetime(2026, 1, 1)
+    assert kw['accessed_after'] == datetime(2025, 1, 1)
+
+
+def test_directories_bucket_selection(monkeypatch):
+    """Any filter routes to the 'filtered' bucket; the bare query to 'default'."""
+    from webapp.disk_scans import service
+    _wire_service(
+        monkeypatch, prefixes=['/p'], collections=['c'], warmed=['c'],
+        collection_map={'/p': 'c'}, capture={},
+    )
+    seen = []
+
+    def fake_cached(qt, q, colls, pfx, opts, compute, bucket='default'):
+        seen.append(bucket)
+        return compute()
+
+    monkeypatch.setattr(service, 'cached_scan', fake_cached)
+    service.scan_directories(None, object(), 'R')                     # default
+    service.scan_directories(None, object(), 'R', owner_uid=5)        # filtered
+    service.scan_directories(None, object(), 'R', leaves_only=True)   # filtered
+    service.scan_directories(None, object(), 'R',
+                             accessed_before=datetime(2026, 1, 1))    # filtered
+    assert seen == ['default', 'filtered', 'filtered', 'filtered']
+
+
+def test_filtered_bucket_has_short_ttl(monkeypatch):
+    """The two buckets carry distinct TTLs (8 days vs 30 minutes)."""
+    from webapp.disk_scans import cache as c
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+    c._adapters.clear()
+    assert c.get_cache_adapter('default').info()['ttl'] == 691200
+    assert c.get_cache_adapter('filtered').info()['ttl'] == 1800
+
+
+def test_fs_scans_cache_info_lists_both_buckets(monkeypatch):
+    """Admin card data: one info() dict per bucket, default first."""
+    from webapp.disk_scans import cache as c
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+    c._adapters.clear()
+    infos = c.fs_scans_cache_info()
+    assert [i['name'] for i in infos] == ['fs_scans', 'fs_scans_filtered']
+
+
+# -- resource mode (service) -------------------------------------------------
+
+def _wire_resource_service(monkeypatch, *, collections, capture):
+    """Patch the service for resource mode: a fake module + collection map."""
+    from webapp.disk_scans import service
+
+    class _FakeQueries:
+        def __init__(self, filesystems):
+            capture['filesystems'] = list(filesystems)
+
+        def list_directories(self, **kw):
+            capture['list_kwargs'] = kw
+            return [{'path': 'X'}]
+
+    mod = types.SimpleNamespace(FsScanQueries=_FakeQueries)
+    monkeypatch.setattr(service, 'get_module', lambda: mod)
+    monkeypatch.setattr(service, 'collections_for_resource',
+                        lambda r: list(collections))
+    return service
+
+
+def test_scan_directories_resource_unscoped(monkeypatch):
+    """Resource mode queries the whole collection (path_prefixes=None)."""
+    cap = {}
+    svc = _wire_resource_service(monkeypatch, collections=['campaign'], capture=cap)
+    rows = svc.scan_directories_resource('Campaign_Store')
+    assert cap['filesystems'] == ['campaign']
+    assert cap['list_kwargs']['path_prefixes'] is None   # whole-collection fast path
+    assert rows == [{'path': 'X'}]
+
+
+def test_scan_directories_resource_subpath(monkeypatch):
+    """A fileset narrows resource mode to that single sub-path."""
+    cap = {}
+    svc = _wire_resource_service(monkeypatch, collections=['campaign'], capture=cap)
+    svc.scan_directories_resource('Campaign_Store', subpath='/glade/campaign/cisl')
+    assert cap['list_kwargs']['path_prefixes'] == ['/glade/campaign/cisl']
+
+
+def test_scan_directories_resource_empty_when_plugin_off(monkeypatch):
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'get_module', lambda: None)
+    assert service.scan_directories_resource('Campaign_Store') == []
+
+
+def test_collections_for_resource_delegates(monkeypatch):
+    """The resource→collections seam returns the warmed set (today)."""
+    from webapp.disk_scans import session as sess
+    monkeypatch.setattr(sess, 'get_collections', lambda app=None: ['campaign'])
+    assert sess.collections_for_resource('Campaign_Store') == ['campaign']
+    monkeypatch.setattr(sess, 'get_collections', lambda app=None: [])
+    assert sess.collections_for_resource('Campaign_Store') == []
+
+
+# -- routes: filters, explorer page, owner drill-down ------------------------
+
+def test_directories_owner_filter_and_form(app, auth_client, active_project, monkeypatch):
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    captured = {}
+
+    def fake_scan(session, project, resource_name, **kw):
+        captured.update(kw)
+        return [{
+            'path': '/glade/campaign/cisl/csg', 'depth': 4,
+            'total_size_r': 1024 ** 4, 'file_count_r': 1, 'dir_count_r': 1,
+            'max_atime_r': None, 'owner_uid': 4242, 'owner_gid': 1,
+            'filesystem': 'cisl',
+        }]
+    monkeypatch.setattr(service, 'scan_directories', fake_scan)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
+        f'?resource={_RES}&owner_uid=4242&leaves_only=1&accessed_before=2026-01-01'
+    )
+    assert resp.status_code == 200
+    assert captured['owner_uid'] == 4242
+    assert captured['leaves_only'] is True
+    assert captured['accessed_before'] == datetime(2026, 1, 1)
+    body = resp.get_data(as_text=True)
+    # Hidden params form round-trips the active filters across sort re-fetches.
+    assert 'name="owner_uid" value="4242"' in body
+    assert 'name="leaves_only"' in body
+    assert 'name="accessed_before" value="2026-01-01"' in body
+
+
+def test_directories_page_renders(auth_client, active_project):
+    """The standalone explorer page shows the filters panel (project mode)."""
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories/explore'
+        f'?resource={_RES}'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'Accessed before' in body
+    assert 'disk-scans-filters-' in body      # the filter form id
+    assert 'Apply' in body
+
+
+def test_entities_owner_drilldown_markup(app, auth_client, active_project, monkeypatch):
+    """Owner rows are sortable-group tbodies with a lazy directory drill-down."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_owner_summary', lambda s, p, r, **kw: [{
+        'owner_uid': 4242, 'total_size': 1024 ** 4, 'total_files': 5,
+        'directory_count': 2, 'filesystem': 'cisl', 'username': 'alice',
+    }])
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/entities?resource={_RES}'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'sortable-group' in body
+    assert 'data-bs-toggle="collapse"' in body
+    assert 'owner_uid=4242' in body              # drill-down hx-get carries the uid
+    assert 'shown.bs.collapse' in body           # lazy-loads on expand
+
+
+def test_entities_group_no_drilldown(app, auth_client, active_project, monkeypatch):
+    """Group mode stays a single tbody — no per-group directory expansion."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_group_summary', lambda s, p, r, **kw: [{
+        'owner_gid': 2001, 'total_size': 1, 'total_files': 1,
+        'directory_count': 1, 'filesystem': 'cisl', 'groupname': 'csgteam',
+    }])
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/entities'
+        f'?resource={_RES}&kind=group'
+    )
+    assert resp.status_code == 200
+    assert 'sortable-group' not in resp.get_data(as_text=True)
+
+
+# -- resource mode (routes): RBAC gating -------------------------------------
+
+def test_resource_fragment_403_without_perm(non_admin_client):
+    resp = non_admin_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/directories'
+    )
+    assert resp.status_code == 403
+
+
+def test_resource_page_403_without_perm(non_admin_client):
+    resp = non_admin_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/explore'
+    )
+    assert resp.status_code == 403
+
+
+def test_resource_fragment_200_with_perm(auth_client):
+    """benkirk holds VIEW_ALL_FILESYSTEM_DATA → 200 (plugin off → banner)."""
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/directories'
+    )
+    assert resp.status_code == 200
+
+
+def test_resource_page_200_with_perm(auth_client):
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/explore'
+    )
+    assert resp.status_code == 200
+    assert 'Resource-wide' in resp.get_data(as_text=True)
+
+
+def test_view_all_filesystem_data_grants():
+    """Auto-granted to operator bundles via ALL_VIEW; NOT to facility tier."""
+    from webapp.utils.rbac import (
+        GROUP_PERMISSIONS, USER_FACILITY_PERMISSIONS, Permission,
+    )
+    p = Permission.VIEW_ALL_FILESYSTEM_DATA
+    for bundle in ('nusd', 'csg', 'ssg'):
+        assert p in GROUP_PERMISSIONS[bundle], bundle
+    assert p not in USER_FACILITY_PERMISSIONS['sureshm']['WNA']

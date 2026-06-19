@@ -18,11 +18,16 @@ so there is no session context manager here — we just construct
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from webapp.disk_scans.cache import cached_scan
 from webapp.disk_scans.scope import resolve_scan_scope
-from webapp.disk_scans.session import get_collections, get_module
+from webapp.disk_scans.session import (
+    collections_for_resource,
+    get_collections,
+    get_module,
+)
 
 
 def _scoped(
@@ -112,6 +117,63 @@ def scan_overview(session, project, resource_name: str) -> Dict[str, Any]:
     return {'collections': collections, 'scan_dates': scan_dates, 'reference': reference}
 
 
+def _scan_directories(
+    mod,
+    collections: List[str],
+    path_prefixes: Optional[List[str]],
+    *,
+    sort_by: str = 'size',
+    limit: Optional[int] = 50,
+    owner_uid: Optional[int] = None,
+    accessed_before: Optional[datetime] = None,
+    accessed_after: Optional[datetime] = None,
+    leaves_only: bool = False,
+    single_owner: bool = False,
+    min_depth: Optional[int] = None,
+    max_depth: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Mode-agnostic directory query core shared by project + resource modes.
+
+    Callers resolve ``(mod, collections, path_prefixes)`` first — project mode
+    via :func:`_scoped` (refuses unscoped), resource mode via
+    :func:`collections_for_resource` (deliberately unscoped, ``path_prefixes``
+    may be ``None`` for the whole-collection fast path). Any of
+    ``owner_uid / accessed_before / accessed_after / leaves_only`` being set
+    routes the result into the short-TTL ``'filtered'`` cache bucket so heavy
+    interactive exploration can't crowd the hot default-path entries.
+    """
+    q = mod.FsScanQueries(filesystems=collections)
+    filtered = bool(owner_uid is not None or accessed_before or accessed_after
+                    or leaves_only)
+    opts = {
+        'sort_by': sort_by, 'limit': limit,
+        'owner_uid': owner_uid,
+        'accessed_before': accessed_before.isoformat() if accessed_before else None,
+        'accessed_after': accessed_after.isoformat() if accessed_after else None,
+        'leaves_only': leaves_only,
+        'single_owner': single_owner,
+        'min_depth': min_depth, 'max_depth': max_depth,
+    }
+    return cached_scan(
+        'directories', q, collections,
+        # cache key tolerates an unscoped (None) prefix list — normalise to [].
+        path_prefixes or [], opts,
+        lambda: q.list_directories(
+            path_prefixes=path_prefixes,
+            sort_by=sort_by,
+            limit=limit,
+            owner_id=owner_uid,
+            accessed_before=accessed_before,
+            accessed_after=accessed_after,
+            leaves_only=leaves_only,
+            single_owner=single_owner,
+            min_depth=min_depth,
+            max_depth=max_depth,
+        ),
+        bucket='filtered' if filtered else 'default',
+    )
+
+
 def scan_directories(
     session,
     project,
@@ -119,6 +181,10 @@ def scan_directories(
     *,
     sort_by: str = 'size',
     limit: Optional[int] = 50,
+    owner_uid: Optional[int] = None,
+    accessed_before: Optional[datetime] = None,
+    accessed_after: Optional[datetime] = None,
+    leaves_only: bool = False,
     single_owner: bool = False,
     min_depth: Optional[int] = None,
     max_depth: Optional[int] = None,
@@ -126,28 +192,59 @@ def scan_directories(
 ) -> List[Dict[str, Any]]:
     """Largest directories for *project* on *resource_name* (sortable view).
 
-    Always scoped to the project's directory paths (optionally narrowed to
-    one fileset via *subpath*). Returns ``[]`` when the project has no
-    scannable directories or the plugin is unavailable.
+    **Project mode.** Always scoped to the project's directory paths (optionally
+    narrowed to one fileset via *subpath*). The unscoped-refusal safety
+    invariant is intact: returns ``[]`` when the project has no scannable
+    directories or the plugin is unavailable. Filters
+    (``owner_uid / accessed_before / accessed_after / leaves_only``) narrow
+    within that scope.
     """
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
-    q = mod.FsScanQueries(filesystems=collections)
-    opts = {
-        'sort_by': sort_by, 'limit': limit, 'single_owner': single_owner,
-        'min_depth': min_depth, 'max_depth': max_depth,
-    }
-    return cached_scan(
-        'directories', q, collections, path_prefixes, opts,
-        lambda: q.list_directories(
-            path_prefixes=path_prefixes,
-            sort_by=sort_by,
-            limit=limit,
-            single_owner=single_owner,
-            min_depth=min_depth,
-            max_depth=max_depth,
-        ),
+    return _scan_directories(
+        mod, collections, path_prefixes,
+        sort_by=sort_by, limit=limit,
+        owner_uid=owner_uid, accessed_before=accessed_before,
+        accessed_after=accessed_after, leaves_only=leaves_only,
+        single_owner=single_owner, min_depth=min_depth, max_depth=max_depth,
+    )
+
+
+def scan_directories_resource(
+    resource_name: str,
+    *,
+    subpath: Optional[str] = None,
+    sort_by: str = 'size',
+    limit: Optional[int] = 50,
+    owner_uid: Optional[int] = None,
+    accessed_before: Optional[datetime] = None,
+    accessed_after: Optional[datetime] = None,
+    leaves_only: bool = False,
+) -> List[Dict[str, Any]]:
+    """Largest directories across an **entire disk resource**, unscoped.
+
+    **Resource mode** (elevated). Deliberately *not* project-scoped — it
+    browses every collection the resource owns
+    (:func:`collections_for_resource`). With no *subpath* it queries the whole
+    collection (``path_prefixes=None`` → the facade's fast path); a *subpath*
+    drills into a single fileset (the slow on-the-fly scan). This bypasses the
+    project-scoping safety invariant by design, so it is only ever reachable
+    behind the ``VIEW_ALL_FILESYSTEM_DATA``-gated route. Returns ``[]`` when the
+    plugin is unavailable or the resource maps to no reachable collections.
+    """
+    mod = get_module()
+    if mod is None:
+        return []
+    collections = collections_for_resource(resource_name)
+    if not collections:
+        return []
+    path_prefixes = [subpath] if subpath else None
+    return _scan_directories(
+        mod, collections, path_prefixes,
+        sort_by=sort_by, limit=limit,
+        owner_uid=owner_uid, accessed_before=accessed_before,
+        accessed_after=accessed_after, leaves_only=leaves_only,
     )
 
 
