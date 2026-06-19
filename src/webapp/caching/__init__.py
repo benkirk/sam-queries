@@ -26,7 +26,7 @@ Decorating a chart-generating function::
 Inspecting all caches (used by the admin Configuration card)::
 
     caching.stats()            # → dict for the template
-    caching.clear('chart')     # category in {'flask','chart','usage',None}
+    caching.clear('chart')     # category in {'flask','chart','usage','scans',None}
 """
 
 import logging
@@ -129,12 +129,20 @@ class Caching:
             usage = None
         if usage:
             out.append(usage)
+        try:
+            from webapp.disk_scans.cache import get_cache_adapter as get_scans_adapter
+            scans = get_scans_adapter()
+        except Exception:
+            scans = None
+        if scans:
+            out.append(scans)
         return out
 
     def stats(self) -> dict:
         """Single dict for the admin card. Stable shape, group-by-category."""
         from flask import current_app
         from sam.queries.usage_cache import usage_cache_info
+        from webapp.disk_scans.cache import fs_scans_cache_info
 
         return {
             'backend':         current_app.config.get('CACHE_TYPE'),
@@ -142,6 +150,7 @@ class Caching:
             'flask':           self._flask_adapter.info(),
             'chart':           [c.info() for c in self._chart_caches],
             'usage':           usage_cache_info(),
+            'scans':           fs_scans_cache_info(),
         }
 
     def clear(self, category: Optional[str] = None) -> dict:
@@ -154,6 +163,9 @@ class Caching:
         if category in (None, 'usage'):
             from sam.queries.usage_cache import purge_usage_cache
             result['usage'] = purge_usage_cache()
+        if category in (None, 'scans'):
+            from webapp.disk_scans.cache import purge_fs_scans_cache
+            result['scans'] = purge_fs_scans_cache()
         return result
 
 

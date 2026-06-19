@@ -27,6 +27,23 @@ from datetime import datetime
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _disable_fs_scans_cache():
+    """Disable the scan-result cache for these tests by default.
+
+    The scoping/route tests exercise the query path directly; the cache is
+    covered explicitly by the test_cached_scan_* cases (which re-enable it).
+    Reset to a clean, enabled state on teardown so other modules aren't
+    affected by the process-wide adapter singleton.
+    """
+    from webapp.disk_scans import cache as _c
+    _c._adapter = None
+    _c._disabled = True
+    yield
+    _c._adapter = None
+    _c._disabled = False
+
+
 # ---------------------------------------------------------------------------
 # service._scoped — project scoping + subpath narrowing
 # ---------------------------------------------------------------------------
@@ -338,7 +355,7 @@ def test_access_history_renders_svg(app, auth_client, active_project, monkeypatc
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert '<svg' in body                 # matplotlib SVG actually rendered
-    assert '< 1 Month' in body            # bucket label in the table
+    assert '7+ Years' in body             # bucket label in the table (no HTML-escaping)
     assert 'fast path' in body            # fast_path badge
 
 
@@ -367,3 +384,87 @@ def test_fragment_missing_resource_is_graceful(app, auth_client, active_project,
     )
     assert resp.status_code == 200
     assert called['hit'] is False
+
+
+# ---------------------------------------------------------------------------
+# cache.cached_scan — scan-date-keyed get / miss / weekly invalidation
+# ---------------------------------------------------------------------------
+
+class _FakeQ:
+    """Minimal facade stand-in: only scan_dates() is needed for the cache key."""
+    def __init__(self, iso):
+        self.iso = iso
+
+    def scan_dates(self, filesystems=None):
+        return [datetime.fromisoformat(self.iso)] if self.iso else []
+
+
+def test_cached_scan_hit_miss_and_scan_date_invalidation(monkeypatch):
+    from webapp.disk_scans import cache as c
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+    c._adapter = None
+    c._disabled = False  # re-enable (the autouse fixture disabled it)
+
+    calls = {'n': 0}
+    def compute():
+        calls['n'] += 1
+        return [{'v': calls['n']}]
+
+    q = _FakeQ('2026-06-14T00:00:00')
+    opts = {'sort_by': 'size', 'limit': 50}
+
+    r1 = c.cached_scan('directories', q, ['mmm'], ['/mmm'], opts, compute)
+    r2 = c.cached_scan('directories', q, ['mmm'], ['/mmm'], opts, compute)
+    assert r1 == r2 == [{'v': 1}]
+    assert calls['n'] == 1                               # 2nd call served from cache
+
+    # Different opts (a future filter selection) → distinct key → recompute.
+    c.cached_scan('directories', q, ['mmm'], ['/mmm'], {'sort_by': 'files', 'limit': 50}, compute)
+    assert calls['n'] == 2
+
+    # Different query type, same scope → its own entry.
+    c.cached_scan('owner', q, ['mmm'], ['/mmm'], {'limit': 50}, compute)
+    assert calls['n'] == 3
+
+    # A new weekly scan (later date) → key changes → recompute (auto-invalidation).
+    q2 = _FakeQ('2026-06-21T00:00:00')
+    c.cached_scan('directories', q2, ['mmm'], ['/mmm'], opts, compute)
+    assert calls['n'] == 4
+
+
+def test_cached_scan_skips_when_no_scan_dates(monkeypatch):
+    """Without a scan date there's no freshness to key on — never cache."""
+    from webapp.disk_scans import cache as c
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+    c._adapter = None
+    c._disabled = False
+
+    calls = {'n': 0}
+    def compute():
+        calls['n'] += 1
+        return ['x']
+
+    q = _FakeQ(None)  # scan_dates() -> []
+    c.cached_scan('owner', q, ['mmm'], ['/mmm'], {'limit': 50}, compute)
+    c.cached_scan('owner', q, ['mmm'], ['/mmm'], {'limit': 50}, compute)
+    assert calls['n'] == 2
+
+
+def test_cached_scan_disabled_passes_through(monkeypatch):
+    """TTL/SIZE == 0 disables the cache; every call recomputes."""
+    from webapp.disk_scans import cache as c
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+    monkeypatch.setenv('FS_SCANS_CACHE_TTL', '0')
+    c._adapter = None
+    c._disabled = False  # force re-init under the TTL=0 env
+
+    calls = {'n': 0}
+    def compute():
+        calls['n'] += 1
+        return ['x']
+
+    q = _FakeQ('2026-06-14T00:00:00')
+    c.cached_scan('directories', q, ['mmm'], ['/mmm'], {'limit': 50}, compute)
+    c.cached_scan('directories', q, ['mmm'], ['/mmm'], {'limit': 50}, compute)
+    assert calls['n'] == 2
+    assert c.get_cache_adapter() is None

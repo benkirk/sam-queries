@@ -250,6 +250,12 @@
                     {{ cache_row(state.caching.usage) }}
                     {% endif %}
 
+                    {% if state.caching.scans %}
+                    <hr class="my-3">
+                    <div class="text-muted small mb-2"><strong>Filesystem-scan cache</strong></div>
+                    {{ cache_row(state.caching.scans) }}
+                    {% endif %}
+
                     {% if state.caching.flask %}
                     <hr class="my-3">
                     <div class="text-muted small mb-2"><strong>Flask-Cache (HTTP-level)</strong></div>

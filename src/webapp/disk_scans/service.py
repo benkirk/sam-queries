@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from webapp.disk_scans.cache import cached_scan
 from webapp.disk_scans.scope import resolve_scan_scope
 from webapp.disk_scans.session import get_collections, get_module
 
@@ -133,13 +134,20 @@ def scan_directories(
     if not collections:
         return []
     q = mod.FsScanQueries(filesystems=collections)
-    return q.list_directories(
-        path_prefixes=path_prefixes,
-        sort_by=sort_by,
-        limit=limit,
-        single_owner=single_owner,
-        min_depth=min_depth,
-        max_depth=max_depth,
+    opts = {
+        'sort_by': sort_by, 'limit': limit, 'single_owner': single_owner,
+        'min_depth': min_depth, 'max_depth': max_depth,
+    }
+    return cached_scan(
+        'directories', q, collections, path_prefixes, opts,
+        lambda: q.list_directories(
+            path_prefixes=path_prefixes,
+            sort_by=sort_by,
+            limit=limit,
+            single_owner=single_owner,
+            min_depth=min_depth,
+            max_depth=max_depth,
+        ),
     )
 
 
@@ -161,12 +169,16 @@ def scan_owner_summary(
     if not collections:
         return []
     q = mod.FsScanQueries(filesystems=collections)
-    rows = q.owner_summary(path_prefixes=path_prefixes, limit=limit)
-    uids = {r['owner_uid'] for r in rows if r.get('owner_uid') is not None}
-    names = q.resolve_usernames(uids) if uids else {}
-    for r in rows:
-        r['username'] = names.get(r.get('owner_uid'))
-    return rows
+
+    def _compute():
+        rows = q.owner_summary(path_prefixes=path_prefixes, limit=limit)
+        uids = {r['owner_uid'] for r in rows if r.get('owner_uid') is not None}
+        names = q.resolve_usernames(uids) if uids else {}
+        for r in rows:
+            r['username'] = names.get(r.get('owner_uid'))
+        return rows
+
+    return cached_scan('owner', q, collections, path_prefixes, {'limit': limit}, _compute)
 
 
 def scan_group_summary(
@@ -187,12 +199,16 @@ def scan_group_summary(
     if not collections:
         return []
     q = mod.FsScanQueries(filesystems=collections)
-    rows = q.group_summary(path_prefixes=path_prefixes, limit=limit)
-    gids = {r['owner_gid'] for r in rows if r.get('owner_gid') is not None}
-    names = q.resolve_groupnames(gids) if gids else {}
-    for r in rows:
-        r['groupname'] = names.get(r.get('owner_gid'))
-    return rows
+
+    def _compute():
+        rows = q.group_summary(path_prefixes=path_prefixes, limit=limit)
+        gids = {r['owner_gid'] for r in rows if r.get('owner_gid') is not None}
+        names = q.resolve_groupnames(gids) if gids else {}
+        for r in rows:
+            r['groupname'] = names.get(r.get('owner_gid'))
+        return rows
+
+    return cached_scan('group', q, collections, path_prefixes, {'limit': limit}, _compute)
 
 
 def scan_access_history(
@@ -215,4 +231,7 @@ def scan_access_history(
     if not collections:
         return None
     q = mod.FsScanQueries(filesystems=collections)
-    return q.access_history(path_prefixes=path_prefixes, owner_uid=owner_uid)
+    return cached_scan(
+        'access_history', q, collections, path_prefixes, {'owner_uid': owner_uid},
+        lambda: q.access_history(path_prefixes=path_prefixes, owner_uid=owner_uid),
+    )
