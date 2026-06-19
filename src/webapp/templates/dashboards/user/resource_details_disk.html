@@ -277,6 +277,11 @@
 </div>
 
 {# ── Per-user current-snapshot table ────────────────────────────────── #}
+{# Hidden when the Filesystem Scans card is shown — its "User / group counts"
+   tab covers the same per-user breakdown (and more) from the scan DB, so
+   this snapshot table would be redundant. Falls back to showing here
+   whenever scans aren't available for this resource. #}
+{% if not show_scans %}
 <div class="card mb-4">
     <div class="card-header cursor-pointer"
          data-bs-toggle="collapse" data-bs-target="#collapseDiskUsers"
@@ -323,6 +328,147 @@
         </div>
     </div>
 </div>
+{% endif %}
+
+{# ── Filesystem Scans card ──────────────────────────────────────────── #}
+{# Shown only when the fs-scans plugin is loaded AND this resource maps to
+   a live scan collection (show_scans, set in the route). Collapsed by
+   default; once opened, the expanded state AND active tab persist across
+   reloads via nav-view-persistence.js (collapse:<id> + tab:<tablistId>).
+   On restore the active tab re-fires its lazy-load — fast for project-root
+   scope (pre-computed); a fileset drill-down re-runs its on-the-fly scan.
+   Each tab loads its fragment once; the active tab fires on card-open via
+   htmx `from:#collapseDiskScans`. #}
+{% if show_scans %}
+<div class="card mb-4">
+    <div class="card-header cursor-pointer"
+         data-bs-toggle="collapse" data-bs-target="#collapseDiskScans"
+         aria-expanded="false">
+        <h5 class="mb-0">
+            <i class="fas fa-magnifying-glass-chart"></i> Filesystem Scans
+            {% if scan_info and scan_info.reference %}
+            {# Scan-freshness badge — mirrors the suppressed Per-User
+               Occupancy "snapshot <date>". When the project spans multiple
+               collections with differing scan dates, show the latest and
+               list each in the tooltip. #}
+            <small class="text-muted fw-normal ms-2"
+                   {%- if scan_info.scan_dates | length > 1 %}
+                   title="{% for c, d in scan_info.scan_dates.items() %}{{ c }}: {{ d | fmt_date }}{% if not loop.last %} · {% endif %}{% endfor %}"
+                   {%- endif %}>
+                <i class="far fa-calendar-check"></i> scanned {{ scan_info.reference | fmt_date }}
+            </small>
+            {% endif %}
+            <small class="text-muted fw-normal ms-2">
+                large directories, user/group counts, and access-time history
+                {% if fileset %}— scoped to <code>{{ fileset }}</code>
+                {% elif scope != projcode %}under <code>{{ scope }}</code>{% endif %}
+            </small>
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+        </h5>
+    </div>
+    <div id="collapseDiskScans" class="collapse">
+        <div class="card-body">
+            <ul class="nav nav-tabs mb-0" id="diskScansTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="disk-scans-dirs-tab"
+                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-dirs"
+                            type="button" role="tab"
+                            hx-get="{{ url_for('disk_scans.directories_fragment',
+                                               projcode=projcode, resource=resource_name,
+                                               scope=scope, fileset=fileset,
+                                               target_id='disk-scans-directories') }}"
+                            hx-target="#disk-scans-directories"
+                            hx-swap="innerHTML"
+                            hx-trigger="shown.bs.tab once, shown.bs.collapse once from:#collapseDiskScans">
+                        <i class="fas fa-folder-tree me-1"></i> Large directories
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="disk-scans-ent-tab"
+                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-ent"
+                            type="button" role="tab"
+                            hx-get="{{ url_for('disk_scans.entities_fragment',
+                                               projcode=projcode, resource=resource_name,
+                                               scope=scope, fileset=fileset,
+                                               target_id='disk-scans-entities') }}"
+                            hx-target="#disk-scans-entities"
+                            hx-swap="innerHTML"
+                            hx-trigger="shown.bs.tab once">
+                        <i class="fas fa-users me-1"></i> User / group counts
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="disk-scans-acc-tab"
+                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-acc"
+                            type="button" role="tab"
+                            hx-get="{{ url_for('disk_scans.access_history_fragment',
+                                               projcode=projcode, resource=resource_name,
+                                               scope=scope, fileset=fileset,
+                                               target_id='disk-scans-access') }}"
+                            hx-target="#disk-scans-access"
+                            hx-swap="innerHTML"
+                            hx-trigger="shown.bs.tab once">
+                        <i class="fas fa-clock-rotate-left me-1"></i> Access history
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="disk-scans-files-tab"
+                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-files"
+                            type="button" role="tab"
+                            hx-get="{{ url_for('disk_scans.file_sizes_fragment',
+                                               projcode=projcode, resource=resource_name,
+                                               scope=scope, fileset=fileset,
+                                               target_id='disk-scans-files') }}"
+                            hx-target="#disk-scans-files"
+                            hx-swap="innerHTML"
+                            hx-trigger="shown.bs.tab once">
+                        <i class="fas fa-ruler me-1"></i> File sizes
+                    </button>
+                </li>
+            </ul>
+            <div class="tab-content border border-top-0 rounded-bottom p-3"
+                 id="diskScansTabsContent">
+                <div class="tab-pane fade show active" id="tab-disk-scans-dirs" role="tabpanel">
+                    <div class="d-flex justify-content-end mb-2">
+                        <a class="btn btn-sm btn-outline-primary"
+                           href="{{ url_for('disk_scans.directories_page', projcode=projcode,
+                                            resource=resource_name, scope=scope, fileset=fileset) }}"
+                           target="_blank" rel="noopener">
+                            Open full view <i class="fas fa-up-right-from-square ms-1"></i>
+                        </a>
+                    </div>
+                    <div id="disk-scans-directories">
+                        <p class="text-muted small mb-0">
+                            <i class="fas fa-spinner fa-spin me-1"></i> Loading directories…
+                        </p>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="tab-disk-scans-ent" role="tabpanel">
+                    <div id="disk-scans-entities">
+                        <p class="text-muted small mb-0">
+                            <i class="fas fa-spinner fa-spin me-1"></i> Loading…
+                        </p>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="tab-disk-scans-acc" role="tabpanel">
+                    <div id="disk-scans-access">
+                        <p class="text-muted small mb-0">
+                            <i class="fas fa-spinner fa-spin me-1"></i> Loading access history…
+                        </p>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="tab-disk-scans-files" role="tabpanel">
+                    <div id="disk-scans-files">
+                        <p class="text-muted small mb-0">
+                            <i class="fas fa-spinner fa-spin me-1"></i> Loading file sizes…
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {# Modal targeted by clickable username legend entries on the disk
    usage chart (see svg-chart-links.js). Only operators with

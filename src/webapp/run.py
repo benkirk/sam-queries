@@ -64,8 +64,17 @@ def create_app(*, config_overrides: dict | None = None):
 
     app = Flask(__name__)
 
+    # Trust N proxy hops in X-Forwarded-* so request.remote_addr / url scheme
+    # reflect the real client behind the ingress (and any LB in front of it).
+    # Flask-Limiter and audit tooling key on request.remote_addr, so this is
+    # what makes per-IP limiting honest. The correct N is the EXACT number of
+    # trusted proxies that append to X-Forwarded-For — setting it too high lets
+    # a client spoof its IP (ProxyFix would trust an attacker-supplied entry),
+    # so it defaults to 1 (safe) and is tuned via PROXYFIX_X_FOR once the real
+    # chain is confirmed from the gunicorn access log (which now logs xff=…).
     from werkzeug.middleware.proxy_fix import ProxyFix
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    _pf_for = int(os.environ.get('PROXYFIX_X_FOR', '1'))
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=_pf_for, x_proto=1, x_host=1, x_prefix=1)
 
     # Apply all UPPERCASE class attributes as Flask config
     app.config.from_object(cfg)
@@ -348,6 +357,14 @@ def create_app(*, config_overrides: dict | None = None):
     from webapp.jobs import init_job_history, bp as jobs_bp
     init_job_history(app)
 
+    # Initialize the fs-scans plugin (optional). Loads the fs_scans
+    # package, discovers the available collection schemas, and pre-warms
+    # one Engine per collection on the CNPG backend. Disabled in tests
+    # (TestingConfig.FS_SCANS_ENABLED = False).
+    from webapp.disk_scans import init_fs_scans
+    from webapp.disk_scans.routes import bp as disk_scans_bp
+    init_fs_scans(app)
+
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_dashboard_bp)
@@ -356,6 +373,7 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(allocations_dashboard_bp)
     app.register_blueprint(project_members_bp)
     app.register_blueprint(jobs_bp, url_prefix='/dashboards/user/jobs')
+    app.register_blueprint(disk_scans_bp, url_prefix='/dashboards/user/disk-scans')
     # NOTE: admin_bp blueprint removed - Flask-Admin handles /database routing
     # app.register_blueprint(admin_bp, url_prefix='/database')
 

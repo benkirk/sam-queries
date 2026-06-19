@@ -134,7 +134,29 @@
                                 {{ stat('Diagnosis', db_info.error_detail.hint, 'text-warning') }}
                             {% endif %}
                         {% endif %}
+                        {% if db_info.scans %}
+                            {{ stat('Collections', db_info.scans.collection_count) }}
+                            {% if db_info.scans.newest_scan %}
+                                {{ stat('Scan dates',
+                                        db_info.scans.oldest_scan ~ ' … ' ~ db_info.scans.newest_scan
+                                        if db_info.scans.oldest_scan != db_info.scans.newest_scan
+                                        else db_info.scans.newest_scan) }}
+                            {% else %}
+                                {{ stat('Scan dates', '—', 'text-warning') }}
+                            {% endif %}
+                        {% endif %}
                     </dl>
+                    {% if db_info.scans and db_info.scans.collections %}
+                        <details class="small mt-1">
+                            <summary class="text-muted">per-collection scan dates</summary>
+                            <dl class="config-stats mb-0 small mt-1">
+                                {% for c in db_info.scans.collections %}
+                                    {{ stat(c.name, c.scan_date or '— (no scan)',
+                                            '' if c.scan_date else 'text-warning') }}
+                                {% endfor %}
+                            </dl>
+                        </details>
+                    {% endif %}
                     {% endfor %}
                 </div>
             </div>
@@ -226,6 +248,24 @@
                     <hr class="my-3">
                     <div class="text-muted small mb-2"><strong>Allocation usage cache</strong></div>
                     {{ cache_row(state.caching.usage) }}
+                    {% endif %}
+
+                    {% if state.caching.scans %}
+                    <hr class="my-3">
+                    <div class="text-muted small mb-2"><strong>Filesystem-scan cache</strong></div>
+                    {# Two buckets: the long-lived default (passive/landing +
+                       tab pill) and the short-TTL explorer (filtered) bucket.
+                       Looping surfaces each bucket's TTL so the 30-min explorer
+                       TTL is visible next to the 8-day default. #}
+                    {% for _b in state.caching.scans %}
+                      <div class="text-muted small mb-1">
+                        {{ 'Explorer (filtered)' if _b.name == 'fs_scans_filtered'
+                           else 'Default (passive)' }}
+                        <code class="ms-1">{{ _b.name }}</code>
+                      </div>
+                      {{ cache_row(_b) }}
+                      {% if not loop.last %}<div class="mb-2"></div>{% endif %}
+                    {% endfor %}
                     {% endif %}
 
                     {% if state.caching.flask %}
@@ -360,7 +400,7 @@
 
                     <h6 class="mb-2">
                         <i class="fas fa-history me-1"></i> Recent audit entries
-                        <small class="text-muted fw-normal ms-1">(last 25)</small>
+                        {% if state.audit_tail %}<small class="text-muted fw-normal ms-1">(last {{ state.audit_tail | length }})</small>{% endif %}
                     </h6>
                     {% if state.audit_tail is none %}
                         <p class="text-muted small mb-0 h-100">

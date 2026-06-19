@@ -1,5 +1,6 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/admin/fragments/user_search_results_fk_htmx.html' import render_fk_search_results with context %}
+{% from 'dashboards/fragments/_breadcrumb.html' import breadcrumb %}
 
 {% block title %}Edit Project {{ project.projcode }} — SAM{% endblock %}
 
@@ -11,15 +12,14 @@
 {% block content %}
 <!-- Breadcrumb + Back button -->
 <div class="d-flex align-items-center mb-3">
-  <nav aria-label="breadcrumb" class="mb-0">
-    <ol class="breadcrumb mb-0">
-      {% if can_access_admin %}
-      <li class="breadcrumb-item"><a href="{{ url_for('admin_dashboard.index') }}">Admin</a></li>
-      {% endif %}
-      <li class="breadcrumb-item active">Edit Project</li>
-      <li class="breadcrumb-item active">{{ project.projcode }}</li>
-    </ol>
-  </nav>
+  {% set _crumbs = [] %}
+  {% if can_access_admin %}
+    {% set _ = _crumbs.append({'label': 'Admin',
+                               'attrs': {'href': url_for('admin_dashboard.index')}}) %}
+  {% endif %}
+  {% set _ = _crumbs.append({'label': 'Edit Project', 'active': True}) %}
+  {% set _ = _crumbs.append({'label': project.projcode, 'active': True}) %}
+  {{ breadcrumb(_crumbs, classes='mb-0') }}
   {% if can_access_admin %}
   {# Pass projcode so the admin index re-renders this project's card on
      return — otherwise the user lands on a blank search page. #}
@@ -99,33 +99,52 @@
   <!-- ── Tab 2: Allocations ─────────────────────────────────────────── -->
   <div class="tab-pane fade" id="tab-allocations" role="tabpanel">
     {% if can_modify_allocations %}
-    <div class="d-flex justify-content-end gap-2 mb-3">
-      <button class="btn  btn-primary"
-              hx-get="{{ url_for('admin_dashboard.htmx_extend_allocations_form', projcode=project.projcode) }}"
-              hx-target="#extendAllocationsFormContainer"
-              hx-include="#alloc-active-at"
-              hx-trigger="click"
-              data-bs-toggle="modal"
-              data-bs-target="#extendAllocationsModal">
-        <i class="fas fa-calendar-plus"></i> Extend
-      </button>
-      <button class="btn  btn-primary"
-              hx-get="{{ url_for('admin_dashboard.htmx_renew_allocations_form', projcode=project.projcode) }}"
-              hx-target="#renewAllocationsFormContainer"
-              hx-include="#alloc-active-at"
-              hx-trigger="click"
-              data-bs-toggle="modal"
-              data-bs-target="#renewAllocationsModal">
-        <i class="fas fa-sync-alt"></i> Renew
-      </button>
-      <button class="btn  btn-primary"
-              hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
-              hx-target="#addAllocationFormContainer"
-              hx-trigger="click"
-              data-bs-toggle="modal"
-              data-bs-target="#addAllocationModal">
-        <i class="fas fa-plus-circle"></i> Add Allocation
-      </button>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      {# ── Active at date picker (operators only — gated with the buttons) ──── #}
+      <div class="d-flex align-items-center gap-2">
+        <label for="alloc-active-at" class="fw-semibold text-nowrap mb-0 small">Active at:</label>
+        <input type="date" id="alloc-active-at" name="active_at"
+               class="form-control form-control-sm" style="width:auto;"
+               value="{{ now_str }}"
+               hx-get="{{ url_for('admin_dashboard.htmx_project_allocation_tree', projcode=project.projcode) }}"
+               hx-target="#allocationTreeContainer"
+               hx-include="#alloc-active-at"
+               hx-trigger="change delay:800ms"
+               hx-indicator="#allocTreeSpinner, #allocationTreeContainer"
+               hx-disabled-elt="this">
+        <span id="allocTreeSpinner" class="htmx-indicator small text-muted">
+          <span class="spinner-border spinner-border-sm text-primary me-1" role="status" aria-hidden="true"></span>
+          Loading…
+        </span>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn  btn-primary"
+                hx-get="{{ url_for('admin_dashboard.htmx_extend_allocations_form', projcode=project.projcode) }}"
+                hx-target="#extendAllocationsFormContainer"
+                hx-include="#alloc-active-at"
+                hx-trigger="click"
+                data-bs-toggle="modal"
+                data-bs-target="#extendAllocationsModal">
+          <i class="fas fa-calendar-plus"></i> Extend
+        </button>
+        <button class="btn  btn-primary"
+                hx-get="{{ url_for('admin_dashboard.htmx_renew_allocations_form', projcode=project.projcode) }}"
+                hx-target="#renewAllocationsFormContainer"
+                hx-include="#alloc-active-at"
+                hx-trigger="click"
+                data-bs-toggle="modal"
+                data-bs-target="#renewAllocationsModal">
+          <i class="fas fa-sync-alt"></i> Renew
+        </button>
+        <button class="btn  btn-primary"
+                hx-get="{{ url_for('admin_dashboard.htmx_add_allocation_form', projcode=project.projcode) }}"
+                hx-target="#addAllocationFormContainer"
+                hx-trigger="click"
+                data-bs-toggle="modal"
+                data-bs-target="#addAllocationModal">
+          <i class="fas fa-plus-circle"></i> Add Allocation
+        </button>
+      </div>
     </div>
     {% endif %}
     <div id="allocationTreeContainer"

@@ -8,6 +8,8 @@ metadata:
     group: {{ .Values.webapp.group }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  # Trim old scaled-to-0 ReplicaSets (rollback history) to cut ArgoCD clutter.
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit | default 3 }}
   {{- if .Values.rollout }}
   strategy:
     type: RollingUpdate
@@ -51,7 +53,7 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         {{- end }}
-        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled .Values.webapp.jhDbCredentials.enabled)))) }}
+        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled (or .Values.webapp.jhDbCredentials.enabled .Values.webapp.fsDbCredentials.enabled))))) }}
         env:
           {{- range $key, $value := .Values.webapp.env }}
           - name: {{ $key }}
@@ -63,6 +65,11 @@ spec:
           # spawn ~129 workers on a 64-core node and OOM the pod.
           - name: GUNICORN_WORKERS
             value: {{ mul (.Values.webapp.container.limits.cpu | int) 2 | add 1 | quote }}
+          # Number of trusted proxy hops for ProxyFix (X-Forwarded-For depth).
+          # Must match the real proxy chain exactly — too high allows client IP
+          # spoofing. Confirm from the gunicorn access log's xff="…" field.
+          - name: PROXYFIX_X_FOR
+            value: {{ .Values.webapp.proxyFixForwardedHops | default 1 | quote }}
           {{- if .Values.cache.enabled }}
           # Centralized Redis: DB 0 for cache, DB 1 for rate-limit counters.
           - name: CACHE_REDIS_URL
@@ -104,6 +111,18 @@ spec:
             valueFrom:
               secretKeyRef:
                 name: {{ .Values.webapp.name }}-jh-db-credentials
+                key: password
+          {{- end }}
+          {{- if .Values.webapp.fsDbCredentials.enabled }}
+          - name: FS_SCAN_PG_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-fs-db-credentials
+                key: username
+          - name: FS_SCAN_PG_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-fs-db-credentials
                 key: password
           {{- end }}
           {{- if .Values.webapp.jupyterhubCredentials.enabled }}

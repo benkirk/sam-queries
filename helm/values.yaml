@@ -10,6 +10,11 @@ rollout:
   maxUnavailable: 0
   maxSurge: 1
 
+# Old (scaled-to-0) ReplicaSets retained per Deployment for rollback history.
+# k8s defaults to 10, which clutters the ArgoCD view; GitOps rollback is via
+# git revert + resync, so keep a small number. Applies to webapp AND redis.
+revisionHistoryLimit: 3
+
 # PodDisruptionBudget — keep >=minAvailable webapp pods serving during
 # VOLUNTARY disruptions (node drains, cluster maintenance). Without this, a
 # single node drain can evict both replicas at once and take the app down.
@@ -68,6 +73,23 @@ webapp:
     secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
   ingress:
     visibility: external                  # internal or external
+    # Edge rate limiting (nginx ingress controller), IN FRONT of the app-layer
+    # Flask-Limiter. IMPORTANT: on the nwc1 nginx-external controller every
+    # client currently presents as 127.0.0.1 — X-Forwarded-For is not
+    # propagated to the controller (see proxyFixForwardedHops) — so limit-rps /
+    # limit-connections act as ONE GLOBAL bucket, NOT per-client. Values below
+    # are a deliberately HIGH blunt flood-backstop that legitimate aggregate
+    # traffic should not reach; revisit to proper per-IP values once the
+    # controller forwards real client IPs. Set rps: 0 to disable all three.
+    rateLimit:
+      rps: 100                            # global req/sec backstop (limit-rps)
+      connections: 200                    # global concurrent connections (limit-connections)
+      burstMultiplier: 5                  # short-burst allowance = rps * this (limit-burst-multiplier)
+  # Trusted proxy hops for ProxyFix (X-Forwarded-For depth). Sets PROXYFIX_X_FOR.
+  # MUST equal the exact number of proxies that append to X-Forwarded-For, or a
+  # client can spoof its IP. Start at 1 (safe), then confirm the real depth from
+  # the gunicorn access-log xff="…" field and bump to match. See webapp/run.py.
+  proxyFixForwardedHops: 1
   # Kubernetes probes. Endpoints from src/webapp/api/v1/health.py:
   #   /live  -> process up, no DB call          (liveness + startup)
   #   /ready -> DB-gated, 200 healthy / 503 not  (readiness: gates rollout
@@ -154,6 +176,20 @@ webapp:
     JOB_HISTORY_PG_HOST: "csg-postgres.k8s.ucar.edu"
     JOB_HISTORY_PG_PORT: "5432"
     JOB_HISTORY_MACHINES: "derecho,casper"
+    # fs-scans plugin (filesystem-scan analytics on disk resource-details pages).
+    # Same CNPG cluster as job_history above, but a different logical database:
+    # collections (cisl, mmm, aiml, …) are POSTGRES SCHEMAS within FS_SCAN_PG_DB.
+    # The plugin reads FS_SCAN_PG_* at engine-creation time; FS_SCAN_PG_USER /
+    # FS_SCAN_PG_PASSWORD are injected below from the fsDbCredentials
+    # ExternalSecret (csg/pg-appuser, same role as job_history). FS_SCANS_ENABLED
+    # is the SAM-side master switch — set "0" to disable the integration entirely.
+    # Destor (FS_SCAN_PG_DB=desc1) is a future second database; today only
+    # Campaign_Store (campaign) is scanned.
+    FS_SCANS_ENABLED: "1"
+    FS_SCAN_DB_BACKEND: "postgres"
+    FS_SCAN_PG_HOST: "csg-postgres.k8s.ucar.edu"
+    FS_SCAN_PG_PORT: "5432"
+    FS_SCAN_PG_DB: "campaign"
     # disable creating projects until ID system transition & GID pool
     CREATE_PROJECTS_ENABLED: "0"
 
@@ -184,7 +220,7 @@ webapp:
     enabled: true                         # Enable syncing SAM DB credentials from OpenBao
     useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use
-    secretPath: csg/sam-readuser          # Path in OpenBao where SAM DB credentials are stored
+    secretPath: csg/sam-writeuser         # Path in OpenBao where SAM DB credentials are stored
     usernameKey: username                 # Key in OpenBao for username
     passwordKey: password                 # Key in OpenBao for password
 
@@ -193,6 +229,19 @@ webapp:
   # Read-only application user — distinct from dbCredentials' pg-superuser
   # since the plugin only needs SELECT on the job_history tables.
   jhDbCredentials:
+    enabled: true                         # Enable syncing credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
+    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    secretPath: csg/pg-appuser            # Path in OpenBao where credentials are stored
+    usernameKey: username                 # Key in OpenBao for username
+    passwordKey: password                 # Key in OpenBao for password
+
+  # fs-scans plugin's filesystem-scan Postgres (campaign DB / per-collection
+  # schemas on csg-postgres.k8s.ucar.edu). Reuses the SAME csg/pg-appuser role
+  # as jhDbCredentials above (read-only application user, SELECT on the scan
+  # tables) — kept as a distinct block so the integration can be toggled and
+  # rotated independently. Injected as FS_SCAN_PG_USER / FS_SCAN_PG_PASSWORD.
+  fsDbCredentials:
     enabled: true                         # Enable syncing credentials from OpenBao
     useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use

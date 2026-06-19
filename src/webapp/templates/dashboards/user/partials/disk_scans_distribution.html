@@ -1,0 +1,187 @@
+{% from 'dashboards/user/partials/_disk_scans_macros.html'
+   import scans_disabled, scans_error, scans_empty, scans_scope_note %}
+{#
+  Distribution-histogram fragment — shared by the Access-history and
+  File-size tabs (they have an identical hist shape). Embedded via hx-get
+  from the Filesystem Scans card. Context (set in webapp/disk_scans/routes.py):
+    hist (dict|None), chart_svg (str|None), enabled, error,
+    resource_name, scope, fileset, target_id,
+    bucket_header (x-axis column label), metric ('data'|'files'),
+    metric_toggle (bool — show the Data↔Files pill), fragment_url.
+  hist: bucket_labels, buckets{label:{data,files,owners}},
+        total_data, total_files, directory, fast_path, reference_scan_date,
+        username_map.
+  The bar→row drill-down (#ah-bar-<i> / data-ah-bucket=<i>) is pane-scoped in
+  svg-chart-links.js, so both tabs can use the same anchor scheme.
+#}
+
+{% set _metric = metric or 'data' %}
+{% set _by_files = (_metric == 'files') %}
+
+{% if not enabled %}
+  {{ scans_disabled() }}
+{% elif error %}
+  {{ scans_error(error) }}
+{% elif not hist %}
+  {{ scans_empty('No distribution data for this scope.') }}
+{% else %}
+  {% if metric_toggle or log_toggle %}
+    {# Carry scope/resource/fileset on the pill / switch re-fetch — same
+       hidden-form + hx-include pattern as the owner↔group toggle. #}
+    <form id="disk-scans-metric-params-{{ target_id }}" class="d-none">
+      <input type="hidden" name="resource" value="{{ resource_name }}">
+      <input type="hidden" name="scope" value="{{ scope }}">
+      {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
+      <input type="hidden" name="target_id" value="{{ target_id }}">
+    </form>
+  {% endif %}
+
+  {% set _log_q = '&log=1' if log_on else '' %}
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    {% if metric_toggle %}
+      {# Data ↔ Files metric pill — re-fetches this same pane with ?metric=,
+         preserving the current log-scale state. #}
+      <div class="btn-group btn-group-sm me-1" role="group" aria-label="Chart metric">
+        <button type="button"
+                class="btn btn-outline-secondary {% if not _by_files %}active{% endif %}"
+                hx-get="{{ fragment_url }}?metric=data{{ _log_q }}"
+                hx-target="#{{ target_id }}"
+                hx-include="#disk-scans-metric-params-{{ target_id }}"
+                hx-swap="innerHTML">
+          <i class="fas fa-hard-drive me-1"></i> Data
+        </button>
+        <button type="button"
+                class="btn btn-outline-secondary {% if _by_files %}active{% endif %}"
+                hx-get="{{ fragment_url }}?metric=files{{ _log_q }}"
+                hx-target="#{{ target_id }}"
+                hx-include="#disk-scans-metric-params-{{ target_id }}"
+                hx-swap="innerHTML">
+          <i class="fas fa-hashtag me-1"></i> Files
+        </button>
+      </div>
+    {% endif %}
+    {% if log_toggle %}
+      {# Log-scale switch — re-fetches with ?log=, preserving the metric. A log
+         y-axis can't stack, so this trades the per-user gradient for legible
+         small bands (see disk_scans/routes.py). #}
+      <div class="form-check form-switch form-check-inline mb-0 me-1"
+           title="Log y-axis — reveals small bands but flattens the per-user breakdown">
+        <input class="form-check-input" type="checkbox" role="switch"
+               id="disk-scans-log-{{ target_id }}"
+               {% if log_on %}checked{% endif %}
+               hx-get="{{ fragment_url }}?metric={{ _metric }}&log={{ '0' if log_on else '1' }}"
+               hx-target="#{{ target_id }}"
+               hx-include="#disk-scans-metric-params-{{ target_id }}"
+               hx-swap="innerHTML">
+        <label class="form-check-label small text-muted" for="disk-scans-log-{{ target_id }}">
+          Log scale
+        </label>
+      </div>
+    {% endif %}
+    {{ scans_scope_note(fileset) }}
+    <span class="text-muted small">
+      Total: <strong>{{ hist.total_data | fmt_size }}</strong>
+      across <strong>{{ hist.total_files | fmt_number }}</strong> files
+    </span>
+    {% if hist.reference_scan_date %}
+      <span class="text-muted small">| as of {{ hist.reference_scan_date | fmt_date }}</span>
+    {% endif %}
+    {% if hist.fast_path %}
+      <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle"
+            title="Read from pre-computed tables">fast path</span>
+    {% else %}
+      <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+            title="Computed on the fly from directory stats">on-the-fly</span>
+    {% endif %}
+  </div>
+
+  <div class="chart-container">
+    {{ chart_svg | safe }}
+  </div>
+
+  {# Per-user breakdown lives inside each bucket's collapse detail row —
+     the owners dict (uid → {data, files}) is already on the histogram, so
+     this is a pure client-side expand, mirroring the jobs table pattern. #}
+  {% set umap = hist.username_map or {} %}
+  <div class="table-responsive mt-3">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th style="width:1.5rem;" aria-label="Expand"></th>
+          <th>{{ bucket_header or 'Bucket' }}</th>
+          <th class="text-end">Data</th>
+          <th class="text-end">Files</th>
+          <th class="text-end">Owners</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for label in hist.bucket_labels %}
+          {% set b = hist.buckets.get(label, {}) %}
+          {% set owners = b.get('owners') or {} %}
+          {% set b_data = b.get('data', 0) or 0 %}
+          {% set b_files = b.get('files', 0) or 0 %}
+          {% set rowid = (target_id or 'ah') ~ '-ah' ~ loop.index %}
+          <tr {% if owners %}class="cursor-pointer"
+                data-ah-bucket="{{ loop.index0 }}"
+                data-bs-toggle="collapse" data-bs-target="#{{ rowid }}"
+                aria-expanded="false" aria-controls="{{ rowid }}"
+                title="Show top users in this bucket"{% endif %}>
+            <td class="text-center p-0">
+              {% if owners %}
+                <i class="fas fa-chevron-right small collapse-icon text-muted"></i>
+              {% endif %}
+            </td>
+            <td>{{ label }}</td>
+            <td class="text-end font-monospace">{{ b_data | fmt_size }}</td>
+            <td class="text-end">{{ b_files | fmt_number }}</td>
+            <td class="text-end">{{ owners | length | fmt_number }}</td>
+          </tr>
+          {% if owners %}
+            {# Sort the per-user breakdown by the active chart metric so the
+               table order matches the stacked bar. #}
+            {% set ranked = owners.items() | sort(attribute='1.' ~ _metric, reverse=true) %}
+            <tr class="collapse" id="{{ rowid }}">
+              <td colspan="5" class="bg-light">
+                <div class="small text-muted mb-1">
+                  Top users by {{ 'files' if _by_files else 'data' }} in <strong>{{ label }}</strong>
+                  ({{ owners | length | fmt_number }} total)
+                </div>
+                <table class="table table-sm align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th style="width:2rem;" class="text-end text-muted">#</th>
+                      <th>User</th>
+                      <th class="text-end">Data</th>
+                      <th class="text-end text-muted">% data</th>
+                      <th class="text-end">Files</th>
+                      <th class="text-end text-muted">% files</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for uid, stats in ranked[:10] %}
+                      {% set dpct = (100.0 * stats.get('data', 0) / b_data) if b_data else 0 %}
+                      {% set fpct = (100.0 * stats.get('files', 0) / b_files) if b_files else 0 %}
+                      <tr>
+                        <td class="text-end text-muted">{{ loop.index }}</td>
+                        <td class="font-monospace">{{ umap.get(uid) or umap.get(uid | string) or ('uid ' ~ uid) }}</td>
+                        <td class="text-end font-monospace">{{ stats.get('data', 0) | fmt_size }}</td>
+                        <td class="text-end text-muted">{{ dpct | fmt_pct }}</td>
+                        <td class="text-end">{{ stats.get('files', 0) | fmt_number }}</td>
+                        <td class="text-end text-muted">{{ fpct | fmt_pct }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+                {% if owners | length > 10 %}
+                  <div class="small text-muted mt-1">
+                    … and {{ (owners | length - 10) | fmt_number }} more users
+                  </div>
+                {% endif %}
+              </td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}

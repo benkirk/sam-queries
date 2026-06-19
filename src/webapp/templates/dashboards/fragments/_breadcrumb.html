@@ -1,0 +1,33 @@
+{#
+  Shared Bootstrap breadcrumb macro. Attribute-agnostic so it serves both
+  href (full-page) and htmx (fetch-into-container) call sites.
+
+  items: list of dicts, each:
+    - label  (required): the crumb text
+    - attrs  (optional): dict of HTML attributes for the <a> (e.g.
+              {'href': url}  OR  {'hx-get': url, 'hx-target': '#x',
+              'hx-include': '#f', 'hx-swap': 'innerHTML', 'href': '#'})
+    - active (optional): True → rendered as plain text (current page)
+  An item with no attrs (or active) renders as plain text.
+
+  Usage:
+    {% from 'dashboards/fragments/_breadcrumb.html' import breadcrumb %}
+    {{ breadcrumb([{'label': 'Admin', 'attrs': {'href': url}},
+                   {'label': 'Edit', 'active': True}]) }}
+#}
+{% macro breadcrumb(items, classes='small mb-0') %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb {{ classes }}">
+    {% for it in items %}
+      <li class="breadcrumb-item{% if it.active %} active{% endif %}"
+          {% if it.active %}aria-current="page"{% endif %}>
+        {%- if it.active or not it.attrs -%}
+          {{ it.label }}
+        {%- else -%}
+          <a {% for k, v in it.attrs.items() %}{{ k }}="{{ v }}" {% endfor %}>{{ it.label }}</a>
+        {%- endif -%}
+      </li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endmacro %}

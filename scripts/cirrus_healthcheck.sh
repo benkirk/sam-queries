@@ -22,21 +22,13 @@
 
 set -euo pipefail
 
-NAMESPACE="sam-queries"
-RELEASE="samuel"
-CONTEXT=""
-USE_COLOR=1
-VERBOSE=0
+# Load shared helpers: generic presentation/control-flow (common.sh) plus the
+# cirrus/k8s layer (cirrus_common.sh) — release/object names, KCTL builders,
+# the common-arg parser, and resource-unit converters all live there now.
+_LIBDIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib"
+# shellcheck source=lib/cirrus_common.sh
+source "${_LIBDIR}/cirrus_common.sh"
 
-# Names baked into helm/templates/*.yaml. If you rename objects in the chart,
-# update these in lockstep. Resource limits below are read live from the pod
-# spec, not hard-coded.
-WEBAPP_NAME="samuel"
-WEBAPP_PORT=5050
-REDIS_NAME="samuel-redis"
-REDIS_PORT=6379
-INGRESS_HOST="samuel.k8s.ucar.edu"
-TLS_SECRET="incommon-cert-samuel"
 # ExternalSecret resource names carry the '-esos' suffix per
 # helm/templates/external_secret.yaml; the produced Secret (consumed
 # via env secretKeyRef in the Deployment) drops the suffix.
@@ -45,110 +37,23 @@ EXTERNAL_SECRETS=(
     "samuel-sam-db-credentials-esos"
     "samuel-jh-db-credentials-esos"
     "samuel-jh-credentials-esos"
+    "samuel-fs-db-credentials-esos"
     "samuel-oidc-credentials-esos"
 )
-HEALTH_PATH="/api/v1/health/ready"
 
-PASS_COUNT=0
-WARN_COUNT=0
-FAIL_COUNT=0
+# Tuning hints accumulate across sections and print in the summary.
 TUNING_HINTS=()
+hint() { TUNING_HINTS+=("$1"); }
 
 while [[ $# -gt 0 ]]; do
+    if handle_common_arg "$@"; then shift "$_CONSUMED"; continue; fi
     case "$1" in
-        -n|--namespace) NAMESPACE="$2"; shift 2;;
-        -r|--release)   RELEASE="$2";   shift 2;;
-        --context)      CONTEXT="$2";   shift 2;;
-        --no-color)     USE_COLOR=0;    shift;;
-        -v|--verbose)   VERBOSE=1;      shift;;
-        -h|--help)      sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
         *) echo "Unknown option: $1" >&2; exit 2;;
     esac
 done
 
-if [[ $USE_COLOR -eq 1 && -t 1 ]]; then
-    BLUE=$'\033[0;34m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'
-    RED=$'\033[0;31m';  CYAN=$'\033[0;36m';  BOLD=$'\033[1m'; NC=$'\033[0m'
-else
-    BLUE=""; GREEN=""; YELLOW=""; RED=""; CYAN=""; BOLD=""; NC=""
-fi
-
-KCTL=(kubectl)
-[[ -n "$CONTEXT" ]] && KCTL+=(--context "$CONTEXT")
-KCTL_NS=("${KCTL[@]}" -n "$NAMESPACE")
-
-# --- helpers ----------------------------------------------------------------
-
-section() {
-    echo
-    echo -e "${BOLD}${BLUE}═══ $* ═══${NC}"
-}
-
-explain() {
-    echo -e "  ${CYAN}↳ $*${NC}"
-}
-
-pass() { echo -e "  ${GREEN}✔ PASS${NC} — $*"; PASS_COUNT=$((PASS_COUNT+1)); }
-warn() { echo -e "  ${YELLOW}⚠ WARN${NC} — $*"; WARN_COUNT=$((WARN_COUNT+1)); }
-fail() { echo -e "  ${RED}✘ FAIL${NC} — $*"; FAIL_COUNT=$((FAIL_COUNT+1)); }
-info() { echo -e "  ${CYAN}ℹ${NC} $*"; }
-hint() { TUNING_HINTS+=("$1"); }
-
-# Run a command and indent its output for readability.
-run() {
-    "$@" 2>&1 | sed 's/^/    /' || true
-}
-
-require_cmd() {
-    command -v "$1" >/dev/null 2>&1 || { fail "$1 not found in PATH"; exit 1; }
-}
-
-human_bytes() {
-    awk -v b="$1" 'BEGIN{
-        split("B KB MB GB TB PB",u);
-        i=1; while (b>=1024 && i<6){ b/=1024; i++ }
-        printf "%.1f%s", b, u[i]
-    }'
-}
-
-# Strip K8s resource units to a plain number.
-# CPU: 16 -> 16 cores, 250m -> 0.25, 100000000n -> 0.1
-# Mem: 128Gi -> 128*1024^3, 4096Mi -> 4096*1024^2, 4096M -> 4096*1e6
-to_cores() {
-    local v="$1"
-    case "$v" in
-        *n) awk -v x="${v%n}" 'BEGIN{printf "%.3f", x/1e9}';;
-        *u) awk -v x="${v%u}" 'BEGIN{printf "%.3f", x/1e6}';;
-        *m) awk -v x="${v%m}" 'BEGIN{printf "%.3f", x/1000}';;
-        *)  awk -v x="$v"     'BEGIN{printf "%.3f", x+0}';;
-    esac
-}
-to_bytes() {
-    local v="$1"
-    case "$v" in
-        *Ki) awk -v x="${v%Ki}" 'BEGIN{printf "%.0f", x*1024}';;
-        *Mi) awk -v x="${v%Mi}" 'BEGIN{printf "%.0f", x*1024*1024}';;
-        *Gi) awk -v x="${v%Gi}" 'BEGIN{printf "%.0f", x*1024*1024*1024}';;
-        *Ti) awk -v x="${v%Ti}" 'BEGIN{printf "%.0f", x*1024*1024*1024*1024}';;
-        *K)  awk -v x="${v%K}"  'BEGIN{printf "%.0f", x*1000}';;
-        *M)  awk -v x="${v%M}"  'BEGIN{printf "%.0f", x*1000000}';;
-        *G)  awk -v x="${v%G}"  'BEGIN{printf "%.0f", x*1000000000}';;
-        *T)  awk -v x="${v%T}"  'BEGIN{printf "%.0f", x*1000000000000}';;
-        *)   awk -v x="$v"      'BEGIN{printf "%.0f", x+0}';;
-    esac
-}
-
-# Convert RFC3339 timestamp to "N days/hours ago" via portable date(1).
-# Echoes a single integer in seconds; "" if the date is unparseable.
-seconds_since() {
-    awk -v d="$1" 'BEGIN{
-        cmd="date -u +%s"; cmd | getline now; close(cmd);
-        cmd="date -u -d \"" d "\" +%s 2>/dev/null || date -u -j -f %Y-%m-%dT%H:%M:%SZ \"" d "\" +%s 2>/dev/null"
-        cmd | getline t; close(cmd);
-        if (t=="" || t==0) exit 1;
-        printf "%.0f", (now-t)
-    }'
-}
+setup_colors
+build_kctl
 
 # ============================================================================
 section "0. Preflight"
