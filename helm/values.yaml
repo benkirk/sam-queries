@@ -183,7 +183,7 @@ webapp:
     # JOB_HISTORY_PG_USER / JOB_HISTORY_PG_PASSWORD are injected below
     # from the jhDbCredentials ExternalSecret.
     JOB_HISTORY_DB_BACKEND: "postgres"
-    JOB_HISTORY_PG_HOST: "csg-postgres.k8s.ucar.edu"
+    JOB_HISTORY_PG_HOST: "csg-postgres-ro.k8s.ucar.edu"
     JOB_HISTORY_PG_PORT: "5432"
     JOB_HISTORY_MACHINES: "derecho,casper"
     # fs-scans plugin (filesystem-scan analytics on disk resource-details pages).
@@ -197,7 +197,7 @@ webapp:
     # Campaign_Store (campaign) is scanned.
     FS_SCANS_ENABLED: "1"
     FS_SCAN_DB_BACKEND: "postgres"
-    FS_SCAN_PG_HOST: "csg-postgres.k8s.ucar.edu"
+    FS_SCAN_PG_HOST: "csg-postgres-ro.k8s.ucar.edu"
     FS_SCAN_PG_PORT: "5432"
     FS_SCAN_PG_DB: "campaign"
     # disable creating projects until ID system transition & GID pool
@@ -235,7 +235,7 @@ webapp:
     passwordKey: password                 # Key in OpenBao for password
 
   # hpc-usage-queries plugin's per-machine job_history Postgres
-  # (derecho_jobs / casper_jobs on csg-postgres.k8s.ucar.edu).
+  # (derecho_jobs / casper_jobs on csg-postgres-ro.k8s.ucar.edu).
   # Read-only application user — distinct from dbCredentials' pg-superuser
   # since the plugin only needs SELECT on the job_history tables.
   jhDbCredentials:
@@ -247,7 +247,7 @@ webapp:
     passwordKey: password                 # Key in OpenBao for password
 
   # fs-scans plugin's filesystem-scan Postgres (campaign DB / per-collection
-  # schemas on csg-postgres.k8s.ucar.edu). Reuses the SAME csg/pg-appuser role
+  # schemas on csg-postgres-ro.k8s.ucar.edu). Reuses the SAME csg/pg-appuser role
   # as jhDbCredentials above (read-only application user, SELECT on the scan
   # tables) — kept as a distinct block so the integration can be toggled and
   # rotated independently. Injected as FS_SCAN_PG_USER / FS_SCAN_PG_PASSWORD.
