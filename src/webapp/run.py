@@ -357,6 +357,13 @@ def create_app(*, config_overrides: dict | None = None):
     from webapp.jobs import init_job_history, bp as jobs_bp
     init_job_history(app)
 
+    # Initialize the fs-scans plugin (optional). Loads the fs_scans
+    # package, discovers the available collection schemas, and pre-warms
+    # one Engine per collection on the CNPG backend. Disabled in tests
+    # (TestingConfig.FS_SCANS_ENABLED = False).
+    from webapp.disk_scans import init_fs_scans
+    init_fs_scans(app)
+
     # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(user_dashboard_bp)

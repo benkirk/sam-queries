@@ -176,6 +176,20 @@ webapp:
     JOB_HISTORY_PG_HOST: "csg-postgres.k8s.ucar.edu"
     JOB_HISTORY_PG_PORT: "5432"
     JOB_HISTORY_MACHINES: "derecho,casper"
+    # fs-scans plugin (filesystem-scan analytics on disk resource-details pages).
+    # Same CNPG cluster as job_history above, but a different logical database:
+    # collections (cisl, mmm, aiml, …) are POSTGRES SCHEMAS within FS_SCAN_PG_DB.
+    # The plugin reads FS_SCAN_PG_* at engine-creation time; FS_SCAN_PG_USER /
+    # FS_SCAN_PG_PASSWORD are injected below from the fsDbCredentials
+    # ExternalSecret (csg/pg-appuser, same role as job_history). FS_SCANS_ENABLED
+    # is the SAM-side master switch — set "0" to disable the integration entirely.
+    # Destor (FS_SCAN_PG_DB=desc1) is a future second database; today only
+    # Campaign_Store (campaign) is scanned.
+    FS_SCANS_ENABLED: "1"
+    FS_SCAN_DB_BACKEND: "postgres"
+    FS_SCAN_PG_HOST: "csg-postgres.k8s.ucar.edu"
+    FS_SCAN_PG_PORT: "5432"
+    FS_SCAN_PG_DB: "campaign"
     # disable creating projects until ID system transition & GID pool
     CREATE_PROJECTS_ENABLED: "0"
 
@@ -215,6 +229,19 @@ webapp:
   # Read-only application user — distinct from dbCredentials' pg-superuser
   # since the plugin only needs SELECT on the job_history tables.
   jhDbCredentials:
+    enabled: true                         # Enable syncing credentials from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
+    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    secretPath: csg/pg-appuser            # Path in OpenBao where credentials are stored
+    usernameKey: username                 # Key in OpenBao for username
+    passwordKey: password                 # Key in OpenBao for password
+
+  # fs-scans plugin's filesystem-scan Postgres (campaign DB / per-collection
+  # schemas on csg-postgres.k8s.ucar.edu). Reuses the SAME csg/pg-appuser role
+  # as jhDbCredentials above (read-only application user, SELECT on the scan
+  # tables) — kept as a distinct block so the integration can be toggled and
+  # rotated independently. Injected as FS_SCAN_PG_USER / FS_SCAN_PG_PASSWORD.
+  fsDbCredentials:
     enabled: true                         # Enable syncing credentials from OpenBao
     useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use

@@ -417,6 +417,61 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'pool':         stats,
         })
 
+    # fs-scans plugin. Collections are *schemas* within one CNPG database per
+    # disk resource (campaign → Campaign_Store today; desc1 → Destor later),
+    # so we render ONE health row per database — keeping the card compact and
+    # naturally extensible — and hang per-collection scan-date freshness off
+    # each. Registered on app.extensions by webapp.disk_scans.init_fs_scans;
+    # absent / empty when the plugin is disabled, in which case no rows appear.
+    fs_state = app.extensions.get('fs_scans') or {}
+    fs_engines = fs_state.get('engines') or {}
+    if fs_engines:
+        fs_mod = fs_state.get('module')
+        # Group warmed engines by their backing database (campaign, desc1, …).
+        by_db: Dict[str, list] = {}
+        for collection, engine in fs_engines.items():
+            by_db.setdefault(engine.url.database or 'fs_scans', []).append(
+                (collection, engine)
+            )
+        for dbname, items in sorted(by_db.items()):
+            items.sort()
+            # Health from one representative engine — all share host + db.
+            rep_engine = items[0][1]
+            ok, latency_ms, err = _ping_engine(rep_engine)
+            try:
+                stats = pool_stats(rep_engine.pool)
+            except Exception:
+                stats = None
+            # Per-collection scan-date freshness (best-effort; one tiny
+            # scan_metadata read each). A failing collection reports None
+            # rather than sinking the whole card.
+            collections = []
+            for collection, _engine in items:
+                scan_date = None
+                try:
+                    dates = fs_mod.FsScanQueries(filesystems=[collection]).scan_dates()
+                    if dates:
+                        scan_date = max(dates).date().isoformat()
+                except Exception:
+                    scan_date = None
+                collections.append({'name': collection, 'scan_date': scan_date})
+            present = [c['scan_date'] for c in collections if c['scan_date']]
+            databases.append({
+                'name':         f'fs_scans ({dbname})',
+                'url':          format_db_url_safe(rep_engine),
+                'status':       'healthy' if ok else 'unhealthy',
+                'latency_ms':   latency_ms,
+                'error':        err,
+                'error_detail': classify_connection_error(err),
+                'pool':         stats,
+                'scans': {
+                    'collection_count': len(collections),
+                    'collections':      collections,
+                    'oldest_scan':      min(present) if present else None,
+                    'newest_scan':      max(present) if present else None,
+                },
+            })
+
     # --- Authentication
     auth = {
         'auth_provider':       cfg.get('AUTH_PROVIDER', 'stub'),

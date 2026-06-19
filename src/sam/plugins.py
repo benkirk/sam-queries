@@ -84,3 +84,14 @@ HPC_USAGE_QUERIES = Plugin(
     package="job_history",
     install_hint="pip install -e '.[hpc]'  # or: pip install 'hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git'",
 )
+
+# Filesystem-scan analytics (large directories, owner/group rollups, access-time
+# histograms) over the CNPG/PostgreSQL backend. Ships in the SAME
+# ``hpc-usage-queries`` wheel as ``job_history`` (the ``[hpc]`` extra pulls
+# ``hpc-usage-queries[postgres]``), so installing one installs both — only the
+# importable package name differs.
+FS_SCANS = Plugin(
+    name="Filesystem Scans",
+    package="fs_scans",
+    install_hint="pip install -e '.[hpc]'  # or: pip install 'hpc-usage-queries[postgres] @ git+https://github.com/benkirk/hpc-usage-queries.git'",
+)
