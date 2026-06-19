@@ -137,6 +137,16 @@ webapp:
     limits:
       memory: 12G                         # Maximum memory allowed
       cpu: 16                             # Maximum CPU allowed
+  # Gunicorn concurrency (see deployment.yaml env block + gunicorn_config.py).
+  # Threaded workers: a slow fs-scans scan holds a thread, not a process. The
+  # 12G memory limit above is a candidate to lower once gthread per-pod usage
+  # is observed — the old 33-process sync model drove that ceiling.
+  # Empty workers/threads fall back to the template/config defaults.
+  gunicorn:
+    workerClass: gthread
+    workers: ""                           # "" → 2×requests.cpu+1 (=9 at cpu request 4),
+                                          # tracking GUARANTEED cores not the burst limit
+    threads: 8                            # I/O concurrency per worker; scans are ~80% DB-bound
   env:
     DISABLE_AUTH: "0"                     # Explicitly disabled — must remain 0 in production
     FLASK_ADMIN_ENABLED: "0"              # Flask-Admin /database browser stays unmounted on the public deploy

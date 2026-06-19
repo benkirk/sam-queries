@@ -31,9 +31,46 @@ def post_fork(server, worker):
 bind = '0.0.0.0:5050'
 backlog = 2048
 
-# Worker processes: (2 × cores) + 1, overridable via env
-workers = int(os.environ.get('GUNICORN_WORKERS', multiprocessing.cpu_count() * 2 + 1))
-worker_class = os.environ.get('GUNICORN_WORKER_CLASS', 'sync')
+def _effective_cpus():
+    """CPUs available to THIS container, not the node.
+
+    multiprocessing.cpu_count() returns the host's core count (e.g. 64 on the
+    nwc1 nodes), which over-provisions workers and OOMs the pod. Read the
+    cgroup CPU quota instead — cgroup v2 (``cpu.max``) then v1
+    (``cfs_quota_us`` / ``cfs_period_us``) — and fall back to cpu_count()
+    only when unconstrained or unreadable.
+    """
+    try:  # cgroup v2
+        with open('/sys/fs/cgroup/cpu.max') as fh:
+            quota, period = fh.read().split()
+        if quota != 'max':
+            return max(1, round(int(quota) / int(period)))
+    except (OSError, ValueError):
+        pass
+    try:  # cgroup v1
+        with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us') as fh:
+            quota = int(fh.read())
+        with open('/sys/fs/cgroup/cpu/cpu.cfs_period_us') as fh:
+            period = int(fh.read())
+        if quota > 0:
+            return max(1, round(quota / period))
+    except (OSError, ValueError):
+        pass
+    return multiprocessing.cpu_count()
+
+
+# Concurrency model — gthread (threaded), not sync. SAM routes are I/O-bound
+# (DB waits); the heaviest — fs-scans on-the-fly scans — measured ~76-85%
+# blocked in Postgres, where psycopg2 releases the GIL, so threads overlap
+# those waits and a slow scan ties up a THREAD, not a whole process. This runs
+# far fewer processes than the old sync model for the same (or higher)
+# concurrency → lower memory and a smaller DB-connection fan-out. All knobs are
+# env-overridable; helm sets them explicitly (see deployment.yaml).
+worker_class = os.environ.get('GUNICORN_WORKER_CLASS', 'gthread')
+# Default workers track the cgroup CPU quota, NOT the node's core count, so the
+# default is safe even if GUNICORN_WORKERS is unset. helm pins it explicitly.
+workers = int(os.environ.get('GUNICORN_WORKERS', _effective_cpus() * 2 + 1))
+threads = int(os.environ.get('GUNICORN_THREADS', 4))
 worker_connections = 1000
 
 # Worker lifecycle (prevents memory leaks)
