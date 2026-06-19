@@ -141,6 +141,16 @@ class SAMWebappConfig(SAMConfig):
         '0', 'false', 'no', '',
     )
 
+    # Server-side Postgres statement_timeout (ms) applied to every fs-scans
+    # connection. A runaway scope can otherwise hold a CNPG connection (and a
+    # gthread thread) until the gunicorn worker timeout kills it; this caps the
+    # query server-side so it fails cleanly first. Set comfortably below
+    # gunicorn `timeout` (120s) but above legit lab-parent scans (measured
+    # ~70s). 0 disables.
+    FS_SCAN_STATEMENT_TIMEOUT_MS = int(
+        os.getenv('FS_SCAN_STATEMENT_TIMEOUT_MS', '100000')
+    )
+
     # Session cookies (common defaults; subclasses tighten for prod)
     SESSION_COOKIE_HTTPONLY    = True
     SESSION_COOKIE_SAMESITE    = 'Lax'

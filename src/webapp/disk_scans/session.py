@@ -107,6 +107,11 @@ def init_fs_scans(app: Flask) -> None:
     # rather than threading our own connect_args through.
     pod_id = os.environ.get('HOSTNAME') or socket.gethostname()
 
+    # Read once here (main thread) and close over it — the warm pool runs in
+    # worker threads where ``current_app`` isn't bound, so we can't read config
+    # from inside the connect listener.
+    stmt_timeout_ms = int(app.config.get('FS_SCAN_STATEMENT_TIMEOUT_MS', 0) or 0)
+
     def _warm(collection: str):
         """Create + tag + health-check one collection's engine.
 
@@ -116,8 +121,9 @@ def init_fs_scans(app: Flask) -> None:
         try:
             engine = mod.get_engine(collection)
             if engine.url.drivername.startswith('postgresql'):
-                _attach_application_name(
-                    engine, f'sam-webapp:{pod_id}:fs_scans:{collection}'
+                _apply_connection_settings(
+                    engine, f'sam-webapp:{pod_id}:fs_scans:{collection}',
+                    statement_timeout_ms=stmt_timeout_ms,
                 )
             # Health check — also forces the pool to open one connection
             # so the application_name listener fires before first query.
@@ -154,27 +160,40 @@ def init_fs_scans(app: Flask) -> None:
     state['enabled'] = bool(engines)
 
 
-def _attach_application_name(engine, app_name: str) -> None:
-    """Run ``SET application_name`` on every new DBAPI connection for this engine.
+def _apply_connection_settings(
+    engine, app_name: str, *, statement_timeout_ms: int = 0
+) -> None:
+    """Apply per-connection postgres settings on every new DBAPI connection.
+
+    Sets ``application_name`` (for ``pg_stat_activity`` attribution) and, when
+    ``statement_timeout_ms`` > 0, a server-side ``statement_timeout`` so a
+    runaway fs-scans query fails cleanly instead of holding a CNPG connection
+    (and a gthread thread) until the gunicorn worker timeout.
 
     The ``connect`` event fires once per fresh postgres connection (not on
-    pool checkout), so this is the cheap, correct hook to tag connections
-    when the engine's ``connect_args`` are owned by the plugin and can't
-    be amended in-place. Mirrors ``webapp/jobs/session.py``.
+    pool checkout), so this is the cheap, correct hook when the engine's
+    ``connect_args`` are owned by the plugin and can't be amended in-place.
+    Mirrors ``webapp/jobs/session.py``.
 
-    Toggles autocommit around the ``SET`` because postgres documents that
+    Toggles autocommit around the ``SET``s because postgres documents that
     ``application_name`` changes made via ``SET`` "will not appear in
     pg_stat_activity until after a commit or rollback" — and psycopg2's
     default is ``autocommit=False``.
     """
     @event.listens_for(engine, 'connect')
-    def _set_app_name(dbapi_conn, _conn_record):
+    def _on_connect(dbapi_conn, _conn_record):
         saved = dbapi_conn.autocommit
         dbapi_conn.autocommit = True
         try:
             cur = dbapi_conn.cursor()
             try:
                 cur.execute("SET application_name = %s", (app_name,))
+                if statement_timeout_ms and statement_timeout_ms > 0:
+                    # statement_timeout accepts an integer number of ms.
+                    cur.execute(
+                        "SET statement_timeout = %s",
+                        (str(int(statement_timeout_ms)),),
+                    )
             finally:
                 cur.close()
         finally:
