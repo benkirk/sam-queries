@@ -13,6 +13,9 @@
  *     the user-dashboard resource-details page) → expand the day row
  *     in the Historical Usage table below, auto-opening the parent
  *     month row if needed (3-level mode for >45-day spans).
+ *   - Bar href starts with #ah-bar-<index> (Access-history histogram on
+ *     the disk resource-details page) → expand the matching bucket's
+ *     per-user detail row in the table below the chart.
  *
  * Safe on pages where the target containers aren't included — each
  * branch checks for its targets and silently no-ops.
@@ -32,6 +35,24 @@
     };
 
     var BAR_DAY_PREFIX = '#day-bar-';
+    var BAR_AH_PREFIX = '#ah-bar-';
+
+    // Access-history histogram → expand the matching bucket's per-user
+    // detail row. The bucket <tr> carries data-ah-bucket="<index>" and a
+    // data-bs-target pointing at its collapse row (see
+    // disk_scans_access_history.html).
+    function openBucketRow(index) {
+        var row = document.querySelector('tr[data-ah-bucket="' + index + '"]');
+        if (!row || !window.bootstrap) return;
+        var targetSel = row.getAttribute('data-bs-target');
+        if (!targetSel) return;
+        var el = document.querySelector(targetSel);
+        if (!el) return;
+        bootstrap.Collapse.getOrCreateInstance(el, {toggle: false}).show();
+        setTimeout(function () {
+            row.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }, 60);
+    }
 
     function openDayRow(isoDate) {
         var row = document.querySelector('tr[data-date="' + isoDate + '"]');
@@ -85,6 +106,15 @@
             if (!iso) return;
             e.preventDefault();
             openDayRow(iso);
+            return;
+        }
+
+        // Bar → Access-history bucket per-user detail row
+        if (href.indexOf(BAR_AH_PREFIX) === 0) {
+            var idx = href.slice(BAR_AH_PREFIX.length);
+            if (idx === '') return;
+            e.preventDefault();
+            openBucketRow(idx);
             return;
         }
 

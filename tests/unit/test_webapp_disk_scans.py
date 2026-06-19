@@ -339,13 +339,17 @@ def test_access_history_renders_svg(app, auth_client, active_project, monkeypatc
     hist = {
         'bucket_labels': ['< 1 Month', '1-3 Months', '7+ Years'],
         'buckets': {
-            '< 1 Month':   {'data': 2 * 1024 ** 4, 'files': 100, 'owners': {1001: {}}},
-            '1-3 Months':  {'data': 1024 ** 4, 'files': 50, 'owners': {1001: {}, 1002: {}}},
+            '< 1 Month':   {'data': 2 * 1024 ** 4, 'files': 100,
+                            'owners': {1001: {'data': 1024 ** 4, 'files': 60},
+                                       1002: {'data': 1024 ** 4, 'files': 40}}},
+            '1-3 Months':  {'data': 1024 ** 4, 'files': 50,
+                            'owners': {1001: {'data': 1024 ** 4, 'files': 50}}},
             '7+ Years':    {'data': 512 * 1024 ** 3, 'files': 10, 'owners': {}},
         },
         'total_data': 3 * 1024 ** 4 + 512 * 1024 ** 3, 'total_files': 160,
         'directory': '/glade/campaign/cisl', 'fast_path': True,
         'reference_scan_date': datetime(2026, 6, 1),
+        'username_map': {1001: 'alice', 1002: 'bob'},
     }
     monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: hist)
 
@@ -357,6 +361,14 @@ def test_access_history_renders_svg(app, auth_client, active_project, monkeypatc
     assert '<svg' in body                 # matplotlib SVG actually rendered
     assert '7+ Years' in body             # bucket label in the table (no HTML-escaping)
     assert 'fast path' in body            # fast_path badge
+    # Per-user breakdown rendered inside the bucket's collapse detail row.
+    assert 'alice' in body                # username resolved via username_map
+    assert 'bob' in body
+    assert 'data-bs-toggle="collapse"' in body   # bucket rows are expandable
+    # Chart bar → row drill-down wiring (svg-chart-links.js #ah-bar- branch):
+    # buckets with owners get an SVG anchor and a matching row lookup attr.
+    assert '#ah-bar-0' in body            # bar anchor for the first owned bucket
+    assert 'data-ah-bucket="0"' in body   # row the anchor expands
 
 
 def test_access_history_empty_when_none(app, auth_client, active_project, monkeypatch):

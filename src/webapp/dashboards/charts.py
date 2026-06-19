@@ -530,16 +530,17 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
 def _access_history_cache_key(hist):
     """Stable key from the per-bucket data/file totals + reference date.
 
-    Hashes only what the rendered bars depend on (bucket order, data and
-    file counts, and the snapshot date in the title) — not the full
-    per-owner breakdown, which doesn't affect the chart.
+    Hashes the bucket order, data and file counts, the snapshot date in the
+    title, and whether each bucket has owners (which governs the bar's
+    drill-down anchor).
     """
     labels = list((hist or {}).get('bucket_labels', []))
     buckets = (hist or {}).get('buckets', {})
     payload = [
         (lbl,
          buckets.get(lbl, {}).get('data', 0),
-         buckets.get(lbl, {}).get('files', 0))
+         buckets.get(lbl, {}).get('files', 0),
+         bool(buckets.get(lbl, {}).get('owners')))
         for lbl in labels
     ]
     return _content_hash([payload, str((hist or {}).get('reference_scan_date', ''))])
@@ -580,8 +581,15 @@ def generate_access_history_histogram(hist) -> str:
 
     fig, ax = plt.subplots(figsize=(14, 5))
     colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)] for i in range(len(labels))]
-    ax.bar(range(len(labels)), scaled, color=colors,
-           edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+    bars = ax.bar(range(len(labels)), scaled, color=colors,
+                  edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+    # Make each bar a drill-down anchor (#ah-bar-<bucket index>) so a click
+    # expands the matching bucket's per-user detail row — svg-chart-links.js
+    # intercepts the sentinel (mirrors the Usage Trend day-bar pattern). Only
+    # buckets with owners get a link, matching the row's expand toggle.
+    for i, (lbl, rect) in enumerate(zip(labels, bars.patches)):
+        if buckets.get(lbl, {}).get('owners'):
+            rect.set_url(f'#ah-bar-{i}')
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=30, ha='right')
     ax.set_ylabel(f'Data ({unit_label})')
