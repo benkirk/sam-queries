@@ -37,6 +37,7 @@ EXTERNAL_SECRETS=(
     "samuel-sam-db-credentials-esos"
     "samuel-jh-db-credentials-esos"
     "samuel-jh-credentials-esos"
+    "samuel-fs-db-credentials-esos"
     "samuel-oidc-credentials-esos"
 )
 
