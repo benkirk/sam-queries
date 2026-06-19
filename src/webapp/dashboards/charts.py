@@ -527,20 +527,58 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
 # 1c. Access-time distribution histogram (Filesystem Scans — DISK)
 # ---------------------------------------------------------------------------
 
-def _access_history_cache_key(hist):
-    """Stable key from the per-bucket data/file totals + reference date.
+# Top-N owners drawn as their own stack segment per bar; the rest collapse
+# into one aggregated "other" segment at the base. Matches the table's top-10.
+_AH_TOP_SEGMENTS = 10
 
-    Hashes the bucket order, data and file counts, the snapshot date in the
-    title, and whether each bucket has owners (which governs the bar's
-    drill-down anchor).
+
+def _bucket_segments(owners):
+    """Per-bucket stacked-bar segments, bottom → top.
+
+    Returns a list of segment byte-values ordered as the long-tail "other"
+    aggregate (if any) followed by the top-``_AH_TOP_SEGMENTS`` owners
+    ascending — so the largest owner sits at the top of the bar. Empty list
+    when the bucket has no owners (→ drawn as a single flat bar).
+    """
+    if not owners:
+        return []
+    ranked = sorted((d.get('data', 0) or 0) for d in owners.values())
+    if len(ranked) > _AH_TOP_SEGMENTS:
+        return [sum(ranked[:-_AH_TOP_SEGMENTS])] + ranked[-_AH_TOP_SEGMENTS:]
+    return ranked
+
+
+def _shade_family(base_hex, n, lightest=0.66):
+    """``n`` colors blended from a light tint (index 0) to *base_hex* (index n-1).
+
+    Gives each stacked bar a single-hue gradient: the bottom "other" segment
+    is the palest, the top (largest) owner the boldest base color.
+    """
+    import matplotlib.colors as mcolors
+    base = np.array(mcolors.to_rgb(base_hex))
+    white = np.array([1.0, 1.0, 1.0])
+    if n <= 1:
+        return [tuple(base)]
+    return [
+        tuple(base * (1 - f) + white * f)
+        for j in range(n)
+        for f in (lightest * (1 - j / (n - 1)),)
+    ]
+
+
+def _access_history_cache_key(hist):
+    """Stable key from the per-bucket data/file totals + segment shape + date.
+
+    Hashes the bucket order, file counts, and the exact stacked-bar segment
+    values (top-N owners + "other") plus the snapshot date in the title —
+    everything the rendered SVG depends on.
     """
     labels = list((hist or {}).get('bucket_labels', []))
     buckets = (hist or {}).get('buckets', {})
     payload = [
         (lbl,
-         buckets.get(lbl, {}).get('data', 0),
          buckets.get(lbl, {}).get('files', 0),
-         bool(buckets.get(lbl, {}).get('owners')))
+         tuple(_bucket_segments(buckets.get(lbl, {}).get('owners') or {})))
         for lbl in labels
     ]
     return _content_hash([payload, str((hist or {}).get('reference_scan_date', ''))])
@@ -559,9 +597,11 @@ def generate_access_history_histogram(hist) -> str:
             Bars plot ``data`` (bytes) per bucket; ``files``/``owners`` are
             surfaced in the surrounding table, not the chart.
 
-    Y-axis auto-scales to GiB / TiB / PiB based on the peak bucket. Bars
-    use the Unity 10-color stacked palette in band order (recent → stale).
-    Returns a "no data" placeholder div when the histogram is empty.
+    Y-axis auto-scales to GiB / TiB / PiB based on the peak bucket. Each bar
+    is a single-hue stack: the top owners (largest at top) over an aggregated
+    "other" base, shaded light → dark in that band's Unity color, so the
+    spread between users is legible before clicking. Returns a "no data"
+    placeholder div when the histogram is empty.
     """
     if not hist or not hist.get('bucket_labels'):
         return '<div class="text-center text-muted">No access-history data for this scope</div>'
@@ -581,15 +621,26 @@ def generate_access_history_histogram(hist) -> str:
 
     fig, ax = plt.subplots(figsize=(14, 5))
     colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)] for i in range(len(labels))]
-    bars = ax.bar(range(len(labels)), scaled, color=colors,
-                  edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
-    # Make each bar a drill-down anchor (#ah-bar-<bucket index>) so a click
-    # expands the matching bucket's per-user detail row — svg-chart-links.js
-    # intercepts the sentinel (mirrors the Usage Trend day-bar pattern). Only
-    # buckets with owners get a link, matching the row's expand toggle.
-    for i, (lbl, rect) in enumerate(zip(labels, bars.patches)):
-        if buckets.get(lbl, {}).get('owners'):
-            rect.set_url(f'#ah-bar-{i}')
+
+    # Each bar is a stack of per-owner segments (bottom "other" + top owners
+    # ascending), shaded within the band's color family. Buckets with owners
+    # also get a drill-down anchor (#ah-bar-<i>) on every segment so a click
+    # anywhere on the bar expands the matching row — svg-chart-links.js
+    # intercepts the sentinel (mirrors the Usage Trend day-bar pattern).
+    for i, lbl in enumerate(labels):
+        owners = buckets.get(lbl, {}).get('owners') or {}
+        segs = [s / scale for s in _bucket_segments(owners)]
+        if not segs:
+            ax.bar(i, scaled[i], color=colors[i],
+                   edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+            continue
+        shades = _shade_family(colors[i], len(segs))
+        bottom = 0.0
+        for seg_val, shade in zip(segs, shades):
+            cont = ax.bar(i, seg_val, bottom=bottom, color=shade,
+                          edgecolor='white', linewidth=0.3)
+            cont.patches[0].set_url(f'#ah-bar-{i}')
+            bottom += seg_val
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=30, ha='right')
     ax.set_ylabel(f'Data ({unit_label})')
