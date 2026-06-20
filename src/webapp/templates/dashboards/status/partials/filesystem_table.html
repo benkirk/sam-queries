@@ -1,19 +1,25 @@
-{% macro filesystem_table(filesystems) %}
+{% macro filesystem_table(filesystems, id_prefix='fs') %}
+{# id_prefix namespaces all tab element IDs so this macro can be rendered more
+   than once on the same page (e.g. Derecho + Casper in dashboard.html) without
+   duplicate IDs. Bootstrap resolves a tab's href target with
+   document.querySelector(), which returns the FIRST match — so without unique
+   IDs the second table's Inodes tab targets the first table's pane and never
+   activates its own, leaving its Capacity pane showing. #}
 <div class="table-responsive">
     <!-- Tab navigation -->
-    <ul class="nav nav-tabs" id="filesystemTabs" role="tablist">
+    <ul class="nav nav-tabs" id="{{ id_prefix }}-filesystemTabs" role="tablist">
         <li class="nav-item">
-            <a class="nav-link active" id="capacity-tab" data-bs-toggle="tab" href="#capacity" role="tab" aria-controls="capacity" aria-selected="true">Capacity</a>
+            <a class="nav-link active" id="{{ id_prefix }}-capacity-tab" data-bs-toggle="tab" href="#{{ id_prefix }}-capacity" role="tab" aria-controls="{{ id_prefix }}-capacity" aria-selected="true">Capacity</a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" id="inodes-tab" data-bs-toggle="tab" href="#inodes" role="tab" aria-controls="inodes" aria-selected="false">Inodes</a>
+            <a class="nav-link" id="{{ id_prefix }}-inodes-tab" data-bs-toggle="tab" href="#{{ id_prefix }}-inodes" role="tab" aria-controls="{{ id_prefix }}-inodes" aria-selected="false">Inodes</a>
         </li>
     </ul>
 
     <!-- Tab content -->
-    <div class="tab-content" id="filesystemTabContent">
+    <div class="tab-content" id="{{ id_prefix }}-filesystemTabContent">
         <!-- Capacity Tab Pane -->
-        <div class="tab-pane fade show active" id="capacity" role="tabpanel" aria-labelledby="capacity-tab">
+        <div class="tab-pane fade show active" id="{{ id_prefix }}-capacity" role="tabpanel" aria-labelledby="{{ id_prefix }}-capacity-tab">
             <table class="table table-sm table-bordered filesystem-table">
                 <thead class="thead-light">
                     <tr>
@@ -72,7 +78,7 @@
         </div>
 
         <!-- Inodes Tab Pane -->
-        <div class="tab-pane fade" id="inodes" role="tabpanel" aria-labelledby="inodes-tab">
+        <div class="tab-pane fade" id="{{ id_prefix }}-inodes" role="tabpanel" aria-labelledby="{{ id_prefix }}-inodes-tab">
             <table class="table table-sm table-bordered filesystem-table">
                 <thead class="thead-light">
                     <tr>

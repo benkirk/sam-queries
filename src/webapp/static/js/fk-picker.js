@@ -90,4 +90,19 @@
             picker2.dispatchEvent(new CustomEvent('fk:cleared', {bubbles: true}));
         }
     });
+
+    // ── Native form reset ───────────────────────────────────────────────
+    // A "Clear filters" control (form-reset-submit in actions.js) calls
+    // form.reset(). The browser clears the picker's hidden input but never
+    // restores the badge / selected UI, so clear it explicitly. The reset
+    // event bubbles, so a delegated listener catches every form.
+    document.body.addEventListener('reset', function (e) {
+        var form = e.target;
+        if (!form || form.tagName !== 'FORM') return;
+        var pickers = form.querySelectorAll('.fk-picker');
+        for (var i = 0; i < pickers.length; i++) {
+            reset(pickers[i]);
+            pickers[i].dispatchEvent(new CustomEvent('fk:cleared', {bubbles: true}));
+        }
+    });
 })();

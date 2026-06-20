@@ -336,6 +336,26 @@ def test_entities_group_renders(app, auth_client, active_project, monkeypatch):
     assert 'csgteam' in resp.get_data(as_text=True)
 
 
+def test_entities_group_drilldown_and_pie(app, auth_client, active_project, monkeypatch):
+    """By-group rows are now expandable (GID drill-down) and a clickable pie renders."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_group_summary', lambda s, p, r, **kw: [{
+        'owner_gid': 2001, 'total_size': 1024 ** 4, 'total_files': 500,
+        'directory_count': 10, 'filesystem': 'cisl', 'groupname': 'csgteam',
+    }])
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/entities'
+        f'?resource={_RES}&kind=group'
+    )
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert 'data-group-gid="2001"' in body     # row addressable from a pie wedge
+    assert 'owner_gid=2001' in body            # collapse lazy-loads directories by GID
+    assert '#disk-ent-group-2001' in body      # pie wedge/legend sentinel
+
+
 def test_entities_kind_whitelisted(app, auth_client, active_project, monkeypatch):
     """A bogus kind falls back to owner (scan_owner_summary is used)."""
     from webapp.disk_scans import service
@@ -591,6 +611,22 @@ def test_scan_directories_forwards_filters(monkeypatch):
     assert kw['accessed_after'] == datetime(2025, 1, 1)
 
 
+def test_scan_directories_forwards_group_id(monkeypatch):
+    """A 'By group' drill-down reaches the facade as group_id (not owner_id)."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl'},
+        capture=cap,
+    )
+    svc.scan_directories(None, object(), 'Campaign_Store', owner_gid=2001)
+    kw = cap['list_kwargs']
+    assert kw['group_id'] == 2001            # facade param is group_id
+    assert kw['owner_id'] is None            # mutually exclusive with owner
+
+
 def test_directories_bucket_selection(monkeypatch):
     """Any filter routes to the 'filtered' bucket; the bare query to 'default'."""
     from webapp.disk_scans import service
@@ -607,10 +643,11 @@ def test_directories_bucket_selection(monkeypatch):
     monkeypatch.setattr(service, 'cached_scan', fake_cached)
     service.scan_directories(None, object(), 'R')                     # default
     service.scan_directories(None, object(), 'R', owner_uid=5)        # filtered
+    service.scan_directories(None, object(), 'R', owner_gid=7)        # filtered
     service.scan_directories(None, object(), 'R', leaves_only=True)   # filtered
     service.scan_directories(None, object(), 'R',
                              accessed_before=datetime(2026, 1, 1))    # filtered
-    assert seen == ['default', 'filtered', 'filtered', 'filtered']
+    assert seen == ['default', 'filtered', 'filtered', 'filtered', 'filtered']
 
 
 def test_filtered_bucket_has_short_ttl(monkeypatch):
@@ -772,21 +809,9 @@ def test_entities_owner_drilldown_markup(app, auth_client, active_project, monke
     assert 'shown.bs.collapse' in body           # lazy-loads on expand
 
 
-def test_entities_group_no_drilldown(app, auth_client, active_project, monkeypatch):
-    """Group mode stays a single tbody — no per-group directory expansion."""
-    from webapp.disk_scans import service
-    _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_group_summary', lambda s, p, r, **kw: [{
-        'owner_gid': 2001, 'total_size': 1, 'total_files': 1,
-        'directory_count': 1, 'filesystem': 'cisl', 'groupname': 'csgteam',
-    }])
-
-    resp = auth_client.get(
-        f'/dashboards/user/disk-scans/{active_project.projcode}/entities'
-        f'?resource={_RES}&kind=group'
-    )
-    assert resp.status_code == 200
-    assert 'sortable-group' not in resp.get_data(as_text=True)
+# NB: group drill-down is now SUPPORTED (fs_scans plugin group_id filter) —
+# see test_entities_group_drilldown_and_pie above, which replaces the former
+# test_entities_group_no_drilldown that asserted the single-tbody contract.
 
 
 # -- resource mode (routes): RBAC gating -------------------------------------
@@ -990,3 +1015,47 @@ def test_breadcrumb_macro_renders_href_and_htmx(app):
     assert 'hx-get="/x"' in out
     assert 'aria-current="page"' in out
     assert '>Here<' in out
+
+
+# -- disk-scans entity pie chart (By User / By Group) -----------------------
+
+class TestDiskEntityPie:
+    """charts.generate_disk_entity_pie_chart — cumulative ~90% trim + clickable
+    wedge/legend sentinels that svg-chart-links.js routes to row expansion."""
+
+    def test_cumulative_keep(self):
+        from webapp.dashboards.charts import _pie_cumulative_keep
+        assert _pie_cumulative_keep([90, 5, 3, 2]) == 1   # one dominant slice
+        assert _pie_cumulative_keep([1] * 20) == 9        # hard cap (palette = 10)
+        assert _pie_cumulative_keep([5, 4, 3]) == 3       # all fit → no "Other"
+        assert _pie_cumulative_keep([0, 0]) == 2          # zero total, no crash
+
+    def test_owner_wedges_clickable_other_inert(self):
+        from webapp.dashboards.charts import generate_disk_entity_pie_chart
+        data = [{'id': 1000 + i, 'name': f'u{i}', 'value': v}
+                for i, v in enumerate([50, 20, 10, 6, 5, 3, 2, 1, 1, 1, 0.5, 0.5])]
+        svg = generate_disk_entity_pie_chart(data, 'owner')
+        assert '#disk-ent-owner-1000' in svg     # top kept entity is clickable
+        assert 'Other (' in svg                  # long tail lumped into one slice
+        assert '#disk-ent-owner-None' not in svg  # the Other slice has no sentinel
+
+    def test_group_uses_group_prefix(self):
+        from webapp.dashboards.charts import generate_disk_entity_pie_chart
+        svg = generate_disk_entity_pie_chart(
+            [{'id': 500, 'name': 'csg', 'value': 10},
+             {'id': 501, 'name': None, 'value': 1}], 'group')
+        assert '#disk-ent-group-500' in svg
+
+    def test_empty_returns_placeholder(self):
+        from webapp.dashboards.charts import generate_disk_entity_pie_chart
+        assert 'No usage data' in generate_disk_entity_pie_chart([], 'owner')
+
+    def test_decimal_values_do_not_crash(self):
+        # Scan rollups arrive as decimal.Decimal from Postgres; the chart must
+        # coerce to float (Decimal/float don't mix in cum += v / matplotlib).
+        from decimal import Decimal
+        from webapp.dashboards.charts import generate_disk_entity_pie_chart
+        data = [{'id': 7, 'name': 'g7', 'value': Decimal('10')},
+                {'id': 8, 'name': 'g8', 'value': Decimal('3')}]
+        svg = generate_disk_entity_pie_chart(data, 'group')
+        assert '#disk-ent-group-7' in svg

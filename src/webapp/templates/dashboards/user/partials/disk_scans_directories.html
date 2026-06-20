@@ -73,6 +73,8 @@
     {% if browse %}<input type="hidden" name="browse" value="1">{% endif %}
     <input type="hidden" name="limit" value="{{ filters.limit }}">
     {% if filters.owner_uid is not none %}<input type="hidden" name="owner_uid" value="{{ filters.owner_uid }}">{% endif %}
+    {% if filters.owner_gid is not none %}<input type="hidden" name="owner_gid" value="{{ filters.owner_gid }}">{% endif %}
+    {% if filters.group_label %}<input type="hidden" name="group_label" value="{{ filters.group_label }}">{% endif %}
     {% if filters.leaves_only %}<input type="hidden" name="leaves_only" value="1">{% endif %}
     {% if filters.accessed_before_str %}<input type="hidden" name="accessed_before" value="{{ filters.accessed_before_str }}">{% endif %}
     {% if filters.accessed_after_str %}<input type="hidden" name="accessed_after" value="{{ filters.accessed_after_str }}">{% endif %}
@@ -100,12 +102,14 @@
       {% endfor %}
     </div>
     {{ scans_scope_note(fileset) }}
-    {% if filters.owner_uid is not none or filters.leaves_only
+    {% if filters.owner_uid is not none or filters.owner_gid is not none or filters.leaves_only
           or filters.accessed_before_str or filters.accessed_after_str %}
       <span class="badge bg-info-subtle text-dark border">
         <i class="fas fa-filter me-1"></i>
         {%- if filters.owner_label %}{{ filters.owner_label }}
-        {%- elif filters.owner_uid is not none %}uid {{ filters.owner_uid }}{% endif -%}
+        {%- elif filters.owner_uid is not none %}uid {{ filters.owner_uid }}
+        {%- elif filters.group_label %}{{ filters.group_label }}
+        {%- elif filters.owner_gid is not none %}gid {{ filters.owner_gid }}{% endif -%}
         {%- if filters.leaves_only %} · leaves only{% endif -%}
         {%- if filters.accessed_after_str %} · after {{ filters.accessed_after_str }}{% endif -%}
         {%- if filters.accessed_before_str %} · before {{ filters.accessed_before_str }}{% endif -%}

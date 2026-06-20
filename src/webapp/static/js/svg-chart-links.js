@@ -16,6 +16,10 @@
  *   - Bar href starts with #ah-bar-<index> (Access-history histogram on
  *     the disk resource-details page) → expand the matching bucket's
  *     per-user detail row in the table below the chart.
+ *   - Pie wedge/legend href starts with #disk-ent-owner-<uid> or
+ *     #disk-ent-group-<gid> (disk-scans By User / By Group tab) → expand
+ *     that entity's row in the table below (found via data-owner-uid /
+ *     data-group-gid), which lazy-loads its directories.
  *
  * Safe on pages where the target containers aren't included — each
  * branch checks for its targets and silently no-ops.
@@ -36,6 +40,11 @@
 
     var BAR_DAY_PREFIX = '#day-bar-';
     var BAR_AH_PREFIX = '#ah-bar-';
+    // Disk-scans entity pie (By User / By Group tab): a wedge/legend click
+    // expands the matching entity's table row, found by data-owner-uid /
+    // data-group-gid (see disk_scans_entities.html).
+    var ENT_OWNER_PREFIX = '#disk-ent-owner-';
+    var ENT_GROUP_PREFIX = '#disk-ent-group-';
 
     // Distribution histogram (Access-history / File-size tabs) → expand the
     // matching bucket's per-user detail row. The bucket <tr> carries
@@ -50,6 +59,23 @@
         var targetSel = row.getAttribute('data-bs-target');
         if (!targetSel) return;
         var el = document.querySelector(targetSel);
+        if (!el) return;
+        bootstrap.Collapse.getOrCreateInstance(el, {toggle: false}).show();
+        setTimeout(function () {
+            row.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }, 60);
+    }
+
+    // Pie wedge/legend → expand the entity's table row. The row carries the
+    // collapse target in data-bs-target (same attribute the chevron toggles),
+    // keyed by attr (data-owner-uid / data-group-gid). Scoped to the clicked
+    // chart's tab pane so other panes' identical sentinels never cross-fire.
+    function openEntityRow(attr, id, scopeEl) {
+        var root = scopeEl || document;
+        var row = root.querySelector('tr[' + attr + '="' + id + '"]');
+        if (!row || !window.bootstrap) return;
+        var sel = row.getAttribute('data-bs-target');
+        var el = sel && document.querySelector(sel);
         if (!el) return;
         bootstrap.Collapse.getOrCreateInstance(el, {toggle: false}).show();
         setTimeout(function () {
@@ -118,6 +144,24 @@
             if (idx === '') return;
             e.preventDefault();
             openBucketRow(idx, a.closest('.tab-pane'));
+            return;
+        }
+
+        // Pie wedge/legend → expand the owner row
+        if (href.indexOf(ENT_OWNER_PREFIX) === 0) {
+            var uid = href.slice(ENT_OWNER_PREFIX.length);
+            if (uid === '') return;
+            e.preventDefault();
+            openEntityRow('data-owner-uid', uid, a.closest('.tab-pane'));
+            return;
+        }
+
+        // Pie wedge/legend → expand the group row
+        if (href.indexOf(ENT_GROUP_PREFIX) === 0) {
+            var gid = href.slice(ENT_GROUP_PREFIX.length);
+            if (gid === '') return;
+            e.preventDefault();
+            openEntityRow('data-group-gid', gid, a.closest('.tab-pane'));
             return;
         }
 

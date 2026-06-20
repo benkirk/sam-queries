@@ -40,12 +40,12 @@
   {# The live, drill-aware ancestry breadcrumb is rendered inside the table
      fragment (disk_scans_directories.html) so it updates on every drill. #}
 
-  <div class="card mb-3">
-    <div class="card-body">
-      {{ dir_filters('disk-scans-filters-' ~ target_id, fragment_url, target_id,
-                     filters, user_search_url, resource_name, scope, fileset,
-                     limit_options) }}
-    </div>
+  {# Unity NCAR navy panel — same .filter-sidebar tokens as the allocations
+     and audit filters, so this explorer matches the rest of the dashboard. #}
+  <div class="filter-sidebar mb-3">
+    {{ dir_filters('disk-scans-filters-' ~ target_id, fragment_url, target_id,
+                   filters, user_search_url, resource_name, scope, fileset,
+                   limit_options) }}
   </div>
 
   <div class="card">
