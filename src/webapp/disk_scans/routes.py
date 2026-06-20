@@ -38,7 +38,10 @@ from flask_login import login_required
 from sam.core.users import User
 from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
-from webapp.dashboards.charts import generate_distribution_histogram
+from webapp.dashboards.charts import (
+    generate_disk_entity_pie_chart,
+    generate_distribution_histogram,
+)
 from webapp.disk_scans import service
 from webapp.disk_scans.scope import resolve_scan_scope
 from webapp.disk_scans.session import get_module, is_enabled
@@ -140,6 +143,7 @@ def _dir_filters() -> dict:
         sort_by = _DEFAULT_DIR_SORT
 
     owner_uid, owner_user_id, owner_label = _resolve_owner()
+    owner_gid, group_label = _resolve_group()
 
     return {
         'sort_by': sort_by,
@@ -147,6 +151,8 @@ def _dir_filters() -> dict:
         'owner_uid': owner_uid,
         'owner_user_id': owner_user_id,
         'owner_label': owner_label,
+        'owner_gid': owner_gid,
+        'group_label': group_label,
         'accessed_before': _query_date('accessed_before'),
         'accessed_after': _query_date('accessed_after'),
         'accessed_before_str': (request.args.get('accessed_before') or '').strip(),
@@ -179,6 +185,23 @@ def _resolve_owner() -> Tuple[Optional[int], Optional[int], str]:
     return owner_uid, owner_user_id, label
 
 
+def _resolve_group() -> Tuple[Optional[int], str]:
+    """Resolve the group filter to ``(owner_gid, label)``.
+
+    The 'By group' drill-down passes a unix ``?owner_gid=`` (the canonical wire
+    param echoed across re-fetches) plus an optional ``?group_label=`` carrying
+    the group name the entities row already resolved — SAM has no gid→name table
+    of its own (names come from the scan plugin's ``resolve_groupnames``), so the
+    row hands the label down rather than re-resolving it here. Falls back to a
+    numeric ``gid N`` label.
+    """
+    owner_gid = request.args.get('owner_gid', type=int)
+    if owner_gid is None:
+        return None, ''
+    label = (request.args.get('group_label') or '').strip() or f'gid {owner_gid}'
+    return owner_gid, label
+
+
 def _user_search_url() -> str:
     """The fk-picker search endpoint for the owner user picker (context='fk')."""
     return url_for('admin_dashboard.htmx_search_users', context='fk')
@@ -207,6 +230,10 @@ def _initial_fragment_url(fragment_url: str, ctx: dict, flt: dict,
         params['fileset'] = ctx['fileset']
     if flt['owner_uid'] is not None:
         params['owner_uid'] = flt['owner_uid']
+    if flt.get('owner_gid') is not None:
+        params['owner_gid'] = flt['owner_gid']
+        if flt.get('group_label'):
+            params['group_label'] = flt['group_label']
     if flt['leaves_only']:
         params['leaves_only'] = '1'
     if flt['accessed_before_str']:
@@ -359,6 +386,7 @@ def directories_fragment(project):
             db.session, ctx['scoped_project'], ctx['resource_name'],
             sort_by=flt['sort_by'], limit=flt['limit'],
             owner_uid=flt['owner_uid'],
+            owner_gid=flt['owner_gid'],
             accessed_before=flt['accessed_before'],
             accessed_after=flt['accessed_after'],
             leaves_only=flt['leaves_only'],
@@ -463,7 +491,7 @@ def entities_fragment(project):
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
             'dashboards/user/partials/disk_scans_entities.html',
-            rows=[], kind=kind,
+            rows=[], kind=kind, pie_chart=None,
             fragment_url=url_for('disk_scans.entities_fragment',
                                  projcode=project.projcode),
             enabled=is_enabled(), error=None, **ctx,
@@ -483,9 +511,22 @@ def entities_fragment(project):
         )
         error = str(exc)
 
+    # Distribution pie of scanned bytes by entity (clickable wedges → row drill).
+    # id/name keys differ by kind; value is bytes (matches the table's Size sort).
+    pie_chart = None
+    if rows:
+        id_key = 'owner_uid' if kind == 'owner' else 'owner_gid'
+        name_key = 'username' if kind == 'owner' else 'groupname'
+        entity_data = [
+            {'id': r[id_key], 'name': r.get(name_key), 'value': r['total_size']}
+            for r in rows if r.get(id_key) is not None
+        ]
+        if entity_data:
+            pie_chart = generate_disk_entity_pie_chart(entity_data, kind)
+
     return render_template(
         'dashboards/user/partials/disk_scans_entities.html',
-        rows=rows, kind=kind,
+        rows=rows, kind=kind, pie_chart=pie_chart,
         fragment_url=url_for('disk_scans.entities_fragment',
                              projcode=project.projcode),
         enabled=True, error=error, **ctx,

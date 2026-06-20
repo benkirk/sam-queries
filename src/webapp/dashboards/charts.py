@@ -932,6 +932,127 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 5b. Disk-scans entity pie chart (By User / By Group tab)
+#
+# Distribution of scanned bytes across the top owners/groups. Unlike the
+# allocation pies (fixed top-10 cap), this keeps the largest entities up to a
+# ~90% cumulative share and lumps the rest into one "Other" slice. Each kept
+# wedge + its legend entry is clickable: matplotlib set_url() emits an
+# <a xlink:href="#disk-ent-{kind}-{id}"> sentinel that svg-chart-links.js
+# routes to expanding that entity's row in the table below. The "Other" slice
+# is inert. Sentinels are keyed by uid/gid (part of the hashed input), so the
+# cached SVG is independent of any per-render container id.
+# ---------------------------------------------------------------------------
+
+_PIE_CUM_SHARE = 0.90      # show entities up to ~90% cumulative share
+_PIE_HARD_CAP = 9          # never exceed 9 named slices (palette has 10; keep "Other" distinct)
+
+
+def _pie_cumulative_keep(values_desc: list) -> int:
+    """How many leading (descending) entries to show individually.
+
+    The fewest whose cumulative share reaches ``_PIE_CUM_SHARE``, capped at
+    ``_PIE_HARD_CAP``. The remainder (if any) is meant to collapse into one
+    'Other' slice. Returns ``len(values_desc)`` when everything fits (no Other).
+    """
+    total = sum(values_desc)
+    if total <= 0:
+        return min(len(values_desc), _PIE_HARD_CAP)
+    cum = 0.0
+    for i, v in enumerate(values_desc):
+        cum += v
+        if i + 1 >= _PIE_HARD_CAP:
+            return i + 1
+        if cum / total >= _PIE_CUM_SHARE:
+            return i + 1
+    return len(values_desc)
+
+
+def _disk_entity_pie_cache_key(entity_data, kind):
+    # kind is NOT in the default content_hash(args[0]) key, but it drives the
+    # clickable-sentinel prefix — include it so owner/group never alias.
+    return _content_hash([entity_data, kind])
+
+
+@caching.chart_cached(name='disk_entity_pie_chart', maxsize=64,
+                      key_fn=_disk_entity_pie_cache_key)
+def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
+    """Pie of scanned bytes by owner (kind='owner') or group (kind='group').
+
+    Args:
+        entity_data: list of {'id': uid|gid, 'name': str|None, 'value': bytes}
+        kind: 'owner' or 'group' — selects the click sentinel prefix and the
+              numeric fallback label.
+
+    Returns:
+        SVG string ready for template rendering.
+    """
+    if not entity_data:
+        return '<div class="text-center text-muted">No usage data available</div>'
+
+    prefix = '#disk-ent-owner-' if kind == 'owner' else '#disk-ent-group-'
+    numeric_label = 'uid ' if kind == 'owner' else 'gid '
+
+    # Coerce to float at the single entry point: scan rollups arrive as
+    # decimal.Decimal from Postgres, and Decimal/float don't mix in arithmetic
+    # (cum += v) or matplotlib. Everything downstream is then plain float.
+    data = sorted(entity_data, key=lambda d: float(d['value']), reverse=True)
+    values_desc = [float(d['value']) for d in data]
+    keep = _pie_cumulative_keep(values_desc)
+
+    ids = [d['id'] for d in data[:keep]]
+    labels = [d['name'] or f'{numeric_label}{d["id"]}' for d in data[:keep]]
+    values = list(values_desc[:keep])
+    colors = list(UNITY_PALETTE_10[:keep])
+
+    n_others = len(data) - keep
+    if n_others > 0:
+        ids.append(None)                       # inert slice — no set_url
+        labels.append(f'Other ({n_others})')
+        values.append(sum(values_desc[keep:]))
+        colors.append(UNITY_NCAR_GRAY_LIGHT)
+
+    legend_labels = [f'{n} ({fmt.size(v)})' for n, v in zip(labels, values)]
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    wedges, _texts, autotexts = ax.pie(
+        values,
+        labels=None,
+        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
+        startangle=_PIE_START_ANGLE,
+        counterclock=False,
+        colors=colors,
+        pctdistance=0.85,
+    )
+    for at, wedge_color in zip(autotexts, colors):
+        at.set_color(_autopct_color_for(wedge_color))
+        at.set_fontweight('bold')
+        at.set_fontsize(8)
+
+    legend = ax.legend(wedges, legend_labels, loc='center left',
+                       bbox_to_anchor=(1.0, 0.5), fontsize=9)
+
+    # Clickable wedges + legend entries → expand the matching table row.
+    # Skip the "Other" slice (id is None). svg-chart-links.js intercepts these.
+    leg_patches = legend.get_patches()
+    leg_texts = legend.get_texts()
+    for i, ent_id in enumerate(ids):
+        if ent_id is None:
+            continue
+        url = f'{prefix}{ent_id}'
+        wedges[i].set_url(url)
+        if i < len(leg_patches):
+            leg_patches[i].set_url(url)
+        if i < len(leg_texts):
+            leg_texts[i].set_url(url)
+
+    svg_io = StringIO()
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
+    plt.close(fig)
+    return svg_io.getvalue()
+
+
+# ---------------------------------------------------------------------------
 # 6. Allocation pace chart (allocations dashboard)
 #
 # Stacked-area chart where each allocation is one band with a step at
