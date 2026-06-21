@@ -1273,6 +1273,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     height: auto;
 }
 
+/* Disk-scans entity pie (By User / By Group tab). matplotlib renders it at a
+   ~670px native width (≈ half the card); scale it up to read better without
+   going full width. Centered by the wrapper's flex justify-content. */
+.disk-entity-pie svg {
+    width: 100%;
+    max-width: 880px;
+    height: auto;
+}
+
 /* ============================================================================
    MUTED BADGE PALETTE — saturated Bootstrap defaults (bg-primary/info/success/
    warning/danger) read as aggressive next to the flat Unity surfaces, especially

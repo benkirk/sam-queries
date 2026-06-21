@@ -139,6 +139,7 @@ def _scan_directories(
     sort_by: str = 'size',
     limit: Optional[int] = 50,
     owner_uid: Optional[int] = None,
+    owner_gid: Optional[int] = None,
     accessed_before: Optional[datetime] = None,
     accessed_after: Optional[datetime] = None,
     leaves_only: bool = False,
@@ -157,11 +158,12 @@ def _scan_directories(
     interactive exploration can't crowd the hot default-path entries.
     """
     q = mod.FsScanQueries(filesystems=collections)
-    filtered = bool(owner_uid is not None or accessed_before or accessed_after
-                    or leaves_only)
+    filtered = bool(owner_uid is not None or owner_gid is not None
+                    or accessed_before or accessed_after or leaves_only)
     opts = {
         'sort_by': sort_by, 'limit': limit,
         'owner_uid': owner_uid,
+        'owner_gid': owner_gid,
         'accessed_before': accessed_before.isoformat() if accessed_before else None,
         'accessed_after': accessed_after.isoformat() if accessed_after else None,
         'leaves_only': leaves_only,
@@ -177,6 +179,7 @@ def _scan_directories(
             sort_by=sort_by,
             limit=limit,
             owner_id=owner_uid,
+            group_id=owner_gid,
             accessed_before=accessed_before,
             accessed_after=accessed_after,
             leaves_only=leaves_only,
@@ -196,6 +199,7 @@ def scan_directories(
     sort_by: str = 'size',
     limit: Optional[int] = 50,
     owner_uid: Optional[int] = None,
+    owner_gid: Optional[int] = None,
     accessed_before: Optional[datetime] = None,
     accessed_after: Optional[datetime] = None,
     leaves_only: bool = False,
@@ -219,7 +223,7 @@ def scan_directories(
     return _scan_directories(
         mod, collections, path_prefixes,
         sort_by=sort_by, limit=limit,
-        owner_uid=owner_uid, accessed_before=accessed_before,
+        owner_uid=owner_uid, owner_gid=owner_gid, accessed_before=accessed_before,
         accessed_after=accessed_after, leaves_only=leaves_only,
         single_owner=single_owner, min_depth=min_depth, max_depth=max_depth,
     )

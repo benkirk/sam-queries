@@ -147,7 +147,7 @@
         <!-- Filesystems -->
         {% if casper_filesystems %}
         <h6 class="mb-3 mt-4"><i class="fas fa-database"></i> Filesystem Status</h6>
-        {{ fs.filesystem_table(casper_filesystems) }}
+        {{ fs.filesystem_table(casper_filesystems, 'casper') }}
         {% endif %}
     </div>
 </div>

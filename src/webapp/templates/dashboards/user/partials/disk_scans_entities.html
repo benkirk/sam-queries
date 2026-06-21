@@ -53,15 +53,25 @@
   {% if not rows %}
     {{ scans_empty('No ' ~ ('user' if _is_owner else 'group') ~ ' usage recorded for this scope.') }}
   {% else %}
+    {# Distribution pie of scanned bytes (top ~90% + one "Other"). Wedges and
+       legend entries are clickable (set_url sentinels → svg-chart-links.js)
+       and expand the matching entity's row below. Swaps with the kind toggle
+       since the whole fragment re-renders. #}
+    {% if pie_chart %}
+    <div class="d-flex justify-content-center mb-3 disk-entity-pie">
+      {{ pie_chart | safe }}
+    </div>
+    {% endif %}
+
     {# Client-side sortable (sortable_table.js): sort by name (text), or
        Size/Files/Directories (numeric). Size sorts by raw bytes via
        data-sort-value while rendering fmt_size. Default order is Size desc,
        matching the facade's result order.
 
-       Owner mode uses MULTI-TBODY (``tbody.sortable-group``): each user's row
-       and its lazy drill-down detail row reorder together under client sort.
-       Group mode stays a single tbody (no per-group directory drill-down —
-       the facade filters directories by owner UID only). #}
+       Both owner and group modes use MULTI-TBODY (``tbody.sortable-group``):
+       each entity's row and its lazy drill-down detail row reorder together
+       under client sort. Owner rows filter directories by UID, group rows by
+       GID (fs_scans plugin ``group_id`` filter). #}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-light">
@@ -77,7 +87,9 @@
             {% set name = r.username %}
             {% set _oid = target_id ~ '-owner-' ~ r.owner_uid %}
             <tbody class="sortable-group">
-              <tr>
+              {# data-owner-uid + data-bs-target let a pie-wedge click open this
+                 row's collapse (svg-chart-links.js), same as the chevron. #}
+              <tr data-owner-uid="{{ r.owner_uid }}" data-bs-target="#{{ _oid }}-row">
                 <td data-sort-value="{{ name if name else (r.owner_uid | string) }}">
                   <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
                           type="button" data-bs-toggle="collapse"
@@ -113,11 +125,20 @@
             </tbody>
           {% endfor %}
         {% else %}
-          <tbody>
-            {% for r in rows %}
-              {% set name = r.groupname %}
-              <tr>
+          {% for r in rows %}
+            {% set name = r.groupname %}
+            {% set _gid = target_id ~ '-group-' ~ r.owner_gid %}
+            <tbody class="sortable-group">
+              {# data-group-gid + data-bs-target let a pie-wedge click open this
+                 row's collapse (svg-chart-links.js), same as the chevron. #}
+              <tr data-group-gid="{{ r.owner_gid }}" data-bs-target="#{{ _gid }}-row">
                 <td data-sort-value="{{ name if name else (r.owner_gid | string) }}">
+                  <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
+                          type="button" data-bs-toggle="collapse"
+                          data-bs-target="#{{ _gid }}-row"
+                          aria-expanded="false" aria-controls="{{ _gid }}-row">
+                    <i class="fas fa-chevron-right collapse-icon small"></i>
+                  </button>
                   {% if name %}<code>{{ name }}</code>
                   {% else %}<span class="text-muted" title="unresolved GID">gid {{ r.owner_gid }}</span>{% endif %}
                 </td>
@@ -125,8 +146,25 @@
                 <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
                 <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
               </tr>
-            {% endfor %}
-          </tbody>
+              <tr class="collapse" id="{{ _gid }}-row">
+                <td colspan="4" class="p-0 border-0">
+                  {# Lazy-load this group's top directories on first expand
+                     (owner_gid filter → fs_scans plugin group_id). group_label
+                     carries the resolved name for the filter badge. #}
+                  <div class="p-2 bg-light"
+                       id="{{ _gid }}"
+                       hx-get="{{ url_for('disk_scans.directories_fragment', projcode=project.projcode) }}?owner_gid={{ r.owner_gid }}{% if name %}&group_label={{ name | urlencode }}{% endif %}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _gid }}&limit=20"
+                       hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+                       hx-swap="innerHTML">
+                    <p class="text-muted small mb-0">
+                      <i class="fas fa-spinner fa-spin me-1"></i>
+                      Loading {{ name or ('gid ' ~ r.owner_gid) }}'s directories…
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          {% endfor %}
         {% endif %}
       </table>
     </div>

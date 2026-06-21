@@ -1,9 +1,12 @@
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
 {#
-  Reusable Large-directories filter panel (audit_filters house style),
-  mode-agnostic. Rendered above the table container on the standalone
-  explorer page; on submit it hx-get's *fragment_url* (the project- or
-  resource-mode directory fragment) into #target_id with all of its fields.
+  Reusable Large-directories filter panel in the Unity .filter-sidebar house
+  style (navy panel + gold title + white controls + "Clear filters"), matching
+  audit_filters / the allocations dashboard. The caller wraps this macro in a
+  <div class="filter-sidebar">. Mode-agnostic. Rendered above the table
+  container on the standalone explorer page; on submit it hx-get's
+  *fragment_url* (the project- or resource-mode directory fragment) into
+  #target_id with all of its fields.
 
   Args:
     form_id         unique id for this form instance
@@ -24,6 +27,15 @@
       hx-target="#{{ target_id }}"
       hx-swap="innerHTML"
       hx-trigger="submit">
+  <div class="filter-sidebar-header">
+    <h2 class="filter-sidebar-title">Filters</h2>
+    {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the form
+       and re-triggers its htmx submit. fk-picker.js also clears its badge on
+       the native reset event, so the user picker clears too. #}
+    <a class="filter-sidebar-clear" style="cursor: pointer;"
+       data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
+  </div>
+
   {# Scope context — submitted alongside the visible filter controls. #}
   <input type="hidden" name="resource" value="{{ resource_name }}">
   {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
@@ -35,27 +47,30 @@
 
   <div class="d-flex flex-wrap align-items-end gap-3">
     <div>
-      <label class="form-label mb-1"><strong>Accessed after</strong></label>
-      <input type="date" class="form-control form-control-sm"
+      <label class="form-label"><strong>Accessed after</strong></label>
+      <input type="date" class="form-control"
              name="accessed_after" value="{{ filters.accessed_after_str }}"
              style="width:160px;">
     </div>
     <div>
-      <label class="form-label mb-1"><strong>Accessed before</strong></label>
-      <input type="date" class="form-control form-control-sm"
+      <label class="form-label"><strong>Accessed before</strong></label>
+      <input type="date" class="form-control"
              name="accessed_before" value="{{ filters.accessed_before_str }}"
              style="width:160px;">
     </div>
 
     <div style="min-width:240px;">
+      {# optional_text='' — drops the muted "(optional)" hint, which is both
+         redundant on a filter and low-contrast on the navy panel. #}
       {{ fk_search_field('owner_user_id', 'User', user_search_url,
                          placeholder='Search users…',
+                         optional_text='',
                          selected_id=filters.owner_user_id or '',
                          selected_label=filters.owner_label or '',
-                         label_class='form-label mb-1') }}
+                         label_class='form-label') }}
     </div>
 
-    <div class="form-check form-switch mb-2">
+    <div class="form-check form-switch align-self-center mb-2">
       <input class="form-check-input" type="checkbox" role="switch"
              id="{{ form_id }}-leaves" name="leaves_only" value="1"
              {% if filters.leaves_only %}checked{% endif %}>
@@ -63,15 +78,15 @@
     </div>
 
     <div>
-      <label class="form-label mb-1"><strong>Rows</strong></label>
-      <select class="form-select form-select-sm" name="limit" style="width:100px;">
+      <label class="form-label"><strong>Rows</strong></label>
+      <select class="form-select" name="limit" style="width:100px;">
         {% for n in limit_options %}
           <option value="{{ n }}" {% if filters.limit == n %}selected{% endif %}>{{ n }}</option>
         {% endfor %}
       </select>
     </div>
 
-    <button type="submit" class="btn btn-primary mb-2">
+    <button type="submit" class="btn btn-outline-white mb-2">
       <i class="fas fa-filter me-1"></i> Apply
     </button>
   </div>
