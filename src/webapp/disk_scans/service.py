@@ -189,6 +189,29 @@ def _atime_band_bounds(reference_scan_date, bucket_labels) -> Dict[str, Dict[str
     return out
 
 
+def _size_band_bounds(bucket_labels) -> Dict[str, Dict[str, Optional[int]]]:
+    """Map each file-size band to its ``(size_min, size_max)`` average-file-size
+    bounds (bytes), so the band → user → directories drill-down can filter
+    directories by average own-file size.
+
+    Bounds come from the plugin's ``SIZE_BUCKETS`` (label, min, max) — the single
+    source of truth — mapped by label. The largest band's ``max`` is ``None``
+    (open-ended). Returns ``{}`` if the plugin is unavailable.
+    """
+    try:
+        from fs_scans.core.models import SIZE_BUCKETS
+    except Exception:
+        return {}
+    if not bucket_labels:
+        return {}
+    wanted = set(bucket_labels)
+    return {
+        label: {'size_min': mn, 'size_max': mx}
+        for label, mn, mx in SIZE_BUCKETS
+        if label in wanted
+    }
+
+
 def _scan_directories(
     mod,
     collections: List[str],
@@ -201,6 +224,8 @@ def _scan_directories(
     accessed_before: Optional[datetime] = None,
     accessed_after: Optional[datetime] = None,
     atime_recursive: bool = True,
+    min_avg_size: Optional[int] = None,
+    max_avg_size: Optional[int] = None,
     leaves_only: bool = False,
     single_owner: bool = False,
     min_depth: Optional[int] = None,
@@ -218,7 +243,8 @@ def _scan_directories(
     """
     q = mod.FsScanQueries(filesystems=collections)
     filtered = bool(owner_uid is not None or owner_gid is not None
-                    or accessed_before or accessed_after or leaves_only)
+                    or accessed_before or accessed_after or leaves_only
+                    or min_avg_size is not None or max_avg_size is not None)
     opts = {
         'sort_by': sort_by, 'limit': limit,
         'owner_uid': owner_uid,
@@ -226,6 +252,8 @@ def _scan_directories(
         'accessed_before': accessed_before.isoformat() if accessed_before else None,
         'accessed_after': accessed_after.isoformat() if accessed_after else None,
         'atime_recursive': atime_recursive,
+        'min_avg_size': min_avg_size,
+        'max_avg_size': max_avg_size,
         'leaves_only': leaves_only,
         'single_owner': single_owner,
         'min_depth': min_depth, 'max_depth': max_depth,
@@ -243,6 +271,8 @@ def _scan_directories(
             accessed_before=accessed_before,
             accessed_after=accessed_after,
             atime_recursive=atime_recursive,
+            min_avg_size=min_avg_size,
+            max_avg_size=max_avg_size,
             leaves_only=leaves_only,
             single_owner=single_owner,
             min_depth=min_depth,
@@ -264,6 +294,8 @@ def scan_directories(
     accessed_before: Optional[datetime] = None,
     accessed_after: Optional[datetime] = None,
     atime_recursive: bool = True,
+    min_avg_size: Optional[int] = None,
+    max_avg_size: Optional[int] = None,
     outermost_only: bool = False,
     leaves_only: bool = False,
     single_owner: bool = False,
@@ -295,6 +327,7 @@ def scan_directories(
         sort_by=sort_by, limit=limit,
         owner_uid=owner_uid, owner_gid=owner_gid, accessed_before=accessed_before,
         accessed_after=accessed_after, atime_recursive=atime_recursive,
+        min_avg_size=min_avg_size, max_avg_size=max_avg_size,
         leaves_only=leaves_only,
         single_owner=single_owner, min_depth=min_depth, max_depth=max_depth,
     )
@@ -461,7 +494,20 @@ def scan_file_sizes(
     if not collections:
         return None
     q = mod.FsScanQueries(filesystems=collections)
+
+    def _compute():
+        hist = q.file_size_histogram(path_prefixes=path_prefixes, owner_uid=owner_uid)
+        if hist:
+            # Tag each band with its average-file-size window so the per-user
+            # drill-down can list that band's directories (see _size_band_bounds).
+            bounds = _size_band_bounds(hist.get('bucket_labels'))
+            for label, b in (hist.get('buckets') or {}).items():
+                if label in bounds:
+                    b['size_min'] = bounds[label]['size_min']
+                    b['size_max'] = bounds[label]['size_max']
+        return hist
+
     return cached_scan(
         'file_sizes', q, collections, path_prefixes, {'owner_uid': owner_uid},
-        lambda: q.file_size_histogram(path_prefixes=path_prefixes, owner_uid=owner_uid),
+        _compute,
     )

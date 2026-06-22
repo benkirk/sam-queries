@@ -495,6 +495,56 @@ def test_access_history_no_drilldown_without_bounds(app, auth_client, active_pro
     assert 'owner_uid=1001' not in body           # but not expandable to dirs
 
 
+def test_file_sizes_user_drilldown_rows(app, auth_client, active_project, monkeypatch):
+    """File-size bands carrying an avg-size window render expandable per-user
+    rows whose collapse lazy-loads that user's directories filtered by average
+    own-file size (owner_uid + min/max_avg_size + recursive=0)."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    hist = {
+        'bucket_labels': ['1 MiB - 10 MiB'],
+        'buckets': {
+            '1 MiB - 10 MiB': {
+                'data': 1024 ** 3, 'files': 100,
+                'owners': {1001: {'data': 1024 ** 3, 'files': 100}},
+                'size_min': 1048576, 'size_max': 10485760,
+            },
+        },
+        'total_data': 1024 ** 3, 'total_files': 100,
+        'directory': '/glade/campaign/cisl', 'fast_path': True,
+        'reference_scan_date': datetime(2026, 6, 1),
+        'username_map': {1001: 'alice'},
+    }
+    monkeypatch.setattr(service, 'scan_file_sizes', lambda s, p, r, **kw: hist)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/file-sizes?resource={_RES}'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'owner_uid=1001' in body
+    assert 'min_avg_size=1048576' in body
+    assert 'max_avg_size=10485760' in body
+    assert 'recursive=0' in body
+    assert 'shown.bs.collapse' in body
+
+
+def test_directories_avg_size_flag(app, auth_client, active_project, monkeypatch):
+    """?min_avg_size/max_avg_size reach the service as ints for the size drill."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    captured = {}
+    monkeypatch.setattr(service, 'scan_directories',
+                        lambda s, p, r, **kw: captured.update(kw) or [])
+
+    auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
+        f'?resource={_RES}&min_avg_size=1048576&max_avg_size=10485760&recursive=0&sort_by=size_nr'
+    )
+    assert captured['min_avg_size'] == 1048576
+    assert captured['max_avg_size'] == 10485760
+
+
 def test_access_history_empty_when_none(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
     _enable_fs_scans(app, monkeypatch)
@@ -812,6 +862,72 @@ def test_scan_access_history_tags_band_bounds(monkeypatch):
     assert out['buckets']['< 1 Month']['accessed_before'] == '2026-06-01'
     assert out['buckets']['< 1 Month']['accessed_after'] == '2026-05-02'
     assert out['buckets']['7+ Years']['accessed_after'] is None
+
+
+def test_size_band_bounds_maps_bands_to_byte_ranges():
+    """Each file-size band maps to its (size_min, size_max) byte range; the
+    largest band is open-ended (max None)."""
+    from webapp.disk_scans.service import _size_band_bounds
+
+    b = _size_band_bounds(['0 - 1 KiB', '100 GiB+'])
+    assert b['0 - 1 KiB'] == {'size_min': 0, 'size_max': 1024}
+    assert b['100 GiB+']['size_min'] == 100 * 1024 ** 3
+    assert b['100 GiB+']['size_max'] is None
+
+
+def test_scan_directories_forwards_avg_size(monkeypatch):
+    """The average-file-size band reaches the facade as min/max_avg_size."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl'},
+        capture=cap,
+    )
+    svc.scan_directories(None, object(), 'Campaign_Store',
+                         min_avg_size=1024, max_avg_size=10240)
+    kw = cap['list_kwargs']
+    assert kw['min_avg_size'] == 1024
+    assert kw['max_avg_size'] == 10240
+
+
+def test_scan_file_sizes_tags_band_bounds(monkeypatch):
+    """scan_file_sizes stamps each band with its avg-file-size window so the
+    drill-down can scope directories to the clicked size band."""
+    from webapp.disk_scans import service
+
+    hist = {
+        'bucket_labels': ['0 - 1 KiB', '100 GiB+'],
+        'buckets': {
+            '0 - 1 KiB': {'data': 1, 'files': 1, 'owners': {1001: {'data': 1, 'files': 1}}},
+            '100 GiB+':  {'data': 1, 'files': 1, 'owners': {}},
+        },
+    }
+
+    class _Q:
+        def __init__(self, filesystems):
+            pass
+
+        def file_size_histogram(self, **kw):
+            return hist
+
+    mod = types.SimpleNamespace(FsScanQueries=_Q,
+                                collection_for_path=lambda p: 'cisl',
+                                normalize_path=lambda p: p)
+    monkeypatch.setattr(service, 'get_module', lambda: mod)
+    monkeypatch.setattr(service, 'get_collections', lambda: ['cisl'])
+    monkeypatch.setattr(service, 'resolve_scan_scope',
+                        lambda s, p, r: (['/glade/campaign/cisl/csg'], ['cisl']))
+    monkeypatch.setattr(
+        service, 'cached_scan',
+        lambda qt, q, colls, pfx, opts, compute, bucket='default': compute(),
+    )
+
+    out = service.scan_file_sizes(None, object(), 'Campaign_Store')
+    assert out['buckets']['0 - 1 KiB']['size_min'] == 0
+    assert out['buckets']['0 - 1 KiB']['size_max'] == 1024
+    assert out['buckets']['100 GiB+']['size_max'] is None
 
 
 def test_directories_bucket_selection(monkeypatch):

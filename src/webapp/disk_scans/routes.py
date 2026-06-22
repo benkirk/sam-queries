@@ -174,6 +174,8 @@ def _dir_filters() -> dict:
         'accessed_after_str': (request.args.get('accessed_after') or '').strip(),
         'atime_recursive': _atime_recursive_flag(),
         'outermost': _truthy(request.args.get('outermost')),
+        'min_avg_size': request.args.get('min_avg_size', type=int),
+        'max_avg_size': request.args.get('max_avg_size', type=int),
         'leaves_only': _truthy(request.args.get('leaves_only')),
     }
 
@@ -261,6 +263,10 @@ def _initial_fragment_url(fragment_url: str, ctx: dict, flt: dict,
         params['recursive'] = '0'
     if flt.get('outermost'):
         params['outermost'] = '1'
+    if flt.get('min_avg_size') is not None:
+        params['min_avg_size'] = flt['min_avg_size']
+    if flt.get('max_avg_size') is not None:
+        params['max_avg_size'] = flt['max_avg_size']
     return f'{fragment_url}?{urlencode(params)}'
 
 
@@ -411,6 +417,8 @@ def directories_fragment(project):
             accessed_before=flt['accessed_before'],
             accessed_after=flt['accessed_after'],
             atime_recursive=flt['atime_recursive'],
+            min_avg_size=flt['min_avg_size'],
+            max_avg_size=flt['max_avg_size'],
             outermost_only=flt['outermost'],
             leaves_only=flt['leaves_only'],
             subpath=ctx['fileset'],

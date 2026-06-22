@@ -96,6 +96,8 @@
     {% if filters.leaves_only %}<input type="hidden" name="leaves_only" value="1">{% endif %}
     {% if filters.accessed_before_str %}<input type="hidden" name="accessed_before" value="{{ filters.accessed_before_str }}">{% endif %}
     {% if filters.accessed_after_str %}<input type="hidden" name="accessed_after" value="{{ filters.accessed_after_str }}">{% endif %}
+    {% if filters.min_avg_size is not none %}<input type="hidden" name="min_avg_size" value="{{ filters.min_avg_size }}">{% endif %}
+    {% if filters.max_avg_size is not none %}<input type="hidden" name="max_avg_size" value="{{ filters.max_avg_size }}">{% endif %}
   </form>
 
   {# File-browser ancestry (explorer/browse mode only). Click a crumb to
@@ -140,7 +142,8 @@
     {% endif %}
     {{ scans_scope_note(fileset) }}
     {% if filters.owner_uid is not none or filters.owner_gid is not none or filters.leaves_only
-          or filters.accessed_before_str or filters.accessed_after_str %}
+          or filters.accessed_before_str or filters.accessed_after_str
+          or filters.min_avg_size is not none or filters.max_avg_size is not none %}
       <span class="badge bg-info-subtle text-dark border">
         <i class="fas fa-filter me-1"></i>
         {%- if filters.owner_label %}{{ filters.owner_label }}
@@ -151,6 +154,8 @@
         {%- if filters.accessed_after_str %} · after {{ filters.accessed_after_str }}{% endif -%}
         {%- if filters.accessed_before_str %} · before {{ filters.accessed_before_str }}{% endif -%}
         {%- if (filters.accessed_after_str or filters.accessed_before_str) %} · {{ 'subtree' if _rec else 'own files' }}{% endif -%}
+        {%- if filters.min_avg_size is not none or filters.max_avg_size is not none %} · avg
+          {{ filters.min_avg_size | fmt_size if filters.min_avg_size is not none else '0' }}–{{ filters.max_avg_size | fmt_size if filters.max_avg_size is not none else '∞' }}{% endif -%}
       </span>
     {% endif %}
     <span class="ms-auto text-muted small">
