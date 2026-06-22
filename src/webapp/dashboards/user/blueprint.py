@@ -92,6 +92,18 @@ def index():
 
     available_groups = _available_primary_groups(db.session, user_to_display.username)
 
+    # "My Data" tab — per-user filesystem-scan card (one subtab per warmed disk
+    # resource). Available to every authenticated user (no permission gate); the
+    # scan owner is pinned to the user's unix_uid server-side in disk_scans
+    # routes. Hidden when the fs-scans plugin is off / no resource is warmed, or
+    # when the account has no filesystem identity (unix_uid). fs_scan_resources
+    # also feeds the subtab strip in my_data_scans.html.
+    fs_scan_resources = disk_scans_service.scan_capable_resources()
+    my_data_available = bool(
+        getattr(user_to_display, 'unix_uid', None) is not None
+        and fs_scan_resources
+    )
+
     return render_template(
         'dashboards/user/dashboard.html',
         user=user_to_display,
@@ -105,7 +117,9 @@ def index():
         can_edit_primary_gid=True,   # user is editing their own
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
-        impersonator_id=impersonator_id
+        impersonator_id=impersonator_id,
+        my_data_available=my_data_available,
+        fs_scan_resources=fs_scan_resources,
     )
 
 
