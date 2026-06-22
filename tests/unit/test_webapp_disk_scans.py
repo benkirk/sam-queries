@@ -1111,24 +1111,45 @@ def test_directories_owner_filter_and_form(app, auth_client, active_project, mon
 
 def test_directories_subdirs_column_hidden_under_leaves_only(
         app, auth_client, active_project, monkeypatch):
-    """Recursive subdir count is 0 for leaves — hide the column + its pill."""
+    """Recursive subdir count is 0 for leaves — hide the Dirs column + its pill."""
     from webapp.disk_scans import service
     _enable_fs_scans(app, monkeypatch)
     monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
         'path': '/glade/campaign/cisl/csg/leaf', 'depth': 5,
-        'total_size_r': 1024 ** 4, 'file_count_r': 3, 'dir_count_r': 0,
+        'total_size_r': 1024 ** 4, 'file_count_r': 3, 'dir_count_r': 7,
         'max_atime_r': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
     }])
 
     base = f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
-    # Without the filter the Subdirectories column + # Subdirs pill are present.
+    # Without the filter the Dirs column + # Subdirs pill are present (the row
+    # has a non-zero dir_count_r).
     on = auth_client.get(base).get_data(as_text=True)
-    assert 'Subdirectories' in on
+    assert 'Dirs' in on
     assert '# Subdirs' in on
     # With leaves-only, both are suppressed.
     off = auth_client.get(base + '&leaves_only=1').get_data(as_text=True)
-    assert 'Subdirectories' not in off
+    assert 'Dirs' not in off
     assert '# Subdirs' not in off
+
+
+def test_directories_dirs_column_hidden_when_uniformly_zero(
+        app, auth_client, active_project, monkeypatch):
+    """All rows have dir_count_r == 0 (common in nr drill-downs) — fold the column."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
+        'path': '/glade/campaign/cisl/csg/a', 'depth': 5,
+        'total_size_nr': 1024 ** 3, 'file_count_nr': 9, 'dir_count_r': 0,
+        'max_atime_nr': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
+    }])
+
+    # Non-recursive drill-down view: single row, dir_count_r 0 → column folded
+    # even though leaves_only is NOT set.
+    base = (f'/dashboards/user/disk-scans/{active_project.projcode}'
+            f'/directories?resource={_RES}&recursive=0')
+    body = auth_client.get(base).get_data(as_text=True)
+    assert 'Dirs' not in body
+    assert '# Subdirs' not in body
 
 
 def test_directories_page_renders(auth_client, active_project):
