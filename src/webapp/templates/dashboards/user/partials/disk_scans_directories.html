@@ -69,9 +69,13 @@
   ('dirs',     '# Subdirs', 'fa-folder-tree'),
 ] %}
 {# Recursive subdirectory count (dir_count_r) is 0 by definition for leaves,
-   so the Subdirectories column + its sort pill are meaningless (and would
-   degenerate the sort) under the leaves-only filter — drop both. #}
-{% set _show_dirs = not filters.leaves_only %}
+   so the Dirs column + its sort pill are meaningless (and would degenerate
+   the sort) under the leaves-only filter — drop both. Also fold the column
+   when every row in THIS view has a zero/empty count (common in the
+   non-recursive access-history / file-size drill-downs, where the listed
+   directories are frequently leaves) — an all-zero column is just noise. #}
+{% set _has_dirs = (rows | selectattr('dir_count_r') | list | length) > 0 %}
+{% set _show_dirs = (not filters.leaves_only) and _has_dirs %}
 
 {% if not enabled %}
   {{ scans_disabled() }}
