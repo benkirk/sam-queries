@@ -22,7 +22,7 @@ teardown).
 from __future__ import annotations
 
 import types
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
