@@ -36,6 +36,36 @@ def _collect_fileset_paths(node) -> List[str]:
     return paths
 
 
+def resolve_scan_scope_grouped(session, project, resource_name: str) -> List[dict]:
+    """Return the scope's defining directories grouped by owning project.
+
+    A list of ``{'projcode': str, 'is_root': bool, 'paths': [str, ...]}`` dicts,
+    pre-order from *project* (the scan root) through its active descendant
+    projects, each carrying its sorted ``ProjectDirectory.directory_name``
+    values. Only nodes that actually own a fileset appear. Empty list when the
+    project has no scannable directories.
+
+    Powers the explorer's "Scope" panel so a user can see exactly which
+    directories — and which descendant projects — bound the listing. Mirrors
+    :func:`resolve_scan_scope` (same ``build_disk_subtree`` walk), but keeps the
+    per-project grouping instead of flattening to a path set.
+    """
+    full = build_disk_subtree(session, project, resource_name)
+    groups: List[dict] = []
+    _collect_scope_groups(full['tree'], project.projcode, groups)
+    return groups
+
+
+def _collect_scope_groups(node, root_projcode: str, out: List[dict]) -> None:
+    """Pre-order walk collecting one group per fileset-owning node."""
+    paths = sorted(node.get('fileset_paths', []))
+    if paths:
+        pc = node.get('projcode')
+        out.append({'projcode': pc, 'is_root': pc == root_projcode, 'paths': paths})
+    for child in node.get('children', []):
+        _collect_scope_groups(child, root_projcode, out)
+
+
 def resolve_scan_scope(session, project, resource_name: str) -> Tuple[List[str], List[str]]:
     """Return ``(path_prefixes, collections)`` for *project* on a disk resource.
 

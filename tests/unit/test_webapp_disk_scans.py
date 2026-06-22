@@ -183,6 +183,58 @@ def test_scoped_returns_empty_when_module_missing(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# scope grouping — resolve_scan_scope_grouped
+# ---------------------------------------------------------------------------
+
+def test_resolve_scan_scope_grouped_orders_root_first_and_groups(monkeypatch):
+    """Pre-order from the scan root, one group per fileset-owning node."""
+    from webapp.disk_scans import scope
+
+    tree = {
+        'projcode': 'ROOT0001',
+        'fileset_paths': ['/glade/campaign/root/b', '/glade/campaign/root/a'],
+        'children': [
+            {'projcode': 'CHILD002', 'fileset_paths': ['/glade/campaign/child2'],
+             'children': []},
+            # a node that owns nothing is skipped entirely
+            {'projcode': 'EMPTY003', 'fileset_paths': [], 'children': [
+                {'projcode': 'GRAND004', 'fileset_paths': ['/glade/campaign/gc'],
+                 'children': []},
+            ]},
+        ],
+    }
+
+    class _Proj:
+        projcode = 'ROOT0001'
+
+    monkeypatch.setattr(scope, 'build_disk_subtree',
+                        lambda s, p, r: {'tree': tree})
+    groups = scope.resolve_scan_scope_grouped(None, _Proj(), 'Campaign_Store')
+
+    assert [g['projcode'] for g in groups] == ['ROOT0001', 'CHILD002', 'GRAND004']
+    root = groups[0]
+    assert root['is_root'] is True
+    # paths sorted within a group
+    assert root['paths'] == ['/glade/campaign/root/a', '/glade/campaign/root/b']
+    assert all(g['is_root'] is False for g in groups[1:])
+    # EMPTY003 (no filesets) contributes no group
+    assert 'EMPTY003' not in [g['projcode'] for g in groups]
+
+
+def test_resolve_scan_scope_grouped_empty_when_no_dirs(monkeypatch):
+    from webapp.disk_scans import scope
+
+    class _Proj:
+        projcode = 'NONE0001'
+
+    monkeypatch.setattr(
+        scope, 'build_disk_subtree',
+        lambda s, p, r: {'tree': {'projcode': 'NONE0001',
+                                  'fileset_paths': [], 'children': []}})
+    assert scope.resolve_scan_scope_grouped(None, _Proj(), 'Campaign_Store') == []
+
+
+# ---------------------------------------------------------------------------
 # routes — HTMX fragment endpoints
 # ---------------------------------------------------------------------------
 
@@ -1059,24 +1111,45 @@ def test_directories_owner_filter_and_form(app, auth_client, active_project, mon
 
 def test_directories_subdirs_column_hidden_under_leaves_only(
         app, auth_client, active_project, monkeypatch):
-    """Recursive subdir count is 0 for leaves — hide the column + its pill."""
+    """Recursive subdir count is 0 for leaves — hide the Dirs column + its pill."""
     from webapp.disk_scans import service
     _enable_fs_scans(app, monkeypatch)
     monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
         'path': '/glade/campaign/cisl/csg/leaf', 'depth': 5,
-        'total_size_r': 1024 ** 4, 'file_count_r': 3, 'dir_count_r': 0,
+        'total_size_r': 1024 ** 4, 'file_count_r': 3, 'dir_count_r': 7,
         'max_atime_r': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
     }])
 
     base = f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
-    # Without the filter the Subdirectories column + # Subdirs pill are present.
+    # Without the filter the Dirs column + # Subdirs pill are present (the row
+    # has a non-zero dir_count_r).
     on = auth_client.get(base).get_data(as_text=True)
-    assert 'Subdirectories' in on
+    assert 'Dirs' in on
     assert '# Subdirs' in on
     # With leaves-only, both are suppressed.
     off = auth_client.get(base + '&leaves_only=1').get_data(as_text=True)
-    assert 'Subdirectories' not in off
+    assert 'Dirs' not in off
     assert '# Subdirs' not in off
+
+
+def test_directories_dirs_column_hidden_when_uniformly_zero(
+        app, auth_client, active_project, monkeypatch):
+    """All rows have dir_count_r == 0 (common in nr drill-downs) — fold the column."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
+        'path': '/glade/campaign/cisl/csg/a', 'depth': 5,
+        'total_size_nr': 1024 ** 3, 'file_count_nr': 9, 'dir_count_r': 0,
+        'max_atime_nr': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
+    }])
+
+    # Non-recursive drill-down view: single row, dir_count_r 0 → column folded
+    # even though leaves_only is NOT set.
+    base = (f'/dashboards/user/disk-scans/{active_project.projcode}'
+            f'/directories?resource={_RES}&recursive=0')
+    body = auth_client.get(base).get_data(as_text=True)
+    assert 'Dirs' not in body
+    assert '# Subdirs' not in body
 
 
 def test_directories_page_renders(auth_client, active_project):
