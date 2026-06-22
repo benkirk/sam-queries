@@ -676,7 +676,7 @@ def _render_distribution(ctx, fragment_url, *, scan_call, kind,
     if not metric_toggle or metric not in _METRIC_WHITELIST:
         metric = 'data'
     log_on = log_toggle and _truthy(request.args.get('log'))
-    extra = dict(metric=metric, metric_toggle=metric_toggle,
+    extra = dict(kind=kind, metric=metric, metric_toggle=metric_toggle,
                  log_on=log_on, log_toggle=log_toggle,
                  bucket_header=bucket_header, fragment_url=fragment_url,
                  dir_fragment_url=dir_fragment_url)

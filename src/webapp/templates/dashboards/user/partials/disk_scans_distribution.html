@@ -114,6 +114,16 @@
     {% endif %}
   </div>
 
+  {% if kind == 'file_sizes' %}
+    {# File-size bands are derived from each directory's average file size
+       (total bytes / file count), not from per-file stats — the scan does not
+       track individual files. Make that approximation explicit. #}
+    <p class="text-muted small fst-italic mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      Note: results are approximate, computed as average file sizes per
+      directory (individual files are not tracked).
+    </p>
+  {% endif %}
   <div class="chart-container">
     {{ chart_svg | safe }}
   </div>

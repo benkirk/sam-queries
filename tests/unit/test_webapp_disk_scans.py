@@ -522,6 +522,8 @@ def test_access_history_user_drilldown_rows(app, auth_client, active_project, mo
     assert 'recursive=0' in body
     assert 'sort_by=size_nr' in body
     assert 'shown.bs.collapse' in body            # lazy-load trigger
+    # The file-size approximation caveat is file-sizes only, not access-history.
+    assert 'computed as average file sizes per' not in body
 
 
 def test_access_history_no_drilldown_without_bounds(app, auth_client, active_project, monkeypatch):
@@ -579,6 +581,8 @@ def test_file_sizes_user_drilldown_rows(app, auth_client, active_project, monkey
     assert 'max_avg_size=10485760' in body
     assert 'recursive=0' in body
     assert 'shown.bs.collapse' in body
+    # File-size tab carries the per-directory-average approximation caveat.
+    assert 'computed as average file sizes per' in body
 
 
 def test_directories_avg_size_flag(app, auth_client, active_project, monkeypatch):
