@@ -1759,3 +1759,73 @@ def test_my_data_tab_hidden_when_no_resources(auth_client, monkeypatch):
     resp = auth_client.get('/user/')
     assert resp.status_code == 200
     assert 'id="my-data-tab"' not in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# distribution histogram: single-owner drill shortcut
+# ---------------------------------------------------------------------------
+#
+# A band with exactly one owner skips the (one-row) per-user table and expands
+# the band row straight to that owner's directories — one click instead of two.
+# This is what makes the single-user "My Data" histograms low-friction, but the
+# rule is generic (any single-owner band in any mode benefits).
+
+def _render_distribution_partial(app, owners):
+    from flask import render_template
+    hist = {
+        'bucket_labels': ['> 1 year'],
+        'buckets': {'> 1 year': {
+            'data': 100, 'files': 10, 'owners': owners,
+            'accessed_before': '2025-01-01', 'accessed_after': '2024-01-01',
+        }},
+        'total_data': 100, 'total_files': 10,
+        'username_map': {7: 'benkirk', 8: 'alice'},
+    }
+    with app.test_request_context():
+        return render_template(
+            'dashboards/user/partials/disk_scans_distribution.html',
+            hist=hist, chart_svg='<svg/>', enabled=True, error=None,
+            resource_name=_RES, scope='', fileset=None, target_id='t',
+            bucket_header='Last accessed', metric='data', metric_toggle=False,
+            log_toggle=False, log_on=False, fragment_url='/frag',
+            dir_fragment_url='/dirs')
+
+
+def test_single_owner_band_drills_straight_to_directories(app):
+    """One owner → no per-user table; the band row drills to their directories."""
+    body = _render_distribution_partial(app, {7: {'data': 100, 'files': 10}})
+    assert 'owner_uid=7' in body                       # directory drill present
+    assert 'Top users by' not in body                  # per-user table skipped
+    assert 'Show directories in this band' in body     # band row title
+
+
+def test_multi_owner_band_keeps_per_user_table(app):
+    """Two+ owners → the per-user aggregation table is retained."""
+    body = _render_distribution_partial(
+        app, {7: {'data': 60, 'files': 6}, 8: {'data': 40, 'files': 4}})
+    assert 'Top users by' in body                       # per-user table kept
+    assert 'Show top users in this bucket' in body
+    assert 'owner_uid=7' in body and 'owner_uid=8' in body   # each user drills
+
+
+def test_single_owner_band_without_window_keeps_table(app):
+    """The shortcut only applies when there's a drill window. A lone owner in a
+    window-less band keeps the per-user table (listed, but not drillable) —
+    behaviour unchanged from before the shortcut."""
+    from flask import render_template
+    hist = {
+        'bucket_labels': ['unknown'],
+        'buckets': {'unknown': {'data': 5, 'files': 1, 'owners': {7: {'data': 5, 'files': 1}}}},
+        'total_data': 5, 'total_files': 1, 'username_map': {7: 'benkirk'},
+    }
+    with app.test_request_context():
+        body = render_template(
+            'dashboards/user/partials/disk_scans_distribution.html',
+            hist=hist, chart_svg='<svg/>', enabled=True, error=None,
+            resource_name=_RES, scope='', fileset=None, target_id='t',
+            bucket_header='Last accessed', metric='data', metric_toggle=False,
+            log_toggle=False, log_on=False, fragment_url='/frag',
+            dir_fragment_url='/dirs')
+    assert 'benkirk' in body                            # user still listed
+    assert 'Top users by' in body                       # per-user table kept
+    assert 'owner_uid=7' not in body                    # but no directory drill
