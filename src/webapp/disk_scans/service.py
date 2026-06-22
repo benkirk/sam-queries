@@ -18,7 +18,7 @@ so there is no session context manager here — we just construct
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from webapp.disk_scans.cache import cached_scan
@@ -131,6 +131,87 @@ def scan_overview(session, project, resource_name: str) -> Dict[str, Any]:
     return {'collections': collections, 'scan_dates': scan_dates, 'reference': reference}
 
 
+def _drop_nested(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep only the outermost directories — drop any row whose ancestor path
+    is also present.
+
+    Used by the access-history *recursive* drill-down, where the question is
+    "which whole trees are entirely stale?": listing both ``/foo`` and
+    ``/foo/bar`` is redundant — you'd reclaim the tree by deleting ``/foo``.
+    Rows arrive sorted by recursive size, and an ancestor's subtree is always
+    larger than its descendant's, so an ancestor always precedes its children;
+    a single forward pass keeping the first-seen prefix is therefore exact.
+    """
+    kept: List[Dict[str, Any]] = []
+    kept_paths: List[str] = []
+    for r in rows:
+        p = (r.get('path') or '').rstrip('/')
+        if any(p == kp or p.startswith(kp + '/') for kp in kept_paths):
+            continue
+        kept.append(r)
+        kept_paths.append(p)
+    return kept
+
+
+def _atime_band_bounds(reference_scan_date, bucket_labels) -> Dict[str, Dict[str, Optional[str]]]:
+    """Map each access-history band to ``(accessed_after, accessed_before)``
+    ``YYYY-MM-DD`` date strings, so the band → user → directories drill-down can
+    filter directories to exactly the clicked band's date window.
+
+    Bounds come from the plugin's ``ATIME_BUCKETS`` day thresholds (the single
+    source of truth, imported here) relative to the scan date. A directory is
+    in band ``i`` when its last-access *age* (days from the scan) is in
+    ``[lower, upper)``; since access-time = scan − age, that maps to
+    ``accessed_after = scan − upper`` (older edge; ``None`` for the open-ended
+    oldest band) and ``accessed_before = scan − lower`` (newer edge; the scan
+    date itself for band 0). Returns ``{}`` if the plugin or scan date is
+    unavailable.
+    """
+    try:
+        from fs_scans.core.models import ATIME_BUCKETS
+    except Exception:
+        return {}
+    if not reference_scan_date or not bucket_labels:
+        return {}
+    wanted = set(bucket_labels)
+    out: Dict[str, Dict[str, Optional[str]]] = {}
+    prev = 0  # cumulative lower threshold (days) carried across bands in order
+    for label, upper in ATIME_BUCKETS:
+        lower = prev
+        if upper is not None:
+            prev = upper
+        if label not in wanted:
+            continue
+        before = (reference_scan_date - timedelta(days=lower)).strftime('%Y-%m-%d')
+        after = (None if upper is None
+                 else (reference_scan_date - timedelta(days=upper)).strftime('%Y-%m-%d'))
+        out[label] = {'accessed_after': after, 'accessed_before': before}
+    return out
+
+
+def _size_band_bounds(bucket_labels) -> Dict[str, Dict[str, Optional[int]]]:
+    """Map each file-size band to its ``(size_min, size_max)`` average-file-size
+    bounds (bytes), so the band → user → directories drill-down can filter
+    directories by average own-file size.
+
+    Bounds come from the plugin's ``SIZE_BUCKETS`` (label, min, max) — the single
+    source of truth — mapped by label. The largest band's ``max`` is ``None``
+    (open-ended). Returns ``{}`` if the plugin is unavailable.
+    """
+    try:
+        from fs_scans.core.models import SIZE_BUCKETS
+    except Exception:
+        return {}
+    if not bucket_labels:
+        return {}
+    wanted = set(bucket_labels)
+    return {
+        label: {'size_min': mn, 'size_max': mx}
+        for label, mn, mx in SIZE_BUCKETS
+        if label in wanted
+    }
+
+
 def _scan_directories(
     mod,
     collections: List[str],
@@ -142,6 +223,9 @@ def _scan_directories(
     owner_gid: Optional[int] = None,
     accessed_before: Optional[datetime] = None,
     accessed_after: Optional[datetime] = None,
+    atime_recursive: bool = True,
+    min_avg_size: Optional[int] = None,
+    max_avg_size: Optional[int] = None,
     leaves_only: bool = False,
     single_owner: bool = False,
     min_depth: Optional[int] = None,
@@ -159,13 +243,17 @@ def _scan_directories(
     """
     q = mod.FsScanQueries(filesystems=collections)
     filtered = bool(owner_uid is not None or owner_gid is not None
-                    or accessed_before or accessed_after or leaves_only)
+                    or accessed_before or accessed_after or leaves_only
+                    or min_avg_size is not None or max_avg_size is not None)
     opts = {
         'sort_by': sort_by, 'limit': limit,
         'owner_uid': owner_uid,
         'owner_gid': owner_gid,
         'accessed_before': accessed_before.isoformat() if accessed_before else None,
         'accessed_after': accessed_after.isoformat() if accessed_after else None,
+        'atime_recursive': atime_recursive,
+        'min_avg_size': min_avg_size,
+        'max_avg_size': max_avg_size,
         'leaves_only': leaves_only,
         'single_owner': single_owner,
         'min_depth': min_depth, 'max_depth': max_depth,
@@ -182,6 +270,9 @@ def _scan_directories(
             group_id=owner_gid,
             accessed_before=accessed_before,
             accessed_after=accessed_after,
+            atime_recursive=atime_recursive,
+            min_avg_size=min_avg_size,
+            max_avg_size=max_avg_size,
             leaves_only=leaves_only,
             single_owner=single_owner,
             min_depth=min_depth,
@@ -202,6 +293,10 @@ def scan_directories(
     owner_gid: Optional[int] = None,
     accessed_before: Optional[datetime] = None,
     accessed_after: Optional[datetime] = None,
+    atime_recursive: bool = True,
+    min_avg_size: Optional[int] = None,
+    max_avg_size: Optional[int] = None,
+    outermost_only: bool = False,
     leaves_only: bool = False,
     single_owner: bool = False,
     min_depth: Optional[int] = None,
@@ -216,17 +311,27 @@ def scan_directories(
     directories or the plugin is unavailable. Filters
     (``owner_uid / accessed_before / accessed_after / leaves_only``) narrow
     within that scope.
+
+    ``atime_recursive`` selects which access-time column the date filters
+    compare against — the subtree max (``True``, default) or the directory's own
+    files (``False``). ``outermost_only`` collapses the result to the topmost
+    directories (drops any whose ancestor is also listed) — used by the
+    recursive access-history drill-down to surface removable trees, not every
+    nested match.
     """
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
-    return _scan_directories(
+    rows = _scan_directories(
         mod, collections, path_prefixes,
         sort_by=sort_by, limit=limit,
         owner_uid=owner_uid, owner_gid=owner_gid, accessed_before=accessed_before,
-        accessed_after=accessed_after, leaves_only=leaves_only,
+        accessed_after=accessed_after, atime_recursive=atime_recursive,
+        min_avg_size=min_avg_size, max_avg_size=max_avg_size,
+        leaves_only=leaves_only,
         single_owner=single_owner, min_depth=min_depth, max_depth=max_depth,
     )
+    return _drop_nested(rows) if outermost_only else rows
 
 
 def scan_directories_resource(
@@ -346,9 +451,23 @@ def scan_access_history(
     if not collections:
         return None
     q = mod.FsScanQueries(filesystems=collections)
+
+    def _compute():
+        hist = q.access_history(path_prefixes=path_prefixes, owner_uid=owner_uid)
+        if hist:
+            # Tag each band with the date window it represents so the per-user
+            # drill-down can list that band's directories (see _atime_band_bounds).
+            bounds = _atime_band_bounds(hist.get('reference_scan_date'),
+                                        hist.get('bucket_labels'))
+            for label, b in (hist.get('buckets') or {}).items():
+                if label in bounds:
+                    b['accessed_after'] = bounds[label]['accessed_after']
+                    b['accessed_before'] = bounds[label]['accessed_before']
+        return hist
+
     return cached_scan(
         'access_history', q, collections, path_prefixes, {'owner_uid': owner_uid},
-        lambda: q.access_history(path_prefixes=path_prefixes, owner_uid=owner_uid),
+        _compute,
     )
 
 
@@ -375,7 +494,20 @@ def scan_file_sizes(
     if not collections:
         return None
     q = mod.FsScanQueries(filesystems=collections)
+
+    def _compute():
+        hist = q.file_size_histogram(path_prefixes=path_prefixes, owner_uid=owner_uid)
+        if hist:
+            # Tag each band with its average-file-size window so the per-user
+            # drill-down can list that band's directories (see _size_band_bounds).
+            bounds = _size_band_bounds(hist.get('bucket_labels'))
+            for label, b in (hist.get('buckets') or {}).items():
+                if label in bounds:
+                    b['size_min'] = bounds[label]['size_min']
+                    b['size_max'] = bounds[label]['size_max']
+        return hist
+
     return cached_scan(
         'file_sizes', q, collections, path_prefixes, {'owner_uid': owner_uid},
-        lambda: q.file_size_histogram(path_prefixes=path_prefixes, owner_uid=owner_uid),
+        _compute,
     )
