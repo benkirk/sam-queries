@@ -54,8 +54,11 @@ bp = Blueprint('disk_scans', __name__)
 # fs_scans/queries/facade.py:_DIR_SORT_KEYS). The facade fixes the sort
 # direction per key (size/files/atime/dirs descending, path ascending),
 # so the UI only switches the active key, not a direction. 'dirs' maps to
-# the recursive subdirectory count (dir_count_r).
-_DIR_SORT_WHITELIST = {'size', 'files', 'atime_r', 'path', 'dirs'}
+# the recursive subdirectory count (dir_count_r). The ``_nr`` keys sort on the
+# non-recursive (own-files) columns — used by the access-history drill-down's
+# non-recursive view, which shows a directory's own cold data.
+_DIR_SORT_WHITELIST = {'size', 'files', 'atime_r', 'path', 'dirs',
+                       'size_nr', 'files_nr'}
 _DEFAULT_DIR_SORT = 'size'
 
 _DEFAULT_LIMIT = 50
@@ -114,6 +117,18 @@ def _truthy(v) -> bool:
     return (v or '').strip().lower() in ('1', 'true', 'on', 'yes')
 
 
+def _atime_recursive_flag() -> bool:
+    """Read ``?recursive=`` for the access-date filter, defaulting to True.
+
+    True (default, and what every existing caller gets) compares the
+    accessed-before/after filters against the recursive subtree atime; the
+    access-history drill-down passes ``recursive=0`` for its non-recursive
+    (own-files) default view, matching the histogram bar.
+    """
+    raw = request.args.get('recursive')
+    return True if raw is None else _truthy(raw)
+
+
 def _query_date(name: str) -> Optional[datetime]:
     """Parse a ``?<name>=YYYY-MM-DD`` query arg to a datetime (or ``None``).
 
@@ -157,6 +172,8 @@ def _dir_filters() -> dict:
         'accessed_after': _query_date('accessed_after'),
         'accessed_before_str': (request.args.get('accessed_before') or '').strip(),
         'accessed_after_str': (request.args.get('accessed_after') or '').strip(),
+        'atime_recursive': _atime_recursive_flag(),
+        'outermost': _truthy(request.args.get('outermost')),
         'leaves_only': _truthy(request.args.get('leaves_only')),
     }
 
@@ -240,6 +257,10 @@ def _initial_fragment_url(fragment_url: str, ctx: dict, flt: dict,
         params['accessed_before'] = flt['accessed_before_str']
     if flt['accessed_after_str']:
         params['accessed_after'] = flt['accessed_after_str']
+    if not flt.get('atime_recursive', True):
+        params['recursive'] = '0'
+    if flt.get('outermost'):
+        params['outermost'] = '1'
     return f'{fragment_url}?{urlencode(params)}'
 
 
@@ -389,6 +410,8 @@ def directories_fragment(project):
             owner_gid=flt['owner_gid'],
             accessed_before=flt['accessed_before'],
             accessed_after=flt['accessed_after'],
+            atime_recursive=flt['atime_recursive'],
+            outermost_only=flt['outermost'],
             leaves_only=flt['leaves_only'],
             subpath=ctx['fileset'],
         )

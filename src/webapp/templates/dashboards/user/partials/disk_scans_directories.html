@@ -15,21 +15,39 @@
   top-N limit. Mirrors the jobs_fragment pattern.
 #}
 
+{# Recursive (default) vs non-recursive view. The access-history drill-down
+   passes ``recursive=0`` to show a directory's OWN cold data (matching the
+   histogram bar); the rest of the app uses the recursive subtree columns.
+   This switches the displayed size/files/atime columns AND the sort keys. #}
+{% set _rec = (filters.atime_recursive if filters.atime_recursive is not none else true) %}
+{% set _size_field  = 'total_size_r' if _rec else 'total_size_nr' %}
+{% set _files_field = 'file_count_r' if _rec else 'file_count_nr' %}
+{% set _atime_field = 'max_atime_r'  if _rec else 'max_atime_nr' %}
+{% set _size_key  = 'size'  if _rec else 'size_nr' %}
+{% set _files_key = 'files' if _rec else 'files_nr' %}
+{# atime_nr has no sort key in the facade, so the Last-Access header is only
+   clickable in recursive mode (atime_r); non-recursive renders a plain label. #}
+{% set _atime_key = 'atime_r' if _rec else 'atime_nr' %}
+{# Preserve the non-recursive / outermost state across sort/pill re-fetches,
+   the same per-URL way ``sort_by`` and ``fileset`` are carried (NOT the form). #}
+{% set _rec_q = ('' if _rec else '&recursive=0') ~ ('&outermost=1' if filters.outermost else '') %}
+
 {# (sort_key, label, row-attr, numeric?) — the facade fixes sort direction
    per key, so a header click only switches the active key. #}
 {% set _cols = [
-  ('path',    'Path',        'path',         false),
-  ('size',    'Size',        'total_size_r', true),
-  ('files',   'Files',         'file_count_r', true),
-  ('dirs',    'Subdirectories', 'dir_count_r', true),
-  ('atime_r', 'Last Access',   'max_atime_r',  false),
+  ('path',      'Path',           'path',        false),
+  (_size_key,   'Size',           _size_field,   true),
+  (_files_key,  'Files',          _files_field,  true),
+  ('dirs',      'Subdirectories', 'dir_count_r', true),
+  (_atime_key,  'Last Access',    _atime_field,  false),
 ] %}
 
 {% macro dir_sort_link(key, label) %}
   {%- if key in sortable_columns -%}
     {%- set is_active = (sort.sort_by == key) -%}
+    {%- set _rec_q = ('' if (filters.atime_recursive if filters.atime_recursive is not none else true) else '&recursive=0') ~ ('&outermost=1' if filters.outermost else '') -%}
     <a class="text-decoration-none" href="#"
-       hx-get="{{ fragment_url }}?sort_by={{ key }}{% if fileset %}&fileset={{ fileset | urlencode }}{% endif %}"
+       hx-get="{{ fragment_url }}?sort_by={{ key }}{% if fileset %}&fileset={{ fileset | urlencode }}{% endif %}{{ _rec_q }}"
        hx-target="#{{ target_id }}"
        hx-include="#disk-scans-dir-params-{{ target_id }}"
        hx-swap="innerHTML">
@@ -46,9 +64,9 @@
    the server for the true top-N by that key (top-by-size ≠ top-by-files), so
    it is NOT a client re-sort; the column headers remain available too. #}
 {% set _pills = [
-  ('size',  'Size',      'fa-hard-drive'),
-  ('files', '# Files',   'fa-hashtag'),
-  ('dirs',  '# Subdirs', 'fa-folder-tree'),
+  (_size_key,  'Size',      'fa-hard-drive'),
+  (_files_key, '# Files',   'fa-hashtag'),
+  ('dirs',     '# Subdirs', 'fa-folder-tree'),
 ] %}
 {# Recursive subdirectory count (dir_count_r) is 0 by definition for leaves,
    so the Subdirectories column + its sort pill are meaningless (and would
@@ -92,7 +110,7 @@
         {% if key != 'dirs' or _show_dirs %}
         <button type="button"
                 class="btn btn-outline-secondary {% if sort.sort_by == key %}active{% endif %}"
-                hx-get="{{ fragment_url }}?sort_by={{ key }}{% if fileset %}&fileset={{ fileset | urlencode }}{% endif %}"
+                hx-get="{{ fragment_url }}?sort_by={{ key }}{% if fileset %}&fileset={{ fileset | urlencode }}{% endif %}{{ _rec_q }}"
                 hx-target="#{{ target_id }}"
                 hx-include="#disk-scans-dir-params-{{ target_id }}"
                 hx-swap="innerHTML">
@@ -101,6 +119,25 @@
         {% endif %}
       {% endfor %}
     </div>
+    {# Recursive toggle — only meaningful when a last-access date window is
+       active (the access-history band drill-down, or a manual date filter).
+       On: outermost stale TREES sized by reclaimable subtree bytes. Off
+       (default): directories whose OWN files are stale, matching the bar. #}
+    {% if filters.accessed_before_str or filters.accessed_after_str %}
+      <div class="form-check form-switch form-check-inline mb-0"
+           title="On: list the outermost directory trees whose entire subtree is stale — size is the space reclaimed by deleting the tree. Off: directories whose own files are stale (matches the histogram bar).">
+        <input class="form-check-input" type="checkbox" role="switch"
+               id="disk-scans-recursive-{{ target_id }}"
+               {% if _rec %}checked{% endif %}
+               hx-get="{{ fragment_url }}?sort_by={{ 'size_nr' if _rec else 'size' }}&recursive={{ '0' if _rec else '1' }}{% if not _rec %}&outermost=1{% endif %}{% if fileset %}&fileset={{ fileset | urlencode }}{% endif %}"
+               hx-target="#{{ target_id }}"
+               hx-include="#disk-scans-dir-params-{{ target_id }}"
+               hx-swap="innerHTML">
+        <label class="form-check-label small text-muted" for="disk-scans-recursive-{{ target_id }}">
+          Recursive (whole trees)
+        </label>
+      </div>
+    {% endif %}
     {{ scans_scope_note(fileset) }}
     {% if filters.owner_uid is not none or filters.owner_gid is not none or filters.leaves_only
           or filters.accessed_before_str or filters.accessed_after_str %}
@@ -113,6 +150,7 @@
         {%- if filters.leaves_only %} · leaves only{% endif -%}
         {%- if filters.accessed_after_str %} · after {{ filters.accessed_after_str }}{% endif -%}
         {%- if filters.accessed_before_str %} · before {{ filters.accessed_before_str }}{% endif -%}
+        {%- if (filters.accessed_after_str or filters.accessed_before_str) %} · {{ 'subtree' if _rec else 'own files' }}{% endif -%}
       </span>
     {% endif %}
     <span class="ms-auto text-muted small">
@@ -143,7 +181,7 @@
                      filters (the params form). Leaves (dir_count_r == 0) and
                      the static card tab render a plain path. #}
                   <a class="text-decoration-none" href="#"
-                     hx-get="{{ fragment_url }}?fileset={{ r.path | urlencode }}&sort_by={{ sort.sort_by }}"
+                     hx-get="{{ fragment_url }}?fileset={{ r.path | urlencode }}&sort_by={{ sort.sort_by }}{{ _rec_q }}"
                      hx-target="#{{ target_id }}"
                      hx-include="#disk-scans-dir-params-{{ target_id }}"
                      hx-swap="innerHTML">
@@ -153,11 +191,11 @@
                   <code>{{ r.path }}</code>
                 {%- endif -%}
               </td>
-              <td class="text-end font-monospace">{{ r.total_size_r | fmt_size }}</td>
-              <td class="text-end">{{ r.file_count_r | fmt_number }}</td>
+              <td class="text-end font-monospace">{{ r[_size_field] | fmt_size }}</td>
+              <td class="text-end">{{ r[_files_field] | fmt_number }}</td>
               {% if _show_dirs %}<td class="text-end">{{ r.dir_count_r | fmt_number }}</td>{% endif %}
               <td class="text-end text-nowrap small">
-                {%- set a = r.max_atime_r -%}
+                {%- set a = r[_atime_field] -%}
                 {%- if a is none or a == '' -%}<span class="text-muted">—</span>
                 {%- elif a is string -%}{{ a[:10] }}
                 {%- else -%}{{ a | fmt_date }}{%- endif -%}

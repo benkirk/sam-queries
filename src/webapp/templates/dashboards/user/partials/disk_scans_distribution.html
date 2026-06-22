@@ -161,14 +161,48 @@
                     {% for uid, stats in ranked[:10] %}
                       {% set dpct = (100.0 * stats.get('data', 0) / b_data) if b_data else 0 %}
                       {% set fpct = (100.0 * stats.get('files', 0) / b_files) if b_files else 0 %}
-                      <tr>
+                      {# Drill one level deeper: this user's directories in this
+                         band. Only the access-history histogram tags bands with a
+                         date window (b.accessed_before, set in the service), so
+                         file-size bands stay flat — exactly right, since there's
+                         no date range to filter directories by there. #}
+                      {% set _uname = umap.get(uid) or umap.get(uid | string) or ('uid ' ~ uid) %}
+                      {% set _has_dd = b.get('accessed_before') and project %}
+                      {% set _urow = rowid ~ '-u' ~ loop.index %}
+                      {% set _dt = rowid ~ '-d' ~ loop.index %}
+                      <tr {% if _has_dd %}class="cursor-pointer" data-bs-toggle="collapse"
+                            data-bs-target="#{{ _urow }}" aria-expanded="false"
+                            aria-controls="{{ _urow }}"
+                            title="Show this user's directories last accessed in this band"{% endif %}>
                         <td class="text-end text-muted">{{ loop.index }}</td>
-                        <td class="font-monospace">{{ umap.get(uid) or umap.get(uid | string) or ('uid ' ~ uid) }}</td>
+                        <td class="font-monospace">
+                          {%- if _has_dd %}<i class="fas fa-chevron-right small collapse-icon text-muted me-1"></i>{% endif -%}
+                          {{ _uname }}
+                        </td>
                         <td class="text-end font-monospace">{{ stats.get('data', 0) | fmt_size }}</td>
                         <td class="text-end text-muted">{{ dpct | fmt_pct }}</td>
                         <td class="text-end">{{ stats.get('files', 0) | fmt_number }}</td>
                         <td class="text-end text-muted">{{ fpct | fmt_pct }}</td>
                       </tr>
+                      {% if _has_dd %}
+                        <tr class="collapse" id="{{ _urow }}">
+                          <td colspan="6" class="p-0 border-0">
+                            {# Lazy-load on first expand. Non-recursive (own cold
+                               files) by default to match the bar; the fragment's
+                               Recursive toggle switches to removable trees. Bind
+                               to shown.bs.collapse so it fires under nav restore. #}
+                            <div class="p-2 bg-light" id="{{ _dt }}"
+                                 hx-get="{{ url_for('disk_scans.directories_fragment', projcode=project.projcode) }}?owner_uid={{ uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if b.get('accessed_after') %}&accessed_after={{ b.accessed_after }}{% endif %}&accessed_before={{ b.accessed_before }}&recursive=0&sort_by=size_nr&limit=25&target_id={{ _dt }}"
+                                 hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+                                 hx-swap="innerHTML">
+                              <p class="text-muted small mb-0">
+                                <i class="fas fa-spinner fa-spin me-1"></i>
+                                Loading {{ _uname }}'s directories…
+                              </p>
+                            </div>
+                          </td>
+                        </tr>
+                      {% endif %}
                     {% endfor %}
                   </tbody>
                 </table>

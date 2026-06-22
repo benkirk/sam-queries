@@ -279,6 +279,26 @@ def test_directories_fileset_becomes_subpath(app, auth_client, active_project, m
     assert captured['subpath'] == '/glade/campaign/cisl/csg'
 
 
+def test_directories_recursive_flag(app, auth_client, active_project, monkeypatch):
+    """?recursive defaults True; recursive=0 + outermost=1 reach the service."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    captured = {}
+    monkeypatch.setattr(service, 'scan_directories',
+                        lambda s, p, r, **kw: captured.update(kw) or [])
+
+    base = (f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
+            f'?resource={_RES}')
+    auth_client.get(base)
+    assert captured['atime_recursive'] is True       # default — existing callers
+    assert captured['outermost_only'] is False
+
+    auth_client.get(base + '&recursive=0&outermost=1&sort_by=size_nr')
+    assert captured['atime_recursive'] is False
+    assert captured['outermost_only'] is True
+    assert captured['sort_by'] == 'size_nr'          # _nr sort key whitelisted
+
+
 def test_directories_error_banner_on_exception(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
     _enable_fs_scans(app, monkeypatch)
@@ -412,6 +432,67 @@ def test_access_history_renders_svg(app, auth_client, active_project, monkeypatc
     # buckets with owners get an SVG anchor and a matching row lookup attr.
     assert '#ah-bar-0' in body            # bar anchor for the first owned bucket
     assert 'data-ah-bucket="0"' in body   # row the anchor expands
+
+
+def test_access_history_user_drilldown_rows(app, auth_client, active_project, monkeypatch):
+    """Bands carrying a date window render expandable per-user rows whose
+    collapse lazy-loads that user's directories scoped to the band (owner_uid
+    + date window + recursive=0 by default)."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    hist = {
+        'bucket_labels': ['1-2 Years'],
+        'buckets': {
+            '1-2 Years': {
+                'data': 1024 ** 4, 'files': 100,
+                'owners': {1001: {'data': 1024 ** 4, 'files': 100}},
+                # date window stamped by the service (_atime_band_bounds)
+                'accessed_after': '2024-06-01', 'accessed_before': '2025-06-01',
+            },
+        },
+        'total_data': 1024 ** 4, 'total_files': 100,
+        'directory': '/glade/campaign/cisl', 'fast_path': True,
+        'reference_scan_date': datetime(2026, 6, 1),
+        'username_map': {1001: 'alice'},
+    }
+    monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: hist)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # The user row is expandable and lazy-loads the directories fragment for
+    # that user, scoped to the band's date window, non-recursive by default.
+    assert 'owner_uid=1001' in body
+    assert 'accessed_after=2024-06-01' in body
+    assert 'accessed_before=2025-06-01' in body
+    assert 'recursive=0' in body
+    assert 'sort_by=size_nr' in body
+    assert 'shown.bs.collapse' in body            # lazy-load trigger
+
+
+def test_access_history_no_drilldown_without_bounds(app, auth_client, active_project, monkeypatch):
+    """A band with no date window (e.g. the file-size histogram shape) does not
+    sprout a per-user drill-down — there's no range to scope directories by."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    hist = {
+        'bucket_labels': ['1-2 Years'],
+        'buckets': {'1-2 Years': {'data': 1, 'files': 1,
+                                  'owners': {1001: {'data': 1, 'files': 1}}}},
+        'total_data': 1, 'total_files': 1, 'fast_path': True,
+        'reference_scan_date': datetime(2026, 6, 1),
+        'username_map': {1001: 'alice'},
+    }
+    monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: hist)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'alice' in body                        # user still listed
+    assert 'owner_uid=1001' not in body           # but not expandable to dirs
 
 
 def test_access_history_empty_when_none(app, auth_client, active_project, monkeypatch):
@@ -625,6 +706,112 @@ def test_scan_directories_forwards_group_id(monkeypatch):
     kw = cap['list_kwargs']
     assert kw['group_id'] == 2001            # facade param is group_id
     assert kw['owner_id'] is None            # mutually exclusive with owner
+
+
+def test_scan_directories_forwards_atime_recursive(monkeypatch):
+    """The recursive/non-recursive atime choice reaches the facade verbatim."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl'},
+        capture=cap,
+    )
+    svc.scan_directories(None, object(), 'Campaign_Store')          # default
+    assert cap['list_kwargs']['atime_recursive'] is True
+    svc.scan_directories(None, object(), 'Campaign_Store', atime_recursive=False)
+    assert cap['list_kwargs']['atime_recursive'] is False
+
+
+def test_scan_directories_outermost_drops_nested(monkeypatch):
+    """outermost_only keeps the topmost tree, dropping nested descendants.
+
+    Rows arrive size-sorted (ancestor first); the recursive drill-down wants
+    the removable tree, not every directory inside it.
+    """
+    from webapp.disk_scans import service
+
+    rows = [
+        {'path': '/glade/campaign/cisl/csg'},
+        {'path': '/glade/campaign/cisl/csg/sub'},      # nested under the above
+        {'path': '/glade/campaign/cisl/csg/sub/deep'}, # nested deeper
+        {'path': '/glade/campaign/cisl/other'},        # sibling — kept
+    ]
+    monkeypatch.setattr(service, '_scan_directories', lambda *a, **k: list(rows))
+    monkeypatch.setattr(
+        service, '_scoped',
+        lambda s, p, r, subpath=None: (object(), ['/glade/campaign/cisl'], ['cisl']),
+    )
+    kept = service.scan_directories(None, object(), 'Campaign_Store',
+                                    outermost_only=True)
+    assert [r['path'] for r in kept] == [
+        '/glade/campaign/cisl/csg', '/glade/campaign/cisl/other',
+    ]
+    # Without the flag, every directory is returned untouched.
+    allrows = service.scan_directories(None, object(), 'Campaign_Store')
+    assert len(allrows) == 4
+
+
+def test_atime_band_bounds_maps_bands_to_dates():
+    """Each band maps to (accessed_after, accessed_before) by its ATIME_BUCKETS
+    day window, relative to the scan date; the open-ended oldest band has no
+    lower (after) bound. Mapping is by label, not list position."""
+    from webapp.disk_scans.service import _atime_band_bounds
+
+    scan = datetime(2026, 6, 1)
+    bounds = _atime_band_bounds(scan, ['< 1 Month', '7+ Years'])
+    # Band 0: ages [0, 30) days → before = scan, after = scan - 30 days.
+    assert bounds['< 1 Month']['accessed_before'] == '2026-06-01'
+    assert bounds['< 1 Month']['accessed_after'] == '2026-05-02'
+    # Oldest band: open-ended → no after bound, before = scan - 2555 days.
+    assert bounds['7+ Years']['accessed_after'] is None
+    assert bounds['7+ Years']['accessed_before'] == (
+        (scan - timedelta(days=2555)).strftime('%Y-%m-%d'))
+
+
+def test_atime_band_bounds_empty_without_scan_date():
+    from webapp.disk_scans.service import _atime_band_bounds
+    assert _atime_band_bounds(None, ['< 1 Month']) == {}
+
+
+def test_scan_access_history_tags_band_bounds(monkeypatch):
+    """scan_access_history stamps each band with its date window so the
+    drill-down can scope directories to the clicked band."""
+    from webapp.disk_scans import service
+
+    hist = {
+        'bucket_labels': ['< 1 Month', '7+ Years'],
+        'buckets': {
+            '< 1 Month': {'data': 1, 'files': 1, 'owners': {1001: {'data': 1, 'files': 1}}},
+            '7+ Years':  {'data': 1, 'files': 1, 'owners': {}},
+        },
+        'reference_scan_date': datetime(2026, 6, 1),
+    }
+
+    class _Q:
+        def __init__(self, filesystems):
+            pass
+
+        def access_history(self, **kw):
+            return hist
+
+    mod = types.SimpleNamespace(FsScanQueries=_Q,
+                                collection_for_path=lambda p: 'cisl',
+                                normalize_path=lambda p: p)
+    monkeypatch.setattr(service, 'get_module', lambda: mod)
+    monkeypatch.setattr(service, 'get_collections', lambda: ['cisl'])
+    monkeypatch.setattr(service, 'resolve_scan_scope',
+                        lambda s, p, r: (['/glade/campaign/cisl/csg'], ['cisl']))
+    monkeypatch.setattr(
+        service, 'cached_scan',
+        lambda qt, q, colls, pfx, opts, compute, bucket='default': compute(),
+    )
+
+    out = service.scan_access_history(None, object(), 'Campaign_Store')
+    assert out['buckets']['< 1 Month']['accessed_before'] == '2026-06-01'
+    assert out['buckets']['< 1 Month']['accessed_after'] == '2026-05-02'
+    assert out['buckets']['7+ Years']['accessed_after'] is None
 
 
 def test_directories_bucket_selection(monkeypatch):
