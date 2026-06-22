@@ -22,7 +22,7 @@ teardown).
 from __future__ import annotations
 
 import types
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -183,6 +183,58 @@ def test_scoped_returns_empty_when_module_missing(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# scope grouping — resolve_scan_scope_grouped
+# ---------------------------------------------------------------------------
+
+def test_resolve_scan_scope_grouped_orders_root_first_and_groups(monkeypatch):
+    """Pre-order from the scan root, one group per fileset-owning node."""
+    from webapp.disk_scans import scope
+
+    tree = {
+        'projcode': 'ROOT0001',
+        'fileset_paths': ['/glade/campaign/root/b', '/glade/campaign/root/a'],
+        'children': [
+            {'projcode': 'CHILD002', 'fileset_paths': ['/glade/campaign/child2'],
+             'children': []},
+            # a node that owns nothing is skipped entirely
+            {'projcode': 'EMPTY003', 'fileset_paths': [], 'children': [
+                {'projcode': 'GRAND004', 'fileset_paths': ['/glade/campaign/gc'],
+                 'children': []},
+            ]},
+        ],
+    }
+
+    class _Proj:
+        projcode = 'ROOT0001'
+
+    monkeypatch.setattr(scope, 'build_disk_subtree',
+                        lambda s, p, r: {'tree': tree})
+    groups = scope.resolve_scan_scope_grouped(None, _Proj(), 'Campaign_Store')
+
+    assert [g['projcode'] for g in groups] == ['ROOT0001', 'CHILD002', 'GRAND004']
+    root = groups[0]
+    assert root['is_root'] is True
+    # paths sorted within a group
+    assert root['paths'] == ['/glade/campaign/root/a', '/glade/campaign/root/b']
+    assert all(g['is_root'] is False for g in groups[1:])
+    # EMPTY003 (no filesets) contributes no group
+    assert 'EMPTY003' not in [g['projcode'] for g in groups]
+
+
+def test_resolve_scan_scope_grouped_empty_when_no_dirs(monkeypatch):
+    from webapp.disk_scans import scope
+
+    class _Proj:
+        projcode = 'NONE0001'
+
+    monkeypatch.setattr(
+        scope, 'build_disk_subtree',
+        lambda s, p, r: {'tree': {'projcode': 'NONE0001',
+                                  'fileset_paths': [], 'children': []}})
+    assert scope.resolve_scan_scope_grouped(None, _Proj(), 'Campaign_Store') == []
+
+
+# ---------------------------------------------------------------------------
 # routes — HTMX fragment endpoints
 # ---------------------------------------------------------------------------
 
@@ -277,6 +329,26 @@ def test_directories_fileset_becomes_subpath(app, auth_client, active_project, m
         f'?resource={_RES}&fileset=/glade/campaign/cisl/csg'
     )
     assert captured['subpath'] == '/glade/campaign/cisl/csg'
+
+
+def test_directories_recursive_flag(app, auth_client, active_project, monkeypatch):
+    """?recursive defaults True; recursive=0 + outermost=1 reach the service."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    captured = {}
+    monkeypatch.setattr(service, 'scan_directories',
+                        lambda s, p, r, **kw: captured.update(kw) or [])
+
+    base = (f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
+            f'?resource={_RES}')
+    auth_client.get(base)
+    assert captured['atime_recursive'] is True       # default — existing callers
+    assert captured['outermost_only'] is False
+
+    auth_client.get(base + '&recursive=0&outermost=1&sort_by=size_nr')
+    assert captured['atime_recursive'] is False
+    assert captured['outermost_only'] is True
+    assert captured['sort_by'] == 'size_nr'          # _nr sort key whitelisted
 
 
 def test_directories_error_banner_on_exception(app, auth_client, active_project, monkeypatch):
@@ -412,6 +484,123 @@ def test_access_history_renders_svg(app, auth_client, active_project, monkeypatc
     # buckets with owners get an SVG anchor and a matching row lookup attr.
     assert '#ah-bar-0' in body            # bar anchor for the first owned bucket
     assert 'data-ah-bucket="0"' in body   # row the anchor expands
+
+
+def test_access_history_user_drilldown_rows(app, auth_client, active_project, monkeypatch):
+    """Bands carrying a date window render expandable per-user rows whose
+    collapse lazy-loads that user's directories scoped to the band (owner_uid
+    + date window + recursive=0 by default)."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    hist = {
+        'bucket_labels': ['1-2 Years'],
+        'buckets': {
+            '1-2 Years': {
+                'data': 1024 ** 4, 'files': 100,
+                'owners': {1001: {'data': 1024 ** 4, 'files': 100}},
+                # date window stamped by the service (_atime_band_bounds)
+                'accessed_after': '2024-06-01', 'accessed_before': '2025-06-01',
+            },
+        },
+        'total_data': 1024 ** 4, 'total_files': 100,
+        'directory': '/glade/campaign/cisl', 'fast_path': True,
+        'reference_scan_date': datetime(2026, 6, 1),
+        'username_map': {1001: 'alice'},
+    }
+    monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: hist)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # The user row is expandable and lazy-loads the directories fragment for
+    # that user, scoped to the band's date window, non-recursive by default.
+    assert 'owner_uid=1001' in body
+    assert 'accessed_after=2024-06-01' in body
+    assert 'accessed_before=2025-06-01' in body
+    assert 'recursive=0' in body
+    assert 'sort_by=size_nr' in body
+    assert 'shown.bs.collapse' in body            # lazy-load trigger
+    # Each tab carries its own caveat: access-history's, not the file-size one.
+    assert 'grouped by most recent' in body
+    assert 'computed as average file sizes per' not in body
+
+
+def test_access_history_no_drilldown_without_bounds(app, auth_client, active_project, monkeypatch):
+    """A band with no date window (e.g. the file-size histogram shape) does not
+    sprout a per-user drill-down — there's no range to scope directories by."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    hist = {
+        'bucket_labels': ['1-2 Years'],
+        'buckets': {'1-2 Years': {'data': 1, 'files': 1,
+                                  'owners': {1001: {'data': 1, 'files': 1}}}},
+        'total_data': 1, 'total_files': 1, 'fast_path': True,
+        'reference_scan_date': datetime(2026, 6, 1),
+        'username_map': {1001: 'alice'},
+    }
+    monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: hist)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'alice' in body                        # user still listed
+    assert 'owner_uid=1001' not in body           # but not expandable to dirs
+
+
+def test_file_sizes_user_drilldown_rows(app, auth_client, active_project, monkeypatch):
+    """File-size bands carrying an avg-size window render expandable per-user
+    rows whose collapse lazy-loads that user's directories filtered by average
+    own-file size (owner_uid + min/max_avg_size + recursive=0)."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    hist = {
+        'bucket_labels': ['1 MiB - 10 MiB'],
+        'buckets': {
+            '1 MiB - 10 MiB': {
+                'data': 1024 ** 3, 'files': 100,
+                'owners': {1001: {'data': 1024 ** 3, 'files': 100}},
+                'size_min': 1048576, 'size_max': 10485760,
+            },
+        },
+        'total_data': 1024 ** 3, 'total_files': 100,
+        'directory': '/glade/campaign/cisl', 'fast_path': True,
+        'reference_scan_date': datetime(2026, 6, 1),
+        'username_map': {1001: 'alice'},
+    }
+    monkeypatch.setattr(service, 'scan_file_sizes', lambda s, p, r, **kw: hist)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/file-sizes?resource={_RES}'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'owner_uid=1001' in body
+    assert 'min_avg_size=1048576' in body
+    assert 'max_avg_size=10485760' in body
+    assert 'recursive=0' in body
+    assert 'shown.bs.collapse' in body
+    # File-size tab carries its own caveat, not the access-history one.
+    assert 'computed as average file sizes per' in body
+    assert 'grouped by most recent' not in body
+
+
+def test_directories_avg_size_flag(app, auth_client, active_project, monkeypatch):
+    """?min_avg_size/max_avg_size reach the service as ints for the size drill."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    captured = {}
+    monkeypatch.setattr(service, 'scan_directories',
+                        lambda s, p, r, **kw: captured.update(kw) or [])
+
+    auth_client.get(
+        f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
+        f'?resource={_RES}&min_avg_size=1048576&max_avg_size=10485760&recursive=0&sort_by=size_nr'
+    )
+    assert captured['min_avg_size'] == 1048576
+    assert captured['max_avg_size'] == 10485760
 
 
 def test_access_history_empty_when_none(app, auth_client, active_project, monkeypatch):
@@ -627,6 +816,178 @@ def test_scan_directories_forwards_group_id(monkeypatch):
     assert kw['owner_id'] is None            # mutually exclusive with owner
 
 
+def test_scan_directories_forwards_atime_recursive(monkeypatch):
+    """The recursive/non-recursive atime choice reaches the facade verbatim."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl'},
+        capture=cap,
+    )
+    svc.scan_directories(None, object(), 'Campaign_Store')          # default
+    assert cap['list_kwargs']['atime_recursive'] is True
+    svc.scan_directories(None, object(), 'Campaign_Store', atime_recursive=False)
+    assert cap['list_kwargs']['atime_recursive'] is False
+
+
+def test_scan_directories_outermost_drops_nested(monkeypatch):
+    """outermost_only keeps the topmost tree, dropping nested descendants.
+
+    Rows arrive size-sorted (ancestor first); the recursive drill-down wants
+    the removable tree, not every directory inside it.
+    """
+    from webapp.disk_scans import service
+
+    rows = [
+        {'path': '/glade/campaign/cisl/csg'},
+        {'path': '/glade/campaign/cisl/csg/sub'},      # nested under the above
+        {'path': '/glade/campaign/cisl/csg/sub/deep'}, # nested deeper
+        {'path': '/glade/campaign/cisl/other'},        # sibling — kept
+    ]
+    monkeypatch.setattr(service, '_scan_directories', lambda *a, **k: list(rows))
+    monkeypatch.setattr(
+        service, '_scoped',
+        lambda s, p, r, subpath=None: (object(), ['/glade/campaign/cisl'], ['cisl']),
+    )
+    kept = service.scan_directories(None, object(), 'Campaign_Store',
+                                    outermost_only=True)
+    assert [r['path'] for r in kept] == [
+        '/glade/campaign/cisl/csg', '/glade/campaign/cisl/other',
+    ]
+    # Without the flag, every directory is returned untouched.
+    allrows = service.scan_directories(None, object(), 'Campaign_Store')
+    assert len(allrows) == 4
+
+
+def test_atime_band_bounds_maps_bands_to_dates():
+    """Each band maps to (accessed_after, accessed_before) by its ATIME_BUCKETS
+    day window, relative to the scan date; the open-ended oldest band has no
+    lower (after) bound. Mapping is by label, not list position."""
+    from webapp.disk_scans.service import _atime_band_bounds
+
+    scan = datetime(2026, 6, 1)
+    bounds = _atime_band_bounds(scan, ['< 1 Month', '7+ Years'])
+    # Band 0: ages [0, 30) days → before = scan, after = scan - 30 days.
+    assert bounds['< 1 Month']['accessed_before'] == '2026-06-01'
+    assert bounds['< 1 Month']['accessed_after'] == '2026-05-02'
+    # Oldest band: open-ended → no after bound, before = scan - 2555 days.
+    assert bounds['7+ Years']['accessed_after'] is None
+    assert bounds['7+ Years']['accessed_before'] == (
+        (scan - timedelta(days=2555)).strftime('%Y-%m-%d'))
+
+
+def test_atime_band_bounds_empty_without_scan_date():
+    from webapp.disk_scans.service import _atime_band_bounds
+    assert _atime_band_bounds(None, ['< 1 Month']) == {}
+
+
+def test_scan_access_history_tags_band_bounds(monkeypatch):
+    """scan_access_history stamps each band with its date window so the
+    drill-down can scope directories to the clicked band."""
+    from webapp.disk_scans import service
+
+    hist = {
+        'bucket_labels': ['< 1 Month', '7+ Years'],
+        'buckets': {
+            '< 1 Month': {'data': 1, 'files': 1, 'owners': {1001: {'data': 1, 'files': 1}}},
+            '7+ Years':  {'data': 1, 'files': 1, 'owners': {}},
+        },
+        'reference_scan_date': datetime(2026, 6, 1),
+    }
+
+    class _Q:
+        def __init__(self, filesystems):
+            pass
+
+        def access_history(self, **kw):
+            return hist
+
+    mod = types.SimpleNamespace(FsScanQueries=_Q,
+                                collection_for_path=lambda p: 'cisl',
+                                normalize_path=lambda p: p)
+    monkeypatch.setattr(service, 'get_module', lambda: mod)
+    monkeypatch.setattr(service, 'get_collections', lambda: ['cisl'])
+    monkeypatch.setattr(service, 'resolve_scan_scope',
+                        lambda s, p, r: (['/glade/campaign/cisl/csg'], ['cisl']))
+    monkeypatch.setattr(
+        service, 'cached_scan',
+        lambda qt, q, colls, pfx, opts, compute, bucket='default': compute(),
+    )
+
+    out = service.scan_access_history(None, object(), 'Campaign_Store')
+    assert out['buckets']['< 1 Month']['accessed_before'] == '2026-06-01'
+    assert out['buckets']['< 1 Month']['accessed_after'] == '2026-05-02'
+    assert out['buckets']['7+ Years']['accessed_after'] is None
+
+
+def test_size_band_bounds_maps_bands_to_byte_ranges():
+    """Each file-size band maps to its (size_min, size_max) byte range; the
+    largest band is open-ended (max None)."""
+    from webapp.disk_scans.service import _size_band_bounds
+
+    b = _size_band_bounds(['0 - 1 KiB', '100 GiB+'])
+    assert b['0 - 1 KiB'] == {'size_min': 0, 'size_max': 1024}
+    assert b['100 GiB+']['size_min'] == 100 * 1024 ** 3
+    assert b['100 GiB+']['size_max'] is None
+
+
+def test_scan_directories_forwards_avg_size(monkeypatch):
+    """The average-file-size band reaches the facade as min/max_avg_size."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/glade/campaign/cisl/csg'],
+        collections=['cisl'], warmed=['cisl'],
+        collection_map={'/glade/campaign/cisl/csg': 'cisl'},
+        capture=cap,
+    )
+    svc.scan_directories(None, object(), 'Campaign_Store',
+                         min_avg_size=1024, max_avg_size=10240)
+    kw = cap['list_kwargs']
+    assert kw['min_avg_size'] == 1024
+    assert kw['max_avg_size'] == 10240
+
+
+def test_scan_file_sizes_tags_band_bounds(monkeypatch):
+    """scan_file_sizes stamps each band with its avg-file-size window so the
+    drill-down can scope directories to the clicked size band."""
+    from webapp.disk_scans import service
+
+    hist = {
+        'bucket_labels': ['0 - 1 KiB', '100 GiB+'],
+        'buckets': {
+            '0 - 1 KiB': {'data': 1, 'files': 1, 'owners': {1001: {'data': 1, 'files': 1}}},
+            '100 GiB+':  {'data': 1, 'files': 1, 'owners': {}},
+        },
+    }
+
+    class _Q:
+        def __init__(self, filesystems):
+            pass
+
+        def file_size_histogram(self, **kw):
+            return hist
+
+    mod = types.SimpleNamespace(FsScanQueries=_Q,
+                                collection_for_path=lambda p: 'cisl',
+                                normalize_path=lambda p: p)
+    monkeypatch.setattr(service, 'get_module', lambda: mod)
+    monkeypatch.setattr(service, 'get_collections', lambda: ['cisl'])
+    monkeypatch.setattr(service, 'resolve_scan_scope',
+                        lambda s, p, r: (['/glade/campaign/cisl/csg'], ['cisl']))
+    monkeypatch.setattr(
+        service, 'cached_scan',
+        lambda qt, q, colls, pfx, opts, compute, bucket='default': compute(),
+    )
+
+    out = service.scan_file_sizes(None, object(), 'Campaign_Store')
+    assert out['buckets']['0 - 1 KiB']['size_min'] == 0
+    assert out['buckets']['0 - 1 KiB']['size_max'] == 1024
+    assert out['buckets']['100 GiB+']['size_max'] is None
+
+
 def test_directories_bucket_selection(monkeypatch):
     """Any filter routes to the 'filtered' bucket; the bare query to 'default'."""
     from webapp.disk_scans import service
@@ -707,6 +1068,22 @@ def test_scan_directories_resource_subpath(monkeypatch):
     assert cap['list_kwargs']['path_prefixes'] == ['/glade/campaign/cisl']
 
 
+def test_scan_directories_resource_forwards_full_filters(monkeypatch):
+    """Resource mode accepts the same filters as project mode — so the card's
+    per-user/group + histogram-band drill-downs filter identically."""
+    cap = {}
+    svc = _wire_resource_service(monkeypatch, collections=['campaign'], capture=cap)
+    svc.scan_directories_resource(
+        'Campaign_Store', owner_gid=2001, atime_recursive=False,
+        min_avg_size=10, max_avg_size=20, sort_by='size_nr')
+    kw = cap['list_kwargs']
+    assert kw['group_id'] == 2001
+    assert kw['atime_recursive'] is False
+    assert kw['min_avg_size'] == 10
+    assert kw['max_avg_size'] == 20
+    assert kw['sort_by'] == 'size_nr'
+
+
 def test_scan_directories_resource_empty_when_plugin_off(monkeypatch):
     from webapp.disk_scans import service
     monkeypatch.setattr(service, 'get_module', lambda: None)
@@ -720,6 +1097,129 @@ def test_collections_for_resource_delegates(monkeypatch):
     assert sess.collections_for_resource('Campaign_Store') == ['campaign']
     monkeypatch.setattr(sess, 'get_collections', lambda app=None: [])
     assert sess.collections_for_resource('Campaign_Store') == []
+
+
+# -- resource mode (service): entity + histogram siblings --------------------
+
+def _wire_resource_entities(monkeypatch, *, collections, capture):
+    """Patch the service for resource-mode owner/group/histogram queries.
+
+    Mirrors ``_wire_resource_service`` but the fake ``FsScanQueries`` captures
+    the kwargs of the four facade methods the entity/histogram cores call, and
+    resolves names so the enrichment paths run.
+    """
+    from webapp.disk_scans import service
+
+    class _FakeQueries:
+        def __init__(self, filesystems):
+            capture['filesystems'] = list(filesystems)
+
+        def owner_summary(self, **kw):
+            capture['owner_kwargs'] = kw
+            return [{'owner_uid': 1001, 'total_size': 5,
+                     'total_files': 2, 'directory_count': 1}]
+
+        def group_summary(self, **kw):
+            capture['group_kwargs'] = kw
+            return [{'owner_gid': 2001, 'total_size': 5,
+                     'total_files': 2, 'directory_count': 1}]
+
+        def access_history(self, **kw):
+            capture['access_kwargs'] = kw
+            return {'bucket_labels': [], 'buckets': {}}
+
+        def file_size_histogram(self, **kw):
+            capture['files_kwargs'] = kw
+            return {'bucket_labels': [], 'buckets': {}}
+
+        def resolve_usernames(self, uids):
+            return {u: f'user{u}' for u in uids}
+
+        def resolve_groupnames(self, gids):
+            return {g: f'grp{g}' for g in gids}
+
+    mod = types.SimpleNamespace(FsScanQueries=_FakeQueries)
+    monkeypatch.setattr(service, 'get_module', lambda: mod)
+    monkeypatch.setattr(service, 'collections_for_resource',
+                        lambda r, app=None: list(collections))
+    return service
+
+
+def test_scan_owner_summary_resource_unscoped(monkeypatch):
+    """Resource mode queries the whole collection (path_prefixes=None)."""
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
+    rows = svc.scan_owner_summary_resource('Campaign_Store', limit=10)
+    assert cap['filesystems'] == ['campaign']
+    assert cap['owner_kwargs']['path_prefixes'] is None   # whole-collection fast path
+    assert cap['owner_kwargs']['limit'] == 10
+    assert rows[0]['username'] == 'user1001'              # enrichment ran
+
+
+def test_scan_group_summary_resource_subpath(monkeypatch):
+    """A fileset narrows resource mode to that single sub-path."""
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
+    rows = svc.scan_group_summary_resource('Campaign_Store',
+                                           subpath='/glade/campaign/cisl')
+    assert cap['group_kwargs']['path_prefixes'] == ['/glade/campaign/cisl']
+    assert rows[0]['groupname'] == 'grp2001'
+
+
+def test_scan_access_history_resource_unscoped(monkeypatch):
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
+    hist = svc.scan_access_history_resource('Campaign_Store')
+    assert cap['access_kwargs']['path_prefixes'] is None
+    assert cap['access_kwargs']['owner_uid'] is None
+    assert hist == {'bucket_labels': [], 'buckets': {}}
+
+
+def test_scan_file_sizes_resource_owner_uid(monkeypatch):
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
+    svc.scan_file_sizes_resource('Campaign_Store', owner_uid=4242)
+    assert cap['files_kwargs']['path_prefixes'] is None   # whole-collection fast path
+    assert cap['files_kwargs']['owner_uid'] == 4242
+
+
+def test_resource_entity_fns_empty_when_plugin_off(monkeypatch):
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'get_module', lambda: None)
+    assert service.scan_owner_summary_resource('Campaign_Store') == []
+    assert service.scan_group_summary_resource('Campaign_Store') == []
+    assert service.scan_access_history_resource('Campaign_Store') is None
+    assert service.scan_file_sizes_resource('Campaign_Store') is None
+
+
+def test_resource_entity_fns_empty_when_no_collections(monkeypatch):
+    """An off-map / unwarmed resource yields no results (never unscoped)."""
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=[], capture=cap)
+    assert svc.scan_owner_summary_resource('Campaign_Store') == []
+    assert svc.scan_access_history_resource('Campaign_Store') is None
+
+
+# -- scan_capable_resources (Status tab gating) ------------------------------
+
+def test_scan_capable_resources_filters_unwarmed(app, monkeypatch):
+    """Keeps only configured resources that currently have warmed collections."""
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'is_enabled', lambda a=None: True)
+    monkeypatch.setattr(
+        service, 'collections_for_resource',
+        lambda n, app=None: ['campaign'] if n == 'Campaign_Store' else [])
+    monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCES', ['Campaign_Store', 'Destor'])
+    with app.app_context():
+        assert service.scan_capable_resources() == ['Campaign_Store']
+
+
+def test_scan_capable_resources_empty_when_disabled(app, monkeypatch):
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'is_enabled', lambda a=None: False)
+    monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCES', ['Campaign_Store'])
+    with app.app_context():
+        assert service.scan_capable_resources() == []
 
 
 # -- routes: filters, explorer page, owner drill-down ------------------------
@@ -756,24 +1256,45 @@ def test_directories_owner_filter_and_form(app, auth_client, active_project, mon
 
 def test_directories_subdirs_column_hidden_under_leaves_only(
         app, auth_client, active_project, monkeypatch):
-    """Recursive subdir count is 0 for leaves — hide the column + its pill."""
+    """Recursive subdir count is 0 for leaves — hide the Dirs column + its pill."""
     from webapp.disk_scans import service
     _enable_fs_scans(app, monkeypatch)
     monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
         'path': '/glade/campaign/cisl/csg/leaf', 'depth': 5,
-        'total_size_r': 1024 ** 4, 'file_count_r': 3, 'dir_count_r': 0,
+        'total_size_r': 1024 ** 4, 'file_count_r': 3, 'dir_count_r': 7,
         'max_atime_r': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
     }])
 
     base = f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
-    # Without the filter the Subdirectories column + # Subdirs pill are present.
+    # Without the filter the Dirs column + # Subdirs pill are present (the row
+    # has a non-zero dir_count_r).
     on = auth_client.get(base).get_data(as_text=True)
-    assert 'Subdirectories' in on
+    assert 'Dirs' in on
     assert '# Subdirs' in on
     # With leaves-only, both are suppressed.
     off = auth_client.get(base + '&leaves_only=1').get_data(as_text=True)
-    assert 'Subdirectories' not in off
+    assert 'Dirs' not in off
     assert '# Subdirs' not in off
+
+
+def test_directories_dirs_column_hidden_when_uniformly_zero(
+        app, auth_client, active_project, monkeypatch):
+    """All rows have dir_count_r == 0 (common in nr drill-downs) — fold the column."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
+        'path': '/glade/campaign/cisl/csg/a', 'depth': 5,
+        'total_size_nr': 1024 ** 3, 'file_count_nr': 9, 'dir_count_r': 0,
+        'max_atime_nr': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
+    }])
+
+    # Non-recursive drill-down view: single row, dir_count_r 0 → column folded
+    # even though leaves_only is NOT set.
+    base = (f'/dashboards/user/disk-scans/{active_project.projcode}'
+            f'/directories?resource={_RES}&recursive=0')
+    body = auth_client.get(base).get_data(as_text=True)
+    assert 'Dirs' not in body
+    assert '# Subdirs' not in body
 
 
 def test_directories_page_renders(auth_client, active_project):
@@ -844,6 +1365,41 @@ def test_resource_page_200_with_perm(auth_client):
     )
     assert resp.status_code == 200
     assert 'Resource-wide' in resp.get_data(as_text=True)
+
+
+def test_resource_entities_drilldown_targets_resource_fragment(app, auth_client, monkeypatch):
+    """Whole-FS owner rows drill into the *resource* directories fragment
+    (regression: the drill must not be suppressed in resource mode)."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_owner_summary_resource', lambda r, **kw: [{
+        'owner_uid': 4242, 'total_size': 1024 ** 4, 'total_files': 5,
+        'directory_count': 2, 'filesystem': 'cisl', 'username': 'alice',
+    }])
+
+    resp = auth_client.get(f'/dashboards/user/disk-scans/resource/{_RES}/entities')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'data-bs-toggle="collapse"' in body          # drill chevron present
+    assert 'owner_uid=4242' in body                      # carries the uid
+    assert f'/disk-scans/resource/{_RES}/directories' in body   # → resource fragment
+
+
+@pytest.mark.parametrize('endpoint', ['entities', 'access-history', 'file-sizes'])
+def test_resource_card_fragments_403_without_perm(non_admin_client, endpoint):
+    resp = non_admin_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/{endpoint}'
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.parametrize('endpoint', ['entities', 'access-history', 'file-sizes'])
+def test_resource_card_fragments_200_with_perm(auth_client, endpoint):
+    """benkirk holds VIEW_ALL_FILESYSTEM_DATA → 200 (plugin off → banner)."""
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/{endpoint}'
+    )
+    assert resp.status_code == 200
 
 
 def test_view_all_filesystem_data_grants():
@@ -1059,3 +1615,225 @@ class TestDiskEntityPie:
                 {'id': 8, 'name': 'g8', 'value': Decimal('3')}]
         svg = generate_disk_entity_pie_chart(data, 'group')
         assert '#disk-ent-group-7' in svg
+
+
+# ---------------------------------------------------------------------------
+# user mode ("My Data"): own-data-only enforcement + login_required-only access
+# ---------------------------------------------------------------------------
+#
+# These routes are @login_required ONLY (no VIEW_ALL_FILESYSTEM_DATA), so the
+# owner MUST be pinned server-side to the logged-in user's unix_uid and any
+# client-supplied ?owner_uid / ?owner_user_id MUST be ignored — otherwise any
+# user could read another user's footprint. The first test is the security
+# crux.
+
+def _benkirk_uid(session):
+    from sam import User
+    u = User.get_by_username(session, 'benkirk')
+    assert u is not None and u.unix_uid is not None, (
+        'benkirk must be preserved with a unix_uid in the snapshot — '
+        'see project_test_db_fixtures.md'
+    )
+    return u.unix_uid
+
+
+def test_user_directories_pins_owner_ignoring_query(
+        app, auth_client, session, monkeypatch):
+    """SECURITY: ?owner_uid / ?owner_user_id are ignored; the directory scan is
+    pinned to the logged-in user's unix_uid, never the client-supplied value."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    uid = _benkirk_uid(session)
+    captured = {}
+
+    def fake(resource_name, **kw):
+        captured.update(kw)
+        captured['resource_name'] = resource_name
+        return []
+    monkeypatch.setattr(service, 'scan_directories_resource', fake)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/user/{_RES}/directories'
+        f'?owner_uid=999999&owner_user_id=999999'
+    )
+    assert resp.status_code == 200
+    assert captured['resource_name'] == _RES
+    assert captured['owner_uid'] == uid          # pinned to me
+    assert captured['owner_uid'] != 999999       # NOT the tampered value
+
+
+@pytest.mark.parametrize('endpoint,fn', [
+    ('access-history', 'scan_access_history_resource'),
+    ('file-sizes', 'scan_file_sizes_resource'),
+])
+def test_user_distribution_pins_owner_ignoring_query(
+        app, auth_client, session, monkeypatch, endpoint, fn):
+    """SECURITY: the histogram scans are pinned to the logged-in user too."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    uid = _benkirk_uid(session)
+    captured = {}
+
+    def fake(resource_name, **kw):
+        captured.update(kw)
+        return None      # falsy → no chart generation; the call is what we check
+    monkeypatch.setattr(service, fn, fake)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/user/{_RES}/{endpoint}?owner_uid=999999'
+    )
+    assert resp.status_code == 200
+    assert captured['owner_uid'] == uid
+    assert captured['owner_uid'] != 999999
+
+
+@pytest.mark.parametrize(
+    'endpoint', ['directories', 'access-history', 'file-sizes', 'explore'])
+def test_user_routes_reachable_without_view_all(non_admin_client, endpoint):
+    """User routes are @login_required only — a user WITHOUT
+    VIEW_ALL_FILESYSTEM_DATA gets 200 (contrast the resource routes' 403)."""
+    resp = non_admin_client.get(
+        f'/dashboards/user/disk-scans/user/{_RES}/{endpoint}'
+    )
+    assert resp.status_code == 200
+
+
+def test_user_directories_no_identity_empty_state(app, auth_client, monkeypatch):
+    """Account with no unix_uid → info message, and NO scan is run (an absent
+    owner filter would otherwise scan the whole resource)."""
+    from types import SimpleNamespace
+    from webapp.disk_scans import service, routes
+    _enable_fs_scans(app, monkeypatch)
+    calls = {'n': 0}
+
+    def fake(*a, **k):
+        calls['n'] += 1
+        return []
+    monkeypatch.setattr(service, 'scan_directories_resource', fake)
+    # _user_ctx reads the owner via routes' module-level current_user.
+    monkeypatch.setattr(routes, 'current_user', SimpleNamespace(unix_uid=None))
+
+    resp = auth_client.get(f'/dashboards/user/disk-scans/user/{_RES}/directories')
+    assert resp.status_code == 200
+    assert calls['n'] == 0                                   # never scanned
+    assert 'No filesystem identity' in resp.get_data(as_text=True)
+
+
+def test_no_user_entities_route(app):
+    """User mode hides the User/group counts tab — there is no entities_user
+    endpoint — but the other three fragments + the explorer page do exist."""
+    from flask import url_for
+    from werkzeug.routing import BuildError
+    with app.test_request_context():
+        with pytest.raises(BuildError):
+            url_for('disk_scans.entities_user_fragment', resource=_RES)
+        for ep in ('directories_user_fragment', 'access_history_user_fragment',
+                   'file_sizes_user_fragment', 'directories_user_page'):
+            url_for(f'disk_scans.{ep}', resource=_RES)   # no raise
+
+
+def test_user_explore_hides_owner_picker(auth_client, session):
+    """The explorer 'full view' omits the owner picker in user mode (a user must
+    not be able to re-filter to another owner)."""
+    _benkirk_uid(session)
+    resp = auth_client.get(f'/dashboards/user/disk-scans/user/{_RES}/explore')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'My Data' in body
+    assert 'Search users…' not in body          # owner fk-picker omitted
+
+
+# ---------------------------------------------------------------------------
+# "My Data" tab visibility on the user dashboard (/user/)
+# ---------------------------------------------------------------------------
+
+def test_my_data_tab_shown(auth_client, monkeypatch):
+    """benkirk has a unix_uid → My Data tab + one subtab per warmed resource."""
+    monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                        lambda app=None: ['Campaign_Store'])
+    resp = auth_client.get('/user/')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="my-data-tab"' in body
+    assert 'id="my-data-subtab-1"' in body       # subtab strip rendered
+
+
+def test_my_data_tab_hidden_when_no_resources(auth_client, monkeypatch):
+    """Plugin off / no warmed resource → no My Data tab even with a unix_uid."""
+    monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                        lambda app=None: [])
+    resp = auth_client.get('/user/')
+    assert resp.status_code == 200
+    assert 'id="my-data-tab"' not in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# distribution histogram: single-owner drill shortcut
+# ---------------------------------------------------------------------------
+#
+# A band with exactly one owner skips the (one-row) per-user table and expands
+# the band row straight to that owner's directories — one click instead of two.
+# This is what makes the single-user "My Data" histograms low-friction, but the
+# rule is generic (any single-owner band in any mode benefits).
+
+def _render_distribution_partial(app, owners):
+    from flask import render_template
+    hist = {
+        'bucket_labels': ['> 1 year'],
+        'buckets': {'> 1 year': {
+            'data': 100, 'files': 10, 'owners': owners,
+            'accessed_before': '2025-01-01', 'accessed_after': '2024-01-01',
+        }},
+        'total_data': 100, 'total_files': 10,
+        'username_map': {7: 'benkirk', 8: 'alice'},
+    }
+    with app.test_request_context():
+        return render_template(
+            'dashboards/user/partials/disk_scans_distribution.html',
+            hist=hist, chart_svg='<svg/>', enabled=True, error=None,
+            resource_name=_RES, scope='', fileset=None, target_id='t',
+            bucket_header='Last accessed', metric='data', metric_toggle=False,
+            log_toggle=False, log_on=False, fragment_url='/frag',
+            dir_fragment_url='/dirs')
+
+
+def test_single_owner_band_drills_straight_to_directories(app):
+    """One owner → no per-user table; the band row drills to their directories."""
+    body = _render_distribution_partial(app, {7: {'data': 100, 'files': 10}})
+    assert 'owner_uid=7' in body                       # directory drill present
+    assert 'Top users by' not in body                  # per-user table skipped
+    assert 'Show directories in this band' in body     # band row title
+    assert '>Owners<' not in body                      # uniform-1 column folded
+
+
+def test_multi_owner_band_keeps_per_user_table(app):
+    """Two+ owners → the per-user aggregation table is retained."""
+    body = _render_distribution_partial(
+        app, {7: {'data': 60, 'files': 6}, 8: {'data': 40, 'files': 4}})
+    assert 'Top users by' in body                       # per-user table kept
+    assert 'Show top users in this bucket' in body
+    assert 'owner_uid=7' in body and 'owner_uid=8' in body   # each user drills
+    assert '>Owners<' in body                            # column shown (≥2 owners)
+
+
+def test_single_owner_band_without_window_keeps_table(app):
+    """The shortcut only applies when there's a drill window. A lone owner in a
+    window-less band keeps the per-user table (listed, but not drillable) —
+    behaviour unchanged from before the shortcut."""
+    from flask import render_template
+    hist = {
+        'bucket_labels': ['unknown'],
+        'buckets': {'unknown': {'data': 5, 'files': 1, 'owners': {7: {'data': 5, 'files': 1}}}},
+        'total_data': 5, 'total_files': 1, 'username_map': {7: 'benkirk'},
+    }
+    with app.test_request_context():
+        body = render_template(
+            'dashboards/user/partials/disk_scans_distribution.html',
+            hist=hist, chart_svg='<svg/>', enabled=True, error=None,
+            resource_name=_RES, scope='', fileset=None, target_id='t',
+            bucket_header='Last accessed', metric='data', metric_toggle=False,
+            log_toggle=False, log_on=False, fragment_url='/frag',
+            dir_fragment_url='/dirs')
+    assert 'benkirk' in body                            # user still listed
+    assert 'Top users by' in body                       # per-user table kept
+    assert 'owner_uid=7' not in body                    # but no directory drill

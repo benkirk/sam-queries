@@ -21,7 +21,7 @@
   resolves it to the unix UID the scan data is keyed on (see _resolve_owner).
 #}
 {% macro dir_filters(form_id, fragment_url, target_id, filters, user_search_url,
-                     resource_name, scope, fileset, limit_options) %}
+                     resource_name, scope, fileset, limit_options, mode='project') %}
 <form id="{{ form_id }}"
       hx-get="{{ fragment_url }}"
       hx-target="#{{ target_id }}"
@@ -59,6 +59,10 @@
              style="width:160px;">
     </div>
 
+    {# User mode ("My Data") pins the owner to the logged-in user server-side,
+       so the owner picker is omitted — it must not be possible to re-filter the
+       explorer to another owner here. #}
+    {% if mode != 'user' %}
     <div style="min-width:240px;">
       {# optional_text='' — drops the muted "(optional)" hint, which is both
          redundant on a filter and low-contrast on the navy panel. #}
@@ -69,6 +73,7 @@
                          selected_label=filters.owner_label or '',
                          label_class='form-label') }}
     </div>
+    {% endif %}
 
     <div class="form-check form-switch align-self-center mb-2">
       <input class="form-check-input" type="checkbox" role="switch"

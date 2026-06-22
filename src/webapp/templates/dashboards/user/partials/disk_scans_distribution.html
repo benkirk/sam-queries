@@ -18,6 +18,25 @@
 {% set _metric = metric or 'data' %}
 {% set _by_files = (_metric == 'files') %}
 
+{# Lazy-loaded directory drill for one owner within one band — non-recursive
+   (own files) to match the bar, filtered by the band's window: access-history
+   bands carry a date window (accessed_before/after); file-size bands carry an
+   avg-own-file-size window (size_min/size_max, last band open-ended). Shared by
+   the multi-owner per-user rows and the single-owner band row (where the
+   per-user table is skipped — there's only one user). Binds to
+   shown.bs.collapse so it fires under nav restore. #}
+{% macro dir_drill(dt_id, uid, uname, b, date_band, resource_name, scope, dir_fragment_url) %}
+<div class="p-2 bg-light" id="{{ dt_id }}"
+     hx-get="{{ dir_fragment_url }}?owner_uid={{ uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if date_band %}{% if b.get('accessed_after') %}&accessed_after={{ b.accessed_after }}{% endif %}&accessed_before={{ b.accessed_before }}{% else %}&min_avg_size={{ b.size_min }}{% if b.get('size_max') is not none %}&max_avg_size={{ b.size_max }}{% endif %}{% endif %}&recursive=0&sort_by=size_nr&limit=25&target_id={{ dt_id }}"
+     hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+     hx-swap="innerHTML">
+  <p class="text-muted small mb-0">
+    <i class="fas fa-spinner fa-spin me-1"></i>
+    Loading {{ uname }}'s directories…
+  </p>
+</div>
+{% endmacro %}
+
 {% if not enabled %}
   {{ scans_disabled() }}
 {% elif error %}
@@ -95,6 +114,26 @@
     {% endif %}
   </div>
 
+  {% if kind == 'file_sizes' %}
+    {# File-size bands are derived from each directory's average file size
+       (total bytes / file count), not from per-file stats — the scan does not
+       track individual files. Make that approximation explicit. #}
+    <p class="text-muted small fst-italic mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      Note: results are approximate, computed as average file sizes per
+      directory (individual files are not tracked).
+    </p>
+  {% elif kind == 'access_history' %}
+    {# Access-history bands sum each directory's data volume, bucketed by the
+       most recent access time across the directory's contents — the scan does
+       not track individual files (so a directory's cold data counts as recently
+       accessed if any of its contents was). #}
+    <p class="text-muted small fst-italic mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      Note: results are computed by directory and grouped by most recent access
+      (individual files are not tracked).
+    </p>
+  {% endif %}
   <div class="chart-container">
     {{ chart_svg | safe }}
   </div>
@@ -103,6 +142,16 @@
      the owners dict (uid → {data, files}) is already on the histogram, so
      this is a pure client-side expand, mirroring the jobs table pattern. #}
   {% set umap = hist.username_map or {} %}
+  {# Fold the Owners column when no band has more than one owner (uniformly 1 —
+     e.g. the owner-pinned "My Data" view — or uniformly 0): the count carries
+     no signal and is pure noise. Shown as soon as any band has ≥2 owners.
+     Mirrors the directories table's all-zero Subdirs fold. #}
+  {% set _ns_owners = namespace(multi=false) %}
+  {% for _lbl in hist.bucket_labels %}
+    {% if (hist.buckets.get(_lbl, {}).get('owners') or {}) | length > 1 %}{% set _ns_owners.multi = true %}{% endif %}
+  {% endfor %}
+  {% set _show_owners = _ns_owners.multi %}
+  {% set _cols = 5 if _show_owners else 4 %}
   <div class="table-responsive mt-3">
     <table class="table table-sm table-hover align-middle mb-0">
       <thead class="table-light">
@@ -111,7 +160,7 @@
           <th>{{ bucket_header or 'Bucket' }}</th>
           <th class="text-end">Data</th>
           <th class="text-end">Files</th>
-          <th class="text-end">Owners</th>
+          {% if _show_owners %}<th class="text-end">Owners</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -121,27 +170,51 @@
           {% set b_data = b.get('data', 0) or 0 %}
           {% set b_files = b.get('files', 0) or 0 %}
           {% set rowid = (target_id or 'ah') ~ '-ah' ~ loop.index %}
-          <tr {% if owners %}class="cursor-pointer"
+          {# Band drill window (same for every owner in the band): access-history
+             bands carry a date window, file-size bands an avg-size window. The
+             one-user shortcut — when a band has exactly one owner AND a drill
+             window, skip the (one-row) per-user table and expand the band row
+             straight to that owner's directories (less friction in single-owner
+             views like "My Data"). Any other band keeps the per-user table,
+             unchanged: ≥2 owners, or a lone owner with no window (still listed,
+             just not drillable). #}
+          {% set _date_band = b.get('accessed_before') %}
+          {% set _size_band = (b.get('size_min') is not none) or (b.get('size_max') is not none) %}
+          {% set _band_window = (_date_band or _size_band) and dir_fragment_url %}
+          {% set _single = (owners | length == 1) %}
+          {% set _direct = _single and _band_window %}
+          {% set _expandable = owners %}
+          <tr {% if _expandable %}class="cursor-pointer"
                 data-ah-bucket="{{ loop.index0 }}"
                 data-bs-toggle="collapse" data-bs-target="#{{ rowid }}"
                 aria-expanded="false" aria-controls="{{ rowid }}"
-                title="Show top users in this bucket"{% endif %}>
+                title="{{ 'Show directories in this band' if _direct else 'Show top users in this bucket' }}"{% endif %}>
             <td class="text-center p-0">
-              {% if owners %}
+              {% if _expandable %}
                 <i class="fas fa-chevron-right small collapse-icon text-muted"></i>
               {% endif %}
             </td>
             <td>{{ label }}</td>
             <td class="text-end font-monospace">{{ b_data | fmt_size }}</td>
             <td class="text-end">{{ b_files | fmt_number }}</td>
-            <td class="text-end">{{ owners | length | fmt_number }}</td>
+            {% if _show_owners %}<td class="text-end">{{ owners | length | fmt_number }}</td>{% endif %}
           </tr>
-          {% if owners %}
+          {% if _direct %}
+            {# Exactly one owner → drill straight to their directories. #}
+            {% set _uid = owners | list | first %}
+            {% set _uname = umap.get(_uid) or umap.get(_uid | string) or ('uid ' ~ _uid) %}
+            <tr class="collapse" id="{{ rowid }}">
+              <td colspan="{{ _cols }}" class="p-0 border-0">
+                {{ dir_drill(rowid ~ '-d1', _uid, _uname, b, _date_band,
+                             resource_name, scope, dir_fragment_url) }}
+              </td>
+            </tr>
+          {% elif _expandable %}
             {# Sort the per-user breakdown by the active chart metric so the
                table order matches the stacked bar. #}
             {% set ranked = owners.items() | sort(attribute='1.' ~ _metric, reverse=true) %}
             <tr class="collapse" id="{{ rowid }}">
-              <td colspan="5" class="bg-light">
+              <td colspan="{{ _cols }}" class="bg-light">
                 <div class="small text-muted mb-1">
                   Top users by {{ 'files' if _by_files else 'data' }} in <strong>{{ label }}</strong>
                   ({{ owners | length | fmt_number }} total)
@@ -161,14 +234,31 @@
                     {% for uid, stats in ranked[:10] %}
                       {% set dpct = (100.0 * stats.get('data', 0) / b_data) if b_data else 0 %}
                       {% set fpct = (100.0 * stats.get('files', 0) / b_files) if b_files else 0 %}
-                      <tr>
+                      {% set _uname = umap.get(uid) or umap.get(uid | string) or ('uid ' ~ uid) %}
+                      {% set _urow = rowid ~ '-u' ~ loop.index %}
+                      {% set _dt = rowid ~ '-d' ~ loop.index %}
+                      <tr {% if _band_window %}class="cursor-pointer" data-bs-toggle="collapse"
+                            data-bs-target="#{{ _urow }}" aria-expanded="false"
+                            aria-controls="{{ _urow }}"
+                            title="Show this user's directories in this band"{% endif %}>
                         <td class="text-end text-muted">{{ loop.index }}</td>
-                        <td class="font-monospace">{{ umap.get(uid) or umap.get(uid | string) or ('uid ' ~ uid) }}</td>
+                        <td class="font-monospace">
+                          {%- if _band_window %}<i class="fas fa-chevron-right small collapse-icon text-muted me-1"></i>{% endif -%}
+                          {{ _uname }}
+                        </td>
                         <td class="text-end font-monospace">{{ stats.get('data', 0) | fmt_size }}</td>
                         <td class="text-end text-muted">{{ dpct | fmt_pct }}</td>
                         <td class="text-end">{{ stats.get('files', 0) | fmt_number }}</td>
                         <td class="text-end text-muted">{{ fpct | fmt_pct }}</td>
                       </tr>
+                      {% if _band_window %}
+                        <tr class="collapse" id="{{ _urow }}">
+                          <td colspan="6" class="p-0 border-0">
+                            {{ dir_drill(_dt, uid, _uname, b, _date_band,
+                                         resource_name, scope, dir_fragment_url) }}
+                          </td>
+                        </tr>
+                      {% endif %}
                     {% endfor %}
                   </tbody>
                 </table>

@@ -33,7 +33,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlencode
 
 from flask import Blueprint, current_app, render_template, request, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from sam.core.users import User
 from sam.projects.projects import Project
@@ -43,7 +43,7 @@ from webapp.dashboards.charts import (
     generate_distribution_histogram,
 )
 from webapp.disk_scans import service
-from webapp.disk_scans.scope import resolve_scan_scope
+from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_grouped
 from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
 from webapp.utils.rbac import Permission, require_permission
@@ -54,8 +54,11 @@ bp = Blueprint('disk_scans', __name__)
 # fs_scans/queries/facade.py:_DIR_SORT_KEYS). The facade fixes the sort
 # direction per key (size/files/atime/dirs descending, path ascending),
 # so the UI only switches the active key, not a direction. 'dirs' maps to
-# the recursive subdirectory count (dir_count_r).
-_DIR_SORT_WHITELIST = {'size', 'files', 'atime_r', 'path', 'dirs'}
+# the recursive subdirectory count (dir_count_r). The ``_nr`` keys sort on the
+# non-recursive (own-files) columns — used by the access-history drill-down's
+# non-recursive view, which shows a directory's own cold data.
+_DIR_SORT_WHITELIST = {'size', 'files', 'atime_r', 'path', 'dirs',
+                       'size_nr', 'files_nr'}
 _DEFAULT_DIR_SORT = 'size'
 
 _DEFAULT_LIMIT = 50
@@ -114,6 +117,18 @@ def _truthy(v) -> bool:
     return (v or '').strip().lower() in ('1', 'true', 'on', 'yes')
 
 
+def _atime_recursive_flag() -> bool:
+    """Read ``?recursive=`` for the access-date filter, defaulting to True.
+
+    True (default, and what every existing caller gets) compares the
+    accessed-before/after filters against the recursive subtree atime; the
+    access-history drill-down passes ``recursive=0`` for its non-recursive
+    (own-files) default view, matching the histogram bar.
+    """
+    raw = request.args.get('recursive')
+    return True if raw is None else _truthy(raw)
+
+
 def _query_date(name: str) -> Optional[datetime]:
     """Parse a ``?<name>=YYYY-MM-DD`` query arg to a datetime (or ``None``).
 
@@ -157,6 +172,10 @@ def _dir_filters() -> dict:
         'accessed_after': _query_date('accessed_after'),
         'accessed_before_str': (request.args.get('accessed_before') or '').strip(),
         'accessed_after_str': (request.args.get('accessed_after') or '').strip(),
+        'atime_recursive': _atime_recursive_flag(),
+        'outermost': _truthy(request.args.get('outermost')),
+        'min_avg_size': request.args.get('min_avg_size', type=int),
+        'max_avg_size': request.args.get('max_avg_size', type=int),
         'leaves_only': _truthy(request.args.get('leaves_only')),
     }
 
@@ -240,6 +259,14 @@ def _initial_fragment_url(fragment_url: str, ctx: dict, flt: dict,
         params['accessed_before'] = flt['accessed_before_str']
     if flt['accessed_after_str']:
         params['accessed_after'] = flt['accessed_after_str']
+    if not flt.get('atime_recursive', True):
+        params['recursive'] = '0'
+    if flt.get('outermost'):
+        params['outermost'] = '1'
+    if flt.get('min_avg_size') is not None:
+        params['min_avg_size'] = flt['min_avg_size']
+    if flt.get('max_avg_size') is not None:
+        params['max_avg_size'] = flt['max_avg_size']
     return f'{fragment_url}?{urlencode(params)}'
 
 
@@ -331,8 +358,27 @@ def _resource_ctx(resource_name: str) -> dict:
     }
 
 
+def _user_ctx(resource_name: str) -> dict:
+    """``_resource_ctx`` for user mode: whole-collection, owner pinned to me.
+
+    ``forced_owner_uid`` is the authenticated user's ``unix_uid``; the render
+    helpers MUST use it and ignore any ``?owner_uid`` / ``?owner_user_id`` from
+    the query string (these routes are ``@login_required`` only, not
+    ``VIEW_ALL_FILESYSTEM_DATA``-gated, so trusting a client-supplied owner
+    would leak another user's footprint). ``None`` when the account has no
+    ``unix_uid`` — the fragments then render the no-identity empty state rather
+    than running an unfiltered (whole-resource) scan.
+    """
+    # NB: don't stash 'mode' here — the render helpers build their template
+    # context as ``dict(..., mode=mode, **ctx)`` and would get a duplicate
+    # 'mode' keyword. Callers pass mode='user' explicitly instead.
+    ctx = _resource_ctx(resource_name)
+    ctx['forced_owner_uid'] = getattr(current_user, 'unix_uid', None)
+    return ctx
+
+
 def _render_directories_fragment(ctx, fragment_url, *, mode, scan_call,
-                                 log_label, browse=False):
+                                 log_label, browse=False, forced_owner_uid=None):
     """Shared body for the project + resource directory fragments.
 
     Both render the *same* ``disk_scans_directories.html`` partial; they differ
@@ -342,6 +388,11 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scan_call,
     drill-down (clickable rows + ancestry breadcrumb), explorer-page only.
     """
     flt = _dir_filters()
+    # User mode: pin the owner server-side and drop any client-supplied owner so
+    # it can't re-enter via _scan / the breadcrumb. See _user_ctx.
+    if forced_owner_uid is not None:
+        flt['owner_uid'] = forced_owner_uid
+        flt['owner_user_id'] = None
     breadcrumb_items = (_dir_breadcrumb(mode, ctx, fragment_url, flt)
                         if browse and is_enabled() else None)
     base = dict(
@@ -389,6 +440,10 @@ def directories_fragment(project):
             owner_gid=flt['owner_gid'],
             accessed_before=flt['accessed_before'],
             accessed_after=flt['accessed_after'],
+            atime_recursive=flt['atime_recursive'],
+            min_avg_size=flt['min_avg_size'],
+            max_avg_size=flt['max_avg_size'],
+            outermost_only=flt['outermost'],
             leaves_only=flt['leaves_only'],
             subpath=ctx['fileset'],
         )
@@ -415,12 +470,19 @@ def directories_page(project):
     flt = _dir_filters()
     fragment_url = url_for('disk_scans.directories_fragment',
                            projcode=project.projcode)
+    # The directories that *define* this scope (the scoped project + its active
+    # descendants on this resource), grouped by owning project — surfaced in the
+    # page's "Scope" panel. Same subtree walk the fragment scan runs.
+    scope_groups = resolve_scan_scope_grouped(
+        db.session, ctx['scoped_project'], ctx['resource_name'])
+    scope_dir_count = sum(len(g['paths']) for g in scope_groups)
     return render_template(
         'dashboards/user/disk_scans_directories_page.html',
         mode='project', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
-        limit_options=_LIMIT_OPTIONS, browse=True, **ctx,
+        limit_options=_LIMIT_OPTIONS, browse=True,
+        scope_groups=scope_groups, scope_dir_count=scope_dir_count, **ctx,
     )
 
 
@@ -443,8 +505,13 @@ def directories_resource_fragment(resource):
             ctx['resource_name'], subpath=ctx['fileset'],
             sort_by=flt['sort_by'], limit=flt['limit'],
             owner_uid=flt['owner_uid'],
+            owner_gid=flt['owner_gid'],
             accessed_before=flt['accessed_before'],
             accessed_after=flt['accessed_after'],
+            atime_recursive=flt['atime_recursive'],
+            min_avg_size=flt['min_avg_size'],
+            max_avg_size=flt['max_avg_size'],
+            outermost_only=flt['outermost'],
             leaves_only=flt['leaves_only'],
         )
 
@@ -478,12 +545,18 @@ def directories_resource_page(resource):
     )
 
 
-@bp.route('/<projcode>/entities')
-@login_required
-@require_project_access
-def entities_fragment(project):
-    """HTMX fragment: per-owner or per-group rollup (``?kind=owner|group``)."""
-    ctx = _common_ctx(project)
+def _render_entities(ctx, fragment_url, *, scan_call, log_label, dir_fragment_url,
+                     forced_owner_uid=None):
+    """Shared body for the project + resource entity (owner|group) fragments.
+
+    Both render the *same* ``disk_scans_entities.html`` partial; they differ
+    only in scope context, which fragment URL the owner↔group toggle re-fetches,
+    and the (already scope-resolved) ``scan_call(kind, limit, subpath)``. The
+    per-entity row drill-down re-targets ``dir_fragment_url`` — the directories
+    fragment for *this mode* (project ``directories_fragment`` or resource
+    ``directories_resource_fragment``), both of which accept the owner/group
+    filters — so the drill works in both modes.
+    """
     kind = (request.args.get('kind') or 'owner').strip().lower()
     if kind not in ('owner', 'group'):
         kind = 'owner'
@@ -491,23 +564,18 @@ def entities_fragment(project):
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
             'dashboards/user/partials/disk_scans_entities.html',
-            rows=[], kind=kind, pie_chart=None,
-            fragment_url=url_for('disk_scans.entities_fragment',
-                                 projcode=project.projcode),
+            rows=[], kind=kind, pie_chart=None, fragment_url=fragment_url,
+            dir_fragment_url=dir_fragment_url,
             enabled=is_enabled(), error=None, **ctx,
         )
 
     rows, error = [], None
     try:
-        fn = service.scan_owner_summary if kind == 'owner' else service.scan_group_summary
-        rows = fn(
-            db.session, ctx['scoped_project'], ctx['resource_name'],
-            limit=_limit(), subpath=ctx['fileset'],
-        )
+        rows = scan_call(kind, _limit(), ctx['fileset'])
     except Exception as exc:
         current_app.logger.exception(
-            'disk_scans.entities: %s scan failed for project=%s resource=%s',
-            kind, ctx['scoped_project'].projcode, ctx['resource_name'],
+            'disk_scans.entities: %s scan failed for %s resource=%s',
+            kind, log_label, ctx['resource_name'],
         )
         error = str(exc)
 
@@ -526,19 +594,67 @@ def entities_fragment(project):
 
     return render_template(
         'dashboards/user/partials/disk_scans_entities.html',
-        rows=rows, kind=kind, pie_chart=pie_chart,
-        fragment_url=url_for('disk_scans.entities_fragment',
-                             projcode=project.projcode),
+        rows=rows, kind=kind, pie_chart=pie_chart, fragment_url=fragment_url,
+        dir_fragment_url=dir_fragment_url,
         enabled=True, error=error, **ctx,
+    )
+
+
+@bp.route('/<projcode>/entities')
+@login_required
+@require_project_access
+def entities_fragment(project):
+    """HTMX fragment: per-owner or per-group rollup (``?kind=owner|group``)."""
+    ctx = _common_ctx(project)
+    fragment_url = url_for('disk_scans.entities_fragment', projcode=project.projcode)
+
+    def _scan(kind, limit, subpath):
+        fn = (service.scan_owner_summary if kind == 'owner'
+              else service.scan_group_summary)
+        return fn(db.session, ctx['scoped_project'], ctx['resource_name'],
+                  limit=limit, subpath=subpath)
+
+    return _render_entities(
+        ctx, fragment_url, scan_call=_scan,
+        log_label=f"project={ctx['scoped_project'].projcode}",
+        dir_fragment_url=url_for('disk_scans.directories_fragment',
+                                 projcode=project.projcode),
+    )
+
+
+@bp.route('/resource/<resource>/entities')
+@login_required
+@require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)
+def entities_resource_fragment(resource):
+    """HTMX fragment: owner|group rollup across an ENTIRE disk resource.
+
+    Resource mode — unscoped, elevated (``VIEW_ALL_FILESYSTEM_DATA``). Same
+    partial as project mode; the per-user drill-down degrades to non-clickable
+    since there is no project to scope it to.
+    """
+    ctx = _resource_ctx(resource)
+    fragment_url = url_for('disk_scans.entities_resource_fragment', resource=resource)
+
+    def _scan(kind, limit, subpath):
+        fn = (service.scan_owner_summary_resource if kind == 'owner'
+              else service.scan_group_summary_resource)
+        return fn(ctx['resource_name'], limit=limit, subpath=subpath)
+
+    return _render_entities(
+        ctx, fragment_url, scan_call=_scan, log_label='resource-wide',
+        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
+                                 resource=resource),
     )
 
 
 _METRIC_WHITELIST = {'data', 'files'}
 
 
-def _render_distribution(project, *, service_fn, endpoint, kind,
-                         bucket_header, metric_toggle=False, log_toggle=False):
-    """Shared body for the two distribution histogram fragments.
+def _render_distribution(ctx, fragment_url, *, scan_call, kind,
+                         bucket_header, log_label, dir_fragment_url,
+                         metric_toggle=False, log_toggle=False,
+                         forced_owner_uid=None):
+    """Shared body for the two distribution histogram fragments (both modes).
 
     The Access-history and File-size tabs are identical end to end — same
     ``{bucket_labels, buckets{...}, owners, username_map}`` shape, same
@@ -547,22 +663,23 @@ def _render_distribution(project, *, service_fn, endpoint, kind,
     Log-scale switch, both of which re-fetch the pane via ``?metric=`` /
     ``?log=``. ``kind`` is used only for logging.
 
+    Project vs resource mode differ only in the prebuilt ``ctx`` /
+    ``fragment_url`` and the (already scope-resolved) ``scan_call(owner_uid,
+    subpath)``. In resource mode ``ctx['project']`` is ``None`` so the band →
+    user → directories drill degrades to non-clickable (it needs a projcode).
+
     A log y-axis can't represent a stack, so ``log_y`` renders solid bars
     (no per-user gradient); it's offered only where the metric is skewed
     enough to need it (file-sizes), hence gated on *log_toggle*.
     """
-    ctx = _common_ctx(project)
-
     metric = (request.args.get('metric') or 'data').strip().lower()
     if not metric_toggle or metric not in _METRIC_WHITELIST:
         metric = 'data'
     log_on = log_toggle and _truthy(request.args.get('log'))
-    # urls the pill / switch re-fetch (carry scope/resource/fileset via the
-    # pane's hidden form + hx-include, exactly like the owner↔group toggle).
-    fragment_url = url_for(endpoint, projcode=project.projcode)
-    extra = dict(metric=metric, metric_toggle=metric_toggle,
+    extra = dict(kind=kind, metric=metric, metric_toggle=metric_toggle,
                  log_on=log_on, log_toggle=log_toggle,
-                 bucket_header=bucket_header, fragment_url=fragment_url)
+                 bucket_header=bucket_header, fragment_url=fragment_url,
+                 dir_fragment_url=dir_fragment_url)
 
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
@@ -571,20 +688,20 @@ def _render_distribution(project, *, service_fn, endpoint, kind,
             enabled=is_enabled(), error=None, **ctx, **extra,
         )
 
-    owner_uid = request.args.get('owner_uid', type=int)
+    # User mode pins the owner server-side (forced_owner_uid); ignore any
+    # client-supplied ?owner_uid in that case. See _user_ctx.
+    owner_uid = (forced_owner_uid if forced_owner_uid is not None
+                 else request.args.get('owner_uid', type=int))
     hist, chart_svg, error = None, None, None
     try:
-        hist = service_fn(
-            db.session, ctx['scoped_project'], ctx['resource_name'],
-            owner_uid=owner_uid, subpath=ctx['fileset'],
-        )
+        hist = scan_call(owner_uid, ctx['fileset'])
         if hist:
             chart_svg = generate_distribution_histogram(
                 hist, log_y=log_on, metric=metric)
     except Exception as exc:
         current_app.logger.exception(
-            'disk_scans.%s: scan failed for project=%s resource=%s',
-            kind, ctx['scoped_project'].projcode, ctx['resource_name'],
+            'disk_scans.%s: scan failed for %s resource=%s',
+            kind, log_label, ctx['resource_name'],
         )
         error = str(exc)
 
@@ -600,10 +717,21 @@ def _render_distribution(project, *, service_fn, endpoint, kind,
 @require_project_access
 def access_history_fragment(project):
     """HTMX fragment: access-time distribution histogram (server-rendered SVG)."""
+    ctx = _common_ctx(project)
+    fragment_url = url_for('disk_scans.access_history_fragment',
+                           projcode=project.projcode)
+
+    def _scan(owner_uid, subpath):
+        return service.scan_access_history(
+            db.session, ctx['scoped_project'], ctx['resource_name'],
+            owner_uid=owner_uid, subpath=subpath)
+
     return _render_distribution(
-        project, service_fn=service.scan_access_history,
-        endpoint='disk_scans.access_history_fragment', kind='access_history',
+        ctx, fragment_url, scan_call=_scan, kind='access_history',
         bucket_header='Last accessed',
+        log_label=f"project={ctx['scoped_project'].projcode}",
+        dir_fragment_url=url_for('disk_scans.directories_fragment',
+                                 projcode=project.projcode),
     )
 
 
@@ -618,8 +746,197 @@ def file_sizes_fragment(project):
     Log-scale switch (``?log=``) because file-size *data* spans many orders
     of magnitude — at the cost of the per-user stack gradient.
     """
+    ctx = _common_ctx(project)
+    fragment_url = url_for('disk_scans.file_sizes_fragment',
+                           projcode=project.projcode)
+
+    def _scan(owner_uid, subpath):
+        return service.scan_file_sizes(
+            db.session, ctx['scoped_project'], ctx['resource_name'],
+            owner_uid=owner_uid, subpath=subpath)
+
     return _render_distribution(
-        project, service_fn=service.scan_file_sizes,
-        endpoint='disk_scans.file_sizes_fragment', kind='file_sizes',
-        bucket_header='File size', metric_toggle=True, log_toggle=True,
+        ctx, fragment_url, scan_call=_scan, kind='file_sizes',
+        bucket_header='File size',
+        log_label=f"project={ctx['scoped_project'].projcode}",
+        dir_fragment_url=url_for('disk_scans.directories_fragment',
+                                 projcode=project.projcode),
+        metric_toggle=True, log_toggle=True,
+    )
+
+
+@bp.route('/resource/<resource>/access-history')
+@login_required
+@require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)
+def access_history_resource_fragment(resource):
+    """HTMX fragment: access-time histogram across an ENTIRE disk resource.
+
+    Resource mode — unscoped, elevated (``VIEW_ALL_FILESYSTEM_DATA``).
+    """
+    ctx = _resource_ctx(resource)
+    fragment_url = url_for('disk_scans.access_history_resource_fragment',
+                           resource=resource)
+
+    def _scan(owner_uid, subpath):
+        return service.scan_access_history_resource(
+            ctx['resource_name'], owner_uid=owner_uid, subpath=subpath)
+
+    return _render_distribution(
+        ctx, fragment_url, scan_call=_scan, kind='access_history',
+        bucket_header='Last accessed', log_label='resource-wide',
+        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
+                                 resource=resource),
+    )
+
+
+@bp.route('/resource/<resource>/file-sizes')
+@login_required
+@require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)
+def file_sizes_resource_fragment(resource):
+    """HTMX fragment: file-size histogram across an ENTIRE disk resource.
+
+    Resource mode — unscoped, elevated (``VIEW_ALL_FILESYSTEM_DATA``). Same
+    Data ↔ Files metric pill + Log-scale switch as project mode.
+    """
+    ctx = _resource_ctx(resource)
+    fragment_url = url_for('disk_scans.file_sizes_resource_fragment',
+                           resource=resource)
+
+    def _scan(owner_uid, subpath):
+        return service.scan_file_sizes_resource(
+            ctx['resource_name'], owner_uid=owner_uid, subpath=subpath)
+
+    return _render_distribution(
+        ctx, fragment_url, scan_call=_scan, kind='file_sizes',
+        bucket_header='File size', log_label='resource-wide',
+        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
+                                 resource=resource),
+        metric_toggle=True, log_toggle=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# User mode — "My Data": the resource card scoped to the logged-in user's own
+# files. @login_required ONLY (no VIEW_ALL_FILESYSTEM_DATA), so the owner is
+# pinned server-side to current_user.unix_uid via _user_ctx + the render
+# helpers' forced_owner_uid; any client-supplied ?owner_uid / ?owner_user_id is
+# ignored. No entities (owner|group) route — a single-owner view needs no
+# per-owner rollup, and the card hides that tab in user mode.
+# ---------------------------------------------------------------------------
+
+
+def _no_identity_fragment():
+    """Empty state for a user with no ``unix_uid`` — never runs a scan."""
+    return render_template(
+        'dashboards/user/partials/disk_scans_no_identity.html')
+
+
+@bp.route('/user/<resource>/directories')
+@login_required
+def directories_user_fragment(resource):
+    """HTMX fragment: largest directories the logged-in user OWNS on *resource*."""
+    ctx = _user_ctx(resource)
+    forced = ctx['forced_owner_uid']
+    if forced is None:
+        return _no_identity_fragment()
+    fragment_url = url_for('disk_scans.directories_user_fragment',
+                           resource=resource)
+
+    def _scan(flt):
+        return service.scan_directories_resource(
+            ctx['resource_name'], subpath=ctx['fileset'],
+            sort_by=flt['sort_by'], limit=flt['limit'],
+            owner_uid=flt['owner_uid'],
+            owner_gid=flt['owner_gid'],
+            accessed_before=flt['accessed_before'],
+            accessed_after=flt['accessed_after'],
+            atime_recursive=flt['atime_recursive'],
+            min_avg_size=flt['min_avg_size'],
+            max_avg_size=flt['max_avg_size'],
+            outermost_only=flt['outermost'],
+            leaves_only=flt['leaves_only'],
+        )
+
+    return _render_directories_fragment(
+        ctx, fragment_url, mode='user', scan_call=_scan,
+        log_label=f'user-owned uid={forced}',
+        browse=_truthy(request.args.get('browse')),
+        forced_owner_uid=forced,
+    )
+
+
+@bp.route('/user/<resource>/explore')
+@login_required
+def directories_user_page(resource):
+    """Standalone full-page directory explorer for the user's OWN files.
+
+    User mode — same page template as project/resource mode, parameterized by
+    ``mode='user'`` + the user fragment URL. The owner is pinned to the logged-in
+    user and the owner picker is hidden (``mode='user'`` in the filter panel), so
+    the explorer can't be re-filtered to another owner.
+    """
+    ctx = _user_ctx(resource)
+    forced = ctx['forced_owner_uid']
+    if forced is None:
+        return _no_identity_fragment()
+    flt = _dir_filters()
+    flt['owner_uid'] = forced
+    flt['owner_user_id'] = None
+    fragment_url = url_for('disk_scans.directories_user_fragment',
+                           resource=resource)
+    return render_template(
+        'dashboards/user/disk_scans_directories_page.html',
+        mode='user', fragment_url=fragment_url,
+        initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
+        filters=flt, user_search_url=None,
+        limit_options=_LIMIT_OPTIONS, browse=True, **ctx,
+    )
+
+
+@bp.route('/user/<resource>/access-history')
+@login_required
+def access_history_user_fragment(resource):
+    """HTMX fragment: access-time histogram of the user's OWN files on *resource*."""
+    ctx = _user_ctx(resource)
+    forced = ctx['forced_owner_uid']
+    if forced is None:
+        return _no_identity_fragment()
+    fragment_url = url_for('disk_scans.access_history_user_fragment',
+                           resource=resource)
+
+    def _scan(owner_uid, subpath):
+        return service.scan_access_history_resource(
+            ctx['resource_name'], owner_uid=owner_uid, subpath=subpath)
+
+    return _render_distribution(
+        ctx, fragment_url, scan_call=_scan, kind='access_history',
+        bucket_header='Last accessed', log_label=f'user-owned uid={forced}',
+        dir_fragment_url=url_for('disk_scans.directories_user_fragment',
+                                 resource=resource),
+        forced_owner_uid=forced,
+    )
+
+
+@bp.route('/user/<resource>/file-sizes')
+@login_required
+def file_sizes_user_fragment(resource):
+    """HTMX fragment: file-size histogram of the user's OWN files on *resource*."""
+    ctx = _user_ctx(resource)
+    forced = ctx['forced_owner_uid']
+    if forced is None:
+        return _no_identity_fragment()
+    fragment_url = url_for('disk_scans.file_sizes_user_fragment',
+                           resource=resource)
+
+    def _scan(owner_uid, subpath):
+        return service.scan_file_sizes_resource(
+            ctx['resource_name'], owner_uid=owner_uid, subpath=subpath)
+
+    return _render_distribution(
+        ctx, fragment_url, scan_call=_scan, kind='file_sizes',
+        bucket_header='File size', log_label=f'user-owned uid={forced}',
+        dir_fragment_url=url_for('disk_scans.directories_user_fragment',
+                                 resource=resource),
+        metric_toggle=True, log_toggle=True,
+        forced_owner_uid=forced,
     )

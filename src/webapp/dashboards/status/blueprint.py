@@ -16,6 +16,7 @@ from ..charts import (
 )
 
 from system_status import queries as status_queries
+from webapp.disk_scans import service as disk_scans_service
 
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
 logger = logging.getLogger(__name__)
@@ -108,6 +109,12 @@ def index():
         now=datetime.now(),
         selected_hours=selected_hours,
         chart_hours=chart_hours,
+        # Scan-capable disk resources for the gated "Filesystem Scans" tab.
+        # Empty (→ tab hidden) when the fs-scans plugin is off or no configured
+        # resource has warmed collections. Tab visibility is additionally gated
+        # in-template on VIEW_ALL_FILESYSTEM_DATA. has_permission/Permission are
+        # template globals (rbac_context_processor).
+        fs_scan_resources=disk_scans_service.scan_capable_resources(),
     )
 
 
