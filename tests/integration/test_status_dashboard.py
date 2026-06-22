@@ -150,6 +150,43 @@ class TestStatusDashboard:
         assert response.status_code == 200
         assert b'System Status' in response.data
 
+    # ------------------------------------------------------------------
+    # "Filesystem Scans" tab — gated on VIEW_ALL_FILESYSTEM_DATA AND a
+    # non-empty scan-capable resource list (plugin on + warmed collections).
+    # The plugin is off in tests, so scan_capable_resources() returns [] by
+    # default; patch it to exercise the visible path.
+    # ------------------------------------------------------------------
+
+    def test_fs_scans_tab_shown_with_perm(self, auth_client, status_session, monkeypatch):
+        """benkirk holds the perm → tab + one subtab per configured resource."""
+        seed_data(status_session)
+        monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                            lambda app=None: ['Campaign_Store'])
+        response = auth_client.get('/status/')
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert 'id="filesystem-scans-tab"' in body
+        assert 'Filesystem Scans' in body
+        assert 'Campaign_Store' in body          # subtab rendered
+
+    def test_fs_scans_tab_hidden_when_no_resources(self, auth_client, status_session, monkeypatch):
+        """No scan-capable resource (plugin off / unwarmed) → no tab even with perm."""
+        seed_data(status_session)
+        monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                            lambda app=None: [])
+        response = auth_client.get('/status/')
+        assert response.status_code == 200
+        assert 'id="filesystem-scans-tab"' not in response.get_data(as_text=True)
+
+    def test_fs_scans_tab_hidden_without_perm(self, non_admin_client, status_session, monkeypatch):
+        """A user lacking VIEW_ALL_FILESYSTEM_DATA never sees the tab."""
+        seed_data(status_session)
+        monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                            lambda app=None: ['Campaign_Store'])
+        response = non_admin_client.get('/status/')
+        assert response.status_code == 200
+        assert 'id="filesystem-scans-tab"' not in response.get_data(as_text=True)
+
     def test_nodetype_history(self, auth_client, status_session):
         """Test GET /status/nodetype-history/casper/cpu returns 200."""
         seed_data(status_session)

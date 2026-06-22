@@ -1,0 +1,121 @@
+{# ── Filesystem Scans card (shared, mode-parameterized) ─────────────────
+   The Large directories / User-group counts / Access-history + File-sizes
+   tab strip, each lazy-loading its disk_scans.* fragment via hx-get. Shared
+   by the project disk resource-details page (mode='project') and the Status
+   dashboard's whole-FS subtabs (mode='resource').
+
+   Params:
+     mode        'project' | 'resource'
+     cid         element-id prefix; namespaces every id so multiple cards on
+                 one page (the Status subtabs) don't collide. Project default
+                 'disk-scans' reproduces the historical ids byte-for-byte.
+     tablist_id  id for the <ul class="nav-tabs"> (drives nav-view-persistence's
+                 tab:<id> key; keep stable per card).
+     resource_name, and project-only projcode / scope / fileset
+     load_trigger  hx-trigger for the first (Large directories) tab — the only
+                   bit of lazy-load wiring that differs by host: project mode
+                   fires on card-open (collapse) + tab show; resource mode fires
+                   when its subtab (and, for the first subtab, the parent tab)
+                   is shown. See feedback_persisted_collapse_htmx.
+
+   In resource mode project/scope/fileset are absent; the fragment templates
+   treat them as optional and suppress the per-user drill-downs (which need a
+   projcode) — the whole-FS drill path is Large Directories → unscoped explorer.
+#}
+{% if mode == 'resource' %}
+    {% set _dirs_url  = url_for('disk_scans.directories_resource_fragment',   resource=resource_name, target_id=cid ~ '-directories') %}
+    {% set _ent_url   = url_for('disk_scans.entities_resource_fragment',      resource=resource_name, target_id=cid ~ '-entities') %}
+    {% set _acc_url   = url_for('disk_scans.access_history_resource_fragment', resource=resource_name, target_id=cid ~ '-access') %}
+    {% set _files_url = url_for('disk_scans.file_sizes_resource_fragment',    resource=resource_name, target_id=cid ~ '-files') %}
+    {% set _full_url  = url_for('disk_scans.directories_resource_page',       resource=resource_name) %}
+{% else %}
+    {% set _dirs_url  = url_for('disk_scans.directories_fragment',     projcode=projcode, resource=resource_name, scope=scope, fileset=fileset, target_id=cid ~ '-directories') %}
+    {% set _ent_url   = url_for('disk_scans.entities_fragment',        projcode=projcode, resource=resource_name, scope=scope, fileset=fileset, target_id=cid ~ '-entities') %}
+    {% set _acc_url   = url_for('disk_scans.access_history_fragment',  projcode=projcode, resource=resource_name, scope=scope, fileset=fileset, target_id=cid ~ '-access') %}
+    {% set _files_url = url_for('disk_scans.file_sizes_fragment',      projcode=projcode, resource=resource_name, scope=scope, fileset=fileset, target_id=cid ~ '-files') %}
+    {% set _full_url  = url_for('disk_scans.directories_page',         projcode=projcode, resource=resource_name, scope=scope, fileset=fileset) %}
+{% endif %}
+<ul class="nav nav-tabs mb-0" id="{{ tablist_id }}" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="{{ cid }}-dirs-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-dirs"
+                type="button" role="tab"
+                hx-get="{{ _dirs_url }}"
+                hx-target="#{{ cid }}-directories"
+                hx-swap="innerHTML"
+                hx-trigger="{{ load_trigger }}">
+            <i class="fas fa-folder-tree me-1"></i> Large directories
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ cid }}-ent-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-ent"
+                type="button" role="tab"
+                hx-get="{{ _ent_url }}"
+                hx-target="#{{ cid }}-entities"
+                hx-swap="innerHTML"
+                hx-trigger="shown.bs.tab once">
+            <i class="fas fa-users me-1"></i> User / group counts
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ cid }}-acc-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-acc"
+                type="button" role="tab"
+                hx-get="{{ _acc_url }}"
+                hx-target="#{{ cid }}-access"
+                hx-swap="innerHTML"
+                hx-trigger="shown.bs.tab once">
+            <i class="fas fa-clock-rotate-left me-1"></i> Access history
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ cid }}-files-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-files"
+                type="button" role="tab"
+                hx-get="{{ _files_url }}"
+                hx-target="#{{ cid }}-files"
+                hx-swap="innerHTML"
+                hx-trigger="shown.bs.tab once">
+            <i class="fas fa-ruler me-1"></i> File sizes
+        </button>
+    </li>
+</ul>
+<div class="tab-content border border-top-0 rounded-bottom p-3"
+     id="{{ tablist_id }}Content">
+    <div class="tab-pane fade show active" id="tab-{{ cid }}-dirs" role="tabpanel">
+        <div class="d-flex justify-content-end mb-2">
+            <a class="btn btn-sm btn-outline-primary"
+               href="{{ _full_url }}"
+               target="_blank" rel="noopener">
+                Open full view <i class="fas fa-up-right-from-square ms-1"></i>
+            </a>
+        </div>
+        <div id="{{ cid }}-directories">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading directories…
+            </p>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="tab-{{ cid }}-ent" role="tabpanel">
+        <div id="{{ cid }}-entities">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading…
+            </p>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="tab-{{ cid }}-acc" role="tabpanel">
+        <div id="{{ cid }}-access">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading access history…
+            </p>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="tab-{{ cid }}-files" role="tabpanel">
+        <div id="{{ cid }}-files">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading file sizes…
+            </p>
+        </div>
+    </div>
+</div>

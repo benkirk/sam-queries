@@ -1,0 +1,46 @@
+{# ── Filesystem Scans tab body (Status dashboard) ───────────────────────
+   One subtab per scan-capable disk resource (fs_scan_resources, from
+   service.scan_capable_resources()). Each subtab hosts the SAME scans card
+   the project disk page shows, but in resource mode — rooted over the whole
+   filesystem (VIEW_ALL_FILESYSTEM_DATA-gated routes).
+
+   Lazy-load: the active first subtab gets no shown.bs.tab when the parent
+   "Filesystem Scans" tab opens, so its card's first inner tab listens to the
+   parent tab (#filesystem-scans-tab). Other subtabs load when their own
+   subtab nav-link is shown. Bind to the shown event, not click
+   (feedback_persisted_collapse_htmx). Closed subtabs cost nothing.
+
+   This partial is only included when fs_scan_resources is non-empty AND the
+   viewer holds VIEW_ALL_FILESYSTEM_DATA (gated in dashboard.html), so it never
+   needs its own empty/disabled state.
+#}
+<ul class="nav nav-pills mb-3" id="fsScanSubtabs" role="tablist">
+    {% for res in fs_scan_resources %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if loop.first %}active{% endif %}"
+           id="fs-scan-subtab-{{ loop.index }}"
+           data-bs-toggle="tab" href="#fs-scan-pane-{{ loop.index }}" role="tab">
+            <i class="fas fa-hard-drive me-1"></i> {{ res }}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+<div class="tab-content" id="fsScanSubtabContent">
+    {% for res in fs_scan_resources %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+         id="fs-scan-pane-{{ loop.index }}" role="tabpanel">
+        {% if loop.first %}
+            {% set _trigger = 'shown.bs.tab once from:#filesystem-scans-tab' %}
+        {% else %}
+            {% set _trigger = 'shown.bs.tab once from:#fs-scan-subtab-' ~ loop.index %}
+        {% endif %}
+        {% with mode='resource',
+                cid='disk-scans-r' ~ loop.index,
+                tablist_id='fsScanCardTabs' ~ loop.index,
+                resource_name=res,
+                load_trigger=_trigger %}
+            {% include 'dashboards/user/partials/disk_scans_card.html' %}
+        {% endwith %}
+    </div>
+    {% endfor %}
+</div>

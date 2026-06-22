@@ -151,6 +151,20 @@ class SAMWebappConfig(SAMConfig):
         os.getenv('FS_SCAN_STATEMENT_TIMEOUT_MS', '100000')
     )
 
+    # Disk resources that have filesystem-scan collections, surfaced as
+    # subtabs on the Status dashboard's gated "Filesystem Scans" tab. An
+    # explicit list (NOT derived from the Resource table) — append 'Destor'
+    # when it ships. Resource NAMES, not IDs (see feedback_no_duplicate_db_ids);
+    # the resource→collections mapping lives in the
+    # disk_scans.session.collections_for_resource seam. A configured resource
+    # with no warmed collections is filtered out at render time
+    # (service.scan_capable_resources), so the tab/subtab never shows empty.
+    FS_SCAN_RESOURCES = [
+        s.strip()
+        for s in os.getenv('FS_SCAN_RESOURCES', 'Campaign_Store').split(',')
+        if s.strip()
+    ]
+
     # Session cookies (common defaults; subclasses tighten for prod)
     SESSION_COOKIE_HTTPONLY    = True
     SESSION_COOKIE_SAMESITE    = 'Lax'

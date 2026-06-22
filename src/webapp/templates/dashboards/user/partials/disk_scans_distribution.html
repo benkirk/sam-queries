@@ -170,7 +170,7 @@
                       {% set _uname = umap.get(uid) or umap.get(uid | string) or ('uid ' ~ uid) %}
                       {% set _date_band = b.get('accessed_before') %}
                       {% set _size_band = (b.get('size_min') is not none) or (b.get('size_max') is not none) %}
-                      {% set _has_dd = (_date_band or _size_band) and project %}
+                      {% set _has_dd = (_date_band or _size_band) and dir_fragment_url %}
                       {% set _urow = rowid ~ '-u' ~ loop.index %}
                       {% set _dt = rowid ~ '-d' ~ loop.index %}
                       <tr {% if _has_dd %}class="cursor-pointer" data-bs-toggle="collapse"
@@ -197,7 +197,7 @@
                                band has no upper bound). Bind to shown.bs.collapse
                                so it fires under nav restore. #}
                             <div class="p-2 bg-light" id="{{ _dt }}"
-                                 hx-get="{{ url_for('disk_scans.directories_fragment', projcode=project.projcode) }}?owner_uid={{ uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if _date_band %}{% if b.get('accessed_after') %}&accessed_after={{ b.accessed_after }}{% endif %}&accessed_before={{ b.accessed_before }}{% else %}&min_avg_size={{ b.size_min }}{% if b.get('size_max') is not none %}&max_avg_size={{ b.size_max }}{% endif %}{% endif %}&recursive=0&sort_by=size_nr&limit=25&target_id={{ _dt }}"
+                                 hx-get="{{ dir_fragment_url }}?owner_uid={{ uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if _date_band %}{% if b.get('accessed_after') %}&accessed_after={{ b.accessed_after }}{% endif %}&accessed_before={{ b.accessed_before }}{% else %}&min_avg_size={{ b.size_min }}{% if b.get('size_max') is not none %}&max_avg_size={{ b.size_max }}{% endif %}{% endif %}&recursive=0&sort_by=size_nr&limit=25&target_id={{ _dt }}"
                                  hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                                  hx-swap="innerHTML">
                               <p class="text-muted small mb-0">

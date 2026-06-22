@@ -368,103 +368,13 @@
     </div>
     <div id="collapseDiskScans" class="collapse">
         <div class="card-body">
-            <ul class="nav nav-tabs mb-0" id="diskScansTabs" role="tablist">
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="disk-scans-dirs-tab"
-                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-dirs"
-                            type="button" role="tab"
-                            hx-get="{{ url_for('disk_scans.directories_fragment',
-                                               projcode=projcode, resource=resource_name,
-                                               scope=scope, fileset=fileset,
-                                               target_id='disk-scans-directories') }}"
-                            hx-target="#disk-scans-directories"
-                            hx-swap="innerHTML"
-                            hx-trigger="shown.bs.tab once, shown.bs.collapse once from:#collapseDiskScans">
-                        <i class="fas fa-folder-tree me-1"></i> Large directories
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="disk-scans-ent-tab"
-                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-ent"
-                            type="button" role="tab"
-                            hx-get="{{ url_for('disk_scans.entities_fragment',
-                                               projcode=projcode, resource=resource_name,
-                                               scope=scope, fileset=fileset,
-                                               target_id='disk-scans-entities') }}"
-                            hx-target="#disk-scans-entities"
-                            hx-swap="innerHTML"
-                            hx-trigger="shown.bs.tab once">
-                        <i class="fas fa-users me-1"></i> User / group counts
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="disk-scans-acc-tab"
-                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-acc"
-                            type="button" role="tab"
-                            hx-get="{{ url_for('disk_scans.access_history_fragment',
-                                               projcode=projcode, resource=resource_name,
-                                               scope=scope, fileset=fileset,
-                                               target_id='disk-scans-access') }}"
-                            hx-target="#disk-scans-access"
-                            hx-swap="innerHTML"
-                            hx-trigger="shown.bs.tab once">
-                        <i class="fas fa-clock-rotate-left me-1"></i> Access history
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="disk-scans-files-tab"
-                            data-bs-toggle="tab" data-bs-target="#tab-disk-scans-files"
-                            type="button" role="tab"
-                            hx-get="{{ url_for('disk_scans.file_sizes_fragment',
-                                               projcode=projcode, resource=resource_name,
-                                               scope=scope, fileset=fileset,
-                                               target_id='disk-scans-files') }}"
-                            hx-target="#disk-scans-files"
-                            hx-swap="innerHTML"
-                            hx-trigger="shown.bs.tab once">
-                        <i class="fas fa-ruler me-1"></i> File sizes
-                    </button>
-                </li>
-            </ul>
-            <div class="tab-content border border-top-0 rounded-bottom p-3"
-                 id="diskScansTabsContent">
-                <div class="tab-pane fade show active" id="tab-disk-scans-dirs" role="tabpanel">
-                    <div class="d-flex justify-content-end mb-2">
-                        <a class="btn btn-sm btn-outline-primary"
-                           href="{{ url_for('disk_scans.directories_page', projcode=projcode,
-                                            resource=resource_name, scope=scope, fileset=fileset) }}"
-                           target="_blank" rel="noopener">
-                            Open full view <i class="fas fa-up-right-from-square ms-1"></i>
-                        </a>
-                    </div>
-                    <div id="disk-scans-directories">
-                        <p class="text-muted small mb-0">
-                            <i class="fas fa-spinner fa-spin me-1"></i> Loading directories…
-                        </p>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="tab-disk-scans-ent" role="tabpanel">
-                    <div id="disk-scans-entities">
-                        <p class="text-muted small mb-0">
-                            <i class="fas fa-spinner fa-spin me-1"></i> Loading…
-                        </p>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="tab-disk-scans-acc" role="tabpanel">
-                    <div id="disk-scans-access">
-                        <p class="text-muted small mb-0">
-                            <i class="fas fa-spinner fa-spin me-1"></i> Loading access history…
-                        </p>
-                    </div>
-                </div>
-                <div class="tab-pane fade" id="tab-disk-scans-files" role="tabpanel">
-                    <div id="disk-scans-files">
-                        <p class="text-muted small mb-0">
-                            <i class="fas fa-spinner fa-spin me-1"></i> Loading file sizes…
-                        </p>
-                    </div>
-                </div>
-            </div>
+            {# Project mode: ids match the historical 'disk-scans-*' scheme, the
+               tablist keeps its 'diskScansTabs' persistence key, and the first
+               tab lazy-loads on card-open (collapse) as well as tab show. #}
+            {% with mode='project', cid='disk-scans', tablist_id='diskScansTabs',
+                    load_trigger='shown.bs.tab once, shown.bs.collapse once from:#collapseDiskScans' %}
+                {% include 'dashboards/user/partials/disk_scans_card.html' %}
+            {% endwith %}
         </div>
     </div>
 </div>
