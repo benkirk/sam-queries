@@ -123,6 +123,13 @@
         </a>
     </li>
     {% endif %}
+    {% if fs_scan_resources and has_permission(Permission.VIEW_ALL_FILESYSTEM_DATA) %}
+    <li class="nav-item">
+        <a class="nav-link" id="filesystem-scans-tab" data-bs-toggle="tab" href="#filesystem-scans" role="tab">
+            <i class="fas fa-magnifying-glass-chart"></i> Filesystem Scans
+        </a>
+    </li>
+    {% endif %}
 </ul>
 
 <!-- Tab Content -->
@@ -139,6 +146,11 @@
     {% if reservations or google_calendar_embed_url %}
     <div class="tab-pane fade" id="reservations" role="tabpanel">
         {% include 'dashboards/status/fragments/reservations.html' %}
+    </div>
+    {% endif %}
+    {% if fs_scan_resources and has_permission(Permission.VIEW_ALL_FILESYSTEM_DATA) %}
+    <div class="tab-pane fade" id="filesystem-scans" role="tabpanel">
+        {% include 'dashboards/status/partials/filesystem_scans.html' %}
     </div>
     {% endif %}
 </div>

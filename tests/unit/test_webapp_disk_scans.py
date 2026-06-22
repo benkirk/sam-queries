@@ -1077,6 +1077,129 @@ def test_collections_for_resource_delegates(monkeypatch):
     assert sess.collections_for_resource('Campaign_Store') == []
 
 
+# -- resource mode (service): entity + histogram siblings --------------------
+
+def _wire_resource_entities(monkeypatch, *, collections, capture):
+    """Patch the service for resource-mode owner/group/histogram queries.
+
+    Mirrors ``_wire_resource_service`` but the fake ``FsScanQueries`` captures
+    the kwargs of the four facade methods the entity/histogram cores call, and
+    resolves names so the enrichment paths run.
+    """
+    from webapp.disk_scans import service
+
+    class _FakeQueries:
+        def __init__(self, filesystems):
+            capture['filesystems'] = list(filesystems)
+
+        def owner_summary(self, **kw):
+            capture['owner_kwargs'] = kw
+            return [{'owner_uid': 1001, 'total_size': 5,
+                     'total_files': 2, 'directory_count': 1}]
+
+        def group_summary(self, **kw):
+            capture['group_kwargs'] = kw
+            return [{'owner_gid': 2001, 'total_size': 5,
+                     'total_files': 2, 'directory_count': 1}]
+
+        def access_history(self, **kw):
+            capture['access_kwargs'] = kw
+            return {'bucket_labels': [], 'buckets': {}}
+
+        def file_size_histogram(self, **kw):
+            capture['files_kwargs'] = kw
+            return {'bucket_labels': [], 'buckets': {}}
+
+        def resolve_usernames(self, uids):
+            return {u: f'user{u}' for u in uids}
+
+        def resolve_groupnames(self, gids):
+            return {g: f'grp{g}' for g in gids}
+
+    mod = types.SimpleNamespace(FsScanQueries=_FakeQueries)
+    monkeypatch.setattr(service, 'get_module', lambda: mod)
+    monkeypatch.setattr(service, 'collections_for_resource',
+                        lambda r, app=None: list(collections))
+    return service
+
+
+def test_scan_owner_summary_resource_unscoped(monkeypatch):
+    """Resource mode queries the whole collection (path_prefixes=None)."""
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
+    rows = svc.scan_owner_summary_resource('Campaign_Store', limit=10)
+    assert cap['filesystems'] == ['campaign']
+    assert cap['owner_kwargs']['path_prefixes'] is None   # whole-collection fast path
+    assert cap['owner_kwargs']['limit'] == 10
+    assert rows[0]['username'] == 'user1001'              # enrichment ran
+
+
+def test_scan_group_summary_resource_subpath(monkeypatch):
+    """A fileset narrows resource mode to that single sub-path."""
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
+    rows = svc.scan_group_summary_resource('Campaign_Store',
+                                           subpath='/glade/campaign/cisl')
+    assert cap['group_kwargs']['path_prefixes'] == ['/glade/campaign/cisl']
+    assert rows[0]['groupname'] == 'grp2001'
+
+
+def test_scan_access_history_resource_unscoped(monkeypatch):
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
+    hist = svc.scan_access_history_resource('Campaign_Store')
+    assert cap['access_kwargs']['path_prefixes'] is None
+    assert cap['access_kwargs']['owner_uid'] is None
+    assert hist == {'bucket_labels': [], 'buckets': {}}
+
+
+def test_scan_file_sizes_resource_owner_uid(monkeypatch):
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
+    svc.scan_file_sizes_resource('Campaign_Store', owner_uid=4242)
+    assert cap['files_kwargs']['path_prefixes'] is None   # whole-collection fast path
+    assert cap['files_kwargs']['owner_uid'] == 4242
+
+
+def test_resource_entity_fns_empty_when_plugin_off(monkeypatch):
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'get_module', lambda: None)
+    assert service.scan_owner_summary_resource('Campaign_Store') == []
+    assert service.scan_group_summary_resource('Campaign_Store') == []
+    assert service.scan_access_history_resource('Campaign_Store') is None
+    assert service.scan_file_sizes_resource('Campaign_Store') is None
+
+
+def test_resource_entity_fns_empty_when_no_collections(monkeypatch):
+    """An off-map / unwarmed resource yields no results (never unscoped)."""
+    cap = {}
+    svc = _wire_resource_entities(monkeypatch, collections=[], capture=cap)
+    assert svc.scan_owner_summary_resource('Campaign_Store') == []
+    assert svc.scan_access_history_resource('Campaign_Store') is None
+
+
+# -- scan_capable_resources (Status tab gating) ------------------------------
+
+def test_scan_capable_resources_filters_unwarmed(app, monkeypatch):
+    """Keeps only configured resources that currently have warmed collections."""
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'is_enabled', lambda a=None: True)
+    monkeypatch.setattr(
+        service, 'collections_for_resource',
+        lambda n, app=None: ['campaign'] if n == 'Campaign_Store' else [])
+    monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCES', ['Campaign_Store', 'Destor'])
+    with app.app_context():
+        assert service.scan_capable_resources() == ['Campaign_Store']
+
+
+def test_scan_capable_resources_empty_when_disabled(app, monkeypatch):
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'is_enabled', lambda a=None: False)
+    monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCES', ['Campaign_Store'])
+    with app.app_context():
+        assert service.scan_capable_resources() == []
+
+
 # -- routes: filters, explorer page, owner drill-down ------------------------
 
 def test_directories_owner_filter_and_form(app, auth_client, active_project, monkeypatch):
@@ -1220,6 +1343,23 @@ def test_resource_page_200_with_perm(auth_client):
     )
     assert resp.status_code == 200
     assert 'Resource-wide' in resp.get_data(as_text=True)
+
+
+@pytest.mark.parametrize('endpoint', ['entities', 'access-history', 'file-sizes'])
+def test_resource_card_fragments_403_without_perm(non_admin_client, endpoint):
+    resp = non_admin_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/{endpoint}'
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.parametrize('endpoint', ['entities', 'access-history', 'file-sizes'])
+def test_resource_card_fragments_200_with_perm(auth_client, endpoint):
+    """benkirk holds VIEW_ALL_FILESYSTEM_DATA → 200 (plugin off → banner)."""
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/resource/{_RES}/{endpoint}'
+    )
+    assert resp.status_code == 200
 
 
 def test_view_all_filesystem_data_grants():

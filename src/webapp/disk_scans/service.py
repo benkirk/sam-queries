@@ -21,12 +21,15 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from flask import current_app
+
 from webapp.disk_scans.cache import cached_scan
 from webapp.disk_scans.scope import resolve_scan_scope
 from webapp.disk_scans.session import (
     collections_for_resource,
     get_collections,
     get_module,
+    is_enabled,
 )
 
 
@@ -371,6 +374,117 @@ def scan_directories_resource(
     )
 
 
+def _owner_summary(
+    mod, collections: List[str], path_prefixes: Optional[List[str]],
+    *, limit: Optional[int],
+) -> List[Dict[str, Any]]:
+    """Mode-agnostic per-owner (UID) rollup core, usernames resolved.
+
+    Callers resolve ``(mod, collections, path_prefixes)`` first — project mode
+    via :func:`_scoped` (always scoped), resource mode via
+    :func:`collections_for_resource` (``path_prefixes=None`` → whole-collection
+    fast path). Each row gains a ``username`` key (``None`` if unresolvable).
+    """
+    q = mod.FsScanQueries(filesystems=collections)
+
+    def _compute():
+        rows = q.owner_summary(path_prefixes=path_prefixes, limit=limit)
+        uids = {r['owner_uid'] for r in rows if r.get('owner_uid') is not None}
+        names = q.resolve_usernames(uids) if uids else {}
+        for r in rows:
+            r['username'] = names.get(r.get('owner_uid'))
+        return rows
+
+    # cache key tolerates an unscoped (None) prefix list — normalise to [].
+    return cached_scan('owner', q, collections, path_prefixes or [],
+                       {'limit': limit}, _compute)
+
+
+def _group_summary(
+    mod, collections: List[str], path_prefixes: Optional[List[str]],
+    *, limit: Optional[int],
+) -> List[Dict[str, Any]]:
+    """Mode-agnostic per-group (GID) rollup core, group names resolved."""
+    q = mod.FsScanQueries(filesystems=collections)
+
+    def _compute():
+        rows = q.group_summary(path_prefixes=path_prefixes, limit=limit)
+        gids = {r['owner_gid'] for r in rows if r.get('owner_gid') is not None}
+        names = q.resolve_groupnames(gids) if gids else {}
+        for r in rows:
+            r['groupname'] = names.get(r.get('owner_gid'))
+        return rows
+
+    return cached_scan('group', q, collections, path_prefixes or [],
+                       {'limit': limit}, _compute)
+
+
+def _access_history(
+    mod, collections: List[str], path_prefixes: Optional[List[str]],
+    *, owner_uid: Optional[int],
+) -> Optional[Dict[str, Any]]:
+    """Mode-agnostic access-time histogram core (band date windows tagged)."""
+    q = mod.FsScanQueries(filesystems=collections)
+
+    def _compute():
+        hist = q.access_history(path_prefixes=path_prefixes, owner_uid=owner_uid)
+        if hist:
+            # Tag each band with the date window it represents so the per-user
+            # drill-down can list that band's directories (see _atime_band_bounds).
+            bounds = _atime_band_bounds(hist.get('reference_scan_date'),
+                                        hist.get('bucket_labels'))
+            for label, b in (hist.get('buckets') or {}).items():
+                if label in bounds:
+                    b['accessed_after'] = bounds[label]['accessed_after']
+                    b['accessed_before'] = bounds[label]['accessed_before']
+        return hist
+
+    return cached_scan(
+        'access_history', q, collections, path_prefixes or [],
+        {'owner_uid': owner_uid}, _compute,
+    )
+
+
+def _file_sizes(
+    mod, collections: List[str], path_prefixes: Optional[List[str]],
+    *, owner_uid: Optional[int],
+) -> Optional[Dict[str, Any]]:
+    """Mode-agnostic file-size histogram core (avg-size windows tagged)."""
+    q = mod.FsScanQueries(filesystems=collections)
+
+    def _compute():
+        hist = q.file_size_histogram(path_prefixes=path_prefixes, owner_uid=owner_uid)
+        if hist:
+            # Tag each band with its average-file-size window so the per-user
+            # drill-down can list that band's directories (see _size_band_bounds).
+            bounds = _size_band_bounds(hist.get('bucket_labels'))
+            for label, b in (hist.get('buckets') or {}).items():
+                if label in bounds:
+                    b['size_min'] = bounds[label]['size_min']
+                    b['size_max'] = bounds[label]['size_max']
+        return hist
+
+    return cached_scan(
+        'file_sizes', q, collections, path_prefixes or [],
+        {'owner_uid': owner_uid}, _compute,
+    )
+
+
+def _resource_collections(resource_name: str):
+    """Resolve ``(mod, collections, path_prefixes)`` for resource mode.
+
+    The unscoped analogue of :func:`_scoped`: ``collections`` come from the
+    whole resource (:func:`collections_for_resource`) and ``path_prefixes`` is
+    ``None`` (whole-collection fast path) unless *subpath* drills in. Returns
+    ``(mod, [])`` whenever the plugin is unavailable or the resource maps to no
+    reachable collections; callers MUST treat an empty list as "no results".
+    """
+    mod = get_module()
+    if mod is None:
+        return None, []
+    return mod, collections_for_resource(resource_name)
+
+
 def scan_owner_summary(
     session,
     project,
@@ -388,17 +502,7 @@ def scan_owner_summary(
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
-    q = mod.FsScanQueries(filesystems=collections)
-
-    def _compute():
-        rows = q.owner_summary(path_prefixes=path_prefixes, limit=limit)
-        uids = {r['owner_uid'] for r in rows if r.get('owner_uid') is not None}
-        names = q.resolve_usernames(uids) if uids else {}
-        for r in rows:
-            r['username'] = names.get(r.get('owner_uid'))
-        return rows
-
-    return cached_scan('owner', q, collections, path_prefixes, {'limit': limit}, _compute)
+    return _owner_summary(mod, collections, path_prefixes, limit=limit)
 
 
 def scan_group_summary(
@@ -418,17 +522,7 @@ def scan_group_summary(
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
-    q = mod.FsScanQueries(filesystems=collections)
-
-    def _compute():
-        rows = q.group_summary(path_prefixes=path_prefixes, limit=limit)
-        gids = {r['owner_gid'] for r in rows if r.get('owner_gid') is not None}
-        names = q.resolve_groupnames(gids) if gids else {}
-        for r in rows:
-            r['groupname'] = names.get(r.get('owner_gid'))
-        return rows
-
-    return cached_scan('group', q, collections, path_prefixes, {'limit': limit}, _compute)
+    return _group_summary(mod, collections, path_prefixes, limit=limit)
 
 
 def scan_access_history(
@@ -450,25 +544,7 @@ def scan_access_history(
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return None
-    q = mod.FsScanQueries(filesystems=collections)
-
-    def _compute():
-        hist = q.access_history(path_prefixes=path_prefixes, owner_uid=owner_uid)
-        if hist:
-            # Tag each band with the date window it represents so the per-user
-            # drill-down can list that band's directories (see _atime_band_bounds).
-            bounds = _atime_band_bounds(hist.get('reference_scan_date'),
-                                        hist.get('bucket_labels'))
-            for label, b in (hist.get('buckets') or {}).items():
-                if label in bounds:
-                    b['accessed_after'] = bounds[label]['accessed_after']
-                    b['accessed_before'] = bounds[label]['accessed_before']
-        return hist
-
-    return cached_scan(
-        'access_history', q, collections, path_prefixes, {'owner_uid': owner_uid},
-        _compute,
-    )
+    return _access_history(mod, collections, path_prefixes, owner_uid=owner_uid)
 
 
 def scan_file_sizes(
@@ -493,21 +569,82 @@ def scan_file_sizes(
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return None
-    q = mod.FsScanQueries(filesystems=collections)
+    return _file_sizes(mod, collections, path_prefixes, owner_uid=owner_uid)
 
-    def _compute():
-        hist = q.file_size_histogram(path_prefixes=path_prefixes, owner_uid=owner_uid)
-        if hist:
-            # Tag each band with its average-file-size window so the per-user
-            # drill-down can list that band's directories (see _size_band_bounds).
-            bounds = _size_band_bounds(hist.get('bucket_labels'))
-            for label, b in (hist.get('buckets') or {}).items():
-                if label in bounds:
-                    b['size_min'] = bounds[label]['size_min']
-                    b['size_max'] = bounds[label]['size_max']
-        return hist
 
-    return cached_scan(
-        'file_sizes', q, collections, path_prefixes, {'owner_uid': owner_uid},
-        _compute,
-    )
+# ── Resource-mode (whole-filesystem) siblings ──────────────────────────────
+# Unscoped, elevated analogues of the project-scoped functions above. Each
+# obtains its collections from the whole resource and runs ``path_prefixes=None``
+# (the plugin's whole-collection fast path) unless a *subpath* drills in. Only
+# ever reachable behind the ``VIEW_ALL_FILESYSTEM_DATA``-gated resource routes;
+# return empty when the plugin is unavailable or the resource has no collections.
+
+def scan_owner_summary_resource(
+    resource_name: str,
+    *,
+    limit: Optional[int] = 50,
+    subpath: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Per-owner (UID) rollup across an **entire disk resource**, unscoped."""
+    mod, collections = _resource_collections(resource_name)
+    if not collections:
+        return []
+    path_prefixes = [subpath] if subpath else None
+    return _owner_summary(mod, collections, path_prefixes, limit=limit)
+
+
+def scan_group_summary_resource(
+    resource_name: str,
+    *,
+    limit: Optional[int] = 50,
+    subpath: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Per-group (GID) rollup across an **entire disk resource**, unscoped."""
+    mod, collections = _resource_collections(resource_name)
+    if not collections:
+        return []
+    path_prefixes = [subpath] if subpath else None
+    return _group_summary(mod, collections, path_prefixes, limit=limit)
+
+
+def scan_access_history_resource(
+    resource_name: str,
+    *,
+    owner_uid: Optional[int] = None,
+    subpath: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Access-time histogram across an **entire disk resource**, unscoped."""
+    mod, collections = _resource_collections(resource_name)
+    if not collections:
+        return None
+    path_prefixes = [subpath] if subpath else None
+    return _access_history(mod, collections, path_prefixes, owner_uid=owner_uid)
+
+
+def scan_file_sizes_resource(
+    resource_name: str,
+    *,
+    owner_uid: Optional[int] = None,
+    subpath: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """File-size histogram across an **entire disk resource**, unscoped."""
+    mod, collections = _resource_collections(resource_name)
+    if not collections:
+        return None
+    path_prefixes = [subpath] if subpath else None
+    return _file_sizes(mod, collections, path_prefixes, owner_uid=owner_uid)
+
+
+def scan_capable_resources(app=None) -> List[str]:
+    """Configured disk resources that currently have warmed scan collections.
+
+    Reads the explicit ``FS_SCAN_RESOURCES`` config list (resource *names*,
+    not IDs) and keeps only those the plugin can actually serve right now —
+    so a misconfigured entry (or the whole plugin being off) never renders an
+    empty Status subtab. Returns ``[]`` when the plugin is disabled. This is
+    what gates the Status "Filesystem Scans" tab's visibility + subtab set.
+    """
+    if not is_enabled(app):
+        return []
+    names = (app or current_app).config.get('FS_SCAN_RESOURCES') or []
+    return [n for n in names if collections_for_resource(n, app)]

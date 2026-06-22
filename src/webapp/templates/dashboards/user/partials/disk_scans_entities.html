@@ -91,12 +91,16 @@
                  row's collapse (svg-chart-links.js), same as the chevron. #}
               <tr data-owner-uid="{{ r.owner_uid }}" data-bs-target="#{{ _oid }}-row">
                 <td data-sort-value="{{ name if name else (r.owner_uid | string) }}">
+                  {# Per-user directory drill needs a projcode; suppressed in
+                     resource (whole-FS) mode — drill via Large directories. #}
+                  {% if project %}
                   <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
                           type="button" data-bs-toggle="collapse"
                           data-bs-target="#{{ _oid }}-row"
                           aria-expanded="false" aria-controls="{{ _oid }}-row">
                     <i class="fas fa-chevron-right collapse-icon small"></i>
                   </button>
+                  {% endif %}
                   {% if name %}<code>{{ name }}</code>
                   {% else %}<span class="text-muted" title="unresolved UID">uid {{ r.owner_uid }}</span>{% endif %}
                 </td>
@@ -104,6 +108,7 @@
                 <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
                 <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
               </tr>
+              {% if project %}
               <tr class="collapse" id="{{ _oid }}-row">
                 <td colspan="4" class="p-0 border-0">
                   {# Lazy-load this user's top directories on first expand
@@ -122,6 +127,7 @@
                   </div>
                 </td>
               </tr>
+              {% endif %}
             </tbody>
           {% endfor %}
         {% else %}
@@ -133,12 +139,16 @@
                  row's collapse (svg-chart-links.js), same as the chevron. #}
               <tr data-group-gid="{{ r.owner_gid }}" data-bs-target="#{{ _gid }}-row">
                 <td data-sort-value="{{ name if name else (r.owner_gid | string) }}">
+                  {# Per-group directory drill needs a projcode; suppressed in
+                     resource (whole-FS) mode — drill via Large directories. #}
+                  {% if project %}
                   <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
                           type="button" data-bs-toggle="collapse"
                           data-bs-target="#{{ _gid }}-row"
                           aria-expanded="false" aria-controls="{{ _gid }}-row">
                     <i class="fas fa-chevron-right collapse-icon small"></i>
                   </button>
+                  {% endif %}
                   {% if name %}<code>{{ name }}</code>
                   {% else %}<span class="text-muted" title="unresolved GID">gid {{ r.owner_gid }}</span>{% endif %}
                 </td>
@@ -146,6 +156,7 @@
                 <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
                 <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
               </tr>
+              {% if project %}
               <tr class="collapse" id="{{ _gid }}-row">
                 <td colspan="4" class="p-0 border-0">
                   {# Lazy-load this group's top directories on first expand
@@ -163,6 +174,7 @@
                   </div>
                 </td>
               </tr>
+              {% endif %}
             </tbody>
           {% endfor %}
         {% endif %}
