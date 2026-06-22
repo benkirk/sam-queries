@@ -344,8 +344,13 @@ def scan_directories_resource(
     sort_by: str = 'size',
     limit: Optional[int] = 50,
     owner_uid: Optional[int] = None,
+    owner_gid: Optional[int] = None,
     accessed_before: Optional[datetime] = None,
     accessed_after: Optional[datetime] = None,
+    atime_recursive: bool = True,
+    min_avg_size: Optional[int] = None,
+    max_avg_size: Optional[int] = None,
+    outermost_only: bool = False,
     leaves_only: bool = False,
 ) -> List[Dict[str, Any]]:
     """Largest directories across an **entire disk resource**, unscoped.
@@ -358,6 +363,11 @@ def scan_directories_resource(
     project-scoping safety invariant by design, so it is only ever reachable
     behind the ``VIEW_ALL_FILESYSTEM_DATA``-gated route. Returns ``[]`` when the
     plugin is unavailable or the resource maps to no reachable collections.
+
+    Accepts the same filter set as the project-scoped :func:`scan_directories`
+    so the whole-FS card's per-user / per-group / histogram-band drill-downs
+    (which re-target this fragment with ``owner_uid`` / ``owner_gid`` /
+    ``min_avg_size`` / ``recursive`` etc.) filter identically.
     """
     mod = get_module()
     if mod is None:
@@ -366,12 +376,16 @@ def scan_directories_resource(
     if not collections:
         return []
     path_prefixes = [subpath] if subpath else None
-    return _scan_directories(
+    rows = _scan_directories(
         mod, collections, path_prefixes,
         sort_by=sort_by, limit=limit,
-        owner_uid=owner_uid, accessed_before=accessed_before,
-        accessed_after=accessed_after, leaves_only=leaves_only,
+        owner_uid=owner_uid, owner_gid=owner_gid,
+        accessed_before=accessed_before, accessed_after=accessed_after,
+        atime_recursive=atime_recursive,
+        min_avg_size=min_avg_size, max_avg_size=max_avg_size,
+        leaves_only=leaves_only,
     )
+    return _drop_nested(rows) if outermost_only else rows
 
 
 def _owner_summary(

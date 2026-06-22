@@ -481,8 +481,13 @@ def directories_resource_fragment(resource):
             ctx['resource_name'], subpath=ctx['fileset'],
             sort_by=flt['sort_by'], limit=flt['limit'],
             owner_uid=flt['owner_uid'],
+            owner_gid=flt['owner_gid'],
             accessed_before=flt['accessed_before'],
             accessed_after=flt['accessed_after'],
+            atime_recursive=flt['atime_recursive'],
+            min_avg_size=flt['min_avg_size'],
+            max_avg_size=flt['max_avg_size'],
+            outermost_only=flt['outermost'],
             leaves_only=flt['leaves_only'],
         )
 
@@ -516,15 +521,16 @@ def directories_resource_page(resource):
     )
 
 
-def _render_entities(ctx, fragment_url, *, scan_call, log_label):
+def _render_entities(ctx, fragment_url, *, scan_call, log_label, dir_fragment_url):
     """Shared body for the project + resource entity (owner|group) fragments.
 
     Both render the *same* ``disk_scans_entities.html`` partial; they differ
     only in scope context, which fragment URL the owner↔group toggle re-fetches,
-    and the (already scope-resolved) ``scan_call(kind, limit, subpath)``. In
-    resource mode ``ctx['project']`` is ``None`` so the partial's per-user row
-    drill-down (which needs a projcode) degrades to non-clickable — the whole-FS
-    drill path is Large Directories → unscoped explorer instead.
+    and the (already scope-resolved) ``scan_call(kind, limit, subpath)``. The
+    per-entity row drill-down re-targets ``dir_fragment_url`` — the directories
+    fragment for *this mode* (project ``directories_fragment`` or resource
+    ``directories_resource_fragment``), both of which accept the owner/group
+    filters — so the drill works in both modes.
     """
     kind = (request.args.get('kind') or 'owner').strip().lower()
     if kind not in ('owner', 'group'):
@@ -534,6 +540,7 @@ def _render_entities(ctx, fragment_url, *, scan_call, log_label):
         return render_template(
             'dashboards/user/partials/disk_scans_entities.html',
             rows=[], kind=kind, pie_chart=None, fragment_url=fragment_url,
+            dir_fragment_url=dir_fragment_url,
             enabled=is_enabled(), error=None, **ctx,
         )
 
@@ -563,6 +570,7 @@ def _render_entities(ctx, fragment_url, *, scan_call, log_label):
     return render_template(
         'dashboards/user/partials/disk_scans_entities.html',
         rows=rows, kind=kind, pie_chart=pie_chart, fragment_url=fragment_url,
+        dir_fragment_url=dir_fragment_url,
         enabled=True, error=error, **ctx,
     )
 
@@ -584,6 +592,8 @@ def entities_fragment(project):
     return _render_entities(
         ctx, fragment_url, scan_call=_scan,
         log_label=f"project={ctx['scoped_project'].projcode}",
+        dir_fragment_url=url_for('disk_scans.directories_fragment',
+                                 projcode=project.projcode),
     )
 
 
@@ -605,16 +615,19 @@ def entities_resource_fragment(resource):
               else service.scan_group_summary_resource)
         return fn(ctx['resource_name'], limit=limit, subpath=subpath)
 
-    return _render_entities(ctx, fragment_url, scan_call=_scan,
-                            log_label='resource-wide')
+    return _render_entities(
+        ctx, fragment_url, scan_call=_scan, log_label='resource-wide',
+        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
+                                 resource=resource),
+    )
 
 
 _METRIC_WHITELIST = {'data', 'files'}
 
 
 def _render_distribution(ctx, fragment_url, *, scan_call, kind,
-                         bucket_header, log_label, metric_toggle=False,
-                         log_toggle=False):
+                         bucket_header, log_label, dir_fragment_url,
+                         metric_toggle=False, log_toggle=False):
     """Shared body for the two distribution histogram fragments (both modes).
 
     The Access-history and File-size tabs are identical end to end — same
@@ -639,7 +652,8 @@ def _render_distribution(ctx, fragment_url, *, scan_call, kind,
     log_on = log_toggle and _truthy(request.args.get('log'))
     extra = dict(metric=metric, metric_toggle=metric_toggle,
                  log_on=log_on, log_toggle=log_toggle,
-                 bucket_header=bucket_header, fragment_url=fragment_url)
+                 bucket_header=bucket_header, fragment_url=fragment_url,
+                 dir_fragment_url=dir_fragment_url)
 
     if not is_enabled() or not ctx['resource_name']:
         return render_template(
@@ -687,6 +701,8 @@ def access_history_fragment(project):
         ctx, fragment_url, scan_call=_scan, kind='access_history',
         bucket_header='Last accessed',
         log_label=f"project={ctx['scoped_project'].projcode}",
+        dir_fragment_url=url_for('disk_scans.directories_fragment',
+                                 projcode=project.projcode),
     )
 
 
@@ -714,6 +730,8 @@ def file_sizes_fragment(project):
         ctx, fragment_url, scan_call=_scan, kind='file_sizes',
         bucket_header='File size',
         log_label=f"project={ctx['scoped_project'].projcode}",
+        dir_fragment_url=url_for('disk_scans.directories_fragment',
+                                 projcode=project.projcode),
         metric_toggle=True, log_toggle=True,
     )
 
@@ -737,6 +755,8 @@ def access_history_resource_fragment(resource):
     return _render_distribution(
         ctx, fragment_url, scan_call=_scan, kind='access_history',
         bucket_header='Last accessed', log_label='resource-wide',
+        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
+                                 resource=resource),
     )
 
 
@@ -760,5 +780,7 @@ def file_sizes_resource_fragment(resource):
     return _render_distribution(
         ctx, fragment_url, scan_call=_scan, kind='file_sizes',
         bucket_header='File size', log_label='resource-wide',
+        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
+                                 resource=resource),
         metric_toggle=True, log_toggle=True,
     )

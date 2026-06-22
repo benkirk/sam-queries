@@ -3,8 +3,10 @@
 {#
   Owner/group rollup fragment — embedded via hx-get from the Filesystem
   Scans card. Context (set in webapp/disk_scans/routes.py):
-    rows, kind ('owner'|'group'), fragment_url, target_id,
+    rows, kind ('owner'|'group'), fragment_url, dir_fragment_url, target_id,
     resource_name, scope, fileset, enabled, error
+  dir_fragment_url is the directories fragment for the current mode (project
+  or resource) that the per-entity row drill-down re-targets.
   Owner rows: owner_uid, total_size, total_files, directory_count,
               filesystem, username.
   Group rows: owner_gid + groupname (same shape otherwise).
@@ -91,9 +93,10 @@
                  row's collapse (svg-chart-links.js), same as the chevron. #}
               <tr data-owner-uid="{{ r.owner_uid }}" data-bs-target="#{{ _oid }}-row">
                 <td data-sort-value="{{ name if name else (r.owner_uid | string) }}">
-                  {# Per-user directory drill needs a projcode; suppressed in
-                     resource (whole-FS) mode — drill via Large directories. #}
-                  {% if project %}
+                  {# Drill into this user's directories — targets the directories
+                     fragment for the current mode (dir_fragment_url): project
+                     (scope-rooted) or resource (whole-FS). #}
+                  {% if dir_fragment_url %}
                   <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
                           type="button" data-bs-toggle="collapse"
                           data-bs-target="#{{ _oid }}-row"
@@ -108,7 +111,7 @@
                 <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
                 <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
               </tr>
-              {% if project %}
+              {% if dir_fragment_url %}
               <tr class="collapse" id="{{ _oid }}-row">
                 <td colspan="4" class="p-0 border-0">
                   {# Lazy-load this user's top directories on first expand
@@ -117,7 +120,7 @@
                      nav-view-persistence restore too. #}
                   <div class="p-2 bg-light"
                        id="{{ _oid }}"
-                       hx-get="{{ url_for('disk_scans.directories_fragment', projcode=project.projcode) }}?owner_uid={{ r.owner_uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _oid }}&limit=20"
+                       hx-get="{{ dir_fragment_url }}?owner_uid={{ r.owner_uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _oid }}&limit=20"
                        hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                        hx-swap="innerHTML">
                     <p class="text-muted small mb-0">
@@ -139,9 +142,9 @@
                  row's collapse (svg-chart-links.js), same as the chevron. #}
               <tr data-group-gid="{{ r.owner_gid }}" data-bs-target="#{{ _gid }}-row">
                 <td data-sort-value="{{ name if name else (r.owner_gid | string) }}">
-                  {# Per-group directory drill needs a projcode; suppressed in
-                     resource (whole-FS) mode — drill via Large directories. #}
-                  {% if project %}
+                  {# Drill into this group's directories — targets the directories
+                     fragment for the current mode (dir_fragment_url). #}
+                  {% if dir_fragment_url %}
                   <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
                           type="button" data-bs-toggle="collapse"
                           data-bs-target="#{{ _gid }}-row"
@@ -156,7 +159,7 @@
                 <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
                 <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
               </tr>
-              {% if project %}
+              {% if dir_fragment_url %}
               <tr class="collapse" id="{{ _gid }}-row">
                 <td colspan="4" class="p-0 border-0">
                   {# Lazy-load this group's top directories on first expand
@@ -164,7 +167,7 @@
                      carries the resolved name for the filter badge. #}
                   <div class="p-2 bg-light"
                        id="{{ _gid }}"
-                       hx-get="{{ url_for('disk_scans.directories_fragment', projcode=project.projcode) }}?owner_gid={{ r.owner_gid }}{% if name %}&group_label={{ name | urlencode }}{% endif %}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _gid }}&limit=20"
+                       hx-get="{{ dir_fragment_url }}?owner_gid={{ r.owner_gid }}{% if name %}&group_label={{ name | urlencode }}{% endif %}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _gid }}&limit=20"
                        hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                        hx-swap="innerHTML">
                     <p class="text-muted small mb-0">

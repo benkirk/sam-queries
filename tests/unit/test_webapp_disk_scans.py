@@ -1062,6 +1062,22 @@ def test_scan_directories_resource_subpath(monkeypatch):
     assert cap['list_kwargs']['path_prefixes'] == ['/glade/campaign/cisl']
 
 
+def test_scan_directories_resource_forwards_full_filters(monkeypatch):
+    """Resource mode accepts the same filters as project mode — so the card's
+    per-user/group + histogram-band drill-downs filter identically."""
+    cap = {}
+    svc = _wire_resource_service(monkeypatch, collections=['campaign'], capture=cap)
+    svc.scan_directories_resource(
+        'Campaign_Store', owner_gid=2001, atime_recursive=False,
+        min_avg_size=10, max_avg_size=20, sort_by='size_nr')
+    kw = cap['list_kwargs']
+    assert kw['group_id'] == 2001
+    assert kw['atime_recursive'] is False
+    assert kw['min_avg_size'] == 10
+    assert kw['max_avg_size'] == 20
+    assert kw['sort_by'] == 'size_nr'
+
+
 def test_scan_directories_resource_empty_when_plugin_off(monkeypatch):
     from webapp.disk_scans import service
     monkeypatch.setattr(service, 'get_module', lambda: None)
@@ -1343,6 +1359,24 @@ def test_resource_page_200_with_perm(auth_client):
     )
     assert resp.status_code == 200
     assert 'Resource-wide' in resp.get_data(as_text=True)
+
+
+def test_resource_entities_drilldown_targets_resource_fragment(app, auth_client, monkeypatch):
+    """Whole-FS owner rows drill into the *resource* directories fragment
+    (regression: the drill must not be suppressed in resource mode)."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    monkeypatch.setattr(service, 'scan_owner_summary_resource', lambda r, **kw: [{
+        'owner_uid': 4242, 'total_size': 1024 ** 4, 'total_files': 5,
+        'directory_count': 2, 'filesystem': 'cisl', 'username': 'alice',
+    }])
+
+    resp = auth_client.get(f'/dashboards/user/disk-scans/resource/{_RES}/entities')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'data-bs-toggle="collapse"' in body          # drill chevron present
+    assert 'owner_uid=4242' in body                      # carries the uid
+    assert f'/disk-scans/resource/{_RES}/directories' in body   # → resource fragment
 
 
 @pytest.mark.parametrize('endpoint', ['entities', 'access-history', 'file-sizes'])
