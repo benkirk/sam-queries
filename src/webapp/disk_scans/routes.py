@@ -369,8 +369,10 @@ def _user_ctx(resource_name: str) -> dict:
     ``unix_uid`` — the fragments then render the no-identity empty state rather
     than running an unfiltered (whole-resource) scan.
     """
+    # NB: don't stash 'mode' here — the render helpers build their template
+    # context as ``dict(..., mode=mode, **ctx)`` and would get a duplicate
+    # 'mode' keyword. Callers pass mode='user' explicitly instead.
     ctx = _resource_ctx(resource_name)
-    ctx['mode'] = 'user'
     ctx['forced_owner_uid'] = getattr(current_user, 'unix_uid', None)
     return ctx
 
