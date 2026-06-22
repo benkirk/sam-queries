@@ -27,6 +27,13 @@
             <i class="fas fa-user-circle"></i> User Information
         </a>
     </li>
+    {% if my_data_available %}
+    <li class="nav-item">
+        <a class="nav-link" id="my-data-tab" data-bs-toggle="tab" href="#my-data" role="tab">
+            <i class="fas fa-hard-drive"></i> My Data
+        </a>
+    </li>
+    {% endif %}
 </ul>
 
 <!-- Tab Content -->
@@ -78,6 +85,14 @@
                             can_edit_primary_gid=can_edit_primary_gid) }}
     </div>
     <!-- End User Information Tab -->
+
+    {% if my_data_available %}
+    <!-- My Data Tab -->
+    <div class="tab-pane fade" id="my-data" role="tabpanel">
+        {% include 'dashboards/user/partials/my_data_scans.html' %}
+    </div>
+    <!-- End My Data Tab -->
+    {% endif %}
 </div>
 <!-- End Tab Content -->
 

@@ -522,6 +522,9 @@ def test_access_history_user_drilldown_rows(app, auth_client, active_project, mo
     assert 'recursive=0' in body
     assert 'sort_by=size_nr' in body
     assert 'shown.bs.collapse' in body            # lazy-load trigger
+    # Each tab carries its own caveat: access-history's, not the file-size one.
+    assert 'grouped by most recent' in body
+    assert 'computed as average file sizes per' not in body
 
 
 def test_access_history_no_drilldown_without_bounds(app, auth_client, active_project, monkeypatch):
@@ -579,6 +582,9 @@ def test_file_sizes_user_drilldown_rows(app, auth_client, active_project, monkey
     assert 'max_avg_size=10485760' in body
     assert 'recursive=0' in body
     assert 'shown.bs.collapse' in body
+    # File-size tab carries its own caveat, not the access-history one.
+    assert 'computed as average file sizes per' in body
+    assert 'grouped by most recent' not in body
 
 
 def test_directories_avg_size_flag(app, auth_client, active_project, monkeypatch):
@@ -1609,3 +1615,225 @@ class TestDiskEntityPie:
                 {'id': 8, 'name': 'g8', 'value': Decimal('3')}]
         svg = generate_disk_entity_pie_chart(data, 'group')
         assert '#disk-ent-group-7' in svg
+
+
+# ---------------------------------------------------------------------------
+# user mode ("My Data"): own-data-only enforcement + login_required-only access
+# ---------------------------------------------------------------------------
+#
+# These routes are @login_required ONLY (no VIEW_ALL_FILESYSTEM_DATA), so the
+# owner MUST be pinned server-side to the logged-in user's unix_uid and any
+# client-supplied ?owner_uid / ?owner_user_id MUST be ignored — otherwise any
+# user could read another user's footprint. The first test is the security
+# crux.
+
+def _benkirk_uid(session):
+    from sam import User
+    u = User.get_by_username(session, 'benkirk')
+    assert u is not None and u.unix_uid is not None, (
+        'benkirk must be preserved with a unix_uid in the snapshot — '
+        'see project_test_db_fixtures.md'
+    )
+    return u.unix_uid
+
+
+def test_user_directories_pins_owner_ignoring_query(
+        app, auth_client, session, monkeypatch):
+    """SECURITY: ?owner_uid / ?owner_user_id are ignored; the directory scan is
+    pinned to the logged-in user's unix_uid, never the client-supplied value."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    uid = _benkirk_uid(session)
+    captured = {}
+
+    def fake(resource_name, **kw):
+        captured.update(kw)
+        captured['resource_name'] = resource_name
+        return []
+    monkeypatch.setattr(service, 'scan_directories_resource', fake)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/user/{_RES}/directories'
+        f'?owner_uid=999999&owner_user_id=999999'
+    )
+    assert resp.status_code == 200
+    assert captured['resource_name'] == _RES
+    assert captured['owner_uid'] == uid          # pinned to me
+    assert captured['owner_uid'] != 999999       # NOT the tampered value
+
+
+@pytest.mark.parametrize('endpoint,fn', [
+    ('access-history', 'scan_access_history_resource'),
+    ('file-sizes', 'scan_file_sizes_resource'),
+])
+def test_user_distribution_pins_owner_ignoring_query(
+        app, auth_client, session, monkeypatch, endpoint, fn):
+    """SECURITY: the histogram scans are pinned to the logged-in user too."""
+    from webapp.disk_scans import service
+    _enable_fs_scans(app, monkeypatch)
+    uid = _benkirk_uid(session)
+    captured = {}
+
+    def fake(resource_name, **kw):
+        captured.update(kw)
+        return None      # falsy → no chart generation; the call is what we check
+    monkeypatch.setattr(service, fn, fake)
+
+    resp = auth_client.get(
+        f'/dashboards/user/disk-scans/user/{_RES}/{endpoint}?owner_uid=999999'
+    )
+    assert resp.status_code == 200
+    assert captured['owner_uid'] == uid
+    assert captured['owner_uid'] != 999999
+
+
+@pytest.mark.parametrize(
+    'endpoint', ['directories', 'access-history', 'file-sizes', 'explore'])
+def test_user_routes_reachable_without_view_all(non_admin_client, endpoint):
+    """User routes are @login_required only — a user WITHOUT
+    VIEW_ALL_FILESYSTEM_DATA gets 200 (contrast the resource routes' 403)."""
+    resp = non_admin_client.get(
+        f'/dashboards/user/disk-scans/user/{_RES}/{endpoint}'
+    )
+    assert resp.status_code == 200
+
+
+def test_user_directories_no_identity_empty_state(app, auth_client, monkeypatch):
+    """Account with no unix_uid → info message, and NO scan is run (an absent
+    owner filter would otherwise scan the whole resource)."""
+    from types import SimpleNamespace
+    from webapp.disk_scans import service, routes
+    _enable_fs_scans(app, monkeypatch)
+    calls = {'n': 0}
+
+    def fake(*a, **k):
+        calls['n'] += 1
+        return []
+    monkeypatch.setattr(service, 'scan_directories_resource', fake)
+    # _user_ctx reads the owner via routes' module-level current_user.
+    monkeypatch.setattr(routes, 'current_user', SimpleNamespace(unix_uid=None))
+
+    resp = auth_client.get(f'/dashboards/user/disk-scans/user/{_RES}/directories')
+    assert resp.status_code == 200
+    assert calls['n'] == 0                                   # never scanned
+    assert 'No filesystem identity' in resp.get_data(as_text=True)
+
+
+def test_no_user_entities_route(app):
+    """User mode hides the User/group counts tab — there is no entities_user
+    endpoint — but the other three fragments + the explorer page do exist."""
+    from flask import url_for
+    from werkzeug.routing import BuildError
+    with app.test_request_context():
+        with pytest.raises(BuildError):
+            url_for('disk_scans.entities_user_fragment', resource=_RES)
+        for ep in ('directories_user_fragment', 'access_history_user_fragment',
+                   'file_sizes_user_fragment', 'directories_user_page'):
+            url_for(f'disk_scans.{ep}', resource=_RES)   # no raise
+
+
+def test_user_explore_hides_owner_picker(auth_client, session):
+    """The explorer 'full view' omits the owner picker in user mode (a user must
+    not be able to re-filter to another owner)."""
+    _benkirk_uid(session)
+    resp = auth_client.get(f'/dashboards/user/disk-scans/user/{_RES}/explore')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'My Data' in body
+    assert 'Search users…' not in body          # owner fk-picker omitted
+
+
+# ---------------------------------------------------------------------------
+# "My Data" tab visibility on the user dashboard (/user/)
+# ---------------------------------------------------------------------------
+
+def test_my_data_tab_shown(auth_client, monkeypatch):
+    """benkirk has a unix_uid → My Data tab + one subtab per warmed resource."""
+    monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                        lambda app=None: ['Campaign_Store'])
+    resp = auth_client.get('/user/')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="my-data-tab"' in body
+    assert 'id="my-data-subtab-1"' in body       # subtab strip rendered
+
+
+def test_my_data_tab_hidden_when_no_resources(auth_client, monkeypatch):
+    """Plugin off / no warmed resource → no My Data tab even with a unix_uid."""
+    monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                        lambda app=None: [])
+    resp = auth_client.get('/user/')
+    assert resp.status_code == 200
+    assert 'id="my-data-tab"' not in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# distribution histogram: single-owner drill shortcut
+# ---------------------------------------------------------------------------
+#
+# A band with exactly one owner skips the (one-row) per-user table and expands
+# the band row straight to that owner's directories — one click instead of two.
+# This is what makes the single-user "My Data" histograms low-friction, but the
+# rule is generic (any single-owner band in any mode benefits).
+
+def _render_distribution_partial(app, owners):
+    from flask import render_template
+    hist = {
+        'bucket_labels': ['> 1 year'],
+        'buckets': {'> 1 year': {
+            'data': 100, 'files': 10, 'owners': owners,
+            'accessed_before': '2025-01-01', 'accessed_after': '2024-01-01',
+        }},
+        'total_data': 100, 'total_files': 10,
+        'username_map': {7: 'benkirk', 8: 'alice'},
+    }
+    with app.test_request_context():
+        return render_template(
+            'dashboards/user/partials/disk_scans_distribution.html',
+            hist=hist, chart_svg='<svg/>', enabled=True, error=None,
+            resource_name=_RES, scope='', fileset=None, target_id='t',
+            bucket_header='Last accessed', metric='data', metric_toggle=False,
+            log_toggle=False, log_on=False, fragment_url='/frag',
+            dir_fragment_url='/dirs')
+
+
+def test_single_owner_band_drills_straight_to_directories(app):
+    """One owner → no per-user table; the band row drills to their directories."""
+    body = _render_distribution_partial(app, {7: {'data': 100, 'files': 10}})
+    assert 'owner_uid=7' in body                       # directory drill present
+    assert 'Top users by' not in body                  # per-user table skipped
+    assert 'Show directories in this band' in body     # band row title
+    assert '>Owners<' not in body                      # uniform-1 column folded
+
+
+def test_multi_owner_band_keeps_per_user_table(app):
+    """Two+ owners → the per-user aggregation table is retained."""
+    body = _render_distribution_partial(
+        app, {7: {'data': 60, 'files': 6}, 8: {'data': 40, 'files': 4}})
+    assert 'Top users by' in body                       # per-user table kept
+    assert 'Show top users in this bucket' in body
+    assert 'owner_uid=7' in body and 'owner_uid=8' in body   # each user drills
+    assert '>Owners<' in body                            # column shown (≥2 owners)
+
+
+def test_single_owner_band_without_window_keeps_table(app):
+    """The shortcut only applies when there's a drill window. A lone owner in a
+    window-less band keeps the per-user table (listed, but not drillable) —
+    behaviour unchanged from before the shortcut."""
+    from flask import render_template
+    hist = {
+        'bucket_labels': ['unknown'],
+        'buckets': {'unknown': {'data': 5, 'files': 1, 'owners': {7: {'data': 5, 'files': 1}}}},
+        'total_data': 5, 'total_files': 1, 'username_map': {7: 'benkirk'},
+    }
+    with app.test_request_context():
+        body = render_template(
+            'dashboards/user/partials/disk_scans_distribution.html',
+            hist=hist, chart_svg='<svg/>', enabled=True, error=None,
+            resource_name=_RES, scope='', fileset=None, target_id='t',
+            bucket_header='Last accessed', metric='data', metric_toggle=False,
+            log_toggle=False, log_on=False, fragment_url='/frag',
+            dir_fragment_url='/dirs')
+    assert 'benkirk' in body                            # user still listed
+    assert 'Top users by' in body                       # per-user table kept
+    assert 'owner_uid=7' not in body                    # but no directory drill

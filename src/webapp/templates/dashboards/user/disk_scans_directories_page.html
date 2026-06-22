@@ -25,6 +25,9 @@
       {% if mode == 'resource' %}
         {{ resource_name }}
         <small class="text-muted fw-normal">— all directories</small>
+      {% elif mode == 'user' %}
+        My Data
+        <small class="text-muted fw-normal">— files you own on {{ resource_name }}</small>
       {% else %}
         {{ scoped_project.projcode if scoped_project else project.projcode }}
         <small class="text-muted fw-normal">directories on {{ resource_name }}</small>
@@ -89,7 +92,7 @@
   <div class="filter-sidebar mb-3">
     {{ dir_filters('disk-scans-filters-' ~ target_id, fragment_url, target_id,
                    filters, user_search_url, resource_name, scope, fileset,
-                   limit_options) }}
+                   limit_options, mode=mode) }}
   </div>
 
   <div class="card">

@@ -1,0 +1,49 @@
+{# ── "My Data" tab body (User dashboard) ────────────────────────────────
+   One subtab per scan-capable disk resource (fs_scan_resources, from
+   service.scan_capable_resources()). Each subtab hosts the SAME scans card
+   the project disk page shows, but in user mode — rooted over the whole
+   filesystem and filtered to the files the logged-in user OWNS. The owner is
+   pinned server-side (see disk_scans/routes.py _user_ctx), so these routes are
+   @login_required only (no VIEW_ALL_FILESYSTEM_DATA).
+
+   The "User / group counts" tab is hidden in user mode (single owner).
+
+   Lazy-load: the active first subtab gets no shown.bs.tab when the parent
+   "My Data" tab opens, so its card's first inner tab listens to the parent tab
+   (#my-data-tab). Other subtabs load when their own subtab nav-link is shown.
+   Bind to the shown event, not click (feedback_persisted_collapse_htmx).
+
+   This partial is only included when fs_scan_resources is non-empty AND the
+   viewer has a unix_uid (gated in dashboard.html via my_data_available), so it
+   never needs its own empty/disabled state.
+#}
+<ul class="nav nav-pills mb-3" id="myDataSubtabs" role="tablist">
+    {% for res in fs_scan_resources %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if loop.first %}active{% endif %}"
+           id="my-data-subtab-{{ loop.index }}"
+           data-bs-toggle="tab" href="#my-data-pane-{{ loop.index }}" role="tab">
+            <i class="fas fa-hard-drive me-1"></i> {{ res }}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+<div class="tab-content" id="myDataSubtabContent">
+    {% for res in fs_scan_resources %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+         id="my-data-pane-{{ loop.index }}" role="tabpanel">
+        {% if loop.first %}
+            {% set _trigger = 'shown.bs.tab once from:#my-data-tab' %}
+        {% else %}
+            {% set _trigger = 'shown.bs.tab once from:#my-data-subtab-' ~ loop.index %}
+        {% endif %}
+        {% with mode='user',
+                cid='my-data-r' ~ loop.index,
+                tablist_id='myDataCardTabs' ~ loop.index,
+                resource_name=res,
+                load_trigger=_trigger %}
+            {% include 'dashboards/user/partials/disk_scans_card.html' %}
+        {% endwith %}
+    </div>
+    {% endfor %}
+</div>

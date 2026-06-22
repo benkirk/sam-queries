@@ -33,7 +33,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlencode
 
 from flask import Blueprint, current_app, render_template, request, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from sam.core.users import User
 from sam.projects.projects import Project
@@ -358,8 +358,27 @@ def _resource_ctx(resource_name: str) -> dict:
     }
 
 
+def _user_ctx(resource_name: str) -> dict:
+    """``_resource_ctx`` for user mode: whole-collection, owner pinned to me.
+
+    ``forced_owner_uid`` is the authenticated user's ``unix_uid``; the render
+    helpers MUST use it and ignore any ``?owner_uid`` / ``?owner_user_id`` from
+    the query string (these routes are ``@login_required`` only, not
+    ``VIEW_ALL_FILESYSTEM_DATA``-gated, so trusting a client-supplied owner
+    would leak another user's footprint). ``None`` when the account has no
+    ``unix_uid`` — the fragments then render the no-identity empty state rather
+    than running an unfiltered (whole-resource) scan.
+    """
+    # NB: don't stash 'mode' here — the render helpers build their template
+    # context as ``dict(..., mode=mode, **ctx)`` and would get a duplicate
+    # 'mode' keyword. Callers pass mode='user' explicitly instead.
+    ctx = _resource_ctx(resource_name)
+    ctx['forced_owner_uid'] = getattr(current_user, 'unix_uid', None)
+    return ctx
+
+
 def _render_directories_fragment(ctx, fragment_url, *, mode, scan_call,
-                                 log_label, browse=False):
+                                 log_label, browse=False, forced_owner_uid=None):
     """Shared body for the project + resource directory fragments.
 
     Both render the *same* ``disk_scans_directories.html`` partial; they differ
@@ -369,6 +388,11 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scan_call,
     drill-down (clickable rows + ancestry breadcrumb), explorer-page only.
     """
     flt = _dir_filters()
+    # User mode: pin the owner server-side and drop any client-supplied owner so
+    # it can't re-enter via _scan / the breadcrumb. See _user_ctx.
+    if forced_owner_uid is not None:
+        flt['owner_uid'] = forced_owner_uid
+        flt['owner_user_id'] = None
     breadcrumb_items = (_dir_breadcrumb(mode, ctx, fragment_url, flt)
                         if browse and is_enabled() else None)
     base = dict(
@@ -521,7 +545,8 @@ def directories_resource_page(resource):
     )
 
 
-def _render_entities(ctx, fragment_url, *, scan_call, log_label, dir_fragment_url):
+def _render_entities(ctx, fragment_url, *, scan_call, log_label, dir_fragment_url,
+                     forced_owner_uid=None):
     """Shared body for the project + resource entity (owner|group) fragments.
 
     Both render the *same* ``disk_scans_entities.html`` partial; they differ
@@ -627,7 +652,8 @@ _METRIC_WHITELIST = {'data', 'files'}
 
 def _render_distribution(ctx, fragment_url, *, scan_call, kind,
                          bucket_header, log_label, dir_fragment_url,
-                         metric_toggle=False, log_toggle=False):
+                         metric_toggle=False, log_toggle=False,
+                         forced_owner_uid=None):
     """Shared body for the two distribution histogram fragments (both modes).
 
     The Access-history and File-size tabs are identical end to end — same
@@ -650,7 +676,7 @@ def _render_distribution(ctx, fragment_url, *, scan_call, kind,
     if not metric_toggle or metric not in _METRIC_WHITELIST:
         metric = 'data'
     log_on = log_toggle and _truthy(request.args.get('log'))
-    extra = dict(metric=metric, metric_toggle=metric_toggle,
+    extra = dict(kind=kind, metric=metric, metric_toggle=metric_toggle,
                  log_on=log_on, log_toggle=log_toggle,
                  bucket_header=bucket_header, fragment_url=fragment_url,
                  dir_fragment_url=dir_fragment_url)
@@ -662,7 +688,10 @@ def _render_distribution(ctx, fragment_url, *, scan_call, kind,
             enabled=is_enabled(), error=None, **ctx, **extra,
         )
 
-    owner_uid = request.args.get('owner_uid', type=int)
+    # User mode pins the owner server-side (forced_owner_uid); ignore any
+    # client-supplied ?owner_uid in that case. See _user_ctx.
+    owner_uid = (forced_owner_uid if forced_owner_uid is not None
+                 else request.args.get('owner_uid', type=int))
     hist, chart_svg, error = None, None, None
     try:
         hist = scan_call(owner_uid, ctx['fileset'])
@@ -783,4 +812,131 @@ def file_sizes_resource_fragment(resource):
         dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
                                  resource=resource),
         metric_toggle=True, log_toggle=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# User mode — "My Data": the resource card scoped to the logged-in user's own
+# files. @login_required ONLY (no VIEW_ALL_FILESYSTEM_DATA), so the owner is
+# pinned server-side to current_user.unix_uid via _user_ctx + the render
+# helpers' forced_owner_uid; any client-supplied ?owner_uid / ?owner_user_id is
+# ignored. No entities (owner|group) route — a single-owner view needs no
+# per-owner rollup, and the card hides that tab in user mode.
+# ---------------------------------------------------------------------------
+
+
+def _no_identity_fragment():
+    """Empty state for a user with no ``unix_uid`` — never runs a scan."""
+    return render_template(
+        'dashboards/user/partials/disk_scans_no_identity.html')
+
+
+@bp.route('/user/<resource>/directories')
+@login_required
+def directories_user_fragment(resource):
+    """HTMX fragment: largest directories the logged-in user OWNS on *resource*."""
+    ctx = _user_ctx(resource)
+    forced = ctx['forced_owner_uid']
+    if forced is None:
+        return _no_identity_fragment()
+    fragment_url = url_for('disk_scans.directories_user_fragment',
+                           resource=resource)
+
+    def _scan(flt):
+        return service.scan_directories_resource(
+            ctx['resource_name'], subpath=ctx['fileset'],
+            sort_by=flt['sort_by'], limit=flt['limit'],
+            owner_uid=flt['owner_uid'],
+            owner_gid=flt['owner_gid'],
+            accessed_before=flt['accessed_before'],
+            accessed_after=flt['accessed_after'],
+            atime_recursive=flt['atime_recursive'],
+            min_avg_size=flt['min_avg_size'],
+            max_avg_size=flt['max_avg_size'],
+            outermost_only=flt['outermost'],
+            leaves_only=flt['leaves_only'],
+        )
+
+    return _render_directories_fragment(
+        ctx, fragment_url, mode='user', scan_call=_scan,
+        log_label=f'user-owned uid={forced}',
+        browse=_truthy(request.args.get('browse')),
+        forced_owner_uid=forced,
+    )
+
+
+@bp.route('/user/<resource>/explore')
+@login_required
+def directories_user_page(resource):
+    """Standalone full-page directory explorer for the user's OWN files.
+
+    User mode — same page template as project/resource mode, parameterized by
+    ``mode='user'`` + the user fragment URL. The owner is pinned to the logged-in
+    user and the owner picker is hidden (``mode='user'`` in the filter panel), so
+    the explorer can't be re-filtered to another owner.
+    """
+    ctx = _user_ctx(resource)
+    forced = ctx['forced_owner_uid']
+    if forced is None:
+        return _no_identity_fragment()
+    flt = _dir_filters()
+    flt['owner_uid'] = forced
+    flt['owner_user_id'] = None
+    fragment_url = url_for('disk_scans.directories_user_fragment',
+                           resource=resource)
+    return render_template(
+        'dashboards/user/disk_scans_directories_page.html',
+        mode='user', fragment_url=fragment_url,
+        initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
+        filters=flt, user_search_url=None,
+        limit_options=_LIMIT_OPTIONS, browse=True, **ctx,
+    )
+
+
+@bp.route('/user/<resource>/access-history')
+@login_required
+def access_history_user_fragment(resource):
+    """HTMX fragment: access-time histogram of the user's OWN files on *resource*."""
+    ctx = _user_ctx(resource)
+    forced = ctx['forced_owner_uid']
+    if forced is None:
+        return _no_identity_fragment()
+    fragment_url = url_for('disk_scans.access_history_user_fragment',
+                           resource=resource)
+
+    def _scan(owner_uid, subpath):
+        return service.scan_access_history_resource(
+            ctx['resource_name'], owner_uid=owner_uid, subpath=subpath)
+
+    return _render_distribution(
+        ctx, fragment_url, scan_call=_scan, kind='access_history',
+        bucket_header='Last accessed', log_label=f'user-owned uid={forced}',
+        dir_fragment_url=url_for('disk_scans.directories_user_fragment',
+                                 resource=resource),
+        forced_owner_uid=forced,
+    )
+
+
+@bp.route('/user/<resource>/file-sizes')
+@login_required
+def file_sizes_user_fragment(resource):
+    """HTMX fragment: file-size histogram of the user's OWN files on *resource*."""
+    ctx = _user_ctx(resource)
+    forced = ctx['forced_owner_uid']
+    if forced is None:
+        return _no_identity_fragment()
+    fragment_url = url_for('disk_scans.file_sizes_user_fragment',
+                           resource=resource)
+
+    def _scan(owner_uid, subpath):
+        return service.scan_file_sizes_resource(
+            ctx['resource_name'], owner_uid=owner_uid, subpath=subpath)
+
+    return _render_distribution(
+        ctx, fragment_url, scan_call=_scan, kind='file_sizes',
+        bucket_header='File size', log_label=f'user-owned uid={forced}',
+        dir_fragment_url=url_for('disk_scans.directories_user_fragment',
+                                 resource=resource),
+        metric_toggle=True, log_toggle=True,
+        forced_owner_uid=forced,
     )

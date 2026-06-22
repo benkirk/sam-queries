@@ -28,6 +28,12 @@
     {% set _acc_url   = url_for('disk_scans.access_history_resource_fragment', resource=resource_name, target_id=cid ~ '-access') %}
     {% set _files_url = url_for('disk_scans.file_sizes_resource_fragment',    resource=resource_name, target_id=cid ~ '-files') %}
     {% set _full_url  = url_for('disk_scans.directories_resource_page',       resource=resource_name) %}
+{% elif mode == 'user' %}
+    {% set _dirs_url  = url_for('disk_scans.directories_user_fragment',     resource=resource_name, target_id=cid ~ '-directories') %}
+    {% set _acc_url   = url_for('disk_scans.access_history_user_fragment',  resource=resource_name, target_id=cid ~ '-access') %}
+    {% set _files_url = url_for('disk_scans.file_sizes_user_fragment',      resource=resource_name, target_id=cid ~ '-files') %}
+    {% set _full_url  = url_for('disk_scans.directories_user_page',         resource=resource_name) %}
+    {# no _ent_url — the User / group counts tab is hidden in user mode #}
 {% else %}
     {% set _dirs_url  = url_for('disk_scans.directories_fragment',     projcode=projcode, resource=resource_name, scope=scope, fileset=fileset, target_id=cid ~ '-directories') %}
     {% set _ent_url   = url_for('disk_scans.entities_fragment',        projcode=projcode, resource=resource_name, scope=scope, fileset=fileset, target_id=cid ~ '-entities') %}
@@ -47,6 +53,7 @@
             <i class="fas fa-folder-tree me-1"></i> Large directories
         </button>
     </li>
+    {% if mode != 'user' %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="{{ cid }}-ent-tab"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-ent"
@@ -58,6 +65,7 @@
             <i class="fas fa-users me-1"></i> User / group counts
         </button>
     </li>
+    {% endif %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="{{ cid }}-acc-tab"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-acc"
@@ -97,6 +105,7 @@
             </p>
         </div>
     </div>
+    {% if mode != 'user' %}
     <div class="tab-pane fade" id="tab-{{ cid }}-ent" role="tabpanel">
         <div id="{{ cid }}-entities">
             <p class="text-muted small mb-0">
@@ -104,6 +113,7 @@
             </p>
         </div>
     </div>
+    {% endif %}
     <div class="tab-pane fade" id="tab-{{ cid }}-acc" role="tabpanel">
         <div id="{{ cid }}-access">
             <p class="text-muted small mb-0">
