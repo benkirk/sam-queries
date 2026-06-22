@@ -123,6 +123,16 @@
       Note: results are approximate, computed as average file sizes per
       directory (individual files are not tracked).
     </p>
+  {% elif kind == 'access_history' %}
+    {# Access-history bands sum each directory's data volume, bucketed by the
+       most recent access time across the directory's contents — the scan does
+       not track individual files (so a directory's cold data counts as recently
+       accessed if any of its contents was). #}
+    <p class="text-muted small fst-italic mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      Note: results are computed by directory volume and grouped by most recent
+      contents access (individual files are not tracked).
+    </p>
   {% endif %}
   <div class="chart-container">
     {{ chart_svg | safe }}
