@@ -1797,6 +1797,7 @@ def test_single_owner_band_drills_straight_to_directories(app):
     assert 'owner_uid=7' in body                       # directory drill present
     assert 'Top users by' not in body                  # per-user table skipped
     assert 'Show directories in this band' in body     # band row title
+    assert '>Owners<' not in body                      # uniform-1 column folded
 
 
 def test_multi_owner_band_keeps_per_user_table(app):
@@ -1806,6 +1807,7 @@ def test_multi_owner_band_keeps_per_user_table(app):
     assert 'Top users by' in body                       # per-user table kept
     assert 'Show top users in this bucket' in body
     assert 'owner_uid=7' in body and 'owner_uid=8' in body   # each user drills
+    assert '>Owners<' in body                            # column shown (≥2 owners)
 
 
 def test_single_owner_band_without_window_keeps_table(app):
