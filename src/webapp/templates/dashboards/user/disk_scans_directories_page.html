@@ -37,6 +37,50 @@
     {% endif %}
   </div>
 
+  {# Scope panel — the directories that DEFINE this view (the scoped project +
+     its active descendants on this resource), grouped by owning project. Each
+     path click-drills the table into that fileset (same hx mechanism as the
+     breadcrumb). Collapsed by default when more than 5 directories. Project
+     mode only; resource mode is "all directories", which has no project scope. #}
+  {% if mode == 'project' and scope_groups %}
+    {% set _scope_collapsed = scope_dir_count > 5 %}
+    <div class="alert alert-light border py-2 px-3 mb-3 small">
+      <div class="d-flex align-items-center flex-wrap gap-2">
+        <span class="text-muted">
+          <i class="fas fa-folder-open me-1"></i>
+          <strong>Scope</strong> —
+          {{ scope_dir_count }} director{{ 'y' if scope_dir_count == 1 else 'ies' }}
+          {% if scope_groups | length > 1 %}across {{ scope_groups | length }} projects{% endif %}
+        </span>
+        {% if _scope_collapsed %}
+          <button class="btn btn-sm btn-link p-0 text-decoration-none" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#scope-dirs-{{ target_id }}"
+                  aria-expanded="false" aria-controls="scope-dirs-{{ target_id }}">
+            <i class="fas fa-chevron-right small collapse-icon me-1"></i>show directories
+          </button>
+        {% endif %}
+      </div>
+      <div class="{% if _scope_collapsed %}collapse{% endif %} mt-2"
+           id="scope-dirs-{{ target_id }}">
+        {% for g in scope_groups %}
+          <div class="d-flex flex-wrap align-items-baseline gap-2 mb-1">
+            <span class="badge {{ 'bg-primary-subtle' if g.is_root else 'bg-secondary-subtle' }} text-dark border">
+              {{ g.projcode }}{% if g.is_root %} <span class="text-muted fw-normal">· root</span>{% endif %}
+            </span>
+            {% for p in g.paths %}
+              <a class="font-monospace text-decoration-none" href="#"
+                 hx-get="{{ fragment_url }}?fileset={{ p | urlencode }}&resource={{ resource_name | urlencode }}{% if scope %}&scope={{ scope | urlencode }}{% endif %}&sort_by={{ filters.sort_by }}"
+                 hx-target="#{{ target_id }}"
+                 hx-include="#disk-scans-dir-params-{{ target_id }}"
+                 hx-swap="innerHTML"
+                 title="Drill the table into this directory">{{ p }}</a>
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
   {# The live, drill-aware ancestry breadcrumb is rendered inside the table
      fragment (disk_scans_directories.html) so it updates on every drill. #}
 

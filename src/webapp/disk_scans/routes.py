@@ -43,7 +43,7 @@ from webapp.dashboards.charts import (
     generate_distribution_histogram,
 )
 from webapp.disk_scans import service
-from webapp.disk_scans.scope import resolve_scan_scope
+from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_grouped
 from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
 from webapp.utils.rbac import Permission, require_permission
@@ -446,12 +446,19 @@ def directories_page(project):
     flt = _dir_filters()
     fragment_url = url_for('disk_scans.directories_fragment',
                            projcode=project.projcode)
+    # The directories that *define* this scope (the scoped project + its active
+    # descendants on this resource), grouped by owning project — surfaced in the
+    # page's "Scope" panel. Same subtree walk the fragment scan runs.
+    scope_groups = resolve_scan_scope_grouped(
+        db.session, ctx['scoped_project'], ctx['resource_name'])
+    scope_dir_count = sum(len(g['paths']) for g in scope_groups)
     return render_template(
         'dashboards/user/disk_scans_directories_page.html',
         mode='project', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
-        limit_options=_LIMIT_OPTIONS, browse=True, **ctx,
+        limit_options=_LIMIT_OPTIONS, browse=True,
+        scope_groups=scope_groups, scope_dir_count=scope_dir_count, **ctx,
     )
 
 

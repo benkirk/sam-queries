@@ -183,6 +183,58 @@ def test_scoped_returns_empty_when_module_missing(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# scope grouping — resolve_scan_scope_grouped
+# ---------------------------------------------------------------------------
+
+def test_resolve_scan_scope_grouped_orders_root_first_and_groups(monkeypatch):
+    """Pre-order from the scan root, one group per fileset-owning node."""
+    from webapp.disk_scans import scope
+
+    tree = {
+        'projcode': 'ROOT0001',
+        'fileset_paths': ['/glade/campaign/root/b', '/glade/campaign/root/a'],
+        'children': [
+            {'projcode': 'CHILD002', 'fileset_paths': ['/glade/campaign/child2'],
+             'children': []},
+            # a node that owns nothing is skipped entirely
+            {'projcode': 'EMPTY003', 'fileset_paths': [], 'children': [
+                {'projcode': 'GRAND004', 'fileset_paths': ['/glade/campaign/gc'],
+                 'children': []},
+            ]},
+        ],
+    }
+
+    class _Proj:
+        projcode = 'ROOT0001'
+
+    monkeypatch.setattr(scope, 'build_disk_subtree',
+                        lambda s, p, r: {'tree': tree})
+    groups = scope.resolve_scan_scope_grouped(None, _Proj(), 'Campaign_Store')
+
+    assert [g['projcode'] for g in groups] == ['ROOT0001', 'CHILD002', 'GRAND004']
+    root = groups[0]
+    assert root['is_root'] is True
+    # paths sorted within a group
+    assert root['paths'] == ['/glade/campaign/root/a', '/glade/campaign/root/b']
+    assert all(g['is_root'] is False for g in groups[1:])
+    # EMPTY003 (no filesets) contributes no group
+    assert 'EMPTY003' not in [g['projcode'] for g in groups]
+
+
+def test_resolve_scan_scope_grouped_empty_when_no_dirs(monkeypatch):
+    from webapp.disk_scans import scope
+
+    class _Proj:
+        projcode = 'NONE0001'
+
+    monkeypatch.setattr(
+        scope, 'build_disk_subtree',
+        lambda s, p, r: {'tree': {'projcode': 'NONE0001',
+                                  'fileset_paths': [], 'children': []}})
+    assert scope.resolve_scan_scope_grouped(None, _Proj(), 'Campaign_Store') == []
+
+
+# ---------------------------------------------------------------------------
 # routes — HTMX fragment endpoints
 # ---------------------------------------------------------------------------
 
