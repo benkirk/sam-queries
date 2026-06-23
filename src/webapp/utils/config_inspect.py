@@ -424,17 +424,17 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     # each. Registered on app.extensions by webapp.disk_scans.init_fs_scans;
     # absent / empty when the plugin is disabled, in which case no rows appear.
     fs_state = app.extensions.get('fs_scans') or {}
-    fs_engines = fs_state.get('engines') or {}
-    if fs_engines:
+    fs_databases = fs_state.get('databases') or {}
+    if fs_databases:
         fs_mod = fs_state.get('module')
-        # Group warmed engines by their backing database (campaign, desc1, …).
-        by_db: Dict[str, list] = {}
-        for collection, engine in fs_engines.items():
-            by_db.setdefault(engine.url.database or 'fs_scans', []).append(
-                (collection, engine)
-            )
-        for dbname, items in sorted(by_db.items()):
-            items.sort()
+        # One health row per backing CNPG database (campaign → Campaign_Store,
+        # desc1 → Destor); the warmed state is already grouped by database.
+        for dbname, db_state in sorted(fs_databases.items()):
+            engines = db_state.get('engines') or {}
+            if not engines:
+                continue
+            items = sorted(engines.items())
+            display_db = dbname or 'fs_scans'
             # Health from one representative engine — all share host + db.
             rep_engine = items[0][1]
             ok, latency_ms, err = _ping_engine(rep_engine)
@@ -443,13 +443,15 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             except Exception:
                 stats = None
             # Per-collection scan-date freshness (best-effort; one tiny
-            # scan_metadata read each). A failing collection reports None
-            # rather than sinking the whole card.
+            # scan_metadata read each, pinned to THIS database). A failing
+            # collection reports None rather than sinking the whole card.
             collections = []
             for collection, _engine in items:
                 scan_date = None
                 try:
-                    dates = fs_mod.FsScanQueries(filesystems=[collection]).scan_dates()
+                    dates = fs_mod.FsScanQueries(
+                        filesystems=[collection], database=dbname,
+                    ).scan_dates()
                     if dates:
                         scan_date = max(dates).date().isoformat()
                 except Exception:
@@ -457,7 +459,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
                 collections.append({'name': collection, 'scan_date': scan_date})
             present = [c['scan_date'] for c in collections if c['scan_date']]
             databases.append({
-                'name':         f'fs_scans ({dbname})',
+                'name':         f'fs_scans ({display_db})',
                 'url':          format_db_url_safe(rep_engine),
                 'status':       'healthy' if ok else 'unhealthy',
                 'latency_ms':   latency_ms,

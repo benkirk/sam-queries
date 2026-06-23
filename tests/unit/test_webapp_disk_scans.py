@@ -74,8 +74,9 @@ def _wire_service(monkeypatch, *, prefixes, collections, warmed,
     from webapp.disk_scans import service
 
     class _FakeQueries:
-        def __init__(self, filesystems):
+        def __init__(self, filesystems, database=None):
             capture['filesystems'] = list(filesystems)
+            capture['database'] = database
 
         def list_directories(self, **kw):
             capture['list_kwargs'] = kw
@@ -96,7 +97,11 @@ def _wire_service(monkeypatch, *, prefixes, collections, warmed,
         normalize_path=_fake_normalize,
     )
     monkeypatch.setattr(service, 'get_module', lambda: mod)
-    monkeypatch.setattr(service, 'get_collections', lambda: list(warmed))
+    # _scoped intersects reachability against the resource's database, so stub
+    # the database-aware seam (not get_collections) with the warmed set.
+    monkeypatch.setattr(service, 'collections_for_resource',
+                        lambda r, app=None: list(warmed))
+    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
     monkeypatch.setattr(
         service, 'resolve_scan_scope',
         lambda session, project, resource_name: (list(prefixes), list(collections)),
@@ -898,7 +903,7 @@ def test_scan_access_history_tags_band_bounds(monkeypatch):
     }
 
     class _Q:
-        def __init__(self, filesystems):
+        def __init__(self, filesystems, database=None):
             pass
 
         def access_history(self, **kw):
@@ -908,12 +913,13 @@ def test_scan_access_history_tags_band_bounds(monkeypatch):
                                 collection_for_path=lambda p: 'cisl',
                                 normalize_path=lambda p: p)
     monkeypatch.setattr(service, 'get_module', lambda: mod)
-    monkeypatch.setattr(service, 'get_collections', lambda: ['cisl'])
+    monkeypatch.setattr(service, 'collections_for_resource', lambda r, app=None: ['cisl'])
+    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
     monkeypatch.setattr(service, 'resolve_scan_scope',
                         lambda s, p, r: (['/glade/campaign/cisl/csg'], ['cisl']))
     monkeypatch.setattr(
         service, 'cached_scan',
-        lambda qt, q, colls, pfx, opts, compute, bucket='default': compute(),
+        lambda qt, q, colls, pfx, opts, compute, bucket='default', database=None: compute(),
     )
 
     out = service.scan_access_history(None, object(), 'Campaign_Store')
@@ -964,7 +970,7 @@ def test_scan_file_sizes_tags_band_bounds(monkeypatch):
     }
 
     class _Q:
-        def __init__(self, filesystems):
+        def __init__(self, filesystems, database=None):
             pass
 
         def file_size_histogram(self, **kw):
@@ -974,12 +980,13 @@ def test_scan_file_sizes_tags_band_bounds(monkeypatch):
                                 collection_for_path=lambda p: 'cisl',
                                 normalize_path=lambda p: p)
     monkeypatch.setattr(service, 'get_module', lambda: mod)
-    monkeypatch.setattr(service, 'get_collections', lambda: ['cisl'])
+    monkeypatch.setattr(service, 'collections_for_resource', lambda r, app=None: ['cisl'])
+    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
     monkeypatch.setattr(service, 'resolve_scan_scope',
                         lambda s, p, r: (['/glade/campaign/cisl/csg'], ['cisl']))
     monkeypatch.setattr(
         service, 'cached_scan',
-        lambda qt, q, colls, pfx, opts, compute, bucket='default': compute(),
+        lambda qt, q, colls, pfx, opts, compute, bucket='default', database=None: compute(),
     )
 
     out = service.scan_file_sizes(None, object(), 'Campaign_Store')
@@ -997,7 +1004,7 @@ def test_directories_bucket_selection(monkeypatch):
     )
     seen = []
 
-    def fake_cached(qt, q, colls, pfx, opts, compute, bucket='default'):
+    def fake_cached(qt, q, colls, pfx, opts, compute, bucket='default', database=None):
         seen.append(bucket)
         return compute()
 
@@ -1036,8 +1043,9 @@ def _wire_resource_service(monkeypatch, *, collections, capture):
     from webapp.disk_scans import service
 
     class _FakeQueries:
-        def __init__(self, filesystems):
+        def __init__(self, filesystems, database=None):
             capture['filesystems'] = list(filesystems)
+            capture['database'] = database
 
         def list_directories(self, **kw):
             capture['list_kwargs'] = kw
@@ -1046,7 +1054,8 @@ def _wire_resource_service(monkeypatch, *, collections, capture):
     mod = types.SimpleNamespace(FsScanQueries=_FakeQueries)
     monkeypatch.setattr(service, 'get_module', lambda: mod)
     monkeypatch.setattr(service, 'collections_for_resource',
-                        lambda r: list(collections))
+                        lambda r, app=None: list(collections))
+    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
     return service
 
 
@@ -1090,13 +1099,191 @@ def test_scan_directories_resource_empty_when_plugin_off(monkeypatch):
     assert service.scan_directories_resource('Campaign_Store') == []
 
 
-def test_collections_for_resource_delegates(monkeypatch):
-    """The resource→collections seam returns the warmed set (today)."""
+def test_collections_for_resource_maps_via_database(monkeypatch):
+    """The seam resolves the resource's database, then returns THAT database's
+    warmed collections — so Campaign_Store and Destor see disjoint sets."""
     from webapp.disk_scans import session as sess
-    monkeypatch.setattr(sess, 'get_collections', lambda app=None: ['campaign'])
-    assert sess.collections_for_resource('Campaign_Store') == ['campaign']
-    monkeypatch.setattr(sess, 'get_collections', lambda app=None: [])
+    monkeypatch.setattr(
+        sess, 'database_for_resource',
+        lambda r, app=None: {'Campaign_Store': 'campaign', 'Destor': 'destor'}.get(r))
+    monkeypatch.setattr(sess, 'get_databases', lambda app=None: {
+        'campaign': {'collections': ['cisl', 'mmm'], 'engines': {}},
+        'destor':    {'collections': ['gdex'], 'engines': {}},
+    })
+    assert sess.collections_for_resource('Campaign_Store') == ['cisl', 'mmm']
+    assert sess.collections_for_resource('Destor') == ['gdex']
+    # Unmapped resource → no database → no collections (never unscoped).
+    assert sess.collections_for_resource('Nope') == []
+    # Mapped but unwarmed database → [].
+    monkeypatch.setattr(sess, 'get_databases', lambda app=None: {})
     assert sess.collections_for_resource('Campaign_Store') == []
+
+
+def test_database_for_resource_reads_config_map(app, monkeypatch):
+    """database_for_resource reads the FS_SCAN_RESOURCE_DATABASES config map,
+    and is safe (None) outside an app context."""
+    from webapp.disk_scans import session as sess
+    monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCE_DATABASES',
+                        {'Campaign_Store': 'campaign', 'Destor': 'destor'})
+    with app.app_context():
+        assert sess.database_for_resource('Campaign_Store') == 'campaign'
+        assert sess.database_for_resource('Destor') == 'destor'
+        assert sess.database_for_resource('Unknown') is None
+    # No app context → None (lets service helpers resolve unconditionally).
+    assert sess.database_for_resource('Campaign_Store') is None
+
+
+# ---------------------------------------------------------------------------
+# Destor parity: database threading (project + resource mode), cache key,
+# per-database session warming
+# ---------------------------------------------------------------------------
+
+def test_scan_directories_threads_resource_database(monkeypatch):
+    """The resource's database (Destor → destor) reaches FsScanQueries."""
+    cap = {}
+    svc = _wire_service(
+        monkeypatch,
+        prefixes=['/lustre/desc1/gdex/proj'],
+        collections=['gdex'], warmed=['gdex'],
+        collection_map={'/lustre/desc1/gdex/proj': 'gdex'},
+        capture=cap,
+    )
+    monkeypatch.setattr(svc, 'database_for_resource',
+                        lambda r, app=None: 'destor' if r == 'Destor' else None)
+    svc.scan_directories(None, object(), 'Destor')
+    assert cap['filesystems'] == ['gdex']
+    assert cap['database'] == 'destor'        # threaded to the facade
+
+
+def test_scan_directories_resource_threads_database(monkeypatch):
+    """Resource mode threads the resource's database to the facade too."""
+    cap = {}
+    svc = _wire_resource_service(monkeypatch, collections=['gdex'], capture=cap)
+    monkeypatch.setattr(svc, 'database_for_resource', lambda r, app=None: 'destor')
+    svc.scan_directories_resource('Destor')
+    assert cap['database'] == 'destor'
+
+
+def test_cached_scan_database_is_in_key(monkeypatch):
+    """Same scope + opts but a different database → distinct cache entries, so a
+    collection name shared across databases can't collide."""
+    from webapp.disk_scans import cache as c
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+    c._adapters.clear()
+
+    calls = {'n': 0}
+    def compute():
+        calls['n'] += 1
+        return [{'v': calls['n']}]
+
+    q = _FakeQ('2026-06-14T00:00:00')
+    opts = {'limit': 50}
+    r1 = c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='campaign')
+    r2 = c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='destor')
+    assert r1 == [{'v': 1}] and r2 == [{'v': 2}]      # different db → recompute
+    assert calls['n'] == 2
+    # Same (db, scope, opts) repeats → served from cache.
+    c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='destor')
+    assert calls['n'] == 2
+
+
+class _WarmConn:
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def execute(self, *a, **k): return None
+
+
+class _WarmURL:
+    drivername = 'sqlite'     # skip the postgres connect-listener in _warm
+
+    def __init__(self, db):
+        self.database = db
+        self.username = self.host = self.port = None
+
+
+class _WarmEngine:
+    def __init__(self, db):
+        self.url = _WarmURL(db)
+
+    def connect(self):
+        return _WarmConn()
+
+
+def test_init_fs_scans_warms_each_database_separately(app, monkeypatch):
+    """init_fs_scans discovers + warms each configured database independently,
+    keys state by database, and wires resource → database → collections."""
+    from webapp import disk_scans
+    from webapp.disk_scans import session as sess
+
+    schemas = {'campaign': ['cisl', 'mmm'], 'destor': ['gdex']}
+
+    class _FakeMod:
+        def list_pg_schemas(self, database=None):
+            return list(schemas.get(database, []))
+
+        def get_engine(self, collection, database=None):
+            return _WarmEngine(database)
+
+    from sam.plugins import FS_SCANS
+    monkeypatch.setattr(FS_SCANS, 'load', lambda: _FakeMod())
+    monkeypatch.setitem(app.config, 'FS_SCANS_ENABLED', True)
+    monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCE_DATABASES',
+                        {'Campaign_Store': 'campaign', 'Destor': 'destor'})
+
+    orig = app.extensions.get('fs_scans')
+    try:
+        disk_scans.init_fs_scans(app)
+        dbs = sess.get_databases(app)
+        assert set(dbs) == {'campaign', 'destor'}
+        assert dbs['campaign']['collections'] == ['cisl', 'mmm']
+        assert dbs['destor']['collections'] == ['gdex']
+        assert sess.is_enabled(app) is True
+        # resource → database → collections, end to end
+        assert sess.collections_for_resource('Campaign_Store', app) == ['cisl', 'mmm']
+        assert sess.collections_for_resource('Destor', app) == ['gdex']
+        # union view spans both databases
+        assert sess.get_collections(app) == ['cisl', 'gdex', 'mmm']
+    finally:
+        if orig is not None:
+            app.extensions['fs_scans'] = orig
+        else:
+            app.extensions.pop('fs_scans', None)
+
+
+def test_init_fs_scans_survives_one_unreachable_database(app, monkeypatch):
+    """If one database is unreachable (destor not provisioned), the other still
+    warms and the feature stays enabled for it."""
+    from webapp import disk_scans
+    from webapp.disk_scans import session as sess
+
+    class _FakeMod:
+        def list_pg_schemas(self, database=None):
+            if database == 'destor':
+                raise RuntimeError('destor not reachable')
+            return ['cisl']
+
+        def get_engine(self, collection, database=None):
+            return _WarmEngine(database)
+
+    from sam.plugins import FS_SCANS
+    monkeypatch.setattr(FS_SCANS, 'load', lambda: _FakeMod())
+    monkeypatch.setitem(app.config, 'FS_SCANS_ENABLED', True)
+    monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCE_DATABASES',
+                        {'Campaign_Store': 'campaign', 'Destor': 'destor'})
+
+    orig = app.extensions.get('fs_scans')
+    try:
+        disk_scans.init_fs_scans(app)
+        dbs = sess.get_databases(app)
+        assert set(dbs) == {'campaign'}                  # destor skipped, not fatal
+        assert sess.is_enabled(app) is True
+        assert sess.collections_for_resource('Destor', app) == []
+        assert sess.collections_for_resource('Campaign_Store', app) == ['cisl']
+    finally:
+        if orig is not None:
+            app.extensions['fs_scans'] = orig
+        else:
+            app.extensions.pop('fs_scans', None)
 
 
 # -- resource mode (service): entity + histogram siblings --------------------
@@ -1111,8 +1298,9 @@ def _wire_resource_entities(monkeypatch, *, collections, capture):
     from webapp.disk_scans import service
 
     class _FakeQueries:
-        def __init__(self, filesystems):
+        def __init__(self, filesystems, database=None):
             capture['filesystems'] = list(filesystems)
+            capture['database'] = database
 
         def owner_summary(self, **kw):
             capture['owner_kwargs'] = kw
@@ -1142,6 +1330,7 @@ def _wire_resource_entities(monkeypatch, *, collections, capture):
     monkeypatch.setattr(service, 'get_module', lambda: mod)
     monkeypatch.setattr(service, 'collections_for_resource',
                         lambda r, app=None: list(collections))
+    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
     return service
 
 
