@@ -187,19 +187,25 @@ webapp:
     JOB_HISTORY_PG_PORT: "5432"
     JOB_HISTORY_MACHINES: "derecho,casper"
     # fs-scans plugin (filesystem-scan analytics on disk resource-details pages).
-    # Same CNPG cluster as job_history above, but a different logical database:
-    # collections (cisl, mmm, aiml, …) are POSTGRES SCHEMAS within FS_SCAN_PG_DB.
-    # The plugin reads FS_SCAN_PG_* at engine-creation time; FS_SCAN_PG_USER /
-    # FS_SCAN_PG_PASSWORD are injected below from the fsDbCredentials
-    # ExternalSecret (csg/pg-appuser, same role as job_history). FS_SCANS_ENABLED
-    # is the SAM-side master switch — set "0" to disable the integration entirely.
-    # Destor (FS_SCAN_PG_DB=desc1) is a future second database; today only
-    # Campaign_Store (campaign) is scanned.
+    # Same CNPG cluster as job_history above; collections (cisl, mmm, aiml, …)
+    # are POSTGRES SCHEMAS within a per-resource database. The plugin reads
+    # FS_SCAN_PG_* at engine-creation time; FS_SCAN_PG_USER / FS_SCAN_PG_PASSWORD
+    # are injected below from the fsDbCredentials ExternalSecret (csg/pg-appuser,
+    # same role as job_history). FS_SCANS_ENABLED is the SAM-side master switch —
+    # set "0" to disable the integration entirely.
+    #
+    # FS_SCAN_PG_DB is the default/Campaign_Store database. FS_SCAN_RESOURCE_DATABASES
+    # maps each scan resource to its database: Campaign_Store → campaign, Destor →
+    # desc1. The plugin reaches the second database (desc1) via its `database=`
+    # selector using these SAME host/credentials, so the pg-appuser role MUST be
+    # GRANTed read access on desc1. A resource whose database is unreachable simply
+    # warms nothing and drops out of the UI.
     FS_SCANS_ENABLED: "1"
     FS_SCAN_DB_BACKEND: "postgres"
     FS_SCAN_PG_HOST: "csg-postgres-ro.k8s.ucar.edu"
     FS_SCAN_PG_PORT: "5432"
     FS_SCAN_PG_DB: "campaign"
+    FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:desc1"
     # disable creating projects until ID system transition & GID pool
     CREATE_PROJECTS_ENABLED: "0"
 

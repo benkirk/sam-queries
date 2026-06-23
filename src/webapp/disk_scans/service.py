@@ -27,7 +27,7 @@ from webapp.disk_scans.cache import cached_scan
 from webapp.disk_scans.scope import resolve_scan_scope
 from webapp.disk_scans.session import (
     collections_for_resource,
-    get_collections,
+    database_for_resource,
     get_module,
     is_enabled,
 )
@@ -91,8 +91,11 @@ def _scoped(
             if (coll := mod.collection_for_path(p)) is not None
         })
 
-    # Keep only collections that are actually reachable (the warmed set).
-    collections = [c for c in collections if c in set(get_collections())]
+    # Keep only collections that are actually reachable for THIS resource's
+    # database (the warmed set behind resource_name) — not the global union, so
+    # a collection name shared across databases can't leak across resources.
+    collections = [c for c in collections
+                   if c in set(collections_for_resource(resource_name))]
     keep = set(collections)
 
     # Drop any path whose collection isn't queryable. This excludes paths on
@@ -125,7 +128,8 @@ def scan_overview(session, project, resource_name: str) -> Dict[str, Any]:
     mod, path_prefixes, collections = _scoped(session, project, resource_name)
     if not collections:
         return {'collections': [], 'scan_dates': {}, 'reference': None}
-    q = mod.FsScanQueries(filesystems=collections)
+    q = mod.FsScanQueries(filesystems=collections,
+                          database=database_for_resource(resource_name))
     scan_dates = {}
     for c in collections:
         dates = q.scan_dates(filesystems=[c])
@@ -233,18 +237,20 @@ def _scan_directories(
     single_owner: bool = False,
     min_depth: Optional[int] = None,
     max_depth: Optional[int] = None,
+    database: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Mode-agnostic directory query core shared by project + resource modes.
 
     Callers resolve ``(mod, collections, path_prefixes)`` first — project mode
     via :func:`_scoped` (refuses unscoped), resource mode via
     :func:`collections_for_resource` (deliberately unscoped, ``path_prefixes``
-    may be ``None`` for the whole-collection fast path). Any of
+    may be ``None`` for the whole-collection fast path). ``database`` selects
+    the CNPG database (resolved from the resource by the caller). Any of
     ``owner_uid / accessed_before / accessed_after / leaves_only`` being set
     routes the result into the short-TTL ``'filtered'`` cache bucket so heavy
     interactive exploration can't crowd the hot default-path entries.
     """
-    q = mod.FsScanQueries(filesystems=collections)
+    q = mod.FsScanQueries(filesystems=collections, database=database)
     filtered = bool(owner_uid is not None or owner_gid is not None
                     or accessed_before or accessed_after or leaves_only
                     or min_avg_size is not None or max_avg_size is not None)
@@ -265,7 +271,8 @@ def _scan_directories(
         'directories', q, collections,
         # cache key tolerates an unscoped (None) prefix list — normalise to [].
         path_prefixes or [], opts,
-        lambda: q.list_directories(
+        database=database,
+        compute=lambda: q.list_directories(
             path_prefixes=path_prefixes,
             sort_by=sort_by,
             limit=limit,
@@ -333,6 +340,7 @@ def scan_directories(
         min_avg_size=min_avg_size, max_avg_size=max_avg_size,
         leaves_only=leaves_only,
         single_owner=single_owner, min_depth=min_depth, max_depth=max_depth,
+        database=database_for_resource(resource_name),
     )
     return _drop_nested(rows) if outermost_only else rows
 
@@ -384,22 +392,24 @@ def scan_directories_resource(
         atime_recursive=atime_recursive,
         min_avg_size=min_avg_size, max_avg_size=max_avg_size,
         leaves_only=leaves_only,
+        database=database_for_resource(resource_name),
     )
     return _drop_nested(rows) if outermost_only else rows
 
 
 def _owner_summary(
     mod, collections: List[str], path_prefixes: Optional[List[str]],
-    *, limit: Optional[int],
+    *, limit: Optional[int], database: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Mode-agnostic per-owner (UID) rollup core, usernames resolved.
 
     Callers resolve ``(mod, collections, path_prefixes)`` first — project mode
     via :func:`_scoped` (always scoped), resource mode via
     :func:`collections_for_resource` (``path_prefixes=None`` → whole-collection
-    fast path). Each row gains a ``username`` key (``None`` if unresolvable).
+    fast path). ``database`` selects the CNPG database. Each row gains a
+    ``username`` key (``None`` if unresolvable).
     """
-    q = mod.FsScanQueries(filesystems=collections)
+    q = mod.FsScanQueries(filesystems=collections, database=database)
 
     def _compute():
         rows = q.owner_summary(path_prefixes=path_prefixes, limit=limit)
@@ -411,15 +421,15 @@ def _owner_summary(
 
     # cache key tolerates an unscoped (None) prefix list — normalise to [].
     return cached_scan('owner', q, collections, path_prefixes or [],
-                       {'limit': limit}, _compute)
+                       {'limit': limit}, _compute, database=database)
 
 
 def _group_summary(
     mod, collections: List[str], path_prefixes: Optional[List[str]],
-    *, limit: Optional[int],
+    *, limit: Optional[int], database: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Mode-agnostic per-group (GID) rollup core, group names resolved."""
-    q = mod.FsScanQueries(filesystems=collections)
+    q = mod.FsScanQueries(filesystems=collections, database=database)
 
     def _compute():
         rows = q.group_summary(path_prefixes=path_prefixes, limit=limit)
@@ -430,15 +440,15 @@ def _group_summary(
         return rows
 
     return cached_scan('group', q, collections, path_prefixes or [],
-                       {'limit': limit}, _compute)
+                       {'limit': limit}, _compute, database=database)
 
 
 def _access_history(
     mod, collections: List[str], path_prefixes: Optional[List[str]],
-    *, owner_uid: Optional[int],
+    *, owner_uid: Optional[int], database: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Mode-agnostic access-time histogram core (band date windows tagged)."""
-    q = mod.FsScanQueries(filesystems=collections)
+    q = mod.FsScanQueries(filesystems=collections, database=database)
 
     def _compute():
         hist = q.access_history(path_prefixes=path_prefixes, owner_uid=owner_uid)
@@ -455,16 +465,16 @@ def _access_history(
 
     return cached_scan(
         'access_history', q, collections, path_prefixes or [],
-        {'owner_uid': owner_uid}, _compute,
+        {'owner_uid': owner_uid}, _compute, database=database,
     )
 
 
 def _file_sizes(
     mod, collections: List[str], path_prefixes: Optional[List[str]],
-    *, owner_uid: Optional[int],
+    *, owner_uid: Optional[int], database: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Mode-agnostic file-size histogram core (avg-size windows tagged)."""
-    q = mod.FsScanQueries(filesystems=collections)
+    q = mod.FsScanQueries(filesystems=collections, database=database)
 
     def _compute():
         hist = q.file_size_histogram(path_prefixes=path_prefixes, owner_uid=owner_uid)
@@ -480,7 +490,7 @@ def _file_sizes(
 
     return cached_scan(
         'file_sizes', q, collections, path_prefixes or [],
-        {'owner_uid': owner_uid}, _compute,
+        {'owner_uid': owner_uid}, _compute, database=database,
     )
 
 
@@ -516,7 +526,8 @@ def scan_owner_summary(
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
-    return _owner_summary(mod, collections, path_prefixes, limit=limit)
+    return _owner_summary(mod, collections, path_prefixes, limit=limit,
+                          database=database_for_resource(resource_name))
 
 
 def scan_group_summary(
@@ -536,7 +547,8 @@ def scan_group_summary(
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return []
-    return _group_summary(mod, collections, path_prefixes, limit=limit)
+    return _group_summary(mod, collections, path_prefixes, limit=limit,
+                          database=database_for_resource(resource_name))
 
 
 def scan_access_history(
@@ -558,7 +570,8 @@ def scan_access_history(
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return None
-    return _access_history(mod, collections, path_prefixes, owner_uid=owner_uid)
+    return _access_history(mod, collections, path_prefixes, owner_uid=owner_uid,
+                           database=database_for_resource(resource_name))
 
 
 def scan_file_sizes(
@@ -583,7 +596,8 @@ def scan_file_sizes(
     mod, path_prefixes, collections = _scoped(session, project, resource_name, subpath)
     if not collections:
         return None
-    return _file_sizes(mod, collections, path_prefixes, owner_uid=owner_uid)
+    return _file_sizes(mod, collections, path_prefixes, owner_uid=owner_uid,
+                       database=database_for_resource(resource_name))
 
 
 # ── Resource-mode (whole-filesystem) siblings ──────────────────────────────
@@ -604,7 +618,8 @@ def scan_owner_summary_resource(
     if not collections:
         return []
     path_prefixes = [subpath] if subpath else None
-    return _owner_summary(mod, collections, path_prefixes, limit=limit)
+    return _owner_summary(mod, collections, path_prefixes, limit=limit,
+                          database=database_for_resource(resource_name))
 
 
 def scan_group_summary_resource(
@@ -618,7 +633,8 @@ def scan_group_summary_resource(
     if not collections:
         return []
     path_prefixes = [subpath] if subpath else None
-    return _group_summary(mod, collections, path_prefixes, limit=limit)
+    return _group_summary(mod, collections, path_prefixes, limit=limit,
+                          database=database_for_resource(resource_name))
 
 
 def scan_access_history_resource(
@@ -632,7 +648,8 @@ def scan_access_history_resource(
     if not collections:
         return None
     path_prefixes = [subpath] if subpath else None
-    return _access_history(mod, collections, path_prefixes, owner_uid=owner_uid)
+    return _access_history(mod, collections, path_prefixes, owner_uid=owner_uid,
+                           database=database_for_resource(resource_name))
 
 
 def scan_file_sizes_resource(
@@ -646,7 +663,8 @@ def scan_file_sizes_resource(
     if not collections:
         return None
     path_prefixes = [subpath] if subpath else None
-    return _file_sizes(mod, collections, path_prefixes, owner_uid=owner_uid)
+    return _file_sizes(mod, collections, path_prefixes, owner_uid=owner_uid,
+                       database=database_for_resource(resource_name))
 
 
 def scan_capable_resources(app=None) -> List[str]:

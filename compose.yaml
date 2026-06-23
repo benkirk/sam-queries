@@ -69,8 +69,8 @@ services:
       # fs-scans talks to the CNPG cluster host DIRECTLY (a routable DNS
       # name, e.g. csg-postgres.k8s.ucar.edu — NOT host-routed like
       # job_history). Its settings (FS_SCAN_DB_BACKEND, FS_SCAN_PG_HOST,
-      # FS_SCAN_PG_*) flow through from the host `.env` via env_file;
-      # no override here on purpose.
+      # FS_SCAN_PG_*, FS_SCAN_RESOURCE_DATABASES) flow through from the host
+      # `.env` via env_file; no override here on purpose.
       # ── Per-service application policy
       - "DISABLE_AUTH=0"         # Explicitly disabled — must remain 0 in production
       - "FLASK_DEBUG=0"
@@ -148,8 +148,9 @@ services:
       - "JOB_HISTORY_PG_HOST=host.docker.internal"
       # fs-scans talks to the CNPG cluster host DIRECTLY (a routable DNS
       # name, NOT host-routed like job_history). Its settings
-      # (FS_SCAN_DB_BACKEND, FS_SCAN_PG_HOST, FS_SCAN_PG_*) flow through
-      # from the host `.env` via env_file; no override here on purpose.
+      # (FS_SCAN_DB_BACKEND, FS_SCAN_PG_HOST, FS_SCAN_PG_*,
+      # FS_SCAN_RESOURCE_DATABASES) flow through from the host `.env` via
+      # env_file; no override here on purpose.
       # ── Webdev-specific application policy (no DISABLE_AUTH — keep
       #    click-login stub default; user picks RBAC tier via UI)
       - "PYTHONDONTWRITEBYTECODE=1"

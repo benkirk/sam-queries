@@ -172,17 +172,20 @@ def cached_scan(
     opts: Dict[str, Any],
     compute: Callable[[], Any],
     bucket: str = 'default',
+    database: Optional[str] = None,
 ) -> Any:
     """Return a cached scan result or compute + store it.
 
     *compute* must produce the FINAL caller-facing result (e.g. owner rows
     with resolved usernames already attached), so a cache hit reproduces it
     exactly without re-querying. The cache is keyed on the resolved scope +
-    *opts* + the per-collection scan dates.
+    *opts* + the per-collection scan dates + *database*.
 
     *bucket* selects which adapter stores the entry — ``'filtered'`` for the
     short-TTL explorer permutations, ``'default'`` (the passive/landing path)
-    otherwise.
+    otherwise. *database* is the CNPG database the query targets; it's part of
+    the key so collection-name collisions across databases (e.g. a schema named
+    the same in ``campaign`` and ``desc1``) never share a cache entry.
     """
     adapter = get_cache_adapter(bucket)
     if adapter is None:
@@ -194,6 +197,7 @@ def cached_scan(
 
     key = (
         query_type,
+        database,
         tuple(sorted(collections)),
         tuple(sorted(path_prefixes)),
         tuple(sorted((k, _norm(v)) for k, v in opts.items())),

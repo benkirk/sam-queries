@@ -20,7 +20,10 @@ per-request session context manager — the service layer constructs
 """
 
 from webapp.disk_scans.session import (
+    collections_for_resource,
+    database_for_resource,
     get_collections,
+    get_databases,
     get_engines,
     get_module,
     init_fs_scans,
@@ -32,5 +35,8 @@ __all__ = [
     'is_enabled',
     'get_module',
     'get_collections',
+    'get_databases',
     'get_engines',
+    'collections_for_resource',
+    'database_for_resource',
 ]

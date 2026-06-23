@@ -153,17 +153,37 @@ class SAMWebappConfig(SAMConfig):
 
     # Disk resources that have filesystem-scan collections, surfaced as
     # subtabs on the Status dashboard's gated "Filesystem Scans" tab. An
-    # explicit list (NOT derived from the Resource table) — append 'Destor'
-    # when it ships. Resource NAMES, not IDs (see feedback_no_duplicate_db_ids);
-    # the resource→collections mapping lives in the
-    # disk_scans.session.collections_for_resource seam. A configured resource
-    # with no warmed collections is filtered out at render time
+    # explicit list (NOT derived from the Resource table). Resource NAMES, not
+    # IDs (see feedback_no_duplicate_db_ids); the resource→database/collections
+    # mapping lives in the disk_scans.session seam. A configured resource with
+    # no warmed collections is filtered out at render time
     # (service.scan_capable_resources), so the tab/subtab never shows empty.
     FS_SCAN_RESOURCES = [
         s.strip()
-        for s in os.getenv('FS_SCAN_RESOURCES', 'Campaign_Store').split(',')
+        for s in os.getenv('FS_SCAN_RESOURCES', 'Campaign_Store,Destor').split(',')
         if s.strip()
     ]
+
+    # Maps each scan resource NAME to the CNPG database that holds its
+    # collections. Each disk resource is one database on the shared cluster
+    # (Campaign_Store → campaign, Destor → desc1); the plugin reaches a second
+    # database via its `database=` selector (same host/credentials). Parsed
+    # from `FS_SCAN_RESOURCE_DATABASES` as `Name:db,Name2:db2`; the default
+    # tracks the plugin's own `FS_SCAN_PG_DB` for Campaign_Store so a
+    # single-database deployment keeps working unchanged. `init_fs_scans` warms
+    # one engine set per DISTINCT database here; a resource whose database is
+    # unreachable simply warms nothing and drops out of the UI.
+    FS_SCAN_RESOURCE_DATABASES = {
+        name.strip(): db.strip()
+        for name, _, db in (
+            pair.partition(':')
+            for pair in os.getenv(
+                'FS_SCAN_RESOURCE_DATABASES',
+                f"Campaign_Store:{os.getenv('FS_SCAN_PG_DB', 'campaign')},Destor:desc1",
+            ).split(',')
+        )
+        if name.strip() and db.strip()
+    }
 
     # Session cookies (common defaults; subclasses tighten for prod)
     SESSION_COOKIE_HTTPONLY    = True

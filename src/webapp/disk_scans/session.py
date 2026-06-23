@@ -64,10 +64,13 @@ def init_fs_scans(app: Flask) -> None:
     is logged. The webapp continues to boot.
     """
     state: Dict[str, Any] = {
-        'module':      None,
-        'collections': [],   # list[str] of warmed collection schemas
-        'engines':     {},   # collection -> Engine (for health/config card)
-        'enabled':     False,
+        'module':    None,
+        # database -> {'collections': [str], 'engines': {collection: Engine}}.
+        # One disk resource maps to one database (see FS_SCAN_RESOURCE_DATABASES);
+        # collection schemas can repeat across databases, so we key by database
+        # rather than flattening to a single {collection: engine} dict.
+        'databases': {},
+        'enabled':   False,
     }
     app.extensions[_EXT_KEY] = state
 
@@ -88,19 +91,7 @@ def init_fs_scans(app: Flask) -> None:
 
     state['module'] = mod
 
-    # Discover collection schemas (postgres backend). A failure here means
-    # the backend is unreachable/unconfigured — degrade gracefully.
-    try:
-        collections = mod.list_pg_schemas()
-    except Exception as exc:
-        logger.warning(
-            'fs-scans: could not list collections (backend unreachable?) — '
-            'features disabled: %s',
-            exc,
-        )
-        return
-
-    # `application_name` tags each connection with pod + collection so
+    # `application_name` tags each connection with pod + db + collection so
     # postgres `pg_stat_activity` can attribute load. Mirrors the
     # job_history loader: the plugin owns ``connect_args`` inside its
     # ``get_engine``, so we attach a post-creation ``connect`` listener
@@ -112,52 +103,82 @@ def init_fs_scans(app: Flask) -> None:
     # from inside the connect listener.
     stmt_timeout_ms = int(app.config.get('FS_SCAN_STATEMENT_TIMEOUT_MS', 0) or 0)
 
-    def _warm(collection: str):
-        """Create + tag + health-check one collection's engine.
+    def _warm(collection: str, database: Optional[str]):
+        """Create + tag + health-check one collection's engine in *database*.
 
         Returns the Engine on success, or None on failure (logged). Safe to
         run concurrently: the plugin's ``get_engine`` cache is lock-guarded.
+        ``database`` selects the CNPG database (the plugin's ``database=``
+        selector); ``None`` uses the plugin's default ``FS_SCAN_PG_DB``.
         """
         try:
-            engine = mod.get_engine(collection)
+            engine = mod.get_engine(collection, database=database)
             if engine.url.drivername.startswith('postgresql'):
+                tag = f'sam-webapp:{pod_id}:fs_scans:{database or "default"}:{collection}'
                 _apply_connection_settings(
-                    engine, f'sam-webapp:{pod_id}:fs_scans:{collection}',
-                    statement_timeout_ms=stmt_timeout_ms,
+                    engine, tag, statement_timeout_ms=stmt_timeout_ms,
                 )
             # Health check — also forces the pool to open one connection
             # so the application_name listener fires before first query.
             with engine.connect() as conn:
                 conn.execute(text('SELECT 1'))
             logger.info(
-                'fs-scans engine ready: collection=%s url=%s',
-                collection, _safe_url(engine),
+                'fs-scans engine ready: db=%s collection=%s url=%s',
+                database or 'default', collection, _safe_url(engine),
             )
             return engine
         except Exception as exc:
             logger.warning(
-                'fs-scans engine init failed for collection=%s: %s',
-                collection, exc,
+                'fs-scans engine init failed for db=%s collection=%s: %s',
+                database or 'default', collection, exc,
             )
             return None
 
-    # Warm collections concurrently — each opens a fresh TLS connection to the
-    # remote CNPG (~1-1.5s), so serial warming of a dozen-plus collections
-    # would add ~20s to webapp boot. Bounded pool keeps it to a few seconds.
-    engines: Dict[str, Any] = {}
-    if collections:
-        max_workers = min(len(collections), 8)
-        with ThreadPoolExecutor(max_workers=max_workers,
-                                thread_name_prefix='fs-scans-warm') as pool:
-            for collection, engine in zip(
-                collections, pool.map(_warm, collections)
-            ):
-                if engine is not None:
-                    engines[collection] = engine
+    # The set of DISTINCT databases to warm comes from the resource→database
+    # map (Campaign_Store → campaign, Destor → desc1). An empty map falls back
+    # to the plugin's single default database (None → FS_SCAN_PG_DB), preserving
+    # the original single-database behavior.
+    resource_dbs: Dict[str, str] = app.config.get('FS_SCAN_RESOURCE_DATABASES') or {}
+    db_names = sorted(set(resource_dbs.values())) or [None]
 
-    state['engines'] = engines
-    state['collections'] = sorted(engines)
-    state['enabled'] = bool(engines)
+    databases: Dict[str, Any] = {}
+    for database in db_names:
+        # Discover collection schemas for this database. A failure here means
+        # that database is unreachable/unconfigured — skip it, but keep going so
+        # one bad database (e.g. desc1 not yet provisioned) can't disable the
+        # rest.
+        try:
+            collections = mod.list_pg_schemas(database=database)
+        except Exception as exc:
+            logger.warning(
+                'fs-scans: could not list collections for db=%s (unreachable?) — '
+                'skipping: %s', database or 'default', exc,
+            )
+            continue
+
+        # Warm collections concurrently — each opens a fresh TLS connection to
+        # the remote CNPG (~1-1.5s), so serial warming of a dozen-plus
+        # collections would add ~20s to webapp boot. Bounded pool keeps it to a
+        # few seconds.
+        engines: Dict[str, Any] = {}
+        if collections:
+            max_workers = min(len(collections), 8)
+            with ThreadPoolExecutor(max_workers=max_workers,
+                                    thread_name_prefix='fs-scans-warm') as pool:
+                for collection, engine in zip(
+                    collections,
+                    pool.map(lambda c: _warm(c, database), collections),
+                ):
+                    if engine is not None:
+                        engines[collection] = engine
+        if engines:
+            databases[database] = {
+                'collections': sorted(engines),
+                'engines':     engines,
+            }
+
+    state['databases'] = databases
+    state['enabled'] = any(d['collections'] for d in databases.values())
 
 
 def _apply_connection_settings(
@@ -212,10 +233,45 @@ def get_module(app: Optional[Flask] = None):
     return state.get('module')
 
 
-def get_collections(app: Optional[Flask] = None) -> List[str]:
-    """Return the list of warmed/reachable collection schemas (possibly empty)."""
+def get_databases(app: Optional[Flask] = None) -> Dict[str, Any]:
+    """Return ``{database: {'collections': [...], 'engines': {...}}}`` (warmed).
+
+    The per-database warmed state. Used by the Admin → Configuration card to
+    render one health row per CNPG database, and by the resource→database
+    helpers below. Empty when the plugin is disabled/unreachable.
+    """
     state = (app or current_app).extensions.get(_EXT_KEY) or {}
-    return state.get('collections') or []
+    return state.get('databases') or {}
+
+
+def get_collections(app: Optional[Flask] = None) -> List[str]:
+    """Union of warmed/reachable collection schemas across all databases.
+
+    A flat, deduplicated view for callers that don't care which database a
+    collection lives in. Resource-scoped reachability should use
+    :func:`collections_for_resource` instead, which is database-aware.
+    """
+    out: set = set()
+    for db in get_databases(app).values():
+        out.update(db.get('collections') or [])
+    return sorted(out)
+
+
+def database_for_resource(
+    resource_name: str, app: Optional[Flask] = None
+) -> Optional[str]:
+    """The CNPG database that backs a disk *resource* (or ``None``).
+
+    Reads the ``FS_SCAN_RESOURCE_DATABASES`` map (resource NAME → database).
+    Threaded into ``FsScanQueries(database=...)`` by the service layer so each
+    resource's queries hit its own database. Safe outside an app context
+    (returns ``None``) so service helpers can resolve it unconditionally.
+    """
+    try:
+        cfg = (app or current_app).config
+    except RuntimeError:
+        return None
+    return (cfg.get('FS_SCAN_RESOURCE_DATABASES') or {}).get(resource_name)
 
 
 def collections_for_resource(
@@ -224,28 +280,29 @@ def collections_for_resource(
     """Warmed collection schemas that make up a disk *resource*, unscoped.
 
     The single decision point for resource→collections when a query is **not**
-    project-scoped (resource mode). Today every warmed collection lives in the
-    one ``campaign`` CNPG database (one DB per resource via the plugin's
-    ``FS_SCAN_PG_DB``), so this returns :func:`get_collections` verbatim — i.e.
-    the whole resource.
-
-    This is the **seam** where a future resource→database map plugs in: once a
-    second resource (e.g. Destor) ships its own collections, branch here on
-    *resource_name* rather than scattering the mapping across callers. Returns
-    ``[]`` when the plugin is off (so resource-mode callers degrade to "no
+    project-scoped (resource mode). Resolves the resource's database via
+    :func:`database_for_resource`, then returns that database's warmed
+    collections. Returns ``[]`` when the plugin is off, the resource is
+    unmapped, or its database warmed nothing (so callers degrade to "no
     results", same as project mode).
     """
-    return get_collections(app)
+    database = database_for_resource(resource_name, app)
+    if database is None:
+        return []
+    return list(get_databases(app).get(database, {}).get('collections') or [])
 
 
 def get_engines(app: Optional[Flask] = None) -> Dict[str, Any]:
-    """Return ``{collection: Engine}`` for warmed collections (possibly empty).
+    """Return a flat ``{collection: Engine}`` merged across databases.
 
-    Used by the Admin → Configuration Database card to ping each fs-scans
-    collection and report health / scan-date freshness.
+    Legacy/convenience view. Collection names that repeat across databases
+    collide (last wins) — the Admin card uses :func:`get_databases` instead so
+    it can render each database separately.
     """
-    state = (app or current_app).extensions.get(_EXT_KEY) or {}
-    return state.get('engines') or {}
+    out: Dict[str, Any] = {}
+    for db in get_databases(app).values():
+        out.update(db.get('engines') or {})
+    return out
 
 
 def _safe_url(engine) -> str:
