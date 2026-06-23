@@ -8,8 +8,9 @@
 
 Campaign_Store filesystem-scan analytics (project disk-page card + gated
 Status whole-FS tab) read from one CNPG database (`campaign`). Destor is a
-*second* CNPG database (`desc1`) on the same `csg-postgres-ro` cluster. This
-change gives Destor the same scan-view experience, reading from `desc1`.
+*second* CNPG database (`destor`) on the same `csg-postgres` cluster — note the
+DB is named `destor`; `desc1` is only the Lustre mount `/lustre/desc1`. This
+change gives Destor the same scan-view experience, reading from `destor`.
 
 ## The cross-repo prerequisite (done)
 
@@ -23,7 +24,7 @@ no global `FS_SCAN_PG_DB` swap (which would be unsafe under gthread workers).
 
 - **Config** (`webapp/config.py`): `FS_SCAN_RESOURCE_DATABASES` (resource NAME
   → CNPG database, parsed from `Name:db,Name2:db2`; default
-  `Campaign_Store:<FS_SCAN_PG_DB>,Destor:desc1`). `FS_SCAN_RESOURCES` default
+  `Campaign_Store:<FS_SCAN_PG_DB>,Destor:destor`). `FS_SCAN_RESOURCES` default
   now includes `Destor`.
 - **Session loader** (`webapp/disk_scans/session.py`): `init_fs_scans` warms
   one engine set **per distinct database**. State is keyed by database:
@@ -33,7 +34,7 @@ no global `FS_SCAN_PG_DB` swap (which would be unsafe under gthread workers).
   `None` outside an app context) and `get_databases()`.
   `collections_for_resource(resource)` resolves the resource's database, then
   returns *that* database's warmed collections. One unreachable database
-  (e.g. desc1 not yet provisioned) is skipped, not fatal.
+  (e.g. destor not yet provisioned) is skipped, not fatal.
 - **Service** (`webapp/disk_scans/service.py`): every public wrapper resolves
   `database_for_resource(resource_name)` and threads it into the query cores →
   `FsScanQueries(filesystems=…, database=…)`. `_scoped` now intersects
@@ -51,12 +52,16 @@ no global `FS_SCAN_PG_DB` swap (which would be unsafe under gthread workers).
   through; once Destor warms collections, `scan_capable_resources()` surfaces
   a Destor subtab and the disk-page card renders for Destor resources.
 
-## Ops precondition
+## Ops precondition (verified satisfied 2026-06-23)
 
-The `pg-appuser` role (csg/pg-appuser ExternalSecret) **must be GRANTed read
-access on `desc1`**. The webapp uses the same host/credentials for both
-databases; without the grant, desc1 warms nothing and Destor silently drops
-from the UI.
+The webapp role reaches `destor` with the **same** host/credentials as
+`campaign` (the plugin's `database=` selector only swaps the DB name). The
+application role `pguser` **already has** `CONNECT` on `destor` plus `USAGE` +
+`SELECT` on every collection schema (`espat`, `gdex`, `glade_p_archive`,
+`mirrors`, `p`) — provisioned identically to `campaign`, confirmed by direct
+inspection. So **no grant was required**. If a future collection schema is
+added to `destor` without the same grants, the webapp would see an empty
+collection; re-run the campaign-style grants in that case.
 
 ## Verification
 
@@ -65,7 +70,7 @@ from the UI.
   threading to the facade (project + resource mode), cache key includes
   database, one-unreachable-database resilience.
 - E2E (containers built with the multi-db plugin): a Destor-resourced project
-  disk page shows the Filesystem Scans card (badge = a `desc1` scan date); the
+  disk page shows the Filesystem Scans card (badge = a `destor` scan date); the
   Status → Filesystem Scans tab shows a **Destor** subtab beside Campaign_Store;
   a Campaign_Store project is unaffected (no cross-DB leakage); Admin →
   Configuration shows both databases' collections + scan dates.

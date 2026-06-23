@@ -1105,10 +1105,10 @@ def test_collections_for_resource_maps_via_database(monkeypatch):
     from webapp.disk_scans import session as sess
     monkeypatch.setattr(
         sess, 'database_for_resource',
-        lambda r, app=None: {'Campaign_Store': 'campaign', 'Destor': 'desc1'}.get(r))
+        lambda r, app=None: {'Campaign_Store': 'campaign', 'Destor': 'destor'}.get(r))
     monkeypatch.setattr(sess, 'get_databases', lambda app=None: {
         'campaign': {'collections': ['cisl', 'mmm'], 'engines': {}},
-        'desc1':    {'collections': ['gdex'], 'engines': {}},
+        'destor':    {'collections': ['gdex'], 'engines': {}},
     })
     assert sess.collections_for_resource('Campaign_Store') == ['cisl', 'mmm']
     assert sess.collections_for_resource('Destor') == ['gdex']
@@ -1124,10 +1124,10 @@ def test_database_for_resource_reads_config_map(app, monkeypatch):
     and is safe (None) outside an app context."""
     from webapp.disk_scans import session as sess
     monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCE_DATABASES',
-                        {'Campaign_Store': 'campaign', 'Destor': 'desc1'})
+                        {'Campaign_Store': 'campaign', 'Destor': 'destor'})
     with app.app_context():
         assert sess.database_for_resource('Campaign_Store') == 'campaign'
-        assert sess.database_for_resource('Destor') == 'desc1'
+        assert sess.database_for_resource('Destor') == 'destor'
         assert sess.database_for_resource('Unknown') is None
     # No app context → None (lets service helpers resolve unconditionally).
     assert sess.database_for_resource('Campaign_Store') is None
@@ -1139,7 +1139,7 @@ def test_database_for_resource_reads_config_map(app, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_scan_directories_threads_resource_database(monkeypatch):
-    """The resource's database (Destor → desc1) reaches FsScanQueries."""
+    """The resource's database (Destor → destor) reaches FsScanQueries."""
     cap = {}
     svc = _wire_service(
         monkeypatch,
@@ -1149,19 +1149,19 @@ def test_scan_directories_threads_resource_database(monkeypatch):
         capture=cap,
     )
     monkeypatch.setattr(svc, 'database_for_resource',
-                        lambda r, app=None: 'desc1' if r == 'Destor' else None)
+                        lambda r, app=None: 'destor' if r == 'Destor' else None)
     svc.scan_directories(None, object(), 'Destor')
     assert cap['filesystems'] == ['gdex']
-    assert cap['database'] == 'desc1'       # threaded to the facade
+    assert cap['database'] == 'destor'        # threaded to the facade
 
 
 def test_scan_directories_resource_threads_database(monkeypatch):
     """Resource mode threads the resource's database to the facade too."""
     cap = {}
     svc = _wire_resource_service(monkeypatch, collections=['gdex'], capture=cap)
-    monkeypatch.setattr(svc, 'database_for_resource', lambda r, app=None: 'desc1')
+    monkeypatch.setattr(svc, 'database_for_resource', lambda r, app=None: 'destor')
     svc.scan_directories_resource('Destor')
-    assert cap['database'] == 'desc1'
+    assert cap['database'] == 'destor'
 
 
 def test_cached_scan_database_is_in_key(monkeypatch):
@@ -1179,11 +1179,11 @@ def test_cached_scan_database_is_in_key(monkeypatch):
     q = _FakeQ('2026-06-14T00:00:00')
     opts = {'limit': 50}
     r1 = c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='campaign')
-    r2 = c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='desc1')
+    r2 = c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='destor')
     assert r1 == [{'v': 1}] and r2 == [{'v': 2}]      # different db → recompute
     assert calls['n'] == 2
     # Same (db, scope, opts) repeats → served from cache.
-    c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='desc1')
+    c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='destor')
     assert calls['n'] == 2
 
 
@@ -1215,7 +1215,7 @@ def test_init_fs_scans_warms_each_database_separately(app, monkeypatch):
     from webapp import disk_scans
     from webapp.disk_scans import session as sess
 
-    schemas = {'campaign': ['cisl', 'mmm'], 'desc1': ['gdex']}
+    schemas = {'campaign': ['cisl', 'mmm'], 'destor': ['gdex']}
 
     class _FakeMod:
         def list_pg_schemas(self, database=None):
@@ -1228,15 +1228,15 @@ def test_init_fs_scans_warms_each_database_separately(app, monkeypatch):
     monkeypatch.setattr(FS_SCANS, 'load', lambda: _FakeMod())
     monkeypatch.setitem(app.config, 'FS_SCANS_ENABLED', True)
     monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCE_DATABASES',
-                        {'Campaign_Store': 'campaign', 'Destor': 'desc1'})
+                        {'Campaign_Store': 'campaign', 'Destor': 'destor'})
 
     orig = app.extensions.get('fs_scans')
     try:
         disk_scans.init_fs_scans(app)
         dbs = sess.get_databases(app)
-        assert set(dbs) == {'campaign', 'desc1'}
+        assert set(dbs) == {'campaign', 'destor'}
         assert dbs['campaign']['collections'] == ['cisl', 'mmm']
-        assert dbs['desc1']['collections'] == ['gdex']
+        assert dbs['destor']['collections'] == ['gdex']
         assert sess.is_enabled(app) is True
         # resource → database → collections, end to end
         assert sess.collections_for_resource('Campaign_Store', app) == ['cisl', 'mmm']
@@ -1251,15 +1251,15 @@ def test_init_fs_scans_warms_each_database_separately(app, monkeypatch):
 
 
 def test_init_fs_scans_survives_one_unreachable_database(app, monkeypatch):
-    """If one database is unreachable (desc1 not provisioned), the other still
+    """If one database is unreachable (destor not provisioned), the other still
     warms and the feature stays enabled for it."""
     from webapp import disk_scans
     from webapp.disk_scans import session as sess
 
     class _FakeMod:
         def list_pg_schemas(self, database=None):
-            if database == 'desc1':
-                raise RuntimeError('desc1 not reachable')
+            if database == 'destor':
+                raise RuntimeError('destor not reachable')
             return ['cisl']
 
         def get_engine(self, collection, database=None):
@@ -1269,13 +1269,13 @@ def test_init_fs_scans_survives_one_unreachable_database(app, monkeypatch):
     monkeypatch.setattr(FS_SCANS, 'load', lambda: _FakeMod())
     monkeypatch.setitem(app.config, 'FS_SCANS_ENABLED', True)
     monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCE_DATABASES',
-                        {'Campaign_Store': 'campaign', 'Destor': 'desc1'})
+                        {'Campaign_Store': 'campaign', 'Destor': 'destor'})
 
     orig = app.extensions.get('fs_scans')
     try:
         disk_scans.init_fs_scans(app)
         dbs = sess.get_databases(app)
-        assert set(dbs) == {'campaign'}                  # desc1 skipped, not fatal
+        assert set(dbs) == {'campaign'}                  # destor skipped, not fatal
         assert sess.is_enabled(app) is True
         assert sess.collections_for_resource('Destor', app) == []
         assert sess.collections_for_resource('Campaign_Store', app) == ['cisl']

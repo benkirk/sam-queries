@@ -196,16 +196,18 @@ webapp:
     #
     # FS_SCAN_PG_DB is the default/Campaign_Store database. FS_SCAN_RESOURCE_DATABASES
     # maps each scan resource to its database: Campaign_Store → campaign, Destor →
-    # desc1. The plugin reaches the second database (desc1) via its `database=`
-    # selector using these SAME host/credentials, so the pg-appuser role MUST be
-    # GRANTed read access on desc1. A resource whose database is unreachable simply
-    # warms nothing and drops out of the UI.
+    # destor (the CNPG database is named `destor`; `desc1` is only the Lustre MOUNT
+    # /lustre/desc1). The plugin reaches the second database via its `database=`
+    # selector using these SAME host/credentials; the pg-appuser role already has
+    # read access on `destor` (USAGE + SELECT on its collection schemas, same as
+    # campaign). A resource whose database is unreachable simply warms nothing and
+    # drops out of the UI.
     FS_SCANS_ENABLED: "1"
     FS_SCAN_DB_BACKEND: "postgres"
     FS_SCAN_PG_HOST: "csg-postgres-ro.k8s.ucar.edu"
     FS_SCAN_PG_PORT: "5432"
     FS_SCAN_PG_DB: "campaign"
-    FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:desc1"
+    FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:destor"
     # disable creating projects until ID system transition & GID pool
     CREATE_PROJECTS_ENABLED: "0"
 

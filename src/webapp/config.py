@@ -166,8 +166,9 @@ class SAMWebappConfig(SAMConfig):
 
     # Maps each scan resource NAME to the CNPG database that holds its
     # collections. Each disk resource is one database on the shared cluster
-    # (Campaign_Store → campaign, Destor → desc1); the plugin reaches a second
-    # database via its `database=` selector (same host/credentials). Parsed
+    # (Campaign_Store → campaign, Destor → destor; NB the DB is named `destor`,
+    # while `desc1` is only the Lustre MOUNT /lustre/desc1). The plugin reaches
+    # a second database via its `database=` selector (same host/credentials). Parsed
     # from `FS_SCAN_RESOURCE_DATABASES` as `Name:db,Name2:db2`; the default
     # tracks the plugin's own `FS_SCAN_PG_DB` for Campaign_Store so a
     # single-database deployment keeps working unchanged. `init_fs_scans` warms
@@ -179,7 +180,7 @@ class SAMWebappConfig(SAMConfig):
             pair.partition(':')
             for pair in os.getenv(
                 'FS_SCAN_RESOURCE_DATABASES',
-                f"Campaign_Store:{os.getenv('FS_SCAN_PG_DB', 'campaign')},Destor:desc1",
+                f"Campaign_Store:{os.getenv('FS_SCAN_PG_DB', 'campaign')},Destor:destor",
             ).split(',')
         )
         if name.strip() and db.strip()
