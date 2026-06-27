@@ -1,5 +1,7 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_tib with context %}
 
 {% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
 
@@ -116,7 +118,7 @@
                             <th>Resource</th>
                             <th>Scope</th>
                             <th>As of</th>
-                            <th>Allocated</th>
+                            <th>{{ term('Allocated', g_tib()) }}</th>
                             <th>Used</th>
                             <th>Remaining</th>
                             <th class="text-end">Files</th>
