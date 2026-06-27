@@ -1,5 +1,7 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_usage_bar with context %}
 
 {# Macro: Project Information Section #}
 {% macro render_project_info(project) %}
@@ -101,7 +103,9 @@
             <thead class="thead-light">
                 <tr>
                     <th>Resource</th>
-                    <th style="min-width: 220px;">Allocation</th>
+                    <th style="min-width: 220px;">Allocation
+                        {{ help_icon(g_usage_bar(), rich=True, title='Allocation usage', placement='top') }}
+                    </th>
                     {% if can_edit_allocations %}
                     <th class="text-center" style="width: 80px;">Actions</th>
                     {% endif %}
