@@ -43,11 +43,11 @@
         data-bs-toggle="popover"
         data-bs-trigger="focus"
         data-bs-html="true"
-        {%- if title %} data-bs-title="{{ title }}"{% endif %}
-        data-bs-content="{{ text }}"
+        {%- if title %} data-bs-title="{{ title | forceescape }}"{% endif %}
+        data-bs-content="{{ text | forceescape }}"
         {%- else %}
         data-bs-toggle="tooltip"
-        data-bs-title="{{ text }}"
+        data-bs-title="{{ text | forceescape }}"
         {%- endif %}
         data-bs-placement="{{ placement }}">
     <i class="fas fa-{{ icon }}" aria-hidden="true"></i>
@@ -65,11 +65,11 @@
       data-bs-toggle="popover"
       data-bs-trigger="focus"
       data-bs-html="true"
-      {%- if title %} data-bs-title="{{ title }}"{% endif %}
-      data-bs-content="{{ text }}"
+      {%- if title %} data-bs-title="{{ title | forceescape }}"{% endif %}
+      data-bs-content="{{ text | forceescape }}"
       {%- else %}
       data-bs-toggle="tooltip"
-      data-bs-title="{{ text }}"
+      data-bs-title="{{ text | forceescape }}"
       {%- endif %}
       data-bs-placement="{{ placement }}">{{ label }}</span>
 {%- endmacro %}
