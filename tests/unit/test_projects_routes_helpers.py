@@ -12,8 +12,11 @@ import pytest
 from webapp.dashboards.admin.projects_routes import (
     _propose_extend_end,
     _propose_renew_dates,
+    _resources_with_allocation,
     _snap_to_end_of_month,
 )
+
+from factories import make_account, make_allocation, make_project, make_resource
 
 
 pytestmark = pytest.mark.unit
@@ -151,3 +154,58 @@ class TestProposeExtendEnd:
         latest  = _Alloc(datetime(2024, 11, 1), datetime(2025, 10, 31))
         # Anchor = latest; period = 1 year; end_date + period = Oct 31 2026.
         assert _propose_extend_end([earlier, latest]) == '2026-10-31'
+
+
+# ---------------------------------------------------------------------------
+# _resources_with_allocation — the "Add Allocation" dropdown exclusion set.
+# Regression guard for the WYOM0253 bug: an empty (allocation-less) account
+# must NOT hide its resource from the dropdown.
+# ---------------------------------------------------------------------------
+
+
+class TestResourcesWithAllocation:
+
+    def test_empty_account_does_not_hide_its_resource(self, session):
+        """A live account with zero allocations is excluded from the set, so
+        its resource stays offerable (the WYOM0253 / Derecho case)."""
+        project = make_project(session)
+        empty_res = make_resource(session)
+        make_account(session, project=project, resource=empty_res)  # no allocation
+
+        assert empty_res.resource_id not in _resources_with_allocation(project)
+
+    def test_resource_with_allocation_is_included(self, session):
+        """A resource the project actually holds an allocation on is in the set
+        (so it's filtered out of the dropdown)."""
+        project = make_project(session)
+        allocated_res = make_resource(session)
+        acct = make_account(session, project=project, resource=allocated_res)
+        make_allocation(session, account=acct)
+
+        assert allocated_res.resource_id in _resources_with_allocation(project)
+
+    def test_mixed_project_returns_only_allocated_resources(self, session):
+        """Only resources with an allocation appear; empty-account resources don't."""
+        project = make_project(session)
+        allocated_res = make_resource(session)
+        empty_res = make_resource(session)
+        acct = make_account(session, project=project, resource=allocated_res)
+        make_allocation(session, account=acct)
+        make_account(session, project=project, resource=empty_res)
+
+        result = _resources_with_allocation(project)
+        assert allocated_res.resource_id in result
+        assert empty_res.resource_id not in result
+
+    def test_soft_deleted_account_with_allocation_is_excluded(self, session):
+        """A soft-deleted account is excluded so its resource stays offerable;
+        Account.get_or_create revives the row on re-allocation rather than
+        colliding on project_resource_ux."""
+        project = make_project(session)
+        resource = make_resource(session)
+        acct = make_account(session, project=project, resource=resource)
+        make_allocation(session, account=acct)
+        acct.deleted = True
+        session.flush()
+
+        assert resource.resource_id not in _resources_with_allocation(project)
