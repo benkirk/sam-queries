@@ -483,7 +483,9 @@
     </div>
 </div>
 
-<!-- User Breakdown Card -->
+<!-- User Breakdown Card — suppressed for a single user, where it just
+     restates the Historical Usage totals. -->
+{% if user_breakdown | length > 1 %}
 <div class="card mb-4">
     <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseUsers" aria-expanded="true">
         <h5 class="mb-0">
@@ -500,6 +502,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <!-- Allocation Management Modals -->
 {% include 'dashboards/user/fragments/allocation_modals.html' %}
