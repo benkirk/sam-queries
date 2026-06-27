@@ -1,0 +1,75 @@
+{#
+  Reusable help affordances — one place for inline explanations of jargon and
+  computed metrics. Backed by Bootstrap 5.3 Tooltip/Popover, which are activated
+  globally (and re-activated after HTMX swaps) by static/js/tooltip-init.js.
+
+  IMPORT WITH CONTEXT (so url_for / filters resolve if ever needed):
+
+      {% from 'dashboards/fragments/help.html' import help_icon, term with context %}
+
+  Two affordances
+  ---------------
+  * help_icon(text, ...)  — a small focusable ⓘ/? icon. Hover OR keyboard-focus
+                            shows the explanation. Use next to a heading or label.
+  * term(label, text, ...) — wraps an inline word/column-header with a dotted
+                            underline + tooltip (an <abbr>-style affordance) for
+                            spots where a trailing icon would be awkward.
+
+  rich=False (default) → hover/focus TOOLTIP. Keep text to one short line.
+  rich=True            → click POPOVER that can hold multi-line / simple HTML.
+                         Dismisses on the next outside click (trigger=focus).
+
+  Canonical, reused definition strings live in glossary.html so wording stays
+  consistent; pass one-off explanations inline.
+#}
+
+
+{# ─── help icon (tooltip or popover) ───────────────────────────────────────
+   text       explanation. Plain text for tooltips; may contain simple HTML
+              when rich=True (Bootstrap sanitizes by default).
+   rich       True → click popover; False → hover/focus tooltip.
+   title      optional popover heading (rich only; ignored for tooltips).
+   placement  top|right|bottom|left (Bootstrap data-bs-placement).
+   icon       Font Awesome name without the "fa-" prefix.
+   label      accessible name for the button (defaults to "More information").
+#}
+{% macro help_icon(text, rich=False, title=None, placement='top',
+                   icon='question-circle', label='More information') %}
+<button type="button"
+        class="help-icon btn btn-link p-0 border-0 align-baseline"
+        tabindex="0"
+        aria-label="{{ label }}"
+        {%- if rich %}
+        data-bs-toggle="popover"
+        data-bs-trigger="focus"
+        data-bs-html="true"
+        {%- if title %} data-bs-title="{{ title }}"{% endif %}
+        data-bs-content="{{ text }}"
+        {%- else %}
+        data-bs-toggle="tooltip"
+        data-bs-title="{{ text }}"
+        {%- endif %}
+        data-bs-placement="{{ placement }}">
+    <i class="fas fa-{{ icon }}" aria-hidden="true"></i>
+</button>
+{%- endmacro %}
+
+
+{# ─── inline term with a dotted-underline tooltip ──────────────────────────
+   Renders <label> with a help cue. rich=True upgrades it to a click popover.
+#}
+{% macro term(label, text, rich=False, title=None, placement='top') %}
+<span class="help-term"
+      tabindex="0"
+      {%- if rich %}
+      data-bs-toggle="popover"
+      data-bs-trigger="focus"
+      data-bs-html="true"
+      {%- if title %} data-bs-title="{{ title }}"{% endif %}
+      data-bs-content="{{ text }}"
+      {%- else %}
+      data-bs-toggle="tooltip"
+      data-bs-title="{{ text }}"
+      {%- endif %}
+      data-bs-placement="{{ placement }}">{{ label }}</span>
+{%- endmacro %}
