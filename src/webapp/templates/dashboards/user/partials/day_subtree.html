@@ -33,7 +33,6 @@
           {% set jid = did ~ '-jobs' ~ loop.index %}
           <tr class="table-light">
             <td class="ps-4 text-muted">
-              <i class="fas fa-angle-right me-1"></i>
               <code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em>
               {% if jobs_machine %}{{ jobs_button(jid) }}{% endif %}
             </td>
