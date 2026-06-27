@@ -287,7 +287,7 @@
                         <td><strong>{{ resource_name }}</strong></td>
                         <td>{{ summary.start_date | fmt_date }}</td>
                         <td>{{ summary.end_date | fmt_date }}</td>
-                        <td class="text-primary">{{ summary.allocated | fmt_number }}</td>
+                        <td class="text-primary">{{ summary.allocated | fmt_number }}{% set _unit = summary.resource_type | alloc_unit(summary.allocated) %}{% if _unit %} {{ _unit }}{% endif %}</td>
                         <td class="text-warning">
                             {{ summary.used | fmt_number }}{% if summary.is_inheriting and summary.self_used is not none %}
                             <span class="text-muted small" title="This project's contribution to the shared pool">({{ summary.self_used | fmt_number }} yours)</span>

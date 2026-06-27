@@ -920,6 +920,10 @@ def get_resource_detail_data(
     # Determine resource type to query appropriate tables
     resource_type = resource.resource_type.resource_type if resource.resource_type else ResourceTypeName.HPC
 
+    # Surface the type so the template can label the allocation figure with
+    # its unit (hours / TiB) via the alloc_unit filter.
+    resource_summary['resource_type'] = str(resource_type)
+
     # Resolve the scope project (controls daily charge aggregation)
     if scope_projcode and scope_projcode != projcode:
         scope_proj = Project.get_by_projcode(session, scope_projcode)
