@@ -29,6 +29,7 @@ from sam.queries.charges import (
     get_daily_breakdown_for_project,
     get_user_summary_for_project,
     get_daily_summary_for_project,
+    get_daily_user_usage_for_project,
     get_monthly_user_counts_for_project,
     get_charges_by_projcode,
 )
@@ -48,7 +49,11 @@ from webapp.api.access_control import (
     require_project_access,
     require_threshold_edit,
 )
-from ..charts import generate_usage_timeseries_matplotlib, generate_disk_usage_stacked_area
+from ..charts import (
+    generate_usage_timeseries_matplotlib,
+    generate_usage_timeseries_stacked_by_user,
+    generate_disk_usage_stacked_area,
+)
 from webapp.disk_scans import is_enabled as is_fs_scans_enabled
 from webapp.disk_scans import service as disk_scans_service
 
@@ -816,13 +821,32 @@ def resource_details_usage_chart(project):
     if metric not in available:
         metric = 'charges'
 
-    series = (detail_data or {}).get(_USAGE_CHART_DATA_KEY[metric])
-    svg = generate_usage_timeseries_matplotlib(
-        series or {'dates': [], 'values': []},
-        link_to_day_rows=True,
+    # Stacked-by-user variant: each daily bar is segmented by the top-10
+    # users over the whole window + "Others", ranked by the displayed metric.
+    # Falls back to the flat single-series bars when the period has <= 1 user
+    # (a 1-colour stack is pointless and the Usage by User card is hidden
+    # there too) or for non-compute resources, where comp_charge_summary
+    # yields no per-user rows.
+    scope_projcodes = _resolve_scope_projcodes(project, scope)
+    stacked = get_daily_user_usage_for_project(
+        db.session, scope_projcodes, resource_name, start_date, end_date,
         metric=metric,
     )
-    has_data = bool(series and series.get('values'))
+    named_series = [s for s in stacked['series'] if s['label'] != 'Others']
+
+    if len(named_series) > 1:
+        svg = generate_usage_timeseries_stacked_by_user(stacked, metric=metric)
+        has_data = True
+        is_stacked = True
+    else:
+        series = (detail_data or {}).get(_USAGE_CHART_DATA_KEY[metric])
+        svg = generate_usage_timeseries_matplotlib(
+            series or {'dates': [], 'values': []},
+            link_to_day_rows=True,
+            metric=metric,
+        )
+        has_data = bool(series and series.get('values'))
+        is_stacked = False
 
     return render_template(
         'dashboards/user/partials/usage_chart.html',
@@ -835,6 +859,7 @@ def resource_details_usage_chart(project):
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
         has_data=has_data,
+        is_stacked=is_stacked,
     )
 
 
