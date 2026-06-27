@@ -104,6 +104,61 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         session.add(account)
         session.flush()
 
+        cls._seed_members(session, account)
+        return account
+
+    @classmethod
+    def get_or_create(cls, session, *, project_id: int, resource_id: int) -> 'Account':
+        """Get the account for a project+resource pair, reviving or creating as needed.
+
+        Idempotent companion to :meth:`create`. Handles the three states a
+        ``(project_id, resource_id)`` slot can be in — note the table's
+        ``project_resource_ux`` UNIQUE index is NOT scoped by ``deleted``, so a
+        soft-deleted row still occupies the slot and a blind ``create()`` would
+        raise an IntegrityError:
+
+          1. A soft-deleted account exists → un-delete it, re-seed members, return.
+          2. A live account exists → return it unchanged.
+          3. No account exists → create one (delegates to :meth:`create`).
+
+        All allocation-creation paths route account acquisition through here so
+        re-allocating a resource whose account was previously removed just works.
+
+        Does NOT commit; caller must wrap in management_transaction().
+        """
+        existing = cls.get_by_project_and_resource(
+            session, project_id, resource_id, exclude_deleted=False
+        )
+        if existing is None:
+            return cls.create(session, project_id=project_id, resource_id=resource_id)
+
+        if existing.deleted:
+            existing.deleted = False
+            session.flush()
+            cls._seed_members(session, existing)
+        return existing
+
+    @classmethod
+    def _seed_members(cls, session, account: 'Account') -> None:
+        """Populate open-ended AccountUser rows for a (new or revived) account.
+
+        Adds start_date=now, end_date=None membership rows for:
+          - The project lead
+          - The project admin (if set)
+          - Every user currently active (end_date IS NULL) on any sibling
+            Account of the same project
+
+        Enforces the invariant that a project's lead, admin, and existing members
+        become members of every Account added to the project. Skips users who are
+        already active members of this account (so reviving an account is safe to
+        re-run). Does NOT commit.
+        """
+        from sam.projects.projects import Project
+
+        project = session.get(Project, account.project_id)
+        if project is None:
+            raise ValueError(f"Project {account.project_id} not found")
+
         propagate_user_ids: Set[int] = set()
         if project.project_lead_user_id is not None:
             propagate_user_ids.add(project.project_lead_user_id)
@@ -113,13 +168,22 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         sibling_members = session.query(AccountUser).join(
             Account, AccountUser.account_id == Account.account_id
         ).filter(
-            Account.project_id == project_id,
+            Account.project_id == account.project_id,
             Account.account_id != account.account_id,
             Account.is_active,
             AccountUser.end_date.is_(None),
         ).all()
         for au in sibling_members:
             propagate_user_ids.add(au.user_id)
+
+        # Don't duplicate members already active on this account (revive path).
+        existing_member_ids = {
+            au.user_id for au in session.query(AccountUser).filter(
+                AccountUser.account_id == account.account_id,
+                AccountUser.end_date.is_(None),
+            ).all()
+        }
+        propagate_user_ids -= existing_member_ids
 
         now = datetime.now()
         for user_id in propagate_user_ids:
@@ -130,7 +194,6 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
                 end_date=None,
             ))
         session.flush()
-        return account
 
     @classmethod
     def get_by_project_and_resource(cls, session, project_id: int, resource_id: int,
