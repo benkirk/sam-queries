@@ -1459,11 +1459,11 @@ def test_directories_subdirs_column_hidden_under_leaves_only(
     # has a non-zero dir_count_r).
     on = auth_client.get(base).get_data(as_text=True)
     assert 'Dirs' in on
-    assert '# Subdirs' in on
+    assert 'Subdirs' in on
     # With leaves-only, both are suppressed.
     off = auth_client.get(base + '&leaves_only=1').get_data(as_text=True)
     assert 'Dirs' not in off
-    assert '# Subdirs' not in off
+    assert 'Subdirs' not in off
 
 
 def test_directories_dirs_column_hidden_when_uniformly_zero(
@@ -1483,7 +1483,7 @@ def test_directories_dirs_column_hidden_when_uniformly_zero(
             f'/directories?resource={_RES}&recursive=0')
     body = auth_client.get(base).get_data(as_text=True)
     assert 'Dirs' not in body
-    assert '# Subdirs' not in body
+    assert 'Subdirs' not in body
 
 
 def test_directories_page_renders(auth_client, active_project):

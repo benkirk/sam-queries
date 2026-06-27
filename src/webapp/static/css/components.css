@@ -252,3 +252,18 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .sortable-header::after { content: ' \2195'; color: #adb5bd; font-size: 0.8em; }
 .sortable-header.sort-asc::after { content: ' \2191'; color: #495057; }
 .sortable-header.sort-desc::after { content: ' \2193'; color: #495057; }
+
+/* resource_details Historical Usage / Usage by User tables.
+   Each lazily-loaded user/queue/date subtree renders as its own nested
+   <table> inside a colspan cell, so without a fixed layout its columns
+   size independently and the numeric values drift out of alignment with
+   the parent table. Pinning both the parent (.usage-table-N) and the
+   nested subtree (same class) to table-layout:fixed with a shared
+   colgroup makes every tier line up column-for-column. The -5 variant is
+   Historical Usage (Date + 4 numeric); -4 is Usage by User (Username +
+   3 numeric). */
+.usage-table-5, .usage-table-4 { table-layout: fixed; }
+.usage-table-5 .ucol-name { width: 36%; }
+.usage-table-5 .ucol-num  { width: 16%; }
+.usage-table-4 .ucol-name { width: 40%; }
+.usage-table-4 .ucol-num  { width: 20%; }

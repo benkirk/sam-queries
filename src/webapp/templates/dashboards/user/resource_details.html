@@ -18,7 +18,10 @@
    touching the non-sortable Total / empty-state tbodies. #}
 {% macro user_breakdown_table(breakdown, table_id) %}
 <div class="table-responsive">
-    <table class="table table-sm table-hover" id="{{ table_id }}">
+    <table class="table table-sm table-hover usage-table-4" id="{{ table_id }}">
+        <colgroup>
+            <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
+        </colgroup>
         <thead class="thead-dark">
             <tr>
                 <th class="sortable-header" data-sort="text">Username</th>
@@ -110,7 +113,10 @@
    via get_monthly_user_counts_for_project). #}
 {% macro daily_breakdown_table(breakdown, table_id, span_days) %}
 <div class="table-responsive">
-    <table class="table table-sm table-hover" id="{{ table_id }}">
+    <table class="table table-sm table-hover usage-table-5" id="{{ table_id }}">
+        <colgroup>
+            <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
+        </colgroup>
         <thead class="thead-dark">
             <tr>
                 <th>Date</th>
@@ -281,7 +287,7 @@
                         <td><strong>{{ resource_name }}</strong></td>
                         <td>{{ summary.start_date | fmt_date }}</td>
                         <td>{{ summary.end_date | fmt_date }}</td>
-                        <td class="text-primary">{{ summary.allocated | fmt_number }}</td>
+                        <td class="text-primary">{{ summary.allocated | fmt_number }}{% set _unit = summary.resource_type | alloc_unit(summary.allocated) %}{% if _unit %} {{ _unit }}{% endif %}</td>
                         <td class="text-warning">
                             {{ summary.used | fmt_number }}{% if summary.is_inheriting and summary.self_used is not none %}
                             <span class="text-muted small" title="This project's contribution to the shared pool">({{ summary.self_used | fmt_number }} yours)</span>
@@ -477,7 +483,9 @@
     </div>
 </div>
 
-<!-- User Breakdown Card -->
+<!-- User Breakdown Card — suppressed for a single user, where it just
+     restates the Historical Usage totals. -->
+{% if user_breakdown | length > 1 %}
 <div class="card mb-4">
     <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseUsers" aria-expanded="true">
         <h5 class="mb-0">
@@ -494,6 +502,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <!-- Allocation Management Modals -->
 {% include 'dashboards/user/fragments/allocation_modals.html' %}

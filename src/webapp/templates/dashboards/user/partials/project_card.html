@@ -155,7 +155,7 @@
                             <td><strong>{{ resource.resource_name }}</strong></td>
                             <td>
                                 <div class="d-flex justify-content-between small mb-1">
-                                    <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }} allocated</span>
+                                    <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }}{% set _unit = resource.resource_type | alloc_unit(resource.allocated) %}{% if _unit %} {{ _unit }}{% endif %} allocated</span>
                                     {% if first.bar_state == 'active' and first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
                                         <span class="text-dark">{{ first.days_until_expiration }}d remaining</span>
                                     {% elif first.bar_state == 'expired' %}

@@ -35,6 +35,33 @@ class ResourceTypeName(StrEnum):
         """Return True for resource types charged via comp/dav summaries."""
         return name in (cls.HPC, cls.DAV)
 
+    @classmethod
+    def allocation_unit(cls, name, amount=None):
+        """Unit label shown next to an allocation figure, or None.
+
+        HPC/DAV are core-hours; DISK/ARCHIVE are labelled 'TiB' (the stored
+        amount is technically TiB-years, but 'TiB' reads cleaner on the
+        dashboard). DATA ACCESS has no natural unit.
+
+        ``amount == 1`` is an access-boolean grant (e.g. Gust,
+        HPC_Futures_Lab, Quasar) and is always unitless regardless of type,
+        so the dashboard never renders the awkward "1 hours" / "1 TiB".
+        """
+        if amount == 1:
+            return None
+        return _ALLOCATION_UNIT_BY_TYPE.get(name)
+
+
+#: Allocation unit label keyed by resource type (see
+#: ``ResourceTypeName.allocation_unit``). None = no natural unit.
+_ALLOCATION_UNIT_BY_TYPE = {
+    ResourceTypeName.HPC:         'hours',
+    ResourceTypeName.DAV:         'hours',
+    ResourceTypeName.DISK:        'TiB',
+    ResourceTypeName.ARCHIVE:     'TiB',
+    ResourceTypeName.DATA_ACCESS: None,
+}
+
 
 class FacilityName(StrEnum):
     """Common facility names. Not exhaustive — additional facilities exist

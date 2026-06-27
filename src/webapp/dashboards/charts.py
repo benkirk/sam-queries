@@ -277,6 +277,112 @@ def generate_usage_timeseries_matplotlib(daily_data, link_to_day_rows=False,
     return svg_io.getvalue()
 
 
+def _usage_stacked_cache_key(timeseries, metric='charges'):
+    return _content_hash([_content_hash(timeseries), metric])
+
+
+# One entry per (resource, time-range, metric). Stacked-by-user variant of
+# the Usage Trend bar chart — each daily bar is segmented by the top-N users
+# over the window + "Others".
+@caching.chart_cached(name='usage_timeseries_stacked', maxsize=128,
+                      key_fn=_usage_stacked_cache_key)
+def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> str:
+    """
+    Stacked-bar Usage Trend chart: one bar per day, segmented by the top-N
+    users over the visible window + "Others", with a clickable right-side
+    legend.
+
+    Args:
+        timeseries: dict shaped as
+            ``sam.queries.charges.get_daily_user_usage_for_project`` returns:
+            ``{'dates': [date, ...], 'series': [{'label','values'}, ...]}``.
+            ``series[0]`` is conventionally ``'Others'`` (drawn first so it
+            sits at the bottom of the stack with a neutral grey).
+        metric: one of 'charges' / 'jobs' / 'core_hours' — controls the
+            y-axis label and the cache key.
+
+    Interactions (wired via svg-chart-links.js):
+        - every bar segment of a non-zero day links to
+          ``#day-bar-YYYY-MM-DD`` → expands that day's row in the Historical
+          Usage table (same as the flat-bar chart).
+        - each named legend entry links to ``#usage-user-<username>`` →
+          expands that user's row in the Usage by User card. 'Others' is
+          never linked.
+
+    Returns:
+        SVG string ready for template rendering.
+    """
+    if not timeseries or not timeseries.get('dates') or not timeseries.get('series'):
+        return '<div class="text-center text-muted">No usage data recorded for this period</div>'
+
+    dates = list(timeseries['dates'])
+    series = list(timeseries['series'])
+
+    # Others (always first per get_daily_user_usage_for_project) gets a
+    # neutral grey; named users use the Unity 10-colour stacked palette.
+    colors = []
+    cycle_idx = 0
+    for s in series:
+        if s['label'] == 'Others':
+            colors.append(UNITY_NCAR_GRAY_LIGHT)
+        else:
+            colors.append(UNITY_STACK_10[cycle_idx % 10])
+            cycle_idx += 1
+
+    fig, ax = plt.subplots(figsize=(18, 5))
+
+    # Stack the daily bars: accumulate `bottom` across series. Every segment
+    # of a given day carries the same #day-bar-<iso> url so a click anywhere
+    # in that day's stack expands the day (preserves the flat-bar behaviour).
+    bottoms = [0.0] * len(dates)
+    for s, color in zip(series, colors):
+        vals = list(s['values'])
+        bars = ax.bar(dates, vals, width=1, bottom=bottoms,
+                      color=color, edgecolor=UNITY_NCAR_NAVY, lw=0.3)
+        for d, value, rect in zip(dates, vals, bars.patches):
+            if not value:
+                continue
+            iso = d.isoformat() if hasattr(d, 'isoformat') else str(d)
+            rect.set_url(f'#day-bar-{iso}')
+        bottoms = [b + v for b, v in zip(bottoms, vals)]
+
+    ax.set_ylabel(_USAGE_METRIC_YLABELS.get(metric, 'Charges'))
+    ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+    ax.grid(True, alpha=0.3)
+
+    # Reversed-order legend so it reads top-to-bottom matching the visual
+    # stack; each handle/text is addressable by index for set_url().
+    import matplotlib.patches as mpatches
+    rev_series = list(reversed(series))
+    rev_colors = list(reversed(colors))
+    handles = [mpatches.Patch(color=c, label=s['label'])
+               for s, c in zip(rev_series, rev_colors)]
+    leg = ax.legend(
+        handles=handles,
+        loc='center left',
+        bbox_to_anchor=(1.01, 0.5),
+        frameon=False,
+        fontsize=11,
+        title_fontsize=12,
+        labelspacing=0.7,
+    )
+
+    # Named legend entries → expand that user's Usage-by-User row.
+    for s, patch, text in zip(rev_series, leg.get_patches(), leg.get_texts()):
+        if s['label'] == 'Others':
+            continue
+        url = f'#usage-user-{s["label"]}'
+        patch.set_url(url)
+        text.set_url(url)
+
+    fig.autofmt_xdate()
+
+    svg_io = StringIO()
+    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
+    plt.close(fig)
+    return svg_io.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # 1b. Disk usage stacked-area chart (Resource Usage Details — DISK)
 # ---------------------------------------------------------------------------
