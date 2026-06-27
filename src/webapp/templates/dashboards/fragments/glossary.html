@@ -80,6 +80,31 @@ allocations are charged.
 <strong>ADJUSTMENT</strong> — manual correction to the balance.
 {%- endmacro %}
 
+{# ── Scheduler / queue states (popover) ── #}
+{% macro g_queue_states() -%}
+Counts below split each of Jobs, Cores and GPUs by scheduler state:
+<strong>Running</strong> — currently executing ·
+<strong>Pending</strong> — eligible and waiting in the queue ·
+<strong>Held</strong> — blocked (dependency, hold, or insufficient resources).
+Pending/held work does not consume the allocation until it starts.
+{%- endmacro %}
+
+{% macro g_held() -%}
+Jobs blocked from starting — by a dependency, an explicit hold, or insufficient
+free resources. They consume no allocation until released and run.
+{%- endmacro %}
+
+{% macro g_active_users() -%}
+Distinct users with at least one job in the system right now (running, pending
+or held) — not currently-logged-in users.
+{%- endmacro %}
+
+{% macro g_utilization() -%}
+Percentage of the system's capacity currently committed to jobs. The
+"allocated / total" line below shows committed vs. installed capacity —
+allocated can be below total when capacity is idle or reserved.
+{%- endmacro %}
+
 {% macro g_adjustment() -%}
 A manual correction applied to an account's balance, outside normal job
 charging (e.g. a refund or a usage reclassification). "On shared account from
