@@ -27,7 +27,10 @@
       No activity for this day in the selected scope.
     </div>
   {% else %}
-    <table class="table table-sm table-borderless mb-0">
+    <table class="table table-sm table-borderless mb-0 usage-table-5">
+      <colgroup>
+        <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
+      </colgroup>
       <tbody>
         {% for sub in day.rows %}
           {% set jid = did ~ '-jobs' ~ loop.index %}

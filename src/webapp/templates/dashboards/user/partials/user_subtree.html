@@ -32,7 +32,10 @@
     {% set multi_queue = (user.queues|length > 1) %}
     {% set q0 = user.queues[0] %}
     {% set single_q_multi_d = (not multi_queue and q0.dates|length > 1) %}
-    <table class="table table-sm table-borderless mb-0">
+    <table class="table table-sm table-borderless mb-0 usage-table-4">
+      <colgroup>
+        <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
+      </colgroup>
       <tbody>
         {% if single_q_multi_d %}
           {# Streamlined dates (skip the redundant single-queue tier). #}

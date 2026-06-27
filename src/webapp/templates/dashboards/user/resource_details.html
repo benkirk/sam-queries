@@ -18,7 +18,10 @@
    touching the non-sortable Total / empty-state tbodies. #}
 {% macro user_breakdown_table(breakdown, table_id) %}
 <div class="table-responsive">
-    <table class="table table-sm table-hover" id="{{ table_id }}">
+    <table class="table table-sm table-hover usage-table-4" id="{{ table_id }}">
+        <colgroup>
+            <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
+        </colgroup>
         <thead class="thead-dark">
             <tr>
                 <th class="sortable-header" data-sort="text">Username</th>
@@ -110,7 +113,10 @@
    via get_monthly_user_counts_for_project). #}
 {% macro daily_breakdown_table(breakdown, table_id, span_days) %}
 <div class="table-responsive">
-    <table class="table table-sm table-hover" id="{{ table_id }}">
+    <table class="table table-sm table-hover usage-table-5" id="{{ table_id }}">
+        <colgroup>
+            <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
+        </colgroup>
         <thead class="thead-dark">
             <tr>
                 <th>Date</th>
