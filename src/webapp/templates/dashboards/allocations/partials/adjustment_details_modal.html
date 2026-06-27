@@ -3,6 +3,8 @@
    Context: ``r`` is a single row dict from ``get_recent_charge_adjustments``.
    Style mirrors ``render_project_info`` in project_card.html. Empty / None
    fields are omitted entirely. #}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_adjustment with context %}
 
 {# Set the modal title out-of-band so the shared audit modal reflects the
    fragment type. The target id is declared on the <h5> in dashboard.html. #}
@@ -25,7 +27,9 @@
     </div>
 
     <div class="stat-item">
-        <span class="stat-label">Type:</span>
+        <span class="stat-label">Type:
+            {{ help_icon(g_adjustment(), rich=True, title='Charge adjustments', placement='right') }}
+        </span>
         <span class="stat-value">{{ r.adjustment_type }}</span>
     </div>
 

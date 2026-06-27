@@ -9,8 +9,11 @@
     adjustments_master_projcode — projcode of the master/shared account when the
                                   current allocation inherits, else None
 #}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_adjustment with context %}
 <h6 class="mt-4 mb-2">
     Charge Adjustments
+    {{ help_icon(g_adjustment(), rich=True, title='Charge adjustments', placement='right') }}
     {% if adjustments_master_projcode %}
     <small class="text-muted">
         (on shared account from <code>{{ adjustments_master_projcode }}</code>)
