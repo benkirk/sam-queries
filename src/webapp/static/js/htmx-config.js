@@ -205,7 +205,11 @@ document.body.addEventListener('reloadUserCard', function(evt) {
         info:    { header: 'bg-info text-white',    close: 'btn-close-white', icon: 'fa-info-circle',          btn: 'btn-primary' }
     };
     var ALL_HEADER_CLASSES = 'bg-danger bg-warning bg-info text-white';
-    var ALL_BTN_CLASSES = 'btn-danger btn-warning btn-primary';
+    // Include the outline variants so a stray base class (e.g. btn-outline-primary)
+    // is always stripped before the variant solid color is applied — otherwise an
+    // outline (colored text) + solid (colored bg) combine into e.g. blue-on-blue.
+    var ALL_BTN_CLASSES = 'btn-danger btn-warning btn-primary btn-info '
+                        + 'btn-outline-danger btn-outline-warning btn-outline-primary btn-outline-info';
     var ALL_ICON_CLASSES = 'fa-exclamation-triangle fa-exclamation-circle fa-info-circle';
 
     function _openSamConfirm(opts) {
