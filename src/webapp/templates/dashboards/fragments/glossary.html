@@ -25,6 +25,17 @@ rate</em> — the pace needed to spend exactly the allocation over its period.
 rate crosses it.
 {%- endmacro %}
 
+{# ── Consumption-rate limit (popover) ── #}
+{% macro g_threshold_limit(window=None) -%}
+Sets a <strong>hard limit</strong> on a project's resource consumption rate.
+Exceeding this threshold prevents the system from scheduling new jobs until
+usage has decreased — useful to avoid exhausting a project's resources too
+early in the allotted period.
+<br><br>Recommended limits:
+<br>&bull; <strong{% if window == 30 %} class="text-warning"{% endif %}>120%</strong> over 30 days
+<br>&bull; <strong{% if window == 90 %} class="text-warning"{% endif %}>105%</strong> over 90 days
+{%- endmacro %}
+
 {% macro g_shared_pool() -%}
 This allocation draws from a pool shared with sibling projects under a master
 allocation. The bar shows total pool consumption; the lighter inner segment
