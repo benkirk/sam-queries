@@ -267,3 +267,23 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .usage-table-5 .ucol-num  { width: 16%; }
 .usage-table-4 .ucol-name { width: 40%; }
 .usage-table-4 .ucol-num  { width: 20%; }
+
+/* Help affordances (help.html macros, activated by tooltip-init.js).
+   .help-icon — chrome-less ⓘ/? button next to a heading or label.
+   .help-term — inline term/column-header with a dotted-underline cue. */
+.help-icon {
+    color: #adb5bd;
+    font-size: inherit;
+    line-height: 1;
+    vertical-align: baseline;
+    cursor: help;
+    text-decoration: none;
+}
+.help-icon:hover,
+.help-icon:focus-visible { color: #6c757d; }
+.help-term {
+    cursor: help;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+}

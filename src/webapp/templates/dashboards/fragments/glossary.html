@@ -1,0 +1,113 @@
+{#
+  Canonical, reused explanation strings for SAM jargon and computed metrics.
+  Centralized so the same term reads identically everywhere (and is edited in
+  one place). Import with the help macros:
+
+      {% from 'dashboards/fragments/help.html' import help_icon, term with context %}
+      {% from 'dashboards/fragments/glossary.html'
+         import g_rolling_rate, g_txn_types, g_shared_pool, g_elapsed, g_au,
+                g_core_hours, g_charges, g_tib, g_tib_years, g_adjustment with context %}
+
+  Tooltip strings (returned by the *_short macros) are one short line.
+  Popover strings (the plain macros) may contain simple HTML.
+#}
+
+
+{# ── Rolling consumption rate (popover) ── #}
+{% macro g_rolling_rate() -%}
+Charges over the last 30/90 days compared with the <em>prorated steady-state
+rate</em> — the pace needed to spend exactly the allocation over its period.
+<br>&bull; <strong>100% = on pace</strong>
+<br>&bull; &lt;80% — <span class="text-info">running cold</span>
+<br>&bull; 80–115% — <span class="text-success">near steady</span>
+<br>&bull; &gt;115% — <span class="text-warning">running hot</span>
+<br>A dashed line marks an optional user-set limit; the bar turns red once the
+rate crosses it.
+{%- endmacro %}
+
+{% macro g_shared_pool() -%}
+This allocation draws from a pool shared with sibling projects under a master
+allocation. The bar shows total pool consumption; the lighter inner segment
+(and "(N yours)") is this project's own contribution.
+{%- endmacro %}
+
+{% macro g_elapsed() -%}
+Marks how far through the allocation period today falls — a pacing reference,
+not a usage threshold. Usage to the left of this line means you're under pace.
+{%- endmacro %}
+
+{% macro g_usage_bar() -%}
+The filled portion is consumed usage against the allocated total. On a
+<em>shared</em> allocation, the lighter inner segment (and "(N yours)") is this
+project's own share of a pool drawn down by sibling projects too. The vertical
+marker shows how far through the allocation period today falls — a pacing
+reference, not a threshold.
+{%- endmacro %}
+
+
+{# ── Units (tooltips) ── #}
+{% macro g_au() -%}
+Allocation Units — the charged cost of compute, weighted by job size, node type
+and queue. Drawn down from your allocated total.
+{%- endmacro %}
+
+{% macro g_core_hours() -%}
+Core-hours = cores used × wall-clock hours. The raw usage measure, before
+allocation-unit weighting.
+{%- endmacro %}
+
+{% macro g_charges() -%}
+Allocation units drawn down by this activity over the selected date range — the
+billed amount, not a job count.
+{%- endmacro %}
+
+{% macro g_tib() -%}
+Tebibyte (2⁴⁰ bytes ≈ 1.1 TB). Storage allocations are sized in TiB.
+{%- endmacro %}
+
+{% macro g_tib_years() -%}
+TiB held × years held — storage capacity integrated over time, the way disk
+allocations are charged.
+{%- endmacro %}
+
+
+{# ── Transaction & adjustment types (popover) ── #}
+{% macro g_txn_types() -%}
+<strong>NEW</strong> — initial allocation ·
+<strong>SUPPLEMENT</strong> — extra units added ·
+<strong>EXTENSION</strong> — end date moved out ·
+<strong>TRANSFER</strong> — units moved between projects ·
+<strong>ADJUSTMENT</strong> — manual correction to the balance.
+{%- endmacro %}
+
+{# ── Scheduler / queue states (popover) ── #}
+{% macro g_queue_states() -%}
+Counts below split each of Jobs, Cores and GPUs by scheduler state:
+<strong>Running</strong> — currently executing ·
+<strong>Pending</strong> — eligible and waiting in the queue ·
+<strong>Held</strong> — blocked (dependency, hold, or insufficient resources).
+Pending/held work does not consume the allocation until it starts.
+{%- endmacro %}
+
+{% macro g_held() -%}
+Jobs blocked from starting — by a dependency, an explicit hold, or insufficient
+free resources. They consume no allocation until released and run.
+{%- endmacro %}
+
+{% macro g_active_users() -%}
+Distinct users with at least one job in the system right now (running, pending
+or held) — not currently-logged-in users.
+{%- endmacro %}
+
+{% macro g_utilization() -%}
+Percentage of the system's capacity currently committed to jobs. The
+"allocated / total" line below shows committed vs. installed capacity —
+allocated can be below total when capacity is idle or reserved.
+{%- endmacro %}
+
+{% macro g_adjustment() -%}
+A manual correction applied to an account's balance, outside normal job
+charging (e.g. a refund or a usage reclassification). "On shared account from
+&lt;projcode&gt;" means the adjustment landed on a pooled allocation owned by
+another project.
+{%- endmacro %}
