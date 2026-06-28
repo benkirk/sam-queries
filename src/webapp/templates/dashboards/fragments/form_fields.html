@@ -163,6 +163,41 @@
 {% endmacro %}
 
 
+{# ─── datetime-local input ─────────────────────────────────────────────── #}
+{#
+  `<input type="datetime-local">` — TZ-blind wall-clock picker.
+  `default` may be a datetime object or a 'YYYY-MM-DDTHH:MM' string.
+  On error re-render the submitted (raw, browser-local) value comes from `form`.
+  NOTE: callers whose value is populated/converted client-side (e.g. the outage
+  edit modal's tz handling in modals.js) should pass an explicit `id=` so the
+  JS keeps targeting the same element.
+#}
+{% macro datetime_field(name, label, required=False, optional_text='(optional)',
+                        help=None, default='', id=None, label_class='form-label',
+                        disabled=False) %}
+{%- set _id = id or name -%}
+{%- set _form_value = form.get(name) if form else None -%}
+{%- if _form_value is not none -%}
+  {%- set _value = _form_value -%}
+{%- elif default and default.strftime is defined -%}
+  {%- set _value = default.strftime('%Y-%m-%dT%H:%M') -%}
+{%- else -%}
+  {%- set _value = default or '' -%}
+{%- endif -%}
+<div class="mb-3">
+    {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
+    <input type="datetime-local" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
+           name="{{ name }}"
+           {%- if required %} required{% endif -%}
+           {%- if disabled %} disabled{% endif %}
+           value="{{ _value }}"
+           {{- _aria(name, _id) }}>
+    {{ _field_error(name, _id) }}
+    {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
+</div>
+{% endmacro %}
+
+
 {# ─── textarea ─────────────────────────────────────────────────────────── #}
 {% macro textarea_field(name, label, required=False, optional_text='(optional)',
                         rows=3, maxlength=None, placeholder=None, help=None,

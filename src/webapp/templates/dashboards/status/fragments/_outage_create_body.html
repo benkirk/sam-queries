@@ -1,0 +1,38 @@
+{#
+  Create-outage modal body — re-renderable fragment.
+
+  Rendered both inside #createOutageFormBody (initial modal markup) and standalone
+  by htmx_create_outage on a validation error (swapped back into that div). The
+  `id=` overrides preserve the element ids that static/js/modals.js targets
+  (createStartTime, etc.). Errors come from CreateOutageForm via split_errors.
+
+  Context (error re-render): form, field_errors, errors.
+#}
+{% from 'dashboards/fragments/form_fields.html'
+   import text_field, select_field, textarea_field, datetime_field, form_errors_panel with context %}
+
+{{ form_errors_panel() }}
+
+{{ select_field('system_name', 'System', required=True,
+                placeholder='-- Select system --', id='createSystem',
+                options=[('derecho', 'Derecho'), ('casper', 'Casper'),
+                         ('jupyterhub', 'JupyterHub'), ('all', 'All Systems')]) }}
+
+{{ text_field('title', 'Title', required=True, id='createTitle',
+              placeholder='Brief outage description') }}
+
+{{ select_field('severity', 'Severity', required=True,
+                placeholder='-- Select severity --', id='createSeverity',
+                options=[('critical', 'Critical'), ('major', 'Major'),
+                         ('minor', 'Minor'), ('maintenance', 'Maintenance')]) }}
+
+{{ text_field('component', 'Component', id='createComponent',
+              placeholder='e.g. Login nodes, Lustre, Scheduler') }}
+
+{{ textarea_field('description', 'Description', id='createDescription',
+                  placeholder='Detailed information about the outage...') }}
+
+{{ datetime_field('start_time', 'Start Time', optional_text='', id='createStartTime',
+                  help='Enter in your local time. Stored as UTC; displayed back in ' ~ local_tz_label() ~ '. Adjust if the outage started earlier.') }}
+
+{{ datetime_field('estimated_resolution', 'Estimated Resolution', id='createEstimatedResolution') }}

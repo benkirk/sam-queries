@@ -12,7 +12,9 @@ from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
 from marshmallow import ValidationError
 
-from sam.schemas.forms.user import EditAllocationForm, SetShellForm, SetPrimaryGidForm
+from sam.schemas.forms.user import (
+    EditAllocationForm, SetShellForm, SetPrimaryGidForm, SetThresholdForm,
+)
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
@@ -1453,23 +1455,18 @@ def htmx_save_threshold(project, resource_name, window):
     if not account:
         return '<div class="alert alert-danger">Account not found for this resource</div>', 404
 
-    raw = request.form.get('threshold_pct', '').strip()
-    if raw == '':
-        new_val = None
-    else:
-        try:
-            new_val = int(raw)
-            if new_val <= 100:
-                raise ValueError
-        except ValueError:
-            return render_template(
-                'dashboards/user/fragments/threshold_form_htmx.html',
-                projcode=projcode,
-                resource_name=resource_name,
-                window=window,
-                current_threshold=raw,
-                error='Must be an integer greater than 100, or leave blank to remove the limit.',
-            )
+    try:
+        form_data = SetThresholdForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/user/fragments/threshold_form_htmx.html',
+            projcode=projcode,
+            resource_name=resource_name,
+            window=window,
+            current_threshold=request.form.get('threshold_pct', ''),
+            errors=SetThresholdForm.flatten_errors(e.messages),
+        )
+    new_val = form_data['threshold_pct']
 
     with management_transaction(db.session):
         if window == 30:

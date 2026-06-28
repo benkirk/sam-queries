@@ -13,59 +13,20 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            {# novalidate: CreateOutageForm is the source of truth; validation
+               errors render inline (swapped into #createOutageFormBody) instead
+               of a native bubble. The hidden tz input + footer live OUTSIDE the
+               swapped body so the JS-populated tz survives an error re-render. #}
             <form hx-post="{{ url_for('status_dashboard.htmx_create_outage') }}"
-                  hx-disabled-elt="find button[type='submit']">
+                  hx-target="#createOutageFormBody"
+                  hx-swap="innerHTML"
+                  hx-disabled-elt="find button[type='submit']"
+                  novalidate>
                 {# Captured at submit-time by JS so the server can convert the
                    naive datetime-local values into naive-UTC for storage. #}
                 <input type="hidden" name="tz" id="createTz">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="createSystem" class="form-label">System <span class="text-danger">*</span></label>
-                        <select class="form-select" id="createSystem" name="system_name" required>
-                            <option value="">-- Select system --</option>
-                            <option value="derecho">Derecho</option>
-                            <option value="casper">Casper</option>
-                            <option value="jupyterhub">JupyterHub</option>
-                            <option value="all">All Systems</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="createTitle" class="form-label">Title <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="createTitle" name="title"
-                               placeholder="Brief outage description" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="createSeverity" class="form-label">Severity <span class="text-danger">*</span></label>
-                        <select class="form-select" id="createSeverity" name="severity" required>
-                            <option value="">-- Select severity --</option>
-                            <option value="critical">Critical</option>
-                            <option value="major">Major</option>
-                            <option value="minor">Minor</option>
-                            <option value="maintenance">Maintenance</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="createComponent" class="form-label">Component <span class="text-muted">(optional)</span></label>
-                        <input type="text" class="form-control" id="createComponent" name="component"
-                               placeholder="e.g. Login nodes, Lustre, Scheduler">
-                    </div>
-                    <div class="mb-3">
-                        <label for="createDescription" class="form-label">Description <span class="text-muted">(optional)</span></label>
-                        <textarea class="form-control" id="createDescription" name="description" rows="3"
-                                  placeholder="Detailed information about the outage..."></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label for="createStartTime" class="form-label">Start Time</label>
-                        <input type="datetime-local" class="form-control" id="createStartTime" name="start_time">
-                        <small class="form-text text-muted">
-                            Enter in your local time. Stored as UTC; displayed back in {{ local_tz_label() }}.
-                            Adjust if the outage started earlier.
-                        </small>
-                    </div>
-                    <div class="mb-3">
-                        <label for="createEstimatedResolution" class="form-label">Estimated Resolution <span class="text-muted">(optional)</span></label>
-                        <input type="datetime-local" class="form-control" id="createEstimatedResolution" name="estimated_resolution">
-                    </div>
+                <div class="modal-body" id="createOutageFormBody">
+                    {% include 'dashboards/status/fragments/_outage_create_body.html' %}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -91,46 +52,22 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            {# Edit form is populated via inline JS (fields set from data attributes on button) #}
+            {# Edit form is populated via inline JS (fields set from data
+               attributes on the clicked row button; see modals.js 'outage-edit').
+               novalidate: EditOutageForm validates server-side; errors swap into
+               #editOutageFormBody. Hidden outage_id/tz + footer stay OUTSIDE the
+               swapped body so they (and the JS-set hx-post URL) survive a
+               re-render. hx-post is set dynamically by JS per outage id. #}
             <form id="editOutageForm"
-                  hx-disabled-elt="find button[type='submit']">
+                  hx-target="#editOutageFormBody"
+                  hx-swap="innerHTML"
+                  hx-disabled-elt="find button[type='submit']"
+                  novalidate>
                 <input type="hidden" id="editOutageId" name="outage_id">
                 {# Browser TZ — same purpose as on the create form. #}
                 <input type="hidden" name="tz" id="editTz">
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="editTitle" class="form-label">Title</label>
-                        <input type="text" class="form-control" id="editTitle" name="title">
-                    </div>
-                    <div class="mb-3">
-                        <label for="editStatus" class="form-label">Status</label>
-                        <select class="form-select" id="editStatus" name="status">
-                            <option value="investigating">Investigating</option>
-                            <option value="identified">Identified</option>
-                            <option value="monitoring">Monitoring</option>
-                            <option value="resolved">Resolved</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="editSeverity" class="form-label">Severity</label>
-                        <select class="form-select" id="editSeverity" name="severity">
-                            <option value="critical">Critical</option>
-                            <option value="major">Major</option>
-                            <option value="minor">Minor</option>
-                            <option value="maintenance">Maintenance</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
-                        <label for="editDescription" class="form-label">Description <span class="text-muted">(optional)</span></label>
-                        <textarea class="form-control" id="editDescription" name="description" rows="3"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label for="editEstimatedResolution" class="form-label">Estimated Resolution <span class="text-muted">(optional)</span></label>
-                        <input type="datetime-local" class="form-control" id="editEstimatedResolution" name="estimated_resolution">
-                        <small class="form-text text-muted">
-                            Times shown in your local TZ. Clear to remove estimated resolution time.
-                        </small>
-                    </div>
+                <div class="modal-body" id="editOutageFormBody">
+                    {% include 'dashboards/status/fragments/_outage_edit_body.html' %}
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
