@@ -170,6 +170,12 @@ class TestCreateAdjustmentPost:
         assert 'is-invalid' in html
         assert 'invalid-feedback' in html
         assert 'Amount' in html
+        # Accessibility: the errored field is wired for screen readers, and the
+        # form is `novalidate` so the server (not the browser) owns validation.
+        assert 'aria-invalid="true"' in html
+        assert 'aria-describedby=' in html
+        assert 'role="alert"' in html
+        assert 'novalidate' in html
 
     def test_negative_amount_rerenders_form_with_error(
         self, auth_client, scsg0001_project_id,

@@ -41,6 +41,21 @@ document.body.addEventListener('showToast', function (evt) {
     bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3500 }).show();
 });
 
+// ── Focus the first invalid field after a server-validated re-render ──────────
+// Forms are `novalidate` (htmx submits past native HTML5 checks so the server is
+// the single source of truth). Native validation used to auto-focus the bad
+// field; replicate that here. After any swap whose new content carries a
+// .is-invalid control, focus + scroll the first one into view. Guarded on
+// presence so normal swaps never have focus stolen.
+document.body.addEventListener('htmx:afterSettle', function(evt) {
+    var root = evt.detail && evt.detail.target;
+    if (!root || !root.querySelector) return;
+    var firstInvalid = root.querySelector('.is-invalid');
+    if (!firstInvalid) return;
+    firstInvalid.focus({preventScroll: true});
+    firstInvalid.scrollIntoView({block: 'center', behavior: 'smooth'});
+});
+
 // ── Stacked modal z-index ───────────────────────────────────────────────────
 // Bootstrap 5 doesn't stack z-indexes across separate Modal instances: a second
 // modal opens at the same z-index as the first, and its backdrop (appended last
