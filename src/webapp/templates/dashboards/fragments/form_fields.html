@@ -33,6 +33,33 @@
 {%- endmacro %}
 
 
+{# ─── per-field validation helpers ──────────────────────────────────────── #}
+{#
+  Driven by a `field_errors` dict ({field_name: [msg, ...]}) placed in the
+  render context by handle_htmx_form_post (utils/htmx.py). Guarded with
+  `is defined` so initial create/edit renders (no field_errors) are unaffected.
+
+  `_invalid(name)` emits ' is-invalid' for the control's class attribute.
+  `_aria(name, id)` emits the a11y attributes (aria-invalid + aria-describedby)
+  for the control tag — required now that forms are `novalidate` and the browser
+  no longer announces validation errors itself.
+  `_field_error(name, id)` emits the sibling .invalid-feedback block, tagged with
+  `id="<id>-error"` (the aria-describedby target) and role="alert".
+#}
+{%- macro _invalid(name) -%}
+{%- if field_errors is defined and field_errors and field_errors.get(name) %} is-invalid{% endif -%}
+{%- endmacro -%}
+
+{%- macro _aria(name, id) -%}
+{%- if field_errors is defined and field_errors and field_errors.get(name) %} aria-invalid="true" aria-describedby="{{ id }}-error"{% endif -%}
+{%- endmacro -%}
+
+{%- macro _field_error(name, id) -%}
+{%- set _errs = field_errors.get(name) if (field_errors is defined and field_errors) else None -%}
+{%- if _errs %}<div id="{{ id }}-error" class="invalid-feedback d-block" role="alert">{% for e in _errs %}{{ e }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>{% endif -%}
+{%- endmacro -%}
+
+
 {# ─── text input ───────────────────────────────────────────────────────── #}
 {% macro text_field(name, label, required=False, optional_text='(optional)',
                     maxlength=None, placeholder=None, help=None,
@@ -42,13 +69,15 @@
 {%- set _value = form.get(name) if form else default -%}
 <div class="mb-3">
     {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
-    <input type="{{ type }}" class="form-control" id="{{ _id }}"
+    <input type="{{ type }}" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
            {%- if disabled %} disabled{% endif -%}
            {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
            value="{{ _value if _value is not none else '' }}"
-           {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>
+           {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+           {{- _aria(name, _id) }}>
+    {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
@@ -84,7 +113,7 @@
 <div class="mb-3">
     {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
     {%- if caller %}<div class="input-group">{% endif %}
-    <input type="number" class="form-control" id="{{ _id }}"
+    <input type="number" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
            {%- if disabled %} disabled{% endif -%}
@@ -93,8 +122,10 @@
            {%- if step is not none %} step="{{ step }}"{% endif %}
            {%- for _k, _v in data_attrs.items() %} data-{{ _k }}="{{ _v }}"{% endfor %}
            value="{{ _value if _value is not none else '' }}"
-           {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>
+           {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+           {{- _aria(name, _id) }}>
     {%- if caller %}{{ caller() }}</div>{% endif %}
+    {{ _field_error(name, _id) }}
     {%- if help_html %}<small class="form-text">{{ help_html|safe }}</small>
     {%- elif help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
@@ -120,11 +151,13 @@
 {%- endif -%}
 <div class="mb-3">
     {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
-    <input type="date" class="form-control" id="{{ _id }}"
+    <input type="date" class="form-control{{ _invalid(name) }}" id="{{ _id }}"
            name="{{ name }}"
            {%- if required %} required{% endif -%}
            {%- if disabled %} disabled{% endif %}
-           value="{{ _value }}">
+           value="{{ _value }}"
+           {{- _aria(name, _id) }}>
+    {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
@@ -138,10 +171,12 @@
 {%- set _value = form.get(name) if form else default -%}
 <div class="mb-3">
     {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
-    <textarea class="form-control" id="{{ _id }}" name="{{ name }}" rows="{{ rows }}"
+    <textarea class="form-control{{ _invalid(name) }}" id="{{ _id }}" name="{{ name }}" rows="{{ rows }}"
               {%- if required %} required{% endif -%}
               {%- if maxlength %} maxlength="{{ maxlength }}"{% endif -%}
+              {{- _aria(name, _id) }}
               {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}>{{ _value if _value is not none else '' }}</textarea>
+    {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
@@ -180,13 +215,14 @@
 {%- set _selected = (_form_value if _form_value is not none else default)|string -%}
 <div class="mb-3">
     {{ _label(name, label, required=required, optional_text=optional_text, id=_id, label_class=label_class) }}
-    <select class="{{ select_class }}" id="{{ _id }}" name="{{ name }}"
+    <select class="{{ select_class }}{{ _invalid(name) }}" id="{{ _id }}" name="{{ name }}"
             {%- if required %} required{% endif %}
             {%- if hx_get %} hx-get="{{ hx_get }}"{% endif %}
             {%- if hx_target %} hx-target="{{ hx_target }}"{% endif %}
             {%- if hx_trigger %} hx-trigger="{{ hx_trigger }}"{% endif %}
             {%- if hx_swap %} hx-swap="{{ hx_swap }}"{% endif %}
-            {%- if hx_include %} hx-include="{{ hx_include }}"{% endif %}>
+            {%- if hx_include %} hx-include="{{ hx_include }}"{% endif %}
+            {{- _aria(name, _id) }}>
         {%- if placeholder is not none %}
         <option value="">{{ placeholder }}</option>
         {%- endif %}
@@ -210,6 +246,7 @@
             {%- endfor %}
         {%- endif %}
     </select>
+    {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
@@ -228,9 +265,11 @@
   {%- set _checked = default -%}
 {%- endif -%}
 <div class="mb-3 form-check">
-    <input type="checkbox" class="form-check-input" id="{{ _id }}"
-           name="{{ name }}" value="1"{% if _checked %} checked{% endif %}>
+    <input type="checkbox" class="form-check-input{{ _invalid(name) }}" id="{{ _id }}"
+           name="{{ name }}" value="1"{% if _checked %} checked{% endif %}
+           {{- _aria(name, _id) }}>
     <label class="form-check-label" for="{{ _id }}">{{ label }}</label>
+    {{ _field_error(name, _id) }}
     {%- if help %}<small class="form-text text-muted d-block">{{ help }}</small>{% endif %}
 </div>
 {% endmacro %}
@@ -306,7 +345,7 @@
     <input type="hidden" name="{{ name }}" id="{{ _id_input }}"
            class="fk-picker-id" value="{{ _form_id or '' }}">
 
-    <input type="text" class="{{ search_class }} fk-picker-search" id="{{ _search_id }}"
+    <input type="text" class="{{ search_class }} fk-picker-search{{ _invalid(name) }}" id="{{ _search_id }}"
            placeholder="{{ placeholder }}"
            autocomplete="off"
            hx-get="{{ search_url }}"
@@ -314,9 +353,11 @@
            hx-swap="innerHTML"
            hx-trigger="input changed delay:300ms"
            hx-include="this"
-           name="q">
+           name="q"
+           {{- _aria(name, _search_id) }}>
     <div id="{{ _results_id }}" class="list-group mt-1 fk-picker-results"
          style="max-height:200px;overflow-y:auto;"></div>
+    {{ _field_error(name, _search_id) }}
 </div>
 {% endmacro %}
 

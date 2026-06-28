@@ -28,6 +28,34 @@ document.body.addEventListener('htmx:sendError', function() {
     }
 });
 
+// ── Generic success/info toast (fired server-side via HX-Trigger: showToast) ──
+// Payload: {message: '…', variant: 'success'|'info'|'warning'|'danger'}.
+// Rides the same HX-Trigger channel used for closeActiveModal / reload*Card, so
+// every form funnelling through utils/htmx.py gets feedback with no route edits.
+document.body.addEventListener('showToast', function (evt) {
+    var d = evt.detail || {};
+    var toastEl = document.getElementById('htmxToast');
+    if (!toastEl) return;
+    toastEl.className = 'toast align-items-center border-0 text-bg-' + (d.variant || 'success');
+    document.getElementById('htmxToastBody').textContent = d.message || 'Done.';
+    bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3500 }).show();
+});
+
+// ── Focus the first invalid field after a server-validated re-render ──────────
+// Forms are `novalidate` (htmx submits past native HTML5 checks so the server is
+// the single source of truth). Native validation used to auto-focus the bad
+// field; replicate that here. After any swap whose new content carries a
+// .is-invalid control, focus + scroll the first one into view. Guarded on
+// presence so normal swaps never have focus stolen.
+document.body.addEventListener('htmx:afterSettle', function(evt) {
+    var root = evt.detail && evt.detail.target;
+    if (!root || !root.querySelector) return;
+    var firstInvalid = root.querySelector('.is-invalid');
+    if (!firstInvalid) return;
+    firstInvalid.focus({preventScroll: true});
+    firstInvalid.scrollIntoView({block: 'center', behavior: 'smooth'});
+});
+
 // ── Stacked modal z-index ───────────────────────────────────────────────────
 // Bootstrap 5 doesn't stack z-indexes across separate Modal instances: a second
 // modal opens at the same z-index as the first, and its backdrop (appended last
