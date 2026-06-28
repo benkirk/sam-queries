@@ -32,6 +32,24 @@ class SetPrimaryGidForm(HtmxFormSchema):
     unix_gid = f.Integer(required=True)
 
 
+class SetThresholdForm(HtmxFormSchema):
+    """Set a project+resource consumption-rate limit (% of prorated allocation).
+
+    Blank input removes the limit: the base ``@pre_load`` strips empty strings,
+    so an empty ``threshold_pct`` falls through to ``load_default=None``. A value
+    must be an integer strictly greater than 100 (a rate limit below the prorated
+    rate would be permanently tripped). The route persists via
+    ``Account.update_thresholds`` per-window — a DB hit that stays inline.
+    """
+    threshold_pct = f.Integer(
+        load_default=None,
+        validate=v.Range(
+            min=101,
+            error='Must be an integer greater than 100 (or blank to remove the limit).',
+        ),
+    )
+
+
 class AddMemberForm(HtmxFormSchema):
     username = f.Str(required=True, validate=v.Length(min=1))
     start_date = f.Date('%Y-%m-%d', load_default=None)

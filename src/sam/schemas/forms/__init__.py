@@ -206,12 +206,17 @@ from .user import (
     ExtendAllocationsForm,
     SetShellForm,
     SetPrimaryGidForm,
+    SetThresholdForm,
 )
 from .adjustments import (
     CreateChargeAdjustmentForm,
 )
 from .admin import (
     ClearRateLimitForm,
+)
+from .status import (
+    CreateOutageForm,
+    EditOutageForm,
 )
 
 __all__ = [
@@ -268,8 +273,12 @@ __all__ = [
     'ExtendAllocationsForm',
     'SetShellForm',
     'SetPrimaryGidForm',
+    'SetThresholdForm',
     # Adjustments
     'CreateChargeAdjustmentForm',
     # Admin
     'ClearRateLimitForm',
+    # Status
+    'CreateOutageForm',
+    'EditOutageForm',
 ]
