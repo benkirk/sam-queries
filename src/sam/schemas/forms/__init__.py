@@ -90,6 +90,30 @@ class HtmxFormSchema(Schema):
         return out
 
     @staticmethod
+    def split_errors(messages: dict) -> tuple[dict, list[str]]:
+        """Split marshmallow errors into per-field and form-level groups.
+
+        Returns ``(field_errors, form_level)`` where:
+          * ``field_errors`` is ``{field_name: [msg, ...]}`` for real fields,
+            for inline ``.is-invalid`` / ``.invalid-feedback`` rendering by the
+            form_fields.html macros.
+          * ``form_level`` is a flat list of cross-field messages — marshmallow
+            stores these under the ``'_schema'`` key — for the top alert panel.
+
+        Example:
+            {'amount': ['Not a valid number.'], '_schema': ['End before start.']}
+            → ({'amount': ['Not a valid number.']}, ['End before start.'])
+        """
+        field_errors, form_level = {}, []
+        for field, msgs in messages.items():
+            msgs = msgs if isinstance(msgs, list) else [msgs]
+            if field == '_schema':
+                form_level.extend(msgs)
+            else:
+                field_errors[field] = msgs
+        return field_errors, form_level
+
+    @staticmethod
     def normalize_end_date(end_str):
         """Parse a YYYY-MM-DD form input into an end-of-day datetime, or None.
 

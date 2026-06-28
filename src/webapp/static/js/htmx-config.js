@@ -28,6 +28,19 @@ document.body.addEventListener('htmx:sendError', function() {
     }
 });
 
+// ── Generic success/info toast (fired server-side via HX-Trigger: showToast) ──
+// Payload: {message: '…', variant: 'success'|'info'|'warning'|'danger'}.
+// Rides the same HX-Trigger channel used for closeActiveModal / reload*Card, so
+// every form funnelling through utils/htmx.py gets feedback with no route edits.
+document.body.addEventListener('showToast', function (evt) {
+    var d = evt.detail || {};
+    var toastEl = document.getElementById('htmxToast');
+    if (!toastEl) return;
+    toastEl.className = 'toast align-items-center border-0 text-bg-' + (d.variant || 'success');
+    document.getElementById('htmxToastBody').textContent = d.message || 'Done.';
+    bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3500 }).show();
+});
+
 // ── Stacked modal z-index ───────────────────────────────────────────────────
 // Bootstrap 5 doesn't stack z-indexes across separate Modal instances: a second
 // modal opens at the same z-index as the first, and its backdrop (appended last
