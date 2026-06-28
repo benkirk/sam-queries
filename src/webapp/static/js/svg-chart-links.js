@@ -20,6 +20,9 @@
  *     #disk-ent-group-<gid> (disk-scans By User / By Group tab) → expand
  *     that entity's row in the table below (found via data-owner-uid /
  *     data-group-gid), which lazy-loads its directories.
+ *   - Legend href starts with #usage-user-<username> (stacked-by-user
+ *     Usage Trend chart on the compute resource-details page) → expand
+ *     that user's row in the Usage by User card below.
  *
  * Safe on pages where the target containers aren't included — each
  * branch checks for its targets and silently no-ops.
@@ -45,6 +48,9 @@
     // data-group-gid (see disk_scans_entities.html).
     var ENT_OWNER_PREFIX = '#disk-ent-owner-';
     var ENT_GROUP_PREFIX = '#disk-ent-group-';
+    // Stacked-by-user Usage Trend chart (compute resource-details): a legend
+    // username click expands that user's row in the Usage by User card.
+    var USAGE_USER_PREFIX = '#usage-user-';
 
     // Distribution histogram (Access-history / File-size tabs) → expand the
     // matching bucket's per-user detail row. The bucket <tr> carries
@@ -123,6 +129,34 @@
         }, 60);
     }
 
+    // Legend username → expand that user's row in the Usage by User card.
+    // The user row's first <td> carries data-sort-value="<username>"
+    // (resource_details.html), scoped to #users-table. Looking up by username
+    // (not the render-time uid) is robust to the table's client-side
+    // re-sorting. The card body (#collapseUsers) is opened first in case the
+    // analyst collapsed it. Single-triple users render inline with no
+    // collapse target — we just scroll to them.
+    function openUserRow(username) {
+        if (!window.bootstrap) return;
+        var card = document.getElementById('collapseUsers');
+        if (card) {
+            bootstrap.Collapse.getOrCreateInstance(card, {toggle: false}).show();
+        }
+        var cell = document.querySelector(
+            '#users-table td[data-sort-value="' + username + '"]');
+        if (!cell) return;
+        var row = cell.closest('tr');
+        if (!row) return;
+        var sel = row.getAttribute('data-bs-target');
+        if (sel) {
+            var el = document.querySelector(sel);
+            if (el) bootstrap.Collapse.getOrCreateInstance(el, {toggle: false}).show();
+        }
+        setTimeout(function () {
+            row.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }, 60);
+    }
+
     document.addEventListener('click', function (e) {
         var a = e.target.closest && e.target.closest('svg a');
         if (!a) return;
@@ -162,6 +196,15 @@
             if (gid === '') return;
             e.preventDefault();
             openEntityRow('data-group-gid', gid, a.closest('.tab-pane'));
+            return;
+        }
+
+        // Stacked-chart legend → expand the user's Usage-by-User row
+        if (href.indexOf(USAGE_USER_PREFIX) === 0) {
+            var uname = href.slice(USAGE_USER_PREFIX.length);
+            if (uname === '') return;
+            e.preventDefault();
+            openUserRow(uname);
             return;
         }
 

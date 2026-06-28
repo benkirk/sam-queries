@@ -194,13 +194,9 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
         if amount <= 0:
             raise ValueError(f"Amount must be > 0, got {amount}")
 
-        account = Account.get_by_project_and_resource(
-            session, project_id, resource_id, exclude_deleted=True
+        account = Account.get_or_create(
+            session, project_id=project_id, resource_id=resource_id
         )
-        if account is None:
-            account = Account.create(
-                session, project_id=project_id, resource_id=resource_id
-            )
 
         allocation = cls(
             account_id=account.account_id,

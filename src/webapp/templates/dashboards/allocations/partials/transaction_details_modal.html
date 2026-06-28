@@ -5,6 +5,8 @@
    ``render_project_info`` (dashboards/user/partials/project_card.html). Fields
    with empty / None values are simply omitted — the user doesn't see rows
    like "Requested amount —". #}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_txn_types with context %}
 
 {# Set the modal title out-of-band so the shared audit modal reflects the
    fragment type. The target id is declared on the <h5> in dashboard.html. #}
@@ -33,7 +35,9 @@
     </div>
 
     <div class="stat-item">
-        <span class="stat-label">Type:</span>
+        <span class="stat-label">Type:
+            {{ help_icon(g_txn_types(), rich=True, title='Transaction types', placement='right') }}
+        </span>
         <span class="stat-value">{{ r.transaction_type }}</span>
     </div>
 

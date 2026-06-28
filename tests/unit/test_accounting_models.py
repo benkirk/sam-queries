@@ -9,7 +9,9 @@ from datetime import datetime, timedelta
 import pytest
 
 from sam import AllocationTransactionType, Contract
+from sam.accounting.accounts import Account, AccountUser
 from sam.accounting.allocations import (
+    Allocation,
     AllocationTransaction,
     LEGACY_TRANSACTION_TYPES,
     LEGACY_TYPE_MAP,
@@ -17,11 +19,18 @@ from sam.accounting.allocations import (
     replay_amount,
 )
 from sam.manage.allocations import (
+    create_allocation,
     log_allocation_transaction,
     update_allocation,
 )
 
-from factories import make_allocation, make_user
+from factories import (
+    make_account,
+    make_allocation,
+    make_project,
+    make_resource,
+    make_user,
+)
 
 
 pytestmark = pytest.mark.unit
@@ -273,3 +282,92 @@ class TestReplayAmount:
         # B1 fix: EDIT row carries +4 delta, not 465; legacy replay matches stored amount.
         assert replayed == pytest.approx(465.0)
         assert replayed != pytest.approx(926.0)
+
+
+class TestAccountGetOrCreate:
+    """Account.get_or_create handles the empty- and soft-deleted-account slots
+    that the "Add Allocation" dropdown now offers (project_resource_ux is NOT
+    scoped by deleted, so a blind Account.create on an occupied slot would
+    raise IntegrityError)."""
+
+    @pytest.fixture
+    def acting_user(self, session):
+        return make_user(session)
+
+    def test_returns_existing_live_account(self, session):
+        """An empty (allocation-less) live account is reused, not duplicated."""
+        acct = make_account(session)
+        got = Account.get_or_create(
+            session, project_id=acct.project_id, resource_id=acct.resource_id,
+        )
+        assert got.account_id == acct.account_id
+        assert got.deleted is False
+        # No second account row created for this (project, resource).
+        n = session.query(Account).filter_by(
+            project_id=acct.project_id, resource_id=acct.resource_id,
+        ).count()
+        assert n == 1
+
+    def test_creates_when_absent(self, session):
+        """No account on the slot → a fresh one is created."""
+        project = make_project(session)
+        resource = make_resource(session)
+        got = Account.get_or_create(
+            session, project_id=project.project_id, resource_id=resource.resource_id,
+        )
+        assert got.account_id is not None
+        assert got.project_id == project.project_id
+        assert got.resource_id == resource.resource_id
+        assert got.deleted is False
+
+    def test_revives_soft_deleted_account(self, session):
+        """A soft-deleted account on the slot is un-deleted and re-seeded —
+        the same row is reused (no UNIQUE collision on project_resource_ux)."""
+        acct = make_account(session)
+        acct_id = acct.account_id
+        acct.deleted = True
+        session.flush()
+
+        got = Account.get_or_create(
+            session, project_id=acct.project_id, resource_id=acct.resource_id,
+        )
+        assert got.account_id == acct_id      # same row, revived
+        assert got.deleted is False
+        # Still exactly one row for the slot.
+        n = session.query(Account).filter_by(
+            project_id=acct.project_id, resource_id=acct.resource_id,
+        ).count()
+        assert n == 1
+        # Lead re-seeded as an active member.
+        member_ids = {
+            au.user_id for au in session.query(AccountUser).filter(
+                AccountUser.account_id == acct_id,
+                AccountUser.end_date.is_(None),
+            ).all()
+        }
+        assert got.project.project_lead_user_id in member_ids
+
+    def test_create_allocation_on_soft_deleted_slot_does_not_collide(
+        self, session, acting_user
+    ):
+        """The end-to-end fix: granting an allocation on a resource whose only
+        account was soft-deleted must succeed (revive + attach), not raise
+        IntegrityError on the project_resource_ux unique index."""
+        acct = make_account(session)
+        project_id, resource_id = acct.project_id, acct.resource_id
+        acct.deleted = True
+        session.flush()
+
+        alloc = create_allocation(
+            session,
+            project_id=project_id,
+            resource_id=resource_id,
+            amount=5_000.0,
+            start_date=datetime.now(),
+            end_date=datetime.now() + timedelta(days=365),
+            user_id=acting_user.user_id,
+        )
+        assert isinstance(alloc, Allocation)
+        # Allocation hangs off the revived (single) account.
+        assert alloc.account.account_id == acct.account_id
+        assert alloc.account.deleted is False

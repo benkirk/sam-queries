@@ -1,3 +1,5 @@
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_utilization with context %}
 {% macro utilization_metrics(status, show_memory=true, show_gpus=true, show_viz=false) %}
 {# Calculate column width based on number of metrics shown #}
 {% set num_cols = 1 + (1 if show_gpus else 0) + (1 if show_viz else 0) + (1 if show_memory else 0) %}
@@ -5,7 +7,7 @@
 <div class="row mb-4">
     <div class="col-md-{{ col_width }}">
         <div class="metric-card">
-            <h6>CPU Utilization</h6>
+            <h6>CPU Utilization {{ help_icon(g_utilization(), rich=True, title='Utilization', placement='top') }}</h6>
             <div class="value">{{ (status.cpu_utilization_percent|default(0, true))|round(1) }}%</div>
             <div class="progress mt-2">
                 <div class="progress-bar bg-{{ 'danger' if (status.cpu_utilization_percent|default(0, true)) >= 90 else 'warning' if (status.cpu_utilization_percent|default(0, true)) >= 75 else 'success' }}"

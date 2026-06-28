@@ -32,7 +32,10 @@
     {% set multi_queue = (user.queues|length > 1) %}
     {% set q0 = user.queues[0] %}
     {% set single_q_multi_d = (not multi_queue and q0.dates|length > 1) %}
-    <table class="table table-sm table-borderless mb-0">
+    <table class="table table-sm table-borderless mb-0 usage-table-4">
+      <colgroup>
+        <col class="ucol-name"><col class="ucol-num"><col class="ucol-num"><col class="ucol-num">
+      </colgroup>
       <tbody>
         {% if single_q_multi_d %}
           {# Streamlined dates (skip the redundant single-queue tier). #}
@@ -40,7 +43,6 @@
             {% set djid = uid ~ '-d' ~ loop.index ~ '-jobs' %}
             <tr class="table-light">
               <td class="ps-4 text-muted">
-                <i class="fas fa-angle-right me-1"></i>
                 <small>{{ d.date }}</small>
                 <em class="ms-2">{{ q0.queue }}</em>
                 {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}
@@ -62,7 +64,7 @@
             {% set queue_is_leaf = (q.dates|length == 1) %}
             <tr {% if q.dates|length > 1 %}class="table-secondary cursor-pointer" data-bs-toggle="collapse" data-bs-target="#user-queue-dates-{{ qid }}" aria-expanded="false"{% else %}class="table-secondary"{% endif %}>
               <td class="ps-4 text-muted">
-                <i class="fas fa-angle-right me-1"></i><em>{{ q.queue }}</em>
+                <em>{{ q.queue }}</em>
                 {% if q.dates|length > 1 %}
                   <i class="fas fa-chevron-right ms-1 small text-muted collapse-icon"></i>
                 {% endif %}
@@ -83,7 +85,7 @@
                 {% set djid = qid ~ '-d' ~ loop.index ~ '-jobs' %}
                 <tr class="collapse table-light" id="user-queue-dates-{{ qid }}">
                   <td class="ps-5 text-muted">
-                    <i class="fas fa-angle-right me-1"></i><small>{{ d.date }}</small>
+                    <small>{{ d.date }}</small>
                     {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}
                   </td>
                   <td class="text-end"><small>{{ d.jobs | fmt_number }}</small></td>

@@ -12,6 +12,8 @@
   Context:
     allocation_transactions — list[AllocationTransaction], pre-sorted desc by creation_time
 #}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_txn_types with context %}
 <h6 class="mb-2">Transactions</h6>
 
 {% if allocation_transactions %}
@@ -20,7 +22,9 @@
         <thead class="table-light">
             <tr>
                 <th style="white-space:nowrap;">Date</th>
-                <th>Type</th>
+                <th>Type
+                    {{ help_icon(g_txn_types(), rich=True, title='Transaction types', placement='top') }}
+                </th>
                 <th class="text-end">Amount</th>
                 <th>Effective</th>
                 <th>By</th>

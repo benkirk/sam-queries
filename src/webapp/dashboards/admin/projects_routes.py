@@ -115,6 +115,23 @@ def _project_form_data(form=None) -> dict:
     )
 
 
+def _resources_with_allocation(project) -> set:
+    """resource_ids the project already holds an allocation on (via a live account).
+
+    Used to filter the "Add Allocation" resource dropdown. We exclude by
+    *allocation*, not by *account*: an empty account (synced or member-only,
+    with no allocation yet) must NOT hide its resource — the admin still needs
+    to grant that first allocation. Soft-deleted accounts are also excluded
+    here so their resource stays offered; ``Account.get_or_create`` revives
+    such an account instead of colliding on the ``project_resource_ux`` slot.
+    """
+    return {
+        acct.resource_id
+        for acct in project.accounts
+        if not acct.deleted and acct.allocations
+    }
+
+
 # ---------------------------------------------------------------------------
 # Create Project
 # ---------------------------------------------------------------------------
@@ -687,12 +704,10 @@ def htmx_add_allocation_form(project):
     import calendar
     from sam.resources.resources import Resource
 
-    # Resources already linked to this project (via any account, even deleted).
-    linked_resource_ids = {
-        acct.resource_id for acct in project.accounts
-    }
+    # Resources the project already holds an allocation on (empty accounts don't count).
+    linked_resource_ids = _resources_with_allocation(project)
 
-    # Offer all active resources not yet linked to this project.
+    # Offer all active resources the project doesn't yet have an allocation on.
     available_resources = (
         db.session.query(Resource)
         .filter(Resource.is_active)
@@ -765,7 +780,7 @@ def htmx_add_allocation(project):
     def _reload_add_form(extra_errors=None):
         import calendar
         from sam.resources.resources import Resource as R
-        linked_ids = {a.resource_id for a in project.accounts}
+        linked_ids = _resources_with_allocation(project)
         available = (
             db.session.query(R)
             .filter(R.is_active)

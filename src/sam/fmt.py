@@ -438,6 +438,11 @@ def register_jinja_filters(app) -> None:
     app.jinja_env.filters['fmt_hours']    = hours
     app.jinja_env.filters['fmt_factor']   = factor
     app.jinja_env.filters['to_local_dt']  = to_local_dt
+    # Resource-type allocation unit label ('hours' / 'TiB' / None). Used on
+    # the headline "<n> allocated" figures. Usage:
+    #   {{ resource.resource_type | alloc_unit(resource.allocated) }}
+    from sam.enums import ResourceTypeName
+    app.jinja_env.filters['alloc_unit']   = ResourceTypeName.allocation_unit
     # Global (not a filter) so templates can render "{{ local_tz_label() }}"
     # alongside naive-local timestamps that don't go through to_local_dt.
     app.jinja_env.globals['local_tz_label'] = local_tz_label

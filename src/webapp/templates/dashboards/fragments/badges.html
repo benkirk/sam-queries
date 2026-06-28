@@ -25,12 +25,23 @@
     'expired':    'Expired',
     'open-ended': 'Open-ended',
 } -%}
+{# Hover explanations — applied as a Bootstrap tooltip (tooltip-init.js) so the
+   badge is self-documenting wherever it appears. #}
+{%- set _STATUS_TOOLTIPS = {
+    'active':     'Currently within its allocation period.',
+    'inactive':   'Not active — deactivated or outside its date range.',
+    'locked':     'Frozen: no further charging or changes until unlocked.',
+    'expired':    'Allocation period has ended.',
+    'open-ended': 'No end date — runs indefinitely.',
+} -%}
 
 
 {% macro status_badge(state, extra='', small=False, label=None) -%}
 {%- set key = state|lower -%}
 {%- set variant = _STATUS_VARIANTS.get(key, 'bg-secondary') -%}
 {%- set text = label if label is not none else _STATUS_LABELS.get(key, state) -%}
+{%- set tip = _STATUS_TOOLTIPS.get(key) -%}
 <span class="badge {{ variant }}{% if extra %} {{ extra }}{% endif %}"
+      {%- if tip %} data-bs-toggle="tooltip" data-bs-title="{{ tip }}"{% endif %}
       {%- if small %} style="font-size:0.7em;"{% endif %}>{{ text }}</span>
 {%- endmacro %}

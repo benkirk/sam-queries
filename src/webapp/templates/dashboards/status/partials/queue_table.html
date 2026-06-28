@@ -1,3 +1,5 @@
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_queue_states with context %}
 {% macro queue_table(queues, show_gpus=false, system='derecho', hours=None) %}
 {# `hours`, when set, flows through into the row-click drill-down URL so the
    user's chosen time range survives sideways navigation between queues. #}
@@ -7,7 +9,9 @@
             <tr>
                 <th>Queue</th>
                 <th>Users</th>
-                <th colspan="3" class="text-center">Jobs</th>
+                <th colspan="3" class="text-center">Jobs
+                    {{ help_icon(g_queue_states(), rich=True, title='Scheduler states', placement='top') }}
+                </th>
                 <th colspan="3" class="text-center">Cores</th>
                 {% if show_gpus %}<th colspan="3" class="text-center">GPUs</th>{% endif %}
                 <th>Nodes</th>

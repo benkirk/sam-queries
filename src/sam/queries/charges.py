@@ -772,6 +772,100 @@ def get_monthly_user_counts_for_project(
     return {row.month: int(row.users or 0) for row in query.all()}
 
 
+_USAGE_METRIC_ROW_KEY = {
+    'charges':    'total_charges',
+    'jobs':       'total_jobs',
+    'core_hours': 'total_core_hours',
+}
+
+
+def get_daily_user_usage_for_project(
+    session: Session,
+    projcode: Union[str, List[str]],
+    resource: str,
+    start_date: datetime,
+    end_date: datetime,
+    metric: str = 'charges',
+    top_n: int = 10,
+) -> Dict:
+    """
+    Per-day usage broken down by the top-N users over the whole window,
+    with the remainder rolled into a single "Others" series. Powers the
+    stacked-by-user Usage Trend bar chart on the resource-details page.
+
+    The top-N set is ranked by each user's *period total* of the selected
+    metric (NOT per-day), so the legend reflects the dominant users across
+    the entire visible range — the set of interest. Every (date, user) cell
+    is zero-filled so all series arrays align positionally with ``dates``.
+
+    Args:
+        metric: one of 'charges' / 'jobs' / 'core_hours'. Selects which
+            CompChargeSummary aggregate is stacked and ranked.
+        top_n: number of named users; the rest aggregate into "Others".
+
+    Returns:
+        {
+          'dates':  [date, ...],                            # ascending
+          'series': [
+              {'label': 'Others',  'values': [num, ...]},   # first (bottom)
+              {'label': <username>, 'values': [num, ...]},  # lowest→highest rank
+              ...
+          ],
+        }
+        ``series`` omits the "Others" entry when there are <= top_n users.
+        Returns {'dates': [], 'series': []} when there is no activity.
+    """
+    value_key = _USAGE_METRIC_ROW_KEY.get(metric, 'total_charges')
+
+    rows = query_comp_charge_summaries(
+        session, start_date, end_date,
+        projcode=projcode, resource=resource, per_day=True,
+    )
+    if not rows:
+        return {'dates': [], 'series': []}
+
+    # Pivot to per_user[username][date] = summed metric (across queue/machine),
+    # accumulating each user's period total for ranking.
+    all_dates = set()
+    per_user: Dict[str, Dict] = {}
+    user_totals: Dict[str, float] = {}
+    for row in rows:
+        username = row['username']
+        d = row['activity_date']
+        val = row[value_key] or 0
+        all_dates.add(d)
+        bucket = per_user.setdefault(username, {})
+        bucket[d] = bucket.get(d, 0) + val
+        user_totals[username] = user_totals.get(username, 0) + val
+
+    dates = sorted(all_dates)
+
+    # Rank users by period total desc; top_n named, remainder -> Others.
+    ranked = sorted(user_totals, key=lambda u: user_totals[u], reverse=True)
+    named = ranked[:top_n]
+    others = ranked[top_n:]
+
+    series: List[Dict] = []
+
+    # Others first so it sits at the bottom of the visual stack (matches
+    # get_disk_usage_timeseries_by_user and the stacked-area renderers).
+    if others:
+        series.append({
+            'label': 'Others',
+            'values': [sum(per_user[u].get(d, 0) for u in others) for d in dates],
+        })
+
+    # Named users ordered lowest->highest rank (reversed) so the largest band
+    # ends up on top — the renderer's reversed legend/palette expects this.
+    for username in reversed(named):
+        series.append({
+            'label': username,
+            'values': [per_user[username].get(d, 0) for d in dates],
+        })
+
+    return {'dates': dates, 'series': series}
+
+
 def get_daily_breakdown_for_project(
     session: Session,
     projcode: Union[str, List[str]],

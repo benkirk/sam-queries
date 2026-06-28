@@ -1,5 +1,7 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_usage_bar with context %}
 
 {# Macro: Project Information Section #}
 {% macro render_project_info(project) %}
@@ -101,7 +103,9 @@
             <thead class="thead-light">
                 <tr>
                     <th>Resource</th>
-                    <th style="min-width: 220px;">Allocation</th>
+                    <th style="min-width: 220px;">Allocation
+                        {{ help_icon(g_usage_bar(), rich=True, title='Allocation usage', placement='top') }}
+                    </th>
                     {% if can_edit_allocations %}
                     <th class="text-center" style="width: 80px;">Actions</th>
                     {% endif %}
@@ -155,7 +159,7 @@
                             <td><strong>{{ resource.resource_name }}</strong></td>
                             <td>
                                 <div class="d-flex justify-content-between small mb-1">
-                                    <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }} allocated</span>
+                                    <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }}{% set _unit = resource.resource_type | alloc_unit(resource.allocated) %}{% if _unit %} {{ _unit }}{% endif %} allocated</span>
                                     {% if first.bar_state == 'active' and first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
                                         <span class="text-dark">{{ first.days_until_expiration }}d remaining</span>
                                     {% elif first.bar_state == 'expired' %}
