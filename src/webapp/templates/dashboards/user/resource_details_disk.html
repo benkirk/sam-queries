@@ -2,6 +2,7 @@
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_tib with context %}
+{% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
 
 {% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
 
@@ -252,6 +253,20 @@
     </div>
 </div>
 {% endif %}
+
+{# ── Timeframe picker (governs the Usage Over Time chart below; the
+   capacity header, tree, and per-user table stay point-in-time at the
+   latest snapshot). Weekly snapshot cadence → 90d/180d/1yr presets; the
+   Epoch button jumps to the earliest snapshot we hold for this scope. ── #}
+{{ date_range_picker(
+    action=url_for('user_dashboard.resource_details', projcode=projcode),
+    start_date=start_date,
+    end_date=end_date,
+    hidden_fields=({'resource': resource_name, 'scope': scope, 'fileset': fileset}
+                   if fileset else {'resource': resource_name, 'scope': scope}),
+    epoch_date=epoch_date,
+    presets=[('90d', 90), ('180d', 180), ('1yr', 365)]
+) }}
 
 {# ── Stacked-area chart ─────────────────────────────────────────────── #}
 <div class="card mb-4">
