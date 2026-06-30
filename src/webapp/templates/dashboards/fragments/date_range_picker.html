@@ -32,17 +32,24 @@
 
                 <!-- Quick-select preset buttons -->
                 <div class="btn-group btn-group-sm" role="group" aria-label="Date range presets">
+                    {# data-scroll-preserve: nav-view-persistence.js snapshots
+                       scrollY on click (capture phase, before pickers.js does
+                       the full-page nav) and restores it on reload, so changing
+                       the range doesn't jump back to the top. Same mechanism the
+                       queue-history time picker uses. #}
                     {% if epoch_date %}
                     <button type="button"
                             class="btn btn-outline-secondary"
-                            data-action="drp-epoch">Epoch</button>
+                            data-action="drp-epoch"
+                            data-scroll-preserve>Epoch</button>
                     {% endif %}
                     {% set presets = presets or [('7d', 7), ('30d', 30), ('90d', 90), ('6mo', 180), ('1yr', 365)] %}
                     {% for label, days in presets %}
                     <button type="button"
                             class="btn btn-outline-secondary"
                             data-action="drp-days"
-                            data-days="{{ days }}">{{ label }}</button>
+                            data-days="{{ days }}"
+                            data-scroll-preserve>{{ label }}</button>
                     {% endfor %}
                 </div>
 
@@ -62,7 +69,7 @@
                     <input type="date" name="end_date"
                            value="{{ end_date }}"
                            class="form-control form-control-sm" style="width:140px">
-                    <button type="submit" class="btn  btn-primary">
+                    <button type="submit" class="btn  btn-primary" data-scroll-preserve>
                         <i class="fas fa-check"></i> Apply
                     </button>
                 </div>
