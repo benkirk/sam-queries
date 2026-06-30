@@ -20,6 +20,7 @@ from sam.queries.disk_usage import (
     build_disk_subtree,
     bulk_get_directory_usage_at,
     get_disk_usage_timeseries_by_user,
+    get_earliest_disk_activity_date,
 )
 from sam.summaries.disk_summaries import (
     DiskChargeSummary,
@@ -203,6 +204,43 @@ class TestDiskUsageTimeseries:
             start_date=_date(2026, 4, 1),
         )
         assert out['dates'] == [d2]
+
+
+# ============================================================================
+# get_earliest_disk_activity_date
+# ============================================================================
+
+
+class TestEarliestDiskActivityDate:
+
+    def test_empty_account_ids_returns_none(self, session):
+        assert get_earliest_disk_activity_date(session, []) is None
+
+    def test_returns_min_date_across_snapshots(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        early = _date(2026, 1, 3)
+        late = _date(2026, 4, 11)
+        _seed_row(session, account=account, user=lead, snap=late, bytes_=BYTES_PER_TIB)
+        _seed_row(session, account=account, user=lead, snap=early, bytes_=BYTES_PER_TIB)
+        session.flush()
+
+        assert get_earliest_disk_activity_date(
+            session, [account.account_id],
+        ) == early
+
+    def test_no_snapshots_returns_none(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        session.flush()
+
+        assert get_earliest_disk_activity_date(
+            session, [account.account_id],
+        ) is None
 
 
 # ============================================================================

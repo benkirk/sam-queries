@@ -303,6 +303,22 @@ def bulk_get_subtree_disk_capacity(
     return out
 
 
+def get_earliest_disk_activity_date(session, account_ids):
+    """Earliest DiskChargeSummary.activity_date across the given accounts.
+
+    Anchors the disk chart's "Epoch" button to the full storage history
+    of the project (spans allocation boundaries). Returns None when no
+    accounts are given or no snapshots exist.
+    """
+    if not account_ids:
+        return None
+    return (
+        session.query(func.min(DiskChargeSummary.activity_date))
+        .filter(DiskChargeSummary.account_id.in_(account_ids))
+        .scalar()
+    )
+
+
 def get_disk_usage_timeseries_by_user(
     session: Session,
     *,

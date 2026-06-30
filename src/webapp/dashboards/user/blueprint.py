@@ -23,6 +23,7 @@ from sam.queries.disk_usage import (
     get_directory_user_breakdown_at,
     get_disk_usage_timeseries_by_user,
     get_disk_usage_timeseries_for_directory,
+    get_earliest_disk_activity_date,
     get_subtree_directory_usage_at,
 )
 from sam.queries.rolling_usage import get_project_rolling_usage
@@ -929,6 +930,11 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     scope_node = _find_disk_node(full_tree, scope) or full_tree
     scope_account_ids = _collect_disk_account_ids(scope_node)
 
+    # Anchor the "Epoch" preset on the timeframe picker to the earliest
+    # disk snapshot we hold for this scope's accounts — full storage
+    # history, which may span allocation boundaries.
+    epoch_date = get_earliest_disk_activity_date(db.session, scope_account_ids)
+
     # Build the {directory_name → projcode} map by walking the scoped
     # subtree's in-memory ProjectDirectory data (already loaded by
     # build_disk_subtree). Lets the Filesets-card query hit
@@ -1071,6 +1077,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         has_children=bool(project.has_children),
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
+        epoch_date=epoch_date.strftime('%Y-%m-%d') if epoch_date else None,
         usage_chart=usage_chart,
         show_scans=show_scans,
         scan_info=scan_info,
