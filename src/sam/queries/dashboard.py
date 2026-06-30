@@ -54,7 +54,7 @@ charge-aggregation queries. Merging them would either pessimize the N=1
 case or complicate the N=many case — both are net losses for readers.
 """
 
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Any, List, Dict, Optional, TypedDict
 
 from sqlalchemy import func
@@ -310,7 +310,12 @@ def _select_query_alloc(account: Account, now: datetime):
             key=lambda a: a.end_date if a.end_date else datetime.max,
         )
         end = most_recent.end_date
-        if end is None or (now - end).days <= 90:
+        # Use an exact timedelta comparison (NOT (now - end).days <= 90):
+        # .days truncates toward zero, so it keeps an allocation for a full
+        # extra day in [90d, 91d) after expiry, diverging from
+        # get_detailed_allocation_usage() — which this mirrors — and breaking
+        # the batched/per-project equivalence at the 90-day boundary.
+        if end is None or (now - end) <= timedelta(days=90):
             return most_recent
     return None
 
