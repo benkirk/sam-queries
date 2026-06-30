@@ -286,8 +286,27 @@
     </div>
     <div id="collapseDiskUsage" class="collapse show">
         <div class="card-body">
-            <div class="chart-container">
-                {{ usage_chart | safe }}
+            {# Chart loads via HTMX so the Data Volume / File Count tab can
+               swap the SVG in place. nav-view-persistence.js round-trips
+               the `metric` URL param through localStorage via the
+               data-chart-persist-* attributes (metric only — never the
+               dates, so the timeframe picker stays authoritative). #}
+            <div id="disk-usage-chart-wrapper"
+                 hx-get="{{ url_for('user_dashboard.resource_details_disk_usage_chart',
+                                    projcode=projcode,
+                                    resource=resource_name,
+                                    scope=scope,
+                                    fileset=fileset,
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                    metric='bytes') }}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML"
+                 data-chart-persist-id="disk-usage-chart-{{ projcode }}-{{ resource_name }}"
+                 data-chart-persist-keys="metric">
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                </div>
             </div>
         </div>
     </div>

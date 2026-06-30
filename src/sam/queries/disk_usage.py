@@ -319,6 +319,16 @@ def get_earliest_disk_activity_date(session, account_ids):
     )
 
 
+def _disk_metric_col(model, metric):
+    """Pick the summed column for a disk timeseries by metric.
+
+    ``'files'`` → ``number_of_files``; anything else → ``bytes``. Works for
+    both ``DiskChargeSummary`` (project path) and ``DiskActivity`` (fileset
+    path), which carry both columns.
+    """
+    return model.number_of_files if metric == 'files' else model.bytes
+
+
 def get_disk_usage_timeseries_by_user(
     session: Session,
     *,
@@ -326,15 +336,17 @@ def get_disk_usage_timeseries_by_user(
     start_date: Optional[_stdlib_date] = None,
     end_date: Optional[_stdlib_date] = None,
     top_n: int = 10,
+    metric: str = 'bytes',
 ) -> Dict[str, Any]:
-    """Per-user disk-bytes time series for a stacked-area chart.
+    """Per-user disk time series for a stacked-area chart.
 
-    Sums ``DiskChargeSummary.bytes`` grouped by ``(activity_date,
-    user_id)`` for the given accounts and date range. Picks the top
-    ``top_n`` users by their *latest-snapshot* bytes; everyone else is
-    lumped into a single ``"Others"`` series. Missing (date, user) pairs
-    are dense-filled with 0 so every series has the same length as
-    ``dates``.
+    Sums ``DiskChargeSummary.bytes`` (``metric='bytes'``, default) or
+    ``DiskChargeSummary.number_of_files`` (``metric='files'``) grouped by
+    ``(activity_date, user_id)`` for the given accounts and date range.
+    Picks the top ``top_n`` users by their *latest-snapshot* value for the
+    selected metric; everyone else is lumped into a single ``"Others"``
+    series. Missing (date, user) pairs are dense-filled with 0 so every
+    series has the same length as ``dates``.
 
     Series order is **stack-friendly**: ``Others`` first (so it renders
     at the bottom of the stacked area in a neutral colour), then named
@@ -364,7 +376,7 @@ def get_disk_usage_timeseries_by_user(
         DiskChargeSummary.activity_date,
         DiskChargeSummary.user_id,
         DiskChargeSummary.username,
-        func.coalesce(func.sum(DiskChargeSummary.bytes), 0).label('bytes'),
+        func.coalesce(func.sum(_disk_metric_col(DiskChargeSummary, metric)), 0).label('value'),
     ).filter(
         DiskChargeSummary.account_id.in_(account_ids),
     )
@@ -437,10 +449,11 @@ def get_disk_usage_timeseries_for_directory(
     start_date: Optional[_stdlib_date] = None,
     end_date: Optional[_stdlib_date] = None,
     top_n: int = 10,
+    metric: str = 'bytes',
 ) -> Dict[str, Any]:
-    """Per-user disk-bytes timeseries for a single fileset.
+    """Per-user disk timeseries for a single fileset.
 
-    Same return shape and ranking semantics as
+    Same return shape, ``metric`` handling, and ranking semantics as
     :func:`get_disk_usage_timeseries_by_user`, but reads from
     ``disk_activity`` directly so it can filter by ``directory_name``.
     Used by the dashboard when the user clicks a fileset row to scope
@@ -461,7 +474,7 @@ def get_disk_usage_timeseries_for_directory(
     q = session.query(
         DiskActivity.activity_date,
         DiskActivity.username,
-        func.coalesce(func.sum(DiskActivity.bytes), 0).label('bytes'),
+        func.coalesce(func.sum(_disk_metric_col(DiskActivity, metric)), 0).label('value'),
     ).filter(
         DiskActivity.directory_name == directory_name,
         DiskActivity.resource_name == resource_name,
