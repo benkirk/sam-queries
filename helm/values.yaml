@@ -129,7 +129,7 @@ webapp:
       capabilities:
         drop: ["ALL"]
   container:                              # full image path
-    image: ghcr.io/benkirk/sam-queries/webapp:main
+    image: ghcr.io/benkirk/sam-queries/webapp:sha-7ba71f7
     port: 5050                            # Port your container listens on
     requests:
       memory: 4096M                       # Guaranteed memory allocation
