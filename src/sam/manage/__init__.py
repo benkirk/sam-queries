@@ -34,6 +34,9 @@ __all__ = [
     'add_user_to_project',
     'remove_user_from_project',
     'change_project_admin',
+    'grant_user_resource_access',
+    'revoke_user_resource_access',
+    'reconcile_project_access',
     'management_transaction',
     'validate_allocation_dates',
     'log_allocation_transaction',
@@ -199,4 +202,138 @@ def change_project_admin(
 
     # Flush changes but do not commit
     # Caller is responsible for committing
+    session.flush()
+
+
+def grant_user_resource_access(
+    session: Session,
+    project_id: int,
+    user_id: int,
+    resource_id: int,
+) -> None:
+    """
+    Grant a single user access to a single project resource.
+
+    Operator-level repair for partial-access errors: adds one open-ended
+    AccountUser row on the (project, resource) account if the user does not
+    already have currently-active access there. Idempotent.
+
+    NOTE: This function does NOT commit the session. The caller is responsible
+    for wrapping it in management_transaction().
+
+    Args:
+        session: SQLAlchemy session
+        project_id: Project ID
+        user_id: User ID to grant access
+        resource_id: Resource ID whose project account the user should join
+
+    Raises:
+        ValueError: If the project has no (non-deleted) account for the resource
+    """
+    account = Account.get_by_project_and_resource(session, project_id, resource_id)
+    if account is None:
+        raise ValueError(
+            f"Project {project_id} has no account for resource {resource_id}"
+        )
+
+    existing = session.query(AccountUser).filter(
+        AccountUser.account_id == account.account_id,
+        AccountUser.user_id == user_id,
+        AccountUser.is_active,
+    ).first()
+
+    if existing is None:
+        # Floor to the second: MySQL DATETIME has no fractional part and
+        # rounds half-up, which can push a microsecond-stamped "now" into the
+        # next second and make the just-granted row briefly is_active=False.
+        session.add(AccountUser(
+            account_id=account.account_id,
+            user_id=user_id,
+            start_date=datetime.now().replace(microsecond=0),
+            end_date=None,
+        ))
+
+    session.flush()
+
+
+def revoke_user_resource_access(
+    session: Session,
+    project_id: int,
+    user_id: int,
+    resource_id: int,
+) -> None:
+    """
+    Revoke a single user's access to a single project resource.
+
+    Deletes the user's AccountUser row(s) on the (project, resource) account
+    (ORM delete to trigger audit events, mirroring remove_user_from_project).
+    The project lead cannot be revoked.
+
+    NOTE: This function does NOT commit the session. The caller is responsible
+    for wrapping it in management_transaction().
+
+    Args:
+        session: SQLAlchemy session
+        project_id: Project ID
+        user_id: User ID to revoke
+        resource_id: Resource ID whose project account the user should leave
+
+    Raises:
+        ValueError: If the user is the project lead, or no account exists
+    """
+    project = session.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+
+    if project.project_lead_user_id == user_id:
+        raise ValueError("Cannot revoke the project lead's access")
+
+    account = Account.get_by_project_and_resource(session, project_id, resource_id)
+    if account is None:
+        raise ValueError(
+            f"Project {project_id} has no account for resource {resource_id}"
+        )
+
+    account_users = session.query(AccountUser).filter(
+        AccountUser.account_id == account.account_id,
+        AccountUser.user_id == user_id,
+    ).all()
+
+    for account_user in account_users:
+        session.delete(account_user)
+
+    session.flush()
+
+
+def reconcile_project_access(session: Session, project_id: int) -> None:
+    """
+    Give every project member access to every project resource.
+
+    Fills the user×resource access grid by re-running the membership-seeding
+    invariant (Account._seed_members) over each non-deleted account, so the
+    lead, admin, and all existing members become members of every account.
+    Only adds access; never revokes.
+
+    NOTE: This function does NOT commit the session. The caller is responsible
+    for wrapping it in management_transaction().
+
+    Args:
+        session: SQLAlchemy session
+        project_id: Project ID
+
+    Raises:
+        ValueError: If the project does not exist
+    """
+    project = session.get(Project, project_id)
+    if not project:
+        raise ValueError(f"Project {project_id} not found")
+
+    accounts = session.query(Account).filter(
+        Account.project_id == project_id,
+        Account.is_active,
+    ).all()
+
+    for account in accounts:
+        Account._seed_members(session, account)
+
     session.flush()

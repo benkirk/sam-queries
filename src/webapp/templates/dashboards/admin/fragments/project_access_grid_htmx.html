@@ -1,0 +1,122 @@
+{% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
+{#
+  Operator-only User / Resource Access grid (site operators only — gated by the
+  container in edit_project.html on EDIT_PROJECTS + EDIT_PROJECT_MEMBERS).
+
+  Surfaces and repairs partial-access errors: a cell is checked when the member
+  has currently-active access to that resource's account. The whole card is the
+  swap target — every control posts back and re-renders #accessGridContainer.
+
+  Context:
+    project       : Project
+    projcode      : str
+    columns       : list[{account_id, resource_id, resource_name, has_active_alloc}]
+    member_rows   : list[{user, is_lead, cells:[{column, checked}]}]
+    active_only   : bool
+    errors        : list[str]
+#}
+<div class="card">
+  <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+      <h5 class="mb-0 d-inline-block">
+        <i class="fas fa-user-shield text-primary"></i> User / Resource Access
+      </h5>
+      <span class="text-muted small ms-2">
+        Per-resource account access for each project member. All-checked is the
+        healthy state; gaps indicate partial access to repair.
+      </span>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <div class="form-check form-switch mb-0">
+        <input type="checkbox" class="form-check-input"
+               id="accessGridActiveOnly"
+               name="active_only" value="1"
+               {% if active_only %}checked{% endif %}
+               hx-get="{{ url_for('admin_dashboard.htmx_access_grid', projcode=projcode) }}"
+               hx-trigger="change"
+               hx-target="#accessGridContainer"
+               hx-swap="innerHTML"
+               hx-include="this">
+        <label class="form-check-label small text-muted fw-normal"
+               for="accessGridActiveOnly">
+          Active only
+        </label>
+      </div>
+      {% if member_rows and columns %}
+      <button type="button" class="btn btn-sm btn-warning"
+              hx-post="{{ url_for('admin_dashboard.htmx_access_grid_reconcile', projcode=projcode) }}"
+              hx-include="#accessGridActiveOnly"
+              hx-target="#accessGridContainer"
+              hx-swap="innerHTML"
+              hx-confirm="Give every member access to every resource shown on this project?">
+        <i class="fas fa-magic"></i> Reconcile all
+      </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card-body">
+    {{ form_errors_panel() }}
+
+    {% if not columns %}
+    <p class="text-muted mb-0">
+      {% if active_only %}
+        This project has no resources with a currently-active allocation.
+        Turn off <em>Active only</em> to include expired resources.
+      {% else %}
+        This project has no resource accounts.
+      {% endif %}
+    </p>
+    {% elif not member_rows %}
+    <p class="text-muted mb-0">This project has no members.</p>
+    {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th scope="col">Member</th>
+            {% for col in columns %}
+            <th scope="col" class="text-center {% if not col.has_active_alloc %}text-muted{% endif %}">
+              {{ col.resource_name }}
+              {% if not col.has_active_alloc %}
+              <span class="badge bg-secondary fw-normal ms-1" title="No currently-active allocation">expired</span>
+              {% endif %}
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in member_rows %}
+          <tr>
+            <td>
+              {{ row.user.display_name }}
+              <span class="text-muted small">({{ row.user.username }})</span>
+              {% if row.is_lead %}
+              <span class="badge bg-info text-dark fw-normal ms-1">lead</span>
+              {% endif %}
+            </td>
+            {% for cell in row.cells %}
+            <td class="text-center">
+              <input type="checkbox" class="form-check-input"
+                     name="grant" value="1"
+                     {% if cell.checked %}checked{% endif %}
+                     {% if row.is_lead %}checked disabled
+                       title="The project lead always has access and cannot be revoked here."
+                     {% else %}
+                       hx-post="{{ url_for('admin_dashboard.htmx_access_grid_toggle', projcode=projcode) }}"
+                       hx-vals='{"user_id": {{ row.user.user_id }}, "resource_id": {{ cell.column.resource_id }}}'
+                       hx-include="#accessGridActiveOnly"
+                       hx-target="#accessGridContainer"
+                       hx-swap="innerHTML"
+                       hx-trigger="change"
+                     {% endif %}>
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>

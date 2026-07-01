@@ -196,6 +196,7 @@ from .projects import (
     AddLinkedDirectoryForm,
     EditLinkedDirectoryForm,
     BulkDeactivateProjectDirectoriesForm,
+    AccessGridToggleForm,
 )
 from .user import (
     AddMemberForm,
@@ -264,6 +265,7 @@ __all__ = [
     'AddLinkedDirectoryForm',
     'EditLinkedDirectoryForm',
     'BulkDeactivateProjectDirectoriesForm',
+    'AccessGridToggleForm',
     # User
     'AddMemberForm',
     'EditAllocationForm',

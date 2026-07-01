@@ -171,6 +171,23 @@
 
 </div>
 
+<!-- ── User / Resource Access grid (site operators only) ──────────────────
+     Hidden from project lead/admin — only system operators holding BOTH
+     EDIT_PROJECTS and EDIT_PROJECT_MEMBERS see this remediation tool. The
+     initial load passes active_only=1 so the grid defaults to Active-only. -->
+{% if has_permission(Permission.EDIT_PROJECTS)
+      and has_permission(Permission.EDIT_PROJECT_MEMBERS) %}
+<div id="accessGridContainer" class="mt-4"
+     hx-get="{{ url_for('admin_dashboard.htmx_access_grid', projcode=project.projcode, active_only=1) }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <div class="text-center text-muted py-4">
+    <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+    <p class="mt-2">Loading user/resource access…</p>
+  </div>
+</div>
+{% endif %}
+
 <!-- ═══════════════════════════════════════════════════════ MODALS -->
 
 <!-- Add Allocation Modal (lazy-loaded) -->
