@@ -24,6 +24,7 @@ from webapp.utils.api_auth import api_key_required
 from webapp.api.helpers import register_error_handlers
 from webapp.extensions import db, csrf
 from datetime import datetime
+from system_status.timeutil import utcnow_naive  # status timestamps are naive-UTC
 import sys
 from pathlib import Path
 
@@ -75,7 +76,7 @@ def _validate_timestamp(data):
     """
     timestamp_str = data.get('timestamp')
     if not timestamp_str:
-        return datetime.now()
+        return utcnow_naive()
 
     try:
         # Try ISO format first
@@ -121,7 +122,7 @@ def _handle_reservations(reservations_data, system_name):
             existing.end_time = datetime.fromisoformat(resv_data['end_time'])
             existing.node_count = resv_data.get('node_count')
             existing.partition = resv_data.get('partition')
-            existing.updated_at = datetime.now()
+            existing.updated_at = utcnow_naive()
             reservation_ids.append(existing.reservation_id)
         else:
             # Insert new reservation
@@ -370,7 +371,7 @@ def report_outage():
 
     try:
         # Parse timestamps
-        start_time = datetime.now()
+        start_time = utcnow_naive()
         if data.get('start_time'):
             try:
                 start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
@@ -566,7 +567,7 @@ def update_outage(outage_id):
         else:
             outage.estimated_resolution = None
 
-    outage.updated_at = datetime.now()
+    outage.updated_at = utcnow_naive()
     db.session.commit()
     return jsonify({'success': True, 'outage_id': outage_id, 'status': outage.status}), 200
 
@@ -615,14 +616,14 @@ def get_reservations():
 
     # Filter by upcoming
     if request.args.get('upcoming_only', 'true').lower() in ('true', '1', 'yes'):
-        query = query.filter(ResourceReservation.end_time >= datetime.now())
+        query = query.filter(ResourceReservation.end_time >= utcnow_naive())
 
     # Exclude stale reservations (not reported by collector in last 30 minutes).
     # Uses COALESCE(updated_at, created_at) so newly-inserted records (updated_at=NULL)
     # are not incorrectly filtered out.
     from sqlalchemy import func
     from datetime import timedelta
-    cutoff = datetime.now() - timedelta(minutes=30)
+    cutoff = utcnow_naive() - timedelta(minutes=30)
     last_seen = func.coalesce(ResourceReservation.updated_at, ResourceReservation.created_at)
     query = query.filter(last_seen >= cutoff)
 
