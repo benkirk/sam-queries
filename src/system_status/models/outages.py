@@ -2,7 +2,7 @@
 # System Outages and Reservations Models
 #-------------------------------------------------------------------------eh-
 
-from sam.fmt import utcnow_naive  # status timestamps are naive-UTC, not local
+from ..timeutil import utcnow_naive  # status timestamps are naive-UTC, not local
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import relationship
 from ..base import StatusBase, SessionMixin

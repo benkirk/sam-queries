@@ -8,7 +8,7 @@
 # `get_or_create_*` helpers in `system_status.queries.lookups`).
 #-------------------------------------------------------------------------eh-
 
-from sam.fmt import utcnow_naive  # status timestamps are naive-UTC, not local
+from ..timeutil import utcnow_naive  # status timestamps are naive-UTC, not local
 
 from sqlalchemy import (
     Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, text

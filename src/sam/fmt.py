@@ -31,7 +31,7 @@ Quick reference
 """
 import math
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from typing import Optional, Union
 from zoneinfo import ZoneInfo
 
@@ -96,18 +96,6 @@ def naive_local_to_utc(
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=tz)
     return dt.astimezone(_UTC).replace(tzinfo=None)
-
-
-def utcnow_naive() -> datetime:
-    """Naive-UTC 'now' for the collector / system_status convention.
-
-    That subsystem stores naive-UTC timestamps (see ``to_local_dt`` above), so
-    its comparisons and inserts must use UTC wall-clock regardless of the
-    process timezone.  Use this instead of ``datetime.now()`` anywhere in the
-    status/collector paths so they stay correct even though the SAM/MySQL side
-    runs in the DB's local (Mountain) timezone.
-    """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 

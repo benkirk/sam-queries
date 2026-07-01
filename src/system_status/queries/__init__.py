@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
-from sam.fmt import utcnow_naive  # status/collector timestamps are naive-UTC
+from ..timeutil import utcnow_naive  # status/collector timestamps are naive-UTC
 
 from system_status.models import (
     DerechoStatus,

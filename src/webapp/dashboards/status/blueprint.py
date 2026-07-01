@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 from webapp.utils.rbac import require_permission, Permission
 from marshmallow import ValidationError
 from sam.schemas.forms import CreateOutageForm, EditOutageForm
-from sam.fmt import utcnow_naive  # status/collector timestamps are naive-UTC
+from system_status.timeutil import utcnow_naive  # status/collector timestamps are naive-UTC
 from datetime import timedelta
 import logging
 

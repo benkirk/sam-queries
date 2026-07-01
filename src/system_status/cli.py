@@ -408,7 +408,7 @@ class SystemStatusCLI:
 
     def _display_reservations(self, system_name):
         """Display active or upcoming reservations."""
-        from sam.fmt import utcnow_naive  # status timestamps are naive-UTC
+        from system_status.timeutil import utcnow_naive  # status timestamps are naive-UTC
         from system_status.models import System
         reservations = (
             self.session.query(ResourceReservation)

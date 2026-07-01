@@ -10,7 +10,7 @@ from sqlalchemy.orm import relationship, declarative_base, declared_attr, Sessio
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
 
-from sam.fmt import utcnow_naive  # status timestamps are naive-UTC, not local
+from .timeutil import utcnow_naive  # status timestamps are naive-UTC, not local
 import os
 
 
