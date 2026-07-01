@@ -15,16 +15,19 @@
     resource_name      — resource name string
     window             — 30 or 90
     current_threshold  — current integer value, or None
-    error              — validation error string, or None
+    errors             — list of validation error strings (server-side), or None
 #}
 <span id="threshold-btn-{{ window }}d-{{ projcode }}"
       class="d-inline-flex align-items-center gap-1">
+    {# novalidate: the server (SetThresholdForm) is the source of truth, so
+       inline errors render here instead of a native browser bubble. #}
     <form hx-post="{{ url_for('user_dashboard.htmx_save_threshold', projcode=projcode, resource_name=resource_name, window=window) }}"
           hx-target="#htmx-rolling-{{ projcode }}-{{ resource_name }}"
           hx-swap="innerHTML"
-          class="d-inline-flex align-items-center gap-1 m-0">
-        {% if error %}
-        <span class="text-danger" style="font-size:0.7rem;">{{ error }}</span>
+          class="d-inline-flex align-items-center gap-1 m-0"
+          novalidate>
+        {% if errors %}
+        <span class="text-danger" style="font-size:0.7rem;">{{ errors | join('; ') }}</span>
         {% endif %}
         <input type="number" name="threshold_pct"
                value="{{ current_threshold if current_threshold is not none else '' }}"

@@ -17,7 +17,7 @@
 #}
 
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
-{% from 'dashboards/fragments/glossary.html' import g_rolling_rate with context %}
+{% from 'dashboards/fragments/glossary.html' import g_rolling_rate, g_threshold_limit with context %}
 <div class="mt-3 pt-3 border-top">
     <h6 class="mb-1">
         <i class="fas fa-thermometer-half text-muted me-1"></i> Rolling Consumption Rate
@@ -36,9 +36,11 @@
     {% set center_pos = 50 %}
 
     {# ── Grid wrapper: col1=label(4rem) col2=bar(1fr) col3=annotations(auto)
-           All rows — both bars + scale — share the same column widths so
-           0%/100%/200% always align with the bar edges. ── #}
-    <div style="display:grid; grid-template-columns:4rem 1fr auto; column-gap:0.5rem; row-gap:3px; align-items:center;">
+           col4=limit action(auto).  All rows — both bars + scale — share the
+           same column widths so 0%/100%/200% align with the bar edges, and the
+           col4 action buttons line up vertically regardless of the variable
+           "running hot/cold" annotation width in col3. ── #}
+    <div style="display:grid; grid-template-columns:4rem 1fr auto auto; column-gap:0.5rem; row-gap:3px; align-items:center;">
 
     {% for label, win, win_days in [('30-day', rolling_30, 30), ('90-day', rolling_90, 90)] %}
     {% if win %}
@@ -116,7 +118,7 @@
             {% endif %}
         </div>
 
-        {# col 3: badge + annotation + optional limit edit button #}
+        {# col 3: badge + annotation #}
         <div class="d-flex align-items-center gap-1 text-nowrap">
             {% if state == 'over_limit' %}
             <span class="badge bg-danger"><i class="fas fa-exclamation-triangle me-1"></i>over {{ win.threshold_pct }}% lim</span>
@@ -129,10 +131,15 @@
                 {% endif %}
                 &middot; {{ state_label }}
             </span>
-            {# Threshold edit lives on the master allocation's account, not the
-               child's — the displayed pct is pool burn, so a child-side
-               threshold is never compared against. Hide the edit button on
-               inheriting projects; users edit via the master parent project. #}
+        </div>
+
+        {# col 4: limit action + help — its own grid column so the buttons line
+           up vertically across rows regardless of the col-3 annotation width.
+           Threshold edit lives on the master allocation's account, not the
+           child's — the displayed pct is pool burn, so a child-side threshold
+           is never compared against. Hide the edit button on inheriting
+           projects; users edit via the master parent project. #}
+        <div class="d-flex align-items-center gap-1 text-nowrap">
             {% if can_edit_threshold and not rolling_is_inheriting %}
             <span id="threshold-btn-{{ win_days }}d-{{ projcode }}">
                 {% if win.threshold_pct is none %}
@@ -151,19 +158,22 @@
                 </button>
                 {% endif %}
             </span>
+            {{ help_icon(g_threshold_limit(window=win_days), rich=True,
+                         title='Consumption Rate Limit', placement='left') }}
             {% endif %}
         </div>
 
     {% endif %}
     {% endfor %}
 
-        {# Scale row — col1: empty spacer, col2: tick labels, col3: nothing #}
+        {# Scale row — col1: empty spacer, col2: tick labels, col3+col4: nothing #}
         <span></span>
         <div class="position-relative" style="height:1.1rem; font-size:0.65rem; color:#6c757d; margin-top:1px;">
             <span style="position:absolute; left:0;">0%</span>
             <span style="position:absolute; left:{{ center_pos }}%; transform:translateX(-50%);">&#9650; 100%</span>
             <span style="position:absolute; right:0;">200%</span>
         </div>
+        <span></span>
         <span></span>
 
     </div>{# /grid #}

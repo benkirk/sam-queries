@@ -247,6 +247,38 @@ def require_project_permission(
     return decorator
 
 
+def require_project_operator_access(f: Callable) -> Callable:
+    """Gate a project route on **site-operator** privileges.
+
+    Requires the caller to hold BOTH ``EDIT_PROJECTS`` and
+    ``EDIT_PROJECT_MEMBERS`` at the **system** level (``has_permission``).
+    Unlike ``require_project_permission`` / ``require_member_management``,
+    project lead/admin stewardship does NOT grant access, and facility
+    scope is not consulted — this is for cross-project remediation tools
+    that only site operators should see, such as the User/Resource Access
+    grid on the Edit Project page.
+
+    Resolves ``<projcode>`` from the URL and passes the ``project`` object
+    to the view (same contract as the other project decorators).
+    """
+    @wraps(f)
+    def decorated_function(projcode: str, *args, **kwargs):
+        if not current_user.is_authenticated:
+            abort(401)
+
+        project, error = get_project_or_404(db.session, projcode)
+        if error:
+            return error
+
+        if not (has_permission(current_user, Permission.EDIT_PROJECTS)
+                and has_permission(current_user, Permission.EDIT_PROJECT_MEMBERS)):
+            abort(403)
+
+        return f(project, *args, **kwargs)
+
+    return decorated_function
+
+
 def _require_project_check(check_fn: Callable) -> Callable:
     """Decorator factory wrapping a ``can_*(user, project)`` helper.
 

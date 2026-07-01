@@ -1,0 +1,31 @@
+{#
+  Edit-outage modal body — re-renderable fragment.
+
+  Rendered inside #editOutageFormBody (initial modal markup) and standalone by
+  htmx_update_outage on a validation error. Fields are populated client-side by
+  static/js/modals.js (the 'outage-edit' action) from the clicked row's data
+  attributes, with UTC→local conversion for the datetime — so the `id=` overrides
+  must match the ids that JS sets (editTitle, editStatus, ...). On error
+  re-render the submitted values come back via `form`.
+
+  Context (error re-render): form, field_errors, errors.
+#}
+{% from 'dashboards/fragments/form_fields.html'
+   import text_field, select_field, textarea_field, datetime_field, form_errors_panel with context %}
+
+{{ form_errors_panel() }}
+
+{{ text_field('title', 'Title', id='editTitle') }}
+
+{{ select_field('status', 'Status', required=True, optional_text='', id='editStatus',
+                options=[('investigating', 'Investigating'), ('identified', 'Identified'),
+                         ('monitoring', 'Monitoring'), ('resolved', 'Resolved')]) }}
+
+{{ select_field('severity', 'Severity', required=True, optional_text='', id='editSeverity',
+                options=[('critical', 'Critical'), ('major', 'Major'),
+                         ('minor', 'Minor'), ('maintenance', 'Maintenance')]) }}
+
+{{ textarea_field('description', 'Description', id='editDescription') }}
+
+{{ datetime_field('estimated_resolution', 'Estimated Resolution', id='editEstimatedResolution',
+                  help='Times shown in your local TZ. Clear to remove estimated resolution time.') }}

@@ -2,6 +2,7 @@
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_tib with context %}
+{% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
 
 {% block title %}Disk Usage Details - {{ resource_name }} - SAM{% endblock %}
 
@@ -253,6 +254,20 @@
 </div>
 {% endif %}
 
+{# ── Timeframe picker (governs the Usage Over Time chart below; the
+   capacity header, tree, and per-user table stay point-in-time at the
+   latest snapshot). Weekly snapshot cadence → 90d/180d/1yr presets; the
+   Epoch button jumps to the earliest snapshot we hold for this scope. ── #}
+{{ date_range_picker(
+    action=url_for('user_dashboard.resource_details', projcode=projcode),
+    start_date=start_date,
+    end_date=end_date,
+    hidden_fields=({'resource': resource_name, 'scope': scope, 'fileset': fileset}
+                   if fileset else {'resource': resource_name, 'scope': scope}),
+    epoch_date=epoch_date,
+    presets=[('90d', 90), ('180d', 180), ('1yr', 365)]
+) }}
+
 {# ── Stacked-area chart ─────────────────────────────────────────────── #}
 <div class="card mb-4">
     <div class="card-header cursor-pointer"
@@ -271,8 +286,27 @@
     </div>
     <div id="collapseDiskUsage" class="collapse show">
         <div class="card-body">
-            <div class="chart-container">
-                {{ usage_chart | safe }}
+            {# Chart loads via HTMX so the Data Volume / File Count tab can
+               swap the SVG in place. nav-view-persistence.js round-trips
+               the `metric` URL param through localStorage via the
+               data-chart-persist-* attributes (metric only — never the
+               dates, so the timeframe picker stays authoritative). #}
+            <div id="disk-usage-chart-wrapper"
+                 hx-get="{{ url_for('user_dashboard.resource_details_disk_usage_chart',
+                                    projcode=projcode,
+                                    resource=resource_name,
+                                    scope=scope,
+                                    fileset=fileset,
+                                    start_date=start_date,
+                                    end_date=end_date,
+                                    metric='bytes') }}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML"
+                 data-chart-persist-id="disk-usage-chart-{{ projcode }}-{{ resource_name }}"
+                 data-chart-persist-keys="metric">
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                </div>
             </div>
         </div>
     </div>

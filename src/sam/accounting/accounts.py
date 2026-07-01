@@ -185,7 +185,10 @@ class Account(Base, SoftDeleteMixin, SessionMixin):
         }
         propagate_user_ids -= existing_member_ids
 
-        now = datetime.now()
+        # Floor to the second: MySQL DATETIME has no fractional part and rounds
+        # half-up, which can push a microsecond-stamped "now" into the next
+        # second and make a just-seeded member briefly is_active=False.
+        now = datetime.now().replace(microsecond=0)
         for user_id in propagate_user_ids:
             session.add(AccountUser(
                 account_id=account.account_id,

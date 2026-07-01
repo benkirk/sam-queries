@@ -25,6 +25,17 @@ rate</em> — the pace needed to spend exactly the allocation over its period.
 rate crosses it.
 {%- endmacro %}
 
+{# ── Consumption-rate limit (popover) ── #}
+{% macro g_threshold_limit(window=None) -%}
+Sets a <strong>hard limit</strong> on a project's resource consumption rate.
+Exceeding this threshold prevents the system from scheduling new jobs until
+usage has decreased — useful to avoid exhausting a project's resources too
+early in the allotted period.
+<br><br>Recommended limits:
+<br>&bull; <strong{% if window == 30 %} class="text-warning"{% endif %}>120%</strong> over 30 days
+<br>&bull; <strong{% if window == 90 %} class="text-warning"{% endif %}>105%</strong> over 90 days
+{%- endmacro %}
+
 {% macro g_shared_pool() -%}
 This allocation draws from a pool shared with sibling projects under a master
 allocation. The bar shows total pool consumption; the lighter inner segment
@@ -73,20 +84,23 @@ allocations are charged.
 
 {# ── Transaction & adjustment types (popover) ── #}
 {% macro g_txn_types() -%}
-<strong>NEW</strong> — initial allocation ·
-<strong>SUPPLEMENT</strong> — extra units added ·
-<strong>EXTENSION</strong> — end date moved out ·
-<strong>TRANSFER</strong> — units moved between projects ·
-<strong>ADJUSTMENT</strong> — manual correction to the balance.
+{# Popover HTML collapses source newlines, so use explicit <br>&bull; per item
+   (matches g_rolling_rate) rather than '·' separators, which otherwise wrap
+   mid-sentence. #}
+&bull; <strong>NEW</strong> — initial allocation
+<br>&bull; <strong>SUPPLEMENT</strong> — extra units added
+<br>&bull; <strong>EXTENSION</strong> — end date moved out
+<br>&bull; <strong>TRANSFER</strong> — units moved between projects
+<br>&bull; <strong>ADJUSTMENT</strong> — manual correction to the balance.
 {%- endmacro %}
 
 {# ── Scheduler / queue states (popover) ── #}
 {% macro g_queue_states() -%}
 Counts below split each of Jobs, Cores and GPUs by scheduler state:
-<strong>Running</strong> — currently executing ·
-<strong>Pending</strong> — eligible and waiting in the queue ·
-<strong>Held</strong> — blocked (dependency, hold, or insufficient resources).
-Pending/held work does not consume the allocation until it starts.
+<br>&bull; <strong>Running</strong> — currently executing
+<br>&bull; <strong>Pending</strong> — eligible and waiting in the queue
+<br>&bull; <strong>Held</strong> — blocked (dependency, hold, or insufficient resources).
+<br>Pending/held work does not consume the allocation until it starts.
 {%- endmacro %}
 
 {% macro g_held() -%}

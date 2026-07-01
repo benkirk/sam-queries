@@ -12,7 +12,9 @@ from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
 from marshmallow import ValidationError
 
-from sam.schemas.forms.user import EditAllocationForm, SetShellForm, SetPrimaryGidForm
+from sam.schemas.forms.user import (
+    EditAllocationForm, SetShellForm, SetPrimaryGidForm, SetThresholdForm,
+)
 
 from webapp.extensions import db
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
@@ -21,6 +23,7 @@ from sam.queries.disk_usage import (
     get_directory_user_breakdown_at,
     get_disk_usage_timeseries_by_user,
     get_disk_usage_timeseries_for_directory,
+    get_earliest_disk_activity_date,
     get_subtree_directory_usage_at,
 )
 from sam.queries.rolling_usage import get_project_rolling_usage
@@ -764,6 +767,8 @@ _USAGE_CHART_DATA_KEY = {
     'core_hours': 'daily_core_hours',
 }
 
+_VALID_DISK_USAGE_CHART_METRIC = {'bytes', 'files'}
+
 
 @bp.route('/resource-details/usage-chart/<projcode>')
 @login_required
@@ -863,6 +868,103 @@ def resource_details_usage_chart(project):
     )
 
 
+@bp.route('/resource-details/disk-usage-chart/<projcode>')
+@login_required
+@require_project_access(include_ancestors=True)
+def resource_details_disk_usage_chart(project):
+    """HTMX fragment: Disk "Usage Over Time" stacked-area chart for a metric.
+
+    Loaded by the disk resource-details page on initial render and
+    re-fetched when the analyst toggles the Data Volume / File Count tab.
+    Mirrors ``resource_details_usage_chart`` (the HPC/DAV equivalent):
+    rebuilds the disk subtree to resolve the scoped account ids (or the
+    fileset's directory), renders the chart for the requested metric, and
+    returns the tab strip + chart as one unit so the active tab follows.
+    """
+    resource_name = (request.args.get('resource') or '').strip()
+    if not resource_name:
+        abort(400, 'resource is required')
+
+    metric = request.args.get('metric', 'bytes')
+    if metric not in _VALID_DISK_USAGE_CHART_METRIC:
+        metric = 'bytes'
+
+    # Same default window as the disk page (last 90 days).
+    try:
+        if request.args.get('start_date'):
+            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
+        else:
+            start_date = datetime.now() - timedelta(days=90)
+        if request.args.get('end_date'):
+            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
+        else:
+            end_date = datetime.now()
+    except ValueError:
+        abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
+
+    scope = (request.args.get('scope') or '').strip() or project.projcode
+    if scope != project.projcode:
+        scope_project = Project.get_by_projcode(db.session, scope)
+        if not scope_project or scope_project.tree_root != project.tree_root:
+            scope = project.projcode
+    fileset = request.args.get('fileset') or None
+
+    # Rebuild the subtree to resolve the scoped accounts / valid filesets
+    # (mirrors _render_disk_resource_details). Cheap relative to the chart.
+    full = build_disk_subtree(db.session, project, resource_name)
+    scope_node = _find_disk_node(full['tree'], scope) or full['tree']
+    scope_account_ids = _collect_disk_account_ids(scope_node)
+
+    # Drop an invalid ?fileset= (not one of this scope's directories) and
+    # fall back to project-scope rendering, matching the page route.
+    if fileset is not None:
+        valid_dirs = _collect_directory_to_projcode(scope_node)
+        if fileset not in valid_dirs:
+            fileset = None
+
+    chart_start = start_date.date() if hasattr(start_date, 'date') else start_date
+    chart_end = end_date.date() if hasattr(end_date, 'date') else end_date
+    if fileset is None:
+        timeseries = get_disk_usage_timeseries_by_user(
+            db.session,
+            account_ids=scope_account_ids,
+            start_date=chart_start,
+            end_date=chart_end,
+            top_n=15,
+            metric=metric,
+        )
+    else:
+        timeseries = get_disk_usage_timeseries_for_directory(
+            db.session,
+            resource_name=resource_name,
+            directory_name=fileset,
+            start_date=chart_start,
+            end_date=chart_end,
+            top_n=15,
+            metric=metric,
+        )
+
+    disk_link_kind = (
+        'user' if has_permission(current_user, Permission.VIEW_USERS) else None
+    )
+    chart_svg = generate_disk_usage_stacked_area(
+        timeseries, link_kind=disk_link_kind, metric=metric,
+    )
+
+    return render_template(
+        'dashboards/user/partials/disk_usage_chart.html',
+        chart_svg=chart_svg,
+        metric=metric,
+        projcode=project.projcode,
+        resource_name=resource_name,
+        scope=scope,
+        fileset=fileset,
+        start_date=start_date.strftime('%Y-%m-%d'),
+        end_date=end_date.strftime('%Y-%m-%d'),
+        has_data=bool(timeseries.get('series')),
+    )
+
+
 def _disk_subtree_total_bytes(node) -> int:
     """Sum ``current_bytes`` over a tree node and all its descendants."""
     total = node.get('current_bytes', 0) or 0
@@ -927,6 +1029,11 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     scope_node = _find_disk_node(full_tree, scope) or full_tree
     scope_account_ids = _collect_disk_account_ids(scope_node)
 
+    # Anchor the "Epoch" preset on the timeframe picker to the earliest
+    # disk snapshot we hold for this scope's accounts — full storage
+    # history, which may span allocation boundaries.
+    epoch_date = get_earliest_disk_activity_date(db.session, scope_account_ids)
+
     # Build the {directory_name → projcode} map by walking the scoped
     # subtree's in-memory ProjectDirectory data (already loaded by
     # build_disk_subtree). Lets the Filesets-card query hit
@@ -974,13 +1081,6 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         used_tib = used_bytes / (1024 ** 4)
         total_files = _disk_subtree_total_files(scope_node)
         activity_date = _disk_subtree_latest_activity_date(scope_node)
-        timeseries = get_disk_usage_timeseries_by_user(
-            db.session,
-            account_ids=scope_account_ids,
-            start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
-            end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
-            top_n=15,
-        )
         user_rows = _build_disk_user_table(
             db.session, scope_account_ids, activity_date, used_bytes,
         )
@@ -996,14 +1096,6 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         used_tib = used_bytes / (1024 ** 4)
         total_files = fileset_row['files']
         activity_date = subtree_activity_date
-        timeseries = get_disk_usage_timeseries_for_directory(
-            db.session,
-            resource_name=resource_name,
-            directory_name=fileset,
-            start_date=start_date.date() if hasattr(start_date, 'date') else start_date,
-            end_date=end_date.date() if hasattr(end_date, 'date') else end_date,
-            top_n=15,
-        )
         breakdown = get_directory_user_breakdown_at(
             db.session,
             resource_name=resource_name,
@@ -1046,14 +1138,10 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
             )
 
     percent_used = (used_tib / allocated_tib * 100) if allocated_tib > 0 else 0.0
-    # Operators (VIEW_USERS) get clickable legend usernames that pop the
-    # user-details modal; non-operators get plain text since the modal
-    # endpoint would 403 on click. Same gating shape as the queue-load
-    # chart in status/blueprint.py:_render_user_proj_chart.
-    disk_link_kind = (
-        'user' if has_permission(current_user, Permission.VIEW_USERS) else None
-    )
-    usage_chart = generate_disk_usage_stacked_area(timeseries, link_kind=disk_link_kind)
+    # The stacked-area chart itself is rendered lazily by the
+    # `resource_details_disk_usage_chart` HTMX fragment (one code path,
+    # per-metric caching, Data Volume / File Count tab swap) — not inline
+    # here. The page only emits the deferred loader wrapper.
 
     return render_template(
         'dashboards/user/resource_details_disk.html',
@@ -1069,7 +1157,7 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
         has_children=bool(project.has_children),
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
-        usage_chart=usage_chart,
+        epoch_date=epoch_date.strftime('%Y-%m-%d') if epoch_date else None,
         show_scans=show_scans,
         scan_info=scan_info,
         capacity={
@@ -1453,23 +1541,18 @@ def htmx_save_threshold(project, resource_name, window):
     if not account:
         return '<div class="alert alert-danger">Account not found for this resource</div>', 404
 
-    raw = request.form.get('threshold_pct', '').strip()
-    if raw == '':
-        new_val = None
-    else:
-        try:
-            new_val = int(raw)
-            if new_val <= 100:
-                raise ValueError
-        except ValueError:
-            return render_template(
-                'dashboards/user/fragments/threshold_form_htmx.html',
-                projcode=projcode,
-                resource_name=resource_name,
-                window=window,
-                current_threshold=raw,
-                error='Must be an integer greater than 100, or leave blank to remove the limit.',
-            )
+    try:
+        form_data = SetThresholdForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/user/fragments/threshold_form_htmx.html',
+            projcode=projcode,
+            resource_name=resource_name,
+            window=window,
+            current_threshold=request.form.get('threshold_pct', ''),
+            errors=SetThresholdForm.flatten_errors(e.messages),
+        )
+    new_val = form_data['threshold_pct']
 
     with management_transaction(db.session):
         if window == 30:
