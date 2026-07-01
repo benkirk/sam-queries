@@ -8,7 +8,7 @@
 # `get_or_create_*` helpers in `system_status.queries.lookups`).
 #-------------------------------------------------------------------------eh-
 
-from datetime import datetime
+from sam.fmt import utcnow_naive  # status timestamps are naive-UTC, not local
 
 from sqlalchemy import (
     Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, text
@@ -26,7 +26,7 @@ class System(StatusBase, SessionMixin):
     system_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(32), nullable=False, unique=True)
     created_at = Column(DateTime, nullable=False,
-                        default=datetime.now,
+                        default=utcnow_naive,
                         server_default=text("CURRENT_TIMESTAMP"))
 
     queues = relationship("QueueDef", back_populates="system",
@@ -60,7 +60,7 @@ class QueueDef(StatusBase, SessionMixin):
     system_id = Column(Integer, ForeignKey("systems.system_id"), nullable=False, index=True)
     name = Column(String(32), nullable=False)
     created_at = Column(DateTime, nullable=False,
-                        default=datetime.now,
+                        default=utcnow_naive,
                         server_default=text("CURRENT_TIMESTAMP"))
 
     system = relationship("System", back_populates="queues")
@@ -85,7 +85,7 @@ class Filesystem(StatusBase, SessionMixin):
     filesystem_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(32), nullable=False, unique=True)
     created_at = Column(DateTime, nullable=False,
-                        default=datetime.now,
+                        default=utcnow_naive,
                         server_default=text("CURRENT_TIMESTAMP"))
 
     def __str__(self):
@@ -116,7 +116,7 @@ class UserDef(StatusBase, SessionMixin):
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(32), nullable=False, unique=True)
     created_at = Column(DateTime, nullable=False,
-                        default=datetime.now,
+                        default=utcnow_naive,
                         server_default=text("CURRENT_TIMESTAMP"))
 
     def __str__(self):
@@ -145,7 +145,7 @@ class ProjectCodeDef(StatusBase, SessionMixin):
     project_code_id = Column(Integer, primary_key=True, autoincrement=True)
     project_code = Column(String(16), nullable=False, unique=True)
     created_at = Column(DateTime, nullable=False,
-                        default=datetime.now,
+                        default=utcnow_naive,
                         server_default=text("CURRENT_TIMESTAMP"))
 
     def __str__(self):
@@ -173,7 +173,7 @@ class LoginNodeDef(StatusBase, SessionMixin):
         nullable=False,
     )
     created_at = Column(DateTime, nullable=False,
-                        default=datetime.now,
+                        default=utcnow_naive,
                         server_default=text("CURRENT_TIMESTAMP"))
 
     system = relationship("System", back_populates="login_node_defs")

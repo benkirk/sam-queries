@@ -7,7 +7,8 @@ from flask_login import login_required, current_user
 from webapp.utils.rbac import require_permission, Permission
 from marshmallow import ValidationError
 from sam.schemas.forms import CreateOutageForm, EditOutageForm
-from datetime import datetime, timedelta
+from sam.fmt import utcnow_naive  # status/collector timestamps are naive-UTC
+from datetime import timedelta
 import logging
 
 from webapp.extensions import db
@@ -108,7 +109,7 @@ def index():
         outages=outages,
         reservations=reservations,
         google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
-        now=datetime.now(),
+        now=utcnow_naive(),
         selected_hours=selected_hours,
         chart_hours=chart_hours,
         # Scan-capable disk resources for the gated "Filesystem Scans" tab.
@@ -136,7 +137,7 @@ def nodetype_history(system, node_type):
         hours = int(request.args.get('days')) * 24
     else:
         hours = 168  # 7-day default
-    end_date = datetime.now()
+    end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
     session = db.session
@@ -189,7 +190,7 @@ def partition_history(system, partition):
         hours = int(request.args.get('days')) * 24
     else:
         hours = 168  # 7-day default
-    end_date = datetime.now()
+    end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
     session = db.session
@@ -258,7 +259,7 @@ def queue_history(system, queue_name):
         hours = int(request.args.get('days')) * 24
     else:
         hours = 168  # 7-day default
-    end_date = datetime.now()
+    end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
     session = db.session
@@ -355,7 +356,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         hours = 168
 
     top_n = 15
-    end_date = datetime.now()
+    end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
     timeseries = status_queries.get_user_proj_timeseries(
@@ -513,7 +514,7 @@ def htmx_create_outage():
         component=data.get('component'),
         description=data.get('description'),
         status='investigating',
-        start_time=data.get('start_time') or datetime.now(),  # default: now (UTC)
+        start_time=data.get('start_time') or utcnow_naive(),  # default: now (UTC)
     )
     if data.get('estimated_resolution') is not None:
         outage.estimated_resolution = data['estimated_resolution']
@@ -560,7 +561,7 @@ def htmx_update_outage(outage_id):
     # @post_load already converted to naive-UTC; None clears the field.
     outage.estimated_resolution = data.get('estimated_resolution')
 
-    outage.updated_at = datetime.now()
+    outage.updated_at = utcnow_naive()
     db.session.commit()
 
     flash('Outage updated.', 'success')
@@ -579,7 +580,7 @@ def htmx_resolve_outage(outage_id):
     outage = db.session.query(SystemOutage).get(outage_id)
     if outage:
         outage.status = 'resolved'
-        outage.updated_at = datetime.now()
+        outage.updated_at = utcnow_naive()
         db.session.commit()
         flash('Outage resolved.', 'success')
     else:

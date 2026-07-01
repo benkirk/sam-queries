@@ -2,7 +2,7 @@
 # System Outages and Reservations Models
 #-------------------------------------------------------------------------eh-
 
-from datetime import datetime
+from sam.fmt import utcnow_naive  # status timestamps are naive-UTC, not local
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import relationship
 from ..base import StatusBase, SessionMixin
@@ -53,12 +53,12 @@ class SystemOutage(StatusBase, SessionMixin):
     description = Column(Text, nullable=True)
 
     # Timestamps
-    start_time = Column(DateTime, nullable=False, default=datetime.now)
+    start_time = Column(DateTime, nullable=False, default=utcnow_naive)
     end_time = Column(DateTime, nullable=True)
     estimated_resolution = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.now)
-    updated_at = Column(DateTime, nullable=True, onupdate=datetime.now)
+    created_at = Column(DateTime, nullable=False, default=utcnow_naive)
+    updated_at = Column(DateTime, nullable=True, onupdate=utcnow_naive)
 
     # Relationship
     system = relationship(System, foreign_keys=[system_id])
@@ -114,8 +114,8 @@ class ResourceReservation(StatusBase, SessionMixin):
     node_count = Column(Integer, nullable=True)
     partition = Column(String(64), nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.now)
-    updated_at = Column(DateTime, nullable=True, onupdate=datetime.now)
+    created_at = Column(DateTime, nullable=False, default=utcnow_naive)
+    updated_at = Column(DateTime, nullable=True, onupdate=utcnow_naive)
 
     # Relationship
     system = relationship(System, foreign_keys=[system_id])

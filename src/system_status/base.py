@@ -1,7 +1,6 @@
 #-------------------------------------------------------------------------bh-
 #-------------------------------------------------------------------------eh-
 
-from datetime import datetime
 from typing import Optional
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Date, Boolean, Numeric,
@@ -10,6 +9,8 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship, declarative_base, declared_attr, Session
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
+
+from sam.fmt import utcnow_naive  # status timestamps are naive-UTC, not local
 import os
 
 
@@ -76,7 +77,7 @@ class StatusTimestampMixin:
 
     @declared_attr
     def created_at(cls):
-        return Column(DateTime, nullable=False, default=datetime.now,
+        return Column(DateTime, nullable=False, default=utcnow_naive,
                      server_default=text('CURRENT_TIMESTAMP'))
 
 

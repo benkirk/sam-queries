@@ -408,14 +408,14 @@ class SystemStatusCLI:
 
     def _display_reservations(self, system_name):
         """Display active or upcoming reservations."""
-        from datetime import datetime
+        from sam.fmt import utcnow_naive  # status timestamps are naive-UTC
         from system_status.models import System
         reservations = (
             self.session.query(ResourceReservation)
             .join(System, ResourceReservation.system_id == System.system_id)
             .filter(
                 System.name == system_name,
-                ResourceReservation.end_time >= datetime.now(),
+                ResourceReservation.end_time >= utcnow_naive(),
             )
             .order_by(ResourceReservation.start_time)
             .all()
