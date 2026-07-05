@@ -1,0 +1,42 @@
+{# Disk "Usage Over Time" chart fragment — loaded by the disk
+   resource-details page (hx-trigger="load") and re-rendered when the
+   Data Volume / File Count tab is clicked. Each tab's hx-get points back
+   at the same route with a different `metric=`, so the server re-renders
+   the tab strip + chart as one unit into #disk-usage-chart-wrapper and
+   the active tab follows the new metric.
+
+   nav-tabs (not data-bs-toggle="tab") — the whole partial swaps in place,
+   so there are no separate tab panes; the active state is server-rendered.
+   scope / fileset / start_date / end_date are threaded through every
+   hx-get so swapping metric preserves the current subtree, fileset, and
+   timeframe. #}
+
+{% set _LABELS = {'bytes': 'Data Volume', 'files': 'File Count'} %}
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+    {% for opt in ['bytes', 'files'] %}
+    <li class="nav-item" role="presentation">
+        <button type="button"
+                class="nav-link{% if metric == opt %} active{% endif %}"
+                role="tab"
+                aria-selected="{{ 'true' if metric == opt else 'false' }}"
+                hx-get="{{ url_for('user_dashboard.resource_details_disk_usage_chart',
+                                   projcode=projcode,
+                                   resource=resource_name,
+                                   scope=scope,
+                                   fileset=fileset,
+                                   start_date=start_date,
+                                   end_date=end_date,
+                                   metric=opt) }}"
+                hx-target="#disk-usage-chart-wrapper"
+                hx-swap="innerHTML">
+            {% if opt == 'bytes' %}<i class="fas fa-hdd me-1"></i>{% else %}<i class="fas fa-copy me-1"></i>{% endif %}
+            {{ _LABELS[opt] }}
+        </button>
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="chart-container">
+    {{ chart_svg | safe }}
+</div>

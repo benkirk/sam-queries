@@ -20,6 +20,8 @@ from sam.queries.disk_usage import (
     build_disk_subtree,
     bulk_get_directory_usage_at,
     get_disk_usage_timeseries_by_user,
+    get_disk_usage_timeseries_for_directory,
+    get_earliest_disk_activity_date,
 )
 from sam.summaries.disk_summaries import (
     DiskChargeSummary,
@@ -203,6 +205,137 @@ class TestDiskUsageTimeseries:
             start_date=_date(2026, 4, 1),
         )
         assert out['dates'] == [d2]
+
+
+# ============================================================================
+# metric='files' — file-count variant of both timeseries functions
+# ============================================================================
+
+
+class TestDiskUsageTimeseriesFileMetric:
+
+    def test_files_metric_values_and_ranking_differ_from_bytes(self, session):
+        """With metric='files', summed values AND top-N ranking follow
+        number_of_files, not bytes (the two rankings are deliberately
+        opposite here)."""
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        big_bytes = make_user(session)   # most bytes, fewest files
+        many_files = make_user(session)  # fewest bytes, most files
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        snap = _date(2026, 4, 11)
+        _seed_row(session, account=account, user=big_bytes, snap=snap,
+                  bytes_=10 * BYTES_PER_TIB, files=1)
+        _seed_row(session, account=account, user=many_files, snap=snap,
+                  bytes_=1 * BYTES_PER_TIB, files=1000)
+        session.flush()
+
+        out = get_disk_usage_timeseries_by_user(
+            session, account_ids=[account.account_id], top_n=10, metric='files',
+        )
+        by_user = {s['username']: s['values'] for s in out['series']}
+        assert by_user[big_bytes.username] == [1]
+        assert by_user[many_files.username] == [1000]
+        # Largest-by-files sits on top of the stack (last series).
+        assert out['series'][-1]['username'] == many_files.username
+
+    def test_files_metric_null_file_count_coalesces_to_zero(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        snap = _date(2026, 4, 11)
+        _seed_row(session, account=account, user=lead, snap=snap,
+                  bytes_=BYTES_PER_TIB, files=None)
+        session.flush()
+
+        out = get_disk_usage_timeseries_by_user(
+            session, account_ids=[account.account_id], metric='files',
+        )
+        assert out['series'][0]['values'] == [0]
+
+    def test_default_metric_is_bytes(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        snap = _date(2026, 4, 11)
+        _seed_row(session, account=account, user=lead, snap=snap,
+                  bytes_=4 * BYTES_PER_TIB, files=7)
+        session.flush()
+
+        default = get_disk_usage_timeseries_by_user(
+            session, account_ids=[account.account_id],
+        )
+        explicit = get_disk_usage_timeseries_by_user(
+            session, account_ids=[account.account_id], metric='bytes',
+        )
+        assert default == explicit
+        assert default['series'][0]['values'] == [4 * BYTES_PER_TIB]
+
+    def test_directory_files_metric(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        other = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        snap = _date(2026, 4, 11)
+        directory = '/gpfs/csfs1/test/files_metric'
+        # lead: many bytes / few files; other: few bytes / many files.
+        _seed_disk_activity(session, account=account, user=lead, directory=directory,
+                            snap=snap, bytes_=9 * BYTES_PER_TIB, files=2,
+                            resource_name=resource.resource_name)
+        _seed_disk_activity(session, account=account, user=other, directory=directory,
+                            snap=snap, bytes_=1 * BYTES_PER_TIB, files=500,
+                            resource_name=resource.resource_name)
+        session.flush()
+
+        out = get_disk_usage_timeseries_for_directory(
+            session, resource_name=resource.resource_name,
+            directory_name=directory, metric='files',
+        )
+        by_user = {s['username']: s['values'] for s in out['series']}
+        assert by_user[lead.username] == [2]
+        assert by_user[other.username] == [500]
+        assert out['series'][-1]['username'] == other.username
+
+
+# ============================================================================
+# get_earliest_disk_activity_date
+# ============================================================================
+
+
+class TestEarliestDiskActivityDate:
+
+    def test_empty_account_ids_returns_none(self, session):
+        assert get_earliest_disk_activity_date(session, []) is None
+
+    def test_returns_min_date_across_snapshots(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        early = _date(2026, 1, 3)
+        late = _date(2026, 4, 11)
+        _seed_row(session, account=account, user=lead, snap=late, bytes_=BYTES_PER_TIB)
+        _seed_row(session, account=account, user=lead, snap=early, bytes_=BYTES_PER_TIB)
+        session.flush()
+
+        assert get_earliest_disk_activity_date(
+            session, [account.account_id],
+        ) == early
+
+    def test_no_snapshots_returns_none(self, session):
+        resource = _disk_resource(session)
+        lead = make_user(session)
+        project = make_project(session, lead=lead)
+        account = make_account(session, project=project, resource=resource)
+        session.flush()
+
+        assert get_earliest_disk_activity_date(
+            session, [account.account_id],
+        ) is None
 
 
 # ============================================================================

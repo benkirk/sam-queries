@@ -157,7 +157,8 @@ class TestCreateAdjustmentPost:
         self, auth_client, scsg0001_project_id,
     ):
         """Marshmallow validation error → handle_htmx_form_post re-renders
-        the form fragment with the error list. No DB commit."""
+        the form fragment with the field-level error marked inline on the
+        offending input (is-invalid + invalid-feedback). No DB commit."""
         bad = _valid_form_data(scsg0001_project_id)
         del bad['amount']
         resp = auth_client.post(
@@ -165,22 +166,32 @@ class TestCreateAdjustmentPost:
         )
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        # Error panel is inside the re-rendered form fragment.
-        assert 'alert-danger' in html
+        # Field-level errors render inline on the field, not in the top panel.
+        assert 'is-invalid' in html
+        assert 'invalid-feedback' in html
         assert 'Amount' in html
+        # Accessibility: the errored field is wired for screen readers, and the
+        # form is `novalidate` so the server (not the browser) owns validation.
+        assert 'aria-invalid="true"' in html
+        assert 'aria-describedby=' in html
+        assert 'role="alert"' in html
+        assert 'novalidate' in html
 
     def test_negative_amount_rerenders_form_with_error(
         self, auth_client, scsg0001_project_id,
     ):
         """Schema's Range(min=0, min_inclusive=False) rejects negative input
-        — the error comes back as a re-rendered form fragment."""
+        — the field-level error comes back marked inline on the re-rendered
+        form fragment."""
         bad = _valid_form_data(scsg0001_project_id)
         bad['amount'] = '-5'
         resp = auth_client.post(
             '/allocations/htmx/create_adjustment', data=bad,
         )
         assert resp.status_code == 200
-        assert 'alert-danger' in resp.get_data(as_text=True)
+        html = resp.get_data(as_text=True)
+        assert 'is-invalid' in html
+        assert 'invalid-feedback' in html
 
     def test_unknown_project_id_rerenders_form_with_error(self, auth_client):
         """ValueError raised inside do_action (FK existence check) →

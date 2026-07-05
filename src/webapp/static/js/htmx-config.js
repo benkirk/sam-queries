@@ -28,6 +28,34 @@ document.body.addEventListener('htmx:sendError', function() {
     }
 });
 
+// ── Generic success/info toast (fired server-side via HX-Trigger: showToast) ──
+// Payload: {message: '…', variant: 'success'|'info'|'warning'|'danger'}.
+// Rides the same HX-Trigger channel used for closeActiveModal / reload*Card, so
+// every form funnelling through utils/htmx.py gets feedback with no route edits.
+document.body.addEventListener('showToast', function (evt) {
+    var d = evt.detail || {};
+    var toastEl = document.getElementById('htmxToast');
+    if (!toastEl) return;
+    toastEl.className = 'toast align-items-center border-0 text-bg-' + (d.variant || 'success');
+    document.getElementById('htmxToastBody').textContent = d.message || 'Done.';
+    bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3500 }).show();
+});
+
+// ── Focus the first invalid field after a server-validated re-render ──────────
+// Forms are `novalidate` (htmx submits past native HTML5 checks so the server is
+// the single source of truth). Native validation used to auto-focus the bad
+// field; replicate that here. After any swap whose new content carries a
+// .is-invalid control, focus + scroll the first one into view. Guarded on
+// presence so normal swaps never have focus stolen.
+document.body.addEventListener('htmx:afterSettle', function(evt) {
+    var root = evt.detail && evt.detail.target;
+    if (!root || !root.querySelector) return;
+    var firstInvalid = root.querySelector('.is-invalid');
+    if (!firstInvalid) return;
+    firstInvalid.focus({preventScroll: true});
+    firstInvalid.scrollIntoView({block: 'center', behavior: 'smooth'});
+});
+
 // ── Stacked modal z-index ───────────────────────────────────────────────────
 // Bootstrap 5 doesn't stack z-indexes across separate Modal instances: a second
 // modal opens at the same z-index as the first, and its backdrop (appended last
@@ -177,7 +205,11 @@ document.body.addEventListener('reloadUserCard', function(evt) {
         info:    { header: 'bg-info text-white',    close: 'btn-close-white', icon: 'fa-info-circle',          btn: 'btn-primary' }
     };
     var ALL_HEADER_CLASSES = 'bg-danger bg-warning bg-info text-white';
-    var ALL_BTN_CLASSES = 'btn-danger btn-warning btn-primary';
+    // Include the outline variants so a stray base class (e.g. btn-outline-primary)
+    // is always stripped before the variant solid color is applied — otherwise an
+    // outline (colored text) + solid (colored bg) combine into e.g. blue-on-blue.
+    var ALL_BTN_CLASSES = 'btn-danger btn-warning btn-primary btn-info '
+                        + 'btn-outline-danger btn-outline-warning btn-outline-primary btn-outline-info';
     var ALL_ICON_CLASSES = 'fa-exclamation-triangle fa-exclamation-circle fa-info-circle';
 
     function _openSamConfirm(opts) {

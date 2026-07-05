@@ -143,3 +143,17 @@ class EditLinkedDirectoryForm(HtmxFormSchema):
     @post_load
     def normalize(self, data, **kwargs):
         return _normalize_directory_suffix(data)
+
+
+class AccessGridToggleForm(HtmxFormSchema):
+    """Toggle one user's access to one project resource from the operator
+    User/Resource Access grid.
+
+    ``grant`` follows the unchecked-checkbox convention: an HTML checkbox that
+    is unchecked sends no key, so ``load_default=False`` correctly represents
+    "revoke". FK existence checks (user_id -> User, resource_id -> Resource)
+    stay in the route since schemas don't touch the DB.
+    """
+    user_id = f.Int(required=True)
+    resource_id = f.Int(required=True)
+    grant = f.Bool(load_default=False)

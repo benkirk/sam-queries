@@ -74,3 +74,35 @@
 .logout-link {
     color: var(--ncar-vermilion);
 }
+
+/* ===================================================================
+   User / Resource Access grid
+   =================================================================== */
+
+/* Keep the Member column pinned while the (potentially many) resource
+   columns scroll horizontally on wide projects. */
+.access-grid th.sticky-col,
+.access-grid td.sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--bs-body-bg, #fff);
+    box-shadow: 1px 0 0 var(--bs-border-color, #dee2e6);
+}
+
+.access-grid thead th.sticky-col {
+    z-index: 3;
+}
+
+.access-grid tbody tr:hover td.sticky-col {
+    background: var(--bs-tertiary-bg, #f8f9fa);
+}
+
+/* Chevron affordance on the collapsible card header. */
+.access-grid-chevron {
+    transition: transform 0.15s ease;
+}
+
+.access-grid-toggle.collapsed .access-grid-chevron {
+    transform: rotate(-90deg);
+}

@@ -392,8 +392,8 @@ _BYTES_PER_TIB = 1024 ** 4
 _BYTES_PER_PIB = 1024 ** 5
 
 
-def _disk_usage_stacked_area_cache_key(timeseries, link_kind=None):
-    return _content_hash([_content_hash(timeseries), link_kind or ''])
+def _disk_usage_stacked_area_cache_key(timeseries, link_kind=None, metric='bytes'):
+    return _content_hash([_content_hash(timeseries), link_kind or '', metric])
 
 
 # `link_kind` ('user' | None) controls whether legend usernames are
@@ -402,8 +402,8 @@ def _disk_usage_stacked_area_cache_key(timeseries, link_kind=None):
 # user_proj_stacked_area chart's pattern.
 @caching.chart_cached(name='disk_usage_stacked_area', maxsize=128,
                       key_fn=_disk_usage_stacked_area_cache_key)
-def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
-    """Render a stacked-area chart of disk bytes vs time.
+def generate_disk_usage_stacked_area(timeseries, link_kind=None, metric='bytes') -> str:
+    """Render a stacked-area chart of disk usage vs time.
 
     Args:
         timeseries: dict shaped as ``sam.queries.disk_usage.get_disk_usage_timeseries_by_user``
@@ -415,10 +415,13 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
             for no links. The 'Others' bucket is never linked.
             ``svg-chart-links.js`` intercepts the click and shows the
             modal — ``set_url()`` only emits the ``<a>`` wrapper.
+        metric: ``'bytes'`` (default) renders a byte-volume y-axis
+            auto-scaled to TiB or PiB; ``'files'`` renders a raw file-count
+            y-axis with compact, integer ticks.
 
-    Y-axis is auto-scaled to TiB or PiB based on the peak stacked total
-    (>= 1 PiB → PiB, else TiB). X-axis is date-formatted. Legend on the
-    right.
+    For ``metric='bytes'`` the y-axis is auto-scaled to TiB or PiB based on
+    the peak stacked total (>= 1 PiB → PiB, else TiB). X-axis is
+    date-formatted. Legend on the right.
     """
     if not timeseries or not timeseries.get('dates') or not timeseries.get('series'):
         return '<div class="text-center text-muted">No disk-usage history for this period</div>'
@@ -428,23 +431,29 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
     if not dates or not series:
         return '<div class="text-center text-muted">No disk-usage history for this period</div>'
 
-    stacked_totals = [
-        sum(s['values'][i] for s in series)
-        for i in range(len(dates))
-    ]
-    peak = max(stacked_totals) if stacked_totals else 0
-    if peak >= _BYTES_PER_PIB:
-        scale = _BYTES_PER_PIB
-        unit_label = 'PiB'
+    if metric == 'files':
+        # Raw file counts: no scaling; compact integer y-axis ticks.
+        scaled_series = [list(s['values']) for s in series]
+        ylabel = 'Number of files'
     else:
-        scale = _BYTES_PER_TIB
-        unit_label = 'TiB'
+        stacked_totals = [
+            sum(s['values'][i] for s in series)
+            for i in range(len(dates))
+        ]
+        peak = max(stacked_totals) if stacked_totals else 0
+        if peak >= _BYTES_PER_PIB:
+            scale = _BYTES_PER_PIB
+            unit_label = 'PiB'
+        else:
+            scale = _BYTES_PER_TIB
+            unit_label = 'TiB'
+        scaled_series = [
+            [v / scale for v in s['values']]
+            for s in series
+        ]
+        ylabel = f'Disk usage ({unit_label})'
 
     fig, ax = plt.subplots(figsize=(18, 5))
-    scaled_series = [
-        [v / scale for v in s['values']]
-        for s in series
-    ]
     # Others (always first per get_disk_usage_timeseries_by_user) gets a
     # neutral grey so it doesn't compete with the named-user palette.
     # Named users use the Unity 10-color stacked palette.
@@ -457,7 +466,11 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None) -> str:
             colors.append(UNITY_STACK_10[cycle_idx % 10])
             cycle_idx += 1
     ax.stackplot(dates, *scaled_series, colors=colors, alpha=0.85)
-    ax.set_ylabel(f'Disk usage ({unit_label})')
+    ax.set_ylabel(ylabel)
+    if metric == 'files':
+        from matplotlib.ticker import MaxNLocator
+        ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     ax.grid(True, alpha=0.3)
 
     # Build the legend explicitly with reversed-order Patch handles so

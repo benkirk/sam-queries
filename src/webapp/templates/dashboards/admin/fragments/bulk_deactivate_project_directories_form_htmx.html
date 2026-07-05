@@ -13,7 +13,8 @@
 
 <form hx-post="{{ url_for('admin_dashboard.htmx_admin_project_directory_bulk_deactivate_preview') }}"
       hx-target="#bulkDeactivateProjectDirectoriesFormContainer"
-      hx-swap="innerHTML">
+      hx-swap="innerHTML"
+      novalidate>
     <div class="modal-body">
         <p class="text-muted small mb-3">
             Enter a path prefix below to find every <strong>active</strong>

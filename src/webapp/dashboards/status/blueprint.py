@@ -5,7 +5,10 @@ System Status dashboard blueprint.
 from flask import Blueprint, render_template, request, flash, redirect, url_for, make_response, current_app
 from flask_login import login_required, current_user
 from webapp.utils.rbac import require_permission, Permission
-from datetime import datetime, timedelta
+from marshmallow import ValidationError
+from sam.schemas.forms import CreateOutageForm, EditOutageForm
+from system_status.timeutil import utcnow_naive  # status/collector timestamps are naive-UTC
+from datetime import timedelta
 import logging
 
 from webapp.extensions import db
@@ -106,7 +109,7 @@ def index():
         outages=outages,
         reservations=reservations,
         google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
-        now=datetime.now(),
+        now=utcnow_naive(),
         selected_hours=selected_hours,
         chart_hours=chart_hours,
         # Scan-capable disk resources for the gated "Filesystem Scans" tab.
@@ -134,7 +137,7 @@ def nodetype_history(system, node_type):
         hours = int(request.args.get('days')) * 24
     else:
         hours = 168  # 7-day default
-    end_date = datetime.now()
+    end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
     session = db.session
@@ -187,7 +190,7 @@ def partition_history(system, partition):
         hours = int(request.args.get('days')) * 24
     else:
         hours = 168  # 7-day default
-    end_date = datetime.now()
+    end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
     session = db.session
@@ -256,7 +259,7 @@ def queue_history(system, queue_name):
         hours = int(request.args.get('days')) * 24
     else:
         hours = 168  # 7-day default
-    end_date = datetime.now()
+    end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
     session = db.session
@@ -353,7 +356,7 @@ def _render_user_proj_chart(*, system, queue_name, endpoint_name, endpoint_kwarg
         hours = 168
 
     top_n = 15
-    end_date = datetime.now()
+    end_date = utcnow_naive()
     start_date = end_date - timedelta(hours=hours)
 
     timeseries = status_queries.get_user_proj_timeseries(
@@ -491,43 +494,30 @@ def htmx_create_outage():
     storage. `tz` falls back to the configured display TZ if missing
     (older clients, scripted POSTs)."""
     from system_status.models import SystemOutage
-    from sam.fmt import naive_local_to_utc
 
-    system_name = request.form.get('system_name', '').strip()
-    title = request.form.get('title', '').strip()
-    severity = request.form.get('severity', '').strip()
+    try:
+        data = CreateOutageForm().load(request.form)
+    except ValidationError as e:
+        field_errors, form_level = CreateOutageForm.split_errors(e.messages)
+        return render_template(
+            'dashboards/status/fragments/_outage_create_body.html',
+            field_errors=field_errors, errors=form_level, form=request.form,
+        )
 
-    if not system_name or not title or not severity:
-        flash('System, title, and severity are required.', 'error')
-        return redirect(url_for('status_dashboard.index'))
-
-    operator_tz = request.form.get('tz', '').strip() or None
-
+    # Schema's @post_load already converted the datetime-local values to
+    # naive-UTC via the submitted `tz`. system_name → system_id resolution
+    # happens in the model setter (a DB hit) and stays here per CLAUDE.md §9.
     outage = SystemOutage(
-        system_name=system_name,
-        title=title,
-        severity=severity,
-        component=request.form.get('component', '').strip() or None,
-        description=request.form.get('description', '').strip() or None,
+        system_name=data['system_name'],
+        title=data['title'],
+        severity=data['severity'],
+        component=data.get('component'),
+        description=data.get('description'),
         status='investigating',
-        start_time=datetime.now(),  # already UTC under TZ=UTC
+        start_time=data.get('start_time') or utcnow_naive(),  # default: now (UTC)
     )
-
-    start_time_str = request.form.get('start_time', '').strip()
-    if start_time_str:
-        try:
-            outage.start_time = naive_local_to_utc(
-                datetime.fromisoformat(start_time_str), operator_tz)
-        except ValueError:
-            pass
-
-    est_res_str = request.form.get('estimated_resolution', '').strip()
-    if est_res_str:
-        try:
-            outage.estimated_resolution = naive_local_to_utc(
-                datetime.fromisoformat(est_res_str), operator_tz)
-        except ValueError:
-            pass
+    if data.get('estimated_resolution') is not None:
+        outage.estimated_resolution = data['estimated_resolution']
 
     db.session.add(outage)
     db.session.commit()
@@ -552,35 +542,26 @@ def htmx_update_outage(outage_id):
         response.headers['HX-Redirect'] = url_for('status_dashboard.index')
         return response
 
-    valid_statuses = ['investigating', 'identified', 'monitoring', 'resolved']
-    valid_severities = ['critical', 'major', 'minor', 'maintenance']
+    try:
+        data = EditOutageForm().load(request.form)
+    except ValidationError as e:
+        field_errors, form_level = EditOutageForm.split_errors(e.messages)
+        return render_template(
+            'dashboards/status/fragments/_outage_edit_body.html',
+            field_errors=field_errors, errors=form_level, form=request.form,
+        )
 
-    title = request.form.get('title', '').strip()
-    if title:
-        outage.title = title
-    status = request.form.get('status', '').strip()
-    if status in valid_statuses:
-        outage.status = status
-    severity = request.form.get('severity', '').strip()
-    if severity in valid_severities:
-        outage.severity = severity
+    # title is optional on edit — only apply when provided (preserves prior
+    # behavior of keeping the existing title on a blank submit).
+    if data.get('title'):
+        outage.title = data['title']
+    outage.status = data['status']
+    outage.severity = data['severity']
+    outage.description = data.get('description')
+    # @post_load already converted to naive-UTC; None clears the field.
+    outage.estimated_resolution = data.get('estimated_resolution')
 
-    outage.description = request.form.get('description', '').strip() or None
-
-    # Naive-UTC conversion mirrors htmx_create_outage; see its docstring.
-    from sam.fmt import naive_local_to_utc
-    operator_tz = request.form.get('tz', '').strip() or None
-    est_res_str = request.form.get('estimated_resolution', '').strip()
-    if est_res_str:
-        try:
-            outage.estimated_resolution = naive_local_to_utc(
-                datetime.fromisoformat(est_res_str), operator_tz)
-        except ValueError:
-            pass
-    else:
-        outage.estimated_resolution = None
-
-    outage.updated_at = datetime.now()
+    outage.updated_at = utcnow_naive()
     db.session.commit()
 
     flash('Outage updated.', 'success')
@@ -599,7 +580,7 @@ def htmx_resolve_outage(outage_id):
     outage = db.session.query(SystemOutage).get(outage_id)
     if outage:
         outage.status = 'resolved'
-        outage.updated_at = datetime.now()
+        outage.updated_at = utcnow_naive()
         db.session.commit()
         flash('Outage resolved.', 'success')
     else:

@@ -22,6 +22,7 @@ from webapp.api.access_control import (
     require_project_permission, require_allocation_permission,
     require_project_facility_permission,
     require_allocation_facility_permission,
+    require_project_operator_access,
 )
 from webapp.utils.project_permissions import (
     can_edit_project_governance,
@@ -2509,3 +2510,188 @@ def htmx_admin_project_directory_bulk_deactivate():
         _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
         f'Deactivated {n} project director{"ies" if n != 1 else "y"} under "{prefix}".',
     )
+
+
+# ---------------------------------------------------------------------------
+# User / Resource Access grid (site-operator remediation)
+#
+# Surfaces and repairs partial-access errors: the underlying access model is a
+# grid of AccountUser rows (member × resource account). SAM normally hides this,
+# so when an out-of-band edit leaves a member without an account on some
+# resource, only the CLI (`sam-search project … --list-users --verbose`) shows
+# it. These operator-only routes render that grid and let an operator toggle a
+# single cell or reconcile the whole project.
+# ---------------------------------------------------------------------------
+
+_ACCESS_GRID_TEMPLATE = 'dashboards/admin/fragments/project_access_grid_htmx.html'
+
+
+def _build_access_grid_context(project, active_only: bool) -> dict:
+    """Build the member × resource access grid for *project*.
+
+    Columns are resources with a currently-active allocation when
+    ``active_only`` is True, otherwise every non-deleted account's resource
+    (so expired/lapsed resources are also shown). Each cell is checked when
+    the member has a currently-active AccountUser on that column's account —
+    computed from one membership query, not per-cell lookups.
+    """
+    from sam.accounting.accounts import AccountUser
+
+    active_by_resource = project.get_all_allocations_by_resource()
+    active_resource_names = set(active_by_resource.keys())
+
+    columns = []
+    if active_only:
+        for resource_name, allocation in active_by_resource.items():
+            account = allocation.account
+            columns.append({
+                'account_id': account.account_id,
+                'resource_id': account.resource_id,
+                'resource_name': resource_name,
+                'has_active_alloc': True,
+            })
+    else:
+        for account in project.accounts:
+            if not account.is_active or not account.resource:
+                continue
+            resource_name = account.resource.resource_name
+            columns.append({
+                'account_id': account.account_id,
+                'resource_id': account.resource_id,
+                'resource_name': resource_name,
+                'has_active_alloc': resource_name in active_resource_names,
+            })
+    columns.sort(key=lambda c: (c['resource_name'] or '').lower())
+
+    # One query for the whole grid: which (user, account) memberships are active.
+    account_ids = [c['account_id'] for c in columns]
+    active_links = set()
+    if account_ids:
+        rows = db.session.query(
+            AccountUser.user_id, AccountUser.account_id
+        ).filter(
+            AccountUser.account_id.in_(account_ids),
+            AccountUser.is_active,
+        ).all()
+        active_links = {(uid, aid) for uid, aid in rows}
+
+    lead_user_id = project.project_lead_user_id
+    members = sorted(
+        project.users,
+        key=lambda u: (u.display_name or u.username or '').lower(),
+    )
+
+    member_rows = []
+    for user in members:
+        cells = [{
+            'column': col,
+            'checked': (user.user_id, col['account_id']) in active_links,
+        } for col in columns]
+        member_rows.append({
+            'user': user,
+            'is_lead': user.user_id == lead_user_id,
+            'cells': cells,
+        })
+
+    return {
+        'project': project,
+        'projcode': project.projcode,
+        'columns': columns,
+        'member_rows': member_rows,
+        'active_only': active_only,
+    }
+
+
+def _render_access_grid(project, active_only: bool, errors=None):
+    """Render the access-grid card fragment, optionally with an error banner."""
+    ctx = _build_access_grid_context(project, active_only)
+    ctx['errors'] = errors or []
+    return render_template(_ACCESS_GRID_TEMPLATE, **ctx)
+
+
+def _access_grid_active_only(source) -> bool:
+    """Read the Active-Only flag from a request args/form mapping.
+
+    Follows the project-directories card convention: the checkbox sends
+    ``active_only=1`` only when checked, so an absent value means OFF. The
+    initial container load passes ``active_only=1`` explicitly to default ON,
+    and every control hx-includes the switch so the current mode rides along.
+    """
+    return source.get('active_only') == '1'
+
+
+@bp.route('/htmx/access-grid/<projcode>')
+@login_required
+@require_project_operator_access
+def htmx_access_grid(project):
+    """Lazy-loaded operator-only User/Resource Access grid for a project."""
+    return _render_access_grid(project, _access_grid_active_only(request.args))
+
+
+@bp.route('/htmx/access-grid/<projcode>/toggle', methods=['POST'])
+@login_required
+@require_project_operator_access
+def htmx_access_grid_toggle(project):
+    """Grant or revoke one member's access to one project resource."""
+    from marshmallow import ValidationError
+    from sam.schemas.forms import AccessGridToggleForm
+    from sam.core.users import User
+    from sam.resources.resources import Resource
+    from sam.manage import (
+        grant_user_resource_access, revoke_user_resource_access,
+    )
+
+    active_only = _access_grid_active_only(request.form)
+
+    data = {k: v for k, v in request.form.items() if v != ''}
+    data['grant'] = 'grant' in request.form
+    try:
+        form_data = AccessGridToggleForm().load(data)
+    except ValidationError as e:
+        return _render_access_grid(
+            project, active_only,
+            errors=AccessGridToggleForm.flatten_errors(e.messages),
+        )
+
+    # FK existence checks (schemas don't touch the DB).
+    errors = []
+    if not db.session.get(User, form_data['user_id']):
+        errors.append('Selected user does not exist.')
+    if not db.session.get(Resource, form_data['resource_id']):
+        errors.append('Selected resource does not exist.')
+    if errors:
+        return _render_access_grid(project, active_only, errors=errors)
+
+    try:
+        with management_transaction(db.session):
+            if form_data['grant']:
+                grant_user_resource_access(
+                    db.session, project.project_id,
+                    form_data['user_id'], form_data['resource_id'],
+                )
+            else:
+                revoke_user_resource_access(
+                    db.session, project.project_id,
+                    form_data['user_id'], form_data['resource_id'],
+                )
+    except ValueError as e:
+        return _render_access_grid(project, active_only, errors=[str(e)])
+
+    return _render_access_grid(project, active_only)
+
+
+@bp.route('/htmx/access-grid/<projcode>/reconcile', methods=['POST'])
+@login_required
+@require_project_operator_access
+def htmx_access_grid_reconcile(project):
+    """Give every project member access to every project resource."""
+    from sam.manage import reconcile_project_access
+
+    active_only = _access_grid_active_only(request.form)
+    try:
+        with management_transaction(db.session):
+            reconcile_project_access(db.session, project.project_id)
+    except ValueError as e:
+        return _render_access_grid(project, active_only, errors=[str(e)])
+
+    return _render_access_grid(project, active_only)

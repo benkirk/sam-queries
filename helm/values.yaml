@@ -162,6 +162,12 @@ webapp:
     JUPYTERHUB_CACHE_TTL: "300"
     SAM_DB_SERVER: "sam-sql.ucar.edu"
     SAM_DB_REQUIRE_SSL: "true"
+    # Match the SAM DB server's timezone (sam-sql.ucar.edu runs Mountain). The
+    # app stamps naive datetimes (AccountUser.start_date, allocation dates, …)
+    # that are compared against the DB's NOW()/func.now(); a UTC pod put them
+    # ~6h in the DB's future, so freshly-granted access read back as inactive.
+    # system_status keeps its own explicit naive-UTC clock (sam.fmt.utcnow_naive).
+    TZ: "America/Denver"
     STATUS_DB_DRIVER: "postgresql"
     STATUS_DB_SERVER: "csg-postgres.k8s.ucar.edu"
     # STATUS_DB_POOL_* defaults (size=2, overflow=4, recycle=600) live in

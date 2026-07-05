@@ -149,6 +149,7 @@ def htmx_add_member(project):
     return htmx_success(
         'project_members/fragments/add_member_success_htmx.html',
         {'closeModal': 'addMemberModal'},
+        toast=f'Added {user.display_name} to project {projcode}',
         message=f'Added {user.display_name} to project {projcode}',
         projcode=projcode,
         members_html=members_html

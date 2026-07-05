@@ -35,7 +35,8 @@
 <form hx-post="{{ url_for('admin_dashboard.htmx_project_update', projcode=project.projcode) }}"
       hx-target="#editDetailsContainer"
       hx-swap="innerHTML"
-      hx-disabled-elt="find button[type='submit']">
+      hx-disabled-elt="find button[type='submit']"
+      novalidate>
 
   {% if errors %}
   <div class="alert alert-danger mb-3">

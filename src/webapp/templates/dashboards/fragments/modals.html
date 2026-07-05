@@ -57,7 +57,10 @@
             <div class="modal-body" id="samConfirmModalBody"></div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-outline-primary" id="samConfirmModalConfirm">Confirm</button>
+                {# Color is applied per-variant by htmx-config.js (_openSamConfirm);
+                   the base btn-danger is just the default/fallback. Keep this in
+                   ALL_BTN_CLASSES so the variant reset can strip it cleanly. #}
+                <button type="button" class="btn btn-danger" id="samConfirmModalConfirm">Confirm</button>
             </div>
         </div>
     </div>

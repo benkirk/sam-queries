@@ -7,7 +7,7 @@ from webapp.utils.fk_validation import FKValidationError
 from sam.manage import management_transaction
 
 
-def htmx_success(template, triggers, **ctx):
+def htmx_success(template, triggers, *, toast=None, toast_variant='success', **ctx):
     """Render a success fragment with HX-Trigger response headers.
 
     Fires custom DOM events that htmx-config.js listens for to close the
@@ -17,10 +17,18 @@ def htmx_success(template, triggers, **ctx):
         template: Jinja2 template path
         triggers: dict mapping event names to payloads, e.g.
                   {'closeActiveModal': {}, 'reloadFacilitiesCard': {}}
+        toast: optional text for an auto-dismissing toast. When set, a
+               `showToast` trigger is added to the HX-Trigger payload so
+               htmx-config.js surfaces ephemeral feedback bottom-right.
+        toast_variant: Bootstrap color variant for the toast
+                       ('success', 'info', 'warning', 'danger').
         **ctx: template context variables
     """
     response = make_response(render_template(template, **ctx))
-    response.headers['HX-Trigger'] = json.dumps(triggers)
+    payload = dict(triggers)
+    if toast:
+        payload['showToast'] = {'message': toast, 'variant': toast_variant}
+    response.headers['HX-Trigger'] = json.dumps(payload)
     return response
 
 
@@ -38,6 +46,7 @@ def htmx_success_message(triggers, message, detail=None):
     return htmx_success(
         'dashboards/fragments/htmx_success.html',
         triggers,
+        toast=message,
         message=message,
         detail=detail,
     )
@@ -99,20 +108,22 @@ def handle_htmx_form_post(
 
     Returns: Flask response (rendered fragment or htmx_success_message).
     """
-    def _render_with_errors(errs):
+    def _render_with_errors(errs, field_errors=None):
         ctx = {}
         if extra_context:
             ctx.update(extra_context)
         if context_fn is not None:
             ctx.update(context_fn())
         ctx['errors'] = errs
+        ctx['field_errors'] = field_errors or {}
         ctx['form'] = request.form
         return render_template(template, **ctx)
 
     try:
         data = schema_cls().load(request.form)
     except ValidationError as e:
-        return _render_with_errors(schema_cls.flatten_errors(e.messages))
+        field_errors, form_level = schema_cls.split_errors(e.messages)
+        return _render_with_errors(form_level, field_errors=field_errors)
 
     try:
         with management_transaction(db.session):

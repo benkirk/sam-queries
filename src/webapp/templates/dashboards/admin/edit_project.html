@@ -171,6 +171,37 @@
 
 </div>
 
+{% if has_permission(Permission.EDIT_PROJECTS)
+      and has_permission(Permission.EDIT_PROJECT_MEMBERS) %}
+{# User / Resource Access grid (site operators only) — hidden from project
+   lead/admin; only system operators holding BOTH EDIT_PROJECTS and
+   EDIT_PROJECT_MEMBERS see this remediation tool. Collapsed by default
+   (rare-use); the grid lazy-loads on first expand with active_only=1. #}
+<div class="card mt-4">
+  <div class="card-header access-grid-toggle collapsed d-flex align-items-center justify-content-between py-2"
+       role="button" tabindex="0"
+       data-bs-toggle="collapse" data-bs-target="#accessGridCollapse"
+       aria-expanded="false" aria-controls="accessGridCollapse">
+    <span class="fw-semibold">
+      <i class="fas fa-user-shield text-primary me-1"></i> User / Resource Access
+      <span class="text-muted small fw-normal ms-1">— operator remediation for partial-access errors</span>
+    </span>
+    <i class="fas fa-chevron-down text-muted access-grid-chevron"></i>
+  </div>
+  <div class="collapse" id="accessGridCollapse">
+    <div id="accessGridContainer"
+         hx-get="{{ url_for('admin_dashboard.htmx_access_grid', projcode=project.projcode, active_only=1) }}"
+         hx-trigger="shown.bs.collapse from:#accessGridCollapse once"
+         hx-swap="innerHTML">
+      <div class="text-center text-muted py-4">
+        <i class="fas fa-spinner fa-spin fa-2x" aria-hidden="true"></i>
+        <p class="mt-2">Loading user/resource access…</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- ═══════════════════════════════════════════════════════ MODALS -->
 
 <!-- Add Allocation Modal (lazy-loaded) -->

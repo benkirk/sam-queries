@@ -10,6 +10,8 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
+from ..timeutil import utcnow_naive  # status/collector timestamps are naive-UTC
+
 from system_status.models import (
     DerechoStatus,
     CasperStatus, CasperNodeTypeStatus,
@@ -147,10 +149,10 @@ def get_upcoming_reservations(session: Session, max_staleness_minutes: int = 30)
     newly-inserted records (where updated_at is NULL) are not incorrectly filtered out.
     """
     from sqlalchemy import func
-    cutoff = datetime.now() - timedelta(minutes=max_staleness_minutes)
+    cutoff = utcnow_naive() - timedelta(minutes=max_staleness_minutes)
     last_seen = func.coalesce(ResourceReservation.updated_at, ResourceReservation.created_at)
     return session.query(ResourceReservation).filter(
-        ResourceReservation.end_time >= datetime.now(),
+        ResourceReservation.end_time >= utcnow_naive(),
         last_seen >= cutoff,
     ).order_by(ResourceReservation.start_time).all()
 
