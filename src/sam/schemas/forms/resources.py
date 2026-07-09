@@ -36,6 +36,15 @@ class CreateResourceForm(HtmxFormSchema):
     commission_date = f.Date('%Y-%m-%d', load_default=None)
 
 
+class EditFacilityResourceForm(HtmxFormSchema):
+    """Per-(facility, resource) fair-share override.
+
+    fair_share_percentage is required for a Set/Edit; the Unset action
+    deletes the row via a separate DELETE route (no schema needed).
+    """
+    fair_share_percentage = f.Float(required=True, validate=v.Range(min=0, max=100))
+
+
 class EditResourceTypeForm(HtmxFormSchema):
     grace_period_days = f.Int(load_default=None, validate=v.Range(min=0))
 
