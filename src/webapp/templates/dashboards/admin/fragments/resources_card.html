@@ -138,20 +138,20 @@
                                                     <th class="text-end">Actions</th>
                                                 </tr>
                                             </thead>
+                                            {% set ns = namespace(total=0.0) %}
                                             <tbody>
                                                 {% for fac in facilities %}
                                                 {% set _matches = r.facility_resources | selectattr('facility_id', 'equalto', fac.facility_id) | list %}
                                                 {% set override = _matches[0] if _matches else none %}
                                                 {% set has_override = override is not none and override.fair_share_percentage is not none %}
+                                                {% set effective = override.fair_share_percentage if has_override else fac.fair_share_percentage %}
+                                                {% set ns.total = ns.total + (effective or 0) %}
                                                 <tr>
                                                     <td>
                                                         {% if fac.code %}<span class="badge bg-light text-dark border me-1">{{ fac.code }}</span>{% endif %}
                                                         {{ fac.facility_name }}
                                                     </td>
-                                                    <td>
-                                                        {% if has_override %}{{ override.fair_share_percentage | fmt_pct(decimals=2) }}
-                                                        {% else %}{{ fac.fair_share_percentage | fmt_pct(decimals=2) }}{% endif %}
-                                                    </td>
+                                                    <td>{{ effective | fmt_pct(decimals=2) }}</td>
                                                     <td>
                                                         {% if has_override %}
                                                         <span class="badge bg-warning text-dark">override</span>
@@ -181,6 +181,15 @@
                                                 <tr><td colspan="4" class="text-muted fst-italic">No active facilities.</td></tr>
                                                 {% endfor %}
                                             </tbody>
+                                            {% if facilities %}
+                                            <tfoot class="table-light fw-semibold" style="border-top: 2px solid var(--bs-border-color);">
+                                                <tr>
+                                                    <td>Total</td>
+                                                    <td>{{ ns.total | fmt_pct(decimals=2) }}</td>
+                                                    <td colspan="2"></td>
+                                                </tr>
+                                            </tfoot>
+                                            {% endif %}
                                         </table>
                                     </div>
                                 </div>

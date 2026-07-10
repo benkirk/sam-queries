@@ -48,6 +48,14 @@ class TestResourcesCardOverrideSection:
         assert 'facility-resource-collapse-icon' in html
         assert 'editFacilityResourceModal' in html
 
+    def test_admin_renders_totals_footer(self, auth_client):
+        """Each HPC/DAV override table has a Total footer row summing the shares."""
+        resp = auth_client.get('/admin/htmx/resources')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert '<tfoot' in html
+        assert 'Total' in html
+
 
 # ---------------------------------------------------------------------------
 # GET edit-form
