@@ -56,6 +56,16 @@ def make_api_credentials(
     session.add(cred)
     session.flush()
 
+    # The dev/test DB clone truncates `api_credentials` (resetting its
+    # AUTO_INCREMENT) but NOT `role_api_credentials`, so a freshly inserted row
+    # can reuse an id that leftover role links still point at. Clear any such
+    # rows for our new id so role assignments are deterministic (no-op in prod,
+    # where the two tables are consistent). All within the test's SAVEPOINT.
+    session.query(RoleApiCredentials).filter(
+        RoleApiCredentials.api_credentials_id == cred.api_credentials_id
+    ).delete(synchronize_session=False)
+    session.expire(cred, ["role_assignments"])
+
     for role_name in roles:
         role = make_role(session, name=role_name)
         session.add(
