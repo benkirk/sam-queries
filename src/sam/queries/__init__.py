@@ -140,6 +140,16 @@ from .fstree_access import (
     get_user_fsdata,
 )
 
+# Queue (active job queues by resource)
+from .queue_access import (
+    get_queue_data,
+)
+
+# Wallclock exemptions (per-user queue wallclock overrides by resource)
+from .wallclock_exemption_access import (
+    get_wallclock_exemption_data,
+)
+
 # Rolling window usage (30/90-day trailing charge analysis)
 from .rolling_usage import get_project_rolling_usage
 
@@ -242,6 +252,10 @@ __all__ = [
     'get_fstree_data',
     'get_project_fsdata',
     'get_user_fsdata',
+    # Queue
+    'get_queue_data',
+    # Wallclock exemptions
+    'get_wallclock_exemption_data',
     # Rolling window usage
     'get_project_rolling_usage',
     # Shells

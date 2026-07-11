@@ -12,6 +12,8 @@ Usage:
 
     python utils/parity/check_legacy_apis.py
     python utils/parity/check_legacy_apis.py --api fstree --resource Derecho
+    python utils/parity/check_legacy_apis.py --api queue
+    python utils/parity/check_legacy_apis.py --api wallclock
     python utils/parity/check_legacy_apis.py --format json | jq .
 
 Exit codes:
@@ -47,6 +49,8 @@ from utils.parity.comparators import (  # noqa: E402
     compare_directory_access,
     compare_fstree_access,
     compare_project_access,
+    compare_queue,
+    compare_wallclock_exemption,
 )
 
 
@@ -162,6 +166,26 @@ def _fetch_fstree(
     return legacy_by_resource, new_data
 
 
+def _fetch_queue(legacy: LegacyClient, new: NewClient, verbose: int) -> tuple[dict, dict]:
+    if verbose:
+        print('  fetching legacy queue ...', file=sys.stderr)
+    legacy_data = legacy.queue()
+    if verbose:
+        print('  fetching new queue ...', file=sys.stderr)
+    new_data = new.queue()
+    return legacy_data, new_data
+
+
+def _fetch_wallclock(legacy: LegacyClient, new: NewClient, verbose: int) -> tuple[dict, dict]:
+    if verbose:
+        print('  fetching legacy wallClockExemption ...', file=sys.stderr)
+    legacy_data = legacy.wallclock_exemption()
+    if verbose:
+        print('  fetching new wallclock_exemption ...', file=sys.stderr)
+    new_data = new.wallclock_exemption()
+    return legacy_data, new_data
+
+
 # ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
@@ -202,7 +226,7 @@ def _parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
-        '--api', choices=('directory', 'project', 'fstree', 'all'),
+        '--api', choices=('directory', 'project', 'fstree', 'queue', 'wallclock', 'all'),
         default='all', help='Which API to compare (default: all)',
     )
     p.add_argument(
@@ -263,7 +287,10 @@ def main() -> int:
         if args.resource else None
     )
 
-    selected = ('directory', 'project', 'fstree') if args.api == 'all' else (args.api,)
+    selected = (
+        ('directory', 'project', 'fstree', 'queue', 'wallclock')
+        if args.api == 'all' else (args.api,)
+    )
 
     sections: list[tuple[str, list[CheckResult], float]] = []
     try:
@@ -278,6 +305,12 @@ def main() -> int:
             elif api == 'fstree':
                 ld, nd = _fetch_fstree(legacy, new, resources, args.verbose)
                 results = compare_fstree_access(ld, nd)
+            elif api == 'queue':
+                ld, nd = _fetch_queue(legacy, new, args.verbose)
+                results = compare_queue(ld, nd)
+            elif api == 'wallclock':
+                ld, nd = _fetch_wallclock(legacy, new, args.verbose)
+                results = compare_wallclock_exemption(ld, nd)
             else:  # pragma: no cover — argparse choices guarantee membership
                 raise AssertionError(api)
             sections.append((api, results, time.monotonic() - t0))
