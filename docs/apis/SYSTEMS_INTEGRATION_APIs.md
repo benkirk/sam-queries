@@ -1,10 +1,10 @@
 # Systems Integration APIs
 
-Three read-only API endpoints that serve LDAP provisioning tools, PBS batch
+Five read-only API endpoints that serve LDAP provisioning tools, PBS batch
 schedulers, and other HPC systems integration workflows.  All reproduce output
 from the legacy SAM Java system (`sam.ucar.edu/api/protected/admin/`) and share
-a common design: bulk raw-SQL queries, 5-minute response caching, and the same
-authentication/authorization model as all other v1 APIs.
+a common design: bulk raw-SQL or ORM queries, 5-minute response caching, and the
+same authentication/authorization model as all other v1 APIs.
 
 ---
 
@@ -537,6 +537,173 @@ produce hundreds of millions of intermediate rows.
 
 ---
 
+## 4. Queue API
+
+**Base URL**: `/api/v1/queue/`  
+**Legacy equivalent**: `GET /api/protected/admin/ssg/queue` (+ `/queue/<resource>`)  
+**Permission required**: `VIEW_RESOURCES`  
+**Source**: `src/webapp/api/v1/queue.py`, `src/sam/queries/queue_access.py`
+
+Provides the active job-queue configuration (wallclock limits, class-of-service
+ids, validity windows) that the PBS batch scheduler and systems-integration
+tooling use to configure queues on each HPC resource.
+
+### Endpoints
+
+#### `GET /api/v1/queue/`
+
+Returns active queues for **all** active resources.
+
+**Response schema**:
+
+```json
+{
+  "name": "queues",
+  "resources": [
+    {
+      "resourceName": "Derecho",
+      "queues": [
+        {
+          "queueName": "main",
+          "wallClockHoursLimit": 12.0,
+          "startDate": "2023-01-01T00:00:00",
+          "endDate": null,
+          "cosId": 5
+        }
+      ]
+    }
+  ]
+}
+```
+
+Resources are sorted alphabetically by `resourceName`; queues are sorted by
+`queueName` within each resource.
+
+#### `GET /api/v1/queue/<resource_name>`
+
+Returns queues for a **single** resource.  Response shape is identical —
+`resources` will contain exactly one entry.  Resource names with spaces must be
+URL-encoded by the caller (e.g. `Derecho%20GPU`).
+
+Returns **404** if the resource name is not recognized or has no active queues.
+
+**Example**: `GET /api/v1/queue/Derecho`
+
+#### `POST /api/v1/queue/refresh`
+
+Invalidates the response cache.
+
+**Response**: `{"status": "ok"}`
+
+### Response Fields
+
+| Field                 | Type        | Source                                      |
+|-----------------------|-------------|---------------------------------------------|
+| `resourceName`        | string      | `resources.resource_name`                   |
+| `queueName`           | string      | `queue.queue_name`                          |
+| `wallClockHoursLimit` | float/null  | `queue.wall_clock_hours_limit`              |
+| `startDate`           | string/null | `queue.start_date` (ISO-8601)               |
+| `endDate`             | string/null | `queue.end_date` (ISO-8601, end-of-day)     |
+| `cosId`               | int/null    | `queue.cos_id` (class-of-service id)        |
+
+### Active-Filter Semantics
+
+A queue appears when **both** `Queue.is_active` and `Resource.is_active` are true
+(the universal `is_active` hybrids — see CLAUDE.md §5).  The legacy Java
+`DefaultQueueQuery.findAllActive()` filtered on `end_date >= today OR end_date IS
+NULL` **plus** resource-active, but did **not** check the queue's own
+`start_date`.  Using `Queue.is_active` adds that `start_date <= now` bound — a
+deliberate, negligible tightening (future-dated queues are vanishingly rare; the
+parity harness absorbs any such row with a count tolerance).
+
+### Scale (production approximate)
+
+One entry per active HPC/DAV resource (~6 resources), each with tens of queues.
+
+---
+
+## 5. WallClock Exemption API
+
+**Base URL**: `/api/v1/wallclock_exemption/`  
+**Legacy equivalent**: `GET /api/protected/admin/ssg/wallClockExemption`  
+**Permission required**: `VIEW_RESOURCES`  
+**Source**: `src/webapp/api/v1/wallclock_exemption.py`, `src/sam/queries/wallclock_exemption_access.py`
+
+Provides the active per-user queue wallclock overrides that let named users run
+jobs beyond a queue's default wallclock limit for a bounded time window.
+Consumed by the PBS batch scheduler alongside the Queue API.
+
+### Endpoints
+
+#### `GET /api/v1/wallclock_exemption/`
+
+Returns active exemptions for **all** resources.
+
+**Response schema**:
+
+```json
+{
+  "name": "exemptions",
+  "resources": [
+    {
+      "resourceName": "Derecho",
+      "queues": [
+        {
+          "queueName": "main",
+          "limits": [
+            {"username": "benkirk", "wallClockLimit": 48.0}
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Resources / queues / user limits are each sorted by name for stable output.
+
+#### `GET /api/v1/wallclock_exemption/<resource_name>`
+
+Returns exemptions for a **single** resource.  Response shape is identical.
+Resource names with spaces must be URL-encoded.  This per-resource variant is a
+convenience added for symmetry with the Queue API — the **legacy endpoint has no
+per-resource route**.
+
+Returns **404** if the resource name is not recognized or has no active exemptions.
+
+**Example**: `GET /api/v1/wallclock_exemption/Derecho`
+
+#### `POST /api/v1/wallclock_exemption/refresh`
+
+Invalidates the response cache.
+
+**Response**: `{"status": "ok"}`
+
+### Response Fields
+
+| Field           | Type   | Source                                              |
+|-----------------|--------|-----------------------------------------------------|
+| `resourceName`  | string | `resources.resource_name` (via queue)               |
+| `queueName`     | string | `queue.queue_name`                                  |
+| `username`      | string | `users.username`                                    |
+| `wallClockLimit`| float  | `wallclock_exemption.time_limit_hours`              |
+
+### Active-Filter Semantics
+
+An exemption appears when `WallclockExemption.is_active` is true — i.e. today
+falls within `[start_date, end_date]`.  This matches the legacy
+`activeWallclockExemptions` named query exactly (`DATE(start_date) <= CURDATE()
+AND DATE(end_date) >= CURDATE()`).  The legacy query applies **no** active filter
+to the resource, queue, or user — only the exemption's own window — and this
+implementation does the same.
+
+### Scale (production approximate)
+
+Small — typically a handful of resources, each with a few queues and a modest
+roster of user overrides.
+
+---
+
 ## Common Design Notes
 
 ### Shared Infrastructure
@@ -574,7 +741,8 @@ Cached responses are near-instant; see per-API scale tables for uncached times.
 ### Comparing with the Legacy System
 
 The new APIs were validated against the live legacy system
-(`sam.ucar.edu/api/protected/admin/`):
+(`sam.ucar.edu/api/protected/admin/`) via the standalone parity harness
+(`utils/parity/check_legacy_apis.py`; run with `--api queue` / `--api wallclock`):
 
 | API              | Legacy count | New count | Gap explanation                          |
 |------------------|-------------|-----------|------------------------------------------|
@@ -583,6 +751,8 @@ The new APIs were validated against the live legacy system
 | project_access hpc        | 1,419       | ~1,463    | New API has wider `DEAD` window (180d vs legacy ~124d effective window); `EXPIRING`/`EXPIRED` states are new |
 | project_access hpc-dev    | 8           | 8         | Exact match                              |
 | fstree_access Derecho     | ~1,260      | ~1,257    | ~3 projects missing (DB mirror lag; same root cause as above) |
+| queue                     | _run harness_ | _run harness_ | New excludes future-dated queues (`Queue.is_active` start_date bound) — absorbed by count tolerance |
+| wallclock_exemption       | _run harness_ | _run harness_ | Exemption date-window filter matches legacy exactly |
 
 The one consistent gap (1 project, 1 user across LDAP APIs; ~3 projects in fstree)
 is a known local database mirror sync lag — not a code defect.
@@ -594,4 +764,6 @@ is a known local database mirror sync lag — not a code defect.
 curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/directory_access/refresh
 curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/project_access/refresh
 curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/fstree_access/refresh
+curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/queue/refresh
+curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/wallclock_exemption/refresh
 ```
