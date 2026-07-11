@@ -185,6 +185,10 @@
                                 {% endfor %}
                             {% else %}—{% endif %}
                         </dd>
+                        {{ stat('DB-linked API keys', 'Enabled' if state.auth.api_keys_db_enabled else 'Disabled') }}
+                        {% if state.auth.api_keys_db_enabled %}
+                            {{ stat('DB key cache TTL (s)', state.auth.api_keys_db_ttl) }}
+                        {% endif %}
                     </dl>
 
                     {% if state.auth.oidc_active %}

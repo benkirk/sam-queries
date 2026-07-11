@@ -1167,3 +1167,21 @@ def test_gather_runtime_state_adds_row_per_engine(app, monkeypatch, tmp_path):
     # latency_ms can be 0 on a fast local file; check shape not value.
     assert row['latency_ms'] is not None
     assert row['url'].startswith('sqlite://')
+
+
+def test_gather_runtime_state_surfaces_db_linked_api_keys(app, monkeypatch):
+    """auth block reports the DB-linked API-key toggle + cache TTL from config."""
+    from webapp.extensions import db
+    from webapp.utils.config_inspect import gather_runtime_state
+
+    monkeypatch.setitem(app.config, 'API_KEYS_DB_ENABLED', True)
+    monkeypatch.setitem(app.config, 'API_KEYS_DB_TTL', 90)
+    with app.app_context():
+        state = gather_runtime_state(app, db)
+    assert state['auth']['api_keys_db_enabled'] is True
+    assert state['auth']['api_keys_db_ttl'] == 90
+
+    monkeypatch.setitem(app.config, 'API_KEYS_DB_ENABLED', False)
+    with app.app_context():
+        state = gather_runtime_state(app, db)
+    assert state['auth']['api_keys_db_enabled'] is False
