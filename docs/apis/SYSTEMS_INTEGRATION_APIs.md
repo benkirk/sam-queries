@@ -62,6 +62,13 @@ curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" "$SAM_API_BASE/api/v1/queue/refres
 Generate a key with `python scripts/gen_api_key.py` and add its bcrypt hash to
 the deployment's `API_KEYS` config.
 
+> **Runnable companion:** `scripts/apis/systems_integration_apis.sh` is a
+> copy-paste-ready worked example — it exercises all five endpoints below with
+> the full **download → refresh → re-download** workflow using the same
+> `SAM_API_USER` / `SAM_API_PASS` / `SAM_API_BASE` env vars, and doubles as a
+> post-deploy smoke test. Run `scripts/apis/systems_integration_apis.sh -h` for
+> options.
+
 ### Caching
 
 - **Cache**: Responses are cached for **5 minutes** (`SimpleCache` in
