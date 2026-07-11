@@ -117,7 +117,7 @@ fi
 SAM_API_BASE="${SAM_API_BASE%/}"   # trim trailing slash for clean concatenation
 
 # ============================================================================
-section "0. Preflight"
+section "0. Prerequisites"
 # ============================================================================
 
 require_cmd curl
@@ -138,7 +138,7 @@ info "base URL : $SAM_API_BASE"
 info "auth     : Basic (-u \"\$SAM_API_USER:***\") as '${SAM_API_USER}'"
 info "outdir   : $OUTDIR$([[ $KEEP_OUTDIR -eq 1 ]] && echo '' || echo ' (temporary)')"
 info "apis     : ${SELECTED[*]}"
-pass "preflight OK — curl + jq present, credentials set"
+pass "prerequisites OK — curl + jq present, credentials set"
 explain "Every call authenticates with HTTP Basic Auth; curl's -u sends the
   Authorization: Basic header. The password is read from \$SAM_API_PASS and never
   printed. POST .../refresh clears the server's 5-minute response cache."
