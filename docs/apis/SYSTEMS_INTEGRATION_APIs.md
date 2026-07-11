@@ -27,9 +27,43 @@ are provisioned.
 
 ## Authentication and Caching
 
-Both endpoints require an authenticated session:
+Every endpoint requires authentication and accepts **either** of two paths
+(via the `login_or_token_required` decorator in
+`src/webapp/utils/api_auth.py`):
 
-- **Auth**: `@login_required` + role-based permission check (see below)
+- **HTTP Basic Auth (API key)** — the path used by scheduler / LDAP / systems
+  tooling. Credentials are validated against bcrypt-hashed `API_KEYS`; any valid
+  key grants access (no per-endpoint RBAC check). This is the recommended path
+  for scripts and cron jobs.
+- **Flask-Login session (browser cookie)** — for interactive use in the web UI.
+  Session callers additionally need the endpoint's `Permission` (listed per API
+  below).
+
+### Calling with an API key
+
+The examples below assume the key's username and password live in environment
+variables (keep them out of shell history / source):
+
+```bash
+export SAM_API_USER='my-api-user'
+export SAM_API_PASS='...'
+export SAM_API_BASE='https://samuel.k8s.ucar.edu'
+
+# GET — curl's -u sends the Authorization: Basic header
+curl -u "$SAM_API_USER:$SAM_API_PASS" "$SAM_API_BASE/api/v1/queue/" | jq .
+
+# Single resource (URL-encode names with spaces)
+curl -u "$SAM_API_USER:$SAM_API_PASS" "$SAM_API_BASE/api/v1/fstree_access/Derecho%20GPU"
+
+# POST refresh — same auth, no CSRF token needed on the token path
+curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" "$SAM_API_BASE/api/v1/queue/refresh"
+```
+
+Generate a key with `python scripts/gen_api_key.py` and add its bcrypt hash to
+the deployment's `API_KEYS` config.
+
+### Caching
+
 - **Cache**: Responses are cached for **5 minutes** (`SimpleCache` in
   development, configurable for production).
 - **Cache invalidation**: `POST .../refresh` clears the cache immediately.
@@ -760,10 +794,13 @@ is a known local database mirror sync lag — not a code defect.
 ### Cache Refresh Workflow
 
 ```bash
-# Invalidate all caches after a bulk SAM update
-curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/directory_access/refresh
-curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/project_access/refresh
-curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/fstree_access/refresh
-curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/queue/refresh
-curl -X POST -b session.cookie https://sam.ucar.edu/api/v1/wallclock_exemption/refresh
+# Invalidate all caches after a bulk SAM update.
+# Uses the API-key Basic Auth path (see "Calling with an API key" above).
+export SAM_API_USER='my-api-user'
+export SAM_API_PASS='...'
+export SAM_API_BASE='https://samuel.k8s.ucar.edu'
+
+for api in directory_access project_access fstree_access queue wallclock_exemption; do
+  curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" "$SAM_API_BASE/api/v1/$api/refresh"
+done
 ```
