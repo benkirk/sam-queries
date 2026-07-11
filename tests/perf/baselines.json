@@ -54,8 +54,8 @@
         "notes": "measured 44 (18 resources, 4189 rows) \u2014 was 52,923 before Issue 1 fix"
     },
     "user_dashboard_route": {
-        "queries": 65,
-        "notes": "measured 45 \u2014 full GET /user/ including template render (benkirk)"
+        "queries": 100,
+        "notes": "measured 70 \u2014 full GET /user/ including template render (benkirk). Count scales with benkirk's sampled project/allocation count, which varies per obfuscated-snapshot refresh (was measured 45 / baseline 65 before the 2026-07-11 refresh); extra headroom absorbs that variance without masking a real N+1 (which runs into the hundreds+)."
     },
     "allocations_index_route": {
         "queries": 80,
