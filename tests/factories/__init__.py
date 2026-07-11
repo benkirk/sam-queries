@@ -28,6 +28,7 @@ from .resources import (
     make_resource,
     make_resource_type,
 )
+from .security import make_api_credentials, make_role
 
 __all__ = [
     "next_date",
@@ -50,4 +51,6 @@ __all__ = [
     "make_allocation",
     "make_allocation_transaction",
     "make_charge_adjustment",
+    "make_role",
+    "make_api_credentials",
 ]

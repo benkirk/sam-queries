@@ -27,6 +27,14 @@ class SAMWebappConfig(SAMConfig):
         if k.startswith('API_KEYS_') and v
     }
 
+    # Fall back to the legacy `api_credentials` SQL table for Basic-Auth keys
+    # not defined in API_KEYS above (config always wins). Lets existing legacy
+    # SAM API clients authenticate against their DB credentials on the new API
+    # paths. Enabled rows are read live behind an in-process TTL cache; TTL=0
+    # refreshes on every lookup (see TestingConfig). See webapp.utils.api_auth.
+    API_KEYS_DB_ENABLED = os.getenv('API_KEYS_DB_ENABLED', '1').lower() in ('1', 'true', 'yes')
+    API_KEYS_DB_TTL     = int(os.getenv('API_KEYS_DB_TTL', 60))
+
     # Auth provider ('stub' | 'ldap' | 'oidc')
     AUTH_PROVIDER = os.getenv('AUTH_PROVIDER', 'stub')
 
@@ -292,6 +300,11 @@ class TestingConfig(SAMWebappConfig):
     API_KEYS = {
         'collector': '$2b$04$lEZO8EBAKbpGIUYMenFeOui8tvzj44hXlgWnbkkznBVe8oX1uQyE6',
     }
+
+    # No caching of DB-sourced keys in tests: every lookup refreshes so a row
+    # inserted mid-test is visible immediately and no cache state leaks across
+    # tests (the module-level cache in api_auth is process-global).
+    API_KEYS_DB_TTL = 0
 
     # Disable usage cache in tests to prevent cross-test pollution
     ALLOCATION_USAGE_CACHE_TTL  = 0
