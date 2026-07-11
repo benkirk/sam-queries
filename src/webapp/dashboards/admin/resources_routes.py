@@ -20,7 +20,7 @@ from webapp.utils.rbac import (
 )
 from sam.manage import management_transaction
 from sam.schemas.forms.resources import (
-    EditResourceForm, CreateResourceForm,
+    EditResourceForm, CreateResourceForm, EditFacilityResourceForm,
     EditResourceTypeForm, CreateResourceTypeForm,
     EditMachineForm, CreateMachineForm, EditQueueForm,
     CreateDiskResourceRootDirectoryForm, EditDiskResourceRootDirectoryForm,
@@ -61,6 +61,7 @@ def htmx_resources_card():
     """
     from sam.resources.resources import Resource, ResourceType
     from sam.resources.machines import Machine, Queue
+    from sam.resources.facilities import Facility
 
     active_only = request.args.get('active_only') == '1'
     now = datetime.now()
@@ -71,6 +72,16 @@ def htmx_resources_card():
     resources = resource_q.all()
 
     resource_types = db.session.query(ResourceType).order_by(ResourceType.resource_type).all()
+
+    # Active facilities drive the per-resource fair-share override table shown
+    # under each HPC/DAV resource row (defaults are shown where no override row
+    # exists — see fragments/resources_card.html).
+    facilities = (
+        db.session.query(Facility)
+        .filter(Facility.is_active)
+        .order_by(Facility.facility_name)
+        .all()
+    )
 
     machine_q = db.session.query(Machine).order_by(Machine.resource_id, Machine.name)
     if active_only:
@@ -113,6 +124,7 @@ def htmx_resources_card():
         'dashboards/admin/fragments/resources_card.html',
         resources=resources,
         resource_types=resource_types,
+        facilities=facilities,
         machines=machines,
         queues=queues,
         exemptions=exemptions,
@@ -230,6 +242,82 @@ def htmx_resource_delete(resource_id):
         return f'<div class="alert alert-danger">Error: {e}</div>', 500
 
     return ''
+
+
+# ── Per-resource Facility Fair-Share Override ──────────────────────────────
+# A row in `facility_resource` overrides the facility default fair-share for a
+# single resource (COALESCE(fr…, f…) in sam/queries/fstree_access.py). "Set"
+# upserts the row; "Unset" deletes it so the facility default re-emerges.
+
+
+@bp.route('/htmx/facility-resource-edit-form/<int:resource_id>/<int:facility_id>')
+@login_required
+@require_permission(Permission.EDIT_RESOURCES)
+def htmx_facility_resource_edit_form(resource_id, facility_id):
+    """Return the fair-share override edit form fragment (loaded into modal)."""
+    from sam.resources.resources import Resource
+    from sam.resources.facilities import Facility, FacilityResource
+
+    resource = db.session.get(Resource, resource_id)
+    facility = db.session.get(Facility, facility_id)
+    if not resource or not facility:
+        return '<div class="alert alert-warning">Resource or facility not found</div>'
+
+    override = FacilityResource.get_override(db.session, facility_id, resource_id)
+
+    return render_template(
+        'dashboards/admin/fragments/edit_facility_resource_form_htmx.html',
+        resource=resource,
+        facility=facility,
+        override=override,
+    )
+
+
+@bp.route('/htmx/facility-resource-edit/<int:resource_id>/<int:facility_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.EDIT_RESOURCES)
+def htmx_facility_resource_edit(resource_id, facility_id):
+    """Set (upsert) a per-resource fair-share override for a facility."""
+    from sam.resources.resources import Resource
+    from sam.resources.facilities import Facility, FacilityResource
+
+    resource = db.session.get(Resource, resource_id)
+    facility = db.session.get(Facility, facility_id)
+    if not resource or not facility:
+        return htmx_not_found('Resource or facility')
+
+    return handle_htmx_form_post(
+        schema_cls=EditFacilityResourceForm,
+        template='dashboards/admin/fragments/edit_facility_resource_form_htmx.html',
+        success_triggers=_RESOURCES_TRIGGERS,
+        error_prefix='Error saving fair-share override',
+        extra_context={'resource': resource, 'facility': facility,
+                       'override': FacilityResource.get_override(db.session, facility_id, resource_id)},
+        do_action=lambda data: FacilityResource.set_override(
+            db.session,
+            facility_id=facility_id,
+            resource_id=resource_id,
+            fair_share_percentage=data['fair_share_percentage'],
+        ),
+    )
+
+
+@bp.route('/htmx/facility-resource-unset/<int:resource_id>/<int:facility_id>', methods=['DELETE'])
+@login_required
+@require_permission(Permission.DELETE_RESOURCES)
+def htmx_facility_resource_unset(resource_id, facility_id):
+    """Delete a per-resource fair-share override so the facility default re-emerges."""
+    from sam.resources.facilities import FacilityResource
+
+    try:
+        with management_transaction(db.session):
+            FacilityResource.clear_override(
+                db.session, facility_id=facility_id, resource_id=resource_id,
+            )
+    except Exception as e:  # noqa: BLE001 — surface to the user
+        return f'<div class="alert alert-danger">Error: {e}</div>', 500
+
+    return htmx_success_message(_RESOURCES_TRIGGERS, 'Override removed.')
 
 
 # ── Resource Type Edit ─────────────────────────────────────────────────────

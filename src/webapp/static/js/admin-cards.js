@@ -158,6 +158,7 @@
         if (has(root, '#resourcesTabsContent')) {
             document.querySelectorAll('#resourcesTabsContent table').forEach(attachSorting);
             SamCollapseChevron.attach('#resources-pane', '.res-type-collapse-icon');
+            SamCollapseChevron.attach('#resources-pane', '.facility-resource-collapse-icon');
             SamCollapseChevron.attach('#resources-pane', '.disk-root-collapse-icon');
             SamCollapseChevron.attach('#queues-pane',    '.queue-res-collapse-icon');
             SamCollapseChevron.attach('#queues-pane',    '.exemption-res-collapse-icon');

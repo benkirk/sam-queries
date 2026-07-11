@@ -1,0 +1,43 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import number_field, readonly_display with context %}
+{#
+  htmx: Edit per-resource Facility Fair-Share Override
+  (loaded into #editFacilityResourceFormContainer)
+
+  Sets/updates the facility_resource row for (facility, resource). Clearing the
+  override is done via the separate "Unset" button on the row, which restores
+  the facility default.
+#}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_facility_resource_edit',
+            resource_id=resource.resource_id, facility_id=facility.facility_id),
+    '#editFacilityResourceFormContainer',
+    'Save Override',
+    is_edit=True
+) %}
+        <div class="row mb-3">
+            <div class="col-md-6">
+                {{ readonly_display('Resource', resource.resource_name, muted=False, strong=True) }}
+            </div>
+            <div class="col-md-6">
+                {{ readonly_display('Facility', facility.facility_name, muted=False, strong=True) }}
+            </div>
+        </div>
+
+        <p class="text-muted small mb-3">
+            Facility default fair share:
+            <strong>{{ facility.fair_share_percentage | fmt_pct(decimals=2) }}</strong>.
+            Setting an override here changes the fair share for
+            <strong>{{ resource.resource_name }}</strong> only. Use
+            <em>Unset</em> on the row to remove the override and fall back to the
+            facility default.
+        </p>
+
+        {{ number_field('fair_share_percentage', 'Override Fair Share %',
+                        required=True,
+                        min=0, max=100, step=0.01,
+                        default=override.fair_share_percentage if override and override.fair_share_percentage is not none else '',
+                        placeholder=facility.fair_share_percentage if facility.fair_share_percentage is not none else 'e.g. 31.00',
+                        id='editFacilityResourceFairShare') }}
+{% endcall %}
