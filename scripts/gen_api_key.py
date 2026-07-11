@@ -47,7 +47,7 @@ def main():
     env_var = f"API_KEYS_{args.username.upper()}"
 
     print(f"\nGenerated API key for '{args.username}':")
-    print(f"  Collector .env  →  STATUS_API_KEY={key}")
+    print(f"  Consumer's env  →  MY_API_USER={args.username}; MY_API_KEY={key}")
     print(f"  Webapp env var  →  {env_var}={hashed.decode()}")
     print()
 
