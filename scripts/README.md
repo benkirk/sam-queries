@@ -11,7 +11,8 @@ scripts/
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
 ├── apis/                        # Public-API worked examples / smoke tests
-│   └── systems_integration_apis.sh  # Download→refresh→re-download over the 5 SI APIs
+│   ├── systems_integration_apis.sh  # Download→refresh→re-download over the 5 SI APIs
+│   └── clear_caches.sh              # Clear webapp caches via the Admin Cache Refresh API
 ├── lib/                         # Sourceable shell helpers (see below)
 │   ├── common.sh               # Generic: colors, log/verdict helpers, usage
 │   ├── cirrus_common.sh        # CIRRUS layer: release names, KCTL, arg parse
@@ -89,6 +90,23 @@ idioms as the cluster tools (colored PASS/WARN/FAIL, exit `0`/`1`/`2`,
   scripts/apis/systems_integration_apis.sh            # all five, against prod
   scripts/apis/systems_integration_apis.sh -v queue   # one API, verbose
   scripts/apis/systems_integration_apis.sh -o ./out   # keep the downloaded JSON
+  ```
+
+- **`apis/clear_caches.sh`** — worked example + smoke test for the Admin Cache
+  Refresh API (`POST /api/v1/admin/cache/refresh`). Clears any or all of the
+  four cache categories (`flask`, `chart`, `usage`, `scans`), asserting the
+  `{"status":"ok","cleared":{…}}` shape and that scoping via `?category=` works,
+  plus a negative test that an unknown category is rejected with HTTP 400. Same
+  API-key Basic-auth env vars. Unlike the SI script this is **not read-only** —
+  its purpose is the side effect of invalidating live caches. Documented in
+  [../docs/apis/SYSTEMS_INTEGRATION_APIs.md](../docs/apis/SYSTEMS_INTEGRATION_APIs.md)
+  (§6 Admin Cache Refresh API).
+
+  ```bash
+  export SAM_API_USER='my-api-user' SAM_API_PASS='...'
+  scripts/apis/clear_caches.sh                        # clear all + each category
+  scripts/apis/clear_caches.sh -v chart               # just the chart caches, verbose
+  scripts/apis/clear_caches.sh --base http://localhost:5050   # against local webdev
   ```
 
 ### Shared Library (`lib/`)

@@ -745,6 +745,64 @@ roster of user overrides.
 
 ---
 
+## 6. Admin Cache Refresh API
+
+**Base URL**: `/api/v1/admin/`  
+**Permission required**: `SYSTEM_ADMIN` (session path; the Basic-auth token path
+authenticates by API key and bypasses the permission gate, like the other
+`/refresh` routes)  
+**Source**: `src/webapp/api/v1/admin.py`
+
+A single global cache-invalidation entry point on top of the unified caching
+facade (`webapp.caching.caching`). Unlike the per-resource `.../refresh` routes
+(which clear only the Flask HTTP-response cache), this can clear **any or all**
+of the four cache categories the webapp owns.
+
+### Endpoints
+
+#### `POST /api/v1/admin/cache/refresh`
+
+Clears caches and returns the number of entries cleared per category.
+
+**Query params**:
+
+| Param      | Values                          | Effect                        |
+|------------|---------------------------------|-------------------------------|
+| `category` | `flask` \| `chart` \| `usage` \| `scans` | Clear only that category |
+| *(omitted)*| —                               | Clear **all** categories      |
+
+**Response**:
+
+```json
+{"status": "ok", "cleared": {"flask": 12, "chart": 3, "usage": 0, "scans": 1}}
+```
+
+With `?category=chart`, only the `chart` key is present. An unrecognized
+`category` returns **400**.
+
+**Examples**:
+
+```bash
+# Clear everything
+curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" \
+     "$SAM_API_BASE/api/v1/admin/cache/refresh"
+
+# Clear just the chart SVG caches
+curl -X POST -u "$SAM_API_USER:$SAM_API_PASS" \
+     "$SAM_API_BASE/api/v1/admin/cache/refresh?category=chart"
+```
+
+The `sam-admin cache --refresh [--category X]` CLI wraps this endpoint using the
+same `SAM_API_USER` / `SAM_API_PASS` / `SAM_API_BASE` env vars. Admins can also
+clear caches from **Admin > Configuration > Caching** via the "Clear…" dropdown
+(gated on `SYSTEM_ADMIN`).
+
+**Worker affinity**: with the in-process cache fallback (no Redis) and multiple
+gunicorn workers, a single call only clears the worker that served it. With
+Redis configured (production) the shared stores clear globally.
+
+---
+
 ## Common Design Notes
 
 ### Shared Infrastructure

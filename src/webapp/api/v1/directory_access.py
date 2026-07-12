@@ -16,6 +16,7 @@ from flask import Blueprint, jsonify, abort
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache, csrf
+from webapp.caching import caching
 from webapp.api.helpers import register_error_handlers
 from sam.queries.directory_access import (
     group_populator,
@@ -96,5 +97,5 @@ def refresh_cache():
     cache.delete_memoized(get_directory_access)
     cache.delete_memoized(get_directory_access_branch)
     # Also clear any cached versions by key pattern
-    cache.clear()
+    caching.clear('flask')
     return jsonify({'status': 'ok'})

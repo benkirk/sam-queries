@@ -38,6 +38,7 @@ from flask import Blueprint, jsonify, abort, request
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache, csrf
+from webapp.caching import caching
 from webapp.api.helpers import register_error_handlers
 from sam.queries.queue_access import get_queue_data
 
@@ -111,5 +112,5 @@ def refresh_cache():
     cache.delete_memoized(get_queues)
     cache.delete_memoized(get_queues_for_resource)
     cache.delete_memoized(_queue_data)
-    cache.clear()
+    caching.clear('flask')
     return jsonify({'status': 'ok'})
