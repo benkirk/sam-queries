@@ -58,6 +58,16 @@ settings:
     - pattern: "archive_charge"
       mode: empty
 
+    # Security credentials: never clone real API bcrypt hashes into the
+    # obfuscated DB. Empty BOTH the creds and their role mappings so the pair
+    # stays FK-consistent — emptying only api_credentials orphans
+    # role_api_credentials. Applied here (before cleanup_orphans), unlike the
+    # old post-clone Makefile TRUNCATE which ran after orphan pruning.
+    - pattern: "api_credentials"
+      mode: empty
+    - pattern: "role_api_credentials"
+      mode: empty
+
     # Specific overrides first
     - pattern: "comp_charge_summary"
       mode: recent

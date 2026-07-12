@@ -56,6 +56,21 @@ class LegacyClient(_BaseClient):
             allow_500=True,
         )
 
+    def queue(self, resource: str | None = None) -> dict | None:
+        # /queue returns all active queues; /queue/{resource} filters to one.
+        # Retired resources may 404/500 — return None and let the caller skip.
+        if resource is None:
+            return self._get('/api/protected/admin/ssg/queue')
+        encoded = quote(resource, safe='')
+        return self._get(
+            f'/api/protected/admin/ssg/queue/{encoded}',
+            allow_404=True,
+            allow_500=True,
+        )
+
+    def wallclock_exemption(self) -> dict:
+        return self._get('/api/protected/admin/ssg/wallClockExemption')
+
 
 class NewClient(_BaseClient):
     """Client for samuel.k8s.ucar.edu new Python API."""
@@ -68,3 +83,12 @@ class NewClient(_BaseClient):
 
     def fstree_access(self) -> dict:
         return self._get('/api/v1/fstree_access/')
+
+    def queue(self, resource: str | None = None) -> dict:
+        if resource is None:
+            return self._get('/api/v1/queue/')
+        encoded = quote(resource, safe='')
+        return self._get(f'/api/v1/queue/{encoded}', allow_404=True)
+
+    def wallclock_exemption(self) -> dict:
+        return self._get('/api/v1/wallclock_exemption/')

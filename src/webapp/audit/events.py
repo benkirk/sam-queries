@@ -199,8 +199,8 @@ def init_audit_events(app, db, logfile_path, stdout=True):
         from flask import current_app
         try:
             current_app._get_current_object()  # raises RuntimeError outside app context
-            from webapp.extensions import cache
-            cache.clear()
+            from webapp.caching import caching
+            caching.clear('flask')
         except RuntimeError:
             pass  # No app context — CLI, test teardown, etc.
 

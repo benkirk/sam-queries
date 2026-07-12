@@ -483,6 +483,8 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'session_lifetime':    str(cfg.get('PERMANENT_SESSION_LIFETIME', '')),
         'flask_secret_key':    mask_secret(cfg.get('SECRET_KEY')),
         'api_key_usernames':   sorted(list((cfg.get('API_KEYS') or {}).keys())),
+        'api_keys_db_enabled': bool(cfg.get('API_KEYS_DB_ENABLED', False)),
+        'api_keys_db_ttl':     int(cfg.get('API_KEYS_DB_TTL', 0)),
         'oidc_active':         cfg.get('AUTH_PROVIDER') == 'oidc',
         'oidc_issuer':         cfg.get('OIDC_ISSUER', '') or None,
         'oidc_client_id':      cfg.get('OIDC_CLIENT_ID', '') or None,

@@ -1,6 +1,6 @@
 # Legacy API Parity Check
 
-Standalone utility for comparing the three Systems Integration APIs on the
+Standalone utility for comparing the five Systems Integration APIs on the
 deployed Python stack (samuel.k8s.ucar.edu) against their legacy Java
 counterparts (sam.ucar.edu).
 
@@ -14,10 +14,12 @@ production hosts and therefore requires the UCAR VPN.
 | `/api/v1/directory_access/`          | `/api/protected/admin/sysacct/directoryaccess`        |
 | `/api/v1/project_access/`            | `/api/protected/admin/sysacct/groupstatus/{branch}`   |
 | `/api/v1/fstree_access/`             | `/api/protected/admin/ssg/fairShareTree/v3/{resource}`|
+| `/api/v1/queue/`                     | `/api/protected/admin/ssg/queue`                      |
+| `/api/v1/wallclock_exemption/`       | `/api/protected/admin/ssg/wallClockExemption`         |
 
 The response schemas are specified in
 [`docs/apis/SYSTEMS_INTEGRATION_APIs.md`](../../docs/apis/SYSTEMS_INTEGRATION_APIs.md).
-~28 comparison rules run across the three APIs, each returning a
+~37 comparison rules run across the five APIs, each returning a
 pass/fail `CheckResult` with sample mismatch lines.
 
 ## Required environment variables
@@ -38,13 +40,15 @@ source etc/config_env.sh
 ## Usage
 
 ```bash
-# Full comparison across all three APIs
+# Full comparison across all five APIs
 python utils/parity/check_legacy_apis.py
 
 # One API at a time
 python utils/parity/check_legacy_apis.py --api directory
 python utils/parity/check_legacy_apis.py --api project --branch hpc
 python utils/parity/check_legacy_apis.py --api fstree --resource Derecho
+python utils/parity/check_legacy_apis.py --api queue
+python utils/parity/check_legacy_apis.py --api wallclock
 
 # JSON output for downstream tooling
 python utils/parity/check_legacy_apis.py --format json | jq .

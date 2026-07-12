@@ -556,3 +556,60 @@ class TestGetUserFsdata:
 
     def test_at_least_one_user_present(self, user_fs_all):
         assert len(user_fs_all['users']) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Per-resource facility fair-share override (facility_resource) fallback
+# ---------------------------------------------------------------------------
+
+
+class TestFacilityResourceOverride:
+    """End-to-end: an override changes a facility node's fairSharePercentage for
+    one resource; clearing it restores the facility default (COALESCE fallback).
+
+    Uses the function-scoped `session` fixture (not the module-scoped throwaway
+    caches) so writes are visible to the query and rolled back afterward.
+    """
+
+    def _facility_fsp(self, session, resource_name, facility_name):
+        tree = get_fstree_data(session, resource_name=resource_name)
+        for fac in tree['facilities']:
+            if fac['name'] == facility_name:
+                return fac['fairSharePercentage']
+        return None
+
+    def test_override_wins_then_unset_restores_default(self, session, hpc_resource):
+        from sam.resources.facilities import Facility, FacilityResource
+
+        resource_name = hpc_resource.resource_name
+
+        # Pick a facility that actually appears in this resource's tree.
+        tree = get_fstree_data(session, resource_name=resource_name)
+        assert tree['facilities'], f'no facilities in fstree for {resource_name}'
+        facility_name = tree['facilities'][0]['name']
+        facility = session.query(Facility).filter_by(facility_name=facility_name).one()
+
+        default = facility.fair_share_percentage
+        sentinel = 3.5 if default != 3.5 else 6.5
+
+        # Set an override → the facility node reports the override value.
+        FacilityResource.set_override(
+            session,
+            facility_id=facility.facility_id,
+            resource_id=hpc_resource.resource_id,
+            fair_share_percentage=sentinel,
+        )
+        assert self._facility_fsp(session, resource_name, facility_name) == sentinel
+
+        # Unset the override → the facility default re-emerges via COALESCE.
+        removed = FacilityResource.clear_override(
+            session,
+            facility_id=facility.facility_id,
+            resource_id=hpc_resource.resource_id,
+        )
+        assert removed is True
+        restored = self._facility_fsp(session, resource_name, facility_name)
+        expected = float(default) if default is not None else 0.0
+        assert restored == expected
+
+        session.rollback()

@@ -58,6 +58,45 @@ def _build_fstree_index(fstree_data: dict) -> dict:
     return idx
 
 
+def _date_part(value) -> str | None:
+    """Return the YYYY-MM-DD prefix of an ISO date/datetime string (or None).
+
+    Legacy emits full ISO datetimes with a tz offset
+    (``2021-10-01T00:00:00.000-07:00``); the new API emits naive-Mountain
+    ``.isoformat()`` (``2021-10-01T00:00:00``). ``date.fromisoformat`` rejects a
+    time component, so we truncate to the date before comparing. Both sides are
+    Mountain wall-clock, so the date part lines up (±1 day tolerance absorbs the
+    midnight/tz edge).
+    """
+    if not value:
+        return None
+    return str(value)[:10]
+
+
+def _index_queue_resources(data: dict) -> dict:
+    """resourceName -> {queueName -> queue_dict} for a /queue response."""
+    idx: dict = {}
+    for res in data.get('resources', []):
+        qmap = {q['queueName']: q for q in res.get('queues', [])}
+        idx[res['resourceName']] = qmap
+    return idx
+
+
+def _index_exemption_resources(data: dict) -> dict:
+    """resourceName -> queueName -> {username -> wallClockLimit} for an
+    exemptions response."""
+    idx: dict = {}
+    for res in data.get('resources', []):
+        qmap: dict = {}
+        for q in res.get('queues', []):
+            qmap[q['queueName']] = {
+                lim['username']: lim.get('wallClockLimit')
+                for lim in q.get('limits', [])
+            }
+        idx[res['resourceName']] = qmap
+    return idx
+
+
 def collect_resource_names(new_fstree_data: dict) -> list[str]:
     """Return sorted unique resource names appearing in the new fstree response."""
     names: set = set()
@@ -736,6 +775,221 @@ def compare_fstree_access(legacy_by_resource: dict, new: dict) -> list[CheckResu
         passed=len(failures) <= 5,
         summary=f'{compared} matched nodes checked (tolerance 5)',
         mismatches=failures,
+        compared=compared,
+    ))
+
+    return results
+
+
+# ===========================================================================
+# Queue — 5 checks
+# ===========================================================================
+
+def compare_queue(legacy: dict, new: dict) -> list[CheckResult]:
+    """Compare the ``/ssg/queue`` (all-resources) responses.
+
+    Both sides share the shape ``{name, resources:[{resourceName, queues:[...]}]}``.
+    Comparison is order-insensitive (indexed by resourceName / queueName).
+    """
+    results: list[CheckResult] = []
+    legacy_idx = _index_queue_resources(legacy)
+    new_idx = _index_queue_resources(new)
+
+    # 1. Resource names: legacy resources should appear in new (DB-mirror lag tol)
+    legacy_resources = set(legacy_idx)
+    new_resources = set(new_idx)
+    missing, ok = subset_diff(legacy_resources, new_resources, max_missing=2)
+    results.append(CheckResult(
+        name='queue / legacy resources ⊆ new',
+        passed=ok,
+        summary=f'{len(legacy_resources)} legacy resources vs {len(new_resources)} new',
+        mismatches=[f'resource {r!r} present in legacy, absent from new'
+                    for r in sorted(missing)],
+        compared=len(legacy_resources),
+    ))
+
+    shared_resources = sorted(legacy_resources & new_resources)
+
+    # 2. Queue names per resource: legacy ⊆ new (tolerance 5 — start_date tightening)
+    failures: list[str] = []
+    compared = 0
+    for r in shared_resources:
+        legacy_qs = set(legacy_idx[r])
+        new_qs = set(new_idx[r])
+        compared += len(legacy_qs)
+        miss, sub_ok = subset_diff(legacy_qs, new_qs, max_missing=5)
+        if not sub_ok:
+            failures.append(
+                f'{r}: {len(miss)} legacy queues missing from new '
+                f'(tolerance 5). Sample: {sorted(miss)[:5]}'
+            )
+    results.append(CheckResult(
+        name='queue / legacy queue names ⊆ new (per resource)',
+        passed=not failures,
+        summary=f'{compared} legacy queue names checked',
+        mismatches=failures,
+        compared=compared,
+    ))
+
+    # 3. wallClockHoursLimit equality for shared queues
+    # 4. cosId equality for shared queues
+    # 5. start/end dates within ±1 day for shared queues
+    wch_mismatches: list[str] = []
+    cos_mismatches: list[str] = []
+    date_mismatches: list[str] = []
+    compared = 0
+    for r in shared_resources:
+        for qname, lq in legacy_idx[r].items():
+            nq = new_idx[r].get(qname)
+            if nq is None:
+                continue
+            compared += 1
+            lw, nw = lq.get('wallClockHoursLimit'), nq.get('wallClockHoursLimit')
+            if lw is None or nw is None:
+                if lw is not nw:
+                    wch_mismatches.append(f'{r}/{qname}: legacy={lw}, new={nw}')
+            elif not within_tolerance(lw, nw, pct=0.1):
+                wch_mismatches.append(f'{r}/{qname}: legacy={lw}, new={nw}')
+
+            if lq.get('cosId') != nq.get('cosId'):
+                cos_mismatches.append(
+                    f'{r}/{qname}: legacy cosId={lq.get("cosId")}, new={nq.get("cosId")}'
+                )
+
+            for field in ('startDate', 'endDate'):
+                ld, nd = _date_part(lq.get(field)), _date_part(nq.get(field))
+                if ld is None or nd is None:
+                    if ld is not nd:
+                        date_mismatches.append(
+                            f'{r}/{qname}/{field}: legacy={lq.get(field)!r}, new={nq.get(field)!r}'
+                        )
+                elif not dates_within_one_day(ld, nd):
+                    date_mismatches.append(
+                        f'{r}/{qname}/{field}: legacy={ld!r}, new={nd!r}'
+                    )
+
+    results.append(CheckResult(
+        name='queue / wallClockHoursLimit match',
+        passed=not wch_mismatches,
+        summary=f'{compared} shared queues checked',
+        mismatches=wch_mismatches,
+        compared=compared,
+    ))
+    results.append(CheckResult(
+        name='queue / cosId match',
+        passed=not cos_mismatches,
+        summary=f'{compared} shared queues checked',
+        mismatches=cos_mismatches,
+        compared=compared,
+    ))
+    results.append(CheckResult(
+        name='queue / start & end dates within ±1 day',
+        passed=not date_mismatches,
+        summary=f'{compared} shared queues checked',
+        mismatches=date_mismatches,
+        compared=compared,
+    ))
+
+    return results
+
+
+# ===========================================================================
+# WallClock Exemption — 4 checks
+# ===========================================================================
+
+def compare_wallclock_exemption(legacy: dict, new: dict) -> list[CheckResult]:
+    """Compare the ``/ssg/wallClockExemption`` responses.
+
+    Both sides share the shape
+    ``{name, resources:[{resourceName, queues:[{queueName, limits:[...]}]}]}``.
+    Comparison is order-insensitive (indexed by resourceName / queueName / username).
+    """
+    results: list[CheckResult] = []
+    legacy_idx = _index_exemption_resources(legacy)
+    new_idx = _index_exemption_resources(new)
+
+    # 1. Resource names: legacy ⊆ new
+    legacy_resources = set(legacy_idx)
+    new_resources = set(new_idx)
+    missing, ok = subset_diff(legacy_resources, new_resources, max_missing=2)
+    results.append(CheckResult(
+        name='wallclock / legacy resources ⊆ new',
+        passed=ok,
+        summary=f'{len(legacy_resources)} legacy resources vs {len(new_resources)} new',
+        mismatches=[f'resource {r!r} present in legacy, absent from new'
+                    for r in sorted(missing)],
+        compared=len(legacy_resources),
+    ))
+
+    shared_resources = sorted(legacy_resources & new_resources)
+
+    # 2. Queue names per resource: legacy ⊆ new
+    failures: list[str] = []
+    compared = 0
+    for r in shared_resources:
+        legacy_qs = set(legacy_idx[r])
+        new_qs = set(new_idx[r])
+        compared += len(legacy_qs)
+        miss, sub_ok = subset_diff(legacy_qs, new_qs, max_missing=3)
+        if not sub_ok:
+            failures.append(
+                f'{r}: {len(miss)} legacy exemption-queues missing from new '
+                f'(tolerance 3). Sample: {sorted(miss)[:5]}'
+            )
+    results.append(CheckResult(
+        name='wallclock / legacy queue names ⊆ new (per resource)',
+        passed=not failures,
+        summary=f'{compared} legacy queue names checked',
+        mismatches=failures,
+        compared=compared,
+    ))
+
+    # 3. Usernames per (resource, queue): legacy ⊆ new
+    user_failures: list[str] = []
+    compared = 0
+    for r in shared_resources:
+        for qname, legacy_users in legacy_idx[r].items():
+            new_users = new_idx[r].get(qname)
+            if new_users is None:
+                continue
+            compared += len(legacy_users)
+            miss, sub_ok = subset_diff(set(legacy_users), set(new_users), max_missing=3)
+            if not sub_ok:
+                user_failures.append(
+                    f'{r}/{qname}: {len(miss)} legacy users missing from new '
+                    f'(tolerance 3). Sample: {sorted(miss)[:5]}'
+                )
+    results.append(CheckResult(
+        name='wallclock / legacy users ⊆ new (per resource+queue)',
+        passed=not user_failures,
+        summary=f'{compared} legacy user exemptions checked',
+        mismatches=user_failures,
+        compared=compared,
+    ))
+
+    # 4. wallClockLimit equality for shared (resource, queue, user)
+    limit_mismatches: list[str] = []
+    compared = 0
+    for r in shared_resources:
+        for qname, legacy_users in legacy_idx[r].items():
+            new_users = new_idx[r].get(qname)
+            if new_users is None:
+                continue
+            for uname, lw in legacy_users.items():
+                if uname not in new_users:
+                    continue
+                compared += 1
+                nw = new_users[uname]
+                if lw is None or nw is None:
+                    if lw is not nw:
+                        limit_mismatches.append(f'{r}/{qname}/{uname}: legacy={lw}, new={nw}')
+                elif not within_tolerance(lw, nw, pct=0.1):
+                    limit_mismatches.append(f'{r}/{qname}/{uname}: legacy={lw}, new={nw}')
+    results.append(CheckResult(
+        name='wallclock / wallClockLimit match for shared users',
+        passed=not limit_mismatches,
+        summary=f'{compared} shared user exemptions checked',
+        mismatches=limit_mismatches,
         compared=compared,
     ))
 

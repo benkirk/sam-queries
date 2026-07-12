@@ -161,6 +161,7 @@ from .facilities import (
 from .resources import (
     EditResourceForm,
     CreateResourceForm,
+    EditFacilityResourceForm,
     EditResourceTypeForm,
     CreateResourceTypeForm,
     EditMachineForm,
@@ -232,6 +233,7 @@ __all__ = [
     # Resources
     'EditResourceForm',
     'CreateResourceForm',
+    'EditFacilityResourceForm',
     'EditResourceTypeForm',
     'CreateResourceTypeForm',
     'EditMachineForm',

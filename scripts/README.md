@@ -10,6 +10,9 @@ scripts/
 ├── cirrus_healthcheck.sh        # CIRRUS/k8s health probe (samuel release)
 ├── cirrus_weblog_audit.sh       # CIRRUS/k8s traffic + rate-limit + abuse audit
 ├── zap_probe_docker.sh          # Dockerized OWASP ZAP scan of the webapp
+├── apis/                        # Public-API worked examples / smoke tests
+│   ├── systems_integration_apis.sh  # Download→refresh→re-download over the 5 SI APIs
+│   └── clear_caches.sh              # Clear webapp caches via the Admin Cache Refresh API
 ├── lib/                         # Sourceable shell helpers (see below)
 │   ├── common.sh               # Generic: colors, log/verdict helpers, usage
 │   ├── cirrus_common.sh        # CIRRUS layer: release names, KCTL, arg parse
@@ -65,6 +68,46 @@ flags.
 
 - **`zap_probe_docker.sh`** — Dockerized OWASP ZAP passive/active scan of the
   webapp (local throwaway target by default). See its `--help`.
+
+### API Smoke Tests (`apis/`)
+
+Runnable worked examples for the public v1 APIs — hand these to consumers as
+"here's how you call it," and re-run them as post-deploy smoke tests. Same
+idioms as the cluster tools (colored PASS/WARN/FAIL, exit `0`/`1`/`2`,
+`--no-color`/`-v`/`-h`).
+
+- **`apis/systems_integration_apis.sh`** — exercises all five Systems
+  Integration APIs (`directory_access`, `project_access`, `fstree_access`,
+  `queue`, `wallclock_exemption`) with the real consumer workflow —
+  **download → refresh → re-download** — authenticating via API-key HTTP Basic
+  Auth from the environment (`SAM_API_USER` / `SAM_API_PASS` / `SAM_API_BASE`).
+  Verifies each endpoint authenticates, returns valid JSON, and honors cache
+  refresh. Documented in
+  [../docs/apis/SYSTEMS_INTEGRATION_APIs.md](../docs/apis/SYSTEMS_INTEGRATION_APIs.md).
+
+  ```bash
+  export SAM_API_USER='my-api-user' SAM_API_PASS='...'
+  scripts/apis/systems_integration_apis.sh            # all five, against prod
+  scripts/apis/systems_integration_apis.sh -v queue   # one API, verbose
+  scripts/apis/systems_integration_apis.sh -o ./out   # keep the downloaded JSON
+  ```
+
+- **`apis/clear_caches.sh`** — worked example + smoke test for the Admin Cache
+  Refresh API (`POST /api/v1/admin/cache/refresh`). Clears any or all of the
+  four cache categories (`flask`, `chart`, `usage`, `scans`), asserting the
+  `{"status":"ok","cleared":{…}}` shape and that scoping via `?category=` works,
+  plus a negative test that an unknown category is rejected with HTTP 400. Same
+  API-key Basic-auth env vars. Unlike the SI script this is **not read-only** —
+  its purpose is the side effect of invalidating live caches. Documented in
+  [../docs/apis/SYSTEMS_INTEGRATION_APIs.md](../docs/apis/SYSTEMS_INTEGRATION_APIs.md)
+  (§6 Admin Cache Refresh API).
+
+  ```bash
+  export SAM_API_USER='my-api-user' SAM_API_PASS='...'
+  scripts/apis/clear_caches.sh                        # clear all + each category
+  scripts/apis/clear_caches.sh -v chart               # just the chart caches, verbose
+  scripts/apis/clear_caches.sh --base http://localhost:5050   # against local webdev
+  ```
 
 ### Shared Library (`lib/`)
 

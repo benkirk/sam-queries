@@ -5,6 +5,7 @@ SAM Admin CLI - Administrative commands.
 Administrative commands for SAM database management and validation.
 """
 
+import os
 import sys
 import click
 from datetime import date as _date, datetime
@@ -12,10 +13,15 @@ from sqlalchemy.orm import Session
 
 from config import SAMConfig
 from cli.core.context import Context
+from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR
 from cli.user.commands import UserAdminCommand
 from cli.project.commands import ProjectAdminCommand, ProjectExpirationCommand
 from cli.accounting.commands import AccountingAdminCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
+
+# Default base URL for the running webapp (matches the systems-integration
+# shell client, scripts/apis/systems_integration_apis.sh).
+_DEFAULT_API_BASE = 'https://samuel.k8s.ucar.edu'
 
 
 pass_context = click.make_pass_decorator(Context, ensure=True)
@@ -475,6 +481,86 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
         epoch=epoch_date,
     )
     sys.exit(exit_code)
+
+
+@cli.command()
+@click.option('--refresh', is_flag=True,
+              help='Invalidate the running webapp\'s caches')
+@click.option('--category', type=click.Choice(['flask', 'chart', 'usage', 'scans']),
+              default=None,
+              help='Scope the refresh to one cache category (default: all)')
+@click.option('--base', 'base_url', type=str, default=None,
+              help=f'Webapp base URL (default: $SAM_API_BASE or {_DEFAULT_API_BASE})')
+@pass_context
+def cache(ctx: Context, refresh: bool, category, base_url):
+    """Manage the running webapp's caches.
+
+    \b
+    Thin HTTP client for POST /api/v1/admin/cache/refresh — the caches live
+    inside the webapp worker process (and shared Redis), not the DB, so this
+    hits the live endpoint rather than clearing anything locally.
+
+    Credentials (HTTP Basic Auth, same as the systems-integration client):
+      SAM_API_USER   API-key username (required)
+      SAM_API_PASS   API-key password (required)
+      SAM_API_BASE   Base URL (optional; --base overrides)
+
+    \b
+    Examples:
+      sam-admin cache --refresh
+      sam-admin cache --refresh --category chart
+    """
+    if not refresh:
+        ctx.console.print(
+            "Error: specify an action (currently only --refresh)",
+            style="bold red",
+        )
+        sys.exit(EXIT_ERROR)
+
+    base = (base_url or os.getenv('SAM_API_BASE') or _DEFAULT_API_BASE).rstrip('/')
+    user = os.getenv('SAM_API_USER')
+    password = os.getenv('SAM_API_PASS')
+    if not user or not password:
+        ctx.console.print(
+            "Error: SAM_API_USER and SAM_API_PASS must be set (API-key credentials).",
+            style="bold red",
+        )
+        sys.exit(EXIT_ERROR)
+
+    import requests
+
+    url = f"{base}/api/v1/admin/cache/refresh"
+    params = {'category': category} if category else {}
+    try:
+        resp = requests.post(url, auth=(user, password), params=params, timeout=60)
+    except requests.RequestException as e:
+        ctx.console.print(f"Error: could not reach {url}: {e}", style="bold red")
+        sys.exit(EXIT_ERROR)
+
+    if resp.status_code != 200:
+        body = resp.text.strip()
+        ctx.console.print(
+            f"Error: cache refresh failed (HTTP {resp.status_code}): {body}",
+            style="bold red",
+        )
+        sys.exit(EXIT_ERROR)
+
+    payload = resp.json()
+    cleared = payload.get('cleared', {})
+
+    if ctx.output_format == 'json':
+        import json
+        click.echo(json.dumps(payload, indent=2, sort_keys=False))
+        sys.exit(EXIT_SUCCESS)
+
+    from rich.table import Table
+    table = Table(title=f"Cache refreshed via {base}", title_style="bold")
+    table.add_column("Category", style="cyan")
+    table.add_column("Entries cleared", justify="right", style="green")
+    for cat, count in cleared.items():
+        table.add_row(cat, str(count))
+    ctx.console.print(table)
+    sys.exit(EXIT_SUCCESS)
 
 
 if __name__ == '__main__':

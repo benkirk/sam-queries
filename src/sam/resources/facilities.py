@@ -115,8 +115,16 @@ class Facility(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
 
 #----------------------------------------------------------------------------
-class FacilityResource(Base):
-    """Maps facilities to resources with fair share percentages."""
+class FacilityResource(Base, SessionMixin):
+    """Per-(facility, resource) fair-share override.
+
+    When a row exists here for a given (facility, resource) pair, its
+    ``fair_share_percentage`` overrides the facility default
+    (``Facility.fair_share_percentage``) for that resource — see the
+    ``COALESCE(fr.fair_share_percentage, f.fair_share_percentage)`` in
+    ``sam/queries/fstree_access.py``. Deleting the row (or leaving it absent)
+    makes the facility default re-emerge.
+    """
     __tablename__ = 'facility_resource'
 
     __table_args__ = (
@@ -133,6 +141,92 @@ class FacilityResource(Base):
 
     facility = relationship('Facility', back_populates='facility_resources')
     resource = relationship('Resource', back_populates='facility_resources')
+
+    def update(self, *, fair_share_percentage: Optional[float] = None) -> 'FacilityResource':
+        """
+        Update this override's fair-share percentage.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Raises:
+            ValueError: If fair_share_percentage is out of the 0–100 range.
+        """
+        if fair_share_percentage is not None:
+            if not (0 <= fair_share_percentage <= 100):
+                raise ValueError("fair_share_percentage must be between 0 and 100")
+            self.fair_share_percentage = fair_share_percentage
+        self.session.flush()
+        return self
+
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        facility_id: int,
+        resource_id: int,
+        fair_share_percentage: Optional[float] = None,
+    ) -> 'FacilityResource':
+        """
+        Create a new per-resource fair-share override.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+        """
+        if fair_share_percentage is not None and not (0 <= fair_share_percentage <= 100):
+            raise ValueError("fair_share_percentage must be between 0 and 100")
+        obj = cls(
+            facility_id=facility_id,
+            resource_id=resource_id,
+            fair_share_percentage=fair_share_percentage,
+        )
+        session.add(obj)
+        session.flush()
+        return obj
+
+    @classmethod
+    def get_override(cls, session, facility_id: int, resource_id: int) -> Optional['FacilityResource']:
+        """Return the override row for (facility, resource), or None if absent."""
+        return (
+            session.query(cls)
+            .filter(cls.facility_id == facility_id, cls.resource_id == resource_id)
+            .one_or_none()
+        )
+
+    @classmethod
+    def set_override(
+        cls,
+        session,
+        *,
+        facility_id: int,
+        resource_id: int,
+        fair_share_percentage: float,
+    ) -> 'FacilityResource':
+        """Upsert the (facility, resource) override to the given percentage.
+
+        Updates the existing row if one exists, otherwise creates it.
+        """
+        existing = cls.get_override(session, facility_id, resource_id)
+        if existing is not None:
+            return existing.update(fair_share_percentage=fair_share_percentage)
+        return cls.create(
+            session,
+            facility_id=facility_id,
+            resource_id=resource_id,
+            fair_share_percentage=fair_share_percentage,
+        )
+
+    @classmethod
+    def clear_override(cls, session, *, facility_id: int, resource_id: int) -> bool:
+        """Delete the (facility, resource) override so the facility default re-emerges.
+
+        Returns True if a row was deleted, False if none existed (no-op).
+        """
+        existing = cls.get_override(session, facility_id, resource_id)
+        if existing is None:
+            return False
+        session.delete(existing)
+        session.flush()
+        return True
 
     def __str__(self):
         return f"<{self.facility.facility_name}/{self.resource.resource_name}>"

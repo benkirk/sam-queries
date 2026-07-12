@@ -88,6 +88,28 @@ class ApiCredentials(Base):
         """Check if API credentials are enabled."""
         return bool(self.enabled)
 
+    @classmethod
+    def as_api_key_map(cls, session) -> dict:
+        """Return enabled credentials as ``{username: {'hash', 'roles'}}``.
+
+        Consumed by the webapp's Basic-Auth layer (``webapp.utils.api_auth``) so
+        legacy SAM API clients can authenticate against their existing
+        ``api_credentials`` rows. Only ``enabled`` rows with a non-empty
+        username and password hash are included.
+
+        ``roles`` is the list of role names granted via ``role_api_credentials``.
+        It is resolved here — cheaply, the enabled set is tiny — so a future
+        permission gate can scope each key; it is not yet enforced on the token
+        auth path (which grants any valid key full access, as it always has).
+        """
+        result: dict = {}
+        for cred in session.query(cls).filter(cls.enabled).all():
+            if not cred.username or not cred.password:
+                continue
+            roles = [ra.role.name for ra in cred.role_assignments if ra.role]
+            result[cred.username] = {'hash': cred.password, 'roles': roles}
+        return result
+
     def __str__(self):
         return f"{self.username}"
 

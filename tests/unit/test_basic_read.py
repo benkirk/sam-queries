@@ -302,53 +302,52 @@ class TestProjectResourceAccess:
 
 
 class TestOrganizationTree:
+    """Organization hierarchy is navigated via ``parent_org_id`` pointers.
 
-    def test_get_ancestors_from_leaf(self, session):
-        leaf = session.query(Organization).filter(
-            Organization.tree_right == Organization.tree_left + 1,
-            Organization.parent_org_id.isnot(None),
-        ).first()
-        assert leaf is not None
-        ancestors = leaf.get_ancestors()
-        assert len(ancestors) >= 1
-        for anc in ancestors:
-            assert anc.tree_left < leaf.tree_left
-            assert anc.tree_right > leaf.tree_right
+    The nested-set *coordinate* columns (``tree_left``/``tree_right``) are
+    vestigial for Organization — unmaintained upstream (all NULL) and unused by
+    any application code path, which walks the org tree through ``get_children()``
+    / ``is_root()`` (both parent-FK based). The nested-set coordinate logic in
+    ``NestedSetMixin`` (``get_ancestors``/``get_descendants``/``get_path``) is
+    exercised separately via ``Project``, whose coordinates ARE populated and
+    used (see the project-tree tests in test_renew_extend / test_shared_allocation_usage
+    / test_allocation_state_transitions).
+    """
 
-    def test_get_descendants_from_root(self, session):
-        root = session.query(Organization).filter(
-            Organization.parent_org_id.is_(None),
-            Organization.tree_left.isnot(None),
-            Organization.tree_right > Organization.tree_left + 1,
-        ).first()
-        assert root is not None
-        assert len(root.get_descendants()) > 0
-
-    def test_get_children_match_parent_fk(self, session):
-        parent = session.query(Organization).filter(
-            Organization.tree_right > Organization.tree_left + 1
-        ).first()
-        assert parent is not None
-        children = parent.get_children()
-        assert len(children) > 0
-        assert all(c.parent_org_id == parent.organization_id for c in children)
-
-    def test_is_root_and_is_leaf(self, session):
+    def test_roots_exist_and_report_as_root(self, session):
         root = session.query(Organization).filter(
             Organization.parent_org_id.is_(None)
         ).first()
-        assert root is not None and root.is_root()
+        assert root is not None
+        assert root.is_root()
 
-        leaf = session.query(Organization).filter(
-            Organization.tree_right == Organization.tree_left + 1
-        ).first()
-        assert leaf is not None and leaf.is_leaf()
-
-    def test_get_path_multi_part(self, session):
+    def test_child_reports_not_root(self, session):
         child = session.query(Organization).filter(
             Organization.parent_org_id.isnot(None)
         ).first()
         assert child is not None
-        path = child.get_path()
-        assert ' > ' in path
-        assert child.acronym in path
+        assert not child.is_root()
+
+    def test_get_children_match_parent_fk(self, session):
+        # Pick any org that has a parent, then verify the parent's get_children()
+        # (a parent_org_id query) returns exactly its children, including this one.
+        child = session.query(Organization).filter(
+            Organization.parent_org_id.isnot(None)
+        ).first()
+        assert child is not None
+        parent = session.get(Organization, child.parent_org_id)
+        assert parent is not None, "parent_org_id must resolve (orphans are pruned in the clone)"
+
+        children = parent.get_children()
+        assert len(children) > 0
+        assert all(c.parent_org_id == parent.organization_id for c in children)
+        assert child.organization_id in {c.organization_id for c in children}
+
+    def test_get_siblings_share_parent(self, session):
+        child = session.query(Organization).filter(
+            Organization.parent_org_id.isnot(None)
+        ).first()
+        assert child is not None
+        for sib in child.get_siblings():
+            assert sib.parent_org_id == child.parent_org_id
+            assert sib.organization_id != child.organization_id
