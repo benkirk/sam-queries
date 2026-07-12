@@ -144,6 +144,8 @@
         <col style="width:110px;">   (progress bar)
         <col style="width:50px;">    (% used)
         <col style="width:90px;">    (allocated amount)
+        <col style="width:90px;">    (used amount)
+        <col style="width:90px;">    (remaining amount)
         <col style="width:110px;">   (shared badge + edit button)
       </colgroup>
       <tbody>
@@ -231,7 +233,21 @@
     {%- endif %}
   </td>
 
-  {# ── Col 5: shared badge + edit button + exchange button ──────────── #}
+  {# ── Col 5: used amount ────────────────────────────────────────────── #}
+  <td class="text-end text-muted small" style="vertical-align:middle; white-space:nowrap;">
+    {%- if res %}{{ res.used | fmt_number }}
+    {%- elif alloc_by_projcode is not none %}<em>—</em>
+    {%- endif %}
+  </td>
+
+  {# ── Col 6: remaining amount ───────────────────────────────────────── #}
+  <td class="text-end text-muted small" style="vertical-align:middle; white-space:nowrap;">
+    {%- if res %}{{ res.remaining | fmt_number }}
+    {%- elif alloc_by_projcode is not none %}<em>—</em>
+    {%- endif %}
+  </td>
+
+  {# ── Col 7: shared badge + edit button + exchange button ──────────── #}
   <td style="vertical-align:middle; white-space:nowrap;">
     {%- if res and res.is_inheriting -%}
     <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
