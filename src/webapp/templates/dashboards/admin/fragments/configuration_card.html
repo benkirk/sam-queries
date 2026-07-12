@@ -16,21 +16,9 @@
   cards.
 #}
 {# styles extracted to static/css/components.css (CSP) #}
-
-{% macro stat(label, value, value_class='') %}
-    <dt class="fw-normal text-muted">{{ label }}</dt>
-    <dd class="fw-semibold {{ value_class }}">
-        {{ value if value not in (None, '') else '—' }}
-    </dd>
-{% endmacro %}
-
-{% macro mask_badge(state) %}
-    {% if state == 'set' %}
-        <span class="badge bg-success-subtle text-success">set</span>
-    {% else %}
-        <span class="badge bg-secondary-subtle text-muted">unset</span>
-    {% endif %}
-{% endmacro %}
+{# stat / mask_badge / cache_row live in a shared partial so the caching
+   card body can re-render standalone on HTMX clear (see caching_card_body.html). #}
+{% from 'dashboards/admin/fragments/_config_macros.html' import stat, mask_badge %}
 
 <div class="card-body">
 
@@ -208,130 +196,68 @@
         </div>
 
         {# ── Caching ──────────────────────────────────────────────────── #}
-        {#  All cache adapters return a uniform info() dict — see CacheBase
-            in src/sam/caching/base.py. The cache_row macro renders any of
-            them: flask, chart, or usage. #}
-        {% macro cache_row(info) %}
-            <dl class="config-stats mb-0 small">
-                {% if info.enabled is not none %}
-                    {{ stat('Enabled', 'Yes' if info.enabled else 'No') }}
-                {% endif %}
-                {% if info.ttl is not none %}
-                    {{ stat('TTL (s)', info.ttl) }}
-                {% endif %}
-                {% if info.currsize is not none %}
-                    {{ stat('Size',
-                            '%d / %s' | format(info.currsize,
-                                                info.maxsize if info.maxsize is not none else '∞')) }}
-                {% endif %}
-                {% if info.hits is not none or info.misses is not none %}
-                    {{ stat('Hits / Misses',
-                            '%d / %d' | format(info.hits or 0, info.misses or 0)) }}
-                {% endif %}
-                {% if info.bytes_approx is not none %}
-                    {{ stat('Memory (approx)', info.bytes_approx | fmt_size) }}
-                {% endif %}
-                {% if info.extras and info.extras.message %}
-                    {{ stat('Note', info.extras.message) }}
-                {% endif %}
-            </dl>
-        {% endmacro %}
-
+        {#  Card body lives in a standalone fragment so the "Clear…" dropdown
+            can re-render just it via HTMX (admin_dashboard.htmx_clear_cache),
+            mirroring the Server Information card's refresh pattern above.
+            All cache adapters return a uniform info() dict — see CacheBase in
+            src/sam/caching/base.py; cache_row (in _config_macros.html) renders
+            any of them. #}
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
-                <div class="card-header mb-4">
-                    <h5><i class="fas fa-bolt me-1"></i> Caching</h5>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-bolt me-1"></i> Caching</h5>
+                    {# Clearing is write-shaped, so it's gated one tier above the
+                       read-only card (SYSTEM_ADMIN vs VIEW_SYSTEM_CONFIG). #}
+                    {% if has_permission(Permission.SYSTEM_ADMIN) %}
+                    <div class="d-flex align-items-center">
+                        <span id="caching-card-spinner"
+                              class="htmx-indicator spinner-border spinner-border-sm me-2"
+                              role="status" aria-hidden="true"></span>
+                        <div class="dropdown">
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger py-0 px-2 dropdown-toggle"
+                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                    title="Invalidate caches">
+                                <i class="fas fa-trash-alt"></i>
+                                <span class="d-none d-sm-inline ms-1">Clear…</span>
+                            </button>
+                            {% set _clear_url = url_for('admin_dashboard.htmx_clear_cache') %}
+                            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                <li>
+                                    <button type="button" class="dropdown-item"
+                                            hx-post="{{ _clear_url }}"
+                                            hx-target="#caching-card-body" hx-swap="innerHTML"
+                                            hx-indicator="#caching-card-spinner"
+                                            hx-confirm="Clear ALL caches?">
+                                        <i class="fas fa-broom me-2 text-danger"></i>All caches
+                                    </button>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><h6 class="dropdown-header py-1">By category</h6></li>
+                                {% for cat, label in [
+                                        ('flask', 'Flask (HTTP)'),
+                                        ('chart', 'Chart SVG'),
+                                        ('usage', 'Allocation usage'),
+                                        ('scans', 'Filesystem scans')] %}
+                                <li>
+                                    <button type="button" class="dropdown-item"
+                                            hx-post="{{ _clear_url }}?category={{ cat }}"
+                                            hx-target="#caching-card-body" hx-swap="innerHTML"
+                                            hx-indicator="#caching-card-spinner"
+                                            hx-confirm="Clear the {{ label }} cache?">
+                                        {{ label }}
+                                    </button>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
-                <div class="card-body">
-                    <dl class="config-stats mb-0 small">
-                        {{ stat('Flask-Cache backend',   state.caching.flask_cache_backend) }}
-                        {{ stat('Default timeout (s)',   state.caching.cache_default_timeout) }}
-                    </dl>
-
-                    {% if state.caching.usage %}
-                    <hr class="my-3">
-                    <div class="text-muted small mb-2"><strong>Allocation usage cache</strong></div>
-                    {{ cache_row(state.caching.usage) }}
-                    {% endif %}
-
-                    {% if state.caching.scans %}
-                    <hr class="my-3">
-                    <div class="text-muted small mb-2"><strong>Filesystem-scan cache</strong></div>
-                    {# Two buckets: the long-lived default (passive/landing +
-                       tab pill) and the short-TTL explorer (filtered) bucket.
-                       Looping surfaces each bucket's TTL so the 30-min explorer
-                       TTL is visible next to the 8-day default. #}
-                    {% for _b in state.caching.scans %}
-                      <div class="text-muted small mb-1">
-                        {{ 'Explorer (filtered)' if _b.name == 'fs_scans_filtered'
-                           else 'Default (passive)' }}
-                        <code class="ms-1">{{ _b.name }}</code>
-                      </div>
-                      {{ cache_row(_b) }}
-                      {% if not loop.last %}<div class="mb-2"></div>{% endif %}
-                    {% endfor %}
-                    {% endif %}
-
-                    {% if state.caching.flask %}
-                    <hr class="my-3">
-                    <div class="text-muted small mb-2"><strong>Flask-Cache (HTTP-level)</strong></div>
-                    {{ cache_row(state.caching.flask) }}
-                    {% if state.caching.flask.extras and state.caching.flask.extras.groups %}
-                    <details class="mt-2">
-                        <summary class="small text-muted">By API group</summary>
-                        <dl class="config-stats mb-0 small mt-2">
-                            {% for prefix, g in state.caching.flask.extras.groups.items() %}
-                                {% if g.entries %}
-                                {{ stat(prefix,
-                                        '%d entries · %s' | format(g.entries, g.bytes_approx | fmt_size)) }}
-                                {% endif %}
-                            {% endfor %}
-                        </dl>
-                    </details>
-                    {% endif %}
-                    {% endif %}
-
-                    {% if state.caching.chart %}
-                    <hr class="my-3">
-                    <div class="text-muted small mb-2"><strong>Chart SVG caches</strong></div>
-                    {# `selectattr` filters out items whose attr is falsy (None, 0).
-                       Redis-backed RedisChartCache reports maxsize=None — the boundless
-                       cache is Redis-wide allkeys-lru, not per-cache. #}
-                    {% set _ns = namespace(currsize=0, maxsize=0, hits=0, misses=0, bytes=0, unbounded=false) %}
-                    {% for c in state.caching.chart %}
-                    {% set _ns.currsize = _ns.currsize + (c.currsize or 0) %}
-                    {% set _ns.hits     = _ns.hits     + (c.hits     or 0) %}
-                    {% set _ns.misses   = _ns.misses   + (c.misses   or 0) %}
-                    {% set _ns.bytes    = _ns.bytes    + (c.bytes_approx or 0) %}
-                    {% if c.maxsize is none %}
-                    {% set _ns.unbounded = true %}
-                    {% else %}
-                    {% set _ns.maxsize = _ns.maxsize + c.maxsize %}
-                    {% endif %}
-                    {% endfor %}
-                    <dl class="config-stats mb-0 small">
-                        {% if _ns.unbounded %}
-                        {{ stat('Total size',
-                                '%d entries (shared, Redis LRU)' | format(_ns.currsize)) }}
-                        {% else %}
-                        {{ stat('Total size',
-                                '%d / %d entries' | format(_ns.currsize, _ns.maxsize)) }}
-                        {% endif %}
-                        {{ stat('Hits / Misses',
-                                '%d / %d' | format(_ns.hits, _ns.misses)) }}
-                        {{ stat('Memory (approx)', _ns.bytes | fmt_size) }}
-                    </dl>
-                    <details class="mt-2">
-                        <summary class="small text-muted">Per-chart breakdown ({{ state.caching.chart | length }})</summary>
-                        <dl class="config-stats mb-0 small mt-2">
-                            {% for c in state.caching.chart %}
-                            {% set cap = c.maxsize if c.maxsize is not none else '∞' %}
-                            {{ stat(c.name,
-                                    '%s/%s · %d hits · %s' | format(c.currsize, cap, c.hits or 0, c.bytes_approx | fmt_size)) }}
-                            {% endfor %}
-                        </dl>
-                    </details>
-                    {% endif %}
+                <div class="card-body" id="caching-card-body">
+                    {% with cache_state = state.caching %}
+                        {% include 'dashboards/admin/fragments/caching_card_body.html' %}
+                    {% endwith %}
                 </div>
             </div>
         </div>

@@ -64,6 +64,7 @@ from flask import Blueprint, jsonify, abort, request
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache, csrf
+from webapp.caching import caching
 from webapp.api.helpers import register_error_handlers
 from sam.queries.fstree_access import get_fstree_data, get_project_fsdata, get_user_fsdata
 
@@ -245,5 +246,5 @@ def refresh_cache():
     cache.delete_memoized(_fstree_data)
     cache.delete_memoized(_project_fstree_data)
     cache.delete_memoized(_user_fstree_data)
-    cache.clear()
+    caching.clear('flask')
     return jsonify({'status': 'ok'})

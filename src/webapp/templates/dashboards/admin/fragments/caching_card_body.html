@@ -1,0 +1,118 @@
+{#
+  Admin > Configuration: Caching card body.
+
+  Extracted from configuration_card.html so the "Clear…" dropdown can
+  re-render *just* this body via HTMX (admin_dashboard.htmx_clear_cache)
+  without rebuilding the whole Configuration tab — mirroring the Server
+  Information card's refresh pattern.
+
+  Context in:
+    cache_state  — state.caching dict from config_inspect.gather_runtime_state
+    cleared      — (optional) {category: count} dict returned by caching.clear(),
+                   set only when this fragment is rendered as a clear response.
+
+  Worker affinity: with the in-process cache fallback (no Redis) and multiple
+  gunicorn workers, a clear only invalidates the worker that served the POST.
+  With Redis configured (production) the shared stores clear globally.
+#}
+{% from 'dashboards/admin/fragments/_config_macros.html' import stat, cache_row %}
+
+{% if cleared is defined and cleared %}
+    <div class="alert alert-success alert-dismissible fade show py-2 small mb-3" role="alert">
+        <i class="fas fa-check-circle me-1"></i>
+        Cleared:
+        {% for category, count in cleared.items() %}
+            <strong>{{ category }}</strong> {{ count }}{% if not loop.last %} · {% endif %}
+        {% endfor %}
+        <button type="button" class="btn-close btn-close-sm py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+{% endif %}
+
+<dl class="config-stats mb-0 small">
+    {{ stat('Flask-Cache backend',   cache_state.flask_cache_backend) }}
+    {{ stat('Default timeout (s)',   cache_state.cache_default_timeout) }}
+</dl>
+
+{% if cache_state.usage %}
+<hr class="my-3">
+<div class="text-muted small mb-2"><strong>Allocation usage cache</strong></div>
+{{ cache_row(cache_state.usage) }}
+{% endif %}
+
+{% if cache_state.scans %}
+<hr class="my-3">
+<div class="text-muted small mb-2"><strong>Filesystem-scan cache</strong></div>
+{# Two buckets: the long-lived default (passive/landing + tab pill) and the
+   short-TTL explorer (filtered) bucket. Looping surfaces each bucket's TTL so
+   the 30-min explorer TTL is visible next to the 8-day default. #}
+{% for _b in cache_state.scans %}
+  <div class="text-muted small mb-1">
+    {{ 'Explorer (filtered)' if _b.name == 'fs_scans_filtered'
+       else 'Default (passive)' }}
+    <code class="ms-1">{{ _b.name }}</code>
+  </div>
+  {{ cache_row(_b) }}
+  {% if not loop.last %}<div class="mb-2"></div>{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if cache_state.flask %}
+<hr class="my-3">
+<div class="text-muted small mb-2"><strong>Flask-Cache (HTTP-level)</strong></div>
+{{ cache_row(cache_state.flask) }}
+{% if cache_state.flask.extras and cache_state.flask.extras.groups %}
+<details class="mt-2">
+    <summary class="small text-muted">By API group</summary>
+    <dl class="config-stats mb-0 small mt-2">
+        {% for prefix, g in cache_state.flask.extras.groups.items() %}
+            {% if g.entries %}
+            {{ stat(prefix,
+                    '%d entries · %s' | format(g.entries, g.bytes_approx | fmt_size)) }}
+            {% endif %}
+        {% endfor %}
+    </dl>
+</details>
+{% endif %}
+{% endif %}
+
+{% if cache_state.chart %}
+<hr class="my-3">
+<div class="text-muted small mb-2"><strong>Chart SVG caches</strong></div>
+{# `selectattr` filters out items whose attr is falsy (None, 0).
+   Redis-backed RedisChartCache reports maxsize=None — the boundless
+   cache is Redis-wide allkeys-lru, not per-cache. #}
+{% set _ns = namespace(currsize=0, maxsize=0, hits=0, misses=0, bytes=0, unbounded=false) %}
+{% for c in cache_state.chart %}
+{% set _ns.currsize = _ns.currsize + (c.currsize or 0) %}
+{% set _ns.hits     = _ns.hits     + (c.hits     or 0) %}
+{% set _ns.misses   = _ns.misses   + (c.misses   or 0) %}
+{% set _ns.bytes    = _ns.bytes    + (c.bytes_approx or 0) %}
+{% if c.maxsize is none %}
+{% set _ns.unbounded = true %}
+{% else %}
+{% set _ns.maxsize = _ns.maxsize + c.maxsize %}
+{% endif %}
+{% endfor %}
+<dl class="config-stats mb-0 small">
+    {% if _ns.unbounded %}
+    {{ stat('Total size',
+            '%d entries (shared, Redis LRU)' | format(_ns.currsize)) }}
+    {% else %}
+    {{ stat('Total size',
+            '%d / %d entries' | format(_ns.currsize, _ns.maxsize)) }}
+    {% endif %}
+    {{ stat('Hits / Misses',
+            '%d / %d' | format(_ns.hits, _ns.misses)) }}
+    {{ stat('Memory (approx)', _ns.bytes | fmt_size) }}
+</dl>
+<details class="mt-2">
+    <summary class="small text-muted">Per-chart breakdown ({{ cache_state.chart | length }})</summary>
+    <dl class="config-stats mb-0 small mt-2">
+        {% for c in cache_state.chart %}
+        {% set cap = c.maxsize if c.maxsize is not none else '∞' %}
+        {{ stat(c.name,
+                '%s/%s · %d hits · %s' | format(c.currsize, cap, c.hits or 0, c.bytes_approx | fmt_size)) }}
+        {% endfor %}
+    </dl>
+</details>
+{% endif %}

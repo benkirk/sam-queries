@@ -1,0 +1,53 @@
+{#
+  Shared macros for the Admin > Configuration card and its sub-fragments.
+
+  Imported (not included) so the macros are reusable across the full
+  configuration_card.html and the standalone card-body fragments that HTMX
+  re-renders on their own (e.g. caching_card_body.html). Macros here rely
+  only on their arguments + global filters (fmt_size) — never on caller
+  context — so `{% from ... import ... %}` without `with context` is safe.
+#}
+
+{% macro stat(label, value, value_class='') %}
+    <dt class="fw-normal text-muted">{{ label }}</dt>
+    <dd class="fw-semibold {{ value_class }}">
+        {{ value if value not in (None, '') else '—' }}
+    </dd>
+{% endmacro %}
+
+{% macro mask_badge(state) %}
+    {% if state == 'set' %}
+        <span class="badge bg-success-subtle text-success">set</span>
+    {% else %}
+        <span class="badge bg-secondary-subtle text-muted">unset</span>
+    {% endif %}
+{% endmacro %}
+
+{#  All cache adapters return a uniform info() dict — see CacheBase in
+    src/sam/caching/base.py. cache_row renders any of them: flask, chart,
+    usage, or scans. #}
+{% macro cache_row(info) %}
+    <dl class="config-stats mb-0 small">
+        {% if info.enabled is not none %}
+            {{ stat('Enabled', 'Yes' if info.enabled else 'No') }}
+        {% endif %}
+        {% if info.ttl is not none %}
+            {{ stat('TTL (s)', info.ttl) }}
+        {% endif %}
+        {% if info.currsize is not none %}
+            {{ stat('Size',
+                    '%d / %s' | format(info.currsize,
+                                        info.maxsize if info.maxsize is not none else '∞')) }}
+        {% endif %}
+        {% if info.hits is not none or info.misses is not none %}
+            {{ stat('Hits / Misses',
+                    '%d / %d' | format(info.hits or 0, info.misses or 0)) }}
+        {% endif %}
+        {% if info.bytes_approx is not none %}
+            {{ stat('Memory (approx)', info.bytes_approx | fmt_size) }}
+        {% endif %}
+        {% if info.extras and info.extras.message %}
+            {{ stat('Note', info.extras.message) }}
+        {% endif %}
+    </dl>
+{% endmacro %}

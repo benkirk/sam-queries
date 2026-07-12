@@ -38,6 +38,7 @@ from flask import Blueprint, jsonify, abort, request
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache, csrf
+from webapp.caching import caching
 from webapp.api.helpers import register_error_handlers
 from sam.queries.wallclock_exemption_access import get_wallclock_exemption_data
 
@@ -111,5 +112,5 @@ def refresh_cache():
     cache.delete_memoized(get_wallclock_exemptions)
     cache.delete_memoized(get_wallclock_exemptions_for_resource)
     cache.delete_memoized(_wallclock_exemption_data)
-    cache.clear()
+    caching.clear('flask')
     return jsonify({'status': 'ok'})

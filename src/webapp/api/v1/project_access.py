@@ -37,6 +37,7 @@ from flask import Blueprint, jsonify, abort
 from webapp.utils.rbac import Permission
 from webapp.utils.api_auth import login_or_token_required
 from webapp.extensions import db, cache, csrf
+from webapp.caching import caching
 from webapp.api.helpers import register_error_handlers
 from sam.queries.project_access import get_project_group_status, ACCESS_GRACE_PERIOD
 
@@ -102,5 +103,5 @@ def refresh_cache():
     """
     cache.delete_memoized(get_project_access)
     cache.delete_memoized(get_project_access_branch)
-    cache.clear()
+    caching.clear('flask')
     return jsonify({'status': 'ok'})

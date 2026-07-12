@@ -780,6 +780,13 @@ sam-admin project SCSG0001 --validate
 # Project reconciliation
 sam-admin project SCSG0001 --reconcile
 
+# Cache refresh — HTTP client for POST /api/v1/admin/cache/refresh.
+# Caches live in the running webapp (+ shared Redis), NOT the DB, so this hits
+# the live endpoint. Needs SAM_API_USER / SAM_API_PASS (and SAM_API_BASE or
+# --base). Same Basic-auth creds as the systems-integration client.
+sam-admin cache --refresh                        # clear all cache categories
+sam-admin cache --refresh --category chart       # clear one (flask|chart|usage|scans)
+
 # Admin commands include all search functionality
 sam-admin user benkirk --list-projects  # Works like sam-search
 sam-admin project SCSG0001 --list-users  # Works like sam-search
@@ -999,6 +1006,8 @@ sam-search accounting --jobs --last 365d --job-id 6049117[28].desched1  # Exact 
 sam-admin user benkirk --validate                 # Validate user data
 sam-admin project SCSG0001 --validate             # Validate project
 sam-admin project SCSG0001 --reconcile            # Reconcile allocations
+sam-admin cache --refresh                         # Clear webapp caches (needs SAM_API_USER/PASS)
+sam-admin cache --refresh --category chart        # Clear one category (flask|chart|usage|scans)
 
 # CLI - JSON output (machine-readable)
 sam-search --format json user benkirk | jq        # User envelope (kind=user)

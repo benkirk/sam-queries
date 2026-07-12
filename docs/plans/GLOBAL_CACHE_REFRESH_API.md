@@ -1,5 +1,16 @@
 # Global cache refresh API
 
+> **Status: implemented** on branch `cache_mgmt` (PR → `staging`). This doc
+> is the original design; the shipped work refined it in three ways:
+> 1. **Five** bypass routes were consolidated, not three — PR #346 added
+>    `queue.py` and `wallclock_exemption.py` after this doc was written.
+> 2. Added an **Admin UX**: a `SYSTEM_ADMIN`-gated "Clear…" dropdown on the
+>    Configuration tab's Caching card (`POST /admin/htmx/cache/clear`,
+>    re-rendering the extracted `caching_card_body.html` fragment).
+> 3. The CLI reuses the existing `SAM_API_USER` / `SAM_API_PASS` /
+>    `SAM_API_BASE` env vars (from the systems-integration client), not a new
+>    `SAM_WEBAPP_URL`. It stays a pure HTTP client (no webapp import).
+
 ## Context
 
 SAM has several per-resource `/refresh` endpoints (`project_access`, `fstree_access`,
