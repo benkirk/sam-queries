@@ -126,6 +126,7 @@ SELECT
     COALESCE(ol.lab_acronym, o.acronym, root_ol.lab_acronym, root_o.acronym) AS lab_acronym,
     c.contract_id                                             AS contract_id,
     c.contract_number                                         AS contract_number,
+    c.title                                                   AS contract_title,
     csrc.contract_source                                      AS contract_source,
     np.nsf_program_name                                       AS nsf_program_name,
     CASE
