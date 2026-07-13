@@ -92,6 +92,15 @@ omit = [
     "*/migrations/*",
     "*/scripts/*",
 
+    # Jinja templates. Jinja compiles each template to a Python code object
+    # whose co_filename is the template's own path, so coverage's tracer
+    # records rendered *.html templates as "measured files". The HTML
+    # reporter then tries to syntax-highlight them as Python — harmless on
+    # some toolchains (skipped with a warning) but a hard INTERNALERROR on
+    # Python 3.14 + newer coverage, which calls ast.parse() on the CSS.
+    # Templates are never valid coverage targets; exclude them outright.
+    "*/templates/*",
+
     # Deferred workstream: admin HTMX dashboard routes. Tracked separately;
     # exercised via manual QA + smoke tests in tests/integration/.
     "src/webapp/dashboards/admin/blueprint.py",

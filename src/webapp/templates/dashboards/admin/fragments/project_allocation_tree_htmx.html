@@ -96,8 +96,24 @@
         <col style="width:110px;">   {# progress bar #}
         <col style="width:60px;">    {# % used #}
         <col style="width:90px;">    {# allocated amount #}
+        <col style="width:90px;">    {# used amount #}
+        <col style="width:90px;">    {# remaining amount #}
         <col style="width:110px;">   {# shared badge + edit button #}
       </colgroup>
+
+      {# Column labels for the three amount columns — bare numbers alone are
+         ambiguous. Rendered once per tab table, above all resource sections. #}
+      <thead>
+        <tr class="small text-muted">
+          <th></th>
+          <th></th>
+          <th></th>
+          <th class="text-end fw-normal">Allocated</th>
+          <th class="text-end fw-normal">Used</th>
+          <th class="text-end fw-normal">Remaining</th>
+          <th></th>
+        </tr>
+      </thead>
 
       {% for resource_name in tab_data.names %}
       {%- set resource_slug = resource_name | lower | replace(' ', '-') | replace('/', '-') | replace('_', '-') -%}
@@ -132,7 +148,17 @@
             {% if root_alloc %}{{ root_alloc.allocated | fmt_number }}{% endif %}
           </td>
 
-          {# Col 5: edit pencil (or shared badge for inherited allocations) #}
+          {# Col 5: used amount #}
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.used | fmt_number }}{% endif %}
+          </td>
+
+          {# Col 6: remaining amount #}
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.remaining | fmt_number }}{% endif %}
+          </td>
+
+          {# Col 7: edit pencil (or shared badge for inherited allocations) #}
           <td style="vertical-align:middle;">
             {% if can_modify_allocations and root_alloc and root_alloc.allocation_id and not root_alloc.is_inheriting %}
             <button class="btn btn-sm btn-outline-warning py-0 px-1"
@@ -188,7 +214,17 @@
             {% if root_alloc %}{{ root_alloc.allocated | fmt_number }}{% endif %}
           </td>
 
-          {# Col 5: shared badge #}
+          {# Col 5: used amount #}
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.used | fmt_number }}{% endif %}
+          </td>
+
+          {# Col 6: remaining amount #}
+          <td class="text-end small text-muted" style="vertical-align:middle; white-space:nowrap;">
+            {% if root_alloc %}{{ root_alloc.remaining | fmt_number }}{% endif %}
+          </td>
+
+          {# Col 7: shared badge #}
           <td style="vertical-align:middle;">
             {% if root_alloc and root_alloc.is_inheriting %}
             <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>

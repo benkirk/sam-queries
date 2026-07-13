@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/form_fields.html' import form_errors_panel with context %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
 {#
   Operator-only User / Resource Access grid (site operators only — gated by the
   collapsible card in edit_project.html on EDIT_PROJECTS + EDIT_PROJECT_MEMBERS).
@@ -48,6 +49,12 @@
             hx-confirm="Give every member access to every resource shown on this project?">
       <i class="fas fa-magic"></i> Reconcile all
     </button>
+    {{ help_icon(
+         'Approves every user for every resource on this project. This is typically '
+         'the intended state; partial user resource access is most typically a mistake.',
+         rich=True,
+         title='Reconcile all',
+         placement='left') }}
     {% endif %}
   </div>
 </div>
