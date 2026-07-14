@@ -147,10 +147,15 @@ def load_projects(q5_path, q6_path, q7_path,
             award_cache = load_cache(award_cache_path)
 
     # --- Q5: project metadata + NSF contracts ---
+    # projcode is upper-cased on both sides of the Q5/Q6/Q7 joins: historical
+    # comp_charge_summary rows (e.g. 2020) store lowercase projcodes while the
+    # project table is uppercase. MySQL joins are case-insensitive so Q5 is fine,
+    # but the Python dict lookups below are not — without this, old-data compute
+    # silently fails to attribute to Derecho/Casper.
     with open(q5_path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            pc = (row["projcode"] or "").strip()
+            pc = (row["projcode"] or "").strip().upper()
             if not pc:
                 continue
             p = projects.setdefault(pc, {
@@ -195,7 +200,7 @@ def load_projects(q5_path, q6_path, q7_path,
     with open(q6_path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            pc = (row["projcode"] or "").strip()
+            pc = (row["projcode"] or "").strip().upper()
             if pc not in projects:
                 continue
             machine = (row.get("machine") or "").strip().lower()
@@ -214,7 +219,7 @@ def load_projects(q5_path, q6_path, q7_path,
         with open(q7_path, newline="", encoding="utf-8") as fh:
             reader = csv.DictReader(fh)
             for row in reader:
-                pc = (row["projcode"] or "").strip()
+                pc = (row["projcode"] or "").strip().upper()
                 if pc not in projects:
                     continue
                 rn = (row.get("resource_name") or "").strip()

@@ -92,9 +92,14 @@ def load_projects(q5_path, q6_path, university_types=frozenset(),
             award_cache = load_cache(award_cache_path)
 
     # Second pass over Q5: attach award ids + university flag per project.
+    # projcode is upper-cased on both sides of the Q5/Q6 join: comp_charge_summary
+    # stores historical projcodes in lowercase (e.g. 2020 data) while the project
+    # table is uppercase. MySQL joins are case-insensitive so Q5 looks fine, but a
+    # Python dict lookup is not — without this, old-data compute silently fails to
+    # attribute to Derecho/Casper.
     with open(q5_path, newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
-            pc = (row.get("projcode") or "").strip()
+            pc = (row.get("projcode") or "").strip().upper()
             if not pc:
                 continue
             p = projects.setdefault(pc, {
@@ -112,7 +117,7 @@ def load_projects(q5_path, q6_path, university_types=frozenset(),
     # Q6: resource attribution (mirrors build_annual_report's per-system pivot).
     with open(q6_path, newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
-            pc = (row.get("projcode") or "").strip()
+            pc = (row.get("projcode") or "").strip().upper()
             if pc not in projects:
                 continue
             machine = (row.get("machine") or "").strip().lower()
