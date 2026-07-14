@@ -164,12 +164,16 @@ def render(tiers, tops, start, end):
     hl = tiers["excl_coop"]["overall"]
     headline = (f"NSF grant funding {span}(excl. NCAR cooperative agreements): "
                 f"{hl['grants']} unique NSF grant(s) totalling "
-                f"{_money_compact(hl['est_total'])} in estimated total award value")
+                f"{_money_compact(hl['est_total'])} in estimated total award value "
+                f"(~{_money_compact(hl['annual'])} annualized)")
 
     def tier_table_rows():
         for key, label in TIER_LABELS:
             r = tiers[key]["overall"]
             yield (label, r)
+
+    cols = ("NSF Grants", "Grants w/ $", "Est. Total Award $",
+            "Funds Obligated $", "Annualized $/yr")
 
     if _HAVE_RICH:
         console = Console()
@@ -178,21 +182,21 @@ def render(tiers, tops, start, end):
 
         t1 = Table(title="By scope (all resources)", show_header=True, header_style="bold")
         t1.add_column("Scope")
-        for col in ("NSF Grants", "Grants w/ $", "Est. Total Award $", "Funds Obligated $"):
+        for col in cols:
             t1.add_column(col, justify="right")
         for label, r in tier_table_rows():
             t1.add_row(label, str(r["grants"]), str(r["resolved"]),
-                       _money(r["est_total"]), _money(r["obligated"]))
+                       _money(r["est_total"]), _money(r["obligated"]), _money(r["annual"]))
         console.print(t1)
 
         t2 = Table(title="By resource (excl. NCAR cooperative agreements)",
                    show_header=True, header_style="bold")
         t2.add_column("Resource")
-        for col in ("NSF Grants", "Grants w/ $", "Est. Total Award $", "Funds Obligated $"):
+        for col in cols:
             t2.add_column(col, justify="right")
         for label, r in _resource_rows(tiers["excl_coop"]):
             t2.add_row(label, str(r["grants"]), str(r["resolved"]),
-                       _money(r["est_total"]), _money(r["obligated"]))
+                       _money(r["est_total"]), _money(r["obligated"]), _money(r["annual"]))
         console.print(t2)
 
         if tops:
@@ -209,16 +213,17 @@ def render(tiers, tops, start, end):
         print("NSF Grant Funding")
         print("=" * 72)
         print(headline + "\n")
-        hdr = f"{'Scope':<28}{'Grants':>8}{'w/ $':>7}{'Est. Total $':>18}{'Obligated $':>18}"
+        hdr = (f"{'Scope':<28}{'Grants':>8}{'w/ $':>7}{'Est. Total $':>18}"
+               f"{'Obligated $':>18}{'Annualized $/yr':>18}")
         print(hdr); print("-" * len(hdr))
         for label, r in tier_table_rows():
             print(f"{label:<28}{r['grants']:>8}{r['resolved']:>7}"
-                  f"{_money(r['est_total']):>18}{_money(r['obligated']):>18}")
+                  f"{_money(r['est_total']):>18}{_money(r['obligated']):>18}{_money(r['annual']):>18}")
         print(f"\nBy resource (excl. NCAR cooperative agreements):")
         print(hdr.replace("Scope", "Resource")); print("-" * len(hdr))
         for label, r in _resource_rows(tiers["excl_coop"]):
             print(f"{label:<28}{r['grants']:>8}{r['resolved']:>7}"
-                  f"{_money(r['est_total']):>18}{_money(r['obligated']):>18}")
+                  f"{_money(r['est_total']):>18}{_money(r['obligated']):>18}{_money(r['annual']):>18}")
         if tops:
             print("\nLargest awards (by estimated total, all NSF grants):")
             for aid, title, est, _obl in tops:
@@ -242,11 +247,13 @@ def write_csv(tiers, path):
     with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["scope", "resource", "nsf_grants", "grants_with_amount",
-                    "estimated_total_award_usd", "funds_obligated_usd"])
+                    "estimated_total_award_usd", "funds_obligated_usd",
+                    "annualized_usd_per_yr", "grants_annualized"])
         for key, label in TIER_LABELS:
             for res, r in _resource_rows(tiers[key]):
                 w.writerow([label, res, r["grants"], r["resolved"],
-                            f"{r['est_total']:.0f}", f"{r['obligated']:.0f}"])
+                            f"{r['est_total']:.0f}", f"{r['obligated']:.0f}",
+                            f"{r['annual']:.0f}", r["annualized"]])
     print(f"wrote {path}", file=sys.stderr)
 
 

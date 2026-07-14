@@ -8,11 +8,15 @@ repeated runs don't re-hit the API. Used by both build_annual_report.py (divisio
 mapping + funding block) and nsf_grant_funding.py (standalone rollup).
 
 Cache file schema (nsf_award_lookups.csv):
-    award_number,division_code,estimated_total_amt,funds_obligated_amt
+    award_number,division_code,estimated_total_amt,funds_obligated_amt,
+    start_date,exp_date
 
-Backward compatibility: an older 2-column cache (award_number,division_code) is
-read transparently; rows missing amounts are treated as unresolved and re-fetched
-on the next run. Leading '#' comment lines are preserved across rewrites.
+start_date/exp_date (ISO) drive the annualized ($/yr) proration
+(estimated_total / award-duration-years).
+
+Backward compatibility: older 2- or 4-column caches are read transparently; rows
+missing amounts or dates are treated as stale and re-fetched on the next run.
+Leading '#' comment lines are preserved across rewrites.
 
 Only NSF-sourced contracts have a public API. A few very old awards (pre-~2000)
 return no record; those resolve to an entry with empty amount fields so callers
@@ -23,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import datetime
 import fcntl
 import json
 import os
@@ -35,13 +40,15 @@ import urllib.request
 
 NSF_AWARD_URL = "https://api.nsf.gov/services/v1/awards/{num}.json"
 
-# Request the amount + division fields explicitly. Without printFields the API
-# returns a default field set that still includes these, but naming them keeps
-# the payload small and the contract explicit.
-NSF_PRINT_FIELDS = "id,divAbbr,estimatedTotalAmt,fundsObligatedAmt"
+# Request the amount + division + date fields explicitly. Without printFields the
+# API returns a default field set that still includes these, but naming them
+# keeps the payload small and the contract explicit. start/exp dates drive the
+# annualized ($/yr) proration.
+NSF_PRINT_FIELDS = "id,divAbbr,estimatedTotalAmt,fundsObligatedAmt,startDate,expDate"
 
 CACHE_COLUMNS = ["award_number", "division_code",
-                 "estimated_total_amt", "funds_obligated_amt"]
+                 "estimated_total_amt", "funds_obligated_amt",
+                 "start_date", "exp_date"]
 
 
 # ----------------------------- award id parsing -----------------------------
@@ -76,6 +83,46 @@ def _num(v):
         return None
 
 
+def _iso_date(v):
+    """Normalize an NSF date ('MM/DD/YYYY') or an ISO date to 'YYYY-MM-DD'/None."""
+    if not v:
+        return None
+    s = str(v).strip()
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.datetime.strptime(s, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def _duration_years(entry):
+    """Award duration in years from start_date/exp_date, or None if unusable."""
+    s, e = entry.get("start_date"), entry.get("exp_date")
+    if not s or not e:
+        return None
+    try:
+        d0 = datetime.date.fromisoformat(s)
+        d1 = datetime.date.fromisoformat(e)
+    except (ValueError, TypeError):
+        return None
+    days = (d1 - d0).days
+    return days / 365.25 if days > 0 else None
+
+
+def prorated_annual(entry):
+    """
+    Annualized award value: estimated_total_amt / duration_years, or None if the
+    estimate or dates are missing. Sums to the annual run-rate of NSF research
+    funding the active grants represent.
+    """
+    yrs = _duration_years(entry)
+    est = entry.get("estimated_total_amt")
+    if yrs and est is not None:
+        return est / yrs
+    return None
+
+
 # ------------------------------- cache i/o ----------------------------------
 
 def load_cache(path):
@@ -102,6 +149,8 @@ def load_cache(path):
             "division_code": (row.get("division_code") or "").strip(),
             "estimated_total_amt": _num(row.get("estimated_total_amt")),
             "funds_obligated_amt": _num(row.get("funds_obligated_amt")),
+            "start_date": _iso_date(row.get("start_date")),
+            "exp_date": _iso_date(row.get("exp_date")),
         }
     return cache
 
@@ -111,26 +160,30 @@ def _has_amount(entry):
         entry.get("funds_obligated_amt") is not None
 
 
+def _has_dates(entry):
+    return bool(entry.get("start_date")) and bool(entry.get("exp_date"))
+
+
 def _needs_fetch(entry):
     """
     True if this cache entry should be (re)fetched from the API.
 
-      * None               -> not cached yet                       -> fetch
-      * division, no amount -> row from the pre-amount 2-col cache  -> fetch
-      * empty div, no amount -> already-fetched "no NSF record"     -> keep
-      * any amount present  -> fully resolved                       -> keep
+      * None                    -> not cached yet                  -> fetch
+      * division/amount but no
+        amount+dates            -> stale (pre-amount or pre-date)  -> fetch
+      * empty div, no amount    -> already-fetched "no NSF record" -> keep
+      * amount AND dates present -> fully resolved                 -> keep
 
-    The (division set, no amount) case is how we migrate an older cache: every
-    real NSF award carries funding, so a divisioned row lacking amounts must
-    predate the amount columns rather than being a genuinely amount-less award.
+    Migrates older caches forward: a resolved award (has a division) that lacks
+    amounts or start/exp dates predates those columns and is re-fetched. An
+    empty-division/no-amount row is a settled "no public record" and is kept as
+    is (so those don't re-hit the API every run).
     """
     if entry is None:
         return True
-    if _has_amount(entry):
-        return False
-    # No amounts recorded. Re-fetch only if a division was previously stored
-    # (stale 2-col row); an empty-division/no-amount row is a settled "no record".
-    return bool(entry.get("division_code"))
+    if not _is_resolved(entry):
+        return False   # settled "no NSF record"
+    return not (_has_amount(entry) and _has_dates(entry))
 
 
 def _is_resolved(entry):
@@ -163,6 +216,8 @@ def _write_rows(fh, header, cache):
             e.get("division_code") or "",
             "" if e.get("estimated_total_amt") is None else int(e["estimated_total_amt"]),
             "" if e.get("funds_obligated_amt") is None else int(e["funds_obligated_amt"]),
+            e.get("start_date") or "",
+            e.get("exp_date") or "",
         ])
 
 
@@ -222,7 +277,7 @@ def _fetch_nsf_award(award_number, timeout=10):
     missing record, return an entry with empty division + None amounts.
     """
     empty = {"division_code": "", "estimated_total_amt": None,
-             "funds_obligated_amt": None}
+             "funds_obligated_amt": None, "start_date": None, "exp_date": None}
     url = NSF_AWARD_URL.format(num=award_number) + "?printFields=" + NSF_PRINT_FIELDS
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -242,6 +297,8 @@ def _fetch_nsf_award(award_number, timeout=10):
         "division_code": (a.get("divAbbr") or "").strip(),
         "estimated_total_amt": _num(a.get("estimatedTotalAmt")),
         "funds_obligated_amt": _num(a.get("fundsObligatedAmt")),
+        "start_date": _iso_date(a.get("startDate")),
+        "exp_date": _iso_date(a.get("expDate")),
     }
 
 
@@ -341,11 +398,15 @@ def load_university_types(maps_dir):
 
 
 def _sum_awards(award_ids, award_cache):
-    """(grants, resolved, est_total, obligated) over a set of award ids."""
+    """Aggregate stats over a set of award ids: grant count, count with a dollar
+    amount, summed estimated-total / obligated / annualized ($/yr), and the count
+    that could be annualized (had usable start/exp dates)."""
     grants = len(award_ids)
     resolved = 0
     est_total = 0.0
     obligated = 0.0
+    annual = 0.0
+    annualized = 0
     for aid in award_ids:
         entry = award_cache.get(aid)
         if not entry:
@@ -356,8 +417,12 @@ def _sum_awards(award_ids, award_cache):
             resolved += 1
             est_total += est or 0.0
             obligated += obl or 0.0
-    return {"grants": grants, "resolved": resolved,
-            "est_total": est_total, "obligated": obligated}
+        pa = prorated_annual(entry)
+        if pa is not None:
+            annual += pa
+            annualized += 1
+    return {"grants": grants, "resolved": resolved, "est_total": est_total,
+            "obligated": obligated, "annual": annual, "annualized": annualized}
 
 
 def summarize_funding(projects, award_cache):

@@ -494,25 +494,27 @@ def emit_report(projects, bucket_map, out_path, start, end,
         push("", "NSF Grant Funding (source: api.nsf.gov — NSF-sourced contracts only)",
              "", "", "", "")
         blank()
-        # By scope (all resources); est-total is the reliable figure.
+        # By scope (all resources); est-total is the reliable figure, plus its
+        # annualized ($/yr) proration (estimated_total / award duration).
         push("Scope", "NSF Grants", "Grants w/ $ resolved",
-             "Est. Total Award $", "Funds Obligated $", "")
+             "Est. Total Award $", "Funds Obligated $", "Annualized $/yr")
         for key, label in (("all", "All NSF grants"),
                            ("excl_coop", "Excl. NCAR coop agreements"),
                            ("university", "University projects only")):
             r = tiers[key]["overall"]
             push(label, _fmt_int(r["grants"]), _fmt_int(r["resolved"]),
-                 _fmt_money(r["est_total"]), _fmt_money(r["obligated"]), "")
+                 _fmt_money(r["est_total"]), _fmt_money(r["obligated"]),
+                 _fmt_money(r["annual"]))
         blank()
         # By resource, excl. cooperative agreements (the meaningful scope).
-        push("By resource (excl. NCAR coop agreements)", "", "", "", "", "")
+        push("By resource (excl. NCAR coop agreements)", "", "", "", "", "Annualized $/yr")
         ov = tiers["excl_coop"]["overall"]
         push("OVERALL (any resource)", _fmt_int(ov["grants"]), _fmt_int(ov["resolved"]),
-             _fmt_money(ov["est_total"]), _fmt_money(ov["obligated"]), "")
+             _fmt_money(ov["est_total"]), _fmt_money(ov["obligated"]), _fmt_money(ov["annual"]))
         for label in sorted(tiers["excl_coop"]["by_resource"]):
             r = tiers["excl_coop"]["by_resource"][label]
             push(label, _fmt_int(r["grants"]), _fmt_int(r["resolved"]),
-                 _fmt_money(r["est_total"]), _fmt_money(r["obligated"]), "")
+                 _fmt_money(r["est_total"]), _fmt_money(r["obligated"]), _fmt_money(r["annual"]))
         # Largest awards (transparency on concentration).
         tops = top_awards(plist, award_cache, award_titles or {}, n=10)
         if tops:
