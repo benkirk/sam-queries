@@ -28,14 +28,17 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import os
 import sys
-import time
-import urllib.error
-import urllib.request
 from collections import defaultdict
 from datetime import date
+
+# Shared NSF Awards API resolver (division + funding amounts + on-disk cache).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from nsf_awards import (  # noqa: E402
+    nsf_award_id, load_cache, resolve_awards, is_cooperative_agreement,
+    summarize_tiers, top_awards, UNIVERSITY_SECTIONS,
+)
 
 
 # ----------------------------- helpers --------------------------------------
@@ -90,88 +93,6 @@ def _facility_set(facility_names_field):
     return {f.strip() for f in facility_names_field.split("|") if f.strip()}
 
 
-# ----------------------- NSF award API resolver -----------------------------
-
-NSF_AWARD_URL = "https://api.nsf.gov/services/v1/awards/{num}.json"
-
-
-def _load_award_lookup_cache(path):
-    """award_number (str) -> division_code (str). Missing file -> empty dict."""
-    cache = {}
-    if not os.path.isfile(path):
-        return cache
-    with open(path, newline="", encoding="utf-8") as fh:
-        lines = [ln for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
-    reader = csv.DictReader(lines)
-    for row in reader:
-        a = (row.get("award_number") or "").strip()
-        d = (row.get("division_code") or "").strip()
-        if a and d:
-            cache[a] = d
-    return cache
-
-
-def _save_award_lookup_cache(path, cache):
-    """Rewrite the cache file, preserving leading comment lines if present."""
-    header = []
-    if os.path.isfile(path):
-        with open(path, encoding="utf-8") as fh:
-            for ln in fh:
-                if ln.lstrip().startswith("#"):
-                    header.append(ln.rstrip("\n"))
-                else:
-                    break
-    with open(path, "w", newline="", encoding="utf-8") as fh:
-        for ln in header:
-            fh.write(ln + "\n")
-        w = csv.writer(fh)
-        w.writerow(["award_number", "division_code"])
-        for k in sorted(cache):
-            w.writerow([k, cache[k]])
-
-
-def _fetch_nsf_division(award_number, timeout=10):
-    """Hit the NSF awards API for one award. Return divAbbr (or '' if missing)."""
-    url = NSF_AWARD_URL.format(num=award_number)
-    try:
-        with urllib.request.urlopen(url, timeout=timeout) as r:
-            payload = json.load(r)
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as e:
-        print(f"    NSF API error for {award_number}: {e}", file=sys.stderr)
-        return ""
-    try:
-        awards = payload["response"]["award"]
-    except (KeyError, TypeError):
-        return ""
-    if not awards:
-        return ""
-    return (awards[0].get("divAbbr") or "").strip()
-
-
-def resolve_unknown_awards(award_numbers, cache_path, sleep_between=0.3):
-    """
-    Fill in division_code for any award_numbers not yet in the cache file.
-    Returns the merged cache. Writes any newly-resolved entries back to disk.
-    """
-    cache = _load_award_lookup_cache(cache_path)
-    todo = sorted({a for a in award_numbers if a and a not in cache})
-    if not todo:
-        return cache
-    print(f"  Resolving {len(todo)} NSF award number(s) via api.nsf.gov ...", file=sys.stderr)
-    new_count = 0
-    for a in todo:
-        div = _fetch_nsf_division(a)
-        if div:
-            cache[a] = div
-            new_count += 1
-            print(f"    {a} -> {div}", file=sys.stderr)
-        time.sleep(sleep_between)
-    if new_count:
-        _save_award_lookup_cache(cache_path, cache)
-        print(f"  Cached {new_count} new lookup(s) in {cache_path}", file=sys.stderr)
-    return cache
-
-
 # --------------------------- core algorithm ---------------------------------
 
 def load_projects(q5_path, q6_path, q7_path,
@@ -181,38 +102,60 @@ def load_projects(q5_path, q6_path, q7_path,
     Return projects = { projcode: {
         title, facilities, allocation_type, lead_org_acronym,
         nsf_division_codes (set), nsf_directorates (set),
-        derecho_ch, casper_ch, campaign_tby,
+        nsf_award_ids (set), derecho_ch, casper_ch, campaign_tby,
     } }
-    Also return unmapped sets so the caller can abort if non-empty.
+    Also return the unmapped sets (so the caller can abort if non-empty), the
+    resolved award_cache (award_id -> {division_code, estimated_total_amt,
+    funds_obligated_amt}), an award_id -> contract_title map, and the set of
+    cooperative-agreement award ids (NCAR core awards) so the funding block can
+    sum dollars in scoped tiers.
     """
     projects = {}
     unmapped_alloc_types = set()
     unmapped_divisions = set()
+    award_titles = {}      # award_id -> contract title (for top-N + coop detect)
+    coop_ids = set()       # NCAR core cooperative-agreement award ids
+    university_types = {at for at, info in bucket_map.items()
+                        if info.get("section") in UNIVERSITY_SECTIONS}
 
-    # First pass: collect every numeric-looking NSF division_code that isn't
-    # already in nsf_directorate_map.csv. These are bare NSF award numbers
-    # (e.g. "2317820") from post-~2020 awards that no longer carry a
-    # division prefix. We'll batch-resolve them via the NSF API once.
-    numeric_codes_to_resolve = set()
+    # First pass: collect the numeric NSF award id for EVERY NSF contract so we
+    # can batch-resolve division + funding amounts once. Unlike the old code
+    # (which only resolved bare-numeric award numbers absent from the
+    # directorate map), we now resolve old-style awards too — their amounts are
+    # only available from the API, and the amount lookup needs the numeric id
+    # (digits after the last hyphen of e.g. "AGS-0830068").
+    award_ids_to_resolve = set()
     with open(q5_path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
             src = (row.get("contract_source") or "").strip().upper()
-            div = (row.get("nsf_division_code") or "").strip().upper()
-            if src == "NSF" and div and div.isdigit() and div not in nsf_map:
-                numeric_codes_to_resolve.add(div)
+            if src != "NSF":
+                continue
+            aid = nsf_award_id(row.get("contract_number"))
+            if aid:
+                award_ids_to_resolve.add(aid)
+                title = (row.get("contract_title") or "").strip()
+                award_titles.setdefault(aid, title)
+                if is_cooperative_agreement(title):
+                    coop_ids.add(aid)
 
     award_cache = {}
-    if numeric_codes_to_resolve and allow_network and award_cache_path:
-        award_cache = resolve_unknown_awards(numeric_codes_to_resolve, award_cache_path)
-    elif award_cache_path:
-        award_cache = _load_award_lookup_cache(award_cache_path)
+    if award_cache_path:
+        if award_ids_to_resolve and allow_network:
+            award_cache = resolve_awards(award_ids_to_resolve, award_cache_path)
+        else:
+            award_cache = load_cache(award_cache_path)
 
     # --- Q5: project metadata + NSF contracts ---
+    # projcode is upper-cased on both sides of the Q5/Q6/Q7 joins: historical
+    # comp_charge_summary rows (e.g. 2020) store lowercase projcodes while the
+    # project table is uppercase. MySQL joins are case-insensitive so Q5 is fine,
+    # but the Python dict lookups below are not — without this, old-data compute
+    # silently fails to attribute to Derecho/Casper.
     with open(q5_path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            pc = (row["projcode"] or "").strip()
+            pc = (row["projcode"] or "").strip().upper()
             if not pc:
                 continue
             p = projects.setdefault(pc, {
@@ -224,6 +167,8 @@ def load_projects(q5_path, q6_path, q7_path,
                 "lab_acronym": (row.get("lab_acronym") or row.get("lead_org_acronym") or "").strip(),
                 "nsf_division_codes": set(),
                 "nsf_directorates": set(),
+                "nsf_award_ids": set(),
+                "is_university": (row.get("allocation_type") or "").strip() in university_types,
                 "_div_to_dir": {},   # per-project: div -> directorate
                 "derecho_ch": 0.0,
                 "casper_ch": 0.0,
@@ -234,10 +179,15 @@ def load_projects(q5_path, q6_path, q7_path,
             src = (row.get("contract_source") or "").strip().upper()
             div = (row.get("nsf_division_code") or "").strip().upper()
             if src == "NSF" and div:
-                # If div is a bare numeric award number, try the cached
-                # NSF API lookup to translate it into a real division code.
-                if div.isdigit() and div in award_cache:
-                    div = award_cache[div]
+                aid = nsf_award_id(row.get("contract_number"))
+                if aid:
+                    p["nsf_award_ids"].add(aid)
+                # If div is a bare numeric award number, translate it into a
+                # real division code using the API-resolved division.
+                if div.isdigit() and aid:
+                    api_div = award_cache.get(aid, {}).get("division_code")
+                    if api_div:
+                        div = api_div
                 p["nsf_division_codes"].add(div)
                 if div in nsf_map:
                     directorate = nsf_map[div]["directorate"]
@@ -250,7 +200,7 @@ def load_projects(q5_path, q6_path, q7_path,
     with open(q6_path, newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            pc = (row["projcode"] or "").strip()
+            pc = (row["projcode"] or "").strip().upper()
             if pc not in projects:
                 continue
             machine = (row.get("machine") or "").strip().lower()
@@ -269,7 +219,7 @@ def load_projects(q5_path, q6_path, q7_path,
         with open(q7_path, newline="", encoding="utf-8") as fh:
             reader = csv.DictReader(fh)
             for row in reader:
-                pc = (row["projcode"] or "").strip()
+                pc = (row["projcode"] or "").strip().upper()
                 if pc not in projects:
                     continue
                 rn = (row.get("resource_name") or "").strip()
@@ -282,7 +232,7 @@ def load_projects(q5_path, q6_path, q7_path,
         if at not in bucket_map:
             unmapped_alloc_types.add(at)
 
-    return projects, unmapped_alloc_types, unmapped_divisions
+    return projects, unmapped_alloc_types, unmapped_divisions, award_cache, award_titles, coop_ids
 
 
 def _projcode_facility_hint(projcode):
@@ -365,7 +315,14 @@ def _fmt_int(x):
     return f"{x}"
 
 
-def emit_report(projects, bucket_map, out_path, start, end):
+def _fmt_money(x):
+    if x is None or x == 0:
+        return ""
+    return f"${x:,.0f}"
+
+
+def emit_report(projects, bucket_map, out_path, start, end,
+                award_cache=None, award_titles=None, coop_ids=None):
     """Write the section-banner-style CSV mirroring sample_annual_usae_report.csv."""
 
     # bucket each project
@@ -529,6 +486,60 @@ def emit_report(projects, bucket_map, out_path, start, end):
                  _fmt_num(p["casper_ch"]),
                  _fmt_num(p["campaign_tby"]))
 
+    # ----- NSF Grant Funding (external NSF Awards API) -----
+    # Grant counts + dollar totals are sourced from api.nsf.gov (SAM's DB has no
+    # award amount). Only contract_source='NSF' awards resolve; a grant funding
+    # projects on several systems is counted once overall and once per system.
+    # Reported in three scopes because a few NCAR cooperative-agreement awards
+    # (which fund NCAR itself) otherwise dominate the total.
+    if award_cache is not None:
+        blank(); blank()
+        plist = list(projects.values())
+        tiers = summarize_tiers(plist, award_cache, coop_ids or set())
+        push("", "NSF Grant Funding (source: api.nsf.gov — NSF-sourced contracts only)",
+             "", "", "", "")
+        blank()
+        # By scope (all resources); est-total is the reliable figure, plus its
+        # annualized ($/yr) proration (estimated_total / award duration).
+        push("Scope", "NSF Grants", "Grants w/ $ resolved",
+             "Est. Total Award $", "Funds Obligated $", "Annualized $/yr")
+        for key, label in (("all", "All NSF grants"),
+                           ("excl_coop", "Excl. NCAR coop agreements"),
+                           ("university", "University projects only")):
+            r = tiers[key]["overall"]
+            push(label, _fmt_int(r["grants"]), _fmt_int(r["resolved"]),
+                 _fmt_money(r["est_total"]), _fmt_money(r["obligated"]),
+                 _fmt_money(r["annual"]))
+        blank()
+        # By resource, excl. cooperative agreements (the meaningful scope).
+        push("By resource (excl. NCAR coop agreements)", "", "", "", "", "Annualized $/yr")
+        ov = tiers["excl_coop"]["overall"]
+        push("OVERALL (any resource)", _fmt_int(ov["grants"]), _fmt_int(ov["resolved"]),
+             _fmt_money(ov["est_total"]), _fmt_money(ov["obligated"]), _fmt_money(ov["annual"]))
+        for label in sorted(tiers["excl_coop"]["by_resource"]):
+            r = tiers["excl_coop"]["by_resource"][label]
+            push(label, _fmt_int(r["grants"]), _fmt_int(r["resolved"]),
+                 _fmt_money(r["est_total"]), _fmt_money(r["obligated"]), _fmt_money(r["annual"]))
+        # Largest awards (transparency on concentration).
+        tops = top_awards(plist, award_cache, award_titles or {}, n=10)
+        if tops:
+            blank()
+            push("Largest awards (all NSF)", "Est. Total Award $", "Title", "", "", "")
+            for aid, title, est, _obl in tops:
+                push(aid, _fmt_money(est), (title or "")[:60], "", "", "")
+        n_unres = len(tiers["all"]["unresolved_ids"])
+        n_susp = len(tiers["all"]["suspect_obligated_ids"])
+        if n_unres or n_susp:
+            blank()
+        if n_unres:
+            push("", f"Note: {n_unres} NSF award id(s) had no public amount "
+                     f"(pre-~2000 or withdrawn) and are excluded from the $ totals.",
+                 "", "", "", "")
+        if n_susp:
+            push("", f"Note: {n_susp} award(s) report funds-obligated > estimated-total "
+                     f"(cumulative cooperative-agreement obligations) — prefer est-total.",
+                 "", "", "", "")
+
     with open(out_path, "w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerows(rows)
@@ -570,7 +581,7 @@ def main():
         print(f"WARNING: {q7} not found; Campaign TB-yrs column will be 0", file=sys.stderr)
         q7 = None
 
-    projects, unmapped_alloc, unmapped_div = load_projects(
+    projects, unmapped_alloc, unmapped_div, award_cache, award_titles, coop_ids = load_projects(
         q5, q6, q7, nsf_map, bucket_map, args.campaign_resource,
         award_cache_path=os.path.join(args.maps, "nsf_award_lookups.csv"),
         allow_network=not args.no_network)
@@ -590,7 +601,8 @@ def main():
 
     start = date.fromisoformat(args.start)
     end = date.fromisoformat(args.end)
-    emit_report(projects, bucket_map, args.out, start, end)
+    emit_report(projects, bucket_map, args.out, start, end,
+                award_cache=award_cache, award_titles=award_titles, coop_ids=coop_ids)
 
 
 if __name__ == "__main__":
