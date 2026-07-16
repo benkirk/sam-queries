@@ -23,7 +23,8 @@ Query 1 (skeleton): fast JOIN-based query returning only projects with a current
 Query 2 (lifecycle): targeted query for projects in the AllocationType tree that
   have no current active allocation — produces "Expired" (account exists, past
   allocation) and "No Account" (no account on this resource type) rows.  These are
-  the minority; they carry allocationAmount=0, adjustedUsage=0, no users.
+  the minority; they carry allocationAmount=0, adjustedUsage=0, no users, and
+  omit the startDate/endDate keys (no current allocation window to report).
 
 Query 3 (users): bulk active-user roster per account.
 
@@ -254,6 +255,11 @@ _SQL_FSTREE_EXPIRED_USERS = text("""
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _iso(value) -> Optional[str]:
+    """Render a datetime as an ISO-8601 string, passing through None."""
+    return value.isoformat() if value is not None else None
+
 
 def _alloc_type_name(facility_code: str, allocation_type: str) -> str:
     """
@@ -682,6 +688,8 @@ def get_fstree_data(
             'adjustedUsage':    int(round(adjusted_usage)),
             'balance':          int(round(balance)) if balance is not None else None,
             'allocationAmount': int(round(allocation_amount)) if allocation_amount is not None else None,
+            'startDate':        _iso(row.start_date),
+            'endDate':          _iso(row.end_date),
             'users':            user_map.get(account_id, []),
             'thresholds':       thresholds,
         }

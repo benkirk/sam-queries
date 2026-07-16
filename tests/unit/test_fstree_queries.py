@@ -20,6 +20,7 @@ Ported from tests/unit/test_fstree_queries.py. Transformations:
   drops the cost back to one call per module.
 """
 import re
+from datetime import datetime
 
 import pytest
 from sqlalchemy.orm import sessionmaker
@@ -200,6 +201,8 @@ class TestProjectStructure:
 
 class TestResourceStructure:
 
+    _LIFECYCLE = {'Expired', 'No Account'}
+
     @staticmethod
     def _first_resources(fstree, n=20):
         items = []
@@ -211,6 +214,13 @@ class TestResourceStructure:
                         if len(items) >= n:
                             return items
         return items
+
+    @staticmethod
+    def _all_resources(fstree):
+        for fac in fstree['facilities']:
+            for at in fac['allocationTypes']:
+                for proj in at['projects']:
+                    yield from proj['resources']
 
     def test_resource_has_required_fields(self, fstree_all):
         required = {'name', 'accountStatus', 'cutoffThreshold',
@@ -242,6 +252,31 @@ class TestResourceStructure:
     def test_users_is_list(self, fstree_all):
         for res in self._first_resources(fstree_all):
             assert isinstance(res['users'], list)
+
+    def test_active_resources_carry_iso_date_window(self, fstree_all):
+        """Rows with a current allocation expose ISO startDate/endDate so a
+        consumer can difference them for a burn rate. endDate may be null
+        (open-ended); when present it must not precede startDate."""
+        checked = 0
+        for res in self._all_resources(fstree_all):
+            if res['accountStatus'] in self._LIFECYCLE:
+                continue
+            assert 'startDate' in res and 'endDate' in res, res.get('name')
+            start = res['startDate']
+            assert start is not None
+            start_dt = datetime.fromisoformat(start)  # parseable ISO-8601
+            if res['endDate'] is not None:
+                end_dt = datetime.fromisoformat(res['endDate'])
+                assert end_dt >= start_dt
+            checked += 1
+        assert checked > 0, 'no active resources found to validate'
+
+    def test_lifecycle_rows_omit_date_keys(self, fstree_all):
+        """Expired / No Account rows have no current allocation, so they omit
+        the startDate/endDate keys entirely."""
+        for res in self._all_resources(fstree_all):
+            if res['accountStatus'] in self._LIFECYCLE:
+                assert 'startDate' not in res and 'endDate' not in res, res.get('name')
 
     def test_user_has_username_and_uid(self, fstree_all):
         for res in self._first_resources(fstree_all):
