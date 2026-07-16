@@ -37,6 +37,7 @@ Response format (partial):
                         "projects": [
                             {
                                 "projectCode": "P93300041",
+                                "parentProject": null,
                                 "active": true,
                                 "resources": [
                                     {
@@ -110,7 +111,10 @@ def get_fstree():
     Returns:
         JSON with "name" and "facilities" keys, each facility containing
         allocationTypes, each with a projects list including per-resource
-        balance and user data.
+        balance and user data.  Each project carries "parentProject" (its
+        direct parent's projcode, or null) so callers can reconstruct SAM's
+        project hierarchy; allocation amounts are raw per-project values,
+        not deduplicated across a tree.
     """
     return jsonify(_fstree_data())
 

@@ -96,6 +96,21 @@ class TestFstreeSingleResource:
                         checked += 1
         assert checked > 0
 
+    def test_projects_expose_parent_project(self, auth_client):
+        """parentProject survives jsonify and never dangles — a consumer
+        nesting these into a scheduler tree must be able to resolve every
+        parent it is told about."""
+        data = auth_client.get('/api/v1/fstree_access/Derecho').get_json()
+        projects = [proj
+                    for fac in data['facilities']
+                    for at in fac['allocationTypes']
+                    for proj in at['projects']]
+        codes = {p['projectCode'] for p in projects}
+        for proj in projects:
+            assert 'parentProject' in proj, proj['projectCode']
+            if proj['parentProject'] is not None:
+                assert proj['parentProject'] in codes
+
     def test_threshold_key_present(self, auth_client):
         data = auth_client.get('/api/v1/fstree_access/Derecho').get_json()
         for fac in data['facilities'][:1]:
@@ -115,6 +130,26 @@ class TestFstreeSingleResource:
                     for res in proj['resources']:
                         assert res['accountStatus'] in valid, \
                             f'accountStatus {res["accountStatus"]!r} is not valid'
+
+
+class TestFstreeProjectsRemap:
+    """Test GET /api/v1/fstree_access/projects/."""
+
+    def test_returns_200(self, auth_client):
+        response = auth_client.get('/api/v1/fstree_access/projects/?resource=Derecho')
+        assert response.status_code == 200
+
+    def test_parent_project_present_and_resolvable(self, auth_client):
+        """The project-keyed view carries the hierarchy through its own
+        dict rebuild (it doesn't copy the fstree project entry wholesale)."""
+        data = auth_client.get(
+            '/api/v1/fstree_access/projects/?resource=Derecho').get_json()
+        projects = data['projects']
+        assert projects
+        for projcode, proj in projects.items():
+            assert 'parentProject' in proj, projcode
+            if proj['parentProject'] is not None:
+                assert proj['parentProject'] in projects
 
 
 class TestFstreeAuth:

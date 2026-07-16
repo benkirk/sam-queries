@@ -195,6 +195,68 @@ class TestProjectStructure:
 
 
 # ============================================================================
+# Project hierarchy (parentProject)
+# ============================================================================
+
+
+def _all_projects(fstree):
+    """Yield every project entry in the tree."""
+    for fac in fstree['facilities']:
+        for at in fac['allocationTypes']:
+            yield from at['projects']
+
+
+class TestProjectHierarchy:
+    """`parentProject` exposes SAM's project tree so consumers (the PBS
+    fairshare tool) can nest projects instead of treating them as peers."""
+
+    def test_every_project_carries_the_key(self, fstree_all):
+        """Present on every entry — including lifecycle (Expired / No Account)
+        rows, since parentage is a project fact, not an allocation fact."""
+        for proj in _all_projects(fstree_all):
+            assert 'parentProject' in proj, proj.get('projectCode')
+
+    def test_parent_is_none_or_a_projcode_in_the_payload(self, fstree_all):
+        """A dangling parent would make a consumer emit a scheduler vertex
+        whose parent it never defines."""
+        codes = {p['projectCode'] for p in _all_projects(fstree_all)}
+        for proj in _all_projects(fstree_all):
+            parent = proj['parentProject']
+            if parent is not None:
+                assert isinstance(parent, str)
+                assert parent in codes, \
+                    f"{proj['projectCode']} -> unknown parent {parent!r}"
+
+    def test_snapshot_contains_at_least_one_tree(self, fstree_all):
+        """Guards the tests above from passing vacuously."""
+        parented = [p for p in _all_projects(fstree_all) if p['parentProject']]
+        assert parented, 'snapshot has no project trees to exercise'
+
+    def test_no_project_is_its_own_parent(self, fstree_all):
+        for proj in _all_projects(fstree_all):
+            assert proj['parentProject'] != proj['projectCode']
+
+    def test_parent_chains_terminate(self, fstree_all):
+        """Walking up must reach a root — a cycle would hang a consumer."""
+        parent_of = {p['projectCode']: p['parentProject']
+                     for p in _all_projects(fstree_all)}
+        for code in parent_of:
+            seen, cur = set(), code
+            while cur is not None:
+                assert cur not in seen, f'cycle through {code}'
+                seen.add(cur)
+                cur = parent_of.get(cur)
+
+    def test_hierarchy_survives_the_resource_filter(self, fstree_hpc):
+        fstree, _ = fstree_hpc
+        codes = {p['projectCode'] for p in _all_projects(fstree)}
+        for proj in _all_projects(fstree):
+            assert 'parentProject' in proj
+            if proj['parentProject'] is not None:
+                assert proj['parentProject'] in codes
+
+
+# ============================================================================
 # Resource level
 # ============================================================================
 
@@ -460,9 +522,17 @@ class TestGetProjectFsdata:
             assert len(projcode) > 0
 
     def test_project_has_required_fields(self, project_fs_all):
-        required = {'active', 'facility', 'allocationType', 'allocationTypeDescription', 'resources'}
+        required = {'active', 'parentProject', 'facility', 'allocationType',
+                    'allocationTypeDescription', 'resources'}
         for _projcode, proj in list(project_fs_all['projects'].items())[:20]:
             assert not (required - proj.keys())
+
+    def test_parent_project_matches_the_fstree(self, fstree_all, project_fs_all):
+        """The remap must carry the hierarchy through unchanged."""
+        expected = {p['projectCode']: p['parentProject']
+                    for p in _all_projects(fstree_all)}
+        for projcode, proj in project_fs_all['projects'].items():
+            assert proj['parentProject'] == expected[projcode]
 
     def test_project_active_is_bool(self, project_fs_all):
         for _projcode, proj in list(project_fs_all['projects'].items())[:20]:
@@ -536,7 +606,8 @@ class TestGetUserFsdata:
             assert isinstance(user['projects'], dict)
 
     def test_project_entry_has_required_fields(self, user_fs_all):
-        required = {'active', 'facility', 'allocationType', 'allocationTypeDescription', 'resources'}
+        required = {'active', 'parentProject', 'facility', 'allocationType',
+                    'allocationTypeDescription', 'resources'}
         for _username, user in list(user_fs_all['users'].items())[:10]:
             for _projcode, proj in list(user['projects'].items())[:5]:
                 assert not (required - proj.keys())
