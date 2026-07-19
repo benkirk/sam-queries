@@ -334,28 +334,37 @@
                     {% for r in resources | sort(attribute='resource_name') %}
                     {% set r_queues = queues | selectattr('resource_id', 'equalto', r.resource_id) | list | sort(attribute='queue_name') %}
                     {% if r_queues %}
-                    {# ── Resource row (clickable trigger) ── #}
+                    {# ── Resource row ──
+                       Unlike the other group rows in this card, the collapse
+                       trigger is on the cells rather than the <tr>: this row
+                       carries a Cleanup button, and a nested button cannot
+                       suppress the row's toggle. Bootstrap registers its
+                       data-api handlers on `document` in the CAPTURE phase, so
+                       they run before any listener on the button itself —
+                       data-stop-propagation is powerless against them (it only
+                       guards element-level htmx bindings, per actions.js).
+                       Scoping the trigger to the cells sidesteps that entirely. #}
                     <tbody>
-                        <tr class="cursor-pointer table-light fw-semibold"
-                            data-bs-toggle="collapse"
-                            data-bs-target="#queue-res-{{ r.resource_id }}"
-                            aria-expanded="false">
-                            <td>
+                        <tr class="table-light fw-semibold">
+                            <td class="cursor-pointer"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#queue-res-{{ r.resource_id }}"
+                                aria-expanded="false">
                                 <i class="fas fa-chevron-right small text-muted me-1 queue-res-collapse-icon"
                                    style="transition: transform 0.2s;"></i>
                                 {{ r.resource_name }}
                             </td>
-                            <td class="text-muted small">{{ r_queues|length }} queue{{ 's' if r_queues|length != 1 else '' }}</td>
+                            <td class="text-muted small cursor-pointer"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#queue-res-{{ r.resource_id }}">
+                                {{ r_queues|length }} queue{{ 's' if r_queues|length != 1 else '' }}
+                            </td>
                             <td></td>
                             <td></td>
                             <td></td>
                             <td class="text-end">
                                 {% if has_permission(Permission.DELETE_RESOURCES) %}
-                                {# data-stop-propagation: this <tr> is itself the
-                                   collapse trigger, so without it the click also
-                                   toggles the row (see static/js/actions.js). #}
                                 <button type="button" class="btn btn-sm btn-outline-secondary"
-                                        data-stop-propagation
                                         data-bs-toggle="modal"
                                         data-bs-target="#queueCleanupModal"
                                         hx-get="{{ url_for('admin_dashboard.htmx_queue_cleanup_form', resource_id=r.resource_id) }}"

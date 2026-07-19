@@ -262,7 +262,30 @@ class TestResourcesCardQueueButtons:
         assert 'Create Queue' in html
         assert 'Cleanup' in html
         assert 'queue-cleanup-form' in html
-        # The cleanup button sits inside the collapse-trigger row, so it must
-        # stop the click from also toggling the row. CSP forbids an inline
-        # onclick, so this is the data-attribute hook in static/js/actions.js.
-        assert 'data-stop-propagation' in html
+
+    def test_cleanup_button_row_is_not_a_collapse_trigger(self, auth_client):
+        """Regression guard: the Cleanup button must not sit inside a <tr>
+        that is itself a Bootstrap collapse toggle.
+
+        Bootstrap registers its data-api handlers on `document` in the CAPTURE
+        phase, so they run before any listener on the button — nothing the
+        button does (stopPropagation included) can stop the row from expanding.
+        The queue group row therefore puts the toggle on its <td>s instead.
+        Putting it back on the <tr> silently reintroduces the bug.
+        """
+        import re
+
+        html = auth_client.get('/admin/htmx/resources').get_data(as_text=True)
+
+        # Isolate the queue group rows by their collapse target id
+        for m in re.finditer(r'<tr\b[^>]*>', html):
+            tag = m.group(0)
+            if 'data-bs-toggle="collapse"' not in tag:
+                continue
+            # A collapse-trigger <tr> is fine as long as it holds no buttons.
+            row_end = html.find('</tr>', m.end())
+            row = html[m.end():row_end]
+            assert 'queue-cleanup-form' not in row, (
+                'Cleanup button is inside a collapse-trigger <tr>; the row '
+                'will expand on click. Move the toggle to the <td>s.'
+            )
