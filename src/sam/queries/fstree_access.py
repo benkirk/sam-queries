@@ -23,7 +23,8 @@ Query 1 (skeleton): fast JOIN-based query returning only projects with a current
 Query 2 (lifecycle): targeted query for projects in the AllocationType tree that
   have no current active allocation — produces "Expired" (account exists, past
   allocation) and "No Account" (no account on this resource type) rows.  These are
-  the minority; they carry allocationAmount=0, adjustedUsage=0, no users.
+  the minority; they carry allocationAmount=0, adjustedUsage=0, no users, and
+  omit the startDate/endDate keys (no current allocation window to report).
 
 Query 3 (users): bulk active-user roster per account.
 
@@ -39,6 +40,26 @@ accountStatus semantics (matching DefaultAccountStatusCalculator.java):
 
 Parent → child status propagation (pre-order): if a parent's accountStatus is
 non-Normal, that status cascades to all children on the same resource.
+
+Project trees
+-------------
+Each project entry carries ``parentProject`` — its direct parent's projcode
+(``None`` for roots and standalone projects), from SAM's project hierarchy
+(``project.parent_id``).  This lets a consumer reconstruct the tree; the PBS
+fairshare tool mirrors it into nested scheduler vertices.
+
+Amounts are reported **raw**, never deduplicated: NCAR runs two tree
+conventions and in both the root's ``allocationAmount`` is the subtree total
+(a shared pool is carried at full value by every member; a subdivided award
+has children carving out of the root's total).  Since PBS compares shares only
+among siblings, raw amounts + the hierarchy are sufficient and correct — a
+pool's members compare equal to each other, a subdivided award's children
+compare proportionally, and the root's own amount sets the subtree's weight
+against its peers.  So this module deliberately does **not** classify trees.
+
+That correctness rests on one data invariant — a parent's amount covers any
+child that isn't sharing its pool — which ``sam-admin project --audit-trees``
+enforces.
 """
 
 import re
@@ -255,6 +276,11 @@ _SQL_FSTREE_EXPIRED_USERS = text("""
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _iso(value) -> Optional[str]:
+    """Render a datetime as an ISO-8601 string, passing through None."""
+    return value.isoformat() if value is not None else None
+
+
 def _alloc_type_name(facility_code: str, allocation_type: str) -> str:
     """
     Build the AllocationType name matching legacy Java FairShareTreeServiceJacksonImpl:
@@ -466,6 +492,9 @@ def get_fstree_data(
         ``adjustedUsage`` is computed via MPTT subtree rollup.
         ``accountStatus`` follows the legacy Java priority chain.
         Parent non-Normal status propagates to children (pre-order walk).
+        ``parentProject`` exposes the project hierarchy (None for roots);
+        allocation amounts stay raw — see "Project trees" in the module
+        docstring for why no tree-level deduplication is applied.
         Projects with no current active allocation appear as "Expired" or
         "No Account" with zero usage/allocation/users (requires resource filter).
     """
@@ -519,10 +548,6 @@ def get_fstree_data(
                         row.start_date, row.end_date,
                     )
 
-    for row in skeleton_rows:
-        if row.projcode not in projcode_parent:
-            projcode_parent[row.projcode] = pid_to_projcode.get(row.parent_id) if row.parent_id else None
-
     # ------------------------------------------------------------------
     # Query 2 — Lifecycle rows (Expired / No Account)
     # Only meaningful when a specific resource is requested.
@@ -534,8 +559,16 @@ def get_fstree_data(
         lifecycle_rows = session.execute(_SQL_FSTREE_LIFECYCLE, params).fetchall()
         for row in lifecycle_rows:
             pid_to_projcode[row.project_id] = row.projcode
-            if row.projcode not in projcode_parent:
-                projcode_parent[row.projcode] = pid_to_projcode.get(row.parent_id) if row.parent_id else None
+
+    # Resolve parent_id → parent projcode only once *both* row sets have
+    # populated pid_to_projcode: neither query is ordered by tree depth, so
+    # resolving inline would miss any parent that happens to come later.
+    # A parent_id absent from the payload (inactive, or no account on this
+    # resource) resolves to None — such a project is a root of the tree we
+    # can see, which is what a consumer should act on.
+    for row in (*skeleton_rows, *lifecycle_rows):
+        if row.projcode not in projcode_parent:
+            projcode_parent[row.projcode] = pid_to_projcode.get(row.parent_id) if row.parent_id else None
 
     # ------------------------------------------------------------------
     # Charges — hybrid approach matching allocations.py:
@@ -682,6 +715,8 @@ def get_fstree_data(
             'adjustedUsage':    int(round(adjusted_usage)),
             'balance':          int(round(balance)) if balance is not None else None,
             'allocationAmount': int(round(allocation_amount)) if allocation_amount is not None else None,
+            'startDate':        _iso(row.start_date),
+            'endDate':          _iso(row.end_date),
             'users':            user_map.get(account_id, []),
             'thresholds':       thresholds,
         }
@@ -757,9 +792,10 @@ def get_fstree_data(
                 resources_list.sort(key=lambda r: r['name'])
 
                 projects_list.append({
-                    'projectCode': projcode,
-                    'active':      proj_data['active'],
-                    'resources':   resources_list,
+                    'projectCode':   projcode,
+                    'parentProject': projcode_parent.get(projcode),
+                    'active':        proj_data['active'],
+                    'resources':     resources_list,
                 })
 
             alloc_types_list.append({
@@ -805,6 +841,7 @@ def _remap_fstree_by_project(fstree_data: Dict) -> Dict:
                 projcode = proj['projectCode']
                 projects[projcode] = {
                     'active':                    proj['active'],
+                    'parentProject':             proj.get('parentProject'),
                     'facility':                  fac['name'],
                     'allocationType':            at['name'],
                     'allocationTypeDescription': at['description'],
@@ -836,6 +873,7 @@ def _remap_fstree_by_user(fstree_data: Dict) -> Dict:
                 projcode  = proj['projectCode']
                 proj_meta = {
                     'active':                    proj['active'],
+                    'parentProject':             proj.get('parentProject'),
                     'facility':                  fac['name'],
                     'allocationType':            at['name'],
                     'allocationTypeDescription': at['description'],
@@ -888,7 +926,7 @@ def get_project_fsdata(
     Returns:
         Dict with ``name`` (``"projectFairShareData"``) and ``projects`` keys.
         ``projects`` is a dict keyed by projcode; each value contains
-        ``active``, ``facility``, ``allocationType``,
+        ``active``, ``parentProject``, ``facility``, ``allocationType``,
         ``allocationTypeDescription``, and ``resources`` (same fields as
         the fstree resource dict, sorted by resource name).
 
@@ -924,9 +962,10 @@ def get_user_fsdata(
         Dict with ``name`` (``"userFairShareData"``) and ``users`` keys.
         ``users`` is a dict keyed by username; each value contains ``uid``
         and ``projects``.  ``projects`` is a dict keyed by projcode; each
-        project entry contains ``active``, ``facility``, ``allocationType``,
-        ``allocationTypeDescription``, and ``resources`` (same fields as the
-        fstree resource dict minus ``users``, sorted by resource name).
+        project entry contains ``active``, ``parentProject``, ``facility``,
+        ``allocationType``, ``allocationTypeDescription``, and ``resources``
+        (same fields as the fstree resource dict minus ``users``, sorted by
+        resource name).
 
     Example::
 

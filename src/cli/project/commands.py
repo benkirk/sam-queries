@@ -21,7 +21,8 @@ from cli.project.display import (
     display_expiring_projects,
     display_abandoned_users_from_expired_projects,
     display_notification_results,
-    display_notification_preview
+    display_notification_preview,
+    display_tree_audit
 )
 from sam import Project, fmt
 from sam.enums import FacilityName
@@ -30,6 +31,7 @@ from sam.queries.expirations import (
     get_projects_with_expired_allocations,
     get_all_expiring_allocations
 )
+from sam.queries.tree_audit import audit_allocation_trees, audit_allocation_dates
 from rich.progress import track
 
 
@@ -407,6 +409,44 @@ class ProjectExpirationCommand(BaseProjectCommand):
             return EXIT_ERROR
 
         return EXIT_SUCCESS
+
+
+class ProjectTreeAuditCommand(BaseProjectCommand):
+    """Audit the project-tree allocation invariant across all projects.
+
+    Unlike the other admin project commands this is DB-wide, not scoped to a
+    single projcode: the invariant is a property of trees, not of any one
+    project.
+    """
+
+    def execute(self, resource_name: str = None) -> int:
+        try:
+            violations = audit_allocation_trees(self.session, resource_name)
+            bad_dates = audit_allocation_dates(self.session, resource_name)
+        except Exception as e:
+            self.console.print(f"Error auditing project trees: {e}", style="bold red")
+            return EXIT_ERROR
+
+        if self.ctx.output_format == 'json':
+            output_json({
+                'kind':          'tree_audit',
+                'resource':      resource_name,
+                'violations':    violations,
+                'invalid_dates': [{**d,
+                                   'start_date': d['start_date'].isoformat()
+                                   if d['start_date'] else None,
+                                   'end_date': d['end_date'].isoformat()
+                                   if d['end_date'] else None}
+                                  for d in bad_dates],
+            })
+        else:
+            scope = f" on {resource_name}" if resource_name else ""
+            self.console.print(
+                f"[dim]Auditing project allocation trees{scope}...[/dim]\n"
+            )
+            display_tree_audit(self.ctx, violations, bad_dates)
+
+        return EXIT_ERROR if (violations or bad_dates) else EXIT_SUCCESS
 
 
 class ProjectAdminCommand(ProjectSearchCommand):

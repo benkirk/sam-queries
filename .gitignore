@@ -1,6 +1,9 @@
 *~
 __pycache__/
 .ipynb_checkpoints/
+
+# NSF award-cache lock sidecar (created by nsf_awards.py resolver)
+sql/queries/nsf_award_lookups.csv.lock
 conda-env
 conda-env-*/
 containers/sam-sql-dev/dump/

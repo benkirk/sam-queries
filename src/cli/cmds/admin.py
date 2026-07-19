@@ -15,7 +15,11 @@ from config import SAMConfig
 from cli.core.context import Context
 from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR
 from cli.user.commands import UserAdminCommand
-from cli.project.commands import ProjectAdminCommand, ProjectExpirationCommand
+from cli.project.commands import (
+    ProjectAdminCommand,
+    ProjectExpirationCommand,
+    ProjectTreeAuditCommand,
+)
 from cli.accounting.commands import AccountingAdminCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
 
@@ -75,6 +79,10 @@ def user(ctx: Context, username, validate, list_projects, verbose):
 @click.argument('projcode', required=False)
 @click.option('--validate', is_flag=True, help='Validate project data')
 @click.option('--reconcile', is_flag=True, help='Reconcile allocations')
+@click.option('--audit-trees', 'audit_trees', is_flag=True,
+              help='Audit project allocation trees DB-wide (no projcode needed)')
+@click.option('--resource', 'audit_resource', type=str, default=None,
+              help='[audit-trees] Limit the audit to one resource (e.g. Derecho)')
 @click.option('--upcoming-expirations', is_flag=True, help='Search for upcoming project expirations')
 @click.option('--recent-expirations', is_flag=True, help='Show recently expired projects')
 @click.option('--notify', is_flag=True, help='Send email notifications (requires --upcoming-expirations)')
@@ -88,11 +96,17 @@ def user(ctx: Context, username, validate, list_projects, verbose):
 @click.option('--facilities', '-F', multiple=True, default=['UNIV', 'WNA'], help='Facilities to include (default: UNIV, WNA). Use * for all facilities.')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
-def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, recent_expirations,
+def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_resource,
+            upcoming_expirations, recent_expirations,
             notify, dry_run, email_list, deactivate, force, since, list_users, facilities, verbose):
     """Administrative project commands."""
     if verbose:
         ctx.verbose = True
+
+    # Validate that --resource requires --audit-trees
+    if audit_resource and not audit_trees:
+        ctx.console.print("Error: --resource requires --audit-trees", style="bold red")
+        sys.exit(1)
 
     # Validate that --notify requires --upcoming-expirations
     if notify and not upcoming_expirations:
@@ -113,6 +127,11 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
     if force and not deactivate:
         ctx.console.print("Error: --force requires --deactivate", style="bold red")
         sys.exit(1)
+
+    # DB-wide tree audit — no projcode (the invariant spans trees, not projects)
+    if audit_trees:
+        command = ProjectTreeAuditCommand(ctx)
+        sys.exit(command.execute(resource_name=audit_resource))
 
     # Handle facility filtering - '*' means all facilities
     facility_filter = None if '*' in facilities else list(facilities)
@@ -146,7 +165,8 @@ def project(ctx: Context, projcode, validate, reconcile, upcoming_expirations, r
     # Require projcode for other operations
     if not projcode:
         ctx.console.print(
-            "Error: projcode argument is required unless using --upcoming-expirations or --recent-expirations",
+            "Error: projcode argument is required unless using --upcoming-expirations, "
+            "--recent-expirations, or --audit-trees",
             style="bold red"
         )
         click.echo(click.get_current_context().get_help())

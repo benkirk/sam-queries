@@ -388,6 +388,83 @@ def display_abandoned_users_from_expired_projects(ctx: Context, abandoned_users)
     ctx.console.print(table)
 
 
+def display_tree_audit(ctx: Context, violations: list, bad_dates: list):
+    """Render the project-tree data-quality audit.
+
+    ``violations`` come from ``audit_allocation_trees()``, ``bad_dates`` from
+    ``audit_allocation_dates()``.  Both empty renders an all-clear.
+    """
+    if violations:
+        ctx.console.print(
+            f"⚠️  {len(violations)} parent allocation(s) do not cover their "
+            f"carve-out children:",
+            style="bold yellow",
+        )
+        table = Table(box=box.SIMPLE, show_header=True)
+        table.add_column("Parent")
+        table.add_column("Resource")
+        table.add_column("Parent amount", justify="right")
+        table.add_column("Carve-outs", justify="right")
+        table.add_column("Deficit", justify="right", style="red")
+        table.add_column("Raise parent to", justify="right", style="green")
+        for v in violations:
+            table.add_row(
+                v['parent_projcode'],
+                v['resource_name'],
+                fmt.number(v['parent_amount']),
+                fmt.number(v['carve_total']),
+                fmt.number(v['deficit']),
+                fmt.number(v['carve_total']),
+            )
+        ctx.console.print(table)
+
+        if ctx.verbose:
+            for v in violations:
+                ctx.console.print(
+                    f"[bold]{v['parent_projcode']}[/bold] on "
+                    f"{v['resource_name']} — {fmt.number(v['parent_amount'])}",
+                )
+                for c in sorted(v['carve_children'], key=lambda c: -c['amount']):
+                    ctx.console.print(
+                        f"    carve-out  {c['projcode']:12} "
+                        f"{fmt.number(c['amount']):>12}"
+                    )
+                for c in sorted(v['pool_children'], key=lambda c: c['projcode']):
+                    tag = "linked" if c['linked'] else "same amount"
+                    ctx.console.print(
+                        f"    [dim]pool ({tag:11}) {c['projcode']:12} "
+                        f"{fmt.number(c['amount']):>12}[/dim]"
+                    )
+    else:
+        ctx.console.print(
+            "✅ Every parent allocation covers its carve-out children",
+            style="green",
+        )
+
+    if bad_dates:
+        ctx.console.print(
+            f"\n⚠️  {len(bad_dates)} allocation(s) with impossible date windows:",
+            style="bold yellow",
+        )
+        table = Table(box=box.SIMPLE, show_header=True)
+        table.add_column("Project")
+        table.add_column("Resource")
+        table.add_column("Allocation", justify="right")
+        table.add_column("Start")
+        table.add_column("End")
+        for d in bad_dates:
+            table.add_row(
+                d['projcode'],
+                d['resource_name'],
+                str(d['allocation_id']),
+                fmt.date_str(d['start_date']),
+                fmt.date_str(d['end_date']),
+            )
+        ctx.console.print(table)
+    else:
+        ctx.console.print("✅ No impossible allocation date windows", style="green")
+
+
 def display_notification_results(ctx: Context, results: dict, total_projects: int):
     """Display notification results summary.
 
