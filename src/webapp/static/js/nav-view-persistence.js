@@ -147,6 +147,7 @@
         ['/status/',          'Status Dashboard'],
         ['/search',           'Search Results'],
         ['/admin/',           'Admin'],
+        ['/allocations/',     'Allocations'],
     ];
 
     function navLabel(url) {

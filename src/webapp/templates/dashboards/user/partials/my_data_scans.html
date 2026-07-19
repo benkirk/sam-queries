@@ -8,14 +8,14 @@
 
    The "User / group counts" tab is hidden in user mode (single owner).
 
-   Lazy-load: the active first subtab gets no shown.bs.tab when the parent
-   "My Data" tab opens, so its card's first inner tab listens to the parent tab
-   (#my-data-tab). Other subtabs load when their own subtab nav-link is shown.
-   Bind to the shown event, not click (feedback_persisted_collapse_htmx).
+   Lazy-load: /user/data is a routable page, so the first subtab is visible
+   on page load and its card loads immediately (trigger 'load'). Other
+   subtabs load when their own subtab nav-link is shown — bind to the shown
+   event, not click (feedback_persisted_collapse_htmx).
 
    This partial is only included when fs_scan_resources is non-empty AND the
-   viewer has a unix_uid (gated in dashboard.html via my_data_available), so it
-   never needs its own empty/disabled state.
+   viewer has a unix_uid (the my_data route 404s otherwise), so it never
+   needs its own empty/disabled state.
 #}
 <ul class="nav nav-pills mb-3" id="myDataSubtabs" role="tablist">
     {% for res in fs_scan_resources %}
@@ -33,7 +33,7 @@
     <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
          id="my-data-pane-{{ loop.index }}" role="tabpanel">
         {% if loop.first %}
-            {% set _trigger = 'shown.bs.tab once from:#my-data-tab' %}
+            {% set _trigger = 'load once' %}
         {% else %}
             {% set _trigger = 'shown.bs.tab once from:#my-data-subtab-' ~ loop.index %}
         {% endif %}

@@ -30,7 +30,7 @@ def csrf_enabled(app):
 
 def _get_csrf_token(authed_client):
     """Harvest a session-bound token from the dashboard <meta> tag."""
-    html = authed_client.get('/user/').get_data(as_text=True)
+    html = authed_client.get('/user/accounts').get_data(as_text=True)
     m = re.search(r'<meta name="csrf-token" content="([^"]+)"', html)
     assert m, "csrf-token meta tag missing from dashboards/base.html"
     return m.group(1)
@@ -68,7 +68,7 @@ class TestSessionRoutesProtected:
         assert 'CSRF' in resp.get_json()['error']
 
     def test_get_routes_unaffected(self, csrf_enabled, auth_client):
-        assert auth_client.get('/user/').status_code == 200
+        assert auth_client.get('/user/accounts').status_code == 200
 
 
 class TestLoginForm:

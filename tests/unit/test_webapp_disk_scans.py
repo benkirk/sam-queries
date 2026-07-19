@@ -1933,27 +1933,33 @@ def test_user_explore_hides_owner_picker(auth_client, session):
 
 
 # ---------------------------------------------------------------------------
-# "My Data" tab visibility on the user dashboard (/user/)
+# "My Data" page visibility on the user dashboard (/user/data)
 # ---------------------------------------------------------------------------
 
-def test_my_data_tab_shown(auth_client, monkeypatch):
-    """benkirk has a unix_uid → My Data tab + one subtab per warmed resource."""
+def test_my_data_page_shown(auth_client, monkeypatch):
+    """benkirk has a unix_uid → My Data tab link + one subtab per warmed
+    resource on the /user/data page."""
     monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                         lambda app=None: ['Campaign_Store'])
-    resp = auth_client.get('/user/')
+    # Tab strip on any user-dashboard page links to the My Data page
+    accounts = auth_client.get('/user/accounts')
+    assert accounts.status_code == 200
+    assert 'href="/user/data"' in accounts.get_data(as_text=True)
+    # The page itself renders the per-resource subtab strip
+    resp = auth_client.get('/user/data')
     assert resp.status_code == 200
-    body = resp.get_data(as_text=True)
-    assert 'id="my-data-tab"' in body
-    assert 'id="my-data-subtab-1"' in body       # subtab strip rendered
+    assert 'id="my-data-subtab-1"' in resp.get_data(as_text=True)
 
 
-def test_my_data_tab_hidden_when_no_resources(auth_client, monkeypatch):
-    """Plugin off / no warmed resource → no My Data tab even with a unix_uid."""
+def test_my_data_page_hidden_when_no_resources(auth_client, monkeypatch):
+    """Plugin off / no warmed resource → no My Data tab link even with a
+    unix_uid, and the page itself 404s."""
     monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                         lambda app=None: [])
-    resp = auth_client.get('/user/')
+    resp = auth_client.get('/user/accounts')
     assert resp.status_code == 200
-    assert 'id="my-data-tab"' not in resp.get_data(as_text=True)
+    assert 'href="/user/data"' not in resp.get_data(as_text=True)
+    assert auth_client.get('/user/data').status_code == 404
 
 
 # ---------------------------------------------------------------------------

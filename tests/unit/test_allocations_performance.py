@@ -187,85 +187,114 @@ class TestGetResourceTypes:
 # ============================================================================
 
 class TestAllocationsIndexRoute:
-    """Tests for GET /allocations/."""
+    """Tests for GET /allocations/projects (the main dashboard page;
+    the bare /allocations/ is now a redirect to it)."""
 
     def test_index_returns_200(self, auth_client):
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         assert response.status_code == 200
 
     def test_index_contains_dashboard_title(self, auth_client):
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         assert b'Allocations Dashboard' in response.data
 
     def test_index_with_date_filter(self, auth_client):
-        response = auth_client.get('/allocations/?active_at=2025-01-15')
+        response = auth_client.get('/allocations/projects?active_at=2025-01-15')
         assert response.status_code == 200
 
     def test_index_with_invalid_date(self, auth_client):
-        response = auth_client.get('/allocations/?active_at=not-a-date')
+        response = auth_client.get('/allocations/projects?active_at=not-a-date')
         assert response.status_code == 200
         assert b'Allocations Dashboard' in response.data
 
     def test_index_with_resource_filter(self, auth_client):
-        response = auth_client.get('/allocations/?resources=Derecho')
+        response = auth_client.get('/allocations/projects?resources=Derecho')
         assert response.status_code == 200
 
     def test_index_with_multiple_resources(self, auth_client):
-        response = auth_client.get('/allocations/?resources=Derecho&resources=Casper')
+        response = auth_client.get('/allocations/projects?resources=Derecho&resources=Casper')
         assert response.status_code == 200
 
     def test_index_contains_svg_chart(self, auth_client):
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         html = response.data.decode().lower()
         assert '<svg' in html or 'no active allocations' in html
 
     def test_index_no_chartjs_canvas(self, auth_client):
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         html = response.data.decode()
         assert 'facility-pie-chart' not in html
         assert 'data-labels' not in html
 
     def test_index_unauthenticated_redirects(self, client):
-        response = client.get('/allocations/')
+        response = client.get('/allocations/projects')
+        assert response.status_code in (302, 401)
+
+
+class TestAllocationsPageRoutes:
+    """Tests for the routable-pages refactor: the bare-section redirect
+    and the new Transactions / Adjustments page shells."""
+
+    def test_bare_section_redirects_to_projects(self, auth_client):
+        response = auth_client.get('/allocations/')
+        assert response.status_code == 302
+        assert response.headers['Location'].endswith('/allocations/projects')
+
+    def test_transactions_page_returns_200(self, auth_client):
+        response = auth_client.get('/allocations/transactions')
+        assert response.status_code == 200
+        assert b'tx-filters' in response.data
+
+    def test_adjustments_page_returns_200(self, auth_client):
+        response = auth_client.get('/allocations/adjustments')
+        assert response.status_code == 200
+        assert b'adj-filters' in response.data
+
+    def test_transactions_page_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/transactions')
+        assert response.status_code in (302, 401)
+
+    def test_adjustments_page_unauthenticated_redirects(self, client):
+        response = client.get('/allocations/adjustments')
         assert response.status_code in (302, 401)
 
 
 class TestProjectsFragmentRoute:
-    """Tests for GET /allocations/projects (AJAX fragment)."""
+    """Tests for GET /allocations/htmx/project_table (htmx fragment)."""
 
     def test_missing_params_returns_error(self, auth_client):
-        response = auth_client.get('/allocations/projects')
+        response = auth_client.get('/allocations/htmx/project_table')
         assert b'Missing required parameters' in response.data
 
     def test_missing_facility_returns_error(self, auth_client):
-        response = auth_client.get('/allocations/projects?resource=Derecho&allocation_type=Small')
+        response = auth_client.get('/allocations/htmx/project_table?resource=Derecho&allocation_type=Small')
         assert b'Missing required parameters' in response.data
 
     def test_missing_allocation_type_returns_error(self, auth_client):
-        response = auth_client.get('/allocations/projects?resource=Derecho&facility=UNIV')
+        response = auth_client.get('/allocations/htmx/project_table?resource=Derecho&facility=UNIV')
         assert b'Missing required parameters' in response.data
 
     def test_valid_params_returns_200(self, auth_client):
         response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=UNIV&allocation_type=Small'
+            '/allocations/htmx/project_table?resource=Derecho&facility=UNIV&allocation_type=Small'
         )
         assert response.status_code == 200
 
     def test_nonexistent_combo_returns_no_projects(self, auth_client):
         response = auth_client.get(
-            '/allocations/projects?resource=FakeResource&facility=FAKE&allocation_type=FAKE'
+            '/allocations/htmx/project_table?resource=FakeResource&facility=FAKE&allocation_type=FAKE'
         )
         assert b'No active projects found' in response.data
 
     def test_invalid_date_returns_error(self, auth_client):
         response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=UNIV&allocation_type=Small&active_at=bad'
+            '/allocations/htmx/project_table?resource=Derecho&facility=UNIV&allocation_type=Small&active_at=bad'
         )
         assert b'Invalid date format' in response.data
 
     def test_with_date_param(self, auth_client):
         response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=UNIV&allocation_type=Small&active_at=2025-06-01'
+            '/allocations/htmx/project_table?resource=Derecho&facility=UNIV&allocation_type=Small&active_at=2025-06-01'
         )
         assert response.status_code == 200
 
@@ -397,14 +426,14 @@ class TestCaching:
 
     def test_repeated_requests_succeed(self, auth_client):
         """Both requests should succeed (cache hit or miss)."""
-        r1 = auth_client.get('/allocations/')
-        r2 = auth_client.get('/allocations/')
+        r1 = auth_client.get('/allocations/projects')
+        r2 = auth_client.get('/allocations/projects')
         assert r1.status_code == 200
         assert r2.status_code == 200
 
     def test_different_query_strings_are_separate(self, auth_client):
-        r1 = auth_client.get('/allocations/?resources=Derecho')
-        r2 = auth_client.get('/allocations/?resources=Casper')
+        r1 = auth_client.get('/allocations/projects?resources=Derecho')
+        r2 = auth_client.get('/allocations/projects?resources=Casper')
         assert r1.status_code == 200
         assert r2.status_code == 200
 
@@ -427,12 +456,12 @@ class TestMatplotlibCaching:
     """
 
     def test_svg_in_allocations_response(self, auth_client):
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         html = response.data.decode().lower()
         assert '<svg' in html or 'no active allocations' in html
 
     def test_no_chartjs_canvas_in_response(self, auth_client):
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         html = response.data.decode()
         assert '<canvas' not in html
 
@@ -915,10 +944,10 @@ class TestCachePurgeRoute:
         assert data is not None
         assert data['status'] == 'ok'
 
-    def test_form_post_redirects_to_index(self, auth_client):
+    def test_form_post_redirects_to_projects_page(self, auth_client):
         response = auth_client.post('/allocations/cache/purge')
         assert response.status_code == 302
-        assert '/allocations/' in response.headers['Location']
+        assert '/allocations/projects' in response.headers['Location']
 
 
 class TestCacheStatusRoute:
@@ -961,16 +990,16 @@ class TestForceRefreshParameter:
     """Smoke tests: routes accept force_refresh without error."""
 
     def test_dashboard_force_refresh_true(self, auth_client):
-        response = auth_client.get('/allocations/?force_refresh=true')
+        response = auth_client.get('/allocations/projects?force_refresh=true')
         assert response.status_code == 200
 
     def test_dashboard_force_refresh_false(self, auth_client):
-        response = auth_client.get('/allocations/?force_refresh=false')
+        response = auth_client.get('/allocations/projects?force_refresh=false')
         assert response.status_code == 200
 
     def test_projects_fragment_force_refresh(self, auth_client):
         response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=UNIV'
+            '/allocations/htmx/project_table?resource=Derecho&facility=UNIV'
             '&allocation_type=Small&force_refresh=true'
         )
         assert response.status_code == 200
@@ -990,12 +1019,12 @@ class TestActiveAtNormalization:
     def test_default_renders_todays_date(self, auth_client):
         """Dashboard with no active_at param should render today's date."""
         today = datetime.now().strftime('%Y-%m-%d')
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         assert today.encode() in response.data
 
     def test_explicit_date_preserved(self, auth_client):
         """An explicit ?active_at= param should appear verbatim in the response."""
-        response = auth_client.get('/allocations/?active_at=2025-06-01')
+        response = auth_client.get('/allocations/projects?active_at=2025-06-01')
         assert b'2025-06-01' in response.data
 
 
@@ -1007,16 +1036,16 @@ class TestShowUsageToggle:
     """Tests for ?show_usage=true toggle on dashboard routes."""
 
     def test_dashboard_show_usage_false(self, auth_client):
-        response = auth_client.get('/allocations/?show_usage=false')
+        response = auth_client.get('/allocations/projects?show_usage=false')
         assert response.status_code == 200
 
     def test_dashboard_show_usage_true(self, auth_client):
-        response = auth_client.get('/allocations/?show_usage=true')
+        response = auth_client.get('/allocations/projects?show_usage=true')
         assert response.status_code == 200
 
     def test_projects_fragment_show_usage_true(self, auth_client):
         response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=UNIV'
+            '/allocations/htmx/project_table?resource=Derecho&facility=UNIV'
             '&allocation_type=Small&show_usage=true'
         )
         assert response.status_code == 200
@@ -1024,7 +1053,7 @@ class TestShowUsageToggle:
     def test_projects_fragment_usage_renders_progress_or_empty(self, auth_client):
         """show_usage=true produces progress bars or the empty-state message."""
         response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=UNIV'
+            '/allocations/htmx/project_table?resource=Derecho&facility=UNIV'
             '&allocation_type=Small&show_usage=true'
         )
         html = response.data.decode()
@@ -1032,7 +1061,7 @@ class TestShowUsageToggle:
 
     def test_usage_no_crash_on_zero_usage_facilities(self, auth_client):
         """Facilities with zero usage must not crash the chart renderer."""
-        response = auth_client.get('/allocations/?show_usage=true&resources=Derecho')
+        response = auth_client.get('/allocations/projects?show_usage=true&resources=Derecho')
         assert response.status_code == 200
 
 
@@ -1074,7 +1103,7 @@ class TestAllocationsDashboardFacilityScope:
         """Single-facility scoped user: selector is rendered and lists
         only the granted facility, selected by default."""
         self._scope_benkirk(monkeypatch, ['WNA'])
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         assert response.status_code == 200
         html = response.data.decode()
         # Selector form + one option (WNA), selected.
@@ -1088,7 +1117,7 @@ class TestAllocationsDashboardFacilityScope:
     def test_index_selector_lists_every_facility_for_unscoped_user(self, auth_client):
         """Unscoped admin (benkirk default): selector shows the full
         active-facility list, all selected by default."""
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         assert response.status_code == 200
         html = response.data.decode()
         assert 'id="allocations-facility-filter-form"' in html
@@ -1103,7 +1132,7 @@ class TestAllocationsDashboardFacilityScope:
         falls back to showing the allowed set (WNA) instead of 403ing
         or rendering an empty page."""
         self._scope_benkirk(monkeypatch, ['WNA'])
-        response = auth_client.get('/allocations/?facilities=NCAR')
+        response = auth_client.get('/allocations/projects?facilities=NCAR')
         assert response.status_code == 200
         html = response.data.decode()
         # WNA is still in the selected state.
@@ -1118,7 +1147,7 @@ class TestAllocationsDashboardFacilityScope:
         outright — single-facility param, no fallback."""
         self._scope_benkirk(monkeypatch, ['WNA'])
         response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=NCAR'
+            '/allocations/htmx/project_table?resource=Derecho&facility=NCAR'
             '&allocation_type=Small'
         )
         assert response.status_code == 403
@@ -1128,7 +1157,7 @@ class TestAllocationsDashboardFacilityScope:
     ):
         self._scope_benkirk(monkeypatch, ['WNA'])
         response = auth_client.get(
-            '/allocations/projects?resource=Derecho&facility=WNA'
+            '/allocations/htmx/project_table?resource=Derecho&facility=WNA'
             '&allocation_type=Small'
         )
         assert response.status_code == 200
@@ -1177,7 +1206,7 @@ class TestAllocationsDashboardFacilityScope:
         a mis-configured entry — should render a functional page
         with no rows rather than error."""
         self._scope_benkirk(monkeypatch, [])  # entry exists but grants nothing
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
         # The decorator admits any user with at least one facility grant
         # of VIEW_PROJECTS; empty-dict entry leaves them unadmitted → 403.
         assert response.status_code == 403
