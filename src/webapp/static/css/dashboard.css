@@ -386,6 +386,25 @@ body {
         padding: 0.5rem 1rem;
     }
 
+    /* Brand row must actually fit a phone: at the desktop sizes
+       (13rem logo + site name + 1.6rem-padded hamburger) the header row
+       exceeded the viewport and forced document-level horizontal scroll —
+       the root cause of the old "menu opens and the page shifts" bug. */
+    .logo-ncar {
+        width: 9.5rem;
+        flex-shrink: 0;
+    }
+
+    .navbar .site-name {
+        font-size: 0.875rem;
+        line-height: 1.1rem;
+        min-width: 0;
+    }
+
+    .mobile-toggler button {
+        padding: 0.875rem 0.75rem;
+    }
+
     .main-content h1,
     .main-content .h1 {
         font-size: 1.5rem;
@@ -397,6 +416,12 @@ body {
     .main-content .container-fluid > .d-flex {
         flex-wrap: wrap;
         gap: 0.5rem;
+    }
+
+    /* Preset button strips (time-range pickers etc.) wrap instead of
+       forcing document-level horizontal scroll. */
+    .main-content .btn-group {
+        flex-wrap: wrap;
     }
 }
 
