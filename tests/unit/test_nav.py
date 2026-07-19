@@ -56,12 +56,25 @@ class TestNavbarDropdowns:
                      '/allocations/projects', '/admin/projects'):
             assert f'href="{href}"' in html
         # Dropdown pages, including the permission-gated ones
-        for href in ('/admin/configuration', '/status/filesystem-scans',
+        for href in ('/admin/configuration',
                      '/allocations/adjustments', '/admin/users-groups'):
             assert f'href="{href}"' in html
         # Split caret toggles render per section
         assert 'aria-label="Admin pages"' in html
         assert 'aria-label="System Status pages"' in html
+
+    def test_fs_scans_entry_needs_permission_and_data(self, auth_client, monkeypatch):
+        """The Filesystem Scans entry uses the same gate as the status tab
+        strip: VIEW_ALL_FILESYSTEM_DATA AND a warmed scan collection. The
+        test env has no warmed collections by default → absent even for a
+        full admin; present once the data side is satisfied."""
+        html = auth_client.get('/user/accounts').get_data(as_text=True)
+        assert 'href="/status/filesystem-scans"' not in html
+
+        monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                            lambda app=None: ['Campaign_Store'])
+        html = auth_client.get('/user/accounts').get_data(as_text=True)
+        assert 'href="/status/filesystem-scans"' in html
 
     def test_non_admin_sections_hidden(self, non_admin_client):
         html = non_admin_client.get('/user/accounts').get_data(as_text=True)

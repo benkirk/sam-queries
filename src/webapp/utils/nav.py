@@ -47,10 +47,17 @@ def _can_view_config():
 
 
 def _can_view_fs_scans():
-    # Permission-only: the data check (scan_capable_resources) stays on the
-    # status pages themselves — the page renders a friendly empty state.
-    return (current_user.is_authenticated
-            and has_permission(current_user, Permission.VIEW_ALL_FILESYSTEM_DATA))
+    # Same gate as the status tab strip: permission AND at least one warmed
+    # scan collection. scan_capable_resources() is a config-list +
+    # in-memory lookup — cheap enough per request. Keeping the data check
+    # here preserves the established contract (pinned by
+    # test_fs_scans_tab_hidden_when_no_resources): when the plugin is off
+    # or unwarmed, no fs-scans link appears anywhere on the page.
+    if not (current_user.is_authenticated
+            and has_permission(current_user, Permission.VIEW_ALL_FILESYSTEM_DATA)):
+        return False
+    from webapp.disk_scans import service as disk_scans_service
+    return bool(disk_scans_service.scan_capable_resources())
 
 
 def _my_data_available():
