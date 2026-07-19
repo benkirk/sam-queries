@@ -1,6 +1,6 @@
 /* Page-level behaviors for the allocations dashboard
  * (dashboards/allocations/projects.html et al.) and the admin dashboard
- * (dashboards/admin/dashboard.html), extracted from their inline
+ * (dashboards/admin/projects.html et al.), extracted from their inline
  * <script> blocks (CSP: script-src 'self').
  *
  * Loaded from dashboards/base.html on every page; everything below is

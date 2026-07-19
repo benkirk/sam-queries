@@ -13,16 +13,20 @@
       label    - visible tab text
       icon     - optional Font Awesome classes (e.g. 'fas fa-folder-open')
       visible  - optional bool, default true (for permission/data-gated tabs)
+      active_endpoints - optional extra endpoints that also count as
+                         "on this tab" (e.g. a sub-page under it)
     class - optional extra classes on the <ul> (default 'mb-3')
 #}
 {% macro page_tabs(tabs, class='mb-3') %}
 <ul class="nav nav-tabs {{ class }}">
     {% for tab in tabs %}
     {% if tab.get('visible', True) %}
+    {% set is_active = request.endpoint == tab.endpoint
+                       or request.endpoint in tab.get('active_endpoints', []) %}
     <li class="nav-item">
-        <a class="nav-link{% if request.endpoint == tab.endpoint %} active{% endif %}"
+        <a class="nav-link{% if is_active %} active{% endif %}"
            href="{{ url_for(tab.endpoint) }}"
-           {% if request.endpoint == tab.endpoint %}aria-current="page"{% endif %}>
+           {% if is_active %}aria-current="page"{% endif %}>
             {% if tab.icon %}<i class="{{ tab.icon }} me-1"></i> {% endif %}{{ tab.label }}
         </a>
     </li>

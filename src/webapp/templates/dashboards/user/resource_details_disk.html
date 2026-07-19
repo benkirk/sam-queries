@@ -65,7 +65,7 @@
 {% set _from_admin = request.args.get('from') == 'admin' %}
 <div class="back-link mb-3">
     {% if _from_admin %}
-    <a href="{{ url_for('admin_dashboard.index', projcode=projcode) }}" class="btn  btn-outline-secondary">
+    <a href="{{ url_for('admin_dashboard.projects', projcode=projcode) }}" class="btn  btn-outline-secondary">
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Admin</span>
     </a>
     {% else %}

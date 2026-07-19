@@ -1,0 +1,70 @@
+{#
+  Shared layout for the admin dashboard pages
+  (/admin/projects, /admin/projects/directories, /admin/users-groups,
+   /admin/resources, /admin/organizations, /admin/facilities,
+   /admin/configuration).
+
+  Provides the header and routable tab strip; each page fills
+  {% block admin_content %}. All the entity-card modals are included
+  here (same set the old single-page dashboard carried) so any card
+  fragment htmx-loaded into any admin page finds its modal targets.
+#}
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1><i class="fas fa-user-shield"></i> Admin Dashboard</h1>
+        <p class="text-muted">Administrative tools for managing users and projects</p>
+    </div>
+</div>
+
+{# The Projects tab stays highlighted on both /admin/projects and
+   /admin/projects/directories — the sub-strip on those pages
+   disambiguates. #}
+{{ page_tabs([
+    {'endpoint': 'admin_dashboard.projects', 'label': 'Projects', 'icon': 'fas fa-folder-open',
+     'active_endpoints': ['admin_dashboard.projects_directories']},
+    {'endpoint': 'admin_dashboard.users_groups',  'label': 'Users & Groups', 'icon': 'fas fa-users'},
+    {'endpoint': 'admin_dashboard.resources',     'label': 'Resources', 'icon': 'fas fa-server'},
+    {'endpoint': 'admin_dashboard.organizations', 'label': 'Organizations', 'icon': 'fas fa-sitemap'},
+    {'endpoint': 'admin_dashboard.facilities',    'label': 'Facilities & Allocation Types', 'icon': 'fas fa-building'},
+    {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration', 'icon': 'fas fa-sliders-h',
+     'visible': has_permission(Permission.VIEW_SYSTEM_CONFIG)},
+]) }}
+
+{% block admin_content %}{% endblock %}
+
+<!-- Project Management Modals -->
+{% include 'dashboards/admin/fragments/project_modals.html' %}
+
+<!-- Member Management Modals (shared — used by user, admin, and edit-project pages) -->
+{% include 'project_members/fragments/member_modals_htmx.html' %}
+
+<!-- Allocation Management Modals (reused from user dashboard) -->
+{% include 'dashboards/user/fragments/allocation_modals.html' %}
+
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
+
+{% include 'dashboards/shared/project_details_modal.html' %}
+
+{% include 'dashboards/admin/fragments/exemption_modals.html' %}
+
+{% include 'dashboards/admin/fragments/project_directory_modals.html' %}
+
+{% include 'dashboards/admin/fragments/resources_modals.html' %}
+
+{% include 'dashboards/admin/fragments/facility_modals.html' %}
+
+{% include 'dashboards/admin/fragments/organization_modals.html' %}
+
+{% endblock %}
+
+{# Page behavior (expirations tab loading/export, impersonate +
+   project-code delegated handlers) lives in
+   static/js/dashboard-init.js (CSP: no inline scripts). #}
