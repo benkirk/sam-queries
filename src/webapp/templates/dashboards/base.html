@@ -47,11 +47,10 @@
                                         <a href="{{ url_for('user_dashboard.index') }}">Systems Accounting<br>Manager</a>
                                     </div>
                                     <div class="ms-auto px-0 d-md-none mobile-toggler">
-                                        <button aria-controls="navbarNav" aria-expanded="false"
-                                                aria-label="Mobile Menu"
-                                                class="navbar-toggler collapsed btn"
-                                                data-bs-target="#navbarNav,#navbarNavMobile"
-                                                data-bs-toggle="collapse"
+                                        <button aria-controls="mobileNav" aria-label="Mobile Menu"
+                                                class="navbar-toggler btn"
+                                                data-bs-target="#mobileNav"
+                                                data-bs-toggle="offcanvas"
                                                 id="menuIcon" type="button">
                                             <span class="navbar-toggler-icon"></span>
                                         </button>
@@ -87,48 +86,35 @@
                     </div>
                 </div>
 
-                <!-- Row 2: Nav links -->
-                <div class="col-12 navbar-wrapper border-top">
-                    <div class="container-lg collapse navbar-collapse" id="navbarNav">
-                        {# Helper: 'active' class + aria-current when current page's blueprint matches. #}
-                        {% macro nav_active(blueprint) -%}
-                        {%- if request.blueprint == blueprint -%}active{%- endif -%}
-                        {%- endmacro %}
-                        <ul class="menu navbar-nav me-auto mb-2 mb-md-0 align-items-center">
-                            {% if current_user.is_authenticated %}
-                            <li class="nav-item">
-                                <a class="nav-link {{ nav_active('user_dashboard') }}" href="{{ url_for('user_dashboard.accounts') }}"{% if request.blueprint == 'user_dashboard' %} aria-current="page"{% endif %}>User Dashboard</a>
+                <!-- Row 2: Nav links (desktop only — mobile uses the offcanvas drawer) -->
+                <div class="col-12 navbar-wrapper border-top d-none d-md-block">
+                    <div class="container-lg">
+                        <ul class="menu navbar-nav me-auto mb-0 align-items-center">
+                            {% for section in nav_sections() %}
+                            {# Split pattern: the label navigates to the section's
+                               default page; the caret button opens the dropdown. #}
+                            <li class="nav-item dropdown d-flex align-items-center">
+                                <a class="nav-link{% if section.active %} active{% endif %}"
+                                   href="{{ url_for(section.endpoint) }}"{% if section.active %} aria-current="page"{% endif %}>{{ section.label }}</a>
+                                {% if section.pages|length > 1 %}
+                                <button type="button"
+                                        class="nav-link dropdown-toggle dropdown-toggle-split nav-caret"
+                                        data-bs-toggle="dropdown" aria-expanded="false"
+                                        aria-label="{{ section.label }} pages"></button>
+                                <ul class="dropdown-menu">
+                                    {% for page in section.pages %}
+                                    <li>
+                                        <a class="dropdown-item{% if page.active %} active{% endif %}"
+                                           href="{{ url_for(page.endpoint) }}">
+                                            {% if page.icon %}<i class="{{ page.icon }} me-2"></i>{% endif %}{{ page.label }}
+                                        </a>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                {% endif %}
                             </li>
-                            {% endif %}
-                            <li class="nav-item">
-                                <a class="nav-link {{ nav_active('status_dashboard') }}" href="{{ url_for('status_dashboard.derecho') }}"{% if request.blueprint == 'status_dashboard' %} aria-current="page"{% endif %}>System Status</a>
-                            </li>
-                            {% if has_permission_any_facility(Permission.VIEW_PROJECTS) %}
-                            <li class="nav-item">
-                                <a class="nav-link {{ nav_active('allocations_dashboard') }}" href="{{ url_for('allocations_dashboard.projects') }}"{% if request.blueprint == 'allocations_dashboard' %} aria-current="page"{% endif %}>Allocations</a>
-                            </li>
-                            {% endif %}
-                            {% if has_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD) %}
-                            <li class="nav-item">
-                                <a class="nav-link {{ nav_active('admin_dashboard') }}" href="{{ url_for('admin_dashboard.projects') }}"{% if request.blueprint == 'admin_dashboard' %} aria-current="page"{% endif %}>Admin</a>
-                            </li>
-                            {% endif %}
+                            {% endfor %}
                         </ul>
-                    </div>
-                </div>
-
-                <!-- Row 3: Mobile utility -->
-                <div class="col-12 mobile-utility-menu px-2 d-md-none">
-                    <div class="collapse navbar-collapse" id="navbarNavMobile">
-                        {% if current_user.is_authenticated %}
-                        <div class="py-2 fw-bold">
-                            <a href="{{ url_for('auth.logout') }}">Logout {{ current_user.display_name }}</a>
-                        </div>
-                        {% else %}
-                        <div class="py-2 fw-bold">
-                            <a href="{{ url_for('auth.login') }}">Login</a>
-                        </div>
-                        {% endif %}
                     </div>
                 </div>
 
@@ -136,6 +122,9 @@
         </div>
     </nav>
     </header>
+
+    <!-- Mobile navigation drawer -->
+    {% include 'dashboards/fragments/mobile_nav.html' %}
 
     <!-- Impersonation Banner -->
     {% if session.impersonator_id %}

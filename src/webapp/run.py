@@ -322,6 +322,10 @@ def create_app(*, config_overrides: dict | None = None):
     # Register context processor for RBAC in templates
     app.context_processor(rbac_context_processor)
 
+    # Navigation registry (navbar dropdowns, mobile menu, breadcrumbs)
+    from webapp.utils.nav import nav_context_processor
+    app.context_processor(nav_context_processor)
+
     # Central CDN-asset registry (pinned versions + SRI) for templates
     from webapp.vendor_assets import vendor_assets_context_processor
     app.context_processor(vendor_assets_context_processor)
