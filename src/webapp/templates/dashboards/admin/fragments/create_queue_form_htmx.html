@@ -1,0 +1,45 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, number_field, select_field with context %}
+{# htmx: Create Queue Form #}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_queue_create'),
+    '#createQueueFormContainer',
+    'Create Queue',
+    submit_icon='plus',
+    errors=errors
+) %}
+        <div class="row">
+            <div class="col-md-6">
+                {{ text_field('queue_name', 'Queue Name',
+                              required=True, maxlength=50,
+                              placeholder='e.g. largememroute',
+                              id='createQueueName') }}
+            </div>
+            <div class="col-md-6">
+                {{ select_field('resource_id', 'Resource',
+                                items=resources,
+                                value_attr='resource_id',
+                                label_attr='resource_name',
+                                required=True,
+                                placeholder='— Select resource —',
+                                id='createQueueResource') }}
+            </div>
+        </div>
+
+        {{ text_field('description', 'Description',
+                      maxlength=255,
+                      placeholder='e.g. Routing queue for largemem jobs',
+                      id='createQueueDescription') }}
+
+        {{ number_field('wall_clock_hours_limit', 'Wallclock Limit (hours)',
+                        min=0, step='0.01',
+                        placeholder='e.g. 24',
+                        help='Default wallclock limit for jobs in this queue. '
+                             'Leave blank for no limit.',
+                        id='createQueueWCLimit') }}
+
+        <p class="text-muted small mb-0">
+            The queue starts today, and a charging factor of 1.0 is created
+            alongside it.
+        </p>
+{% endcall %}

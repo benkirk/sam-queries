@@ -144,7 +144,43 @@
 
     /* ── Per-swap initialization, gated on fragment markers ── */
 
+    /* ── Queue cleanup preview (queue_cleanup_preview_htmx.html) ──
+     *
+     * Keeps the submit button's count in sync with the ticked checkboxes and
+     * disables it at zero, plus the select all/none shortcuts. Bound per swap:
+     * the preview fragment is replaced wholesale on every step-1 submit. */
+
+    function initQueueCleanup(form) {
+        if (form.samCleanupBound) { return; }
+        form.samCleanupBound = true;
+
+        var boxes = form.querySelectorAll('input[name="queue_ids"]');
+        var count = form.querySelector('[data-cleanup-count]');
+        var submit = form.querySelector('#queueCleanupSubmit');
+        if (!count || !submit) { return; }
+
+        function sync() {
+            var n = form.querySelectorAll('input[name="queue_ids"]:checked').length;
+            count.textContent = n;
+            submit.disabled = (n === 0);
+        }
+
+        boxes.forEach(function (b) { b.addEventListener('change', sync); });
+        form.querySelectorAll('[data-cleanup-select]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var on = btn.dataset.cleanupSelect === 'all';
+                boxes.forEach(function (b) { b.checked = on; });
+                sync();
+            });
+        });
+        sync();
+    }
+
     htmx.onLoad(function (root) {
+        var cleanupForm = (root.matches && root.matches('#queueCleanupForm'))
+            ? root : root.querySelector('#queueCleanupForm');
+        if (cleanupForm) { initQueueCleanup(cleanupForm); }
+
         if (has(root, '#organizationsTabsContent')) {
             document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
             SamCollapseChevron.attach('#areas-pane',     '.collapse-icon');

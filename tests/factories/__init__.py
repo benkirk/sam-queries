@@ -29,6 +29,7 @@ from .resources import (
     make_resource_type,
 )
 from .security import make_api_credentials, make_role
+from .summaries import make_comp_charge_summary
 
 __all__ = [
     "next_date",
@@ -42,6 +43,7 @@ __all__ = [
     "make_disk_resource_root_directory",
     "make_machine",
     "make_queue",
+    "make_comp_charge_summary",
     "make_wallclock_exemption",
     "make_facility",
     "make_aoi_group",

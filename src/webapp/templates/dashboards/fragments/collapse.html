@@ -1,0 +1,45 @@
+{#
+  Collapse-trigger helpers.
+
+  ── Why this exists ──────────────────────────────────────────────────────
+  A group row that expands on click is normally written as
+  `<tr data-bs-toggle="collapse" ...>`. That is fine until the row also
+  carries an action button (Edit, Delete, Cleanup…): clicking the button
+  then *also* toggles the row.
+
+  It cannot be fixed from the button. Bootstrap registers its data-api
+  handlers with `EventHandler.on(document, ...)`, which passes the
+  delegation flag as `addEventListener`'s `useCapture` argument — so they
+  run in the CAPTURE phase on `document`. Capture descends document → row →
+  button, so Bootstrap has already toggled the collapse before any listener
+  on the button executes. `data-stop-propagation` (static/js/actions.js) is
+  powerless here by construction; its own docstring scopes it to
+  element-level htmx bindings.
+
+  The fix is structural: put the toggle on the individual cells that should
+  react, and leave the actions cell out of it.
+
+  ── Usage ────────────────────────────────────────────────────────────────
+  Emits only the data-attributes, so the caller keeps full control of the
+  `class` attribute (emitting a second one would be invalid HTML, and the
+  trigger is often conditional):
+
+      {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+
+      <tr class="table-light fw-semibold">
+          <td class="cursor-pointer" {{ collapse_toggle('grp-' ~ id) }}>…</td>
+          <td class="cursor-pointer" {{ collapse_toggle('grp-' ~ id) }}>…</td>
+          <td class="text-end">{{ edit_modal_button(...) }}</td>   {# no toggle #}
+      </tr>
+
+  A row with NO buttons can keep the toggle on the `<tr>` — there is nothing
+  to collide with. Add `cursor-pointer` to whichever cells carry the toggle.
+
+  `SamCollapseChevron.attach()` is unaffected: it looks up
+  `[data-bs-toggle="collapse"]` and finds the chevron inside the trigger,
+  which is now the first cell.
+#}
+
+{% macro collapse_toggle(target_id, expanded=false) -%}
+data-bs-toggle="collapse" data-bs-target="#{{ target_id }}" aria-expanded="{{ 'true' if expanded else 'false' }}"
+{%- endmacro %}
