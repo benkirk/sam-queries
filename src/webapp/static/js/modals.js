@@ -36,7 +36,7 @@
     });
 
     /* Populate the edit form from the clicked button's data attributes
-     * (status/dashboard.html outage rows). */
+     * (status/base_status.html outage rows). */
     registerAction('outage-edit', function (btn) {
         var d = btn.dataset;
         document.getElementById('editOutageId').value = d.outageId;

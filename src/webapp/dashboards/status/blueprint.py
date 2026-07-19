@@ -24,36 +24,95 @@ from webapp.disk_scans import service as disk_scans_service
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
 logger = logging.getLogger(__name__)
 
-@bp.route('/')
-def index():
+def _parse_selected_hours():
+    """Parse the optional ``hours`` (or legacy ``days``) query param.
+
+    The param doesn't change what the pages query — it's a stateless
+    passthrough so drill-down row clicks inherit the user's last-set
+    time range, and the back link on detail pages can carry it through.
+    Returns ``None`` when absent (matches today's row-click URLs
+    bit-for-bit).
     """
-    Main system status dashboard landing page.
-
-    Queries latest status from all systems and renders server-side.
-    Status models are routed to the `system_status` bind via
-    `__bind_key__`, so `db.session` handles both reads and writes.
-
-    The optional ``hours`` (or legacy ``days``) query param doesn't change
-    what the dashboard queries — it's a stateless passthrough so drill-down
-    row clicks inherit the user's last-set time range, and the back link
-    on detail pages can carry it through. ``selected_hours`` is None when
-    the param is absent (matches today's row-click URLs bit-for-bit).
-    """
-    session = db.session
-
-    selected_hours = None
     if request.args.get('hours'):
         try:
-            selected_hours = int(request.args['hours'])
+            return int(request.args['hours'])
         except ValueError:
-            selected_hours = None
-    elif request.args.get('days'):
+            return None
+    if request.args.get('days'):
         try:
-            selected_hours = int(request.args['days']) * 24
+            return int(request.args['days']) * 24
         except ValueError:
-            selected_hours = None
+            return None
+    return None
 
-    # Get latest Derecho status
+
+def _page_context(session):
+    """Template context shared by every status page.
+
+    Covers the pieces base_status.html renders on all pages: the active
+    outage banner, the ``hours`` passthrough, and the data driving
+    tab-strip visibility (reservations, scan-capable resources).
+    Status models are routed to the `system_status` bind via
+    `__bind_key__`, so `db.session` handles both reads and writes.
+    """
+    selected_hours = _parse_selected_hours()
+    # Default the chart window to 7 days when no ?hours= override is in
+    # the URL — matches the drill-down default so the time_range_picker
+    # on each chart card reads sensibly on first load. selected_hours
+    # stays None when absent (other code paths that introspect it still
+    # get the same signal).
+    chart_hours = selected_hours if selected_hours is not None else 168
+
+    return dict(
+        user=current_user,
+        outages=status_queries.get_active_outages(session),
+        # Needed on every page: derecho/casper render per-system
+        # reservation cards, and the tab strip shows/hides the
+        # Reservations tab based on it.
+        reservations=status_queries.get_upcoming_reservations(session),
+        google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
+        now=utcnow_naive(),
+        selected_hours=selected_hours,
+        chart_hours=chart_hours,
+        # Scan-capable disk resources for the gated "Filesystem Scans" tab.
+        # Empty (→ tab hidden) when the fs-scans plugin is off or no configured
+        # resource has warmed collections. Tab visibility is additionally gated
+        # in-template on VIEW_ALL_FILESYSTEM_DATA. has_permission/Permission are
+        # template globals (rbac_context_processor).
+        fs_scan_resources=disk_scans_service.scan_capable_resources(),
+    )
+
+
+def _status_return_url():
+    """Where to send the browser after an outage mutation.
+
+    Prefer the status page the operator is on (htmx sends it as
+    HX-Current-URL) so e.g. a resolve issued from /status/casper lands
+    back there; anything that isn't a same-app /status/ path falls back
+    to the section default. Path-only, so no open-redirect surface.
+    """
+    from urllib.parse import urlsplit
+    current = request.headers.get('HX-Current-URL', '')
+    try:
+        path = urlsplit(current).path
+    except ValueError:
+        path = ''
+    if path.startswith('/status/'):
+        return path
+    return url_for('status_dashboard.index')
+
+
+@bp.route('/')
+def index():
+    """Bare section URL — redirect to the default page (Derecho),
+    preserving any query params (``?hours=`` passthrough)."""
+    return redirect(url_for('status_dashboard.derecho', **request.args))
+
+
+@bp.route('/derecho')
+def derecho():
+    """Derecho system status page."""
+    session = db.session
     derecho_status = status_queries.get_latest_derecho_status(session)
 
     derecho_queues = []
@@ -64,7 +123,20 @@ def index():
         derecho_filesystems = status_queries.get_latest_derecho_filesystems(session, derecho_status.timestamp)
         derecho_login_nodes = status_queries.get_latest_derecho_login_nodes(session, derecho_status.timestamp)
 
-    # Get latest Casper status
+    return render_template(
+        'dashboards/status/derecho_page.html',
+        derecho_status=derecho_status,
+        derecho_queues=derecho_queues,
+        derecho_filesystems=derecho_filesystems,
+        derecho_login_nodes=derecho_login_nodes,
+        **_page_context(session),
+    )
+
+
+@bp.route('/casper')
+def casper():
+    """Casper system status page."""
+    session = db.session
     casper_status = status_queries.get_latest_casper_status(session)
 
     casper_node_types = []
@@ -77,47 +149,45 @@ def index():
         casper_login_nodes = status_queries.get_latest_casper_login_nodes(session, casper_status.timestamp)
         casper_filesystems = status_queries.get_latest_casper_filesystems(session, casper_status.timestamp)
 
-    # Get latest JupyterHub status
-    jupyterhub_status = status_queries.get_latest_jupyterhub_status(session)
-
-    # Get active outages
-    outages = status_queries.get_active_outages(session)
-
-    # Get upcoming reservations
-    reservations = status_queries.get_upcoming_reservations(session)
-
-    # Default the landing-page chart window to 7 days when no
-    # ?hours= override is in the URL — matches the drill-down default
-    # so the time_range_picker on each chart card reads sensibly on
-    # first load. selected_hours stays None when absent (other code
-    # paths that introspect it still get the same signal).
-    chart_hours = selected_hours if selected_hours is not None else 168
-
     return render_template(
-        'dashboards/status/dashboard.html',
-        user=current_user,
-        derecho_status=derecho_status,
-        derecho_queues=derecho_queues,
-        derecho_filesystems=derecho_filesystems,
-        derecho_login_nodes=derecho_login_nodes,
+        'dashboards/status/casper_page.html',
         casper_status=casper_status,
         casper_node_types=casper_node_types,
         casper_queues=casper_queues,
         casper_login_nodes=casper_login_nodes,
         casper_filesystems=casper_filesystems,
-        jupyterhub_status=jupyterhub_status,
-        outages=outages,
-        reservations=reservations,
-        google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
-        now=utcnow_naive(),
-        selected_hours=selected_hours,
-        chart_hours=chart_hours,
-        # Scan-capable disk resources for the gated "Filesystem Scans" tab.
-        # Empty (→ tab hidden) when the fs-scans plugin is off or no configured
-        # resource has warmed collections. Tab visibility is additionally gated
-        # in-template on VIEW_ALL_FILESYSTEM_DATA. has_permission/Permission are
-        # template globals (rbac_context_processor).
-        fs_scan_resources=disk_scans_service.scan_capable_resources(),
+        **_page_context(session),
+    )
+
+
+@bp.route('/jupyterhub')
+def jupyterhub():
+    """JupyterHub status page."""
+    session = db.session
+    return render_template(
+        'dashboards/status/jupyterhub_page.html',
+        jupyterhub_status=status_queries.get_latest_jupyterhub_status(session),
+        **_page_context(session),
+    )
+
+
+@bp.route('/reservations')
+def reservations():
+    """Upcoming reservations page (table + optional Google Calendar embed)."""
+    return render_template(
+        'dashboards/status/reservations_page.html',
+        **_page_context(db.session),
+    )
+
+
+@bp.route('/filesystem-scans')
+@login_required
+@require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)
+def filesystem_scans():
+    """Filesystem scan summaries page (staff only)."""
+    return render_template(
+        'dashboards/status/filesystem_scans_page.html',
+        **_page_context(db.session),
     )
 
 
@@ -524,7 +594,7 @@ def htmx_create_outage():
 
     flash('Outage reported.', 'warning')
     response = make_response('')
-    response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+    response.headers['HX-Redirect'] = _status_return_url()
     return response
 
 
@@ -539,7 +609,7 @@ def htmx_update_outage(outage_id):
     if not outage:
         flash('Outage not found.', 'error')
         response = make_response('')
-        response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+        response.headers['HX-Redirect'] = _status_return_url()
         return response
 
     try:
@@ -566,7 +636,7 @@ def htmx_update_outage(outage_id):
 
     flash('Outage updated.', 'success')
     response = make_response('')
-    response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+    response.headers['HX-Redirect'] = _status_return_url()
     return response
 
 
@@ -587,7 +657,7 @@ def htmx_resolve_outage(outage_id):
         flash('Outage not found.', 'error')
 
     response = make_response('')
-    response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+    response.headers['HX-Redirect'] = _status_return_url()
     return response
 
 
@@ -607,5 +677,5 @@ def htmx_delete_outage(outage_id):
         flash('Outage not found.', 'error')
 
     response = make_response('')
-    response.headers['HX-Redirect'] = url_for('status_dashboard.index')
+    response.headers['HX-Redirect'] = _status_return_url()
     return response

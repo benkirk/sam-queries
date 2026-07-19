@@ -6,8 +6,9 @@
 {# Forward `hours` to the dashboard so sideways navigation between node
    types inherits the user's chosen time range. #}
 {% set _idx_kwargs = {'hours': hours} if hours else {} %}
+{% set _idx_endpoint = 'status_dashboard.' ~ system|lower if system|lower in ['derecho', 'casper'] else 'status_dashboard.index' %}
 <div class="back-link mb-3">
-    <a href="{{ url_for('status_dashboard.index', **_idx_kwargs) }}" class="btn  btn-outline-secondary">
+    <a href="{{ url_for(_idx_endpoint, **_idx_kwargs) }}" class="btn  btn-outline-secondary">
         <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Status Dashboard</span>
     </a>
 </div>
