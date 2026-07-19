@@ -1,0 +1,32 @@
+{% extends 'dashboards/allocations/base_allocations.html' %}
+{% from 'dashboards/fragments/audit_filters.html' import audit_filters %}
+
+{% block title %}Allocation Transactions - SAM{% endblock %}
+
+{% block alloc_content %}
+
+<div class="filter-sidebar mb-3">
+    {{ audit_filters(
+        form_id='tx-filters',
+        fragment_url=url_for('allocations_dashboard.transactions_fragment'),
+        target_id='alloc-transactions-fragment',
+        start_date=audit_start_date, end_date=audit_end_date,
+        all_resources=all_resources, selected_resources=[],
+        allowed_facilities=allowed_facility_names, selected_facilities=[]) }}
+</div>
+
+<div id="alloc-transactions-fragment"
+     hx-get="{{ url_for('allocations_dashboard.transactions_fragment') }}"
+     hx-trigger="load"
+     hx-include="#tx-filters"
+     hx-swap="innerHTML">
+    <div class="text-center text-muted py-4">
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Loading…</span>
+        </div>
+    </div>
+</div>
+
+{% include 'dashboards/allocations/partials/audit_details_modal.html' %}
+
+{% endblock %}

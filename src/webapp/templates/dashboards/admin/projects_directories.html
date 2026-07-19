@@ -1,0 +1,17 @@
+{% extends 'dashboards/admin/base_admin_projects.html' %}
+
+{% block title %}Admin: Project Directories - SAM{% endblock %}
+
+{% block projects_content %}
+<div id="projectDirectoriesSection"
+     hx-get="{{ url_for('admin_dashboard.htmx_admin_project_directories') }}?active_only=1"
+     hx-trigger="load once"
+     hx-target="this"
+     hx-swap="innerHTML">
+    <div class="text-center py-4">
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Loading...</span>
+        </div>
+    </div>
+</div>
+{% endblock %}

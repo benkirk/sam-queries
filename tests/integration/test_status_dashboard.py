@@ -2,7 +2,10 @@
 Integration tests for System Status Dashboard.
 
 Verifies that dashboard pages render correctly (status 200) using the new
-query layer. Each test seeds minimal Derecho/Casper data into the per-worker
+query layer. The dashboard is routable pages — /status/ 302-redirects to
+/status/derecho, and each system (derecho, casper, jupyterhub, reservations,
+filesystem-scans) has its own page sharing the outage banner + tab strip.
+Each test seeds minimal Derecho/Casper data into the per-worker
 SQLite tempfile via the `status_session` fixture, then issues authenticated
 HTTP GETs through `auth_client`. Both the seed and the route's `db.session`
 queries route through the same Flask-SQLAlchemy `system_status` bind, so the
@@ -143,49 +146,102 @@ def seed_data(session):
 class TestStatusDashboard:
     """Tests for the status dashboard views."""
 
-    def test_dashboard_index(self, auth_client, status_session):
-        """Test GET /status/ returns 200."""
-        seed_data(status_session)
+    def test_index_redirects_to_derecho(self, auth_client):
+        """GET /status/ 302-redirects to the default page (/status/derecho)."""
         response = auth_client.get('/status/')
+        assert response.status_code == 302
+        assert response.headers['Location'].endswith('/status/derecho')
+
+    def test_index_redirect_preserves_hours(self, auth_client):
+        """The bare-URL redirect forwards ?hours= to the Derecho page."""
+        response = auth_client.get('/status/?hours=720')
+        assert response.status_code == 302
+        location = response.headers['Location']
+        assert '/status/derecho' in location
+        assert 'hours=720' in location
+
+    def test_derecho_page(self, auth_client, status_session):
+        """Test GET /status/derecho returns 200."""
+        seed_data(status_session)
+        response = auth_client.get('/status/derecho')
         assert response.status_code == 200
         assert b'System Status' in response.data
+        assert b'Derecho' in response.data
+
+    def test_casper_page(self, auth_client, status_session):
+        """Test GET /status/casper returns 200."""
+        seed_data(status_session)
+        response = auth_client.get('/status/casper')
+        assert response.status_code == 200
+        assert b'System Status' in response.data
+        assert b'Casper' in response.data
+
+    def test_jupyterhub_page(self, auth_client, status_session):
+        """Test GET /status/jupyterhub returns 200."""
+        seed_data(status_session)
+        response = auth_client.get('/status/jupyterhub')
+        assert response.status_code == 200
+        assert b'System Status' in response.data
+        assert b'JupyterHub' in response.data
 
     # ------------------------------------------------------------------
-    # "Filesystem Scans" tab — gated on VIEW_ALL_FILESYSTEM_DATA AND a
-    # non-empty scan-capable resource list (plugin on + warmed collections).
+    # "Filesystem Scans" — the tab-strip link (on every status page) is
+    # gated on VIEW_ALL_FILESYSTEM_DATA AND a non-empty scan-capable
+    # resource list (plugin on + warmed collections). The page itself
+    # (/status/filesystem-scans) is @login_required +
+    # @require_permission(VIEW_ALL_FILESYSTEM_DATA).
     # The plugin is off in tests, so scan_capable_resources() returns [] by
     # default; patch it to exercise the visible path.
     # ------------------------------------------------------------------
 
     def test_fs_scans_tab_shown_with_perm(self, auth_client, status_session, monkeypatch):
-        """benkirk holds the perm → tab + one subtab per configured resource."""
+        """benkirk holds the perm → tab-strip link on the status pages."""
         seed_data(status_session)
         monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                             lambda app=None: ['Campaign_Store'])
-        response = auth_client.get('/status/')
+        response = auth_client.get('/status/derecho')
         assert response.status_code == 200
         body = response.get_data(as_text=True)
-        assert 'id="filesystem-scans-tab"' in body
+        assert '/status/filesystem-scans' in body
         assert 'Filesystem Scans' in body
-        assert 'Campaign_Store' in body          # subtab rendered
+
+    def test_fs_scans_page_renders_subtabs(self, auth_client, status_session, monkeypatch):
+        """The page renders one subtab per configured resource."""
+        seed_data(status_session)
+        monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                            lambda app=None: ['Campaign_Store'])
+        response = auth_client.get('/status/filesystem-scans')
+        assert response.status_code == 200
+        assert 'Campaign_Store' in response.get_data(as_text=True)   # subtab rendered
 
     def test_fs_scans_tab_hidden_when_no_resources(self, auth_client, status_session, monkeypatch):
         """No scan-capable resource (plugin off / unwarmed) → no tab even with perm."""
         seed_data(status_session)
         monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                             lambda app=None: [])
-        response = auth_client.get('/status/')
+        response = auth_client.get('/status/derecho')
         assert response.status_code == 200
-        assert 'id="filesystem-scans-tab"' not in response.get_data(as_text=True)
+        assert '/status/filesystem-scans' not in response.get_data(as_text=True)
 
     def test_fs_scans_tab_hidden_without_perm(self, non_admin_client, status_session, monkeypatch):
         """A user lacking VIEW_ALL_FILESYSTEM_DATA never sees the tab."""
         seed_data(status_session)
         monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                             lambda app=None: ['Campaign_Store'])
-        response = non_admin_client.get('/status/')
+        response = non_admin_client.get('/status/derecho')
         assert response.status_code == 200
-        assert 'id="filesystem-scans-tab"' not in response.get_data(as_text=True)
+        assert '/status/filesystem-scans' not in response.get_data(as_text=True)
+
+    def test_fs_scans_page_requires_login(self, client):
+        """Anonymous GET of the page redirects to the login screen."""
+        response = client.get('/status/filesystem-scans')
+        assert response.status_code == 302
+        assert '/auth/login' in response.headers.get('Location', '')
+
+    def test_fs_scans_page_403_without_perm(self, non_admin_client):
+        """Logged-in but lacking VIEW_ALL_FILESYSTEM_DATA → 403."""
+        response = non_admin_client.get('/status/filesystem-scans')
+        assert response.status_code == 403
 
     def test_nodetype_history(self, auth_client, status_session):
         """Test GET /status/nodetype-history/casper/cpu returns 200."""
@@ -208,28 +264,38 @@ class TestStatusDashboard:
     # ------------------------------------------------------------------
 
     def test_dashboard_accepts_hours_param(self, auth_client, status_session):
-        """`/status/?hours=720` renders without crashing."""
+        """`?hours=720` renders without crashing on each system page."""
         seed_data(status_session)
-        response = auth_client.get('/status/?hours=720')
-        assert response.status_code == 200
-        assert b'System Status' in response.data
+        for page in ('/status/derecho', '/status/casper'):
+            response = auth_client.get(f'{page}?hours=720')
+            assert response.status_code == 200
+            assert b'System Status' in response.data
 
     def test_dashboard_forwards_hours_to_drill_down_links(self, auth_client, status_session):
-        """When `hours` is set, queue/nodetype row-click URLs must carry it."""
+        """When `hours` is set, queue/nodetype row-click URLs must carry it.
+
+        Assert on the full drill-down URLs (not a bare `hours=720`
+        substring) — the chart card's time-range picker always emits an
+        `?hours=720` link, which would make a loose check tautological.
+        """
         seed_data(status_session)
-        response = auth_client.get('/status/?hours=720')
+        response = auth_client.get('/status/derecho?hours=720')
         assert response.status_code == 200
-        # Drill-down URLs are emitted as window.location='...' onclick handlers.
-        assert b'hours=720' in response.data, (
-            'Expected hours=720 to appear in row-click URLs on the dashboard'
+        # Drill-down URLs are emitted as row-click data-href handlers.
+        assert b'/status/queue-history/derecho/main?hours=720' in response.data, (
+            'Expected hours=720 to appear in row-click URLs on the Derecho page'
         )
+        response = auth_client.get('/status/casper?hours=720')
+        assert response.status_code == 200
+        assert b'/status/queue-history/casper/casper?hours=720' in response.data
+        assert b'/status/nodetype-history/casper/cpu?hours=720' in response.data
 
     def test_dashboard_forwards_legacy_days_as_hours(self, auth_client, status_session):
         """`?days=30` (legacy) is normalized to hours=720 in row-click URLs."""
         seed_data(status_session)
-        response = auth_client.get('/status/?days=30')
+        response = auth_client.get('/status/derecho?days=30')
         assert response.status_code == 200
-        assert b'hours=720' in response.data
+        assert b'/status/queue-history/derecho/main?hours=720' in response.data
 
     def test_dashboard_no_hours_means_no_hours_in_links(self, auth_client, status_session):
         """No `hours` param → drill-down URLs are clean (no `hours=` query string).
@@ -238,43 +304,45 @@ class TestStatusDashboard:
         bit-for-bit so users without the param see the original behavior.
         """
         seed_data(status_session)
-        response = auth_client.get('/status/')
-        assert response.status_code == 200
-        # The dashboard renders many things; we only care that drill-down URLs
-        # in queue/nodetype tables don't have hours= appended. Look at the
-        # specific onclick URLs.
-        assert b'queue-history/derecho' in response.data
-        # The URL preceding the queue_name shouldn't carry an `hours=` param
-        # in any of the row-click handlers when none was requested.
-        # (A bare `hours=` somewhere else like a script comment would be a
-        # false positive; restrict to the drill-down URL prefix.)
-        assert b'queue-history/derecho/' in response.data
-        # Permissive substring check — no row-click should contain hours=:
-        for url_prefix in (b'queue-history/derecho/', b'queue-history/casper/',
-                           b'nodetype-history/casper/'):
-            # Find every occurrence of the prefix and verify the surrounding
-            # 200 bytes don't include hours=
-            idx = 0
-            while True:
-                pos = response.data.find(url_prefix, idx)
-                if pos == -1:
-                    break
-                snippet = response.data[pos:pos + 200]
-                assert b'hours=' not in snippet, (
-                    f'Unexpected hours= near {url_prefix!r} in dashboard '
-                    f'rendered with no params: {snippet!r}'
-                )
-                idx = pos + len(url_prefix)
+        # Derecho queues render on /status/derecho; Casper queues and
+        # node-types on /status/casper.
+        pages = {
+            '/status/derecho': (b'queue-history/derecho/',),
+            '/status/casper': (b'queue-history/casper/', b'nodetype-history/casper/'),
+        }
+        for page, url_prefixes in pages.items():
+            response = auth_client.get(page)
+            assert response.status_code == 200
+            # The pages render many things; we only care that drill-down URLs
+            # in queue/nodetype tables don't have hours= appended. Look at the
+            # specific row-click URLs.
+            # (A bare `hours=` somewhere else like a script comment would be a
+            # false positive; restrict to the drill-down URL prefix.)
+            for url_prefix in url_prefixes:
+                assert url_prefix in response.data
+                # Find every occurrence of the prefix and verify the
+                # surrounding 200 bytes don't include hours=
+                idx = 0
+                while True:
+                    pos = response.data.find(url_prefix, idx)
+                    if pos == -1:
+                        break
+                    snippet = response.data[pos:pos + 200]
+                    assert b'hours=' not in snippet, (
+                        f'Unexpected hours= near {url_prefix!r} on {page} '
+                        f'rendered with no params: {snippet!r}'
+                    )
+                    idx = pos + len(url_prefix)
 
     def test_queue_history_back_link_carries_hours(self, auth_client, status_session):
-        """Detail-page back links forward `hours` to the dashboard so the
+        """Detail-page back links forward `hours` to the system page so the
         user's range survives a back-then-forward cycle.
         """
         seed_data(status_session)
         response = auth_client.get('/status/queue-history/derecho/main?hours=720')
         assert response.status_code == 200
-        assert b'/status/?hours=720' in response.data, (
-            'Expected back-link to forward hours=720 to status_dashboard.index'
+        assert b'/status/derecho?hours=720' in response.data, (
+            'Expected back-link to forward hours=720 to status_dashboard.derecho'
         )
 
     def test_nodetype_history_back_link_carries_hours(self, auth_client, status_session):
@@ -282,4 +350,4 @@ class TestStatusDashboard:
         seed_data(status_session)
         response = auth_client.get('/status/nodetype-history/casper/cpu?hours=720')
         assert response.status_code == 200
-        assert b'/status/?hours=720' in response.data
+        assert b'/status/casper?hours=720' in response.data

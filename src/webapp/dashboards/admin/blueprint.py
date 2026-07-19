@@ -54,13 +54,20 @@ UPCOMING_PRESETS = {
 @login_required
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def index():
-    """
-    Admin dashboard main page.
+    """Bare section URL — redirect to the default page (Projects),
+    preserving query params (``?projcode=`` re-hydration back-links)."""
+    return redirect(url_for('admin_dashboard.projects', **request.args))
 
-    Shows admin tools:
-    - User impersonation
-    - Project search
-    - Allocation expirations tracking
+
+@bp.route('/projects')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def projects():
+    """
+    Admin Projects page.
+
+    Shows project search/create, the project card display area, and
+    allocation expirations tracking.
     """
     # Full facility list for unscoped users, the user's allowed set
     # otherwise. The template iterates this to build the expirations
@@ -81,17 +88,66 @@ def index():
     default_selected = [f for f in ('UNIV', 'WNA') if f in allowed_facility_names]
 
     # Optional re-hydration: when arriving from a back-link like
-    # /admin/?projcode=SCSG0001, auto-render the project card via HTMX
-    # on page load so the user lands where they left off.
+    # /admin/projects?projcode=SCSG0001, auto-render the project card via
+    # HTMX on page load so the user lands where they left off.
     auto_load_projcode = (request.args.get('projcode') or '').strip() or None
 
     return render_template(
-        'dashboards/admin/dashboard.html',
+        'dashboards/admin/projects.html',
         user=current_user,
         allowed_facility_names=allowed_facility_names,
         default_selected_facilities=default_selected,
         auto_load_projcode=auto_load_projcode,
     )
+
+
+@bp.route('/projects/directories')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def projects_directories():
+    """Admin Project Directories page (htmx-loaded table)."""
+    return render_template('dashboards/admin/projects_directories.html', user=current_user)
+
+
+@bp.route('/users-groups')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def users_groups():
+    """Admin Users & Groups page — search users/groups, card display areas."""
+    return render_template('dashboards/admin/users_groups.html', user=current_user)
+
+
+@bp.route('/resources')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def resources():
+    """Admin Resources page (htmx-loaded card)."""
+    return render_template('dashboards/admin/resources.html', user=current_user)
+
+
+@bp.route('/organizations')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def organizations():
+    """Admin Organizations page (htmx-loaded card)."""
+    return render_template('dashboards/admin/organizations.html', user=current_user)
+
+
+@bp.route('/facilities')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def facilities():
+    """Admin Facilities & Allocation Types page (htmx-loaded card)."""
+    return render_template('dashboards/admin/facilities.html', user=current_user)
+
+
+@bp.route('/configuration')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+@require_permission(Permission.VIEW_SYSTEM_CONFIG)
+def configuration():
+    """Admin Configuration page — read-only system snapshot."""
+    return render_template('dashboards/admin/configuration.html', user=current_user)
 
 
 @bp.route('/impersonate', methods=['POST'])

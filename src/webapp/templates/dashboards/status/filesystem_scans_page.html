@@ -1,0 +1,13 @@
+{% extends 'dashboards/status/base_status.html' %}
+
+{% block title %}Filesystem Scans - SAM{% endblock %}
+
+{% block status_content %}
+{% if fs_scan_resources %}
+    {% include 'dashboards/status/partials/filesystem_scans.html' %}
+{% else %}
+<div class="alert alert-info">
+    <i class="fas fa-info-circle"></i> No filesystem scan data is currently available.
+</div>
+{% endif %}
+{% endblock %}

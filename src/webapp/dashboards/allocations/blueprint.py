@@ -243,8 +243,78 @@ def get_resource_types(session) -> Dict[str, str]:
 @bp.route('/')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
-@cache.cached(make_cache_key=user_aware_cache_key)
 def index():
+    """Bare section URL — redirect to the default page (Projects)."""
+    return redirect(url_for('allocations_dashboard.projects'))
+
+
+def _audit_page_context():
+    """Shared template context for the Transactions / Adjustments pages.
+
+    Both pages are thin shells whose tables load via HTMX fragments; the
+    page itself only needs the filter-form vocabulary: the default date
+    window, the resource list, and the user's allowed facility set (for
+    the Facilities multi-select — enforcement happens server-side in the
+    fragment routes via apply_facility_scope).
+    """
+    audit_end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    audit_start_date = audit_end_date - timedelta(days=30)
+
+    all_resources = [
+        r.resource_name for r in db.session.query(Resource.resource_name)
+        .filter(Resource.is_active)
+        .order_by(Resource.resource_name)
+        .all()
+    ]
+
+    from sam.resources.facilities import Facility as FacilityModel
+    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
+    if allowed is None:
+        allowed_facility_names = [
+            f.facility_name for f in
+            db.session.query(FacilityModel)
+            .filter(FacilityModel.is_active)
+            .order_by(FacilityModel.facility_name)
+            .all()
+        ]
+    else:
+        allowed_facility_names = sorted(allowed)
+
+    return {
+        'audit_start_date': audit_start_date.strftime('%Y-%m-%d'),
+        'audit_end_date': audit_end_date.strftime('%Y-%m-%d'),
+        'all_resources': all_resources,
+        'allowed_facility_names': allowed_facility_names,
+    }
+
+
+@bp.route('/transactions')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def transactions():
+    """Allocation transactions audit log page."""
+    return render_template(
+        'dashboards/allocations/transactions.html',
+        **_audit_page_context(),
+    )
+
+
+@bp.route('/adjustments')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+def adjustments():
+    """Charge adjustments audit log page."""
+    return render_template(
+        'dashboards/allocations/adjustments.html',
+        **_audit_page_context(),
+    )
+
+
+@bp.route('/projects')
+@login_required
+@require_permission_any_facility(Permission.VIEW_PROJECTS)
+@cache.cached(make_cache_key=user_aware_cache_key)
+def projects():
     """
     Main allocations dashboard page.
 
@@ -454,13 +524,8 @@ def index():
     # `nav-view-persistence.js` replay the persisted `sort_by` on initial
     # load without us having to know it up front.
 
-    # Defaults for the shared audit filter (Transactions + Adjustments tabs).
-    # Default window is last 30 days; each tab's filter form is pre-filled with these.
-    audit_end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    audit_start_date = audit_end_date - timedelta(days=30)
-
     return render_template(
-        'dashboards/allocations/dashboard.html',
+        'dashboards/allocations/projects.html',
         grouped_data=grouped_data,
         resource_overviews=resource_overviews,
         resource_usage_overviews=resource_usage_overviews,
@@ -471,8 +536,6 @@ def index():
         all_resources=all_resources,
         selected_resources=selected_resources,
         resource_types=resource_types,
-        audit_start_date=audit_start_date.strftime('%Y-%m-%d'),
-        audit_end_date=audit_end_date.strftime('%Y-%m-%d'),
         allowed_facility_names=allowed_facility_names,
         selected_facilities=effective_facilities,
     )
@@ -572,7 +635,7 @@ def htmx_pace_chart(resource_name):
     )
 
 
-@bp.route('/projects')
+@bp.route('/htmx/project_table')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
 @cache.cached(make_cache_key=user_aware_cache_key)
@@ -905,7 +968,7 @@ def purge_cache():
     if request.is_json or request.headers.get('HX-Request'):
         return jsonify({'status': 'ok', 'entries_cleared': n})
     flash(f'Usage cache cleared ({n} entries removed).', 'success')
-    return redirect(url_for('allocations_dashboard.index'))
+    return redirect(url_for('allocations_dashboard.projects'))
 
 
 @bp.route('/cache/status')
