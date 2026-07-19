@@ -1,0 +1,29 @@
+{#
+  Shared layout for the user dashboard pages
+  (/user/accounts, /user/info, /user/data).
+
+  Provides the page header and the routable tab strip; each page fills
+  {% block user_content %}. Context comes from the blueprint's
+  _page_context() helper (user, impersonator_id, my_data_available).
+#}
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
+
+{% block content %}
+<div class="mb-4">
+    <h1>User Dashboard</h1>
+</div>
+
+{% set accounts_label = user.username ~ "'s Accounts" if impersonator_id else 'My Accounts' %}
+{{ page_tabs([
+    {'endpoint': 'user_dashboard.accounts', 'label': accounts_label, 'icon': 'fas fa-file-invoice-dollar'},
+    {'endpoint': 'user_dashboard.info',     'label': 'User Information', 'icon': 'fas fa-user-circle'},
+    {'endpoint': 'user_dashboard.my_data',  'label': 'My Data', 'icon': 'fas fa-hard-drive',
+     'visible': my_data_available},
+]) }}
+
+{% block user_content %}{% endblock %}
+
+{% include 'dashboards/shared/project_details_modal.html' %}
+
+{% endblock %}

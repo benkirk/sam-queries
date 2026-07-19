@@ -1,0 +1,45 @@
+{% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
+{% extends 'dashboards/user/base_user.html' %}
+
+{% block title %}User Dashboard - SAM{% endblock %}
+
+{% block user_content %}
+<!-- Projects Section -->
+<div id="projects-section">
+    <!-- Summary Header -->
+    <div class="mb-3">
+        <h5 class="text-muted">
+            <i class="fas fa-folder-open"></i>
+            <span id="project-count">{{ dashboard_data.total_projects }} Project{{ 's' if dashboard_data.total_projects != 1 else '' }}</span>
+        </h5>
+    </div>
+
+    <!-- Projects List -->
+    <div id="projects-list">
+        {% if dashboard_data.projects %}
+            {% for project_data in dashboard_data.projects %}
+                {{ render_project_card(
+                    project_data,
+                    loop.index0,
+                    user,
+                    usage_warning_threshold,
+                    usage_critical_threshold,
+                    is_expanded = (dashboard_data.total_projects == 1)
+                ) }}
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                You are not currently a member of any active projects.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Member Management Modals (htmx version — form loaded dynamically) -->
+{% include 'project_members/fragments/member_modals_htmx.html' %}
+
+<!-- Allocation Management Modals -->
+{% include 'dashboards/user/fragments/allocation_modals.html' %}
+
+{% endblock %}

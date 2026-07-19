@@ -1,0 +1,12 @@
+{% from 'dashboards/user/partials/user_card.html' import render_user_card with context %}
+{% extends 'dashboards/user/base_user.html' %}
+
+{% block title %}User Information - SAM{% endblock %}
+
+{% block user_content %}
+{{ render_user_card(user, user_groups=user_groups, primary_group_name=primary_group_name,
+                    current_shell=current_shell, allowable_shells=allowable_shells,
+                    can_edit_shell=can_edit_shell,
+                    available_groups=available_groups,
+                    can_edit_primary_gid=can_edit_primary_gid) }}
+{% endblock %}

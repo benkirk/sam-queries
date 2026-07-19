@@ -72,22 +72,62 @@ USAGE_CRITICAL_THRESHOLD = 90  # Red critical
 @bp.route('/')
 @login_required
 def index():
+    """Bare section URL — redirect to the default page (My Accounts)."""
+    return redirect(url_for('user_dashboard.accounts'))
+
+
+def _page_context():
+    """Template context shared by every user-dashboard page.
+
+    ``user`` is the displayed user — during impersonation current_user
+    already reflects the impersonated user. ``my_data_available`` drives
+    the My Data tab visibility: per-user filesystem-scan cards are
+    available to every authenticated user (no permission gate; the scan
+    owner is pinned to the user's unix_uid server-side in disk_scans
+    routes), hidden when the fs-scans plugin is off / no resource is
+    warmed, or when the account has no filesystem identity (unix_uid).
+    fs_scan_resources also feeds the subtab strip in my_data_scans.html.
     """
-    Main user dashboard.
+    user_to_display = current_user
+    fs_scan_resources = disk_scans_service.scan_capable_resources()
+    my_data_available = bool(
+        getattr(user_to_display, 'unix_uid', None) is not None
+        and fs_scan_resources
+    )
+    return dict(
+        user=user_to_display,
+        impersonator_id=session.get('impersonator_id'),
+        my_data_available=my_data_available,
+        fs_scan_resources=fs_scan_resources,
+    )
 
-    Shows user's projects and their allocation spending.
-    Data is loaded server-side using direct ORM queries for improved performance.
+
+@bp.route('/accounts')
+@login_required
+def accounts():
+    """My Accounts page — the user's projects and their allocation spending.
+
+    Data is loaded server-side using direct ORM queries for improved
+    performance.
     """
-    impersonator_id = session.get('impersonator_id')
+    ctx = _page_context()
+    dashboard_data = get_user_dashboard_data(db.session, ctx['user'].user_id)
 
-    if impersonator_id:
-        # When impersonating, current_user is the impersonated user.
-        user_to_display = current_user
-    else:
-        user_to_display = current_user
+    return render_template(
+        'dashboards/user/accounts.html',
+        dashboard_data=dashboard_data,
+        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
+        **ctx,
+    )
 
-    # Fetch all dashboard data using optimized query helper
-    dashboard_data = get_user_dashboard_data(db.session, user_to_display.user_id)
+
+@bp.route('/info')
+@login_required
+def info():
+    """User Information page — identity, group memberships, login shell."""
+    ctx = _page_context()
+    user_to_display = ctx['user']
 
     # Adhoc group memberships, regrouped by access branch for the user card tabs
     user_groups = _group_access_by_branch(db.session, user_to_display.username)
@@ -95,40 +135,27 @@ def index():
     from sam.core.groups import resolve_group_name
     primary_group_name = resolve_group_name(db.session, user_to_display.primary_gid)
 
-    current_shell = get_user_current_shell(db.session, user_to_display)
-    allowable_shells = get_allowable_shell_names(db.session)
-
-    available_groups = _available_primary_groups(db.session, user_to_display.username)
-
-    # "My Data" tab — per-user filesystem-scan card (one subtab per warmed disk
-    # resource). Available to every authenticated user (no permission gate); the
-    # scan owner is pinned to the user's unix_uid server-side in disk_scans
-    # routes. Hidden when the fs-scans plugin is off / no resource is warmed, or
-    # when the account has no filesystem identity (unix_uid). fs_scan_resources
-    # also feeds the subtab strip in my_data_scans.html.
-    fs_scan_resources = disk_scans_service.scan_capable_resources()
-    my_data_available = bool(
-        getattr(user_to_display, 'unix_uid', None) is not None
-        and fs_scan_resources
-    )
-
     return render_template(
-        'dashboards/user/dashboard.html',
-        user=user_to_display,
-        dashboard_data=dashboard_data,
+        'dashboards/user/info.html',
         user_groups=user_groups,
         primary_group_name=primary_group_name,
-        current_shell=current_shell,
-        allowable_shells=allowable_shells,
+        current_shell=get_user_current_shell(db.session, user_to_display),
+        allowable_shells=get_allowable_shell_names(db.session),
         can_edit_shell=True,   # user is editing their own
-        available_groups=available_groups,
+        available_groups=_available_primary_groups(db.session, user_to_display.username),
         can_edit_primary_gid=True,   # user is editing their own
-        usage_warning_threshold=USAGE_WARNING_THRESHOLD,
-        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
-        impersonator_id=impersonator_id,
-        my_data_available=my_data_available,
-        fs_scan_resources=fs_scan_resources,
+        **ctx,
     )
+
+
+@bp.route('/data')
+@login_required
+def my_data():
+    """My Data page — per-user filesystem-scan cards."""
+    ctx = _page_context()
+    if not ctx['my_data_available']:
+        abort(404)
+    return render_template('dashboards/user/my_data.html', **ctx)
 
 
 # ---------------------------------------------------------------------------
