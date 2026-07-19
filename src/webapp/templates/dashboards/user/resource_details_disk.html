@@ -61,20 +61,26 @@
 </li>
 {% endmacro %}
 
-{% block content %}
-{% set _from_admin = request.args.get('from') == 'admin' %}
-<div class="back-link mb-3">
-    {% if _from_admin %}
-    <a href="{{ url_for('admin_dashboard.projects', projcode=projcode) }}" class="btn  btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Admin</span>
-    </a>
-    {% else %}
-    <a href="{{ url_for('user_dashboard.index') }}" class="btn  btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Dashboard</span>
-    </a>
-    {% endif %}
-</div>
+{% block breadcrumbs %}
+{% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
+{# ?from=admin: launched from an admin project card — trail returns there
+   with this projcode pre-loaded (see resource_details.html). #}
+{% if request.args.get('from') == 'admin' %}
+{{ breadcrumbs(trail=[
+    ('Admin', url_for('admin_dashboard.projects')),
+    ('Projects', url_for('admin_dashboard.projects', projcode=projcode)),
+    (projcode ~ ' — ' ~ resource_name, none),
+]) }}
+{% else %}
+{{ breadcrumbs(trail=[
+    ('User Dashboard', url_for('user_dashboard.accounts')),
+    ('My Accounts', url_for('user_dashboard.accounts')),
+    (projcode ~ ' — ' ~ resource_name, none),
+]) }}
+{% endif %}
+{% endblock %}
 
+{% block content %}
 <div class="page-header">
     <h1>
         <i class="fas fa-hdd"></i> Disk Usage Details
