@@ -75,7 +75,9 @@
   {%- set _header_class = 'bg-success text-white' -%}
   {%- set _close_class = 'btn-close btn-close-white' -%}
 {%- endif -%}
-{%- set _dialog_class = 'modal-dialog' + (' modal-' ~ size if size else '') -%}
+{#- Sized (lg/xl) modals go fullscreen on phones — a modal-lg squeezed into a
+    390px viewport is unusable. Default-size modals already fit. -#}
+{%- set _dialog_class = 'modal-dialog' + (' modal-' ~ size ~ ' modal-fullscreen-sm-down' if size else '') -%}
 <div class="modal fade" id="{{ modal_id }}" tabindex="-1"
      aria-labelledby="{{ modal_id }}Label" aria-hidden="true">
     <div class="{{ _dialog_class }}">
