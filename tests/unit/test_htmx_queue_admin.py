@@ -263,29 +263,36 @@ class TestResourcesCardQueueButtons:
         assert 'Cleanup' in html
         assert 'queue-cleanup-form' in html
 
-    def test_cleanup_button_row_is_not_a_collapse_trigger(self, auth_client):
-        """Regression guard: the Cleanup button must not sit inside a <tr>
-        that is itself a Bootstrap collapse toggle.
+    def test_no_action_button_inside_a_collapse_trigger_row(self, auth_client):
+        """Regression guard for the whole Resources card, not just Cleanup.
 
-        Bootstrap registers its data-api handlers on `document` in the CAPTURE
-        phase, so they run before any listener on the button — nothing the
-        button does (stopPropagation included) can stop the row from expanding.
-        The queue group row therefore puts the toggle on its <td>s instead.
-        Putting it back on the <tr> silently reintroduces the bug.
+        A <tr data-bs-toggle="collapse"> that also contains a button is a bug:
+        clicking the button expands the row too. Bootstrap registers its
+        data-api handlers on `document` in the CAPTURE phase, so they run
+        before any listener on the button — nothing the button does
+        (data-stop-propagation included) can prevent it. Rows with buttons
+        must put the toggle on their <td>s (see
+        templates/dashboards/fragments/collapse.html).
+
+        This caught two pre-existing instances (Resource Type and Resource
+        rows) alongside the Cleanup button that prompted it.
         """
         import re
 
         html = auth_client.get('/admin/htmx/resources').get_data(as_text=True)
 
-        # Isolate the queue group rows by their collapse target id
+        trigger_rows = 0
         for m in re.finditer(r'<tr\b[^>]*>', html):
-            tag = m.group(0)
-            if 'data-bs-toggle="collapse"' not in tag:
+            if 'data-bs-toggle="collapse"' not in m.group(0):
                 continue
-            # A collapse-trigger <tr> is fine as long as it holds no buttons.
-            row_end = html.find('</tr>', m.end())
-            row = html[m.end():row_end]
-            assert 'queue-cleanup-form' not in row, (
-                'Cleanup button is inside a collapse-trigger <tr>; the row '
-                'will expand on click. Move the toggle to the <td>s.'
+            trigger_rows += 1
+            row = html[m.end():html.find('</tr>', m.end())]
+            assert '<button' not in row, (
+                'A collapse-trigger <tr> contains a button, so clicking the '
+                'button will also expand the row. Move the toggle onto the '
+                'non-action <td>s. Offending row:\n' + row[:400]
             )
+
+        # Guard against the guard silently passing on a fragment with no
+        # collapse rows at all (e.g. a markup refactor or an empty snapshot).
+        assert trigger_rows > 0, 'no collapse-trigger rows found — guard is vacuous'
