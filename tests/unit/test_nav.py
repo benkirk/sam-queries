@@ -101,3 +101,27 @@ class TestNavbarDropdowns:
         assert 'data-bs-target="#mobileNav"' in html      # hamburger retargeted
         assert 'mobileNavSection-status' in html
         assert 'navbarNavMobile' not in html              # old dual-collapse gone
+
+
+# ---------------------------------------------------------------------------
+# Breadcrumbs (auto-derived from the registry; see also the status-history
+# trail tests in tests/integration/test_status_dashboard.py)
+# ---------------------------------------------------------------------------
+
+class TestBreadcrumbs:
+
+    def test_dashboard_page_auto_trail(self, auth_client):
+        html = auth_client.get('/allocations/transactions').get_data(as_text=True)
+        assert 'sam-breadcrumbs' in html
+        # Section crumb links to the section default; current page is the
+        # active (unlinked) crumb.
+        assert 'aria-current="page">Transactions' in html
+
+    def test_no_breadcrumbs_outside_registry(self, client):
+        html = client.get('/auth/login').get_data(as_text=True)
+        assert 'sam-breadcrumbs' not in html
+
+    def test_no_back_link_remnants(self, auth_client):
+        """The referrer-based .back-link machinery is fully retired."""
+        html = auth_client.get('/user/accounts').get_data(as_text=True)
+        assert 'back-link' not in html

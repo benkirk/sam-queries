@@ -334,18 +334,18 @@ class TestStatusDashboard:
                     )
                     idx = pos + len(url_prefix)
 
-    def test_queue_history_back_link_carries_hours(self, auth_client, status_session):
-        """Detail-page back links forward `hours` to the system page so the
+    def test_queue_history_breadcrumb_carries_hours(self, auth_client, status_session):
+        """Detail-page breadcrumbs forward `hours` to the system page so the
         user's range survives a back-then-forward cycle.
         """
         seed_data(status_session)
         response = auth_client.get('/status/queue-history/derecho/main?hours=720')
         assert response.status_code == 200
         assert b'/status/derecho?hours=720' in response.data, (
-            'Expected back-link to forward hours=720 to status_dashboard.derecho'
+            'Expected breadcrumb to forward hours=720 to status_dashboard.derecho'
         )
 
-    def test_nodetype_history_back_link_carries_hours(self, auth_client, status_session):
+    def test_nodetype_history_breadcrumb_carries_hours(self, auth_client, status_session):
         """Same forwarding for nodetype detail page."""
         seed_data(status_session)
         response = auth_client.get('/status/nodetype-history/casper/cpu?hours=720')

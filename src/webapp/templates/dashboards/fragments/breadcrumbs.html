@@ -1,0 +1,52 @@
+{#
+  Breadcrumb trail for dashboard and detail pages.
+
+  Replaces the referrer-guessing ".back-link" machinery: with routable pages
+  (PR #358) the location is derivable server-side from the nav registry
+  (webapp/utils/nav.py — nav_locate is a jinja global).
+
+  Usage:
+    Auto (dashboard pages — rendered by the default block in base.html):
+      {{ breadcrumbs() }}                → Section / Page (Page active)
+
+    Detail pages (append crumbs; Page becomes a link):
+      {{ breadcrumbs(extra=[('main Queue History', none)], qs={'hours': 720}) }}
+
+    Full override (pages whose trail isn't the current endpoint's home,
+    e.g. ?from=admin origins):
+      {{ breadcrumbs(trail=[('Admin', url_for(...)), ('SCSG0001', none)]) }}
+
+  Crumbs are (label, url) pairs; url none renders the active (unlinked)
+  crumb. ``qs`` is merged into the auto-derived section/page URLs — used by
+  the status history pages to carry the ?hours= range passthrough.
+#}
+{% macro breadcrumbs(extra=[], qs={}, trail=none) %}
+{% if trail is none %}
+    {% set _section, _item = nav_locate(request.endpoint) %}
+    {% set _auto = [] %}
+    {% if _section %}
+        {% set _ = _auto.append((_section.label, url_for(_section.endpoint, **qs))) %}
+    {% endif %}
+    {% if _item %}
+        {% if extra %}
+            {% set _ = _auto.append((_item.label, url_for(_item.endpoint, **qs))) %}
+        {% else %}
+            {% set _ = _auto.append((_item.label, none)) %}
+        {% endif %}
+    {% endif %}
+    {% set trail = _auto + extra|list %}
+{% endif %}
+{% if trail %}
+<nav aria-label="breadcrumb" class="sam-breadcrumbs">
+    <ol class="breadcrumb mb-0">
+        {% for label, url in trail %}
+        {% if url %}
+        <li class="breadcrumb-item"><a href="{{ url }}">{{ label }}</a></li>
+        {% else %}
+        <li class="breadcrumb-item active" aria-current="page">{{ label }}</li>
+        {% endif %}
+        {% endfor %}
+    </ol>
+</nav>
+{% endif %}
+{% endmacro %}

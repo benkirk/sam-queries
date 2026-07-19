@@ -2,17 +2,20 @@
 
 {% block title %}Node Type History - {{ node_type }} - SAM{% endblock %}
 
-{% block content %}
-{# Forward `hours` to the dashboard so sideways navigation between node
-   types inherits the user's chosen time range. #}
-{% set _idx_kwargs = {'hours': hours} if hours else {} %}
-{% set _idx_endpoint = 'status_dashboard.' ~ system|lower if system|lower in ['derecho', 'casper'] else 'status_dashboard.index' %}
-<div class="back-link mb-3">
-    <a href="{{ url_for(_idx_endpoint, **_idx_kwargs) }}" class="btn  btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> <span class="back-link-text">Back to Status Dashboard</span>
-    </a>
-</div>
+{% block breadcrumbs %}
+{% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
+{# Forward `hours` through the trail so navigation back to the system page
+   inherits the user's chosen time range. #}
+{% set _kw = {'hours': hours} if hours else {} %}
+{% set _sys_ep = 'status_dashboard.' ~ system|lower if system|lower in ['derecho', 'casper'] else 'status_dashboard.derecho' %}
+{{ breadcrumbs(trail=[
+    ('System Status', url_for('status_dashboard.index', **_kw)),
+    (system|title, url_for(_sys_ep, **_kw)),
+    (node_type ~ ' History', none),
+]) }}
+{% endblock %}
 
+{% block content %}
 <div class="page-header">
     <h1>
         <i class="fas fa-chart-line"></i> Node Type History

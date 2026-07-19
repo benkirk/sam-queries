@@ -347,6 +347,32 @@ body {
 }
 
 /* ============================================================================
+   BREADCRUMBS (dashboards/fragments/breadcrumbs.html) — compact, muted trail
+   above the page header. Replaces the old .back-link buttons.
+   ========================================================================= */
+
+.sam-breadcrumbs {
+    margin-bottom: 0.75rem;
+}
+
+.sam-breadcrumbs .breadcrumb {
+    font-size: 0.875rem;
+}
+
+.sam-breadcrumbs .breadcrumb-item a {
+    color: var(--ncar-blue);
+    text-decoration: none;
+}
+
+.sam-breadcrumbs .breadcrumb-item a:hover {
+    text-decoration: underline;
+}
+
+.sam-breadcrumbs .breadcrumb-item.active {
+    color: var(--bs-secondary-color);
+}
+
+/* ============================================================================
    MOBILE COMPACTION (< md) — this is a data-heavy site; the goal is
    "better", not mobile perfection. Unity's CTA-scale buttons and desktop
    heading sizes read comically large on phones; page-header flex rows must

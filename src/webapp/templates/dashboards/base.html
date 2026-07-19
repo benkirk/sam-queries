@@ -156,6 +156,13 @@
     <!-- Main Content -->
     <div class="main-content">
         <div class="{% block content_container_class %}container-fluid sam-fluid-1800{% endblock %}">
+            {# Breadcrumb trail — auto-derived from the nav registry; empty on
+               pages outside it (login, errors). Detail pages override this
+               block (import the macro locally) to append item crumbs. #}
+            {% block breadcrumbs %}
+            {% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
+            {{ breadcrumbs() }}
+            {% endblock %}
             {% block content %}{% endblock %}
         </div>
     </div>

@@ -322,9 +322,12 @@ def create_app(*, config_overrides: dict | None = None):
     # Register context processor for RBAC in templates
     app.context_processor(rbac_context_processor)
 
-    # Navigation registry (navbar dropdowns, mobile menu, breadcrumbs)
-    from webapp.utils.nav import nav_context_processor
+    # Navigation registry (navbar dropdowns, mobile menu, breadcrumbs).
+    # nav_locate is also a jinja global so the breadcrumbs macro can call it
+    # without a `with context` import.
+    from webapp.utils.nav import nav_context_processor, nav_locate
     app.context_processor(nav_context_processor)
+    app.jinja_env.globals['nav_locate'] = nav_locate
 
     # Central CDN-asset registry (pinned versions + SRI) for templates
     from webapp.vendor_assets import vendor_assets_context_processor
