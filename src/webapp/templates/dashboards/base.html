@@ -105,7 +105,7 @@
                             </li>
                             {% if has_permission_any_facility(Permission.VIEW_PROJECTS) %}
                             <li class="nav-item">
-                                <a class="nav-link {{ nav_active('allocations_dashboard') }}" href="{{ url_for('allocations_dashboard.index') }}"{% if request.blueprint == 'allocations_dashboard' %} aria-current="page"{% endif %}>Allocations</a>
+                                <a class="nav-link {{ nav_active('allocations_dashboard') }}" href="{{ url_for('allocations_dashboard.projects') }}"{% if request.blueprint == 'allocations_dashboard' %} aria-current="page"{% endif %}>Allocations</a>
                             </li>
                             {% endif %}
                             {% if has_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD) %}

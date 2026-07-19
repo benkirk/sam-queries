@@ -1,5 +1,5 @@
 /* Page-level behaviors for the allocations dashboard
- * (dashboards/allocations/dashboard.html) and the admin dashboard
+ * (dashboards/allocations/projects.html et al.) and the admin dashboard
  * (dashboards/admin/dashboard.html), extracted from their inline
  * <script> blocks (CSP: script-src 'self').
  *
