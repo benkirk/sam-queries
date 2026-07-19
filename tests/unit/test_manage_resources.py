@@ -8,7 +8,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from sam.resources.machines import Queue
+from sam.resources.machines import Queue, QueueFactor
+from factories import make_queue, make_resource
 
 
 pytestmark = pytest.mark.unit
@@ -209,4 +210,129 @@ class TestUpdateQueue:
         original = any_queue.description
         any_queue.update()
         assert any_queue.description == original
+        session.rollback()
+
+
+# ============================================================================
+# Queue.create()
+# ============================================================================
+
+
+class TestCreateQueue:
+
+    def test_creates_queue(self, session):
+        resource = make_resource(session)
+        q = Queue.create(
+            session,
+            resource_id=resource.resource_id,
+            queue_name='newq',
+            description='a new queue',
+            wall_clock_hours_limit=24.0,
+        )
+
+        assert q.queue_id is not None
+        assert q.queue_name == 'newq'
+        assert q.description == 'a new queue'
+        assert q.wall_clock_hours_limit == 24.0
+        session.rollback()
+
+    def test_creates_companion_queue_factor(self, session):
+        """Every queue in the database carries a factor row; new ones must too."""
+        resource = make_resource(session)
+        q = Queue.create(session, resource_id=resource.resource_id, queue_name='withfactor')
+
+        factors = session.query(QueueFactor).filter(
+            QueueFactor.queue_id == q.queue_id
+        ).all()
+        assert len(factors) == 1
+        assert factors[0].factor_value == 1.0
+        assert factors[0].start_date == q.start_date
+        session.rollback()
+
+    def test_start_date_defaults_to_today_midnight(self, session):
+        resource = make_resource(session)
+        q = Queue.create(session, resource_id=resource.resource_id, queue_name='today')
+
+        assert q.start_date.date() == datetime.now().date()
+        assert (q.start_date.hour, q.start_date.minute, q.start_date.second) == (0, 0, 0)
+        session.rollback()
+
+    def test_explicit_start_date_is_kept(self, session):
+        resource = make_resource(session)
+        when = datetime(2020, 5, 4, 0, 0, 0)
+        q = Queue.create(session, resource_id=resource.resource_id,
+                         queue_name='backdated', start_date=when)
+
+        assert q.start_date == when
+        session.rollback()
+
+    def test_cos_id_left_null(self, session):
+        """cos_id fed the superseded charging algorithm; nothing reads it."""
+        resource = make_resource(session)
+        q = Queue.create(session, resource_id=resource.resource_id, queue_name='nocos')
+
+        assert q.cos_id is None
+        session.rollback()
+
+    def test_description_defaults_to_empty_string(self, session):
+        """description is NOT NULL — None must become '', not fail on insert."""
+        resource = make_resource(session)
+        q = Queue.create(session, resource_id=resource.resource_id, queue_name='nodesc')
+
+        assert q.description == ''
+        session.rollback()
+
+    def test_duplicate_active_name_raises(self, session):
+        resource = make_resource(session)
+        Queue.create(session, resource_id=resource.resource_id, queue_name='dup')
+
+        with pytest.raises(ValueError, match="already exists"):
+            Queue.create(session, resource_id=resource.resource_id, queue_name='dup')
+        session.rollback()
+
+    def test_duplicate_name_allowed_when_prior_is_expired(self, session):
+        """Names are legitimately reused after a queue is retired."""
+        resource = make_resource(session)
+        make_queue(session, resource=resource, queue_name='recycled',
+                   start_date=datetime(2020, 1, 1),
+                   end_date=datetime(2021, 1, 1))
+
+        q = Queue.create(session, resource_id=resource.resource_id,
+                         queue_name='recycled')
+        assert q.queue_id is not None
+        session.rollback()
+
+    def test_same_name_on_another_resource_is_fine(self, session):
+        one, two = make_resource(session), make_resource(session)
+        Queue.create(session, resource_id=one.resource_id, queue_name='shared')
+
+        q = Queue.create(session, resource_id=two.resource_id, queue_name='shared')
+        assert q.queue_id is not None
+        session.rollback()
+
+    def test_empty_name_raises(self, session):
+        resource = make_resource(session)
+        with pytest.raises(ValueError, match="queue_name is required"):
+            Queue.create(session, resource_id=resource.resource_id, queue_name='   ')
+        session.rollback()
+
+    def test_name_is_stripped(self, session):
+        resource = make_resource(session)
+        q = Queue.create(session, resource_id=resource.resource_id,
+                         queue_name='  padded  ')
+        assert q.queue_name == 'padded'
+        session.rollback()
+
+    def test_wall_clock_zero_raises(self, session):
+        resource = make_resource(session)
+        with pytest.raises(ValueError, match="wall_clock_hours_limit must be positive"):
+            Queue.create(session, resource_id=resource.resource_id,
+                         queue_name='badwc', wall_clock_hours_limit=0.0)
+        session.rollback()
+
+    def test_wall_clock_may_be_omitted(self, session):
+        """A few real rows (e.g. 'systdd') carry no limit."""
+        resource = make_resource(session)
+        q = Queue.create(session, resource_id=resource.resource_id, queue_name='nowc')
+        assert q.wall_clock_hours_limit is None
         session.rollback()

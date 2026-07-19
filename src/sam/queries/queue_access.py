@@ -43,8 +43,10 @@ Response format::
     }
 """
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from sam import Queue, Resource
@@ -109,3 +111,87 @@ def get_queue_data(
         'name': 'queues',
         'resources': resources,
     }
+
+
+def get_queue_cleanup_candidates(
+    session: Session,
+    resource_id: int,
+    *,
+    days: int = 90,
+    now: Optional[datetime] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Find active queues on a resource that have seen no charging activity
+    in the last ``days`` days — candidates for expiry.
+
+    Usage comes from ``comp_charge_summary``, the only live charge-summary
+    table (``dav_charge_summary`` and ``hpc_charge_summary`` stopped receiving
+    rows in 2023 / 2024). Its ``queue_id`` FK is populated on effectively every
+    row, and ``fk_comp_charge_summary_queue`` indexes the join.
+
+    Two exclusions keep obvious non-candidates off the list:
+
+    * **Pattern rows** — names containing ``*`` (``M*``, ``S*``, ``R*``) are
+      templates holding defaults for reservation queues, not real queues. They
+      can never accrue charges, and expiring one silently changes those defaults.
+    * **Grace period** — a queue whose ``start_date`` falls inside the window
+      has not existed long enough to be "unused for N days", so a freshly
+      created queue never appears.
+
+    Note what this cannot see: **routing queues never accrue charges**, because
+    jobs charge to the execution queue they route into. Such a queue is live but
+    indistinguishable from a dead one by usage alone. The ``ever_charged`` flag
+    is the available signal — a queue that has *never* been charged may well be
+    a routing queue, whereas one that was charged and then went quiet is far
+    more likely genuinely dead. Callers should surface that distinction rather
+    than treating every candidate the same; the admin UI pre-selects only
+    ``preselected`` rows for that reason.
+
+    Args:
+        session:     SQLAlchemy session.
+        resource_id: Resource whose queues to examine.
+        days:        Inactivity window in days (default 90).
+        now:         Override "now" (testing); defaults to ``datetime.now()``.
+
+    Returns:
+        List of dicts sorted by queue name, each with:
+          ``queue``        — the Queue instance
+          ``last_charged`` — date of its most recent charge, or None if never
+          ``ever_charged`` — bool
+          ``preselected``  — bool; True for charged-then-stale queues only
+    """
+    from sam.summaries.comp_summaries import CompChargeSummary
+
+    if now is None:
+        now = datetime.now()
+    cutoff = now - timedelta(days=days)
+
+    rows = (
+        session.query(
+            Queue,
+            func.max(CompChargeSummary.activity_date).label('last_charged'),
+        )
+        .outerjoin(CompChargeSummary, CompChargeSummary.queue_id == Queue.queue_id)
+        .filter(Queue.resource_id == resource_id)
+        .filter(Queue.is_active)
+        .filter(~Queue.queue_name.contains('*'))
+        # NULL start_date means "active from the beginning" (see Queue.is_active),
+        # so such a queue is past any grace period.
+        .filter(or_(Queue.start_date.is_(None), Queue.start_date < cutoff))
+        .group_by(Queue.queue_id)
+        .order_by(Queue.queue_name)
+        .all()
+    )
+
+    candidates = []
+    for queue, last_charged in rows:
+        if last_charged is not None and last_charged >= cutoff.date():
+            continue        # charged inside the window — still in use
+        candidates.append({
+            'queue':        queue,
+            'last_charged': last_charged,
+            'ever_charged': last_charged is not None,
+            'preselected':  last_charged is not None,
+        })
+
+    return candidates

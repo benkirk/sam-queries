@@ -349,7 +349,23 @@
                             <td></td>
                             <td></td>
                             <td></td>
-                            <td></td>
+                            <td class="text-end">
+                                {% if has_permission(Permission.DELETE_RESOURCES) %}
+                                {# data-stop-propagation: this <tr> is itself the
+                                   collapse trigger, so without it the click also
+                                   toggles the row (see static/js/actions.js). #}
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        data-stop-propagation
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#queueCleanupModal"
+                                        hx-get="{{ url_for('admin_dashboard.htmx_queue_cleanup_form', resource_id=r.resource_id) }}"
+                                        hx-target="#queueCleanupFormContainer"
+                                        hx-trigger="click"
+                                        title="Find and expire queues unused for N days">
+                                    <i class="fas fa-broom"></i> Cleanup…
+                                </button>
+                                {% endif %}
+                            </td>
                         </tr>
                     </tbody>
                     {# ── Queue child rows (collapsed by default) ── #}
@@ -391,8 +407,20 @@
                     {% endif %}
                 </table>
             </div>
-            <div class="text-muted small px-3 py-2">
-                Showing {{ queues|length }} queue{{ 's' if queues|length != 1 else '' }}
+            <div class="d-flex justify-content-between align-items-center px-3 py-2">
+                <span class="text-muted small">
+                    Showing {{ queues|length }} queue{{ 's' if queues|length != 1 else '' }}
+                </span>
+                {% if has_permission(Permission.CREATE_RESOURCES) %}
+                <button class="btn btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createQueueModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_queue_create_form') }}"
+                        hx-target="#createQueueFormContainer"
+                        hx-trigger="click">
+                    <i class="fas fa-plus"></i> Create Queue
+                </button>
+                {% endif %}
             </div>
 
             {# ── Wallclock Exemptions ────────────────────────────────────── #}

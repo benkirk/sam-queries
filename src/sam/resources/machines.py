@@ -230,6 +230,85 @@ class Queue(Base, TimestampMixin, SessionMixin):
             or_(cls.end_date.is_(None), cls.end_date >= now)
         )
 
+    @classmethod
+    def create(
+        cls,
+        session,
+        *,
+        resource_id: int,
+        queue_name: str,
+        description: Optional[str] = None,
+        wall_clock_hours_limit: Optional[float] = None,
+        start_date: Optional[datetime] = None,
+    ) -> 'Queue':
+        """
+        Create a new Queue plus its companion QueueFactor row.
+
+        Every queue in the database carries a queue_factor row. Charging moved
+        out of SAM, so the factor is vestigial — but the invariant is preserved
+        so new rows look like every existing one. cos_id is likewise left NULL:
+        it was consumed by the superseded charging algorithm and is read nowhere.
+
+        NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
+
+        Args:
+            resource_id:            FK to resources (existence checked by the caller)
+            queue_name:             Queue name, unique among active queues on the resource
+            description:            Optional free text (stored as '' — column is NOT NULL)
+            wall_clock_hours_limit: Optional default wallclock limit in hours (must be positive)
+            start_date:             Defaults to today at midnight, matching existing rows
+
+        Returns:
+            The flushed Queue instance
+
+        Raises:
+            ValueError: If validation fails or an active queue of the same name
+                        already exists on the resource
+        """
+        if not queue_name or not queue_name.strip():
+            raise ValueError("queue_name is required")
+        queue_name = queue_name.strip()
+
+        if wall_clock_hours_limit is not None and wall_clock_hours_limit <= 0:
+            raise ValueError("wall_clock_hours_limit must be positive")
+
+        # Uniqueness is not enforced by the schema, and expired queues are
+        # legitimately reused as names, so only clash against active ones.
+        existing = (
+            session.query(cls)
+            .filter(cls.resource_id == resource_id)
+            .filter(cls.queue_name == queue_name)
+            .filter(cls.is_active)
+            .first()
+        )
+        if existing:
+            raise ValueError(
+                f"An active queue named '{queue_name}' already exists on this resource"
+            )
+
+        if start_date is None:
+            start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        queue = cls(
+            resource_id=resource_id,
+            queue_name=queue_name,
+            # description is NOT NULL in the schema — store '' rather than None
+            description=description.strip() if description else '',
+            wall_clock_hours_limit=wall_clock_hours_limit,
+            start_date=start_date,
+        )
+        session.add(queue)
+        session.flush()
+
+        session.add(QueueFactor(
+            queue_id=queue.queue_id,
+            factor_value=1.0,
+            start_date=start_date,
+        ))
+        session.flush()
+
+        return queue
+
     def update(
         self,
         *,

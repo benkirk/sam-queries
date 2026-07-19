@@ -1,0 +1,134 @@
+{#
+  Step 2/3 of the per-resource queue cleanup workflow: review + commit.
+
+  Replaces step 1 inside #queueCleanupFormContainer. Every candidate gets a
+  checkbox; queues that were charged at some point but have since gone quiet
+  are pre-checked, while queues that were never charged are listed unchecked
+  (they may be routing queues, which never accrue charges by design).
+
+  Context:
+    resource   : Resource
+    days       : int (the window from step 1)
+    candidates : list of {queue, last_charged, ever_charged, preselected}
+    errors     : optional list[str]
+#}
+
+<form hx-post="{{ url_for('admin_dashboard.htmx_queue_cleanup', resource_id=resource.resource_id) }}"
+      hx-target="#queueCleanupFormContainer"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']"
+      id="queueCleanupForm">
+    <input type="hidden" name="days" value="{{ days }}">
+
+    <div class="modal-body">
+        {% if candidates %}
+        {% set preselected = candidates | selectattr('preselected') | list %}
+        {% set never = candidates | rejectattr('ever_charged') | list %}
+
+        <p class="mb-2">
+            <strong>{{ candidates|length }} queue{{ 's' if candidates|length != 1 else '' }}</strong>
+            on <strong>{{ resource.resource_name }}</strong> had no charging
+            activity in the last {{ days }} days.
+            {% if preselected %}
+            {{ preselected|length }} previously-used
+            queue{{ 's are' if preselected|length != 1 else ' is' }} pre-selected.
+            {% endif %}
+        </p>
+
+        {% if never %}
+        <div class="alert alert-warning py-2">
+            <i class="fas fa-exclamation-triangle"></i>
+            {{ never|length }} of these have <strong>never</strong> been charged.
+            That is also what a healthy <em>routing</em> queue looks like, so
+            they are left unchecked — tick them only if you know they're dead.
+        </div>
+        {% endif %}
+
+        <div class="d-flex justify-content-end mb-1">
+            <button type="button" class="btn btn-sm btn-link py-0"
+                    data-cleanup-select="all">Select all</button>
+            <button type="button" class="btn btn-sm btn-link py-0"
+                    data-cleanup-select="none">Select none</button>
+        </div>
+
+        <div class="table-responsive" style="max-height: 24em; overflow-y: auto;">
+            <table class="table table-sm mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 2.5em;"></th>
+                        <th>Queue</th>
+                        <th>Started</th>
+                        <th>Last charged</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in candidates %}
+                    <tr>
+                        <td>
+                            <input class="form-check-input" type="checkbox"
+                                   name="queue_ids" value="{{ c.queue.queue_id }}"
+                                   id="cleanupQueue{{ c.queue.queue_id }}"
+                                   {% if c.preselected %}checked{% endif %}>
+                        </td>
+                        <td>
+                            <label class="form-check-label fw-semibold"
+                                   for="cleanupQueue{{ c.queue.queue_id }}">
+                                {{ c.queue.queue_name }}
+                            </label>
+                            {% if not c.ever_charged %}
+                            <span class="badge bg-warning text-dark ms-1">never charged</span>
+                            {% endif %}
+                            {% if c.queue.description %}
+                            <div class="text-muted small">{{ c.queue.description }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small text-nowrap">
+                            {{ c.queue.start_date | fmt_date }}
+                        </td>
+                        <td class="text-muted small text-nowrap">
+                            {{ c.last_charged | fmt_date }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alert alert-danger mt-2 mb-0">
+            <i class="fas fa-exclamation-triangle"></i>
+            Expiring a queue sets its end date to today. Charges already
+            recorded against it are untouched, but it stops being served to the
+            scheduler via the queue API.
+        </div>
+        {% else %}
+        <div class="alert alert-info mb-0">
+            No queues on <strong>{{ resource.resource_name }}</strong> have been
+            idle for {{ days }} days. Recently created queues are excluded —
+            a queue younger than the window can't be judged unused.
+        </div>
+        {% endif %}
+
+        {% if errors %}
+        <div class="alert alert-danger mt-2 mb-0">
+            {% for e in errors %}<p class="mb-0"><i class="fas fa-exclamation-circle"></i> {{ e }}</p>{% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="modal-footer">
+        <button type="button" class="btn btn-secondary"
+                hx-get="{{ url_for('admin_dashboard.htmx_queue_cleanup_form', resource_id=resource.resource_id) }}"
+                hx-target="#queueCleanupFormContainer"
+                hx-swap="innerHTML">
+            <i class="fas fa-arrow-left"></i> Back
+        </button>
+        {% if candidates %}
+        <button type="submit" class="btn btn-outline-primary" id="queueCleanupSubmit">
+            <i class="fas fa-broom"></i>
+            Expire <span data-cleanup-count>0</span> queue(s)
+        </button>
+        {% endif %}
+    </div>
+</form>
+{# Checkbox count / select-all wiring lives in static/js/admin-cards.js,
+   keyed off #queueCleanupForm (CSP: no inline <script>). #}
