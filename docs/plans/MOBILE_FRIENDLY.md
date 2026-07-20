@@ -1,7 +1,15 @@
 # MOBILE_FRIENDLY — low-hanging mobile polish (handoff)
 
-**Status:** planned, not started. Written 2026-07-19 at the end of the
-`nav_polish` session, while the mobile survey was fresh.
+**Status:** IMPLEMENTED 2026-07-19 on branch `mobile_polish` (all six items).
+Item 1 went in as option (a), the global CSS rule, with two refinements found
+during Playwright verification: a `:not(.table-responsive) >` guard so
+deliberately-wrapped tables (access-grid sticky column) are untouched, and a
+wider `< 992px` breakpoint because the transactions table also overflowed
+iPad portrait (820px). The card-header rule (item 4) grew into a general
+"`.d-flex:not(.flex-column)` rows wrap below md" rule after the Manage
+Project allocations toolbar overflowed — flex-column stacks must stay
+unwrapped or align-items:stretch sizes children to fit-content. Survey notes
+below kept for reference.
 
 **Stacking:** branch off `nav_polish` (or `staging` once PRs #358 + #359 have
 merged). #358 made every top-level tab a routable page; #359 added navbar

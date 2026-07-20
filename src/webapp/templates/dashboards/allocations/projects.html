@@ -109,11 +109,20 @@
      filter); form fields arranged horizontally for top-of-page placement. -->
 <div class="filter-sidebar mb-3">
     <div class="filter-sidebar-header">
-        <h2 class="filter-sidebar-title">Filters</h2>
+        <h2 class="filter-sidebar-title">
+            <button class="filter-sidebar-toggle" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#allocations-filter-fields"
+                    aria-expanded="true" aria-controls="allocations-filter-fields">
+                Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
+            </button>
+        </h2>
         <a href="{{ url_for('allocations_dashboard.projects') }}"
            class="filter-sidebar-clear">Clear filters</a>
     </div>
 
+    {# Collapsed by default on phones (dashboard-init.js strips .show below
+       md). data-no-persist: the responsive default owns the initial state. #}
+    <div id="allocations-filter-fields" class="collapse show filter-fields-collapse" data-no-persist>
     <form method="GET" class="d-flex flex-wrap align-items-start gap-3 mb-0"
           id="allocations-facility-filter-form">
         <div>
@@ -150,6 +159,7 @@
 
         <button type="submit" class="btn btn-outline-white align-self-end">Update</button>
     </form>
+    </div>
 </div>
 
 <!-- Resource Tabs -->
@@ -399,7 +409,7 @@
 
 <!-- Usage Modal -->
 <div class="modal fade" id="usageModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down" role="document">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Allocation Usage Details</h5>

@@ -4,10 +4,11 @@
    the project disk page shows, but in resource mode — rooted over the whole
    filesystem (VIEW_ALL_FILESYSTEM_DATA-gated routes).
 
-   Lazy-load: the active first subtab gets no shown.bs.tab when the parent
-   "Filesystem Scans" tab opens, so its card's first inner tab listens to the
-   parent tab (#filesystem-scans-tab). Other subtabs load when their own
-   subtab nav-link is shown. Bind to the shown event, not click
+   Lazy-load: since the routable-pages refactor (#358) this partial renders
+   only on its own /status/filesystem-scans page, where the first subtab's
+   pane is visible immediately — so its card's first inner tab fires on
+   `load` (same pattern as my_data_scans.html). Other subtabs load when
+   their own subtab nav-link is shown. Bind to the shown event, not click
    (feedback_persisted_collapse_htmx). Closed subtabs cost nothing.
 
    This partial is only included when fs_scan_resources is non-empty AND the
@@ -30,7 +31,7 @@
     <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
          id="fs-scan-pane-{{ loop.index }}" role="tabpanel">
         {% if loop.first %}
-            {% set _trigger = 'shown.bs.tab once from:#filesystem-scans-tab' %}
+            {% set _trigger = 'load once' %}
         {% else %}
             {% set _trigger = 'shown.bs.tab once from:#fs-scan-subtab-' ~ loop.index %}
         {% endif %}

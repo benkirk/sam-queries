@@ -423,6 +423,65 @@ body {
     .main-content .btn-group {
         flex-wrap: wrap;
     }
+
+    /* Any utility flex row wraps rather than squeezing or overflowing the
+       viewport: card headers with action buttons ("Search Projects" +
+       "Create Project"), tab-pane toolbars (date picker + Extend/Renew/Add
+       on Manage Project), etc. flex-wrap only engages when the row would
+       otherwise overflow, so fitting rows are untouched. Deliberately broad
+       — the precise per-container list kept growing (see #359's page-header
+       rule above, now one instance of this). Vertical stacks are excluded:
+       wrapping a flex-column makes align-items:stretch size children to
+       fit-content, which lets an inner table blow the card out to its
+       intrinsic width. */
+    .main-content .d-flex:not(.flex-column) {
+        flex-wrap: wrap;
+    }
+
+    .card-header.d-flex {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* Tab strips scroll horizontally by design; fade the right edge as a
+       "more tabs off-screen" affordance. Purely cosmetic — 2.5rem is narrow
+       enough not to obscure a strip that happens to fit exactly. */
+    .nav-tabs {
+        mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+    }
+
+    /* Tap targets: expandable drill-down rows and sortable column headers
+       are finger-hostile at desktop padding. */
+    .expandable-row td {
+        padding-top: 0.625rem;
+        padding-bottom: 0.625rem;
+    }
+
+    .main-content table.table th a {
+        display: inline-block;
+        padding: 0.25rem 0;
+    }
+
+    /* Slightly smaller table type on phones: trades a notch of size for a
+       lot less horizontal scrolling on data-heavy tables. */
+    .main-content .table {
+        font-size: 0.8125rem;
+    }
+}
+
+/* Below lg (phones AND portrait tablets — the widest data tables exceed even
+   an iPad's 820px): any table not already inside a .table-responsive scroller
+   gets its own horizontal scrollbox instead of widening the document. The
+   child-combinator guard leaves deliberately-wrapped tables (allocations
+   summary, admin access-grid with its sticky column) untouched. Known
+   tradeoff of display:block — a table narrower than the screen no longer
+   stretches to full width. */
+@media (max-width: 991.98px) {
+    .main-content :not(.table-responsive) > table.table {
+        display: block;
+        overflow-x: auto;
+    }
 }
 
 /* ============================================================================
@@ -1127,6 +1186,41 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin: 0;
 }
 
+/* Collapsible filter panels: the "Filters" title is a collapse toggle.
+   The toggle is the title only — NOT the whole header row — because the
+   Bootstrap collapse data-api handles clicks in the capture phase, so the
+   sibling "Clear filters" link could never stopPropagation out of a
+   row-level toggle. Chevron tracks aria-expanded, which Bootstrap
+   maintains on the toggle. */
+.filter-sidebar-toggle {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+}
+
+.filter-sidebar-chevron {
+    font-size: 0.75rem;
+    transition: transform 0.2s ease;
+}
+
+.filter-sidebar-toggle[aria-expanded="false"] .filter-sidebar-chevron {
+    transform: rotate(-90deg);
+}
+
+/* Collapsed panel: drop the divider and reclaim the header's bottom
+   margin so the closed state reads as a tidy title bar rather than an
+   empty box. (During the .collapsing animation neither state matches —
+   the margin snaps when the transition ends, which reads fine.) */
+.filter-sidebar-header:has(+ .collapse:not(.show)) {
+    border-bottom: none;
+    margin-bottom: -0.75rem;
+}
+
 .filter-sidebar-clear {
     color: #fff;
     font-size: 0.875rem;
@@ -1161,6 +1255,22 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .filter-sidebar input::placeholder {
     color: var(--ncar-gray);
+}
+
+/* On phones the horizontal filter rows wrap into a ragged multi-column mess:
+   stack every field full-width instead. !important is required to beat the
+   inline style="width:###px" attributes that size the fields on desktop
+   (audit_filters.html, allocations/projects.html, admin/projects.html). */
+@media (max-width: 575.98px) {
+    .filter-sidebar .d-flex.flex-wrap > div {
+        width: 100%;
+    }
+
+    .filter-sidebar input.form-control,
+    .filter-sidebar select.form-control,
+    .filter-sidebar select.form-select {
+        width: 100% !important;
+    }
 }
 
 /* ============================================================================
