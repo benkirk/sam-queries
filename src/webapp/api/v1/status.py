@@ -166,6 +166,10 @@ def _ingest_system_status(system_name, StatusSchema, id_mappers):
         # Extract reservations before loading (handled separately due to upsert logic)
         reservations = data.pop('reservations', [])
 
+        # Extract the qstat -Q queue roster (upserted onto the `queues`
+        # lookup, not stored as snapshot rows — see update_queue_definitions).
+        queue_definitions = data.pop('queue_definitions', [])
+
         # Schema loads EVERYTHING - main status + all nested objects
         data['timestamp'] = timestamp
         schema = StatusSchema()
@@ -200,6 +204,14 @@ def _ingest_system_status(system_name, StatusSchema, id_mappers):
         if reservations:
             result['reservation_ids'] = _handle_reservations(reservations, system_name)
 
+        # Stamp queue-roster facts (queue_type, last_defined_at) onto the
+        # queues lookup if the collector sent them.
+        if queue_definitions:
+            from system_status.queries.lookups import update_queue_definitions
+            result['queue_definitions_applied'] = update_queue_definitions(
+                db.session, system_name, queue_definitions, timestamp
+            )
+
         db.session.commit()
         return jsonify(result), 201
 
@@ -229,6 +241,7 @@ def ingest_derecho():
         - login_nodes (optional): List of login node status dicts
         - queues (optional): List of queue status dicts
         - user_project_queues (optional): List of per-user/project/queue rollup dicts
+        - queue_definitions (optional): qstat -Q roster dicts (upserted onto the queues lookup)
         - filesystems (optional): List of filesystem status dicts
         - reservations (optional): List of reservation dicts
 
@@ -266,6 +279,7 @@ def ingest_casper():
         - node_types (optional): List of node type status dicts
         - queues (optional): List of queue status dicts
         - user_project_queues (optional): List of per-user/project/queue rollup dicts
+        - queue_definitions (optional): qstat -Q roster dicts (upserted onto the queues lookup)
         - reservations (optional): List of reservation dicts
 
     Returns:

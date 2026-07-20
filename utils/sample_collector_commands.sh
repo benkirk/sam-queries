@@ -5,8 +5,8 @@ set -e
 #-----------------------------------
 # Derecho sample collection commands
 
-# summary listing of queues
-ssh derecho "qstat -Qa"
+# full queue roster (incl. routing queues), JSON
+ssh derecho "qstat -Q -f -F json"
 
 # full listing of all compute nodes and status
 ssh derecho "pbsnodes -aj -F json"
@@ -28,8 +28,8 @@ ssh derecho "pbs_rstat -f"
 #----------------------------------
 # Casper sample collection commands
 
-# summary listing of queues
-ssh casper "qstat -Qa"
+# full queue roster (incl. routing queues), JSON
+ssh casper "qstat -Q -f -F json"
 
 # full listing of all compute nodes and status
 ssh casper "pbsnodes -aj -F json"

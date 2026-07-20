@@ -153,3 +153,116 @@ class TestOrdering:
 
         names = [c['queue'].queue_name for c in _candidates(session, resource)]
         assert names == sorted(names)
+
+
+# ---------------------------------------------------------------------------
+# system_status cross-check helpers
+#
+# These run on the per-worker SQLite system_status bind (status_session),
+# not the SAM MySQL snapshot — they back the PBS cross-check the admin
+# cleanup routes layer on top of get_queue_cleanup_candidates.
+# ---------------------------------------------------------------------------
+
+
+def _tick(status_session, system, queue, ts):
+    """Insert one QueueStatus snapshot row (string setters resolve lookups)."""
+    from system_status import QueueStatus
+
+    row = QueueStatus(timestamp=ts, system_name=system, queue_name=queue)
+    status_session.add(row)
+    status_session.flush()
+    return row
+
+
+class TestGetQueueLastSeen:
+
+    def test_returns_max_tick_per_queue(self, status_session):
+        from system_status.queries import get_queue_last_seen
+
+        _tick(status_session, 'derecho', 'main', NOW - timedelta(days=30))
+        _tick(status_session, 'derecho', 'main', NOW - timedelta(days=2))
+        _tick(status_session, 'derecho', 'develop', NOW - timedelta(days=150))
+
+        seen = get_queue_last_seen(status_session, 'derecho')
+        assert seen == {
+            'main': NOW - timedelta(days=2),
+            'develop': NOW - timedelta(days=150),
+        }
+
+    def test_is_system_scoped(self, status_session):
+        """'cpu' exists on both derecho and casper — never cross the streams."""
+        from system_status.queries import get_queue_last_seen
+
+        _tick(status_session, 'derecho', 'cpu', NOW - timedelta(days=1))
+        _tick(status_session, 'casper', 'cpu', NOW - timedelta(days=400))
+
+        assert get_queue_last_seen(status_session, 'derecho') == {
+            'cpu': NOW - timedelta(days=1)}
+        assert get_queue_last_seen(status_session, 'casper') == {
+            'cpu': NOW - timedelta(days=400)}
+
+    def test_unknown_system_returns_empty(self, status_session):
+        from system_status.queries import get_queue_last_seen
+
+        _tick(status_session, 'derecho', 'main', NOW)
+        assert get_queue_last_seen(status_session, 'cheyenne') == {}
+
+
+class TestQueueDefinitions:
+
+    def test_update_then_get_roundtrip(self, status_session):
+        from system_status.queries import get_queue_definitions
+        from system_status.queries.lookups import update_queue_definitions
+
+        applied = update_queue_definitions(status_session, 'casper', [
+            {'queue_name': 'casper', 'queue_type': 'Route'},
+            {'queue_name': 'htc', 'queue_type': 'Execution'},
+        ], NOW)
+
+        assert applied == 2
+        defs = get_queue_definitions(status_session, 'casper')
+        assert defs['casper'] == {'queue_type': 'Route', 'last_defined_at': NOW}
+        assert defs['htc'] == {'queue_type': 'Execution', 'last_defined_at': NOW}
+
+    def test_last_defined_at_never_moves_backwards(self, status_session):
+        """Replayed / out-of-order collector posts must not rewind the stamp."""
+        from system_status.queries import get_queue_definitions
+        from system_status.queries.lookups import update_queue_definitions
+
+        update_queue_definitions(
+            status_session, 'casper',
+            [{'queue_name': 'casper', 'queue_type': 'Route'}], NOW)
+        update_queue_definitions(
+            status_session, 'casper',
+            [{'queue_name': 'casper', 'queue_type': 'Route'}],
+            NOW - timedelta(hours=1))
+
+        defs = get_queue_definitions(status_session, 'casper')
+        assert defs['casper']['last_defined_at'] == NOW
+
+    def test_blank_names_are_skipped(self, status_session):
+        from system_status.queries.lookups import update_queue_definitions
+
+        applied = update_queue_definitions(status_session, 'casper', [
+            {'queue_name': ''},
+            {'queue_name': '   '},
+            {'queue_type': 'Route'},           # no name at all
+        ], NOW)
+        assert applied == 0
+
+    def test_queues_without_roster_sighting_are_omitted(self, status_session):
+        """Pre-roster QueueDef rows (last_defined_at NULL) must not appear —
+        absence of data is not evidence the queue is defined."""
+        from system_status.queries import get_queue_definitions
+
+        _tick(status_session, 'casper', 'vis', NOW)   # lookup row, no roster stamp
+        assert get_queue_definitions(status_session, 'casper') == {}
+
+    def test_unknown_system_returns_empty(self, status_session):
+        from system_status.queries import get_queue_definitions
+        from system_status.queries.lookups import update_queue_definitions
+
+        update_queue_definitions(
+            status_session, 'casper',
+            [{'queue_name': 'casper', 'queue_type': 'Route'}], NOW)
+        assert get_queue_definitions(status_session, 'derecho') == {}

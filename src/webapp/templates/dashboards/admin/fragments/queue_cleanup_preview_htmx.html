@@ -6,11 +6,19 @@
   are pre-checked, while queues that were never charged are listed unchecked
   (they may be routing queues, which never accrue charges by design).
 
+  Candidates are cross-checked against the system_status PBS snapshots
+  (see _annotate_pbs_activity): a queue seen holding jobs — or still present
+  in the qstat -Q roster — within the window is badged and never pre-checked,
+  but stays in the list so the admin can still expire it deliberately.
+
   Context:
-    resource   : Resource
-    days       : int (the window from step 1)
-    candidates : list of {queue, last_charged, ever_charged, preselected}
-    errors     : optional list[str]
+    resource           : Resource
+    days               : int (the window from step 1)
+    candidates         : list of {queue, last_charged, ever_charged, preselected,
+                         last_seen_pbs, active_in_pbs, defined_in_pbs, pbs_queue_type}
+    pbs_data_available : bool — False hides the PBS column (no snapshot
+                         coverage for this resource's system)
+    errors             : optional list[str]
 #}
 
 <form hx-post="{{ url_for('admin_dashboard.htmx_queue_cleanup', resource_id=resource.resource_id) }}"
@@ -24,6 +32,8 @@
         {% if candidates %}
         {% set preselected = candidates | selectattr('preselected') | list %}
         {% set never = candidates | rejectattr('ever_charged') | list %}
+        {% set in_pbs_count = (candidates | selectattr('active_in_pbs') | list | length)
+                            + (candidates | rejectattr('active_in_pbs') | selectattr('defined_in_pbs') | list | length) %}
 
         <p class="mb-2">
             <strong>{{ candidates|length }} queue{{ 's' if candidates|length != 1 else '' }}</strong>
@@ -32,6 +42,10 @@
             {% if preselected %}
             {{ preselected|length }} previously-used
             queue{{ 's are' if preselected|length != 1 else ' is' }} pre-selected.
+            {% endif %}
+            {% if in_pbs_count %}
+            {{ in_pbs_count }} {{ 'are' if in_pbs_count != 1 else 'is' }} still
+            known to PBS and left unchecked.
             {% endif %}
         </p>
 
@@ -59,6 +73,9 @@
                         <th>Queue</th>
                         <th>Started</th>
                         <th>Last charged</th>
+                        {% if pbs_data_available %}
+                        <th>Last seen in PBS</th>
+                        {% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -75,6 +92,14 @@
                                    for="cleanupQueue{{ c.queue.queue_id }}">
                                 {{ c.queue.queue_name }}
                             </label>
+                            {% if c.active_in_pbs %}
+                            <span class="badge bg-success ms-1">active in PBS</span>
+                            {% elif c.defined_in_pbs %}
+                            <span class="badge bg-info text-dark ms-1">defined in PBS</span>
+                            {% endif %}
+                            {% if c.pbs_queue_type == 'Route' %}
+                            <span class="badge bg-secondary ms-1">routing queue</span>
+                            {% endif %}
                             {% if not c.ever_charged %}
                             <span class="badge bg-warning text-dark ms-1">never charged</span>
                             {% endif %}
@@ -88,11 +113,24 @@
                         <td class="text-muted small text-nowrap">
                             {{ c.last_charged | fmt_date }}
                         </td>
+                        {% if pbs_data_available %}
+                        <td class="text-muted small text-nowrap">
+                            {{ c.last_seen_pbs | fmt_date }}
+                        </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+
+        {% if not pbs_data_available %}
+        <div class="text-muted small mt-1">
+            <i class="fas fa-info-circle"></i>
+            No PBS snapshot data covers this resource — the system-status
+            cross-check was skipped.
+        </div>
+        {% endif %}
 
         <div class="alert alert-danger mt-2 mb-0">
             <i class="fas fa-exclamation-triangle"></i>
