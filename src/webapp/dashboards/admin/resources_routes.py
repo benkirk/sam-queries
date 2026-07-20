@@ -696,6 +696,54 @@ def _cleanup_context(resource_id):
     return db.session.get(Resource, resource_id)
 
 
+def _annotate_pbs_activity(candidates, resource, days):
+    """Cross-check SAM cleanup candidates against system_status PBS snapshots.
+
+    SAM charging data is blind to routing queues and charging-exempt work,
+    so a queue can look dead while PBS is actively serving it. Two status
+    signals fill that gap, both matched by queue name against the system
+    derived from the resource ('Derecho GPU' → 'derecho'):
+
+    * ``queue_status`` — a queue appears there only while jobs sit in it,
+      giving "last held jobs at tick X".
+    * ``queues.last_defined_at`` — stamped from the collectors' qstat -Q
+      roster; covers routing queues that drain instantly and idle-but-live
+      execution queues.
+
+    Annotate-only, never drops rows: a queue seen in PBS within the window
+    is un-preselected (and badged in the template), but the admin can still
+    tick it deliberately. Absence of status data changes nothing — old
+    resources without snapshot coverage behave exactly as before.
+
+    Returns True when any status data existed for the system (template
+    hides the PBS column entirely otherwise).
+    """
+    from datetime import timedelta
+    from system_status.queries import get_queue_last_seen, get_queue_definitions
+    from system_status.timeutil import utcnow_naive
+
+    system_name = resource.resource_name.split()[0].lower()
+    try:
+        last_seen = get_queue_last_seen(db.session, system_name)
+        defined = get_queue_definitions(db.session, system_name)
+    except Exception:
+        last_seen, defined = {}, {}     # status DB unavailable → SAM-only view
+
+    cutoff = utcnow_naive() - timedelta(days=days)
+    for c in candidates:
+        name = c['queue'].queue_name
+        d = defined.get(name)
+        c['last_seen_pbs'] = last_seen.get(name)
+        c['pbs_queue_type'] = d['queue_type'] if d else None
+        c['defined_in_pbs'] = d is not None and d['last_defined_at'] >= cutoff
+        c['active_in_pbs'] = (c['last_seen_pbs'] is not None
+                              and c['last_seen_pbs'] >= cutoff)
+        if c['active_in_pbs'] or c['defined_in_pbs']:
+            c['preselected'] = False    # never pre-check a queue PBS still knows
+
+    return bool(last_seen) or bool(defined)
+
+
 @bp.route('/htmx/queue-cleanup-form/<int:resource_id>')
 @login_required
 @require_permission(Permission.DELETE_RESOURCES)
@@ -736,11 +784,13 @@ def htmx_queue_cleanup_preview(resource_id):
     candidates = get_queue_cleanup_candidates(
         db.session, resource_id, days=form_data['days']
     )
+    pbs_data_available = _annotate_pbs_activity(candidates, resource, form_data['days'])
     return render_template(
         'dashboards/admin/fragments/queue_cleanup_preview_htmx.html',
         resource=resource,
         days=form_data['days'],
         candidates=candidates,
+        pbs_data_available=pbs_data_available,
     )
 
 
@@ -771,6 +821,9 @@ def htmx_queue_cleanup(resource_id):
 
     days = form_data['days']
     candidates = get_queue_cleanup_candidates(db.session, resource_id, days=days)
+    # Annotate for the error-path re-renders below; PBS activity never
+    # disqualifies a candidate, so the admin's selection remains valid.
+    pbs_data_available = _annotate_pbs_activity(candidates, resource, days)
 
     # Honour the admin's selection, but only over queues that are still
     # candidates — a submitted id that no longer qualifies (or never did) is
@@ -785,6 +838,7 @@ def htmx_queue_cleanup(resource_id):
             resource=resource,
             days=days,
             candidates=candidates,
+            pbs_data_available=pbs_data_available,
             errors=['No queues selected — nothing to do.'],
         )
 
@@ -798,6 +852,7 @@ def htmx_queue_cleanup(resource_id):
             resource=resource,
             days=days,
             candidates=candidates,
+            pbs_data_available=pbs_data_available,
             errors=[f'Error expiring queues: {e}'],
         )
 

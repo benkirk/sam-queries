@@ -134,6 +134,67 @@ class TestDerechoPost:
         assert len(json_data['queue_ids']) == 1
         assert len(json_data['filesystem_ids']) == 1
 
+    def test_post_derecho_with_queue_definitions(self, api_key_client, status_session):
+        """The qstat -Q roster is upserted onto the queues lookup (not stored
+        as snapshot rows) — covering routing queues that never hold jobs."""
+        from system_status.models.lookups import QueueDef, System
+
+        data = {
+            'timestamp': '2026-07-20 12:00:00',
+            'cpu_nodes_total': 100,
+            'cpu_nodes_available': 80,
+            'cpu_nodes_down': 5,
+            'cpu_nodes_reserved': 15,
+            'gpu_nodes_total': 10,
+            'gpu_nodes_available': 8,
+            'gpu_nodes_down': 0,
+            'gpu_nodes_reserved': 2,
+            'cpu_cores_total': 12800,
+            'cpu_cores_allocated': 10000,
+            'cpu_cores_idle': 2800,
+            'gpu_count_total': 80,
+            'gpu_count_allocated': 60,
+            'gpu_count_idle': 20,
+            'memory_total_gb': 25600.0,
+            'memory_allocated_gb': 20000.0,
+            'running_jobs': 150,
+            'pending_jobs': 30,
+            'active_users': 50,
+            'queue_definitions': [
+                {'queue_name': 'main', 'queue_type': 'Route',
+                 'enabled': True, 'started': True, 'total_jobs': 12},
+                {'queue_name': 'cpu', 'queue_type': 'Execution',
+                 'enabled': True, 'started': True, 'total_jobs': 340},
+            ],
+        }
+
+        response = api_key_client.post(
+            '/api/v1/status/derecho', json=data,
+            content_type='application/json',
+        )
+
+        assert response.status_code == 201
+        json_data = response.get_json()
+        assert json_data['success'] is True
+        assert json_data['queue_definitions_applied'] == 2
+        # No snapshot rows were created for the roster.
+        assert json_data['queue_ids'] == []
+
+        from datetime import datetime
+        expected_ts = datetime(2026, 7, 20, 12, 0, 0)
+        rows = (
+            status_session.query(QueueDef)
+            .join(System, QueueDef.system_id == System.system_id)
+            .filter(System.name == 'derecho')
+            .all()
+        )
+        by_name = {q.name: q for q in rows}
+        assert set(by_name) == {'main', 'cpu'}
+        assert by_name['main'].queue_type == 'Route'
+        assert by_name['cpu'].queue_type == 'Execution'
+        assert by_name['main'].last_defined_at == expected_ts
+        assert by_name['cpu'].last_defined_at == expected_ts
+
     def test_post_derecho_with_user_project_queues(self, api_key_client, status_session):
         """Per-user/project rollups round-trip through the ingest path,
         creating denormalized UserDef / ProjectCodeDef rows on demand and

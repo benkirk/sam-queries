@@ -145,7 +145,10 @@ def get_queue_cleanup_candidates(
     a routing queue, whereas one that was charged and then went quiet is far
     more likely genuinely dead. Callers should surface that distinction rather
     than treating every candidate the same; the admin UI pre-selects only
-    ``preselected`` rows for that reason.
+    ``preselected`` rows for that reason — and additionally cross-checks
+    candidates against the system_status PBS snapshots/roster (see
+    ``_annotate_pbs_activity`` in the admin resources routes), which is
+    deliberately kept out of this SAM-only query.
 
     Args:
         session:     SQLAlchemy session.

@@ -33,12 +33,40 @@ class QueueParser:
         return account or QueueParser.UNKNOWN_PROJECT
 
     @staticmethod
-    def parse_queues(qstat_output: str, qstat_json: dict) -> List[dict]:
+    def parse_queue_definitions(qstat_q_json: dict) -> List[dict]:
         """
-        Parse queue summary and detailed job data.
+        Parse the queue roster from ``qstat -Q -f -F json``.
+
+        Unlike ``parse_queues`` (which is derived from *jobs* and therefore
+        only sees queues currently holding jobs), this captures every queue
+        PBS defines — including routing queues that drain instantly and
+        idle execution queues.
 
         Args:
-            qstat_output: Text output from qstat -Qa (not currently used)
+            qstat_q_json: JSON from qstat -Q -f -F json
+
+        Returns:
+            List of dicts: {queue_name, queue_type, enabled, started, total_jobs}
+        """
+        definitions = []
+        for name, attrs in (qstat_q_json.get('Queue') or {}).items():
+            if not isinstance(attrs, dict):
+                continue
+            definitions.append({
+                'queue_name': name,
+                'queue_type': attrs.get('queue_type'),      # 'Execution' / 'Route'
+                'enabled': str(attrs.get('enabled', '')).lower() == 'true',
+                'started': str(attrs.get('started', '')).lower() == 'true',
+                'total_jobs': int(attrs.get('total_jobs', 0) or 0),
+            })
+        return definitions
+
+    @staticmethod
+    def parse_queues(qstat_json: dict) -> List[dict]:
+        """
+        Parse per-queue rollups from detailed job data.
+
+        Args:
             qstat_json: JSON from qstat -f -F json (for per-queue breakdown)
 
         Returns:

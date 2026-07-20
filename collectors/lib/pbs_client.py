@@ -76,9 +76,9 @@ class PBSClient:
         """Execute qstat -f -F json"""
         return self.run_command("qstat -f -F json", json_output=True)
 
-    def get_queue_summary(self):
-        """Execute qstat -Qa"""
-        return self.run_command("qstat -Qa")
+    def get_queues_json(self):
+        """Execute qstat -Q -f -F json (full queue roster, incl. routing queues)"""
+        return self.run_command("qstat -Q -f -F json", json_output=True)
 
     def get_reservations(self):
         """Execute pbs_rstat -f"""

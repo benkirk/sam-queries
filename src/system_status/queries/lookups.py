@@ -59,6 +59,46 @@ def get_or_create_queue(session: Session, system: System, name: str) -> QueueDef
     return obj
 
 
+def update_queue_definitions(session: Session, system_name: str,
+                             definitions: list, timestamp) -> int:
+    """Upsert PBS queue-roster facts onto the ``queues`` lookup.
+
+    Called from the status ingest path with the parsed ``qstat -Q -f``
+    roster (see ``QueueParser.parse_queue_definitions``). For each entry,
+    get-or-create the ``QueueDef`` row and stamp ``queue_type`` /
+    ``last_defined_at`` — the durable "PBS still defines this queue"
+    signal consumed by the Admin Queue Cleanup cross-check.
+
+    Args:
+        session:     SQLAlchemy session (system_status bind).
+        system_name: System the roster came from (e.g. ``'derecho'``).
+        definitions: List of dicts with ``queue_name`` and optionally
+                     ``queue_type``. Unknown extra keys are ignored.
+        timestamp:   The snapshot tick (naive-UTC datetime).
+
+    Returns:
+        Number of roster entries applied.
+    """
+    if not definitions:
+        return 0
+
+    system = get_or_create_system(session, system_name)
+    applied = 0
+    for entry in definitions:
+        name = (entry.get('queue_name') or '').strip()
+        if not name:
+            continue
+        queue = get_or_create_queue(session, system, name)
+        queue_type = entry.get('queue_type')
+        if queue_type:
+            queue.queue_type = str(queue_type)
+        # Never move last_defined_at backwards (out-of-order or replayed posts).
+        if queue.last_defined_at is None or timestamp > queue.last_defined_at:
+            queue.last_defined_at = timestamp
+        applied += 1
+    return applied
+
+
 def get_or_create_filesystem(session: Session, name: str) -> Filesystem:
     obj = session.query(Filesystem).filter(Filesystem.name == name).one_or_none()
     if obj is None:

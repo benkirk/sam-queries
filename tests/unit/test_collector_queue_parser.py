@@ -120,7 +120,7 @@ class TestParseUserProjectQueues:
             _make_job("Q", "benkirk@d", "OTHER001", "main", ncpus=32),
         ])
         per_user = QueueParser.parse_user_project_queues(qstat)
-        per_queue = QueueParser.parse_queues("", qstat)
+        per_queue = QueueParser.parse_queues(qstat)
 
         assert len(per_queue) == 1
         q = per_queue[0]
@@ -128,3 +128,49 @@ class TestParseUserProjectQueues:
         assert sum(r["pending_jobs"] for r in per_user) == q["pending_jobs"]
         assert sum(r["cores_allocated"] for r in per_user) == q["cores_allocated"]
         assert sum(r["cores_pending"] for r in per_user) == q["cores_pending"]
+
+
+class TestParseQueueDefinitions:
+    """qstat -Q -f -F json roster parsing — the source of the 'PBS still
+    defines this queue' signal, which covers routing queues that never
+    appear in job-derived rollups."""
+
+    QSTAT_Q = {
+        "timestamp": 1752624000,
+        "pbs_version": "2022.1.1",
+        "pbs_server": "casper-pbs",
+        "Queue": {
+            "casper": {
+                "queue_type": "Route",
+                "total_jobs": 0,
+                "enabled": "True",
+                "started": "True",
+                "route_destinations": "htc,vis,largemem",
+            },
+            "htc": {
+                "queue_type": "Execution",
+                "total_jobs": 371,
+                "enabled": "True",
+                "started": "False",
+                "state_count": "Transit:0 Queued:12 Held:3 Running:356",
+            },
+        },
+    }
+
+    def test_parses_roster_including_routing_queues(self):
+        defs = {d["queue_name"]: d
+                for d in QueueParser.parse_queue_definitions(self.QSTAT_Q)}
+
+        assert set(defs) == {"casper", "htc"}
+        assert defs["casper"]["queue_type"] == "Route"
+        assert defs["casper"]["enabled"] is True
+        assert defs["casper"]["started"] is True
+        assert defs["casper"]["total_jobs"] == 0
+        assert defs["htc"]["queue_type"] == "Execution"
+        assert defs["htc"]["started"] is False
+        assert defs["htc"]["total_jobs"] == 371
+
+    def test_empty_or_missing_roster_returns_empty(self):
+        assert QueueParser.parse_queue_definitions({}) == []
+        assert QueueParser.parse_queue_definitions({"Queue": {}}) == []
+        assert QueueParser.parse_queue_definitions({"Queue": None}) == []
