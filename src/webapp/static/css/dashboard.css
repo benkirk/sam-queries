@@ -1186,6 +1186,41 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin: 0;
 }
 
+/* Collapsible filter panels: the "Filters" title is a collapse toggle.
+   The toggle is the title only — NOT the whole header row — because the
+   Bootstrap collapse data-api handles clicks in the capture phase, so the
+   sibling "Clear filters" link could never stopPropagation out of a
+   row-level toggle. Chevron tracks aria-expanded, which Bootstrap
+   maintains on the toggle. */
+.filter-sidebar-toggle {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+}
+
+.filter-sidebar-chevron {
+    font-size: 0.75rem;
+    transition: transform 0.2s ease;
+}
+
+.filter-sidebar-toggle[aria-expanded="false"] .filter-sidebar-chevron {
+    transform: rotate(-90deg);
+}
+
+/* Collapsed panel: drop the divider and reclaim the header's bottom
+   margin so the closed state reads as a tidy title bar rather than an
+   empty box. (During the .collapsing animation neither state matches —
+   the margin snaps when the transition ends, which reads fine.) */
+.filter-sidebar-header:has(+ .collapse:not(.show)) {
+    border-bottom: none;
+    margin-bottom: -0.75rem;
+}
+
 .filter-sidebar-clear {
     color: #fff;
     font-size: 0.875rem;

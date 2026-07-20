@@ -204,4 +204,28 @@
     if (activeResourceTab) {
         showPieForResource(activeResourceTab.getAttribute('href').slice(1));
     }
+
+    /* ================= Collapsible filter panels ================= */
+
+    /* Filter panels ship expanded (class="collapse show") but default to
+     * collapsed on phones, where they can fill 1.5 screens. Markup can't be
+     * viewport-conditional, so the default is applied here: strip .show
+     * before first paint (script runs at end of body) and after htmx swaps
+     * that re-render a panel. Re-collapsing after a filter *submit* is
+     * deliberate — on a phone the results matter more than the form.
+     * The panels carry data-no-persist so nav-view-persistence.js does not
+     * re-expand them from a stale localStorage entry. */
+    function collapseFilterPanels(root) {
+        if (!window.matchMedia('(max-width: 767.98px)').matches) { return; }
+        root.querySelectorAll('.filter-fields-collapse.show').forEach(function (el) {
+            el.classList.remove('show');
+            var toggle = document.querySelector('[data-bs-target="#' + el.id + '"]');
+            if (toggle) { toggle.setAttribute('aria-expanded', 'false'); }
+        });
+    }
+
+    collapseFilterPanels(document);
+    document.body.addEventListener('htmx:afterSettle', function (e) {
+        if (e.detail.elt) { collapseFilterPanels(e.detail.elt); }
+    });
 })();
