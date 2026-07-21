@@ -6,8 +6,10 @@
 {% import 'dashboards/status/partials/nodetype_table.html' as nodetypes %}
 {% import 'dashboards/status/partials/filesystem_table.html' as fs %}
 {% import 'dashboards/status/partials/no_data_message.html' as empty %}
+{% import 'dashboards/status/partials/stale_banner.html' as stale %}
 
 {% if casper_status %}
+{{ stale.stale_banner('Casper', staleness) }}
 <div class="card mb-3">
     {{ header.system_header('<i class="fas fa-hdd"></i> Casper System Status', casper_status.timestamp) }}
     <div class="card-body">

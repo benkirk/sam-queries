@@ -1,0 +1,12 @@
+{# Per-system stale-data banner. `staleness` is a timedelta from the
+   blueprint's _staleness() helper — None while snapshots are fresher
+   than STATUS_STALE_MINUTES, so this renders nothing on the happy path. #}
+{% macro stale_banner(system_label, staleness) %}
+{% if staleness %}
+<div class="alert alert-warning mb-3">
+    <i class="fas fa-exclamation-triangle"></i>
+    <strong>Notice:</strong> No status updates in {{ staleness | fmt_ago }} —
+    {{ system_label }} monitoring may be interrupted, or the system may be down.
+</div>
+{% endif %}
+{% endmacro %}

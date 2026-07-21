@@ -83,6 +83,22 @@ def _page_context(session):
     )
 
 
+def _staleness(status):
+    """Age of a status snapshot once it exceeds the freshness threshold.
+
+    Returns the age as a timedelta when the snapshot is older than
+    STATUS_STALE_MINUTES (so pages can raise the stale-data banner),
+    else None. No snapshot at all also returns None — that case is
+    covered by the no-data message, not the banner.
+    """
+    if status is None:
+        return None
+    age = utcnow_naive() - status.timestamp
+    if age > timedelta(minutes=current_app.config['STATUS_STALE_MINUTES']):
+        return age
+    return None
+
+
 def _status_return_url():
     """Where to send the browser after an outage mutation.
 
@@ -126,6 +142,7 @@ def derecho():
     return render_template(
         'dashboards/status/derecho_page.html',
         derecho_status=derecho_status,
+        staleness=_staleness(derecho_status),
         derecho_queues=derecho_queues,
         derecho_filesystems=derecho_filesystems,
         derecho_login_nodes=derecho_login_nodes,
@@ -152,6 +169,7 @@ def casper():
     return render_template(
         'dashboards/status/casper_page.html',
         casper_status=casper_status,
+        staleness=_staleness(casper_status),
         casper_node_types=casper_node_types,
         casper_queues=casper_queues,
         casper_login_nodes=casper_login_nodes,
@@ -164,9 +182,11 @@ def casper():
 def jupyterhub():
     """JupyterHub status page."""
     session = db.session
+    jupyterhub_status = status_queries.get_latest_jupyterhub_status(session)
     return render_template(
         'dashboards/status/jupyterhub_page.html',
-        jupyterhub_status=status_queries.get_latest_jupyterhub_status(session),
+        jupyterhub_status=jupyterhub_status,
+        staleness=_staleness(jupyterhub_status),
         **_page_context(session),
     )
 
