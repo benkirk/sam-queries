@@ -35,7 +35,7 @@ class StateProv(Base, TimestampMixin, SoftDeleteMixin):
     ext_state_prov_id = Column(Integer, primary_key=True, autoincrement=True)
     ext_country_id = Column(Integer, ForeignKey('country.ext_country_id'), nullable=False)
     name = Column(String(100), nullable=False)
-    code = Column(String(15))
+    code = Column(String(45))
 
     country = relationship('Country', back_populates='state_provs')
     institutions = relationship('Institution', back_populates='state_prov')

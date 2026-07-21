@@ -159,6 +159,8 @@ class UserOrganization(Base, TimestampMixin, DateRangeMixin):
     user_organization_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     organization_id = Column(Integer, ForeignKey('organization.organization_id'), nullable=False)
+    idms_unique_name = Column(String(64))
+    idms_sync_token = Column(String(64))
 
     user = relationship('User', back_populates='organizations')
     organization = relationship('Organization', back_populates='users')
@@ -198,7 +200,7 @@ class Institution(Base, TimestampMixin, SessionMixin):
                 else hash(id(self)))
 
     institution_id = Column(Integer, primary_key=True, autoincrement=False)
-    name = Column(String(80), nullable=False)
+    name = Column(String(128))
     acronym = Column(String(40), nullable=False)
     deleted = Column(Boolean)
     nsf_org_code = Column(String(200))
@@ -406,6 +408,7 @@ class UserInstitution(Base, TimestampMixin, DateRangeMixin):
     user_institution_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     institution_id = Column(Integer, ForeignKey('institution.institution_id'), nullable=False)
+    idms_sync_token = Column(String(64))
 
     user = relationship('User', back_populates='institutions')
     institution = relationship('Institution', back_populates='users')
