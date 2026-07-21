@@ -15,6 +15,7 @@
     '#createProjectFormContainer',
     'Create Project',
     submit_icon='folder-plus',
+    errors=errors,
     disabled=not feature_flags.create_projects_enabled,
     submit_disabled=gid_pool_badge.disable_submit,
     submit_disabled_title='Add a new gid_allocation block to enable project creation.'
@@ -127,10 +128,11 @@
                     <div class="col-12">
                         <select class="form-select form-select-sm" id="projcodeMnemonic"
                                 name="mnemonic_code_id"
-                                hx-get="{{ url_for('admin_dashboard.htmx_project_next_projcode') }}"
+                                hx-get="{{ url_for('admin_dashboard.htmx_projcode_preview') }}"
                                 hx-target="#projcodePreview"
                                 hx-swap="innerHTML"
                                 hx-trigger="change"
+                                hx-vals='{"projcode_mode": "auto"}'
                                 hx-include="#createProjectFacility, #projcodeMnemonic">
                             <option value="">— Mnemonic —</option>
                             {% for mnemo in mnemonics %}
@@ -142,16 +144,6 @@
                         </select>
                     </div>
                 </div>
-                <div class="mt-2">
-                    <span class="text-muted small me-1">Next code:</span>
-                    <span id="projcodePreview" class="badge bg-secondary font-monospace">
-                        {% if form and form.get('projcode_mode', 'auto') == 'auto' %}
-                            {{ form.get('projcode', '—') }}
-                        {% else %}
-                            —
-                        {% endif %}
-                    </span>
-                </div>
             </div>
 
             <div id="projcodeManualSection" style="display:none;">
@@ -160,7 +152,24 @@
                        placeholder="e.g. UCSD0042"
                        maxlength="30"
                        data-action-input="projcode-manual-sync"
+                       hx-get="{{ url_for('admin_dashboard.htmx_projcode_preview') }}"
+                       hx-target="#projcodePreview"
+                       hx-swap="innerHTML"
+                       hx-trigger="input changed delay:400ms"
+                       hx-vals='{"projcode_mode": "manual"}'
+                       hx-include="#projcodeHidden"
                        value="{{ form.get('projcode', '') if form and form.get('projcode_mode') == 'manual' else '' }}">
+            </div>
+
+            {# Shared preview/availability line — served by
+               htmx_projcode_preview for BOTH modes. #}
+            <div class="mt-2">
+                <span class="text-muted small me-1">Code:</span>
+                <span id="projcodePreview">
+                    <span class="badge bg-secondary font-monospace" id="projcodePreviewCode">
+                        {{ form.get('projcode') or '—' if form else '—' }}
+                    </span>
+                </span>
             </div>
 
             <input type="hidden" name="projcode" id="projcodeHidden"
@@ -179,7 +188,7 @@
                           id='createProjectAbstract') }}
 
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-6" id="createProjectLeadWrap">
                 {{ fk_search_field('project_lead_user_id', 'Project Lead',
                                    search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                                    required=True,
@@ -188,6 +197,14 @@
                                    search_class='form-control form-control-sm',
                                    label_class='form-label fw-semibold',
                                    id_prefix='createProjectLead') }}
+                {# Lead-context hint: org/institution + mnemonic suggestion.
+                   fk-picker.js fires fk:selected / fk:cleared on the picker. #}
+                <div id="createProjectLeadHint"
+                     hx-get="{{ url_for('admin_dashboard.htmx_project_lead_hint') }}"
+                     hx-target="this"
+                     hx-swap="innerHTML"
+                     hx-trigger="fk:selected from:#createProjectLeadWrap, fk:cleared from:#createProjectLeadWrap"
+                     hx-include="#createProjectLead_id"></div>
             </div>
             <div class="col-md-6">
                 {{ fk_search_field('project_admin_user_id', 'Project Admin',

@@ -49,12 +49,19 @@
                 if (autoSelectSingleOption(e.target)) {
                     htmx.trigger(e.target, 'change');   /* cascade → alloc types */
                 }
+                /* Facility changed → the auto-preview's prefix/counter did
+                 * too. Refresh it if a mnemonic is already chosen. */
+                var mnemonicSel = document.getElementById('projcodeMnemonic');
+                if (mnemonicSel && mnemonicSel.value) {
+                    htmx.trigger(mnemonicSel, 'change');
+                }
                 break;
             case 'projcodePreview': {
                 /* keep hidden projcode in sync with the auto-preview */
                 var mode = document.querySelector('[name="projcode_mode"]:checked');
                 if (mode && mode.value === 'auto') {
-                    var val = e.target.textContent.trim();
+                    var codeEl = e.target.querySelector('#projcodePreviewCode');
+                    var val = codeEl ? codeEl.textContent.trim() : '';
                     document.getElementById('projcodeHidden').value =
                         (val && val !== '—') ? val : '';
                 }
@@ -70,21 +77,56 @@
         var manualSection = document.getElementById('projcodeManualSection');
         var manualInput   = document.getElementById('projcodeManualInput');
         var hiddenCode    = document.getElementById('projcodeHidden');
-        var previewEl     = document.getElementById('projcodePreview');
+        var mnemonicSel   = document.getElementById('projcodeMnemonic');
         if (mode === 'manual') {
             autoSection.style.display   = 'none';
             manualSection.style.display = '';
             hiddenCode.value = manualInput.value.toUpperCase();
+            /* re-check availability of whatever is typed (or clear to —) */
+            htmx.trigger(manualInput, 'input');
         } else {
             autoSection.style.display   = '';
             manualSection.style.display = 'none';
-            var preview = previewEl.textContent.trim();
-            hiddenCode.value = preview !== '—' ? preview : '';
+            hiddenCode.value = '';
+            /* re-fetch the auto preview; its afterSwap handler re-syncs
+             * the hidden field */
+            if (mnemonicSel && mnemonicSel.value) {
+                htmx.trigger(mnemonicSel, 'change');
+            }
         }
     }
 
     registerAction('projcode-mode', function (radio) {
         applyProjcodeMode(radio.value);
+    });
+
+    /* ── Create Project form: lead-hint apply buttons ── */
+
+    /* "use <CODE>" — select the suggested mnemonic and refresh the
+     * auto-generate preview. Accepting a mnemonic suggestion implies the
+     * auto-generate path, so flip the mode radio too if needed. */
+    registerAction('apply-mnemonic', function (btn) {
+        var sel = document.getElementById('projcodeMnemonic');
+        if (!sel) { return; }
+        var autoRadio = document.getElementById('projcodeModeAuto');
+        if (autoRadio && !autoRadio.checked) {
+            autoRadio.checked = true;
+            applyProjcodeMode('auto');
+        }
+        sel.value = btn.dataset.mnemonicId;
+        htmx.trigger(sel, 'change');
+    });
+
+    /* "use as Organization" — pre-fill the Organization fk-picker the same
+     * way a search-result click would (hidden id + badge + selected row). */
+    registerAction('apply-org', function (btn) {
+        var idEl    = document.getElementById('createProjectOrg_id');
+        var badgeEl = document.getElementById('createProjectOrg_badge');
+        var selEl   = document.getElementById('createProjectOrg_selected');
+        if (!idEl) { return; }
+        idEl.value = btn.dataset.orgId;
+        if (badgeEl) { badgeEl.textContent = btn.dataset.orgLabel; }
+        if (selEl)   { selEl.style.display = ''; }
     });
 
     /* Uppercase the manual projcode as typed and keep the hidden field

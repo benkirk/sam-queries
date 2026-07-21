@@ -125,3 +125,128 @@ class TestCreateProjectFormEndpoint:
         assert any(cls in html for cls in (
             'bg-success', 'bg-warning', 'bg-danger',
         ))
+
+
+# ---------------------------------------------------------------------------
+# GET /htmx/project-projcode-preview — auth + both modes (read-only)
+# ---------------------------------------------------------------------------
+
+
+class TestProjcodePreviewEndpoint:
+    """GET-only, against snapshot data — same session-bridging caveat as
+    above: allocation/counter side effects are covered at the model layer
+    in test_projcode_generation.py."""
+
+    URL = '/admin/htmx/project-projcode-preview'
+
+    def test_unauthenticated_redirects_or_401(self, client):
+        if os.getenv('DISABLE_AUTH') == '1':
+            pytest.skip("Auth disabled in dev environment")
+        resp = client.get(self.URL)
+        assert resp.status_code in (302, 401)
+
+    def test_non_admin_denied(self, non_admin_client):
+        resp = non_admin_client.get(self.URL)
+        assert resp.status_code == 403
+
+    def test_auto_incomplete_inputs_render_neutral_badge(self, auth_client):
+        resp = auth_client.get(self.URL, query_string={'projcode_mode': 'auto'})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'projcodePreviewCode' in html
+        assert '—' in html
+
+    def test_auto_snapshot_pair_previews_prefixed_code(self, auth_client, session):
+        """Any snapshot (facility, mnemonic) counter pair must preview as
+        <facility letter><mnemonic><4+ digits> — the ALB-regression shape."""
+        import re
+        from sam.core.organizations import MnemonicCode
+        from sam.resources.facilities import Facility, ProjectCode
+
+        row = (
+            session.query(ProjectCode, Facility, MnemonicCode)
+            .join(Facility, Facility.facility_id == ProjectCode.facility_id)
+            .join(MnemonicCode,
+                  MnemonicCode.mnemonic_code_id == ProjectCode.mnemonic_code_id)
+            .filter(Facility.code.isnot(None))
+            .first()
+        )
+        assert row is not None, "snapshot has no project_code rows"
+        rule, facility, mnemo = row
+
+        resp = auth_client.get(self.URL, query_string={
+            'projcode_mode': 'auto',
+            'facility_id': facility.facility_id,
+            'mnemonic_code_id': mnemo.mnemonic_code_id,
+        })
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        match = re.search(
+            rf'projcodePreviewCode">({facility.code}{mnemo.code}\d{{4,}})<', html)
+        assert match, f"no prefixed code in preview: {html!r}"
+        # Counter semantics: the previewed number must be past the last
+        # issued value, never a zero-pad width artifact.
+        assert int(match.group(1)[len(facility.code) + len(mnemo.code):]) > rule.digits
+        assert 'available' in html
+
+    def test_manual_taken_code_flags_collision(self, auth_client, session):
+        from sam.projects.projects import Project
+        taken = session.query(Project.projcode).first()[0]
+        resp = auth_client.get(self.URL, query_string={
+            'projcode_mode': 'manual', 'projcode': taken})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'already in use' in html
+        assert 'bg-danger' in html
+
+    def test_manual_free_code_reports_available(self, auth_client, session):
+        from sam.projects.projects import projcode_collision
+        code = 'ZZZZ9999'
+        assert projcode_collision(session, code) is None  # precondition
+        resp = auth_client.get(self.URL, query_string={
+            'projcode_mode': 'manual', 'projcode': code})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'available' in html
+        assert 'bg-success' in html
+
+
+# ---------------------------------------------------------------------------
+# GET /htmx/project-lead-hint — auth + hint rendering (read-only)
+# ---------------------------------------------------------------------------
+
+
+class TestProjectLeadHintEndpoint:
+
+    URL = '/admin/htmx/project-lead-hint'
+
+    def test_non_admin_denied(self, non_admin_client):
+        resp = non_admin_client.get(self.URL)
+        assert resp.status_code == 403
+
+    def test_empty_user_id_clears_hint(self, auth_client):
+        resp = auth_client.get(self.URL, query_string={'project_lead_user_id': ''})
+        assert resp.status_code == 200
+        assert resp.get_data(as_text=True).strip() == ''
+
+    def test_unknown_user_id_clears_hint(self, auth_client):
+        resp = auth_client.get(
+            self.URL, query_string={'project_lead_user_id': '999999999'})
+        assert resp.status_code == 200
+        assert resp.get_data(as_text=True).strip() == ''
+
+    def test_user_with_active_org_shows_hint(self, auth_client, session):
+        from sam.core.organizations import UserOrganization
+        uo = (
+            session.query(UserOrganization)
+            .filter(UserOrganization.is_active)
+            .first()
+        )
+        if uo is None:
+            pytest.skip("snapshot has no active user-organization rows")
+        resp = auth_client.get(
+            self.URL, query_string={'project_lead_user_id': uo.user_id})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert "Lead's organization" in html
+        assert 'apply-org' in html
