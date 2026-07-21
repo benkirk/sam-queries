@@ -1,0 +1,16 @@
+{# Projcode availability preview — swapped into #projcodePreview.
+   Context: status ('available' | 'taken' | 'error' | 'incomplete'),
+   code, detail. form-helpers.js reads #projcodePreviewCode to keep the
+   hidden projcode input in sync while in auto mode. #}
+{% if status == 'available' %}
+<span class="badge bg-success font-monospace" id="projcodePreviewCode">{{ code }}</span>
+<small class="text-success ms-1"><i class="fas fa-check"></i> available</small>
+{% elif status == 'taken' %}
+<span class="badge bg-danger font-monospace" id="projcodePreviewCode">—</span>
+<small class="text-danger ms-1"><i class="fas fa-ban"></i> {{ code }} is already in use by {{ detail }}</small>
+{% elif status == 'error' %}
+<span class="badge bg-secondary font-monospace" id="projcodePreviewCode">—</span>
+<small class="text-danger ms-1"><i class="fas fa-exclamation-circle"></i> {{ detail }}</small>
+{% else %}
+<span class="badge bg-secondary font-monospace" id="projcodePreviewCode">—</span>
+{% endif %}

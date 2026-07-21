@@ -1,0 +1,190 @@
+{% extends 'dashboards/admin/base_admin_projects.html' %}
+
+{% block title %}Admin: Projects - SAM{% endblock %}
+
+{% block projects_content %}
+
+<div class="row">
+    <!-- Search Projects Section -->
+    <div class="col-md-6">
+        <div class="card inner-card">
+            <div class="card-header d-flex justify-content-between align-items-center mb-4">
+                <h5>
+                    <i class="fas fa-search"></i>Search Projects
+                </h5>
+                {% if has_permission_any_facility(Permission.CREATE_PROJECTS) %}
+                <button type="button" class="btn btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createProjectModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_project_create_form') }}"
+                        hx-target="#createProjectFormContainer"
+                        hx-trigger="click">
+                    <i class="fas fa-folder-plus"></i> Create Project
+                </button>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="projectSearchInput">Search by project code or title</label>
+                    <input type="search" class="form-control" id="projectSearchInput"
+                           name="q"
+                           placeholder="Start typing a project code or title..."
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_search_projects') }}"
+                           hx-trigger="input changed delay:300ms"
+                           hx-target="#projectSearchResults"
+                           hx-swap="innerHTML"
+                           hx-params="q,active_only"
+                           hx-include="#activeProjectsOnly">
+                    <div id="projectSearchResults" class="list-group mt-2"></div>
+                </div>
+                <div class="form-check mb-0">
+                    <input type="checkbox" class="form-check-input" id="activeProjectsOnly"
+                           name="active_only" value="true" checked>
+                    <label class="form-check-label" for="activeProjectsOnly">
+                        Active projects only
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Project Card Display Area -->
+<div class="row">
+    <div class="col-12">
+        <div id="projectCardContainer"
+             data-reload-url="{{ url_for('admin_dashboard.project_card', projcode='') }}"
+             {% if auto_load_projcode %}
+             hx-get="{{ url_for('admin_dashboard.project_card', projcode=auto_load_projcode) }}"
+             hx-trigger="load"
+             hx-swap="innerHTML"
+             {% endif %}></div>
+    </div>
+</div>
+
+<!-- Expirations Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card project-card mb-3">
+            <div class="card-header collapse-toggle collapsed"
+                 data-bs-toggle="collapse" data-bs-target="#expirations-section"
+                 role="button" aria-expanded="false" aria-controls="expirations-section">
+                <h5 class="mb-0 d-inline-block">
+                    <i class="fas fa-calendar-exclamation"></i> Project Expirations
+                </h5>
+            </div>
+            <div id="expirations-section" class="collapse">
+                <div class="card-body py-3">
+                    <!-- Filters Form — Unity navy panel, matches the
+                         global filter-sidebar pattern used elsewhere -->
+                    <form id="expirations-filters-form" class="filter-sidebar mb-3">
+                        <div class="filter-sidebar-header">
+                            <h2 class="filter-sidebar-title">Filters</h2>
+                            {# CSP-clean reset: expirations-clear (static/js/dashboard-init.js)
+                               resets the form and reloads the active tab — no inline onclick. #}
+                            <a class="filter-sidebar-clear" style="cursor: pointer;"
+                               data-action="expirations-clear">Clear filters</a>
+                        </div>
+
+                        <div class="d-flex flex-wrap align-items-start gap-3">
+                            <div>
+                                <label for="facilities-filter" class="form-label"><strong>Facilities</strong></label>
+                                <select class="form-control" id="facilities-filter"
+                                        name="facilities" multiple size="4" style="width: 200px;">
+                                    {% for facility_name in allowed_facility_names %}
+                                    <option value="{{ facility_name }}"
+                                        {% if facility_name in default_selected_facilities %}selected{% endif %}>
+                                        {{ facility_name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+                            </div>
+
+                            <div>
+                                <label for="resource-filter" class="form-label"><strong>Resource</strong> <span class="fw-normal">(optional)</span></label>
+                                <input type="text" class="form-control" id="resource-filter"
+                                       name="resource"
+                                       placeholder="e.g., Derecho, GLADE"
+                                       style="width: 200px;">
+                                <small class="form-text">Leave blank for all</small>
+                            </div>
+
+                            <div>
+                                <label for="time-range-filter" class="form-label"><strong>Time Range</strong></label>
+                                <select class="form-control" id="time-range-filter"
+                                        name="time_range" style="width: 160px;">
+                                    <option value="7days">Next 7 days</option>
+                                    <option value="31days" selected>Next 31 days</option>
+                                    <option value="60days">Next 60 days</option>
+                                </select>
+                                <small class="form-text">For upcoming</small>
+                            </div>
+
+                            <button type="button" class="btn btn-outline-white align-self-end"
+                                    data-action="expirations-reload">Apply Filters
+                            </button>
+                            <button type="button" class="btn btn-outline-white align-self-end"
+                                    data-action="expirations-export-csv">Export CSV
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Sub-tabs -->
+                    <ul class="nav nav-pills mb-3" id="expirations-tabs" role="tablist">
+                        <li class="nav-item">
+                            <a class="nav-link active" id="upcoming-tab" data-bs-toggle="pill"
+                               href="#exp-upcoming" role="tab" data-view="upcoming">
+                                <i class="fas fa-calendar-alt"></i> Upcoming
+                                <span class="badge bg-light text-dark" id="upcoming-count">-</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="expired-tab" data-bs-toggle="pill"
+                               href="#exp-expired" role="tab" data-view="expired">
+                                <i class="fas fa-exclamation-triangle"></i> Expired (90+ days)
+                                <span class="badge bg-light text-dark" id="expired-count">-</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" id="abandoned-tab" data-bs-toggle="pill"
+                               href="#exp-abandoned" role="tab" data-view="abandoned">
+                                <i class="fas fa-user-slash"></i> Abandoned Users
+                                <span class="badge bg-light text-dark" id="abandoned-count">-</span>
+                            </a>
+                        </li>
+                    </ul>
+
+                    <!-- Tab content containers -->
+                    <div class="tab-content" id="expirations-tab-content">
+                        <div class="tab-pane fade show active" id="exp-upcoming" role="tabpanel">
+                            <div id="upcoming-container" class="expirations-container"
+                                 data-view="upcoming">
+                                <div class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="sr-only">Loading...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="exp-expired" role="tabpanel">
+                            <div id="expired-container" class="expirations-container"
+                                 data-view="expired">
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="exp-abandoned" role="tabpanel">
+                            <div id="abandoned-container" class="expirations-container"
+                                 data-view="abandoned">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

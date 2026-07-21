@@ -167,6 +167,9 @@ from .resources import (
     EditMachineForm,
     CreateMachineForm,
     EditQueueForm,
+    CreateQueueForm,
+    QueueCleanupForm,
+    QueueCleanupCommitForm,
     CreateDiskResourceRootDirectoryForm,
     EditDiskResourceRootDirectoryForm,
 )
@@ -239,6 +242,9 @@ __all__ = [
     'EditMachineForm',
     'CreateMachineForm',
     'EditQueueForm',
+    'CreateQueueForm',
+    'QueueCleanupForm',
+    'QueueCleanupCommitForm',
     'CreateDiskResourceRootDirectoryForm',
     'EditDiskResourceRootDirectoryForm',
     # Organizations

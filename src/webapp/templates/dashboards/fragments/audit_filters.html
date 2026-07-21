@@ -15,11 +15,17 @@
     username      - initial username value
     all_resources - list of available resource names (for the multi-select)
     selected_resources - list of currently selected resource names
+    allowed_facilities - list of facility names the user may filter by
+                         (renders a Facilities multi-select when non-empty;
+                         submitted as ?facilities=, intersected against the
+                         user's scope server-side via apply_facility_scope)
+    selected_facilities - list of currently selected facility names
 #}
 {% macro audit_filters(form_id, fragment_url, target_id,
                        start_date='', end_date='',
                        projcode='', username='',
-                       all_resources=[], selected_resources=[]) %}
+                       all_resources=[], selected_resources=[],
+                       allowed_facilities=[], selected_facilities=[]) %}
 {# Unity NCAR navy panel — same .filter-sidebar tokens as the allocations
    facility filter, so audit filters match the rest of the dashboard. #}
 <form id="{{ form_id }}"
@@ -28,13 +34,22 @@
       hx-swap="innerHTML"
       hx-trigger="submit">
     <div class="filter-sidebar-header">
-        <h2 class="filter-sidebar-title">Filters</h2>
+        <h2 class="filter-sidebar-title">
+            <button class="filter-sidebar-toggle" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
+                    aria-expanded="true" aria-controls="{{ form_id }}-fields">
+                Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
+            </button>
+        </h2>
         {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
            form and re-triggers its htmx submit — no inline onclick. #}
         <a class="filter-sidebar-clear" style="cursor: pointer;"
            data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
     </div>
 
+    {# Collapsed by default on phones (dashboard-init.js strips .show below
+       md). data-no-persist: the responsive default owns the initial state. #}
+    <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
     <div class="d-flex flex-wrap align-items-start gap-3">
 
         <div>
@@ -65,6 +80,21 @@
                    placeholder="username" style="width:160px;">
         </div>
 
+        {% if allowed_facilities %}
+        <div>
+            <label class="form-label"><strong>Facilities</strong></label>
+            <select class="form-control"
+                    name="facilities" multiple size="{{ [allowed_facilities|length, 4]|min }}"
+                    style="width:160px;">
+                {% for facility_name in allowed_facilities %}
+                <option value="{{ facility_name }}"
+                    {% if facility_name in selected_facilities %}selected{% endif %}>{{ facility_name }}</option>
+                {% endfor %}
+            </select>
+            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+        </div>
+        {% endif %}
+
         {% if all_resources %}
         <div>
             <label class="form-label"><strong>Resources</strong></label>
@@ -81,6 +111,7 @@
         {% endif %}
 
         <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
+    </div>
     </div>
 </form>
 {% endmacro %}

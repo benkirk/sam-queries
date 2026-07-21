@@ -1,0 +1,21 @@
+<!-- Audit row-detail modal (shared by Transactions + Adjustments pages).
+     The title text is swapped in via hx-swap-oob from each fragment template
+     so e.g. a transaction row shows "Allocation Transaction Details" and an
+     adjustment row shows "Charge Adjustment Details". -->
+<div class="modal fade" id="auditDetailsModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="auditDetailsModalTitle">Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="auditDetailsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading…</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

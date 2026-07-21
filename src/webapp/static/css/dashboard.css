@@ -106,14 +106,11 @@ body {
     color: var(--ncar-blue);
 }
 
-/* Nav links — mobile: full-width with 1.875rem vertical padding */
+/* Nav links (desktop-only row — mobile navigation is the offcanvas drawer) */
 .navbar .nav-link {
     color: var(--ncar-space-blue);
     font-size: 1rem;
     line-height: 1.5rem;
-    padding-top: 1.875rem;
-    padding-bottom: 1.875rem;
-    padding-left: 1.875rem;
 }
 
 .navbar .nav-link:hover,
@@ -122,11 +119,7 @@ body {
 }
 
 .navbar .nav-item {
-    border-bottom: 1px solid var(--ncar-gray-light);
     list-style: none;
-    justify-content: space-between;
-    width: 100%;
-
 }
 
 /* Mobile toggler */
@@ -159,8 +152,9 @@ body {
     border-top-color: #dee2e6 !important;
 }
 
-.navbar .navbar-collapse {
-    padding: 0.375rem 0;
+.navbar .navbar-wrapper .container-lg {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
 }
 
 /* Desktop — md breakpoint matches navbar-expand-md */
@@ -180,9 +174,94 @@ body {
         padding-right: 1.125rem;
     }
 
-    .navbar .navbar-collapse {
-        padding-left: calc(var(--bs-gutter-x) / 2);
-        padding-right: calc(var(--bs-gutter-x) / 2);
+    /* Unity dropdown styling (ported from Kyle Davis's
+       refactor/app-route-structure prototype): navy panel, white items,
+       sky-blue hover, Font Awesome caret. Applies to both the section
+       dropdowns (row 2) and the user-account dropdown (row 1). */
+    .dropdown-header {
+        border-bottom: 1px solid #000;
+        font-size: 0.875rem;
+        line-height: 1rem;
+        text-transform: uppercase;
+    }
+
+    .navbar .nav-item.dropdown .dropdown-menu {
+        --bs-dropdown-zindex: 1000;
+        --bs-dropdown-min-width: 18.75rem;
+        --bs-dropdown-padding-x: 0;
+        --bs-dropdown-padding-y: 0.5rem;
+        --bs-dropdown-spacer: 0.125rem;
+        --bs-dropdown-font-size: 1rem;
+        --bs-dropdown-color: #011837;
+        --bs-dropdown-bg: #00357a;
+        --bs-dropdown-border-color: var(--bs-border-color-translucent);
+        --bs-dropdown-border-radius: 0;
+        --bs-dropdown-border-width: 0;
+
+        background-color: var(--ncar-navy);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        min-width: 18.75rem;
+        margin: 0;
+        box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        border-radius: 0;
+    }
+
+    .navbar .dropdown-toggle::after {
+        content: '\f107';
+        font-family: 'Font Awesome 6 Free';
+        font-weight: 900;
+        border: 0;
+        font-size: 0.75rem;
+        margin-left: 0.5rem;
+        vertical-align: middle;
+    }
+
+    .navbar .dropdown-toggle[aria-expanded="true"]::after {
+        transform: rotate(180deg);
+    }
+
+    .navbar .nav-item.dropdown .dropdown-item {
+        color: #fff;
+        padding: 0.5rem 1rem;
+        font-weight: 400;
+        line-height: 1.313rem;
+        white-space: normal;
+    }
+
+    .navbar .nav-item.dropdown .dropdown-item:hover,
+    .navbar .nav-item.dropdown .dropdown-item:focus {
+        background-color: transparent;
+        color: var(--ncar-sky);
+    }
+
+    .navbar .nav-item.dropdown .dropdown-item.active {
+        background-color: transparent;
+        color: #fff;
+        font-weight: var(--font-weight-semi-bold);
+    }
+
+    .navbar .nav-item.dropdown .dropdown-item.active:hover,
+    .navbar .nav-item.dropdown .dropdown-item.active:focus {
+        background-color: transparent;
+        color: var(--ncar-sky);
+    }
+
+    /* Split caret button next to each section label. It's a .nav-link for
+       color inheritance but must not pick up the label's active underline. */
+    .navbar .nav-link.nav-caret {
+        border: 0;
+        background: none;
+        padding: 0 0.25rem;
+        cursor: pointer;
+    }
+
+    .navbar .nav-link.nav-caret::after {
+        margin-left: 0;
+    }
+
+    .navbar .nav-link.nav-caret.active {
+        border-bottom: 0;
+        margin-bottom: 0;
     }
 
     .navbar .nav-link {
@@ -203,6 +282,205 @@ body {
     .site-name h1 {
         font-size: var(--font-size-xsm);
         line-height: 1.2rem;
+    }
+}
+
+/* ============================================================================
+   MOBILE NAVIGATION DRAWER (offcanvas, < md)
+   ========================================================================= */
+
+.mobile-nav {
+    width: 85vw;
+    max-width: 20rem;
+}
+
+.mobile-nav .offcanvas-header {
+    background-color: var(--ncar-navy);
+}
+
+.mobile-nav .offcanvas-title {
+    color: #fff;
+    font-size: 1rem;
+}
+
+.mobile-nav .btn-close {
+    filter: invert(1) grayscale(100%) brightness(200%);
+}
+
+.mobile-nav .accordion-button {
+    color: var(--ncar-space-blue);
+    font-weight: var(--font-weight-semi-bold);
+    padding: 0.875rem 1rem;
+}
+
+.mobile-nav .accordion-button:not(.collapsed) {
+    background: none;
+    color: var(--ncar-blue);
+    box-shadow: none;
+}
+
+.mobile-nav .accordion-button:focus {
+    box-shadow: 0 0 0 0.2rem rgba(var(--ncar-blue-rgb), 0.2);
+}
+
+.mobile-nav .mobile-nav-link {
+    display: block;
+    padding: 0.625rem 1rem 0.625rem 1.75rem;
+    color: var(--ncar-space-blue);
+    text-decoration: none;
+}
+
+.mobile-nav .mobile-nav-link:hover,
+.mobile-nav .mobile-nav-link:focus {
+    color: var(--ncar-blue);
+}
+
+.mobile-nav .mobile-nav-link.active {
+    color: var(--ncar-blue);
+    font-weight: var(--font-weight-semi-bold);
+    border-left: 3px solid var(--ncar-blue);
+    background-color: rgba(var(--ncar-blue-rgb), 0.06);
+}
+
+.mobile-nav-footer a {
+    color: var(--ncar-blue);
+}
+
+/* ============================================================================
+   BREADCRUMBS (dashboards/fragments/breadcrumbs.html) — compact, muted trail
+   above the page header. Replaces the old .back-link buttons.
+   ========================================================================= */
+
+.sam-breadcrumbs {
+    margin-bottom: 0.75rem;
+}
+
+.sam-breadcrumbs .breadcrumb {
+    font-size: 0.875rem;
+}
+
+.sam-breadcrumbs .breadcrumb-item a {
+    color: var(--ncar-blue);
+    text-decoration: none;
+}
+
+.sam-breadcrumbs .breadcrumb-item a:hover {
+    text-decoration: underline;
+}
+
+.sam-breadcrumbs .breadcrumb-item.active {
+    color: var(--bs-secondary-color);
+}
+
+/* ============================================================================
+   MOBILE COMPACTION (< md) — this is a data-heavy site; the goal is
+   "better", not mobile perfection. Unity's CTA-scale buttons and desktop
+   heading sizes read comically large on phones; page-header flex rows must
+   be allowed to wrap so action buttons stack under the title.
+   ========================================================================= */
+
+@media (max-width: 767.98px) {
+    .btn {
+        font-size: 1rem;
+        line-height: 1.25rem;
+        padding: 0.5rem 1rem;
+    }
+
+    /* Brand row must actually fit a phone: at the desktop sizes
+       (13rem logo + site name + 1.6rem-padded hamburger) the header row
+       exceeded the viewport and forced document-level horizontal scroll —
+       the root cause of the old "menu opens and the page shifts" bug. */
+    .logo-ncar {
+        width: 9.5rem;
+        flex-shrink: 0;
+    }
+
+    .navbar .site-name {
+        font-size: 0.875rem;
+        line-height: 1.1rem;
+        min-width: 0;
+    }
+
+    .mobile-toggler button {
+        padding: 0.875rem 0.75rem;
+    }
+
+    .main-content h1,
+    .main-content .h1 {
+        font-size: 1.5rem;
+        line-height: 2rem;
+    }
+
+    /* Page headers (h1 + action buttons) wrap instead of squeezing. */
+    .main-content > .d-flex,
+    .main-content .container-fluid > .d-flex {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* Preset button strips (time-range pickers etc.) wrap instead of
+       forcing document-level horizontal scroll. */
+    .main-content .btn-group {
+        flex-wrap: wrap;
+    }
+
+    /* Any utility flex row wraps rather than squeezing or overflowing the
+       viewport: card headers with action buttons ("Search Projects" +
+       "Create Project"), tab-pane toolbars (date picker + Extend/Renew/Add
+       on Manage Project), etc. flex-wrap only engages when the row would
+       otherwise overflow, so fitting rows are untouched. Deliberately broad
+       — the precise per-container list kept growing (see #359's page-header
+       rule above, now one instance of this). Vertical stacks are excluded:
+       wrapping a flex-column makes align-items:stretch size children to
+       fit-content, which lets an inner table blow the card out to its
+       intrinsic width. */
+    .main-content .d-flex:not(.flex-column) {
+        flex-wrap: wrap;
+    }
+
+    .card-header.d-flex {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* Tab strips scroll horizontally by design; fade the right edge as a
+       "more tabs off-screen" affordance. Purely cosmetic — 2.5rem is narrow
+       enough not to obscure a strip that happens to fit exactly. */
+    .nav-tabs {
+        mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+    }
+
+    /* Tap targets: expandable drill-down rows and sortable column headers
+       are finger-hostile at desktop padding. */
+    .expandable-row td {
+        padding-top: 0.625rem;
+        padding-bottom: 0.625rem;
+    }
+
+    .main-content table.table th a {
+        display: inline-block;
+        padding: 0.25rem 0;
+    }
+
+    /* Slightly smaller table type on phones: trades a notch of size for a
+       lot less horizontal scrolling on data-heavy tables. */
+    .main-content .table {
+        font-size: 0.8125rem;
+    }
+}
+
+/* Below lg (phones AND portrait tablets — the widest data tables exceed even
+   an iPad's 820px): any table not already inside a .table-responsive scroller
+   gets its own horizontal scrollbox instead of widening the document. The
+   child-combinator guard leaves deliberately-wrapped tables (allocations
+   summary, admin access-grid with its sticky column) untouched. Known
+   tradeoff of display:block — a table narrower than the screen no longer
+   stretches to full width. */
+@media (max-width: 991.98px) {
+    .main-content :not(.table-responsive) > table.table {
+        display: block;
+        overflow-x: auto;
     }
 }
 
@@ -908,6 +1186,41 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin: 0;
 }
 
+/* Collapsible filter panels: the "Filters" title is a collapse toggle.
+   The toggle is the title only — NOT the whole header row — because the
+   Bootstrap collapse data-api handles clicks in the capture phase, so the
+   sibling "Clear filters" link could never stopPropagation out of a
+   row-level toggle. Chevron tracks aria-expanded, which Bootstrap
+   maintains on the toggle. */
+.filter-sidebar-toggle {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+}
+
+.filter-sidebar-chevron {
+    font-size: 0.75rem;
+    transition: transform 0.2s ease;
+}
+
+.filter-sidebar-toggle[aria-expanded="false"] .filter-sidebar-chevron {
+    transform: rotate(-90deg);
+}
+
+/* Collapsed panel: drop the divider and reclaim the header's bottom
+   margin so the closed state reads as a tidy title bar rather than an
+   empty box. (During the .collapsing animation neither state matches —
+   the margin snaps when the transition ends, which reads fine.) */
+.filter-sidebar-header:has(+ .collapse:not(.show)) {
+    border-bottom: none;
+    margin-bottom: -0.75rem;
+}
+
 .filter-sidebar-clear {
     color: #fff;
     font-size: 0.875rem;
@@ -942,6 +1255,22 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .filter-sidebar input::placeholder {
     color: var(--ncar-gray);
+}
+
+/* On phones the horizontal filter rows wrap into a ragged multi-column mess:
+   stack every field full-width instead. !important is required to beat the
+   inline style="width:###px" attributes that size the fields on desktop
+   (audit_filters.html, allocations/projects.html, admin/projects.html). */
+@media (max-width: 575.98px) {
+    .filter-sidebar .d-flex.flex-wrap > div {
+        width: 100%;
+    }
+
+    .filter-sidebar input.form-control,
+    .filter-sidebar select.form-control,
+    .filter-sidebar select.form-select {
+        width: 100% !important;
+    }
 }
 
 /* ============================================================================

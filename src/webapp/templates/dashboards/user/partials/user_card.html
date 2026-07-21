@@ -134,11 +134,10 @@
                     {% if active_projects %}
                         {% for project in active_projects %}
                         {% if is_admin %}
-                        <a href="#"
-                           class="badge bg-primary text-decoration-none me-1 mb-1"
-                           hx-get="{{ url_for('admin_dashboard.project_card', projcode=project.projcode) }}"
-                           hx-target="#projectCardContainer"
-                           hx-swap="innerHTML">
+                        {# Real link to the admin Projects page — its
+                           ?projcode= rehydration auto-loads the card. #}
+                        <a href="{{ url_for('admin_dashboard.projects', projcode=project.projcode) }}"
+                           class="badge bg-primary text-decoration-none me-1 mb-1">
                             {{ project.projcode }}
                         </a>
                         {% else %}
@@ -316,7 +315,7 @@
 
 {# Group-members modal — populated by user_dashboard.htmx_group_members #}
 <div class="modal fade" id="groupMembersModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
         <div class="modal-content" id="groupMembersContainer">
             <div class="modal-body text-center py-4">
                 <div class="spinner-border text-primary" role="status">

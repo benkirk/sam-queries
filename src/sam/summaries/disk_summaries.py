@@ -39,7 +39,7 @@ class DiskChargeSummary(Base):
         Index('idx_disk_charge_summary_date', 'activity_date'),
         Index('idx_disk_charge_summary_user_id', 'user_id'),
         Index('idx_disk_charge_summary_account_id', 'account_id'),
-        Index('idx_disk_charge_summary_directory_id', 'directory_id'),
+        Index('idx_dcs_directory', 'directory_id'),
     )
 
     disk_charge_summary_id = Column(Integer, primary_key=True, autoincrement=True)

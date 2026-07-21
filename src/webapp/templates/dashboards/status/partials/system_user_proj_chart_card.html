@@ -10,12 +10,11 @@
    legend labels rather than clickable anchors.
 
    Picker is a 7-button strip in the card header. Each button is a
-   plain link back to the landing page with ?hours=N. The existing
-   `selected_hours` passthrough on index() picks that up; tab
-   persistence (nav-view-persistence.js) keeps the viewer on this
-   tab across reloads. The chart endpoint is HTMX-fetched on card
-   load with the resolved `chart_hours` so initial render matches the
-   active picker preset.
+   plain link back to this system's status page with ?hours=N. The
+   existing `selected_hours` passthrough on the page route picks that
+   up. The chart endpoint is HTMX-fetched on card load with the
+   resolved `chart_hours` so initial render matches the active picker
+   preset.
 
    Gated on authentication: the chart fragment route is @login_required, so
    for anonymous viewers the hx-trigger="load" fetch would 401 and the
@@ -31,7 +30,7 @@
         </h6>
         <div class="btn-group btn-group-sm" role="group" aria-label="Time range">
             {% for label, h in [('6h', 6), ('12h', 12), ('1d', 24), ('3d', 72), ('7d', 168), ('14d', 336), ('30d', 720)] %}
-            <a href="{{ url_for('status_dashboard.index', hours=h) }}"
+            <a href="{{ url_for('status_dashboard.' ~ _chart_system, hours=h) }}"
                class="btn {% if chart_hours == h %}btn-secondary active{% else %}btn-outline-secondary{% endif %}"
                data-scroll-preserve>{{ label }}</a>
             {% endfor %}

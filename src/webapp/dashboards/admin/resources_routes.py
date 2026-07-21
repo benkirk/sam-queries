@@ -22,7 +22,8 @@ from sam.manage import management_transaction
 from sam.schemas.forms.resources import (
     EditResourceForm, CreateResourceForm, EditFacilityResourceForm,
     EditResourceTypeForm, CreateResourceTypeForm,
-    EditMachineForm, CreateMachineForm, EditQueueForm,
+    EditMachineForm, CreateMachineForm, EditQueueForm, CreateQueueForm,
+    QueueCleanupForm, QueueCleanupCommitForm,
     CreateDiskResourceRootDirectoryForm, EditDiskResourceRootDirectoryForm,
 )
 
@@ -30,6 +31,26 @@ from .blueprint import bp
 
 
 _RESOURCES_TRIGGERS = {'closeActiveModal': {}, 'reloadResourcesCard': {}}
+
+
+def _invalidate_queue_api_cache():
+    """Drop the memoized GET /api/v1/queue payloads.
+
+    The systems-integration tooling polls that endpoint for per-queue wallclock
+    limits, and it is memoized (see webapp/api/v1/queue.py). Without this,
+    editing or expiring a queue here leaves consumers on stale data until
+    someone POSTs /api/v1/queue/refresh by hand. Mirrors that route's body.
+    """
+    from webapp.extensions import cache
+    from webapp.caching import caching
+    from webapp.api.v1.queue import (
+        get_queues, get_queues_for_resource, _queue_data,
+    )
+
+    cache.delete_memoized(get_queues)
+    cache.delete_memoized(get_queues_for_resource)
+    cache.delete_memoized(_queue_data)
+    caching.clear('flask')
 
 
 def _active_resources():
@@ -517,6 +538,55 @@ def htmx_machine_delete(machine_id):
     return ''
 
 
+# ── Queue Create ───────────────────────────────────────────────────────────
+
+
+@bp.route('/htmx/queue-create-form')
+@login_required
+@require_permission(Permission.CREATE_RESOURCES)
+def htmx_queue_create_form():
+    """Return the queue create form fragment (loaded into modal)."""
+    return render_template(
+        'dashboards/admin/fragments/create_queue_form_htmx.html',
+        resources=_active_resources(),
+    )
+
+
+@bp.route('/htmx/queue-create', methods=['POST'])
+@login_required
+@require_permission(Permission.CREATE_RESOURCES)
+def htmx_queue_create():
+    """Create a new queue (plus its companion queue_factor row)."""
+    from sam.resources.machines import Queue
+    from sam.resources.resources import Resource
+
+    attempted = {}
+
+    def _create(data):
+        # FK existence check lives here — schemas don't touch the DB.
+        if not db.session.get(Resource, data['resource_id']):
+            raise ValueError('Selected resource does not exist.')
+        attempted['yes'] = True
+        return Queue.create(db.session, **data)
+
+    response = handle_htmx_form_post(
+        schema_cls=CreateQueueForm,
+        template='dashboards/admin/fragments/create_queue_form_htmx.html',
+        success_triggers=_RESOURCES_TRIGGERS,
+        error_prefix='Error creating queue',
+        context_fn=lambda: {'resources': _active_resources()},
+        do_action=_create,
+    )
+
+    # After the helper's transaction has committed, never inside it — clearing
+    # early lets a concurrent read re-cache the pre-insert payload. A clear on a
+    # failed commit is harmless (just a cold cache), so the flag is enough.
+    if attempted:
+        _invalidate_queue_api_cache()
+
+    return response
+
+
 # ── Queue Edit ─────────────────────────────────────────────────────────────
 
 
@@ -584,6 +654,7 @@ def htmx_queue_edit(queue_id):
             form=request.form,
         )
 
+    _invalidate_queue_api_cache()
     return htmx_success_message(_RESOURCES_TRIGGERS, 'Saved successfully.')
 
 
@@ -607,7 +678,190 @@ def htmx_queue_delete(queue_id):
     except Exception as e:
         return f'<div class="alert alert-danger">Error: {e}</div>', 500
 
+    _invalidate_queue_api_cache()
     return ''
+
+
+# ── Queue Cleanup ──────────────────────────────────────────────────────────
+#
+# Three-step form → preview → commit, mirroring the project-directory bulk
+# deactivation in projects_routes.py. One deliberate difference: the commit
+# step acts on the admin's edited checkbox selection rather than re-running
+# the query, so unticking a queue in the preview actually spares it.
+
+
+def _cleanup_context(resource_id):
+    """Resolve the resource for the cleanup modal, or None if it's gone."""
+    from sam.resources.resources import Resource
+    return db.session.get(Resource, resource_id)
+
+
+def _annotate_pbs_activity(candidates, resource, days):
+    """Cross-check SAM cleanup candidates against system_status PBS snapshots.
+
+    SAM charging data is blind to routing queues and charging-exempt work,
+    so a queue can look dead while PBS is actively serving it. Two status
+    signals fill that gap, both matched by queue name against the system
+    derived from the resource ('Derecho GPU' → 'derecho'):
+
+    * ``queue_status`` — a queue appears there only while jobs sit in it,
+      giving "last held jobs at tick X".
+    * ``queues.last_defined_at`` — stamped from the collectors' qstat -Q
+      roster; covers routing queues that drain instantly and idle-but-live
+      execution queues.
+
+    Annotate-only, never drops rows: a queue seen in PBS within the window
+    is un-preselected (and badged in the template), but the admin can still
+    tick it deliberately. Absence of status data changes nothing — old
+    resources without snapshot coverage behave exactly as before.
+
+    Returns True when any status data existed for the system (template
+    hides the PBS column entirely otherwise).
+    """
+    from datetime import timedelta
+    from system_status.queries import get_queue_last_seen, get_queue_definitions
+    from system_status.timeutil import utcnow_naive
+
+    system_name = resource.resource_name.split()[0].lower()
+    try:
+        last_seen = get_queue_last_seen(db.session, system_name)
+        defined = get_queue_definitions(db.session, system_name)
+    except Exception:
+        last_seen, defined = {}, {}     # status DB unavailable → SAM-only view
+
+    cutoff = utcnow_naive() - timedelta(days=days)
+    for c in candidates:
+        name = c['queue'].queue_name
+        d = defined.get(name)
+        c['last_seen_pbs'] = last_seen.get(name)
+        c['pbs_queue_type'] = d['queue_type'] if d else None
+        c['defined_in_pbs'] = d is not None and d['last_defined_at'] >= cutoff
+        c['active_in_pbs'] = (c['last_seen_pbs'] is not None
+                              and c['last_seen_pbs'] >= cutoff)
+        if c['active_in_pbs'] or c['defined_in_pbs']:
+            c['preselected'] = False    # never pre-check a queue PBS still knows
+
+    return bool(last_seen) or bool(defined)
+
+
+@bp.route('/htmx/queue-cleanup-form/<int:resource_id>')
+@login_required
+@require_permission(Permission.DELETE_RESOURCES)
+def htmx_queue_cleanup_form(resource_id):
+    """Step 1: ask for the inactivity window."""
+    resource = _cleanup_context(resource_id)
+    if not resource:
+        return htmx_not_found('Resource')
+
+    return render_template(
+        'dashboards/admin/fragments/queue_cleanup_form_htmx.html',
+        resource=resource,
+    )
+
+
+@bp.route('/htmx/queue-cleanup-preview/<int:resource_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.DELETE_RESOURCES)
+def htmx_queue_cleanup_preview(resource_id):
+    """Step 2: list unused queues with editable checkboxes."""
+    from marshmallow import ValidationError
+    from sam.queries.queue_access import get_queue_cleanup_candidates
+
+    resource = _cleanup_context(resource_id)
+    if not resource:
+        return htmx_not_found('Resource')
+
+    try:
+        form_data = QueueCleanupForm().load(request.form)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/admin/fragments/queue_cleanup_form_htmx.html',
+            resource=resource,
+            errors=QueueCleanupForm.flatten_errors(e.messages),
+            form=request.form,
+        )
+
+    candidates = get_queue_cleanup_candidates(
+        db.session, resource_id, days=form_data['days']
+    )
+    pbs_data_available = _annotate_pbs_activity(candidates, resource, form_data['days'])
+    return render_template(
+        'dashboards/admin/fragments/queue_cleanup_preview_htmx.html',
+        resource=resource,
+        days=form_data['days'],
+        candidates=candidates,
+        pbs_data_available=pbs_data_available,
+    )
+
+
+@bp.route('/htmx/queue-cleanup/<int:resource_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.DELETE_RESOURCES)
+def htmx_queue_cleanup(resource_id):
+    """Step 3: expire the selected queues."""
+    from marshmallow import ValidationError
+    from sam.queries.queue_access import get_queue_cleanup_candidates
+
+    resource = _cleanup_context(resource_id)
+    if not resource:
+        return htmx_not_found('Resource')
+
+    # queue_ids arrives as repeated fields; request.form is a MultiDict, from
+    # which the List field would otherwise read only the first value.
+    data = {**request.form.to_dict(), 'queue_ids': request.form.getlist('queue_ids')}
+    try:
+        form_data = QueueCleanupCommitForm().load(data)
+    except ValidationError as e:
+        return render_template(
+            'dashboards/admin/fragments/queue_cleanup_form_htmx.html',
+            resource=resource,
+            errors=QueueCleanupCommitForm.flatten_errors(e.messages),
+            form=request.form,
+        )
+
+    days = form_data['days']
+    candidates = get_queue_cleanup_candidates(db.session, resource_id, days=days)
+    # Annotate for the error-path re-renders below; PBS activity never
+    # disqualifies a candidate, so the admin's selection remains valid.
+    pbs_data_available = _annotate_pbs_activity(candidates, resource, days)
+
+    # Honour the admin's selection, but only over queues that are still
+    # candidates — a submitted id that no longer qualifies (or never did) is
+    # dropped rather than trusted.
+    selected_ids = set(form_data['queue_ids'])
+    by_id = {c['queue'].queue_id: c['queue'] for c in candidates}
+    to_expire = [by_id[qid] for qid in sorted(selected_ids) if qid in by_id]
+
+    if not to_expire:
+        return render_template(
+            'dashboards/admin/fragments/queue_cleanup_preview_htmx.html',
+            resource=resource,
+            days=days,
+            candidates=candidates,
+            pbs_data_available=pbs_data_available,
+            errors=['No queues selected — nothing to do.'],
+        )
+
+    try:
+        with management_transaction(db.session):
+            for queue in to_expire:
+                queue.update(end_date=datetime.now())
+    except Exception as e:
+        return render_template(
+            'dashboards/admin/fragments/queue_cleanup_preview_htmx.html',
+            resource=resource,
+            days=days,
+            candidates=candidates,
+            pbs_data_available=pbs_data_available,
+            errors=[f'Error expiring queues: {e}'],
+        )
+
+    _invalidate_queue_api_cache()
+    n = len(to_expire)
+    return htmx_success_message(
+        _RESOURCES_TRIGGERS,
+        f'Expired {n} queue{"s" if n != 1 else ""} on {resource.resource_name}.',
+    )
 
 
 # ── Search helpers ─────────────────────────────────────────────────────────

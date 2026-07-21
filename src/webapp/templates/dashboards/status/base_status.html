@@ -1,6 +1,14 @@
-{% extends 'dashboards/base.html' %}
+{#
+  Shared layout for the system status pages
+  (/status/derecho, /status/casper, /status/jupyterhub,
+   /status/reservations, /status/filesystem-scans).
 
-{% block title %}System Status Dashboard{% endblock %}
+  Provides the header, active-outage banner, and routable tab strip;
+  each page fills {% block status_content %}. Context comes from the
+  blueprint's _page_context() helper.
+#}
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/fragments/page_tabs.html' import page_tabs %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/status.css') }}">
@@ -99,61 +107,21 @@
 </div>
 {% endif %}
 
-<!-- Tab Navigation -->
-<ul class="nav nav-tabs mb-4" id="statusTabs" role="tablist">
-    <li class="nav-item">
-        <a class="nav-link active" id="derecho-tab" data-bs-toggle="tab" href="#derecho" role="tab">
-            <i class="fas fa-server"></i> Derecho
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" id="casper-tab" data-bs-toggle="tab" href="#casper" role="tab">
-            <i class="fas fa-hdd"></i> Casper
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" id="jupyterhub-tab" data-bs-toggle="tab" href="#jupyterhub" role="tab">
-            <i class="fas fa-book"></i> JupyterHub
-        </a>
-    </li>
-    {% if reservations or google_calendar_embed_url %}
-    <li class="nav-item">
-        <a class="nav-link" id="reservations-tab" data-bs-toggle="tab" href="#reservations" role="tab">
-            <i class="fas fa-calendar-alt"></i> Reservations{% if reservations %} ({{ reservations|length }}){% endif %}
-        </a>
-    </li>
-    {% endif %}
-    {% if fs_scan_resources and has_permission(Permission.VIEW_ALL_FILESYSTEM_DATA) %}
-    <li class="nav-item">
-        <a class="nav-link" id="filesystem-scans-tab" data-bs-toggle="tab" href="#filesystem-scans" role="tab">
-            <i class="fas fa-magnifying-glass-chart"></i> Filesystem Scans
-        </a>
-    </li>
-    {% endif %}
-</ul>
+{% set reservations_label = 'Reservations ({})'.format(reservations|length) if reservations else 'Reservations' %}
+{{ page_tabs([
+    {'endpoint': 'status_dashboard.derecho',    'label': 'Derecho',    'icon': 'fas fa-server'},
+    {'endpoint': 'status_dashboard.casper',     'label': 'Casper',     'icon': 'fas fa-hdd'},
+    {'endpoint': 'status_dashboard.jupyterhub', 'label': 'JupyterHub', 'icon': 'fas fa-book'},
+    {'endpoint': 'status_dashboard.reservations',
+     'label': reservations_label,
+     'icon': 'fas fa-calendar-alt',
+     'visible': true if (reservations or google_calendar_embed_url) else false},
+    {'endpoint': 'status_dashboard.filesystem_scans', 'label': 'Filesystem Scans',
+     'icon': 'fas fa-magnifying-glass-chart',
+     'visible': true if (fs_scan_resources and has_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)) else false},
+], class='mb-4') }}
 
-<!-- Tab Content -->
-<div class="tab-content" id="statusTabContent">
-    <div class="tab-pane fade show active" id="derecho" role="tabpanel">
-        {% include 'dashboards/status/derecho.html' %}
-    </div>
-    <div class="tab-pane fade" id="casper" role="tabpanel">
-        {% include 'dashboards/status/casper.html' %}
-    </div>
-    <div class="tab-pane fade" id="jupyterhub" role="tabpanel">
-        {% include 'dashboards/status/jupyterhub.html' %}
-    </div>
-    {% if reservations or google_calendar_embed_url %}
-    <div class="tab-pane fade" id="reservations" role="tabpanel">
-        {% include 'dashboards/status/fragments/reservations.html' %}
-    </div>
-    {% endif %}
-    {% if fs_scan_resources and has_permission(Permission.VIEW_ALL_FILESYSTEM_DATA) %}
-    <div class="tab-pane fade" id="filesystem-scans" role="tabpanel">
-        {% include 'dashboards/status/partials/filesystem_scans.html' %}
-    </div>
-    {% endif %}
-</div>
+{% block status_content %}{% endblock %}
 
 {% if has_permission(Permission.EDIT_SYSTEM_STATUS) %}
     {% include 'dashboards/status/fragments/outage_modals.html' %}
@@ -164,7 +132,4 @@
 {% include 'dashboards/user/fragments/user_details_modal.html' %}
 {% include 'dashboards/shared/project_details_modal.html' %}
 
-{% endblock %}
-
-{% block extra_js %}
 {% endblock %}

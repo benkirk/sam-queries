@@ -1,8 +1,11 @@
-"""Factories for core domain entities: User, Organization."""
+"""Factories for core domain entities: User, Organization, GidAllocation,
+AdhocGroup, MnemonicCode."""
 import os
+import string
 from typing import Optional
 
-from sam.core.organizations import Organization
+from sam.core.groups import AdhocGroup, GidAllocation
+from sam.core.organizations import MnemonicCode, Organization
 from sam.core.users import User
 
 from ._seq import next_int, next_seq
@@ -79,3 +82,101 @@ def make_user(
     session.add(user)
     session.flush()
     return user
+
+
+# gid_allocation blocks must not overlap each other. Each xdist worker
+# gets a disjoint 1M-wide slice of the GID number-line, well above any
+# range a production block could plausibly occupy.
+_GID_BLOCK_BASE = 90_000_000
+_GID_BLOCK_PER_WORKER = 1_000_000
+_GID_BLOCK_DEFAULT_SIZE = 1_000
+_GID_BLOCK_WORKER_BASE = _GID_BLOCK_BASE + _WORKER_NUM * _GID_BLOCK_PER_WORKER
+
+
+def make_gid_allocation(
+    session,
+    *,
+    size: int = _GID_BLOCK_DEFAULT_SIZE,
+    start_gid: Optional[int] = None,
+    next_gid: Optional[int] = None,
+    end_gid: Optional[int] = None,
+) -> GidAllocation:
+    """Build and flush a fresh gid_allocation row.
+
+    Carves out a worker-namespaced GID block. By default the block is
+    pristine (``next_gid IS NULL``). Pass ``next_gid`` to start partway
+    through the block, or ``end_gid`` to override the computed end.
+    """
+    if start_gid is None:
+        # Each call gets a fresh, non-overlapping `size`-wide slot.
+        slot = next_int("gid_block_slot")
+        start_gid = _GID_BLOCK_WORKER_BASE + slot * size
+    if end_gid is None:
+        end_gid = start_gid + size - 1
+
+    block = GidAllocation(
+        start_gid=start_gid,
+        next_gid=next_gid,
+        end_gid=end_gid,
+    )
+    session.add(block)
+    session.flush()
+    return block
+
+
+def make_mnemonic_code(
+    session,
+    *,
+    code: Optional[str] = None,
+    description: Optional[str] = None,
+    active: bool = True,
+) -> MnemonicCode:
+    """Build and flush a fresh MnemonicCode row.
+
+    ``code`` is a UNIQUE 3-char column, too short for the usual
+    worker-namespaced ``next_seq`` strings. Generated codes are
+    ``Q<base36 worker><base36 counter>`` — one char each, so the code
+    stays exactly 3 chars for any xdist worker up to gw35. The leading
+    ``Q`` + digit-bearing base36 positions keep generated codes disjoint
+    from real (all-alpha, meaningful) snapshot mnemonics.
+    """
+    if code is None:
+        alphabet = string.digits + string.ascii_uppercase
+        n = next_int("mnemonic_code")
+        if n >= len(alphabet) or _WORKER_NUM >= len(alphabet):
+            raise RuntimeError("make_mnemonic_code exhausted its 36x36 namespace")
+        code = f"Q{alphabet[_WORKER_NUM]}{alphabet[n]}"
+    if description is None:
+        description = f"Test mnemonic {next_seq('mnemo_desc')}"
+
+    mnemo = MnemonicCode(code=code, description=description, active=active)
+    session.add(mnemo)
+    session.flush()
+    return mnemo
+
+
+# adhoc_group.unix_gid is UNIQUE; real snapshot GIDs top out well below
+# 100k, and make_gid_allocation blocks live in their own range — carve a
+# separate worker-namespaced range for standalone group rows.
+_ADHOC_GID_BASE = 900_000
+_ADHOC_GID_PER_WORKER = 10_000
+
+
+def make_adhoc_group(
+    session,
+    *,
+    group_name: Optional[str] = None,
+    unix_gid: Optional[int] = None,
+    active: bool = True,
+) -> AdhocGroup:
+    """Build and flush a fresh AdhocGroup row (worker-namespaced name/gid)."""
+    if group_name is None:
+        group_name = next_seq("grp")
+    if unix_gid is None:
+        unix_gid = (_ADHOC_GID_BASE + _WORKER_NUM * _ADHOC_GID_PER_WORKER
+                    + next_int("adhoc_gid"))
+
+    group = AdhocGroup(group_name=group_name, unix_gid=unix_gid, active=active)
+    session.add(group)
+    session.flush()
+    return group

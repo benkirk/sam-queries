@@ -15,10 +15,13 @@
     '#createProjectFormContainer',
     'Create Project',
     submit_icon='folder-plus',
-    disabled=not feature_flags.create_projects_enabled
+    errors=errors,
+    disabled=not feature_flags.create_projects_enabled,
+    submit_disabled=gid_pool_badge.disable_submit,
+    submit_disabled_title='Add a new gid_allocation block to enable project creation.'
 ) %}
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-6" id="createProjectParentWrap">
                 {{ fk_search_field('parent_id', 'Parent Project',
                                    search_url=url_for('admin_dashboard.htmx_project_search_for_parent'),
                                    optional_text='(optional — makes this a sub-project)',
@@ -29,72 +32,17 @@
             </div>
         </div>
 
-        {# Cascading facility/panel/alloc-type selects kept inline — dynamic dependent
-           options with conditional descriptions don't fit the generic select macro. #}
-        <div class="row g-2 mb-3">
-            <div class="col-md-4">
-                <label for="createProjectFacility" class="form-label fw-semibold">
-                    Facility <span class="text-danger">*</span>
-                </label>
-                <select class="form-select form-select-sm" id="createProjectFacility"
-                        name="facility_id" required
-                        hx-get="{{ url_for('admin_dashboard.htmx_panels_for_facility') }}"
-                        hx-target="#createProjectPanel"
-                        hx-swap="innerHTML"
-                        hx-trigger="change"
-                        hx-include="#createProjectFacility">
-                    <option value="">— Select —</option>
-                    {% for facility in facilities %}
-                    <option value="{{ facility.facility_id }}"
-                        {% if form and form.get('facility_id') == facility.facility_id|string %}selected{% endif %}>
-                        {{ facility.facility_name }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label for="createProjectPanel" class="form-label fw-semibold">
-                    Panel <span class="text-danger">*</span>
-                </label>
-                <select class="form-select form-select-sm" id="createProjectPanel"
-                        name="panel_id" required
-                        hx-get="{{ url_for('admin_dashboard.htmx_alloc_types_for_panel') }}"
-                        hx-target="#createProjectAllocType"
-                        hx-swap="innerHTML"
-                        hx-trigger="change"
-                        hx-include="#createProjectPanel">
-                    {% if panels_for_facility %}
-                        <option value="">— Select —</option>
-                        {% for panel in panels_for_facility %}
-                        <option value="{{ panel.panel_id }}"
-                            {% if form and form.get('panel_id') == panel.panel_id|string %}selected{% endif %}>
-                            {{ panel.panel_name }}{% if panel.description %} — {{ panel.description }}{% endif %}
-                        </option>
-                        {% endfor %}
-                    {% else %}
-                        <option value="">— Select facility first —</option>
-                    {% endif %}
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label for="createProjectAllocType" class="form-label">
-                    Allocation Type <span class="text-muted">(optional)</span>
-                </label>
-                <select class="form-select form-select-sm" id="createProjectAllocType"
-                        name="allocation_type_id">
-                    {% if alloc_types_for_panel %}
-                        <option value="">— None —</option>
-                        {% for at in alloc_types_for_panel %}
-                        <option value="{{ at.allocation_type_id }}"
-                            {% if form and form.get('allocation_type_id') == at.allocation_type_id|string %}selected{% endif %}>
-                            {{ at.allocation_type }}
-                        </option>
-                        {% endfor %}
-                    {% else %}
-                        <option value="">— Select panel first —</option>
-                    {% endif %}
-                </select>
-            </div>
+        {# Facility/Panel/AllocType cascade lives in a shared fragment so
+           htmx_project_parent_prefill can re-render it with the selected
+           parent's values (derived from parent.allocation_type). 204 when
+           the parent has nothing to derive -> row left untouched. #}
+        <div id="createProjectCascadeRow"
+             hx-get="{{ url_for('admin_dashboard.htmx_project_parent_prefill') }}"
+             hx-target="this"
+             hx-swap="innerHTML"
+             hx-trigger="fk:selected from:#createProjectParentWrap"
+             hx-include="#createProjectParent_id">
+            {% include 'dashboards/admin/fragments/create_project_cascade_row_htmx.html' %}
         </div>
 
         {# Project code mode toggle + auto/manual sections — bespoke UI, kept inline. #}
@@ -125,10 +73,11 @@
                     <div class="col-12">
                         <select class="form-select form-select-sm" id="projcodeMnemonic"
                                 name="mnemonic_code_id"
-                                hx-get="{{ url_for('admin_dashboard.htmx_project_next_projcode') }}"
+                                hx-get="{{ url_for('admin_dashboard.htmx_projcode_preview') }}"
                                 hx-target="#projcodePreview"
                                 hx-swap="innerHTML"
                                 hx-trigger="change"
+                                hx-vals='{"projcode_mode": "auto"}'
                                 hx-include="#createProjectFacility, #projcodeMnemonic">
                             <option value="">— Mnemonic —</option>
                             {% for mnemo in mnemonics %}
@@ -140,16 +89,6 @@
                         </select>
                     </div>
                 </div>
-                <div class="mt-2">
-                    <span class="text-muted small me-1">Next code:</span>
-                    <span id="projcodePreview" class="badge bg-secondary font-monospace">
-                        {% if form and form.get('projcode_mode', 'auto') == 'auto' %}
-                            {{ form.get('projcode', '—') }}
-                        {% else %}
-                            —
-                        {% endif %}
-                    </span>
-                </div>
             </div>
 
             <div id="projcodeManualSection" style="display:none;">
@@ -158,7 +97,24 @@
                        placeholder="e.g. UCSD0042"
                        maxlength="30"
                        data-action-input="projcode-manual-sync"
+                       hx-get="{{ url_for('admin_dashboard.htmx_projcode_preview') }}"
+                       hx-target="#projcodePreview"
+                       hx-swap="innerHTML"
+                       hx-trigger="input changed delay:400ms"
+                       hx-vals='{"projcode_mode": "manual"}'
+                       hx-include="#projcodeHidden"
                        value="{{ form.get('projcode', '') if form and form.get('projcode_mode') == 'manual' else '' }}">
+            </div>
+
+            {# Shared preview/availability line — served by
+               htmx_projcode_preview for BOTH modes. #}
+            <div class="mt-2">
+                <span class="text-muted small me-1">Code:</span>
+                <span id="projcodePreview">
+                    <span class="badge bg-secondary font-monospace" id="projcodePreviewCode">
+                        {{ form.get('projcode') or '—' if form else '—' }}
+                    </span>
+                </span>
             </div>
 
             <input type="hidden" name="projcode" id="projcodeHidden"
@@ -177,7 +133,7 @@
                           id='createProjectAbstract') }}
 
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-6" id="createProjectLeadWrap">
                 {{ fk_search_field('project_lead_user_id', 'Project Lead',
                                    search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
                                    required=True,
@@ -186,6 +142,14 @@
                                    search_class='form-control form-control-sm',
                                    label_class='form-label fw-semibold',
                                    id_prefix='createProjectLead') }}
+                {# Lead-context hint: org/institution + mnemonic suggestion.
+                   fk-picker.js fires fk:selected / fk:cleared on the picker. #}
+                <div id="createProjectLeadHint"
+                     hx-get="{{ url_for('admin_dashboard.htmx_project_lead_hint') }}"
+                     hx-target="this"
+                     hx-swap="innerHTML"
+                     hx-trigger="fk:selected from:#createProjectLeadWrap, fk:cleared from:#createProjectLeadWrap"
+                     hx-include="#createProjectLead_id"></div>
             </div>
             <div class="col-md-6">
                 {{ fk_search_field('project_admin_user_id', 'Project Admin',
@@ -226,21 +190,39 @@
         </div>
 
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-6" id="createProjectOrgWrap">
                 {{ fk_search_field('organization_id', 'Organization',
                                    search_url=url_for('admin_dashboard.htmx_org_search_for_project'),
                                    placeholder='Search by name or acronym…',
                                    badge_class='bg-info text-dark py-1 px-2',
                                    search_class='form-control form-control-sm',
                                    id_prefix='createProjectOrg') }}
+                {# Org-context hint: suggest the picked org's soft-linked
+                   mnemonic (silent when it's already selected). Fires on
+                   search-result picks AND the lead hint's "use as
+                   Organization" button (apply-org dispatches fk:selected). #}
+                <div id="createProjectOrgHint"
+                     hx-get="{{ url_for('admin_dashboard.htmx_project_org_hint') }}"
+                     hx-target="this"
+                     hx-swap="innerHTML"
+                     hx-trigger="fk:selected from:#createProjectOrgWrap, fk:cleared from:#createProjectOrgWrap"
+                     hx-include="#createProjectOrg_id, #projcodeMnemonic"></div>
             </div>
         </div>
 
         <div class="row">
             <div class="col-md-4">
-                {{ number_field('unix_gid', 'Unix GID',
-                                min=1,
-                                id='createProjectUnixGid') }}
+                <label class="form-label fw-semibold">Unix GID</label>
+                <div>
+                    <span class="badge {{ gid_pool_badge.css_class }}"
+                          id="createProjectGidPoolBadge">
+                        <i class="fas {{ gid_pool_badge.icon }}"></i>
+                        {{ gid_pool_badge.label }}
+                    </span>
+                </div>
+                <div class="form-text">
+                    Auto-assigned from the GID pool when the project is created.
+                </div>
             </div>
             <div class="col-md-4">
                 {{ text_field('ext_alias', 'External Alias',

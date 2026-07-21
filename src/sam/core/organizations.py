@@ -159,6 +159,8 @@ class UserOrganization(Base, TimestampMixin, DateRangeMixin):
     user_organization_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     organization_id = Column(Integer, ForeignKey('organization.organization_id'), nullable=False)
+    idms_unique_name = Column(String(64))
+    idms_sync_token = Column(String(64))
 
     user = relationship('User', back_populates='organizations')
     organization = relationship('Organization', back_populates='users')
@@ -198,7 +200,7 @@ class Institution(Base, TimestampMixin, SessionMixin):
                 else hash(id(self)))
 
     institution_id = Column(Integer, primary_key=True, autoincrement=False)
-    name = Column(String(80), nullable=False)
+    name = Column(String(128))
     acronym = Column(String(40), nullable=False)
     deleted = Column(Boolean)
     nsf_org_code = Column(String(200))
@@ -406,6 +408,7 @@ class UserInstitution(Base, TimestampMixin, DateRangeMixin):
     user_institution_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     institution_id = Column(Integer, ForeignKey('institution.institution_id'), nullable=False)
+    idms_sync_token = Column(String(64))
 
     user = relationship('User', back_populates='institutions')
     institution = relationship('Institution', back_populates='users')
@@ -432,7 +435,7 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         Index('mnemonic_code_description_uk', 'description', unique=True),
     )
 
-    mnemonic_code_id = Column(Integer, primary_key=True, autoincrement=False)
+    mnemonic_code_id = Column(Integer, primary_key=True, autoincrement=True)
     code = Column(String(3), nullable=False)
     description = Column(String(200), nullable=False)
 
@@ -444,9 +447,13 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
         Intended as the single fetch for bulk resolution — call once, then
         pass the result to ``resolve_for_institution`` / ``resolve_for_org``.
+
+        Keys are casefolded: the soft-link descriptions were hand-entered
+        over decades and drift in capitalization from the org/institution
+        names they mirror ("High-end" vs "High-End").
         """
         return {
-            mc.description: mc.code
+            mc.description.casefold(): mc.code
             for mc in session.query(cls).filter(cls.is_active).all()
         }
 
@@ -465,10 +472,10 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             3-letter mnemonic string, or None if no match.
         """
         if inst.city:
-            result = lookup.get(f"{inst.name}, {inst.city}")
+            result = lookup.get(f"{inst.name}, {inst.city}".casefold())
             if result:
                 return result
-        return lookup.get(inst.name)
+        return lookup.get((inst.name or '').casefold())
 
     @staticmethod
     def resolve_for_organization(org, lookup: dict) -> str | None:
@@ -483,7 +490,7 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
         Returns:
             3-letter mnemonic string, or None if no match.
         """
-        return lookup.get(org.name)
+        return lookup.get((org.name or '').casefold())
 
     @classmethod
     def create(cls, session, *, code: str, description: str) -> 'MnemonicCode':
@@ -501,12 +508,9 @@ class MnemonicCode(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
             ValueError: if code is not exactly 3 uppercase letters.
         """
         import re
-        from sqlalchemy import func
         if not re.fullmatch(r'[A-Z]{3}', code):
             raise ValueError(f"Code must be exactly 3 uppercase letters, got: {code!r}")
-        # mnemonic_code_id has no AUTO_INCREMENT — compute next value manually
-        next_id = (session.query(func.max(cls.mnemonic_code_id)).scalar() or 0) + 1
-        obj = cls(mnemonic_code_id=next_id, code=code, description=description, active=True)
+        obj = cls(code=code, description=description, active=True)
         session.add(obj)
         session.flush()
         return obj

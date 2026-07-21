@@ -4,7 +4,7 @@ Marshmallow form validation schemas for Project management routes.
 
 import marshmallow.fields as f
 import marshmallow.validate as v
-from marshmallow import validates, ValidationError, post_load
+from marshmallow import validates, validates_schema, ValidationError, post_load
 import re
 
 from . import HtmxFormSchema
@@ -18,7 +18,13 @@ class CreateProjectForm(HtmxFormSchema):
     normalization and integer coercions to eliminate the manual try/except
     int-conversion blocks.
     """
-    projcode = f.Str(required=True)
+    # In 'auto' mode the server generates the projcode (mnemonic_code_id
+    # required); in 'manual' mode the operator supplies it (projcode
+    # required). Cross-field enforcement lives in require_fields_by_mode.
+    projcode_mode = f.Str(load_default='auto',
+                          validate=v.OneOf(['auto', 'manual']))
+    projcode = f.Str(load_default=None)
+    mnemonic_code_id = f.Int(load_default=None)
     title = f.Str(required=True, validate=v.Length(min=1, max=255))
     abstract = f.Str(load_default=None)
     facility_id = f.Int(required=True)
@@ -31,20 +37,33 @@ class CreateProjectForm(HtmxFormSchema):
     contract_id = f.Int(load_default=None)
     organization_id = f.Int(load_default=None)
     charging_exempt = f.Bool(load_default=False)
-    unix_gid = f.Int(load_default=None)
+    # unix_gid is auto-assigned by the route at submit time via
+    # GidAllocation.allocate_next_gid — it is no longer a form field.
     ext_alias = f.Str(load_default=None)
 
     @validates('projcode')
     def validate_projcode(self, value, **kwargs):
+        if value is None:
+            return
         code = value.strip().upper()
-        if not code:
-            raise ValidationError('Project code is required.')
-        if not re.fullmatch(r'[A-Z0-9]{2,30}', code):
+        if code and not re.fullmatch(r'[A-Z0-9]{2,30}', code):
             raise ValidationError('Project code must be 2–30 uppercase letters/digits.')
+
+    @validates_schema
+    def require_fields_by_mode(self, data, **kwargs):
+        if data.get('projcode_mode') == 'manual':
+            if not (data.get('projcode') or '').strip():
+                raise ValidationError('Project code is required.', 'projcode')
+        else:
+            if not data.get('mnemonic_code_id'):
+                raise ValidationError(
+                    'Select a mnemonic to auto-generate the project code.',
+                    'mnemonic_code_id')
 
     @post_load
     def normalize(self, data, **kwargs):
-        data['projcode'] = data['projcode'].strip().upper()
+        if data.get('projcode'):
+            data['projcode'] = data['projcode'].strip().upper()
         return data
 
 

@@ -247,6 +247,50 @@ def get_latest_queue_status(session: Session, system: str, queue_name: str) -> O
     )
 
 
+def get_queue_last_seen(session: Session, system: str) -> Dict[str, datetime]:
+    """Map queue name → most recent ``queue_status`` tick for one system.
+
+    A queue appears in ``queue_status`` only while jobs sit in it, so this
+    answers "when did this queue last hold jobs?" — the full history is
+    returned (no window) so callers can also present a long-stale
+    last-seen as evidence of disuse. Returns ``{}`` for systems with no
+    snapshot coverage.
+    """
+    from sqlalchemy import func
+
+    rows = (
+        session.query(QueueDef.name, func.max(QueueStatus.timestamp))
+        .join(QueueStatus, QueueStatus.queue_id == QueueDef.queue_id)
+        .join(System, QueueDef.system_id == System.system_id)
+        .filter(System.name == system)
+        .group_by(QueueDef.name)
+        .all()
+    )
+    return {name: ts for name, ts in rows}
+
+
+def get_queue_definitions(session: Session, system: str) -> Dict[str, Dict[str, Any]]:
+    """Map queue name → PBS roster facts for one system.
+
+    Reads the ``queue_type`` / ``last_defined_at`` columns maintained on the
+    ``queues`` lookup by ``lookups.update_queue_definitions``. Only queues
+    with a recorded roster sighting are included — rows predating roster
+    collection (``last_defined_at`` NULL) are omitted, so absence of data
+    never masquerades as evidence. Returns ``{}`` for unknown systems.
+    """
+    rows = (
+        session.query(QueueDef.name, QueueDef.queue_type, QueueDef.last_defined_at)
+        .join(System, QueueDef.system_id == System.system_id)
+        .filter(System.name == system)
+        .filter(QueueDef.last_defined_at.isnot(None))
+        .all()
+    )
+    return {
+        name: {'queue_type': queue_type, 'last_defined_at': last_defined_at}
+        for name, queue_type, last_defined_at in rows
+    }
+
+
 def get_system_partition_history(
     session: Session,
     system: str,

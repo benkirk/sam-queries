@@ -15,7 +15,7 @@
   {% set _crumbs = [] %}
   {% if can_access_admin %}
     {% set _ = _crumbs.append({'label': 'Admin',
-                               'attrs': {'href': url_for('admin_dashboard.index')}}) %}
+                               'attrs': {'href': url_for('admin_dashboard.projects')}}) %}
   {% endif %}
   {% set _ = _crumbs.append({'label': 'Manage Project', 'active': True}) %}
   {% set _ = _crumbs.append({'label': project.projcode, 'active': True}) %}
@@ -23,7 +23,7 @@
   {% if can_access_admin %}
   {# Pass projcode so the admin index re-renders this project's card on
      return — otherwise the user lands on a blank search page. #}
-  <a href="{{ url_for('admin_dashboard.index', projcode=project.projcode) }}" class="btn btn-outline-secondary  ms-auto">
+  <a href="{{ url_for('admin_dashboard.projects', projcode=project.projcode) }}" class="btn btn-outline-secondary  ms-auto">
     <i class="fas fa-arrow-left"></i> Back to Admin
   </a>
   {% else %}
@@ -224,7 +224,7 @@
 
 <!-- Extend Allocations Modal (lazy-loaded) -->
 <div class="modal fade" id="extendAllocationsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <div class="modal-header bg-warning text-dark">
         <h5 class="modal-title"><i class="fas fa-calendar-plus"></i> Extend Allocations</h5>
@@ -242,7 +242,7 @@
 
 <!-- Renew Allocations Modal (lazy-loaded) -->
 <div class="modal fade" id="renewAllocationsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-lg modal-fullscreen-sm-down">
     <div class="modal-content">
       <div class="modal-header bg-primary text-white">
         <h5 class="modal-title"><i class="fas fa-sync-alt"></i> Renew Allocations</h5>

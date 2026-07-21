@@ -36,7 +36,7 @@
     });
 
     /* Populate the edit form from the clicked button's data attributes
-     * (status/dashboard.html outage rows). */
+     * (status/base_status.html outage rows). */
     registerAction('outage-edit', function (btn) {
         var d = btn.dataset;
         document.getElementById('editOutageId').value = d.outageId;
@@ -89,5 +89,26 @@
                 window.location.reload();
             }
         }
+    });
+
+    /* ── Pinch-zoom scrollbar-compensation fix ──
+     * Bootstrap sizes its "hidden scrollbar" pad as
+     * abs(window.innerWidth - documentElement.clientWidth). Under pinch-zoom
+     * innerWidth tracks the *visual* viewport while clientWidth stays at
+     * layout width, so a 3x zoom on a 390px phone reads as a 260px
+     * scrollbar and the opening modal is padded down to a few characters
+     * wide (chart-link modals on the status pages were the visible victim).
+     * A zoomed viewport has no classic scrollbar to compensate for — strip
+     * the bogus padding as the modal opens. rAF: Bootstrap applies the
+     * padding synchronously right after dispatching show.bs.modal. Its
+     * hide-time restore still works — it resets to the saved original. */
+    document.addEventListener('show.bs.modal', function (e) {
+        if (!window.visualViewport || window.visualViewport.scale <= 1.01) { return; }
+        var modal = e.target;
+        requestAnimationFrame(function () {
+            modal.style.paddingRight = '';
+            modal.style.paddingLeft = '';
+            document.body.style.paddingRight = '';
+        });
     });
 })();

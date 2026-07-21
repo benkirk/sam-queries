@@ -91,6 +91,6 @@ class TestRenderedTemplates:
             assert origin not in html, origin
 
     def test_dashboard_base_serves_local_htmx(self, auth_client):
-        html = auth_client.get('/user/').get_data(as_text=True)
+        html = auth_client.get('/user/accounts').get_data(as_text=True)
         assert f"/static/{VENDOR_ASSETS['htmx']['path']}" in html
         assert 'unpkg.com' not in html

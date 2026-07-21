@@ -1,0 +1,37 @@
+{% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
+{% from 'dashboards/fragments/form_fields.html' import number_field with context %}
+{#
+  Step 1 of the per-resource queue cleanup workflow: choose the inactivity
+  window. POSTs to the preview endpoint, which replaces this fragment with
+  the candidate list.
+
+  Context:
+    resource : Resource
+    errors   : optional list[str]
+    form     : optional request.form (re-render after a validation error)
+#}
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_queue_cleanup_preview', resource_id=resource.resource_id),
+    '#queueCleanupFormContainer',
+    'Find unused queues',
+    submit_icon='search',
+    errors=errors
+) %}
+        <p class="mb-3">
+            Find queues on <strong>{{ resource.resource_name }}</strong> with no
+            charging activity in the last <em>N</em> days. Nothing is changed
+            yet — you'll get a list to review first.
+        </p>
+
+        {{ number_field('days', 'Unused for at least (days)',
+                        required=True, min=1, max=3650, default=90,
+                        id='queueCleanupDays') }}
+
+        <div class="alert alert-info mb-0">
+            <i class="fas fa-info-circle"></i>
+            Routing queues never accrue charges — jobs charge to the execution
+            queue they route into — so a live routing queue looks unused here.
+            Queues that have <em>never</em> been charged are listed but left
+            unchecked for that reason.
+        </div>
+{% endcall %}

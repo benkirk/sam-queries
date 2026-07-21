@@ -63,6 +63,17 @@ class QueueDef(StatusBase, SessionMixin):
                         default=utcnow_naive,
                         server_default=text("CURRENT_TIMESTAMP"))
 
+    # PBS roster facts (from `qstat -Q -f -F json`), maintained by the
+    # ingest path's `update_queue_definitions`. Snapshot rows in
+    # `queue_status` only exist while jobs sit in a queue, so a routing
+    # queue that drains instantly never appears there — these columns are
+    # the durable "PBS still defines this queue" signal. Both stay NULL
+    # for queues that predate roster collection.
+    queue_type = Column(String(16), nullable=True,
+                        comment="PBS queue type as reported ('Execution' / 'Route')")
+    last_defined_at = Column(DateTime, nullable=True,
+                             comment='Most recent collector tick whose qstat -Q roster included this queue (naive-UTC)')
+
     system = relationship("System", back_populates="queues")
 
     def __str__(self):

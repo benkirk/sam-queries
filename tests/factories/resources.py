@@ -77,9 +77,10 @@ def make_queue(
 ) -> Queue:
     """Build and flush a fresh Queue row, auto-building a Resource if needed.
 
-    `Queue.description` is NOT NULL — the factory supplies a default. There
-    is no `Queue.create()` classmethod (only `update()`), so we instantiate
-    the model directly.
+    `Queue.description` is NOT NULL — the factory supplies a default. The model
+    instance is built directly rather than via `Queue.create()`: the classmethod
+    stamps start_date to today and adds a companion QueueFactor, while tests need
+    arbitrary start/end dates (and sometimes duplicate names) with no side rows.
     """
     if resource is None:
         resource = make_resource(session)

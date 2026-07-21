@@ -68,8 +68,7 @@ class BaseCollector:
             job_stats = JobParser.parse_jobs(jobs_json)
             data.update(job_stats)
 
-            queue_summary = self.pbs.get_queue_summary()
-            data['queues'] = QueueParser.parse_queues(queue_summary, jobs_json)
+            data['queues'] = QueueParser.parse_queues(jobs_json)
             data['user_project_queues'] = QueueParser.parse_user_project_queues(jobs_json)
 
             self.logger.info(
@@ -78,6 +77,19 @@ class BaseCollector:
             self.logger.info(
                 f"  User/project rollups: {len(data['user_project_queues'])} rows"
             )
+
+            # Full qstat -Q roster (incl. routing/idle queues that never hold
+            # jobs) — its own try/except so a qstat -Q hiccup doesn't cost us
+            # the job-derived metrics above.
+            try:
+                queues_json = self.pbs.get_queues_json()
+                data['queue_definitions'] = QueueParser.parse_queue_definitions(queues_json)
+                self.logger.info(
+                    f"  Queue roster: {len(data['queue_definitions'])} defined queues"
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to collect queue roster: {e}")
+                data['queue_definitions'] = []
         except Exception as e:
             self.logger.error(f"Failed to collect job data: {e}")
             data.update({
@@ -87,6 +99,7 @@ class BaseCollector:
                 'active_users': 0,
                 'queues': [],
                 'user_project_queues': [],
+                'queue_definitions': [],
             })
 
     def _collect_login_node_data(self, data: dict):

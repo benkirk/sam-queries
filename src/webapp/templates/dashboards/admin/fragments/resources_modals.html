@@ -16,6 +16,14 @@
 
 {{ modal_scaffold('createMachineModal', 'New Machine',
                   icon='plus', container_id='createMachineFormContainer') }}
+
+{{ modal_scaffold('createQueueModal', 'New Queue',
+                  icon='plus', container_id='createQueueFormContainer') }}
+{% endif %}
+
+{% if has_permission(Permission.DELETE_RESOURCES) %}
+{{ modal_scaffold('queueCleanupModal', 'Cleanup Queues',
+                  icon='broom', container_id='queueCleanupFormContainer', size='lg') }}
 {% endif %}
 
 {% if has_permission(Permission.EDIT_RESOURCES) %}

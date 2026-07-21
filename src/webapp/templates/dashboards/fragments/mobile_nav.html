@@ -1,0 +1,63 @@
+{#
+  Mobile navigation drawer (offcanvas, < md only).
+
+  Replaces the old dual-collapse navbar rows (#navbarNav + #navbarNavMobile),
+  whose expansion overflowed the viewport horizontally and shifted the whole
+  page. The offcanvas overlays content instead of reflowing it, and exposes
+  the full two-level navigation from the nav registry (webapp/utils/nav.py):
+  sections as accordion groups, the current section expanded by default.
+#}
+<div class="offcanvas offcanvas-end d-md-none mobile-nav" tabindex="-1"
+     id="mobileNav" aria-labelledby="mobileNavLabel">
+    <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="mobileNavLabel">Systems Accounting Manager</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body d-flex flex-column">
+        <div class="accordion accordion-flush flex-grow-1" id="mobileNavSections">
+            {% for section in nav_sections() %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button{% if not section.active %} collapsed{% endif %}"
+                            type="button" data-bs-toggle="collapse"
+                            data-bs-target="#mobileNavSection-{{ section.key }}"
+                            aria-expanded="{{ 'true' if section.active else 'false' }}"
+                            aria-controls="mobileNavSection-{{ section.key }}">
+                        {{ section.label }}
+                    </button>
+                </h2>
+                <div id="mobileNavSection-{{ section.key }}"
+                     class="accordion-collapse collapse{% if section.active %} show{% endif %}"
+                     data-bs-parent="#mobileNavSections" data-no-persist>
+                    <div class="accordion-body p-0">
+                        <ul class="list-unstyled mb-0">
+                            {% for page in section.pages %}
+                            <li>
+                                <a class="mobile-nav-link{% if page.active %} active{% endif %}"
+                                   href="{{ url_for(page.endpoint) }}"
+                                   {% if page.active %}aria-current="page"{% endif %}>
+                                    {% if page.icon %}<i class="{{ page.icon }} me-2"></i>{% endif %}{{ page.label }}
+                                </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="mobile-nav-footer border-top pt-3 mt-3">
+            {% if current_user.is_authenticated %}
+            <div class="mb-2">
+                <i class="fas fa-user-circle me-1"></i>
+                <strong>{{ current_user.display_name }}</strong>
+                <span class="text-muted">({{ current_user.username }})</span>
+            </div>
+            <a class="fw-bold" href="{{ url_for('auth.logout') }}">Logout</a>
+            {% else %}
+            <a class="fw-bold" href="{{ url_for('auth.login') }}">Login</a>
+            {% endif %}
+        </div>
+    </div>
+</div>

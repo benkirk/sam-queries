@@ -13,6 +13,22 @@ clone:
 clean:
 	rm -rf dump/ *.sql.xz *~
 
+# system_status tables holding real identities/usage from local collector runs.
+# anonymize_sam_db.py only scrubs the `sam` database, so these must be dumped
+# schema-only or the "obfuscated" blob leaks real usernames + per-user activity.
+SENSITIVE_STATUS_TABLES := status_users project_codes user_proj_queue_status
+
+# The committed blob: everything, EXCEPT the sensitive status tables which are
+# appended schema-only (restore keeps working — FK checks are disabled inside
+# mysqldump output, and the mysql-test healthcheck only needs the DB present).
+backups/sam-obfuscated.sql.xz:
+	mkdir -p $$(dirname $@)
+	rm -f $@
+	{ docker compose -f $(COMPOSE_FILE) exec -T mysql sh -c 'exec mysqldump --all-databases --lock-all-tables --triggers --routines --events --set-gtid-purged=OFF $(foreach t,$(SENSITIVE_STATUS_TABLES),--ignore-table=system_status.$(t)) -uroot -p"root"'; \
+	  echo 'USE `system_status`;'; \
+	  docker compose -f $(COMPOSE_FILE) exec -T mysql sh -c 'exec mysqldump --no-data --skip-lock-tables --set-gtid-purged=OFF system_status $(SENSITIVE_STATUS_TABLES) -uroot -p"root"'; \
+	} | xz > $@
+
 %.sql.xz:
 	mkdir -p $$(dirname $@)
 	rm -f $@

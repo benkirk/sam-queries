@@ -93,6 +93,40 @@ class EditQueueForm(HtmxFormSchema):
     # requires the existing DB value.
 
 
+class CreateQueueForm(HtmxFormSchema):
+    """Validate creation of a Queue.
+
+    FK existence check (resource_id -> Resource) stays in the route.
+    Name uniqueness is checked in Queue.create(), which has the session.
+
+    cos_id and start_date are deliberately absent: cos_id fed the superseded
+    charging algorithm and is read nowhere, and start_date defaults to today
+    in Queue.create().
+    """
+    queue_name = f.Str(required=True, validate=v.Length(min=1, max=50))
+    resource_id = f.Int(required=True)
+    description = f.Str(load_default=None, validate=v.Length(max=255))
+    # Optional: a few real rows (e.g. 'systdd') carry no limit.
+    wall_clock_hours_limit = f.Float(
+        load_default=None, validate=v.Range(min=0, min_inclusive=False)
+    )
+
+
+class QueueCleanupForm(HtmxFormSchema):
+    """Step 1 of the per-resource queue cleanup workflow: the inactivity window."""
+    days = f.Int(load_default=90, validate=v.Range(min=1, max=3650))
+
+
+class QueueCleanupCommitForm(QueueCleanupForm):
+    """Step 3: the admin-edited checkbox selection.
+
+    NOTE: `queue_ids` arrives as repeated form fields. `request.form` is a
+    MultiDict, from which a List field would read only the first value — the
+    route must pass `request.form.getlist('queue_ids')` explicitly.
+    """
+    queue_ids = f.List(f.Int(), load_default=list)
+
+
 class CreateDiskResourceRootDirectoryForm(HtmxFormSchema):
     """Validate creation of a DiskResourceRootDirectory.
 

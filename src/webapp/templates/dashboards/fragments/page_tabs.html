@@ -1,0 +1,36 @@
+{#
+  Link-styled tab strip for routable dashboard pages.
+
+  Renders the familiar Bootstrap nav-tabs look, but each tab is a real
+  <a href> to its own route — so the URL always identifies the active
+  page (deep-linkable, shareable). Deliberately NOT a Bootstrap tablist
+  (no role="tablist", no data-bs-toggle): tab switching is full page
+  navigation, and nav-view-persistence.js tab persistence never engages.
+
+  Parameters:
+    tabs - list of dicts:
+      endpoint - Flask endpoint the tab links to (also drives active state)
+      label    - visible tab text
+      icon     - optional Font Awesome classes (e.g. 'fas fa-folder-open')
+      visible  - optional bool, default true (for permission/data-gated tabs)
+      active_endpoints - optional extra endpoints that also count as
+                         "on this tab" (e.g. a sub-page under it)
+    class - optional extra classes on the <ul> (default 'mb-3')
+#}
+{% macro page_tabs(tabs, class='mb-3') %}
+<ul class="nav nav-tabs {{ class }}">
+    {% for tab in tabs %}
+    {% if tab.get('visible', True) %}
+    {% set is_active = request.endpoint == tab.endpoint
+                       or request.endpoint in tab.get('active_endpoints', []) %}
+    <li class="nav-item">
+        <a class="nav-link{% if is_active %} active{% endif %}"
+           href="{{ url_for(tab.endpoint) }}"
+           {% if is_active %}aria-current="page"{% endif %}>
+            {% if tab.icon %}<i class="{{ tab.icon }} me-1"></i> {% endif %}{{ tab.label }}
+        </a>
+    </li>
+    {% endif %}
+    {% endfor %}
+</ul>
+{% endmacro %}

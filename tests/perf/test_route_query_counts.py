@@ -27,11 +27,11 @@ pytestmark = pytest.mark.perf
 
 
 # ---------------------------------------------------------------------------
-# 1. User dashboard — GET /user/
+# 1. User dashboard — GET /user/accounts
 # ---------------------------------------------------------------------------
 
 def test_user_dashboard_route(auth_client, route_count_queries):
-    """Full-stack query count for the user dashboard.
+    """Full-stack query count for the user dashboard (My Accounts page).
 
     Catches cascade-suppression regressions (Issues 5, 6) that would
     cause lazy loads during template rendering — invisible to
@@ -40,10 +40,10 @@ def test_user_dashboard_route(auth_client, route_count_queries):
     baseline = get_baseline("user_dashboard_route")
 
     with route_count_queries() as stats:
-        response = auth_client.get('/user/')
+        response = auth_client.get('/user/accounts')
 
     assert response.status_code == 200, (
-        f"GET /user/ returned {response.status_code}"
+        f"GET /user/accounts returned {response.status_code}"
     )
     assert stats.count <= baseline, (
         f"User dashboard route query regression: "
@@ -53,7 +53,7 @@ def test_user_dashboard_route(auth_client, route_count_queries):
 
 
 # ---------------------------------------------------------------------------
-# 2. Allocations index — GET /allocations/
+# 2. Allocations index — GET /allocations/projects
 # ---------------------------------------------------------------------------
 
 def test_allocations_index_route(auth_client, route_count_queries):
@@ -68,10 +68,10 @@ def test_allocations_index_route(auth_client, route_count_queries):
     baseline = get_baseline("allocations_index_route")
 
     with route_count_queries() as stats:
-        response = auth_client.get('/allocations/')
+        response = auth_client.get('/allocations/projects')
 
     assert response.status_code == 200, (
-        f"GET /allocations/ returned {response.status_code}"
+        f"GET /allocations/projects returned {response.status_code}"
     )
     assert stats.count <= baseline, (
         f"Allocations index route query regression: "
