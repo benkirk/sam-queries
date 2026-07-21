@@ -88,7 +88,14 @@ while true; do
         echo "  - ${NAME}..."
 
         t0=$(date +%s)
-        if timeout "${TIMEOUT}" "./${COLLECTOR}" --log-file="${LOGFILE}" > /dev/null 2>&1; then
+        # Discard stdout (the collector's console handler duplicates the
+        # file-handler output already written to LOGFILE), but append stderr
+        # to LOGFILE.  Crashes that happen before setup_logging() runs — e.g.
+        # an import-time ZoneInfo/tzdata failure — only reach stderr; sending
+        # them to /dev/null previously turned a one-line traceback into a
+        # silent "✗ failed in 0s".  Now the traceback lands in the LOGFILE the
+        # failure message tells the user to check.
+        if timeout "${TIMEOUT}" "./${COLLECTOR}" --log-file="${LOGFILE}" > /dev/null 2>> "${LOGFILE}"; then
             elapsed=$(( $(date +%s) - t0 ))
             echo "    ✓ ${NAME} completed in ${elapsed}s"
         else
