@@ -444,6 +444,13 @@ def create_app(*, config_overrides: dict | None = None):
                 return redirect(url_for('user_dashboard.index'))
         return redirect(url_for('status_dashboard.index'))
 
+    # Browsers and tools that don't parse HTML (curl, monitoring probes,
+    # bookmark fetchers) request /favicon.ico unconditionally — serve the
+    # same file the <link rel="icon"> tags point at, with static caching.
+    @app.route('/favicon.ico')
+    def favicon():
+        return app.send_static_file('img/favicon.ico')
+
     # Process startup timestamp — surfaced on the Admin > Configuration tab
     # as both an absolute time and a derived uptime.
     app.start_time = datetime.now()
