@@ -1,9 +1,11 @@
-"""Factories for core domain entities: User, Organization, GidAllocation."""
+"""Factories for core domain entities: User, Organization, GidAllocation,
+AdhocGroup, MnemonicCode."""
 import os
+import string
 from typing import Optional
 
-from sam.core.groups import GidAllocation
-from sam.core.organizations import Organization
+from sam.core.groups import AdhocGroup, GidAllocation
+from sam.core.organizations import MnemonicCode, Organization
 from sam.core.users import User
 
 from ._seq import next_int, next_seq
@@ -120,3 +122,60 @@ def make_gid_allocation(
     session.add(block)
     session.flush()
     return block
+
+
+def make_mnemonic_code(
+    session,
+    *,
+    code: Optional[str] = None,
+    description: Optional[str] = None,
+    active: bool = True,
+) -> MnemonicCode:
+    """Build and flush a fresh MnemonicCode row.
+
+    ``code`` is a UNIQUE 3-char column, too short for the usual
+    worker-namespaced ``next_seq`` strings. Generated codes are
+    ``Q<worker><base36 counter>`` — digits in positions 2–3 keep them
+    disjoint from real (all-alpha) snapshot mnemonics, and the worker
+    digit keeps xdist workers disjoint from each other.
+    """
+    if code is None:
+        n = next_int("mnemonic_code")
+        alphabet = string.digits + string.ascii_uppercase
+        if n >= len(alphabet):
+            raise RuntimeError("make_mnemonic_code exhausted its 36-per-worker namespace")
+        code = f"Q{_WORKER_NUM}{alphabet[n]}"
+    if description is None:
+        description = f"Test mnemonic {next_seq('mnemo_desc')}"
+
+    mnemo = MnemonicCode(code=code, description=description, active=active)
+    session.add(mnemo)
+    session.flush()
+    return mnemo
+
+
+# adhoc_group.unix_gid is UNIQUE; real snapshot GIDs top out well below
+# 100k, and make_gid_allocation blocks live in their own range — carve a
+# separate worker-namespaced range for standalone group rows.
+_ADHOC_GID_BASE = 900_000
+_ADHOC_GID_PER_WORKER = 10_000
+
+
+def make_adhoc_group(
+    session,
+    *,
+    group_name: Optional[str] = None,
+    unix_gid: Optional[int] = None,
+    active: bool = True,
+) -> AdhocGroup:
+    """Build and flush a fresh AdhocGroup row (worker-namespaced name/gid)."""
+    if group_name is None:
+        group_name = next_seq("grp")
+    if unix_gid is None:
+        unix_gid = (_ADHOC_GID_BASE + _WORKER_NUM * _ADHOC_GID_PER_WORKER
+                    + next_int("adhoc_gid"))
+
+    group = AdhocGroup(group_name=group_name, unix_gid=unix_gid, active=active)
+    session.add(group)
+    session.flush()
+    return group
