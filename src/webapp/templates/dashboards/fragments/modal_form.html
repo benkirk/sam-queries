@@ -64,7 +64,7 @@
         {% else %}
         <button type="submit" class="btn {{ _btn_class }}"
                 {% if submit_disabled %}disabled{% endif %}
-                {% if submit_disabled_title %}title="{{ submit_disabled_title }}"{% endif %}>
+                {% if submit_disabled and submit_disabled_title %}title="{{ submit_disabled_title }}"{% endif %}>
 
             <i class="fas fa-{{ submit_icon }}"></i> {{ submit_text }}
         </button>
