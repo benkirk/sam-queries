@@ -424,12 +424,14 @@ class PanelSession(Base, TimestampMixin, SessionMixin):
 #----------------------------------------------------------------------------
 class ProjectCode(Base):
     """
-    Project code generation rules.
+    Per-(facility, mnemonic) projcode sequence counters.
 
-    Defines how project codes are generated for each facility and mnemonic code.
-    The 'digits' field specifies how many digits the numeric portion should have.
-
-    Example: Facility NCAR + Mnemonic Code UCAS + digits 4 -> UCAS0001, UCAS0002, etc.
+    ``digits`` records the LAST sequence number issued for the pair — it is
+    NOT a zero-pad width. Rendered codes are always
+    ``<facility.code><mnemonic.code><NNNN>`` with 4-digit padding, e.g.
+    UNIV + ALB + digits=57 → newest project ``UALB0057``, next ``UALB0058``.
+    Rows are created on demand (starting at 1) and advanced by
+    ``sam.projects.projects.next_projcode(..., allocate=True)``.
     """
     __tablename__ = 'project_code'
 
@@ -448,7 +450,12 @@ class ProjectCode(Base):
     mnemonic_code = relationship('MnemonicCode', back_populates='project_codes')
 
     def __str__(self):
-        return f"<{self.facility.code}/{self.mnemonic_code.code}/{self.digits} digits>"
+        # Relationship attrs are None on pending (not-yet-flushed) rows built
+        # from raw FK ids — e.g. inside the audit before_flush hook — so fall
+        # back to the ids rather than raising.
+        facility = self.facility.code if self.facility else f"facility:{self.facility_id}"
+        mnemonic = self.mnemonic_code.code if self.mnemonic_code else f"mnemonic:{self.mnemonic_code_id}"
+        return f"<{facility}/{mnemonic}/last issued #{self.digits}>"
 
     def __repr__(self):
         return f"<ProjectCode(facility_id={self.facility_id}, mnemonic_code_id={self.mnemonic_code_id}, digits={self.digits})>"

@@ -30,6 +30,7 @@ from webapp.utils.project_permissions import (
     can_exchange_allocations,
 )
 from sam.manage import management_transaction
+from sam.core.groups import GidAllocation, NoAvailableGidError
 
 from .blueprint import bp
 
@@ -37,6 +38,57 @@ from .blueprint import bp
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Low-water thresholds for the GID pool indicator on the Create Project form.
+# Tuned so operators get a visible warning well before the pool actually runs
+# out — typical production blocks hand out thousands of GIDs, but new blocks
+# require coordination with the IDMS team to arrange.
+_GID_POOL_WARN_THRESHOLD = 100   # >= GREEN
+_GID_POOL_DANGER_THRESHOLD = 10  # >= YELLOW; below = RED
+
+
+def _gid_pool_badge(summary) -> dict:
+    """Map a GidPoolSummary to badge metadata for the Create Project form.
+
+    Returns a dict with ``label``, ``css_class``, ``icon``, and
+    ``disable_submit``. Keeping the threshold logic out of the template
+    avoids a tangle of Jinja ternaries.
+    """
+    n = summary.available
+    if n == 0:
+        # Distinguish "table never populated" from "all blocks exhausted" —
+        # both block project creation, but the remediation differs (seed a
+        # block via IDMS vs. extend an existing range).
+        if summary.block_count == 0:
+            label = 'No GID blocks defined'
+        else:
+            label = 'GID pool exhausted'
+        return {
+            'label': label,
+            'css_class': 'bg-danger',
+            'icon': 'fa-circle-exclamation',
+            'disable_submit': True,
+        }
+    if n < _GID_POOL_DANGER_THRESHOLD:
+        return {
+            'label': f'Only {n} GID' + ('s' if n != 1 else '') + ' available',
+            'css_class': 'bg-danger',
+            'icon': 'fa-circle-exclamation',
+            'disable_submit': False,
+        }
+    if n < _GID_POOL_WARN_THRESHOLD:
+        return {
+            'label': f'{n} GIDs available',
+            'css_class': 'bg-warning text-dark',
+            'icon': 'fa-triangle-exclamation',
+            'disable_submit': False,
+        }
+    return {
+        'label': f'{n:,} GIDs available',
+        'css_class': 'bg-success',
+        'icon': 'fa-check',
+        'disable_submit': False,
+    }
 
 def _project_form_data(form=None) -> dict:
     """Load form option lists shared by create (and later edit) forms.
@@ -106,6 +158,8 @@ def _project_form_data(form=None) -> dict:
             except (ValueError, TypeError):
                 pass
 
+    pool_summary = GidAllocation.pool_summary(db.session)
+
     return dict(
         areas=areas,
         aoi_groups=aoi_groups,
@@ -113,6 +167,8 @@ def _project_form_data(form=None) -> dict:
         mnemonics=mnemonics,
         panels_for_facility=panels_for_facility,
         alloc_types_for_panel=alloc_types_for_panel,
+        gid_pool_summary=pool_summary,
+        gid_pool_badge=_gid_pool_badge(pool_summary),
     )
 
 
@@ -325,33 +381,188 @@ def htmx_project_search_for_parent():
     )
 
 
-@bp.route('/htmx/project-next-projcode')
+@bp.route('/htmx/project-projcode-preview')
 @login_required
 @require_permission_any_facility(Permission.CREATE_PROJECTS)
-def htmx_project_next_projcode():
-    """Compute and return a preview of the next available projcode.
+def htmx_projcode_preview():
+    """Preview + availability check for the Create Project code, both modes.
 
-    Called via hx-get when the user changes the Facility or Mnemonic selects
-    in "auto-generate" mode.  Returns a plain-text projcode string or an empty
-    string if the combination is incomplete / invalid.
+    auto:   ?projcode_mode=auto&facility_id=N&mnemonic_code_id=N
+            → next collision-free code (side-effect-free preview of
+              ``next_projcode``; the counter is only advanced at submit).
+    manual: ?projcode_mode=manual&projcode=UCSD0042
+            → availability of the typed code against existing projects
+              AND adhoc_group names (projcodes become Unix group names).
+
+    Returns the ``projcode_preview_htmx`` fragment: a colored badge plus an
+    availability note. Incomplete input renders the neutral em-dash badge.
     """
-    from sam.projects.projects import next_projcode
+    from sam.projects.projects import (
+        next_projcode, projcode_collision, ProjcodeExhaustedError,
+    )
 
-    facility_id_str = request.args.get('facility_id', '').strip()
-    mnemonic_id_str = request.args.get('mnemonic_code_id', '').strip()
+    mode = request.args.get('projcode_mode', 'auto').strip()
+    ctx = {'status': 'incomplete', 'code': None, 'detail': None}
 
-    if not facility_id_str or not mnemonic_id_str:
+    if mode == 'manual':
+        code = request.args.get('projcode', '').strip().upper()
+        if code:
+            collision = projcode_collision(db.session, code)
+            if collision:
+                ctx.update(status='taken', code=code, detail=collision)
+            else:
+                ctx.update(status='available', code=code)
+    else:
+        facility_id_str = request.args.get('facility_id', '').strip()
+        mnemonic_id_str = request.args.get('mnemonic_code_id', '').strip()
+        if facility_id_str.isdigit() and mnemonic_id_str.isdigit():
+            try:
+                code = next_projcode(
+                    db.session,
+                    facility_id=int(facility_id_str),
+                    mnemonic_code_id=int(mnemonic_id_str),
+                )
+                ctx.update(status='available', code=code)
+            except (ValueError, ProjcodeExhaustedError) as exc:
+                ctx.update(status='error', detail=str(exc))
+
+    return render_template(
+        'dashboards/admin/fragments/projcode_preview_htmx.html', **ctx)
+
+
+@bp.route('/htmx/project-lead-hint')
+@login_required
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
+def htmx_project_lead_hint():
+    """Contextual hint shown once a Project Lead is selected.
+
+    Surfaces the lead's current organization / institution (whichever
+    exist) — these drive the conventional mnemonic choice: university
+    leads get their institution's mnemonic, staff get their lab/org's.
+    When an active mnemonic matches, the fragment offers a one-click
+    "Use <CODE>" button; when the lead has an organization, an
+    "Use as Organization" button pre-fills the Organization picker.
+
+    Empty ``project_lead_user_id`` (fk:cleared) clears the hint.
+    """
+    from sam.core.users import User
+    from sam.core.organizations import MnemonicCode
+
+    uid = request.args.get('project_lead_user_id', '').strip()
+    if not uid.isdigit():
+        return ''
+    user = db.session.get(User, int(uid))
+    if not user:
         return ''
 
-    try:
-        code = next_projcode(
-            db.session,
-            facility_id=int(facility_id_str),
-            mnemonic_code_id=int(mnemonic_id_str),
+    org = next((uo.organization for uo in user.organizations if uo.is_active), None)
+    institution = next((ui.institution for ui in user.institutions if ui.is_active), None)
+    if not org and not institution:
+        return render_template(
+            'dashboards/admin/fragments/project_lead_hint_htmx.html',
+            org=None, institution=None, suggestion=None)
+
+    # Suggest a mnemonic via the existing soft-link resolvers (ports of
+    # legacy Java UserOrganizationStrategy / UserInstitutionStrategy):
+    # org matches on exact name, institution on "Name, City" then "Name".
+    # No match → no suggestion, never a guess.
+    lookup = MnemonicCode.build_lookup(db.session)
+    suggested_code = None
+    if org:
+        suggested_code = MnemonicCode.resolve_for_organization(org, lookup)
+    if not suggested_code and institution:
+        suggested_code = MnemonicCode.resolve_for_institution(institution, lookup)
+    suggestion = None
+    if suggested_code:
+        suggestion = (
+            db.session.query(MnemonicCode)
+            .filter(MnemonicCode.code == suggested_code)
+            .first()
         )
-        return code
-    except (ValueError, TypeError, Exception):
+
+    return render_template(
+        'dashboards/admin/fragments/project_lead_hint_htmx.html',
+        org=org, institution=institution, suggestion=suggestion)
+
+
+@bp.route('/htmx/project-parent-prefill')
+@login_required
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
+def htmx_project_parent_prefill():
+    """Re-render the Facility/Panel/AllocType cascade with the parent's values.
+
+    Selecting a Parent Project usually implies the child shares its
+    facility, panel, and allocation type — derive all three from
+    ``parent.allocation_type`` (the same reverse lookup the edit page
+    uses) and return the cascade-row fragment with the selects populated
+    and pre-selected. The operator can still change any of them.
+
+    Returns 204 (htmx: no swap, row untouched) when there is nothing to
+    derive: no/unknown parent, or a parent without an allocation type.
+    """
+    from sam.projects.projects import Project
+
+    parent_id = request.args.get('parent_id', '').strip()
+    if not parent_id.isdigit():
+        return '', 204
+    parent = db.session.get(Project, int(parent_id))
+    if not parent or not parent.allocation_type or not parent.allocation_type.panel:
+        return '', 204
+    panel = parent.allocation_type.panel
+
+    prefill = {
+        'facility_id': str(panel.facility_id),
+        'panel_id': str(panel.panel_id),
+        'allocation_type_id': str(parent.allocation_type_id),
+    }
+    return render_template(
+        'dashboards/admin/fragments/create_project_cascade_row_htmx.html',
+        **_project_form_data(form=prefill),
+        form=prefill,
+    )
+
+
+@bp.route('/htmx/project-org-hint')
+@login_required
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
+def htmx_project_org_hint():
+    """Mnemonic suggestion for whichever Organization is picked.
+
+    Symmetric companion to the lead hint: once the Organization picker is
+    populated (search result or the lead hint's "use as Organization"
+    button), offer that org's soft-linked mnemonic via the same
+    suggest-only "use <CODE>" button. Stays silent when the suggestion is
+    already the selected mnemonic (nothing actionable) or when the org has
+    no soft link. Empty ``organization_id`` (fk:cleared) clears the hint.
+    """
+    from sam.core.organizations import MnemonicCode, Organization
+
+    org_id = request.args.get('organization_id', '').strip()
+    if not org_id.isdigit():
         return ''
+    org = db.session.get(Organization, int(org_id))
+    if not org:
+        return ''
+
+    code = MnemonicCode.resolve_for_organization(
+        org, MnemonicCode.build_lookup(db.session))
+    if not code:
+        return ''
+    suggestion = (
+        db.session.query(MnemonicCode)
+        .filter(MnemonicCode.code == code)
+        .first()
+    )
+    if not suggestion:
+        return ''
+
+    selected = request.args.get('mnemonic_code_id', '').strip()
+    if selected.isdigit() and int(selected) == suggestion.mnemonic_code_id:
+        return ''
+
+    return render_template(
+        'dashboards/admin/fragments/project_org_hint_htmx.html',
+        suggestion=suggestion)
 
 
 @bp.route('/htmx/project-create', methods=['POST'])
@@ -396,18 +607,56 @@ def htmx_project_create():
             current_user, Permission.CREATE_PROJECTS, chosen_facility.facility_name,
         ):
             abort(403)
-        if Project.get_by_projcode(db.session, data['projcode']):
-            raise FKValidationError(
-                [f'Project code "{data["projcode"]}" is already in use.']
-            )
+        # Resolve the projcode. Auto mode allocates server-side (advancing
+        # the project_code counter inside this transaction) — the client's
+        # preview string is display-only and may be stale. Manual mode
+        # keeps the operator's code but must clear both namespaces:
+        # existing projcodes AND adhoc_group names (projcodes become Unix
+        # group names).
+        from sam.projects.projects import (
+            next_projcode, projcode_collision, ProjcodeExhaustedError,
+        )
+        if data.get('projcode_mode', 'auto') == 'auto':
+            try:
+                data['projcode'] = next_projcode(
+                    db.session,
+                    facility_id=data['facility_id'],
+                    mnemonic_code_id=data['mnemonic_code_id'],
+                    allocate=True,
+                )
+            except (ValueError, ProjcodeExhaustedError) as exc:
+                raise FKValidationError(
+                    [f'Could not auto-generate a project code: {exc}'])
+        else:
+            collision = projcode_collision(db.session, data['projcode'])
+            if collision:
+                raise FKValidationError(
+                    [f'Project code "{data["projcode"]}" is already in use '
+                     f'by {collision}.']
+                )
+
+        # Draw a Unix GID from the pool. Happens inside the outer
+        # `management_transaction`, so a downstream failure in
+        # `Project.create()` (or any of the linked-org/contract steps
+        # below) rolls back the gid_allocation.next_gid increment too —
+        # an abandoned/failed creation never consumes a GID.
+        try:
+            unix_gid = GidAllocation.allocate_next_gid(db.session)
+        except NoAvailableGidError:
+            raise FKValidationError([
+                'GID pool is exhausted — no Unix GID could be allocated. '
+                'Add a new gid_allocation block before creating more projects.'
+            ])
 
         # facility_id / panel_id are existence-only; Project.create() derives
         # the effective facility/panel from allocation_type_id.
         project_kwargs = {
             k: v for k, v in data.items()
             if k not in ('facility_id', 'panel_id',
-                         'contract_id', 'organization_id')
+                         'contract_id', 'organization_id',
+                         'projcode_mode', 'mnemonic_code_id')
         }
+        project_kwargs['unix_gid'] = unix_gid
         project = Project.create(db.session, **project_kwargs)
         if data.get('contract_id'):
             ProjectContract.create(
@@ -432,7 +681,14 @@ def htmx_project_create():
             'loadNewProject': project.projcode,
         },
         success_message='Project created successfully.',
-        success_detail=lambda project: f'{project.projcode} — {project.title}',
+        success_detail=lambda project: (
+            f'{project.projcode} — {project.title}  '
+            f'(Unix GID: {project.unix_gid})'
+        ),
+        # Land on the edit page — the natural next step (add allocations,
+        # members) — rather than back on the admin search card.
+        success_redirect=lambda project: url_for(
+            'admin_dashboard.edit_project_page', projcode=project.projcode),
         error_prefix='Error creating project',
         do_action=_do_action,
     )

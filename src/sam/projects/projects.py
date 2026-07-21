@@ -1513,54 +1513,122 @@ class DefaultProject(Base, TimestampMixin):
 # Project Code Generation
 # ============================================================================
 
-def next_projcode(session, facility_id: int, mnemonic_code_id: int) -> str:
-    """Compute the next available project code for a given facility + mnemonic rule.
+class ProjcodeExhaustedError(Exception):
+    """No collision-free projcode found within the attempt budget."""
 
-    Looks up the ``ProjectCode`` rule (which specifies the numeric digit width),
-    scans all existing ``Project.projcode`` values that share the mnemonic prefix,
-    and returns the next unused sequential code.
+
+def formulate_projcode(facility_code: str, mnemonic_code: str, number: int) -> str:
+    """Assemble a projcode from its parts — legacy ``%s%s%04d`` format.
+
+    e.g. ``('U', 'ALB', 57) → 'UALB0057'``, ``('S', 'CSG', 9) → 'SCSG0009'``.
+    """
+    return f"{facility_code}{mnemonic_code}{number:04d}"
+
+
+def projcode_collision(session, code: str):
+    """Return a short human-readable reason if ``code`` is taken, else None.
+
+    A candidate collides when it matches an existing ``Project.projcode``
+    or an ``adhoc_group.group_name`` (projcodes become Unix group names —
+    the namespaces must not overlap; legacy `GroupSensitiveProjcodeGenerator`
+    enforced the latter). Comparisons are case-insensitive: a projcode and
+    its Unix group differ only by case convention.
+    """
+    from ..core.groups import AdhocGroup
+
+    existing = (
+        session.query(Project)
+        .filter(func.upper(Project.projcode) == code.upper())
+        .first()
+    )
+    if existing:
+        return f'project "{existing.projcode}" — {existing.title or "untitled"}'
+
+    group = (
+        session.query(AdhocGroup)
+        .filter(func.upper(AdhocGroup.group_name) == code.upper())
+        .first()
+    )
+    if group:
+        return f'unix group "{group.group_name}" (gid {group.unix_gid})'
+
+    return None
+
+
+def next_projcode(session, facility_id: int, mnemonic_code_id: int,
+                  *, allocate: bool = False, max_attempts: int = 100) -> str:
+    """Next available projcode for a facility + mnemonic pair.
+
+    Faithful port of legacy SAM's ``GroupSensitiveProjcodeGenerator`` +
+    ``Facility.getNextProjectCodeDigits()``:
+
+    - ``project_code.digits`` is a **per-(facility, mnemonic) counter of the
+      last sequence number issued** — NOT a zero-pad width. The rendered
+      code is always ``<facility.code><mnemonic.code><NNNN>`` with the
+      number zero-padded to 4 (``'%s%s%04d'``), e.g. ``UALB0057``.
+    - A missing ``ProjectCode`` row is created on demand starting at 1.
+    - Candidates colliding with an existing projcode or adhoc_group name
+      are skipped (legacy retried, burning counter values).
 
     Args:
         session: SQLAlchemy session.
         facility_id: FK to a Facility row.
         mnemonic_code_id: FK to a MnemonicCode row.
+        allocate: When True, persist the consumed counter value back to
+            ``project_code.digits`` (creating the row if needed) and flush —
+            call inside the project-creation transaction. When False
+            (default) the computation is a side-effect-free preview.
+        max_attempts: Collision-retry budget (legacy default 100).
 
     Returns:
-        Next projcode string, e.g. ``'UCB0042'``.
+        Next projcode string, e.g. ``'UALB0058'``.
 
     Raises:
-        ValueError: If no ``ProjectCode`` rule exists for the given pair.
-
-    Example::
-
-        code = next_projcode(session, facility_id=1, mnemonic_code_id=7)
-        # → 'UCSD0042'
+        ValueError: If the facility or mnemonic row doesn't exist, or the
+            facility has no single-letter projcode prefix (``facility.code``).
+        ProjcodeExhaustedError: If no free code is found within
+            ``max_attempts``.
     """
-    from ..resources.facilities import ProjectCode
+    from ..core.organizations import MnemonicCode
+    from ..resources.facilities import Facility, ProjectCode
+
+    facility = session.get(Facility, facility_id)
+    if not facility:
+        raise ValueError(f"No Facility with id={facility_id}")
+    if not facility.code:
+        raise ValueError(
+            f"Facility {facility.facility_name!r} has no projcode prefix letter"
+        )
+    mnemonic = session.get(MnemonicCode, mnemonic_code_id)
+    if not mnemonic:
+        raise ValueError(f"No MnemonicCode with id={mnemonic_code_id}")
 
     pc = session.get(ProjectCode, (facility_id, mnemonic_code_id))
-    if not pc:
-        raise ValueError(
-            f"No ProjectCode rule for facility_id={facility_id}, "
-            f"mnemonic_code_id={mnemonic_code_id}"
+    last_issued = pc.digits if pc else 0
+
+    number = last_issued
+    for _ in range(max_attempts):
+        number += 1
+        code = formulate_projcode(facility.code, mnemonic.code, number)
+        if not projcode_collision(session, code):
+            break
+    else:
+        raise ProjcodeExhaustedError(
+            f"Could not generate projcode for facility {facility.code!r} "
+            f"and mnemonic {mnemonic.code!r} within {max_attempts} attempts"
         )
 
-    prefix = pc.mnemonic_code.code   # e.g. 'UCB'
-    digits = pc.digits               # e.g. 4 → zero-pad to width 4
+    if allocate:
+        if pc is None:
+            pc = ProjectCode(facility_id=facility_id,
+                             mnemonic_code_id=mnemonic_code_id,
+                             digits=number)
+            session.add(pc)
+        else:
+            pc.digits = number
+        session.flush()
 
-    existing = (
-        session.query(Project.projcode)
-        .filter(Project.projcode.like(f'{prefix}%'))
-        .all()
-    )
-
-    max_num = 0
-    for (code,) in existing:
-        suffix = code[len(prefix):]
-        if suffix.isdigit():
-            max_num = max(max_num, int(suffix))
-
-    return f"{prefix}{str(max_num + 1).zfill(digits)}"
+    return code
 
 
 #-------------------------------------------------------------------------em-

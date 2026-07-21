@@ -1,0 +1,15 @@
+{# Org-context mnemonic suggestion — swapped into #createProjectOrgHint
+   after fk:selected on the Organization picker. Context: suggestion
+   (MnemonicCode). The 'apply-mnemonic' button is wired by
+   form-helpers.js (selects the mnemonic + refreshes the code preview,
+   flipping to auto mode if needed). #}
+<div class="form-text mt-1">
+    <i class="fas fa-magic me-1"></i>Suggested mnemonic:
+    <strong class="font-monospace">{{ suggestion.code }}</strong>
+    <span class="text-muted">— {{ suggestion.description }}</span>
+    <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline"
+            data-action="apply-mnemonic"
+            data-mnemonic-id="{{ suggestion.mnemonic_code_id }}">
+        use {{ suggestion.code }}
+    </button>
+</div>
