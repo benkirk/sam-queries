@@ -221,3 +221,35 @@ class TestNextProjcodeAllocate:
             mnemo.mnemonic_code_id, allocate=True)
         assert code.endswith('0002')
         assert _rule(session, prefixed_facility, mnemo).digits == 2
+
+
+class TestMnemonicSoftLinkResolution:
+    """Casefolded soft-link resolution (MnemonicCode.build_lookup +
+    resolve_for_organization). Deterministic factory rows — the HTTP-layer
+    org-hint tests skip when the obfuscated snapshot has no resolvable
+    org, so the matching rules are pinned here instead."""
+
+    def test_org_resolves_case_insensitively(self, session):
+        from sam.core.organizations import MnemonicCode
+        from factories import make_organization
+        org = make_organization(session, name='High-End Testing Section')
+        mnemo = make_mnemonic_code(session,
+                                   description='High-end TESTING Section')
+        lookup = MnemonicCode.build_lookup(session)
+        assert MnemonicCode.resolve_for_organization(org, lookup) == mnemo.code
+
+    def test_unlinked_org_resolves_to_none(self, session):
+        from sam.core.organizations import MnemonicCode
+        from factories import make_organization
+        org = make_organization(session)
+        lookup = MnemonicCode.build_lookup(session)
+        assert MnemonicCode.resolve_for_organization(org, lookup) is None
+
+    def test_inactive_mnemonic_excluded_from_lookup(self, session):
+        from sam.core.organizations import MnemonicCode
+        from factories import make_organization
+        org = make_organization(session, name='Dormant Section Xyz')
+        make_mnemonic_code(session, description='Dormant Section Xyz',
+                           active=False)
+        lookup = MnemonicCode.build_lookup(session)
+        assert MnemonicCode.resolve_for_organization(org, lookup) is None

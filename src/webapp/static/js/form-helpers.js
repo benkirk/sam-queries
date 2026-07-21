@@ -115,10 +115,18 @@
         }
         sel.value = btn.dataset.mnemonicId;
         htmx.trigger(sel, 'change');
+        /* The org hint's suggestion is now applied — re-fetch it so the
+         * server's "already selected" rule clears the stale offer. */
+        var orgWrap = document.getElementById('createProjectOrgWrap');
+        if (orgWrap && document.getElementById('createProjectOrg_id')?.value) {
+            htmx.trigger(orgWrap, 'fk:selected');
+        }
     });
 
     /* "use as Organization" — pre-fill the Organization fk-picker the same
-     * way a search-result click would (hidden id + badge + selected row). */
+     * way a search-result click would (hidden id + badge + selected row),
+     * including the fk:selected event so dependent hints (org → mnemonic
+     * suggestion) fire exactly as for a manual pick. */
     registerAction('apply-org', function (btn) {
         var idEl    = document.getElementById('createProjectOrg_id');
         var badgeEl = document.getElementById('createProjectOrg_badge');
@@ -127,6 +135,13 @@
         idEl.value = btn.dataset.orgId;
         if (badgeEl) { badgeEl.textContent = btn.dataset.orgLabel; }
         if (selEl)   { selEl.style.display = ''; }
+        var picker = idEl.closest('.fk-picker');
+        if (picker) {
+            picker.dispatchEvent(new CustomEvent('fk:selected', {
+                bubbles: true,
+                detail: {id: btn.dataset.orgId, label: btn.dataset.orgLabel}
+            }));
+        }
     });
 
     /* Uppercase the manual projcode as typed and keep the hidden field

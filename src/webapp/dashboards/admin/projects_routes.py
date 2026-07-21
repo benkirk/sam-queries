@@ -485,6 +485,49 @@ def htmx_project_lead_hint():
         org=org, institution=institution, suggestion=suggestion)
 
 
+@bp.route('/htmx/project-org-hint')
+@login_required
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
+def htmx_project_org_hint():
+    """Mnemonic suggestion for whichever Organization is picked.
+
+    Symmetric companion to the lead hint: once the Organization picker is
+    populated (search result or the lead hint's "use as Organization"
+    button), offer that org's soft-linked mnemonic via the same
+    suggest-only "use <CODE>" button. Stays silent when the suggestion is
+    already the selected mnemonic (nothing actionable) or when the org has
+    no soft link. Empty ``organization_id`` (fk:cleared) clears the hint.
+    """
+    from sam.core.organizations import MnemonicCode, Organization
+
+    org_id = request.args.get('organization_id', '').strip()
+    if not org_id.isdigit():
+        return ''
+    org = db.session.get(Organization, int(org_id))
+    if not org:
+        return ''
+
+    code = MnemonicCode.resolve_for_organization(
+        org, MnemonicCode.build_lookup(db.session))
+    if not code:
+        return ''
+    suggestion = (
+        db.session.query(MnemonicCode)
+        .filter(MnemonicCode.code == code)
+        .first()
+    )
+    if not suggestion:
+        return ''
+
+    selected = request.args.get('mnemonic_code_id', '').strip()
+    if selected.isdigit() and int(selected) == suggestion.mnemonic_code_id:
+        return ''
+
+    return render_template(
+        'dashboards/admin/fragments/project_org_hint_htmx.html',
+        suggestion=suggestion)
+
+
 @bp.route('/htmx/project-create', methods=['POST'])
 @login_required
 @require_permission_any_facility(Permission.CREATE_PROJECTS)

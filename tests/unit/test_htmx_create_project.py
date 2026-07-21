@@ -250,3 +250,58 @@ class TestProjectLeadHintEndpoint:
         html = resp.get_data(as_text=True)
         assert "Lead's organization" in html
         assert 'apply-org' in html
+
+
+# ---------------------------------------------------------------------------
+# GET /htmx/project-org-hint — auth + suggestion rendering (read-only)
+# ---------------------------------------------------------------------------
+
+
+def _org_with_soft_link(session):
+    """First snapshot org whose name resolves to a mnemonic, + the mnemonic."""
+    from sam.core.organizations import MnemonicCode, Organization
+    lookup = MnemonicCode.build_lookup(session)
+    for org in session.query(Organization).filter(Organization.is_active).all():
+        code = MnemonicCode.resolve_for_organization(org, lookup)
+        if code:
+            mnemo = (session.query(MnemonicCode)
+                     .filter(MnemonicCode.code == code).first())
+            if mnemo:
+                return org, mnemo
+    return None, None
+
+
+class TestProjectOrgHintEndpoint:
+
+    URL = '/admin/htmx/project-org-hint'
+
+    def test_non_admin_denied(self, non_admin_client):
+        resp = non_admin_client.get(self.URL)
+        assert resp.status_code == 403
+
+    def test_empty_org_id_clears_hint(self, auth_client):
+        resp = auth_client.get(self.URL, query_string={'organization_id': ''})
+        assert resp.status_code == 200
+        assert resp.get_data(as_text=True).strip() == ''
+
+    def test_org_with_soft_link_suggests_mnemonic(self, auth_client, session):
+        org, mnemo = _org_with_soft_link(session)
+        if org is None:
+            pytest.skip("snapshot has no org with a mnemonic soft link")
+        resp = auth_client.get(
+            self.URL, query_string={'organization_id': org.organization_id})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert f'use {mnemo.code}' in html
+        assert 'apply-mnemonic' in html
+
+    def test_silent_when_suggestion_already_selected(self, auth_client, session):
+        org, mnemo = _org_with_soft_link(session)
+        if org is None:
+            pytest.skip("snapshot has no org with a mnemonic soft link")
+        resp = auth_client.get(self.URL, query_string={
+            'organization_id': org.organization_id,
+            'mnemonic_code_id': mnemo.mnemonic_code_id,
+        })
+        assert resp.status_code == 200
+        assert resp.get_data(as_text=True).strip() == ''

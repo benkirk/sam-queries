@@ -135,16 +135,17 @@ def make_mnemonic_code(
 
     ``code`` is a UNIQUE 3-char column, too short for the usual
     worker-namespaced ``next_seq`` strings. Generated codes are
-    ``Q<worker><base36 counter>`` — digits in positions 2–3 keep them
-    disjoint from real (all-alpha) snapshot mnemonics, and the worker
-    digit keeps xdist workers disjoint from each other.
+    ``Q<base36 worker><base36 counter>`` — one char each, so the code
+    stays exactly 3 chars for any xdist worker up to gw35. The leading
+    ``Q`` + digit-bearing base36 positions keep generated codes disjoint
+    from real (all-alpha, meaningful) snapshot mnemonics.
     """
     if code is None:
-        n = next_int("mnemonic_code")
         alphabet = string.digits + string.ascii_uppercase
-        if n >= len(alphabet):
-            raise RuntimeError("make_mnemonic_code exhausted its 36-per-worker namespace")
-        code = f"Q{_WORKER_NUM}{alphabet[n]}"
+        n = next_int("mnemonic_code")
+        if n >= len(alphabet) or _WORKER_NUM >= len(alphabet):
+            raise RuntimeError("make_mnemonic_code exhausted its 36x36 namespace")
+        code = f"Q{alphabet[_WORKER_NUM]}{alphabet[n]}"
     if description is None:
         description = f"Test mnemonic {next_seq('mnemo_desc')}"
 

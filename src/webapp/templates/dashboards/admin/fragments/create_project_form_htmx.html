@@ -245,13 +245,23 @@
         </div>
 
         <div class="row">
-            <div class="col-md-6">
+            <div class="col-md-6" id="createProjectOrgWrap">
                 {{ fk_search_field('organization_id', 'Organization',
                                    search_url=url_for('admin_dashboard.htmx_org_search_for_project'),
                                    placeholder='Search by name or acronym…',
                                    badge_class='bg-info text-dark py-1 px-2',
                                    search_class='form-control form-control-sm',
                                    id_prefix='createProjectOrg') }}
+                {# Org-context hint: suggest the picked org's soft-linked
+                   mnemonic (silent when it's already selected). Fires on
+                   search-result picks AND the lead hint's "use as
+                   Organization" button (apply-org dispatches fk:selected). #}
+                <div id="createProjectOrgHint"
+                     hx-get="{{ url_for('admin_dashboard.htmx_project_org_hint') }}"
+                     hx-target="this"
+                     hx-swap="innerHTML"
+                     hx-trigger="fk:selected from:#createProjectOrgWrap, fk:cleared from:#createProjectOrgWrap"
+                     hx-include="#createProjectOrg_id, #projcodeMnemonic"></div>
             </div>
         </div>
 
