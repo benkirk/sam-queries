@@ -485,6 +485,43 @@ def htmx_project_lead_hint():
         org=org, institution=institution, suggestion=suggestion)
 
 
+@bp.route('/htmx/project-parent-prefill')
+@login_required
+@require_permission_any_facility(Permission.CREATE_PROJECTS)
+def htmx_project_parent_prefill():
+    """Re-render the Facility/Panel/AllocType cascade with the parent's values.
+
+    Selecting a Parent Project usually implies the child shares its
+    facility, panel, and allocation type — derive all three from
+    ``parent.allocation_type`` (the same reverse lookup the edit page
+    uses) and return the cascade-row fragment with the selects populated
+    and pre-selected. The operator can still change any of them.
+
+    Returns 204 (htmx: no swap, row untouched) when there is nothing to
+    derive: no/unknown parent, or a parent without an allocation type.
+    """
+    from sam.projects.projects import Project
+
+    parent_id = request.args.get('parent_id', '').strip()
+    if not parent_id.isdigit():
+        return '', 204
+    parent = db.session.get(Project, int(parent_id))
+    if not parent or not parent.allocation_type or not parent.allocation_type.panel:
+        return '', 204
+    panel = parent.allocation_type.panel
+
+    prefill = {
+        'facility_id': str(panel.facility_id),
+        'panel_id': str(panel.panel_id),
+        'allocation_type_id': str(parent.allocation_type_id),
+    }
+    return render_template(
+        'dashboards/admin/fragments/create_project_cascade_row_htmx.html',
+        **_project_form_data(form=prefill),
+        form=prefill,
+    )
+
+
 @bp.route('/htmx/project-org-hint')
 @login_required
 @require_permission_any_facility(Permission.CREATE_PROJECTS)

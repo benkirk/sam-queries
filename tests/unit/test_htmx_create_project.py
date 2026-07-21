@@ -305,3 +305,63 @@ class TestProjectOrgHintEndpoint:
         })
         assert resp.status_code == 200
         assert resp.get_data(as_text=True).strip() == ''
+
+
+# ---------------------------------------------------------------------------
+# GET /htmx/project-parent-prefill — auth + cascade prefill (read-only)
+# ---------------------------------------------------------------------------
+
+
+class TestProjectParentPrefillEndpoint:
+
+    URL = '/admin/htmx/project-parent-prefill'
+
+    def test_non_admin_denied(self, non_admin_client):
+        resp = non_admin_client.get(self.URL)
+        assert resp.status_code == 403
+
+    def test_empty_parent_id_no_swap(self, auth_client):
+        resp = auth_client.get(self.URL, query_string={'parent_id': ''})
+        assert resp.status_code == 204
+
+    def test_unknown_parent_id_no_swap(self, auth_client):
+        resp = auth_client.get(self.URL, query_string={'parent_id': '999999999'})
+        assert resp.status_code == 204
+
+    def test_parent_without_alloc_type_no_swap(self, auth_client, session):
+        from sam.projects.projects import Project
+        parent = (
+            session.query(Project)
+            .filter(Project.allocation_type_id.is_(None))
+            .first()
+        )
+        if parent is None:
+            pytest.skip("snapshot has no project without an allocation type")
+        resp = auth_client.get(
+            self.URL, query_string={'parent_id': parent.project_id})
+        assert resp.status_code == 204
+
+    def test_parent_prefills_cascade(self, auth_client, session):
+        from sam.accounting.allocations import AllocationType
+        from sam.projects.projects import Project
+        parent = (
+            session.query(Project)
+            .join(AllocationType,
+                  AllocationType.allocation_type_id == Project.allocation_type_id)
+            .filter(AllocationType.panel_id.isnot(None))
+            .first()
+        )
+        if parent is None:
+            pytest.skip("snapshot has no project with a panel-linked alloc type")
+        panel = parent.allocation_type.panel
+
+        resp = auth_client.get(
+            self.URL, query_string={'parent_id': parent.project_id})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        # All three selects present with the parent's values pre-selected.
+        for needle in (f'value="{panel.facility_id}"',
+                       f'value="{panel.panel_id}"',
+                       f'value="{parent.allocation_type_id}"'):
+            assert needle in html
+        assert html.count('selected') >= 3

@@ -56,6 +56,15 @@
                     htmx.trigger(mnemonicSel, 'change');
                 }
                 break;
+            case 'createProjectCascadeRow':
+                /* Parent-prefill replaced the whole cascade — the facility
+                 * (and thus the projcode prefix) may have changed, so
+                 * refresh the auto preview if a mnemonic is chosen. */
+                var mnemonicSel2 = document.getElementById('projcodeMnemonic');
+                if (mnemonicSel2 && mnemonicSel2.value) {
+                    htmx.trigger(mnemonicSel2, 'change');
+                }
+                break;
             case 'projcodePreview': {
                 /* keep hidden projcode in sync with the auto-preview */
                 var mode = document.querySelector('[name="projcode_mode"]:checked');
