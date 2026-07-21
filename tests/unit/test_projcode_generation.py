@@ -25,7 +25,7 @@ from sam.projects.projects import (
     projcode_collision,
 )
 from sam.resources.facilities import Facility, ProjectCode
-from tests.factories import (
+from factories import (
     make_adhoc_group,
     make_facility,
     make_mnemonic_code,

@@ -462,23 +462,23 @@ def htmx_project_lead_hint():
             'dashboards/admin/fragments/project_lead_hint_htmx.html',
             org=None, institution=None, suggestion=None)
 
-    # Suggest a mnemonic by matching the lead's org/institution. The
-    # association is informal (mnemonic descriptions are org/institution
-    # names), so this is a bounded heuristic: exact org-name / org-acronym
-    # match, or institution-name prefix match ("UNIVERSITY OF X" ↔
-    # "UNIVERSITY OF X, CITY"). No match → no suggestion, never a guess.
+    # Suggest a mnemonic via the existing soft-link resolvers (ports of
+    # legacy Java UserOrganizationStrategy / UserInstitutionStrategy):
+    # org matches on exact name, institution on "Name, City" then "Name".
+    # No match → no suggestion, never a guess.
+    lookup = MnemonicCode.build_lookup(db.session)
+    suggested_code = None
+    if org:
+        suggested_code = MnemonicCode.resolve_for_organization(org, lookup)
+    if not suggested_code and institution:
+        suggested_code = MnemonicCode.resolve_for_institution(institution, lookup)
     suggestion = None
-    candidates = db.session.query(MnemonicCode).filter(MnemonicCode.is_active).all()
-    def _norm(s):
-        return (s or '').strip().upper()
-    for mnemo in candidates:
-        desc = _norm(mnemo.description)
-        if org and (desc == _norm(org.name) or mnemo.code == _norm(org.acronym)):
-            suggestion = mnemo
-            break
-        if institution and _norm(institution.name) and desc.startswith(_norm(institution.name)):
-            suggestion = mnemo
-            break
+    if suggested_code:
+        suggestion = (
+            db.session.query(MnemonicCode)
+            .filter(MnemonicCode.code == suggested_code)
+            .first()
+        )
 
     return render_template(
         'dashboards/admin/fragments/project_lead_hint_htmx.html',
