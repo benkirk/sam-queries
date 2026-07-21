@@ -685,6 +685,10 @@ def htmx_project_create():
             f'{project.projcode} — {project.title}  '
             f'(Unix GID: {project.unix_gid})'
         ),
+        # Land on the edit page — the natural next step (add allocations,
+        # members) — rather than back on the admin search card.
+        success_redirect=lambda project: url_for(
+            'admin_dashboard.edit_project_page', projcode=project.projcode),
         error_prefix='Error creating project',
         do_action=_do_action,
     )

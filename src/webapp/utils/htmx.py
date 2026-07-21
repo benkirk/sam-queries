@@ -1,5 +1,5 @@
 import json
-from flask import make_response, render_template, request
+from flask import flash, make_response, render_template, request
 from marshmallow import ValidationError
 
 from webapp.extensions import db
@@ -60,6 +60,7 @@ def handle_htmx_form_post(
     success_triggers,
     success_message='Saved successfully.',
     success_detail=None,
+    success_redirect=None,
     error_prefix='Error',
     extra_context=None,
     context_fn=None,
@@ -98,6 +99,12 @@ def handle_htmx_form_post(
         success_detail:    Optional secondary line. Either a string, or a
                            callable `result -> str` for per-instance detail
                            like "SCSG0001 — My project title".
+        success_redirect:  Optional destination URL — a string or a callable
+                           `result -> url`. When set, success responds with
+                           an HX-Redirect (full-page navigation) instead of
+                           the in-modal success fragment; the message/detail
+                           are flashed for the destination page to render
+                           and `success_triggers` is skipped.
         error_prefix:      Prefix for unexpected exception messages
                            (e.g. 'Error creating facility').
         extra_context:     Static dict merged into the re-render context — pass
@@ -133,8 +140,20 @@ def handle_htmx_form_post(
     except Exception as e:  # noqa: BLE001 — surface to the user
         return _render_with_errors([f'{error_prefix}: {e}'])
 
-    triggers = success_triggers(result) if callable(success_triggers) else success_triggers
     detail = success_detail(result) if callable(success_detail) else success_detail
+
+    if success_redirect is not None:
+        # Full-page navigation instead of the in-modal success fragment:
+        # HX-Redirect makes htmx set window.location, so carry the
+        # confirmation as a flash for the destination page to render.
+        url = success_redirect(result) if callable(success_redirect) else success_redirect
+        flash(f'{success_message} {detail}' if detail else success_message,
+              'success')
+        resp = make_response('', 200)
+        resp.headers['HX-Redirect'] = url
+        return resp
+
+    triggers = success_triggers(result) if callable(success_triggers) else success_triggers
     return htmx_success_message(triggers, success_message, detail=detail)
 
 
