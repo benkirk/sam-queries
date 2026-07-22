@@ -1,0 +1,57 @@
+{# ─── search-as-you-type box with an "active only" toggle ───────────────── #}
+{#
+  Both controls hit the same endpoint: typing includes the checkbox state,
+  and toggling the checkbox re-runs the current query. Without the second
+  wiring the toggle looks inert — results only changed on the next keystroke.
+
+  htmx omits an unchecked checkbox from the request entirely, so the route
+  behind `search_url` must treat an absent `active_only` as OFF (i.e.
+  include inactive rows) — parse it with webapp.utils.htmx.read_active_only,
+  never a hand-rolled `== '1'` comparison.
+
+  Required:
+    search_url   - endpoint returning the results fragment
+    input_id     - id of the text input (result rows target it via
+                   data-clear-input)
+    results_id   - id of the results container (data-clear-results)
+    label        - visible label above the input
+    toggle_id    - id of the "active only" checkbox
+    toggle_label - label for the checkbox
+
+  Optional:
+    placeholder    - input placeholder text
+    toggle_checked - initial checkbox state (default True)
+    delay          - hx-trigger debounce for typing (default '300ms')
+#}
+{% macro active_toggle_search(search_url, input_id, results_id, label,
+                              toggle_id, toggle_label,
+                              placeholder='Start typing…',
+                              toggle_checked=True, delay='300ms') %}
+<div class="mb-3">
+    <label for="{{ input_id }}">{{ label }}</label>
+    <input type="search" class="form-control" id="{{ input_id }}"
+           name="q"
+           placeholder="{{ placeholder }}"
+           autocomplete="off"
+           hx-get="{{ search_url }}"
+           hx-trigger="input changed delay:{{ delay }}"
+           hx-target="#{{ results_id }}"
+           hx-swap="innerHTML"
+           hx-params="q,active_only"
+           hx-include="#{{ toggle_id }}">
+    <div id="{{ results_id }}" class="list-group mt-2"></div>
+</div>
+<div class="form-check mb-0">
+    <input type="checkbox" class="form-check-input" id="{{ toggle_id }}"
+           name="active_only" value="1" {% if toggle_checked %}checked{% endif %}
+           hx-get="{{ search_url }}"
+           hx-trigger="change"
+           hx-target="#{{ results_id }}"
+           hx-swap="innerHTML"
+           hx-params="q,active_only"
+           hx-include="#{{ input_id }}">
+    <label class="form-check-label" for="{{ toggle_id }}">
+        {{ toggle_label }}
+    </label>
+</div>
+{% endmacro %}

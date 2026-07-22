@@ -554,6 +554,37 @@ if 'end_date' in data:
 CSRF tokens, stray fields), `flatten_errors()` for template-friendly lists,
 and a clear separation from ORM serialization (`sam.schemas/` proper).
 
+### 10. "Active only" Toggles
+
+**Absent means OFF.** htmx omits an *unchecked* checkbox from the request
+entirely, so there is no "unchecked" value to test for — a missing
+`active_only` is how "include inactive rows" arrives over the wire. A route
+that defaults it to ON makes its checkbox inert in one direction (this is
+exactly how inactive users/projects went missing from the admin search
+boxes).
+
+Parse it with the shared helper — never a hand-rolled comparison, which is
+how the `'1'` vs `'true'` spelling split crept in:
+
+```python
+from webapp.utils.htmx import read_active_only
+
+active_only = read_active_only(request.args)                 # checkbox-backed
+active_only = read_active_only(request.args, default=True)   # FK picker, no checkbox
+```
+
+On the template side, emit `value="1"` and wire **both** directions —
+typing includes the checkbox, and toggling the checkbox re-runs the query:
+
+```jinja
+{% from 'dashboards/fragments/search_box.html' import active_toggle_search %}
+{{ active_toggle_search(search_url=..., input_id=..., results_id=...,
+                        label=..., toggle_id=..., toggle_label='Active only') }}
+```
+
+For a card (not a search box), copy the Resources/Organizations/Facilities
+pattern: `hx-trigger="change"` + `hx-include="this"` on the switch itself.
+
 ---
 
 ## Common ORM Patterns

@@ -14,6 +14,7 @@ from flask import Blueprint, jsonify, request, abort
 from flask_login import login_required, current_user
 from webapp.utils.rbac import require_permission, Permission
 from webapp.extensions import db
+from webapp.utils.htmx import read_active_only
 from sam.schemas import UserSchema, UserListSchema, UserSummarySchema, ProjectListSchema
 from webapp.api.helpers import register_error_handlers, get_user_or_404, serialize_projects_by_role
 
@@ -189,7 +190,7 @@ def search_users():
         return jsonify([])
 
     limit = min(request.args.get('limit', 20, type=int), 50)
-    active_only = request.args.get('active_only', 'false').lower() == 'true'
+    active_only = read_active_only(request.args)
 
     # Get existing members to exclude if projcode provided
     exclude_ids = None

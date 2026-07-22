@@ -7,7 +7,8 @@ Covers: Project creation (Phase A).  Edit/allocation management (Phase B).
 from datetime import datetime
 
 from flask import render_template, request, redirect, url_for
-from webapp.utils.htmx import htmx_success, htmx_success_message, handle_htmx_form_post
+from webapp.utils.htmx import (htmx_success, htmx_success_message,
+                               handle_htmx_form_post, read_active_only)
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
@@ -2467,11 +2468,7 @@ def htmx_admin_project_directories():
     without the on-load 403 that the old system-wide EDIT_PROJECTS gate
     produced for them.
     """
-    # Match the canonical "Active only" toggle pattern used by the
-    # Resources / Organizations / Facilities cards: when the checkbox is
-    # checked, hx-include sends active_only=1; when unchecked, no param,
-    # so we treat absence as False ("show all").
-    active_only = request.args.get('active_only') == '1'
+    active_only = read_active_only(request.args)
     return _render_project_directories_card(active_only=active_only)
 
 
@@ -2868,12 +2865,12 @@ def _render_access_grid(project, active_only: bool, errors=None):
 def _access_grid_active_only(source) -> bool:
     """Read the Active-Only flag from a request args/form mapping.
 
-    Follows the project-directories card convention: the checkbox sends
-    ``active_only=1`` only when checked, so an absent value means OFF. The
-    initial container load passes ``active_only=1`` explicitly to default ON,
-    and every control hx-includes the switch so the current mode rides along.
+    Thin alias for ``read_active_only`` kept because the grid's POST
+    handlers read it off ``request.form`` as well as ``request.args``. The
+    initial container load passes ``active_only=1`` explicitly to default
+    ON, and every control hx-includes the switch so the mode rides along.
     """
-    return source.get('active_only') == '1'
+    return read_active_only(source)
 
 
 @bp.route('/htmx/access-grid/<projcode>')
