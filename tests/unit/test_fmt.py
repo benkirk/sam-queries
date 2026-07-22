@@ -4,13 +4,14 @@ Ported verbatim from tests/unit/test_fmt.py — pure Python, no DB, no
 mocks. The autouse `reset_fmt_config` fixture restores module-level
 defaults around each test so ordering is irrelevant.
 """
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
 import sam.fmt as fmt  # noqa: F401 — kept for parity with legacy module import
 from sam.fmt import (
     COMPACT_THRESHOLD,
+    ago,
     configure,
     date_str,
     factor,
@@ -110,6 +111,41 @@ class TestNumber:
     def test_per_call_overrides_global(self):
         configure(raw=True)
         assert number(68_567_808, raw=False) == '68.6M'
+
+
+# ============================================================================
+# ago()
+# ============================================================================
+
+
+class TestAgo:
+
+    def test_sub_minute(self):
+        assert ago(timedelta(seconds=30)) == 'less than a minute'
+
+    def test_minutes(self):
+        assert ago(timedelta(minutes=18)) == '18 minutes'
+
+    def test_singular_minute(self):
+        assert ago(timedelta(minutes=1)) == '1 minute'
+
+    def test_minutes_up_to_ninety(self):
+        # Stays in minutes past the hour mark so a fresh-ish gap doesn't
+        # round to a bare "1 hour".
+        assert ago(timedelta(minutes=75)) == '75 minutes'
+
+    def test_hours(self):
+        assert ago(timedelta(hours=29)) == '29 hours'
+
+    def test_days(self):
+        assert ago(timedelta(days=3)) == '3 days'
+
+    def test_negative_clamps_to_zero(self):
+        # Clock skew between collector and webapp must not render nonsense.
+        assert ago(timedelta(seconds=-45)) == 'less than a minute'
+
+    def test_none_returns_null(self):
+        assert ago(None) == '—'
 
 
 # ============================================================================

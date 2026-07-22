@@ -14,6 +14,7 @@
        swaps are already blocked by CSP script-src 'self'. #}
     <meta name="htmx-config" content='{"allowEval": false, "selfRequestsOnly": true}'>
     <title>{% block title %}SAM User Dashboard{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     {% from 'fragments/vendor_assets.html' import vendor_css, vendor_js with context %}
     {{ vendor_css(['poppins', 'bootstrap-css', 'fontawesome-css']) }}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/variables.css') }}">

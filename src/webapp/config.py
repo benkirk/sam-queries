@@ -77,6 +77,11 @@ class SAMWebappConfig(SAMConfig):
     # Google Calendar embed URL (public calendar shown on reservations tab; empty = hidden)
     GOOGLE_CALENDAR_EMBED_URL = os.getenv('GOOGLE_CALENDAR_EMBED_URL', '')
 
+    # Status collectors tick every ~5 minutes; a snapshot older than this many
+    # minutes (default: 3 missed ticks) raises the per-system stale-data banner
+    # on the status dashboard.
+    STATUS_STALE_MINUTES = int(os.getenv('STATUS_STALE_MINUTES', 15))
+
     # Content-Security-Policy mode: 'enforce' | 'report-only' | 'off'.
     # The policy itself is generated from webapp.vendor_assets (see
     # webapp/utils/csp.py); with every asset vendored it is essentially

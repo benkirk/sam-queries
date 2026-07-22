@@ -6,8 +6,10 @@
 {% import 'dashboards/status/partials/queue_table.html' as queues %}
 {% import 'dashboards/status/partials/filesystem_table.html' as fs %}
 {% import 'dashboards/status/partials/no_data_message.html' as empty %}
+{% import 'dashboards/status/partials/stale_banner.html' as stale %}
 
 {% if derecho_status %}
+{{ stale.stale_banner('Derecho', staleness) }}
 <div class="card mb-3">
     {{ header.system_header('<i class="fas fa-server"></i> Derecho System Status', derecho_status.timestamp) }}
     <div class="card-body">
