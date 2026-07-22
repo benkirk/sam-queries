@@ -16,20 +16,33 @@ metadata:
     nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .burstMultiplier | quote }}
     {{- end }}
     {{- end }}
+{{- /*
+  Every host this ingress answers for: the platform-primary `fqdn` (which
+  becomes the cert CN) followed by any advertised aliases. Listing them all in
+  a single `tls:` entry makes cert-manager issue ONE multi-SAN certificate
+  covering the lot — the same shape gdex.ucar.edu uses on this controller.
+  `default (list)` keeps values-local.yaml (no extraHosts) rendering a single
+  localhost rule.
+*/}}
+{{- $hosts := concat (list .Values.webapp.tls.fqdn) (default (list) .Values.webapp.tls.extraHosts) }}
 spec:
   ingressClassName: nginx-{{ .Values.webapp.ingress.visibility }}
   tls:
     - hosts:
-        - {{ .Values.webapp.tls.fqdn }}
+        {{- range $hosts }}
+        - {{ . | quote }}
+        {{- end }}
       secretName: {{ .Values.webapp.tls.secretName }}
   rules:
-  - host: {{ .Values.webapp.tls.fqdn }}
+  {{- range $host := $hosts }}
+  - host: {{ $host | quote }}
     http:
       paths:
-      - path: {{ .Values.webapp.path }}
+      - path: {{ $.Values.webapp.path }}
         pathType: Prefix
         backend:
           service:
-            name: {{ .Values.webapp.name }}
+            name: {{ $.Values.webapp.name }}
             port:
-              number: {{ .Values.webapp.container.port }}
+              number: {{ $.Values.webapp.container.port }}
+  {{- end }}

@@ -16,6 +16,8 @@
 #   -n, --namespace NS    Namespace the release lives in   (default: sam-queries)
 #   -r, --release    REL  Helm release name                (default: samuel)
 #       --context    CTX  kubectl context to target       (default: current)
+#       --ingress-host H  Check only this host at the edge (default: every host
+#                         the ingress serves — see INGRESS_HOSTS in lib/)
 #       --no-color        Disable ANSI color
 #   -v, --verbose         Extra detail per section
 #   -h, --help            Show this help
@@ -491,11 +493,33 @@ fi
 echo
 if "${KCTL_NS[@]}" get ingress "$WEBAPP_NAME" >/dev/null 2>&1; then
     run "${KCTL_NS[@]}" get ingress "$WEBAPP_NAME" -o wide
-    HOST=$("${KCTL_NS[@]}" get ingress "$WEBAPP_NAME" -o jsonpath='{.spec.rules[0].host}' 2>/dev/null)
-    if [[ "$HOST" == "$INGRESS_HOST" ]]; then
-        pass "Ingress host = $INGRESS_HOST"
+    # The ingress serves one rule per host and lists every host in a single
+    # tls: block so cert-manager issues ONE multi-SAN cert. Compare all three
+    # sets — expected / rules / tls — so a host added to only one of them is
+    # caught. (sort -u on newline-joined lists = order-insensitive set compare.)
+    ING_JSON=$("${KCTL_NS[@]}" get ingress "$WEBAPP_NAME" -o json 2>/dev/null)
+    EXPECT_HOSTS=$(printf '%s\n' "${INGRESS_HOSTS[@]}" | sort -u)
+    RULE_HOSTS=$(echo "$ING_JSON" | jq -r '.spec.rules[]?.host // empty'      | sort -u)
+    TLS_HOSTS=$( echo "$ING_JSON" | jq -r '.spec.tls[]?.hosts[]? // empty'    | sort -u)
+
+    echo "  expected hosts: $(echo "$EXPECT_HOSTS" | tr '\n' ' ')"
+    echo "  ingress rules:  $(echo "$RULE_HOSTS"   | tr '\n' ' ')"
+    echo "  ingress tls:    $(echo "$TLS_HOSTS"    | tr '\n' ' ')"
+
+    # Two DIFFERENT invariants, deliberately not conflated:
+    #   config drift  — deployed rules vs what this script expects (advisory;
+    #                   also fires legitimately when a deploy is pending)
+    #   cert coverage — every host actually SERVED must appear in the tls block,
+    #                   else that host answers with a cert that doesn't name it
+    if [[ "$RULE_HOSTS" == "$EXPECT_HOSTS" ]]; then
+        pass "Ingress serves exactly the expected host(s)"
     else
-        warn "Ingress host '$HOST' != expected '$INGRESS_HOST'"
+        warn "deployed rule hosts differ from expected (INGRESS_HOSTS in scripts/lib/cirrus_common.sh) — pending deploy, or the two drifted"
+    fi
+    if [[ "$TLS_HOSTS" == "$RULE_HOSTS" ]]; then
+        pass "every served host is covered by the tls block"
+    else
+        fail "tls hosts != rule hosts — a served host has NO cert coverage"
     fi
 else
     fail "Ingress '$WEBAPP_NAME' not found"
@@ -504,6 +528,29 @@ fi
 echo
 # TLS cert (cert-manager Certificate resource if present, otherwise raw Secret)
 if "${KCTL_NS[@]}" get certificate "$TLS_SECRET" >/dev/null 2>&1; then
+    # SAN coverage: cert-manager's ingress-shim derives dnsNames from the
+    # ingress tls block, but a failed reissue leaves the OLD cert in place and
+    # serving. Then an alias resolves, serves, and presents a cert that does not
+    # name it — a browser-visible failure the expiry check below would miss.
+    CERT_NAMES=$("${KCTL_NS[@]}" get certificate "$TLS_SECRET" -o json 2>/dev/null \
+                  | jq -r '.spec.dnsNames[]? // empty' | sort -u)
+    echo "  $TLS_SECRET dnsNames: $(echo "$CERT_NAMES" | tr '\n' ' ')"
+    # Keyed on hosts actually SERVED (rule hosts), not on expected hosts: this
+    # is the browser-visible invariant, and it stays quiet before a pending
+    # deploy rather than crying wolf.
+    missing_sans=""
+    while IFS= read -r h; do
+        [[ -z "$h" ]] && continue
+        printf '%s\n' "$CERT_NAMES" | grep -qxF "$h" || missing_sans+=" $h"
+    done <<< "${RULE_HOSTS:-}"
+    if [[ -z "$missing_sans" ]]; then
+        pass "cert covers every served host"
+    else
+        fail "cert is MISSING SAN(s) for:${missing_sans} — those hosts serve a mismatched cert"
+        explain "cert-manager reissues when the ingress tls block changes. If this
+  persists, inspect the Order: kubectl -n $NAMESPACE get order -o yaml | grep -A3 'state:'"
+    fi
+
     NOTAFTER=$("${KCTL_NS[@]}" get certificate "$TLS_SECRET" -o jsonpath='{.status.notAfter}' 2>/dev/null)
     echo "  $TLS_SECRET notAfter: $NOTAFTER"
     if [[ -n "$NOTAFTER" ]]; then
@@ -526,50 +573,59 @@ fi
 section "7. Edge security headers (HSTS / CSP / nosniff)"
 # ============================================================================
 
-explain "Fetches response headers from the public HTTPS edge (https://$INGRESS_HOST/)
-  and checks the browser-defense headers the app emits via
+explain "Fetches response headers from the public HTTPS edge of EVERY host the
+  ingress serves and checks the browser-defense headers the app emits via
   src/webapp/utils/security_headers.py. HSTS in particular can ONLY be observed
   over HTTPS, so this is the canonical place to verify it post-deploy (a local /
-  HTTP scan can't). Needs the ingress reachable from where you run this (VPN)."
+  HTTP scan can't). Headers are per-response, not per-host, so an alias that
+  skips the app (misrouted to a default backend) shows up here as missing
+  headers. Needs the ingress reachable from where you run this (VPN)."
 
 if ! command -v curl >/dev/null 2>&1; then
     warn "curl not found — skipping edge security-header checks"
 else
-    HDR_URL="https://${INGRESS_HOST}/"
-    # -D - dumps response headers; we read the first response (security headers
-    # ride every response incl. the unauthenticated 302 → /status, so no -L).
-    if ! HDRS=$(curl -sS -m 15 -D - -o /dev/null "$HDR_URL" 2>/dev/null); then
-        warn "could not reach ${HDR_URL} — is the ingress reachable from here (VPN)? Skipping header checks"
-    else
+    for edge_host in "${INGRESS_HOSTS[@]}"; do
+        echo
+        echo "  --- https://${edge_host}/ ---"
+        HDR_URL="https://${edge_host}/"
+        # -D - dumps response headers; we read the first response (security headers
+        # ride every response incl. the unauthenticated 302 → /status, so no -L).
+        # NOTE: no --insecure. A cert that doesn't name this host must fail the
+        # fetch here rather than silently passing the header checks.
+        if ! HDRS=$(curl -sS -m 15 -D - -o /dev/null "$HDR_URL" 2>/dev/null); then
+            warn "[$edge_host] unreachable (TLS mismatch, DNS, or VPN?) — skipping its header checks"
+            continue
+        fi
+
         HDRS_LC=$(printf '%s' "$HDRS" | tr 'A-Z' 'a-z')
         have() { printf '%s' "$HDRS_LC" | grep -q "^$1:"; }
         hval() { printf '%s' "$HDRS" | awk -F': ' -v k="$1" 'tolower($1)==k{sub(/\r$/,"",$2); print $2; exit}'; }
 
         # HSTS is the security-critical one and the whole reason for this section.
         if have 'strict-transport-security'; then
-            pass "HSTS present — Strict-Transport-Security: $(hval strict-transport-security)"
+            pass "[$edge_host] HSTS present — Strict-Transport-Security: $(hval strict-transport-security)"
         else
-            fail "HSTS missing — no Strict-Transport-Security at the edge (expected in prod; app gates it on SESSION_COOKIE_SECURE)"
+            fail "[$edge_host] HSTS missing — no Strict-Transport-Security at the edge (expected in prod; app gates it on SESSION_COOKIE_SECURE)"
         fi
 
         # Defense-in-depth headers — advisory (WARN) if absent.
         for hdr in content-security-policy x-content-type-options referrer-policy \
                    cross-origin-resource-policy permissions-policy; do
             if have "$hdr"; then
-                pass "${hdr} present"
+                pass "[$edge_host] ${hdr} present"
             else
-                warn "${hdr} missing from edge response"
+                warn "[$edge_host] ${hdr} missing from edge response"
             fi
         done
 
         if [[ $VERBOSE -eq 1 ]]; then
             echo
-            echo "  Raw security headers:"
+            echo "  Raw security headers [$edge_host]:"
             printf '%s\n' "$HDRS" \
                 | grep -iE 'strict-transport|content-security|x-content-type|referrer-policy|cross-origin|permissions-policy|x-frame' \
                 | sed 's/^/    /'
         fi
-    fi
+    done
 fi
 
 # ============================================================================

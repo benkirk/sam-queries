@@ -24,6 +24,8 @@
 #   -n, --namespace NS    Namespace the release lives in   (default: sam-queries)
 #   -r, --release    REL  Helm release name                (default: samuel)
 #       --context    CTX  kubectl context to target        (default: current)
+#       --ingress-host H  Canonical host used in printed URLs (default: the
+#                         platform-primary name)
 #       --no-color        Disable ANSI color
 #   -v, --verbose         Extra detail per section
 #   -h, --help            Show this help
