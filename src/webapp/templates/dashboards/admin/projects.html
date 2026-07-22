@@ -1,4 +1,5 @@
 {% extends 'dashboards/admin/base_admin_projects.html' %}
+{% from 'dashboards/fragments/search_box.html' import active_toggle_search %}
 
 {% block title %}Admin: Projects - SAM{% endblock %}
 
@@ -24,27 +25,14 @@
                 {% endif %}
             </div>
             <div class="card-body">
-                <div class="mb-3">
-                    <label for="projectSearchInput">Search by project code or title</label>
-                    <input type="search" class="form-control" id="projectSearchInput"
-                           name="q"
-                           placeholder="Start typing a project code or title..."
-                           autocomplete="off"
-                           hx-get="{{ url_for('admin_dashboard.htmx_search_projects') }}"
-                           hx-trigger="input changed delay:300ms"
-                           hx-target="#projectSearchResults"
-                           hx-swap="innerHTML"
-                           hx-params="q,active_only"
-                           hx-include="#activeProjectsOnly">
-                    <div id="projectSearchResults" class="list-group mt-2"></div>
-                </div>
-                <div class="form-check mb-0">
-                    <input type="checkbox" class="form-check-input" id="activeProjectsOnly"
-                           name="active_only" value="true" checked>
-                    <label class="form-check-label" for="activeProjectsOnly">
-                        Active projects only
-                    </label>
-                </div>
+                {{ active_toggle_search(
+                    search_url=url_for('admin_dashboard.htmx_search_projects'),
+                    input_id='projectSearchInput',
+                    results_id='projectSearchResults',
+                    label='Search by project code or title',
+                    placeholder='Start typing a project code or title...',
+                    toggle_id='activeProjectsOnly',
+                    toggle_label='Active projects only') }}
             </div>
         </div>
     </div>

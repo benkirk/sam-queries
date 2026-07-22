@@ -1,4 +1,5 @@
 {% extends 'dashboards/admin/base_admin.html' %}
+{% from 'dashboards/fragments/search_box.html' import active_toggle_search %}
 
 {% block title %}Admin: Users &amp; Groups - SAM{% endblock %}
 
@@ -12,27 +13,14 @@
                 <h5><i class="fas fa-users"></i> Search Users</h5>
             </div>
             <div class="card-body">
-                <div class="mb-3">
-                    <label for="userSearchInput">Search by username, first, or last name</label>
-                    <input type="search" class="form-control" id="userSearchInput"
-                           name="q"
-                           placeholder="Start typing a username, first, or last name..."
-                           autocomplete="off"
-                           hx-get="{{ url_for('admin_dashboard.htmx_search_users', context='impersonate') }}"
-                           hx-trigger="input changed delay:300ms"
-                           hx-target="#userSearchResults"
-                           hx-swap="innerHTML"
-                           hx-params="q,active_only"
-                           hx-include="#activeUsersOnly">
-                    <div id="userSearchResults" class="list-group mt-2"></div>
-                </div>
-                <div class="form-check mb-0">
-                    <input type="checkbox" class="form-check-input" id="activeUsersOnly"
-                           name="active_only" value="true" checked>
-                    <label class="form-check-label" for="activeUsersOnly">
-                        Active users only
-                    </label>
-                </div>
+                {{ active_toggle_search(
+                    search_url=url_for('admin_dashboard.htmx_search_users', context='impersonate'),
+                    input_id='userSearchInput',
+                    results_id='userSearchResults',
+                    label='Search by username, first, or last name',
+                    placeholder='Start typing a username, first, or last name...',
+                    toggle_id='activeUsersOnly',
+                    toggle_label='Active users only') }}
             </div>
         </div>
     </div>
@@ -44,27 +32,14 @@
                 <h5><i class="fas fa-users-cog"></i> Search Groups</h5>
             </div>
             <div class="card-body">
-                <div class="mb-3">
-                    <label for="groupSearchInput">Search by group name or GID</label>
-                    <input type="search" class="form-control" id="groupSearchInput"
-                           name="q"
-                           placeholder="Start typing a group name or GID..."
-                           autocomplete="off"
-                           hx-get="{{ url_for('admin_dashboard.htmx_search_groups') }}"
-                           hx-trigger="input changed delay:300ms"
-                           hx-target="#groupSearchResults"
-                           hx-swap="innerHTML"
-                           hx-params="q,active_only"
-                           hx-include="#activeGroupsOnly">
-                    <div id="groupSearchResults" class="list-group mt-2"></div>
-                </div>
-                <div class="form-check mb-0">
-                    <input type="checkbox" class="form-check-input" id="activeGroupsOnly"
-                           name="active_only" value="true" checked>
-                    <label class="form-check-label" for="activeGroupsOnly">
-                        Active groups only
-                    </label>
-                </div>
+                {{ active_toggle_search(
+                    search_url=url_for('admin_dashboard.htmx_search_groups'),
+                    input_id='groupSearchInput',
+                    results_id='groupSearchResults',
+                    label='Search by group name or GID',
+                    placeholder='Start typing a group name or GID...',
+                    toggle_id='activeGroupsOnly',
+                    toggle_label='Active groups only') }}
             </div>
         </div>
     </div>

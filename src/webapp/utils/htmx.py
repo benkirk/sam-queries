@@ -7,6 +7,39 @@ from webapp.utils.fk_validation import FKValidationError
 from sam.manage import management_transaction
 
 
+#: Values an "Active only" checkbox may arrive as. Templates emit ``1``
+#: (see the ``active_toggle_search`` macro and the admin card toggles) but
+#: the set is deliberately permissive: a checkbox copy-pasted with the
+#: wrong spelling should still work rather than silently fail open.
+_TRUTHY = frozenset({'1', 'true', 'on', 'yes'})
+
+
+def read_active_only(args, default=False):
+    """Read an ``active_only`` filter flag off a request args/form mapping.
+
+    **Absent means OFF.** htmx omits an unchecked checkbox from the request
+    entirely, so a missing value is how "show me inactive rows too" arrives
+    over the wire — there is no distinct "unchecked" value to look for. A
+    route that defaults this to ON makes its checkbox inert in one
+    direction, which is exactly how inactive users/projects went missing
+    from the admin search boxes.
+
+    Pass ``default=True`` only for endpoints with no checkbox behind them
+    (the FK pickers), where active-only is the intended fixed behaviour.
+
+    Args:
+        args:    ``request.args`` or ``request.form`` (anything with .get).
+        default: value to use when the key is absent entirely.
+
+    Returns:
+        bool
+    """
+    raw = args.get('active_only')
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in _TRUTHY
+
+
 def htmx_success(template, triggers, *, toast=None, toast_variant='success', **ctx):
     """Render a success fragment with HX-Trigger response headers.
 

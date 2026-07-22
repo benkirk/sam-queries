@@ -14,6 +14,7 @@ from webapp.utils.htmx import (
     handle_htmx_soft_delete,
     htmx_not_found,
     htmx_success_message,
+    read_active_only,
 )
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.rbac import (
@@ -109,7 +110,7 @@ def htmx_organizations_card():
     from sam.core.organizations import Organization, MnemonicCode
     from sam.projects.contracts import ContractSource
 
-    active_only = request.args.get('active_only') == '1'
+    active_only = read_active_only(request.args)
     now = datetime.now()
 
     organizations = get_organizations_with_members(db.session, active_only=active_only)
@@ -199,7 +200,7 @@ def htmx_institutions_fragment():
 
     country_id = _int_or_none(request.args.get('country_id'))
     state_prov_id = _int_or_none(request.args.get('state_prov_id')) if country_id else None
-    active_only = request.args.get('active_only') == '1'
+    active_only = read_active_only(request.args)
     show_users_projects = request.args.get('show_users_projects') == '1'
     active_users_projects = request.args.get('active_users_projects') == '1'
 
