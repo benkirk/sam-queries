@@ -85,11 +85,18 @@ def display_user_projects(ctx: Context, projects: list, username: str):
 
     ctx.console.print(f"\n{label} projects for {username}:", style="bold underline")
 
+    # In the "All" view a project can be Active while the user's membership
+    # in it has ended; surface that with a Membership column so the listing
+    # doesn't contradict the "Active Projects" count / the web UI.
+    show_membership = ctx.inactive_projects
+
     table = Table(box=box.SIMPLE_HEAD)
     table.add_column("#", style="dim", width=4)
     table.add_column("Code", style="cyan bold")
     table.add_column("Title")
     table.add_column("Role", style="magenta")
+    if show_membership:
+        table.add_column("Membership")
     table.add_column("Status")
     if ctx.very_verbose:
         table.add_column("Alloc End", style="yellow")
@@ -98,8 +105,15 @@ def display_user_projects(ctx: Context, projects: list, username: str):
         status_style = "green" if p['active'] else "red"
         status_str = "Active" if p['active'] else "Inactive"
 
-        row = [str(i), p['projcode'], p['title'], p['role'],
-               f"[{status_style}]{status_str}[/]"]
+        row = [str(i), p['projcode'], p['title'], p['role']]
+
+        if show_membership:
+            m_active = p.get('membership_active', True)
+            m_style = "green" if m_active else "red"
+            m_str = "Active" if m_active else "Ended"
+            row.append(f"[{m_style}]{m_str}[/]")
+
+        row.append(f"[{status_style}]{status_str}[/]")
 
         if ctx.very_verbose:
             row.append(fmt.date_str(p['latest_allocation_end'], null='—'))

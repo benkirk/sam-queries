@@ -105,9 +105,15 @@ class TestUserBuilders:
         projects = build_user_projects(multi_project_user, inactive=False)
         for p in projects:
             assert set(p.keys()) == {
-                'projcode', 'title', 'role', 'active', 'latest_allocation_end',
+                'projcode', 'title', 'role', 'active', 'membership_active',
+                'latest_allocation_end',
             }
             assert p['role'] in {'Lead', 'Admin', 'Member'}
+            assert isinstance(p['membership_active'], bool)
+            # A 'Member' row can only come from an open account_user window,
+            # so its membership is necessarily active here.
+            if p['role'] == 'Member':
+                assert p['membership_active'] is True
 
     def test_build_user_search_results(self, multi_project_user):
         data = build_user_search_results([multi_project_user], 'pattern')
