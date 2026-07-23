@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from sam.accounting.accounts import Account, AccountUser
 from sam.projects.projects import Project
@@ -66,6 +66,12 @@ def add_user_to_project(
     NOTE: This function does NOT commit the session. The caller is responsible
     for calling session.commit() or session.flush() as appropriate.
 
+    A returning member is re-added: accounts where the user has only an
+    expired (end-dated) membership get a fresh open row. Only a currently
+    live membership causes the account to be skipped, so the operation is
+    idempotent for active members but never a silent no-op for someone
+    whose prior rows have all lapsed.
+
     Args:
         session: SQLAlchemy session
         project_id: Project ID
@@ -74,11 +80,13 @@ def add_user_to_project(
         end_date: End date for membership (optional, defaults to None/no end date)
 
     Raises:
-        ValueError: If user is already a member of any account
+        ValueError: If the project has no accounts
     """
     # Default start_date to now if not provided
     if start_date is None:
         start_date = datetime.now()
+
+    now = datetime.now()
 
     accounts = session.query(Account).filter(
         Account.project_id == project_id,
@@ -89,13 +97,20 @@ def add_user_to_project(
         raise ValueError(f"No accounts found for project {project_id}")
 
     for account in accounts:
-        # Check if already exists
-        existing = session.query(AccountUser).filter(
+        # Skip only if the user already has a LIVE membership on this account —
+        # one that is open-ended or not yet expired (a future start_date still
+        # counts). A stale end-dated row must NOT block the add, otherwise
+        # re-adding a returning member is a silent no-op on every account they
+        # previously held. We test end_date directly rather than
+        # AccountUser.is_active because is_active also excludes not-yet-started
+        # rows, which we still want to treat as an existing membership.
+        existing_open = session.query(AccountUser).filter(
             AccountUser.account_id == account.account_id,
-            AccountUser.user_id == user_id
+            AccountUser.user_id == user_id,
+            or_(AccountUser.end_date.is_(None), AccountUser.end_date >= now),
         ).first()
 
-        if not existing:
+        if not existing_open:
             account_user = AccountUser(
                 account_id=account.account_id,
                 user_id=user_id,

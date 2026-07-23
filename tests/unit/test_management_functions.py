@@ -118,6 +118,73 @@ class TestAddUserToProject:
         ).count()
         assert count == 1
 
+    def test_readds_member_whose_prior_rows_all_expired(self, session):
+        """A returning member with only end-dated rows gets a fresh open row.
+
+        Regression: the existence check used to match on (account_id,
+        user_id) alone, so a stale end-dated row made the account look
+        "already a member" and the re-add was a silent no-op — leaving the
+        user with no live access on that account.
+        """
+        project, account = _project_with_account(session)
+        new_user = make_user(session)
+
+        # First add → one open membership.
+        add_user_to_project(session, project.project_id, new_user.user_id)
+        rows = session.query(AccountUser).filter_by(
+            account_id=account.account_id, user_id=new_user.user_id
+        ).all()
+        assert len(rows) == 1
+
+        # Expire it in the past.
+        expired_at = datetime(2020, 1, 1, 12, 0, 0)
+        rows[0].end_date = expired_at
+        session.flush()
+
+        # Re-add → a NEW open row; the expired row is preserved as history.
+        add_user_to_project(session, project.project_id, new_user.user_id)
+
+        rows = session.query(AccountUser).filter_by(
+            account_id=account.account_id, user_id=new_user.user_id
+        ).order_by(AccountUser.account_user_id).all()
+        assert len(rows) == 2
+        assert rows[0].end_date == expired_at            # history kept
+        assert sum(1 for r in rows if r.end_date is None) == 1  # one live membership
+
+    def test_readd_is_per_account_partial(self, session):
+        """Re-add fills only the accounts lacking a live row (the prod bug).
+
+        Accounts where the user still has an open row are not duplicated;
+        accounts where the only row is expired get a fresh open row.
+        """
+        project, account_a = _project_with_account(session)
+        account_b = make_account(session, project=project)
+        new_user = make_user(session)
+
+        add_user_to_project(session, project.project_id, new_user.user_id)
+
+        # Expire the user's row on account_a only; account_b stays open.
+        a_row = session.query(AccountUser).filter_by(
+            account_id=account_a.account_id, user_id=new_user.user_id
+        ).one()
+        a_row.end_date = datetime(2020, 1, 1, 12, 0, 0)
+        session.flush()
+
+        add_user_to_project(session, project.project_id, new_user.user_id)
+
+        a_rows = session.query(AccountUser).filter_by(
+            account_id=account_a.account_id, user_id=new_user.user_id
+        ).all()
+        b_rows = session.query(AccountUser).filter_by(
+            account_id=account_b.account_id, user_id=new_user.user_id
+        ).all()
+        # account_a: expired + fresh open = 2 rows, exactly one live.
+        assert len(a_rows) == 2
+        assert sum(1 for r in a_rows if r.end_date is None) == 1
+        # account_b: still exactly one open row, not duplicated.
+        assert len(b_rows) == 1
+        assert b_rows[0].end_date is None
+
 
 class TestRemoveUserFromProject:
     """Tests for remove_user_from_project()."""
