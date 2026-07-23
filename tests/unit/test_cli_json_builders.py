@@ -203,6 +203,18 @@ class TestProjectBuilders:
             }
             assert isinstance(u['inaccessible_resources'], list)
 
+    def test_build_project_users_matches_shared_detector(self, active_project):
+        """CLI partial-access output is sourced from Project.get_members_access_status,
+        so it must agree resource-for-resource with the detector (no drift)."""
+        users = build_project_users(active_project)
+        status = active_project.get_members_access_status(active_only=True)
+        expected = {
+            row['user'].username: sorted(m['resource_name'] for m in row['missing'])
+            for row in status['members']
+        }
+        for u in users:
+            assert u['inaccessible_resources'] == expected.get(u['username'], [])
+
     def test_build_project_search_results_brief(self, active_project):
         data = build_project_search_results([active_project], 'pat', verbose=False)
         assert data['kind'] == 'project_search_results'
