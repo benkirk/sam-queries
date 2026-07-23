@@ -532,23 +532,51 @@ if "${KCTL_NS[@]}" get certificate "$TLS_SECRET" >/dev/null 2>&1; then
     # ingress tls block, but a failed reissue leaves the OLD cert in place and
     # serving. Then an alias resolves, serves, and presents a cert that does not
     # name it — a browser-visible failure the expiry check below would miss.
-    CERT_NAMES=$("${KCTL_NS[@]}" get certificate "$TLS_SECRET" -o json 2>/dev/null \
-                  | jq -r '.spec.dnsNames[]? // empty' | sort -u)
-    echo "  $TLS_SECRET dnsNames: $(echo "$CERT_NAMES" | tr '\n' ' ')"
+    #
+    # Two distinct things, and conflating them is how this check once passed
+    # green while the served cert was four months stale:
+    #   spec.dnsNames — the REQUEST. Updates the instant the ingress changes,
+    #                   whether or not issuance ever succeeds. Never trust it
+    #                   as evidence of what a browser sees.
+    #   the Secret's tls.crt SANs — GROUND TRUTH. This is the cert nginx
+    #                   actually presents.
+    CERT_REQ=$("${KCTL_NS[@]}" get certificate "$TLS_SECRET" -o json 2>/dev/null \
+                | jq -r '.spec.dnsNames[]? // empty' | sort -u)
+    CERT_SANS=$("${KCTL_NS[@]}" get secret "$TLS_SECRET" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
+                | base64 -d 2>/dev/null \
+                | openssl x509 -noout -ext subjectAltName 2>/dev/null \
+                | tr ',' '\n' | sed -n 's/.*DNS:\([^ ,]*\).*/\1/p' | sort -u)
+    echo "  $TLS_SECRET requested dnsNames: $(echo "$CERT_REQ"  | tr '\n' ' ')"
+    echo "  $TLS_SECRET served SANs:        $(echo "$CERT_SANS" | tr '\n' ' ')"
+
+    if [[ -z "$CERT_SANS" ]]; then
+        warn "could not read SANs from Secret '$TLS_SECRET' (missing openssl, or no read access) — falling back to the requested dnsNames, which does NOT prove what is served"
+        CERT_SANS="$CERT_REQ"
+    fi
+
     # Keyed on hosts actually SERVED (rule hosts), not on expected hosts: this
     # is the browser-visible invariant, and it stays quiet before a pending
     # deploy rather than crying wolf.
     missing_sans=""
     while IFS= read -r h; do
         [[ -z "$h" ]] && continue
-        printf '%s\n' "$CERT_NAMES" | grep -qxF "$h" || missing_sans+=" $h"
+        printf '%s\n' "$CERT_SANS" | grep -qxF "$h" || missing_sans+=" $h"
     done <<< "${RULE_HOSTS:-}"
     if [[ -z "$missing_sans" ]]; then
-        pass "cert covers every served host"
+        pass "served cert covers every served host"
     else
-        fail "cert is MISSING SAN(s) for:${missing_sans} — those hosts serve a mismatched cert"
+        fail "served cert is MISSING SAN(s) for:${missing_sans} — those hosts present a mismatched cert"
         explain "cert-manager reissues when the ingress tls block changes. If this
   persists, inspect the Order: kubectl -n $NAMESPACE get order -o yaml | grep -A3 'state:'"
+    fi
+
+    # Requested-but-not-yet-served names: reissue in flight, or wedged. Not a
+    # browser-visible failure on its own (the check above owns that), but it is
+    # the early warning that issuance is stuck — e.g. a suspended ACME account.
+    if [[ -n "$CERT_REQ" && "$CERT_REQ" != "$CERT_SANS" ]]; then
+        CERT_REV=$("${KCTL_NS[@]}" get certificate "$TLS_SECRET" -o jsonpath='{.status.revision}' 2>/dev/null)
+        warn "requested dnsNames != served SANs (revision=${CERT_REV:-?}) — reissue pending or FAILED, the old cert is still being served"
+        explain "check the newest Order: kubectl -n $NAMESPACE get order -o wide"
     fi
 
     NOTAFTER=$("${KCTL_NS[@]}" get certificate "$TLS_SECRET" -o jsonpath='{.status.notAfter}' 2>/dev/null)
