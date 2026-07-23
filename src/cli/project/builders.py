@@ -109,15 +109,22 @@ def build_project_tree(project: Project) -> dict:
 
 
 def build_project_users(project: Project) -> list:
+    # Single call to the shared detector so the CLI, the web member-list
+    # warning, and the operator access grid all classify partial access
+    # identically (see Project.get_members_access_status).
+    status = project.get_members_access_status(active_only=True)
+    missing_by_user = {
+        row['user'].user_id: sorted(m['resource_name'] for m in row['missing'])
+        for row in status['members']
+    }
     out = []
     for u in sorted(project.users, key=lambda x: x.username):
-        inaccessible = project.get_user_inaccessible_resources(u)
         out.append({
             'username': u.username,
             'display_name': u.display_name,
             'primary_email': u.primary_email,
             'unix_uid': u.unix_uid,
-            'inaccessible_resources': sorted(inaccessible) if inaccessible else [],
+            'inaccessible_resources': missing_by_user.get(u.user_id, []),
         })
     return out
 

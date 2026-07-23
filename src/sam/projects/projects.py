@@ -481,18 +481,129 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         allocations_by_resource = self.get_all_allocations_by_resource()
         return allocations_by_resource.get(resource_name)
 
+    def get_members_access_status(self, active_only: bool = True) -> Dict[str, Any]:
+        """Per-member resource-access status for this project.
+
+        The single source of truth shared by the member-list warning
+        indicator, the CLI (``build_project_users``), and the operator
+        access grid (``_build_access_grid_context``) — so those surfaces
+        can never drift in how they classify partial access.
+
+        Columns are the resource "denominator":
+
+        - ``active_only=True`` (default) → resources with a currently-active
+          allocation (via :meth:`get_all_allocations_by_resource`). Used by
+          the member list and CLI.
+        - ``active_only=False`` → every non-deleted account's resource, so
+          lapsed resources are shown too (the grid's "show all" mode).
+
+        A member has *partial* access when they hold an active
+        ``AccountUser`` on some but not all columns, *none* when they hold
+        none, *full* otherwise. The project lead is flagged (``is_lead``) so
+        callers can apply the "lead always has access" business rule.
+
+        Returns a dict::
+
+            {
+              'columns': [
+                {account_id, resource_id, resource_name, has_active_alloc}, ...
+              ],                                          # sorted by resource_name
+              'members': [
+                {
+                  'user': User, 'is_lead': bool,
+                  'has': set[str],                        # resource_names with access
+                  'missing': [ {account_id, resource_id, resource_name}, ... ],
+                  'status': 'full' | 'partial' | 'none',
+                  'cells': [ {column, checked}, ... ],    # aligned with 'columns'
+                }, ...
+              ],
+            }
+        """
+        active_by_resource = self.get_all_allocations_by_resource()
+        active_resource_names = set(active_by_resource.keys())
+
+        columns = []
+        if active_only:
+            for resource_name, allocation in active_by_resource.items():
+                account = allocation.account
+                columns.append({
+                    'account_id': account.account_id,
+                    'resource_id': account.resource_id,
+                    'resource_name': resource_name,
+                    'has_active_alloc': True,
+                })
+        else:
+            for account in self.accounts:
+                if not account.is_active or not account.resource:
+                    continue
+                resource_name = account.resource.resource_name
+                columns.append({
+                    'account_id': account.account_id,
+                    'resource_id': account.resource_id,
+                    'resource_name': resource_name,
+                    'has_active_alloc': resource_name in active_resource_names,
+                })
+        columns.sort(key=lambda c: (c['resource_name'] or '').lower())
+
+        # One membership query for the whole grid — not per-cell lookups.
+        account_ids = [c['account_id'] for c in columns]
+        active_links = set()
+        if account_ids:
+            rows = self.session.query(
+                AccountUser.user_id, AccountUser.account_id
+            ).filter(
+                AccountUser.account_id.in_(account_ids),
+                AccountUser.is_active,
+            ).all()
+            active_links = {(uid, aid) for uid, aid in rows}
+
+        lead_user_id = self.project_lead_user_id
+        members = sorted(
+            self.users,
+            key=lambda u: (u.display_name or u.username or '').lower(),
+        )
+
+        member_rows = []
+        for user in members:
+            cells = []
+            has = set()
+            missing = []
+            for col in columns:
+                checked = (user.user_id, col['account_id']) in active_links
+                cells.append({'column': col, 'checked': checked})
+                if checked:
+                    has.add(col['resource_name'])
+                else:
+                    missing.append({
+                        'account_id': col['account_id'],
+                        'resource_id': col['resource_id'],
+                        'resource_name': col['resource_name'],
+                    })
+            if not missing:
+                status = 'full'
+            elif not has:
+                status = 'none'
+            else:
+                status = 'partial'
+            member_rows.append({
+                'user': user,
+                'is_lead': user.user_id == lead_user_id,
+                'has': has,
+                'missing': missing,
+                'status': status,
+                'cells': cells,
+            })
+
+        return {'columns': columns, 'members': member_rows}
+
     def get_user_inaccessible_resources(self, user: 'User') -> Set[str]:
         """
         Determine which resources with active allocations the user cannot access.
 
-        This method compares the resources available to this project (those with active
-        allocations) against the resources a specific user can access within this project.
-
-        Args:
-            user: User to check for resource access
-
-        Returns:
-            Set of resource names user cannot access. Empty set means full access.
+        Thin per-user wrapper over :meth:`get_members_access_status` (the
+        shared detector) so this convenience method and the grid/CLI cannot
+        disagree. Returns the set of resource names the user cannot access;
+        an empty set means full access.
 
         Example:
             >>> project = Project.get_by_projcode(session, 'UCSD0001')
@@ -501,27 +612,25 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
             >>> if inaccessible:
             ...     print(f"User lacks access to: {', '.join(sorted(inaccessible))}")
         """
-        # Get all resources with active allocations
-        allocations_by_resource = self.get_all_allocations_by_resource()
-        project_resources = set(allocations_by_resource.keys())
+        status = self.get_members_access_status(active_only=True)
 
-        # If no active allocations, no restrictions apply
-        if not project_resources:
+        all_resources = {c['resource_name'] for c in status['columns']}
+        if not all_resources:
             return set()
 
-        # Find resources user CAN access in this project
-        user_resource_names = set()
-        for account_user in user.accounts:  # AccountUser objects
-            account = account_user.account
+        for row in status['members']:
+            if row['user'].user_id == user.user_id:
+                return {m['resource_name'] for m in row['missing']}
 
-            # Check: Same project + active date range + resource exists
-            if (account.project_id == self.project_id and
-                account_user.is_active and
-                account.resource):
-                user_resource_names.add(account.resource.resource_name)
-
-        # Return resources user CANNOT access
-        return project_resources - user_resource_names
+        # Caller passed a user who is not a listed project member — compute
+        # directly from their own AccountUser rows against the same column set.
+        accessible = {
+            au.account.resource.resource_name
+            for au in user.accounts
+            if (au.account.project_id == self.project_id and
+                au.is_active and au.account.resource)
+        }
+        return all_resources - accessible
 
     @hybrid_property
     def has_active_allocations(self) -> bool:

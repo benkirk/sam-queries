@@ -2782,75 +2782,19 @@ _ACCESS_GRID_TEMPLATE = 'dashboards/admin/fragments/project_access_grid_htmx.htm
 def _build_access_grid_context(project, active_only: bool) -> dict:
     """Build the member × resource access grid for *project*.
 
-    Columns are resources with a currently-active allocation when
-    ``active_only`` is True, otherwise every non-deleted account's resource
-    (so expired/lapsed resources are also shown). Each cell is checked when
-    the member has a currently-active AccountUser on that column's account —
-    computed from one membership query, not per-cell lookups.
+    Thin adapter over the shared detector
+    :meth:`Project.get_members_access_status` — the same computation that
+    backs the CLI and the member-list warning indicator, so the grid can
+    never disagree with them. Columns are resources with a currently-active
+    allocation when ``active_only`` is True, otherwise every non-deleted
+    account's resource (so expired/lapsed resources are also shown).
     """
-    from sam.accounting.accounts import AccountUser
-
-    active_by_resource = project.get_all_allocations_by_resource()
-    active_resource_names = set(active_by_resource.keys())
-
-    columns = []
-    if active_only:
-        for resource_name, allocation in active_by_resource.items():
-            account = allocation.account
-            columns.append({
-                'account_id': account.account_id,
-                'resource_id': account.resource_id,
-                'resource_name': resource_name,
-                'has_active_alloc': True,
-            })
-    else:
-        for account in project.accounts:
-            if not account.is_active or not account.resource:
-                continue
-            resource_name = account.resource.resource_name
-            columns.append({
-                'account_id': account.account_id,
-                'resource_id': account.resource_id,
-                'resource_name': resource_name,
-                'has_active_alloc': resource_name in active_resource_names,
-            })
-    columns.sort(key=lambda c: (c['resource_name'] or '').lower())
-
-    # One query for the whole grid: which (user, account) memberships are active.
-    account_ids = [c['account_id'] for c in columns]
-    active_links = set()
-    if account_ids:
-        rows = db.session.query(
-            AccountUser.user_id, AccountUser.account_id
-        ).filter(
-            AccountUser.account_id.in_(account_ids),
-            AccountUser.is_active,
-        ).all()
-        active_links = {(uid, aid) for uid, aid in rows}
-
-    lead_user_id = project.project_lead_user_id
-    members = sorted(
-        project.users,
-        key=lambda u: (u.display_name or u.username or '').lower(),
-    )
-
-    member_rows = []
-    for user in members:
-        cells = [{
-            'column': col,
-            'checked': (user.user_id, col['account_id']) in active_links,
-        } for col in columns]
-        member_rows.append({
-            'user': user,
-            'is_lead': user.user_id == lead_user_id,
-            'cells': cells,
-        })
-
+    status = project.get_members_access_status(active_only=active_only)
     return {
         'project': project,
         'projcode': project.projcode,
-        'columns': columns,
-        'member_rows': member_rows,
+        'columns': status['columns'],
+        'member_rows': status['members'],
         'active_only': active_only,
     }
 

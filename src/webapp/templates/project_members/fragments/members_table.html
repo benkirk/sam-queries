@@ -30,10 +30,45 @@
         </thead>
         <tbody>
             {% for member in members %}
+            {% set acc = access_by_username.get(member.username) if access_by_username else None %}
             <tr>
                 <td>
                     <i class="fas fa-user text-muted me-1"></i>
                     <strong>{{ member.display_name }}</strong>
+                    {% if acc and acc.status != 'full' and not acc.is_lead %}
+                        {% set missing_str = acc.missing_names | join(', ') %}
+                        {% if can_manage %}
+                        {# Actionable partial-access warning: click to grant the missing resources. #}
+                        <button type="button"
+                                class="btn btn-link p-0 border-0 align-baseline text-warning ms-1"
+                                data-bs-toggle="tooltip"
+                                data-bs-title="No access to {{ missing_str }} — click to grant"
+                                hx-post="{{ url_for('project_members.htmx_grant_access', projcode=projcode) }}"
+                                hx-vals='{"username": "{{ member.username }}"}'
+                                hx-target="#htmx-members-{{ projcode }}"
+                                hx-swap="innerHTML"
+                                hx-confirm="Grant {{ member.display_name }} access to {{ missing_str }}?"
+                                data-confirm-title="Grant resource access"
+                                data-confirm-variant="warning"
+                                data-confirm-label="Grant access"
+                                data-confirm-body="#confirm-grant-{{ member.username }}">
+                            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                            <span class="visually-hidden">Partial access: no access to {{ missing_str }}. Grant access.</span>
+                        </button>
+                        <template id="confirm-grant-{{ member.username }}">
+                            <p>Grant <strong>{{ member.display_name }}</strong> access to the project resources they are currently missing?</p>
+                            <p class="mb-0 text-muted small">Missing: {{ missing_str }}. This adds them to each resource's account; existing access is unchanged.</p>
+                        </template>
+                        {% else %}
+                        {# Read-only indicator for viewers who cannot manage members. #}
+                        <span class="text-warning ms-1" tabindex="0"
+                              data-bs-toggle="tooltip"
+                              data-bs-title="No access to {{ missing_str }}">
+                            <i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+                            <span class="visually-hidden">Partial access: no access to {{ missing_str }}.</span>
+                        </span>
+                        {% endif %}
+                    {% endif %}
                 </td>
                 <td><code>{{ member.username }}</code></td>
                 <td>

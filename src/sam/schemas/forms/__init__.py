@@ -204,6 +204,7 @@ from .projects import (
 )
 from .user import (
     AddMemberForm,
+    GrantMemberAccessForm,
     EditAllocationForm,
     ExchangeAllocationForm,
     AddAllocationForm,
@@ -276,6 +277,7 @@ __all__ = [
     'AccessGridToggleForm',
     # User
     'AddMemberForm',
+    'GrantMemberAccessForm',
     'EditAllocationForm',
     'ExchangeAllocationForm',
     'AddAllocationForm',
