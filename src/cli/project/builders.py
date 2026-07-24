@@ -2,6 +2,7 @@
 
 from sam import Project
 from sam.queries.rolling_usage import get_project_rolling_usage
+from sam.provisioning import check_project_provisioning
 
 
 def _user_brief(u) -> dict:
@@ -127,6 +128,17 @@ def build_project_users(project: Project) -> list:
             'inaccessible_resources': missing_by_user.get(u.user_id, []),
         })
     return out
+
+
+def build_project_provisioning(project: Project) -> dict:
+    """Host provisioning cross-check for a project.
+
+    Returns the dict from ``check_project_provisioning`` (group exists?, name
+    match, SAM roster vs OS group membership). Callers gate on
+    ``ctx.check_provisioning`` before invoking this — off-host it reads as
+    ``group_exists: False``, which the display renders as "unavailable here".
+    """
+    return check_project_provisioning(project)
 
 
 def build_project_search_results(projects: list, pattern: str, verbose: bool) -> dict:

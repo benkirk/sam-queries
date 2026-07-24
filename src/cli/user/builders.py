@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Optional
 from sam import User
+from sam.provisioning import check_user_provisioning
 
 
 def build_user_core(user: User) -> dict:
@@ -89,6 +90,17 @@ def build_user_projects(user: User, inactive: bool) -> list:
             'latest_allocation_end': latest_end,
         })
     return out
+
+
+def build_user_provisioning(user: User) -> dict:
+    """Host provisioning cross-check for a user.
+
+    Returns the dict from ``check_user_provisioning`` (recognized?, uid match,
+    shell/home, project-group coverage). Callers gate on
+    ``ctx.check_provisioning`` before invoking this — off-host it reads as
+    ``recognized: False``, which the display renders as "unavailable here".
+    """
+    return check_user_provisioning(user, user.active_projects())
 
 
 def build_user_search_results(users: list, pattern: str) -> dict:

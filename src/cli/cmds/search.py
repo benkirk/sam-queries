@@ -85,8 +85,10 @@ def process_result(result, **kwargs):
 @click.option('--limit', type=int, default=50, help='Maximum number of results for pattern search (default: 50)')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (allocation end dates, timestamps)')
+@click.option('--provisioning/--no-provisioning', default=None,
+              help='Cross-check host provisioning (auto-on on a provisioned host)')
 @pass_context
-def user(ctx: Context, username, search, abandoned, has_active_project, list_projects, limit, verbose, very_verbose):
+def user(ctx: Context, username, search, abandoned, has_active_project, list_projects, limit, verbose, very_verbose, provisioning):
     """
     Search for users.
 
@@ -104,6 +106,9 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
         ctx.verbose = True  # very_verbose implies verbose
     elif verbose:
         ctx.verbose = True
+
+    if provisioning is not None:
+        ctx.check_provisioning = provisioning
 
     if username:
         # Exact Search
@@ -145,8 +150,10 @@ def user(ctx: Context, username, search, abandoned, has_active_project, list_pro
 @click.option('--facilities', '-F', multiple=True, default=['UNIV', 'WNA'], help='Facilities to include (default: UNIV, WNA). Use * for all facilities.')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information (truncated abstract, hierarchy)')
 @click.option('--very-verbose', '-vv', is_flag=True, help='Show full information (full abstract, timestamps, IDs, charge breakdown)')
+@click.option('--provisioning/--no-provisioning', default=None,
+              help='Cross-check host provisioning (auto-on on a provisioned host)')
 @pass_context
-def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, facilities, verbose, very_verbose):
+def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirations, since, list_users, limit, facilities, verbose, very_verbose, provisioning):
     """
     Search for projects.
 
@@ -163,6 +170,9 @@ def project(ctx: Context, projcode, search, upcoming_expirations, recent_expirat
         ctx.verbose = True  # very_verbose implies verbose
     elif verbose:
         ctx.verbose = True
+
+    if provisioning is not None:
+        ctx.check_provisioning = provisioning
 
     # Handle facility filtering - '*' means all facilities
     facility_filter = None if '*' in facilities else list(facilities)
