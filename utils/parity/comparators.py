@@ -109,7 +109,7 @@ def collect_resource_names(new_fstree_data: dict) -> list[str]:
 
 
 # ===========================================================================
-# Directory Access — 12 checks
+# Directory Access — 15 checks
 # ===========================================================================
 
 def compare_directory_access(legacy: dict, new: dict) -> list[CheckResult]:
@@ -295,6 +295,89 @@ def compare_directory_access(legacy: dict, new: dict) -> list[CheckResult]:
             mismatches=mismatches,
             compared=compared,
         ))
+
+    # -----------------------------------------------------------------------
+    # 13-15. Reverse direction (new − legacy).
+    #
+    # Checks 1-12 are all one-directional (legacy ⊆ new), so surplus rows in
+    # the new endpoint can never fail them. That blind spot is exactly how the
+    # ungated adhoc-member merge shipped: 3,959 group-member rows across 339
+    # groups that legacy drops, with all 12 checks green.
+    # -----------------------------------------------------------------------
+
+    # 13. No surplus group members — mirror of check 5, same ±5 per-group
+    #     tolerance (DB-mirror lag can legitimately add rows either way).
+    failures = []
+    compared = 0
+    for branch in shared_branches:
+        legacy_groups = {g['groupName']: set(g['usernames']) for g in legacy_idx[branch]['unixGroups']}
+        for grp in new_idx[branch]['unixGroups']:
+            name = grp['groupName']
+            if name not in legacy_groups:
+                continue
+            compared += 1
+            surplus, ok = subset_diff(set(grp['usernames']), legacy_groups[name], max_missing=5)
+            if not ok:
+                failures.append(
+                    f'{branch}/{name}: {len(surplus)} new members absent from legacy '
+                    f'(tolerance 5). Sample: {sorted(surplus)[:10]}'
+                )
+    results.append(CheckResult(
+        name='directory_access / no surplus group members',
+        passed=not failures,
+        summary=f'{compared} shared groups checked',
+        mismatches=failures,
+        compared=compared,
+    ))
+
+    # 14. No surplus account usernames — mirror of check 7, same ±10 tolerance.
+    mismatches = []
+    compared = 0
+    for branch in shared_branches:
+        legacy_users = {a['username'] for a in legacy_idx[branch]['unixAccounts']}
+        new_users = {a['username'] for a in new_idx[branch]['unixAccounts']}
+        compared += len(new_users)
+        surplus, ok = subset_diff(new_users, legacy_users, max_missing=10)
+        if not ok:
+            mismatches.append(
+                f'{branch}: {len(surplus)} new usernames absent from legacy '
+                f'(tolerance 10). Sample: {sorted(surplus)[:10]}'
+            )
+    results.append(CheckResult(
+        name='directory_access / no surplus account usernames',
+        passed=not mismatches,
+        summary=f'{compared} new usernames checked',
+        mismatches=mismatches,
+        compared=compared,
+    ))
+
+    # 15. No dangling group members. Unlike every other check this is a
+    #     self-consistency invariant of a single payload, not a comparison —
+    #     a group member with no unixAccounts entry is a dangling reference for
+    #     the downstream LDAP provisioner. No tolerance: it must be exactly 0.
+    #     Both payloads are checked; legacy is the control (already 0).
+    mismatches = []
+    compared = 0
+    for label, idx in (('legacy', legacy_idx), ('new', new_idx)):
+        for branch in sorted(idx):
+            accounts = {a['username'] for a in idx[branch]['unixAccounts']}
+            members = set()
+            for grp in idx[branch]['unixGroups']:
+                members.update(grp['usernames'])
+            compared += len(members)
+            dangling = members - accounts
+            if dangling:
+                mismatches.append(
+                    f'{label} {branch}: {len(dangling)} group members have no '
+                    f'unixAccounts entry. Sample: {sorted(dangling)[:10]}'
+                )
+    results.append(CheckResult(
+        name='directory_access / no dangling group members',
+        passed=not mismatches,
+        summary=f'{compared} group memberships checked across both payloads',
+        mismatches=mismatches,
+        compared=compared,
+    ))
 
     return results
 
