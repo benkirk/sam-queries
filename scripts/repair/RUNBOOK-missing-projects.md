@@ -85,13 +85,13 @@ clean 1b after a fix is the expected result, not a missing answer.
 
 ## Step 2 — Read the output
 
-| What you see | What it means | Do |
-|---|---|---|
-| `active=0` or `locked=1` | The account is still closed. Memberships are the *symptom*, not the problem. | Get the account reopened first, then re-triage. |
-| `rows_ended == live_just_before`, `still_orphaned > 0`, and `user_last_touched` **later than** `closed_at` | **The known defect.** Closed, reopened, memberships never restored. | Step 3. |
-| `rows_ended < live_just_before` | An ordinary project removal or a resource retirement — only part of their access ended. | Not this defect. Treat as a normal membership question. |
-| `rows_ended == live_just_before` but `user_last_touched` is **older than** `closed_at` | Whole-account close with no evidence of a reopen. Could be a real departure whose `active` flag was never flipped. | **Do not auto-restore.** Step 5. |
-| `live_rows > 0` but the user still says projects are missing | Partial access — they hold some accounts and not others. | Use the ⚠ grant on the project member card (Step 4B). |
+| What you see                                                                                               | What it means                                                                                                      | Do                                                      |
+|------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------|
+| `active=0` or `locked=1`                                                                                   | The account is still closed. Memberships are the *symptom*, not the problem.                                       | Get the account reopened first, then re-triage.         |
+| `rows_ended == live_just_before`, `still_orphaned > 0`, and `user_last_touched` **later than** `closed_at` | **The known defect.** Closed, reopened, memberships never restored.                                                | Step 3.                                                 |
+| `rows_ended < live_just_before`                                                                            | An ordinary project removal or a resource retirement — only part of their access ended.                            | Not this defect. Treat as a normal membership question. |
+| `rows_ended == live_just_before` but `user_last_touched` is **older than** `closed_at`                     | Whole-account close with no evidence of a reopen. Could be a real departure whose `active` flag was never flipped. | **Do not auto-restore.** Step 5.                        |
+| `live_rows > 0` but the user still says projects are missing                                               | Partial access — they hold some accounts and not others.                                                           | Use the ⚠ grant on the project member card (Step 4B).   |
 
 ### Two traps
 
