@@ -133,7 +133,7 @@
 --
 -- Connecting to prod:
 --
---     mysql -h sam-sql.ucar.edu -u hpc-writer -p'<pass>' sam
+--     mysql -h sam-sql.ucar.edu -u <writer-user> -p'<pass>' sam
 --
 -- Use inline -p, NOT the MYSQL_PWD environment variable: ~/.my.cnf exists on
 -- the operator workstation and MySQL option files take precedence over the
@@ -356,7 +356,7 @@ SELECT COUNT(*)                AS rows_pinned,
 --     instant, so this is one statement per closure event (~12 for the July
 --     window, ~51 for the full back-fill).
 --
---     e.g.  mysql -h sam-sql.ucar.edu -u hpc-writer -p'<pass>' sam -N -B \
+--     e.g.  mysql -h sam-sql.ucar.edu -u <writer-user> -p'<pass>' sam -N -B \
 --             < this-section > rollback-20260724.sql
 SELECT CONCAT('UPDATE account_user SET end_date = ''', end_date,
               ''' WHERE account_user_id IN (',

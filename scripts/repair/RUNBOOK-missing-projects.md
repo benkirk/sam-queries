@@ -26,7 +26,7 @@ come back and complain.
 ## Before you start
 
 ```bash
-mysql -h sam-sql.ucar.edu -u hpc-writer -p'<pass>' sam
+mysql -h sam-sql.ucar.edu -u <writer-user> -p'<pass>' sam
 ```
 
 Two things that will waste your time otherwise:
@@ -35,7 +35,7 @@ Two things that will waste your time otherwise:
   workstation and MySQL option files take precedence over the environment
   variable, so `MYSQL_PWD` is silently ignored and the connection is refused
   with a confusing `Access denied`.
-- **`hpc-writer` has no DDL.** Grants are `SELECT, INSERT, UPDATE, DELETE` on
+- **The writer account has no DDL.** Grants are `SELECT, INSERT, UPDATE, DELETE` on
   `sam.*`. No `CREATE TABLE`, so no scratch/backup tables — capture rollback
   state as generated SQL text instead (Step 3 does this).
 
@@ -269,7 +269,7 @@ Rather than waiting for tickets, run the bulk detector to find everyone
 currently in this state:
 
 ```bash
-mysql -h sam-sql.ucar.edu -u hpc-writer -p'<pass>' sam -t \
+mysql -h sam-sql.ucar.edu -u <writer-user> -p'<pass>' sam -t \
   < scripts/repair/2026-07-restore-orphaned-memberships.sql
 ```
 
