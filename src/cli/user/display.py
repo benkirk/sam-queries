@@ -107,9 +107,9 @@ def display_user_provisioning(ctx: Context, prov: dict, username: str):
 
     if not issues:
         ctx.console.print(
-            "✅ Host provisioning consistent "
+            "[green]✓[/] Host provisioning consistent "
             "(recognized, uid matches, all project groups present).",
-            style="green",
+            style="dim",
         )
         return
 

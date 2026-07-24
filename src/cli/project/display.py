@@ -297,9 +297,9 @@ def display_project_provisioning(ctx: Context, prov: dict, projcode: str):
 
     if not issues:
         ctx.console.print(
-            f"✅ Host provisioning consistent (unix group [bold]{prov['group_name']}[/] "
+            f"[green]✓[/] Host provisioning consistent (unix group [bold]{prov['group_name']}[/] "
             f"matches SAM roster, {prov['sam_member_count']} members).",
-            style="green",
+            style="dim",
         )
         return
 
