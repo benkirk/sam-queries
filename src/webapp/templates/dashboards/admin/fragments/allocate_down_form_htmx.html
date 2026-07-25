@@ -1,0 +1,116 @@
+{#
+  Admin: Edit Project — Allocate to Sub-project modal form.
+  Loaded into #allocateDownFormContainer when the allocate-down button is
+  clicked on a parent node's resource row in the allocation tree.
+
+  Assigns part of a parent allocation's UNALLOCATED remainder (its amount
+  minus the sub-project carve-outs on its direct frontier) to a sub-project —
+  either by increasing an existing carve-out allocation, or by creating a new
+  standalone allocation on a sub-project branch that has none. The parent's
+  own amount never changes; its unallocated remainder shrinks implicitly.
+
+  Context variables:
+    allocation        — the parent Allocation ORM object
+    parent_projcode   — its project's projcode
+    frontier          — CarveoutFrontier (carve_total / residual / raw_residual)
+    bump_candidates   — [{allocation_id, projcode, title, amount}] carve-outs
+    create_candidates — [{project_id, projcode, title}] uncovered branches
+    resource          — the Resource ORM object
+    errors            — list of validation errors (on re-render)
+    form              — request.form on validation re-render
+#}
+{% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_unallocated with context %}
+
+{% call htmx_form(
+    url_for('admin_dashboard.htmx_allocate_down', allocation_id=allocation.allocation_id),
+    '#allocateDownFormContainer',
+    'Allocate',
+    submit_icon='level-down-alt',
+    submit_class='btn-outline-success',
+    errors=errors
+) %}
+
+  <div class="alert alert-info py-2 mb-3 small">
+    <i class="fas fa-level-down-alt me-1"></i>
+    Assigns part of <code>{{ parent_projcode }}</code>'s unallocated remainder
+    on <strong>{{ resource.resource_name }}</strong> to a sub-project.
+    <code>{{ parent_projcode }}</code>'s own total is unchanged — its
+    remainder shrinks by the amount assigned.
+  </div>
+
+  {# Summary strip — parent total / carved out / unallocated #}
+  <div class="d-flex gap-3 align-items-center flex-wrap small mb-3">
+    <span><strong>This allocation:</strong> {{ allocation.amount | fmt_number }}</span>
+    <span><strong>Assigned to sub-projects:</strong> {{ frontier.carve_total | fmt_number }}</span>
+    <span>
+      <strong>Unallocated:</strong>
+      <span class="text-success fw-semibold">{{ frontier.residual | fmt_number }}</span>
+      {{ help_icon(g_unallocated(), rich=True, title='Unallocated remainder') }}
+    </span>
+  </div>
+
+  {# Target sub-project #}
+  <div class="mb-3">
+    <label for="allocateDownTarget" class="form-label fw-semibold">
+      Sub-project <span class="text-danger">*</span>
+    </label>
+    <select class="form-select" id="allocateDownTarget" name="target" required>
+      <option value="">— Select sub-project —</option>
+      {% if bump_candidates %}
+      <optgroup label="Add to an existing allocation">
+        {% for c in bump_candidates %}
+        <option value="alloc:{{ c.allocation_id }}"
+                data-amount="{{ c.amount }}"
+                {% if form and form.get('target') == 'alloc:' ~ c.allocation_id %}selected{% endif %}>
+          {{ c.projcode }} — currently {{ c.amount | fmt_number }}{% if c.title %} — {{ c.title | truncate(50, True, '…') }}{% endif %}
+        </option>
+        {% endfor %}
+      </optgroup>
+      {% endif %}
+      {% if create_candidates %}
+      <optgroup label="Create a first allocation (none on this resource yet)">
+        {% for c in create_candidates %}
+        <option value="proj:{{ c.project_id }}"
+                {% if form and form.get('target') == 'proj:' ~ c.project_id %}selected{% endif %}>
+          {{ c.projcode }} — new allocation{% if c.title %} — {{ c.title | truncate(50, True, '…') }}{% endif %}
+        </option>
+        {% endfor %}
+      </optgroup>
+      {% endif %}
+    </select>
+    <div class="form-text">
+      A new allocation uses this allocation's dates
+      ({{ allocation.start_date | fmt_date }} →
+      {{ allocation.end_date | fmt_date if allocation.end_date else 'open-ended' }}).
+    </div>
+  </div>
+
+  {# Amount #}
+  <div class="mb-3">
+    <label for="allocateDownAmount" class="form-label fw-semibold">
+      Amount <span class="text-danger">*</span>
+    </label>
+    <input type="number" class="form-control" id="allocateDownAmount"
+           name="amount" min="0.01" step="any" required
+           max="{{ frontier.residual }}"
+           data-number-preview
+           value="{{ form.get('amount', '') if form else '' }}"
+           placeholder="e.g. 100000">
+    <div class="form-text">
+      <span class="number-preview text-primary fw-semibold"></span>
+      Maximum: {{ frontier.residual | fmt_number }}
+    </div>
+  </div>
+
+  {# Optional audit comment #}
+  <div class="mb-3">
+    <label for="allocateDownComment" class="form-label">Comment <span class="text-muted small">(optional — recorded in the allocation history)</span></label>
+    <input type="text" class="form-control" id="allocateDownComment"
+           name="comment"
+           value="{{ form.get('comment', '') if form else '' }}"
+           placeholder="e.g. FY2027 supplement for CHILD01">
+  </div>
+
+{% endcall %}

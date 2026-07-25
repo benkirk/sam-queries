@@ -5,8 +5,9 @@ Administrative operations for managing allocations with automatic
 audit trail creation in allocation_transaction table.
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,9 @@ __all__ = [
     'detach_allocation',
     'link_allocation_to_parent',
     'get_partitioned_descendant_sum',
+    'get_carveout_frontier',
+    'allocate_residual_to_child',
+    'CarveoutFrontier',
     'date_ranges_overlap',
     'InheritingAllocationException',
 ]
@@ -200,6 +204,7 @@ def create_allocation(
     end_date: Optional[datetime] = None,
     description: Optional[str] = None,
     user_id: int,
+    comment: Optional[str] = None,
 ) -> 'Allocation':
     """Create a new allocation for a project + resource pair.
 
@@ -219,6 +224,8 @@ def create_allocation(
         end_date:    End of allocation period (None = open-ended).
         description: Optional human-readable note.
         user_id:     FK to User performing the action (for audit log).
+        comment:     Optional audit-trail comment (defaults to
+                     ``'Allocation created'``).
 
     Returns:
         Newly created and flushed Allocation instance.
@@ -253,7 +260,7 @@ def create_allocation(
         allocation,
         user_id,
         AllocationTransactionType.CREATE,
-        comment='Allocation created',
+        comment=comment or 'Allocation created',
         old_values={},
         propagated=False,
     )
@@ -690,6 +697,11 @@ def get_partitioned_descendant_sum(session: Session, allocation: Allocation) -> 
     NOTE: Do NOT use allocation.children for this — those are shared-pool copies
     with the same amount as the parent; summing them always gives a false overage
     (n × parent.amount for n children, always > parent.amount when n > 1).
+
+    NOTE: Sums standalone allocations at ALL descendant depths. For the
+    per-node direct-frontier decomposition used by nested trees (each node's
+    residual against its own immediate carve-outs), use
+    :func:`get_carveout_frontier` instead.
     """
     from sam.accounting.accounts import Account
 
@@ -717,6 +729,233 @@ def get_partitioned_descendant_sum(session: Session, allocation: Allocation) -> 
                     and date_ranges_overlap(a, allocation)):
                 total += a.amount
     return total
+
+
+@dataclass
+class CarveoutFrontier:
+    """Direct-frontier decomposition of one parent allocation, per resource.
+
+    The *frontier* is, for each direct child branch of the parent's project,
+    the nearest descendant project carrying an overlapping allocation on the
+    same resource — the level that actually draws from ``parent``.  Deeper
+    allocations draw from their own frontier node, not from ``parent``, so
+    they are deliberately not represented here (nested trees compute their
+    own frontier per node).
+    """
+    parent: Allocation
+    #: Frontier standalone allocations with a distinct amount — they carve
+    #: out of (consume) the parent's total.
+    carve_children: List[Allocation] = field(default_factory=list)
+    #: Frontier allocations classified as pool members (linked via
+    #: parent_allocation_id, or equal-amount fallback). They mirror the
+    #: pool and do not consume the parent's amount.
+    pool_children: List[Allocation] = field(default_factory=list)
+    #: Direct child Projects whose ENTIRE branch has no overlapping
+    #: allocation on this resource — candidates for a brand-new carve-out.
+    open_projects: list = field(default_factory=list)
+    carve_total: float = 0.0
+
+    @property
+    def raw_residual(self) -> float:
+        """amount − Σ carve-outs; negative means over-carved (audit deficit)."""
+        return float(self.parent.amount) - self.carve_total
+
+    @property
+    def residual(self) -> float:
+        """Unallocated remainder, clamped ≥ 0 (FAIRSHARE_TREE.md leaf_weight)."""
+        return max(self.raw_residual, 0.0)
+
+
+def get_carveout_frontier(session: Session, allocation: Allocation) -> 'CarveoutFrontier':
+    """
+    Decompose ``allocation``'s direct frontier into carve-outs, pool members,
+    and open (uncovered) branches, and compute its unallocated residual.
+
+    Classification uses :func:`sam.queries.tree_audit.is_pool_member` — the
+    single pool-vs-carve judgement site.  A frontier allocation linked to some
+    *other* parent allocation (dirty data) is treated as a pool member: it
+    mirrors another pool, counting it here would double-count, and it can
+    never be a bump target (``update_allocation`` rejects inheriting rows).
+
+    Only allocations whose date range overlaps ``allocation``'s window count
+    (allocations in other fiscal years are unrelated); multiple overlapping
+    rows on one frontier node all count.  Inactive projects are skipped.
+
+    A direct child project with no allocation of its own but with deeper
+    carve-outs below it is *not* an open branch — creating an allocation
+    there would re-anchor the deeper carves under it.  Only fully-uncovered
+    branches are offered for a new allocation.
+
+    Callers should pass a dedicated (non-inheriting) allocation; a pool
+    copy has no residual of its own.
+    """
+    from sam.accounting.accounts import Account
+    from sam.queries.tree_audit import is_pool_member
+
+    frontier = CarveoutFrontier(parent=allocation)
+
+    if not allocation.account:
+        return frontier
+
+    resource_id = allocation.account.resource_id
+    project = allocation.account.project
+    if not project or not project.has_children:
+        return frontier
+
+    def _walk(node) -> bool:
+        """Classify node's branch; True if any allocation was found in it."""
+        acct = Account.get_by_project_and_resource(session, node.project_id, resource_id)
+        cands = [
+            a for a in (acct.allocations if acct else [])
+            if not a.deleted and date_ranges_overlap(a, allocation)
+        ]
+        if cands:
+            # This node is the frontier for its branch — deeper allocations
+            # draw from it, not from ``allocation``. Stop descending.
+            for a in cands:
+                linked = a.parent_allocation_id is not None
+                if is_pool_member(linked=linked,
+                                  child_amount=float(a.amount),
+                                  parent_amount=float(allocation.amount)):
+                    frontier.pool_children.append(a)
+                else:
+                    frontier.carve_children.append(a)
+                    frontier.carve_total += float(a.amount)
+            return True
+
+        covered = False
+        for grandchild in node.children:
+            if grandchild.is_active:
+                covered = _walk(grandchild) or covered
+        return covered
+
+    for child in project.children:
+        if not child.is_active:
+            continue
+        if not _walk(child):
+            frontier.open_projects.append(child)
+
+    return frontier
+
+
+def allocate_residual_to_child(
+    session: Session,
+    parent_allocation_id: int,
+    user_id: int,
+    *,
+    amount: float,
+    target_allocation_id: Optional[int] = None,
+    target_project_id: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> Allocation:
+    """
+    Allocate part of a parent allocation's carve-out residual downward.
+
+    The parent's amount is UNCHANGED — under subdivided-award semantics its
+    amount is already the subtree total, so giving a sub-project more shrinks
+    the unallocated residual implicitly (residual = amount − Σ carve-outs).
+    Exactly one target must be given:
+
+      * ``target_allocation_id`` — bump an existing frontier carve-out
+        allocation (one EDIT→ADJUSTMENT audit row, signed delta);
+      * ``target_project_id`` — create a new standalone allocation on a
+        fully-uncovered direct child branch, mirroring the parent's dates
+        (one CREATE→NEW audit row).
+
+    No transaction row is written for the parent (its amount does not
+    change; an additive row would corrupt legacy replay).  The child row's
+    comment carries the cross-reference instead.
+
+    NOTE: Does NOT commit — wrap in ``management_transaction``.
+
+    Raises:
+        InheritingAllocationException: parent is a pool copy (no residual).
+        ValueError: invalid amount/target, over-carved parent, or amount
+            exceeding the unallocated residual.
+    """
+    if amount is None or amount <= 0:
+        raise ValueError(f"Amount must be positive, got {amount}")
+
+    if (target_allocation_id is None) == (target_project_id is None):
+        raise ValueError(
+            "Exactly one of target_allocation_id or target_project_id is required")
+
+    parent = session.get(Allocation, parent_allocation_id)
+    if not parent or parent.deleted:
+        raise ValueError(f"Allocation {parent_allocation_id} not found")
+    if parent.is_inheriting:
+        raise InheritingAllocationException(
+            f"Allocation {parent_allocation_id} is a shared (inheriting) copy; "
+            "the unallocated residual is defined only for dedicated allocations."
+        )
+
+    frontier = get_carveout_frontier(session, parent)
+
+    if frontier.raw_residual < 0:
+        raise ValueError(
+            f"Sub-project carve-outs ({frontier.carve_total:g}) already exceed "
+            f"this allocation ({float(parent.amount):g}). Resolve the deficit "
+            "first — see 'sam-admin project --audit-trees'."
+        )
+    if amount > frontier.residual:
+        raise ValueError(
+            f"Amount ({amount:g}) exceeds the unallocated residual "
+            f"({frontier.residual:g})."
+        )
+
+    parent_projcode = parent.account.project.projcode
+    sub_comment = (f"Sub-allocated +{amount:g} from {parent_projcode} "
+                   f"allocation #{parent.allocation_id}")
+    if comment:
+        sub_comment = f"{sub_comment}; {comment}"
+
+    def _guard_equal_amount(resulting_amount: float) -> None:
+        # A child whose amount EQUALS the parent's is classified as a pool
+        # member (is_pool_member's equal-amount fallback), so landing on
+        # exact equality would silently flip this carve-out into a shared
+        # pool in the audit and the fairshare tree. Refuse the ambiguous
+        # end state rather than special-case it downstream.
+        if resulting_amount == float(parent.amount):
+            raise ValueError(
+                f"Resulting amount ({resulting_amount:g}) would equal the "
+                f"parent allocation's ({float(parent.amount):g}), which reads "
+                "as a shared-pool member rather than a carve-out. Choose a "
+                "different amount."
+            )
+
+    if target_allocation_id is not None:
+        target = next((a for a in frontier.carve_children
+                       if a.allocation_id == target_allocation_id), None)
+        if target is None:
+            raise ValueError(
+                f"Allocation {target_allocation_id} is not a carve-out on "
+                f"{parent_projcode}'s direct frontier for this resource."
+            )
+        _guard_equal_amount(float(target.amount) + amount)
+        return update_allocation(
+            session, target.allocation_id, user_id,
+            amount=float(target.amount) + amount,
+            comment=sub_comment,
+        )
+
+    target_project = next((p for p in frontier.open_projects
+                           if p.project_id == target_project_id), None)
+    if target_project is None:
+        raise ValueError(
+            f"Project {target_project_id} is not an uncovered direct "
+            f"sub-project branch of {parent_projcode} for this resource."
+        )
+    _guard_equal_amount(amount)
+    return create_allocation(
+        session,
+        project_id=target_project.project_id,
+        resource_id=parent.account.resource_id,
+        amount=amount,
+        start_date=parent.start_date,
+        end_date=parent.end_date,
+        user_id=user_id,
+        comment=sub_comment,
+    )
 
 
 def link_allocation_to_parent(
@@ -773,8 +1012,8 @@ def link_allocation_to_parent(
     if child_proj.parent_id != parent_proj.project_id:
         raise ValueError(
             f"Project {parent_proj.projcode} is not the immediate parent of "
-            f"{child_proj.projcode}; deep-tree links must point to the "
-            f"immediate ancestor"
+            f"{child_proj.projcode}; an allocation can only link to its "
+            f"immediate parent project's allocation"
         )
 
     child.parent_allocation_id = parent.allocation_id

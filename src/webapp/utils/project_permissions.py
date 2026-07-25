@@ -183,6 +183,24 @@ def can_exchange_allocations(user, project) -> bool:
     )
 
 
+def can_allocate_residual(user, project) -> bool:
+    """
+    Allocate a parent node's carve-out residual down to its sub-projects
+    (the Allocations-tab "allocate down" workflow).
+
+    Granted to: system EDIT_ALLOCATIONS holders, OR project lead/admin of
+    this project OR any ancestor in the project tree — the same shape as
+    ``can_exchange_allocations``, and for the same reason: the residual is
+    already part of the parent's awarded total, so assigning it downward
+    redistributes within a subtree the user stewards without acquiring new
+    quota. Kept as its own helper (not an alias) so the two operations can
+    diverge later without a template audit.
+    """
+    return _is_project_steward(
+        user, project, Permission.EDIT_ALLOCATIONS, include_ancestors=True
+    )
+
+
 def can_edit_consumption_threshold(user, project) -> bool:
     """
     Set/change rolling consumption-rate thresholds for a project.

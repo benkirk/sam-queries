@@ -29,6 +29,7 @@ from webapp.utils.project_permissions import (
     can_edit_project_governance,
     can_modify_allocations,
     can_exchange_allocations,
+    can_allocate_residual,
 )
 from sam.manage import management_transaction
 from sam.core.groups import GidAllocation, NoAvailableGidError
@@ -938,6 +939,41 @@ def htmx_project_allocation_tree(project):
             .all()
         }
 
+    # Carve-out residual per (parent node, dedicated resource allocation):
+    # surfaced only on nodes that actually have carve-out children (pure
+    # pool nodes and fully-uncovered parents keep the Add/Propagate flows).
+    # Cost note: one frontier walk per parent-node allocation — this route
+    # already calls get_detailed_allocation_usage per node, which is far
+    # heavier; admin tree views are small and rare.
+    #
+    # Frontier date-filtering uses the displayed allocation row's own
+    # window, so a historical/future `active_at` view stays coherent: the
+    # residual shown always belongs to the row it annotates.
+    from sam.manage.allocations import get_carveout_frontier
+    from sam.accounting.allocations import Allocation
+    for node in all_nodes:
+        if not any(c.active for c in node.children):
+            continue
+        node_can = None   # lazy per-node permission memo
+        for rname, rdata in resources_by_projcode[node.projcode].items():
+            if not rdata.get('allocation_id') or rdata.get('is_inheriting'):
+                continue
+            alloc = db.session.get(Allocation, rdata['allocation_id'])
+            if alloc is None:
+                continue
+            frontier = get_carveout_frontier(db.session, alloc)
+            if not frontier.carve_children:
+                continue
+            if node_can is None:
+                node_can = can_allocate_residual(current_user, node)
+            rdata['carve_residual'] = {
+                'residual': frontier.residual,
+                'raw_residual': frontier.raw_residual,
+                'carve_total': frontier.carve_total,
+                'can_allocate': node_can,
+                'has_targets': bool(frontier.carve_children or frontier.open_projects),
+            }
+
     return render_template(
         'dashboards/admin/fragments/project_allocation_tree_htmx.html',
         root=root,
@@ -1208,8 +1244,9 @@ def htmx_exchange_allocation_form(project, resource_id):
             '<div class="modal-body">'
             '<div class="alert alert-info">'
             '<i class="fas fa-info-circle"></i> '
-            'Exchange requires at least two dedicated allocations for this resource '
-            'within the project subtree. Inherited (shared) allocations do not count.'
+            'Exchange requires at least two standalone sub-project allocations '
+            'for this resource within the allocation tree. Shared (linked) '
+            'allocations do not count.'
             '</div></div>'
         )
     return render_template(
@@ -1279,7 +1316,8 @@ def htmx_exchange_allocation(project):
     to_cand = by_id.get(to_id)
     if from_cand is None or to_cand is None:
         return _reload_exchange_form([
-            'Selected allocation is not in this project subtree for the chosen resource.'
+            "Selected allocation is not in this project's allocation tree "
+            "for the chosen resource."
         ])
 
     # Strict overdraft: cannot push FROM remaining below zero.
@@ -1313,6 +1351,166 @@ def htmx_exchange_allocation(project):
     return htmx_success_message(
         {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
         'Allocation exchanged successfully.',
+        detail=detail,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Allocate residual down (Edit Project → Allocations tab)
+# ---------------------------------------------------------------------------
+
+def _allocate_down_context(allocation):
+    """Build the frontier + candidate lists for the allocate-down modal.
+
+    Returns (frontier, bump_candidates, create_candidates, resource).
+    Candidates mirror what ``allocate_residual_to_child`` will accept, so
+    the form can only offer valid targets (the manage op re-validates —
+    that membership check is the forged-ID defense).
+    """
+    from sam.manage.allocations import get_carveout_frontier
+
+    frontier = get_carveout_frontier(db.session, allocation)
+    bump_candidates = sorted(
+        ({
+            'allocation_id': a.allocation_id,
+            'projcode': a.account.project.projcode,
+            'title': a.account.project.title or '',
+            'amount': a.amount,
+        } for a in frontier.carve_children),
+        key=lambda c: c['projcode'],
+    )
+    create_candidates = sorted(
+        ({
+            'project_id': p.project_id,
+            'projcode': p.projcode,
+            'title': p.title or '',
+        } for p in frontier.open_projects),
+        key=lambda c: c['projcode'],
+    )
+    return frontier, bump_candidates, create_candidates, allocation.account.resource
+
+
+@bp.route('/htmx/allocate-down-form/<int:allocation_id>')
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_allocate_down_form(allocation):
+    """Render the allocate-down modal for one parent allocation.
+
+    Offers the parent's unallocated residual (amount − Σ carve-outs on the
+    direct frontier) for assignment to a sub-project — either by increasing
+    an existing carve-out or by creating a new standalone allocation on an
+    uncovered branch. The parent's own amount never changes.
+    """
+    if allocation.deleted or allocation.is_inheriting:
+        return (
+            '<div class="modal-body">'
+            '<div class="alert alert-info">'
+            '<i class="fas fa-info-circle"></i> '
+            'This is a shared allocation — it mirrors its parent and has no '
+            'unallocated remainder of its own. Allocate from the parent '
+            'allocation instead.'
+            '</div></div>'
+        )
+
+    frontier, bump_candidates, create_candidates, resource = \
+        _allocate_down_context(allocation)
+
+    if frontier.raw_residual < 0:
+        return (
+            '<div class="modal-body">'
+            '<div class="alert alert-warning">'
+            '<i class="fas fa-exclamation-triangle"></i> '
+            f'Sub-project carve-outs ({frontier.carve_total:g}) exceed this '
+            f'allocation ({float(allocation.amount):g}). Resolve the deficit '
+            'before allocating further — see '
+            '<code>sam-admin project --audit-trees</code>.'
+            '</div></div>'
+        )
+    if frontier.residual <= 0 or not (bump_candidates or create_candidates):
+        return (
+            '<div class="modal-body">'
+            '<div class="alert alert-info">'
+            '<i class="fas fa-info-circle"></i> '
+            'Nothing to allocate: this allocation has no unallocated remainder '
+            'available for its sub-projects.'
+            '</div></div>'
+        )
+
+    return render_template(
+        'dashboards/admin/fragments/allocate_down_form_htmx.html',
+        allocation=allocation,
+        parent_projcode=allocation.account.project.projcode,
+        frontier=frontier,
+        bump_candidates=bump_candidates,
+        create_candidates=create_candidates,
+        resource=resource,
+    )
+
+
+@bp.route('/htmx/allocate-down/<int:allocation_id>', methods=['POST'])
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_allocate_down(allocation):
+    """Validate and apply an allocate-down (sub-allocation) of the residual."""
+    from sam.accounting.allocations import InheritingAllocationException
+    from sam.manage.allocations import allocate_residual_to_child, get_carveout_frontier
+    from sam.schemas.forms import AllocateResidualForm
+    from marshmallow import ValidationError
+
+    errors = []
+    try:
+        form_data = AllocateResidualForm().load(request.form)
+    except ValidationError as e:
+        errors.extend(AllocateResidualForm.flatten_errors(e.messages))
+        form_data = {}
+
+    def _reload_allocate_form(extra_errors=None):
+        frontier, bump_candidates, create_candidates, resource = \
+            _allocate_down_context(allocation)
+        return render_template(
+            'dashboards/admin/fragments/allocate_down_form_htmx.html',
+            allocation=allocation,
+            parent_projcode=allocation.account.project.projcode,
+            frontier=frontier,
+            bump_candidates=bump_candidates,
+            create_candidates=create_candidates,
+            resource=resource,
+            errors=(extra_errors or []) + errors,
+            form=request.form,
+        )
+
+    if errors:
+        return _reload_allocate_form()
+
+    try:
+        with management_transaction(db.session):
+            child = allocate_residual_to_child(
+                db.session,
+                allocation.allocation_id,
+                current_user.user_id,
+                amount=form_data['amount'],
+                target_allocation_id=form_data['target_allocation_id'],
+                target_project_id=form_data['target_project_id'],
+                comment=form_data.get('comment'),
+            )
+    except InheritingAllocationException as e:
+        return _reload_allocate_form([str(e)])
+    except ValueError as e:
+        return _reload_allocate_form([str(e)])
+    except Exception as e:
+        return _reload_allocate_form([f'Error allocating to sub-project: {e}'])
+
+    child_projcode = child.account.project.projcode
+    residual_after = get_carveout_frontier(db.session, allocation).residual
+    detail = (
+        f"{allocation.account.resource.resource_name}: "
+        f"+{form_data['amount']:g} → {child_projcode} "
+        f"(unallocated remainder now {residual_after:g})"
+    )
+    return htmx_success_message(
+        {'closeActiveModal': {},
+         'reloadAllocationTree': allocation.account.project.projcode},
+        'Sub-allocation applied successfully.',
         detail=detail,
     )
 
@@ -1797,13 +1995,18 @@ def htmx_extend_allocations(project):
 @require_allocation_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_edit_allocation_form(allocation):
     """Return the edit-allocation form fragment (loaded into modal)."""
-    from sam.manage.allocations import get_partitioned_descendant_sum, date_ranges_overlap
+    from sam.manage.allocations import get_carveout_frontier, date_ranges_overlap
     from sam.accounting.accounts import Account
 
     projcode = allocation.account.project.projcode
 
-    # Flaw 1 fix: sum standalone (non-inherited) descendant allocations only
-    partitioned_sum = get_partitioned_descendant_sum(db.session, allocation)
+    # Direct-frontier decomposition: carve-outs vs pool members among the
+    # nearest allocated descendants. Drives the "Assigned to sub-projects /
+    # Unallocated" strip — the same numbers the allocation tree and the
+    # allocate-down modal show, so the three surfaces always agree.
+    frontier = None
+    if not allocation.is_inheriting:
+        frontier = get_carveout_frontier(db.session, allocation)
 
     # Parent info for inheriting allocations
     parent_info = None
@@ -1865,7 +2068,7 @@ def htmx_edit_allocation_form(allocation):
         'dashboards/admin/fragments/edit_allocation_form_htmx.html',
         allocation=allocation,
         projcode=projcode,
-        partitioned_sum=partitioned_sum,
+        frontier=frontier,
         parent_info=parent_info,
         unlinked_descendants_count=unlinked_descendants_count,
         relink_candidate=relink_candidate,
@@ -1879,7 +2082,7 @@ def htmx_edit_allocation(allocation):
     """Validate and apply allocation edits with cascade + audit logging."""
     from sam.accounting.allocations import InheritingAllocationException
     from sam.manage.allocations import update_allocation, detach_allocation
-    from sam.manage.allocations import get_partitioned_descendant_sum
+    from sam.manage.allocations import get_carveout_frontier
     from sam.schemas.forms import EditAllocationForm
     from marshmallow import ValidationError
 
@@ -1920,7 +2123,8 @@ def htmx_edit_allocation(allocation):
 
     def _reload_edit_form(extra_errors=None):
         # Recompute context for re-render
-        partitioned_sum = get_partitioned_descendant_sum(db.session, allocation)
+        frontier = (get_carveout_frontier(db.session, allocation)
+                    if not allocation.is_inheriting else None)
         p_info = None
         if allocation.is_inheriting and allocation.parent:
             p = allocation.parent
@@ -1934,7 +2138,7 @@ def htmx_edit_allocation(allocation):
             'dashboards/admin/fragments/edit_allocation_form_htmx.html',
             allocation=allocation,
             projcode=projcode,
-            partitioned_sum=partitioned_sum,
+            frontier=frontier,
             parent_info=p_info,
             unlinked_descendants_count=0,  # skip expensive recompute on error re-renders
             relink_candidate=None,         # skip recompute on error re-renders
@@ -1960,9 +2164,10 @@ def htmx_edit_allocation(allocation):
                 update_allocation(db.session, alloc_id, current_user.user_id, **updates)
     except InheritingAllocationException:
         return _reload_edit_form([
-            'Cannot directly edit an inherited allocation. '
-            'Check "I understand — break inheritance" to detach it first, '
-            'or edit the parent allocation to cascade changes automatically.'
+            'Cannot directly edit a shared allocation. '
+            'Check "I understand — permanently break inheritance and allow '
+            'editing these fields" to detach it first, or edit the parent '
+            'allocation — changes are applied here automatically.'
         ])
     except Exception as e:
         return _reload_edit_form([f'Error updating allocation: {e}'])
@@ -2055,8 +2260,10 @@ def htmx_propagate_to_remaining(allocation):
         return f'<div class="alert alert-danger">Error: {e}</div>', 400
     return htmx_success_message(
         {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
-        f'Created {len(created)} child allocation(s).'
-        + (f' {len(skipped)} skipped (already existed).' if skipped else ''),
+        'Shared allocations created successfully.',
+        detail=(f'{len(created)} sub-project(s)'
+                + (f'; {len(skipped)} skipped (already had an allocation)'
+                   if skipped else '')),
     )
 
 
