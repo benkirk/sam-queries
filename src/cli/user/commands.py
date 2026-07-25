@@ -7,6 +7,7 @@ from cli.user.builders import (
     build_user_core,
     build_user_detail,
     build_user_projects,
+    build_user_provisioning,
     build_user_search_results,
     build_abandoned_users,
     build_users_with_projects,
@@ -45,6 +46,8 @@ class UserSearchCommand(BaseUserCommand):
                 data['projects'] = build_user_projects(
                     user, inactive=self.ctx.inactive_projects
                 )
+            if self.ctx.check_provisioning:
+                data['provisioning'] = build_user_provisioning(user)
 
             if json_mode:
                 output_json(data)
