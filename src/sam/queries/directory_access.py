@@ -10,9 +10,30 @@ The data is organized by access branch (hpc, hpc-data, hpc-dev) and includes:
 
 Group sources (in order of the legacy pipeline):
   1. Implicit project groups: active projects with allocations within grace period,
-     linked to access branches via account → resource → access_branch_resource
-  2. Explicit adhoc groups: AdhocGroup entries whose tags match access branch names
-  3. Global "ncar" group (gid=1000): every user per branch is injected as a member
+     linked to access branches via account → resource → access_branch_resource.
+     These member rows — and only these — establish the branch's *account set*,
+     the usernames that get a unixAccounts entry.
+  2. Explicit adhoc groups: AdhocGroup entries whose tags match access branch names.
+     The groups themselves are created unconditionally, but each
+     AdhocSystemAccountEntry is admitted **only if that username is already in
+     the branch's account set** — the dependent-account gate. See below.
+  3. Global "ncar" group (gid=1000): the branch's account set, verbatim
+
+The dependent-account gate (step 2) reproduces legacy
+``SystemDirectory.flatLoadDependentAccount()``::
+
+    void flatLoadDependentAccount(String branch, String group, String username) {
+        SystemAccount required = SystemAccount.create(branch, username);
+        if (accounts.contains(required)) {          // <-- the gate
+            flatLoadGroup(branch, group, username);
+        }
+    }
+
+Without it, a service account that is listed in an adhoc group but has no
+project membership (e.g. ``tomcat`` in ``sage``) is emitted as a group member
+with no corresponding unixAccounts entry — a dangling reference for the
+downstream LDAP provisioner. Legacy injects "ncar" *before* the adhoc stage
+for the same reason, so adhoc membership can never leak into it either.
 
 Constants matching legacy Java Constants.java:
   ACCESS_GRACE_PERIOD = 90  days
@@ -199,9 +220,14 @@ def group_populator(
     O(1) lookup of all groups a given username belongs to within a branch.
 
     Includes three group sources (matching legacy pipeline order):
-      1. Implicit project groups (projcode-based)
-      2. Explicit adhoc groups (AdhocGroup + AdhocSystemAccountEntry)
-      3. Global "ncar" group (every user per branch)
+      1. Implicit project groups (projcode-based) — these member rows define
+         the branch's account set
+      2. Explicit adhoc groups (AdhocGroup + AdhocSystemAccountEntry), whose
+         members are admitted only if already in the branch's account set
+      3. Global "ncar" group — the branch's account set
+
+    Every username in the returned ``groups`` is therefore guaranteed to have
+    a matching entry in :func:`user_populator`'s accounts for the same branch.
 
     Args:
         session: SQLAlchemy session
@@ -213,6 +239,12 @@ def group_populator(
     # --- 1. Implicit project groups ---
     branches: Dict[str, Dict] = {}
 
+    # Per-branch account set — the legacy SystemDirectory.accounts equivalent.
+    # Only *member* rows contribute (legacy flatLoad(branch, group, username)
+    # loads the group membership AND the account); _SQL_PROJECT_GROUPS creates
+    # groups without accounts and must not feed this.
+    branch_accounts: Dict[str, Set[str]] = {}
+
     rows = session.execute(_SQL_PROJECT_GROUPS, params).fetchall()
     for branch_name, group_name, gid in rows:
         b = branches.setdefault(branch_name, {'groups': {}})
@@ -223,6 +255,7 @@ def group_populator(
         b = branches.setdefault(branch_name, {'groups': {}})
         grp = b['groups'].setdefault(group_name, {'gid': None, 'usernames': set()})
         grp['usernames'].add(username)
+        branch_accounts.setdefault(branch_name, set()).add(username)
 
     # --- 2. Explicit adhoc groups (tags → access branch) ---
     rows = session.execute(_SQL_ADHOC_GROUPS, params).fetchall()
@@ -235,23 +268,29 @@ def group_populator(
 
     rows = session.execute(_SQL_ADHOC_MEMBERS, params).fetchall()
     for branch_name, group_name, username in rows:
+        # Dependent-account gate — legacy SystemDirectory.flatLoadDependentAccount().
+        # adhoc_system_account_entry.username is a bare string with no FK and no
+        # active check, so an entry can name a user who has no account on this
+        # branch (or none at all). Legacy drops those silently; so do we.
+        if username not in branch_accounts.get(branch_name, ()):
+            continue
         b = branches.setdefault(branch_name, {'groups': {}})
         grp = b['groups'].setdefault(group_name, {'gid': None, 'usernames': set()})
         grp['usernames'].add(username)
 
     # --- 3. Global "ncar" group ---
-    # Collect all usernames already in this branch (from project members + adhoc members)
-    for branch_name, branch_data in branches.items():
-        all_branch_usernames: Set[str] = set()
-        for grp_data in branch_data['groups'].values():
-            all_branch_usernames.update(grp_data['usernames'])
-
-        ncar_grp = branch_data['groups'].setdefault(DEFAULT_COMMON_GROUP, {
+    # Exactly the branch's account set. Legacy injects this *before* the adhoc
+    # stage (iterating SystemDirectory.accounts), so branches with adhoc groups
+    # but no accounts get no "ncar" group at all.
+    for branch_name, accounts in branch_accounts.items():
+        if not accounts:
+            continue
+        ncar_grp = branches[branch_name]['groups'].setdefault(DEFAULT_COMMON_GROUP, {
             'gid': DEFAULT_COMMON_GROUP_GID,
             'usernames': set(),
         })
         ncar_grp['gid'] = DEFAULT_COMMON_GROUP_GID
-        ncar_grp['usernames'].update(all_branch_usernames)
+        ncar_grp['usernames'].update(accounts)
 
     # --- 4. Symmetric username → groups index ---
     # Invert the groups dict so callers can quickly look up a user's memberships.

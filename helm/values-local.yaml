@@ -12,6 +12,7 @@ cache:
 webapp:
   tls:
     fqdn: localhost
+    extraHosts: []                        # local dev serves one host only
     secretName: samuel-tls-local
   ingress:
     visibility: nginx

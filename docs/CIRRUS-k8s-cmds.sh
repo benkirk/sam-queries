@@ -5,7 +5,8 @@
 #  This is a runbook, NOT a script to execute end-to-end. Pick the section that
 #  matches your symptom and copy/paste the relevant command.
 #
-#  Cluster: nwc1   ·   Namespace: sam-queries   ·   Site: samuel.k8s.ucar.edu
+#  Cluster: nwc1   ·   Namespace: sam-queries
+#  Site: sam.hpc.ucar.edu (advertised)  ·  samuel.k8s.ucar.edu (platform alias)
 #
 #  Tested commands from the 2026-05-06 troubleshooting session that traced an
 #  /allocations OOMKill back to a gunicorn worker over-provisioning bug

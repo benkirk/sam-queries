@@ -105,9 +105,15 @@ class TestUserBuilders:
         projects = build_user_projects(multi_project_user, inactive=False)
         for p in projects:
             assert set(p.keys()) == {
-                'projcode', 'title', 'role', 'active', 'latest_allocation_end',
+                'projcode', 'title', 'role', 'active', 'membership_active',
+                'latest_allocation_end',
             }
             assert p['role'] in {'Lead', 'Admin', 'Member'}
+            assert isinstance(p['membership_active'], bool)
+            # A 'Member' row can only come from an open account_user window,
+            # so its membership is necessarily active here.
+            if p['role'] == 'Member':
+                assert p['membership_active'] is True
 
     def test_build_user_search_results(self, multi_project_user):
         data = build_user_search_results([multi_project_user], 'pattern')
@@ -196,6 +202,18 @@ class TestProjectBuilders:
                 'inaccessible_resources',
             }
             assert isinstance(u['inaccessible_resources'], list)
+
+    def test_build_project_users_matches_shared_detector(self, active_project):
+        """CLI partial-access output is sourced from Project.get_members_access_status,
+        so it must agree resource-for-resource with the detector (no drift)."""
+        users = build_project_users(active_project)
+        status = active_project.get_members_access_status(active_only=True)
+        expected = {
+            row['user'].username: sorted(m['resource_name'] for m in row['missing'])
+            for row in status['members']
+        }
+        for u in users:
+            assert u['inaccessible_resources'] == expected.get(u['username'], [])
 
     def test_build_project_search_results_brief(self, active_project):
         data = build_project_search_results([active_project], 'pat', verbose=False)

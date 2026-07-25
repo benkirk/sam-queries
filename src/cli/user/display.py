@@ -74,6 +74,53 @@ def display_user(ctx: Context, data: dict, list_projects: bool = False):
     if list_projects and 'projects' in data:
         display_user_projects(ctx, data['projects'], data['username'])
 
+    if data.get('provisioning') is not None:
+        display_user_provisioning(ctx, data['provisioning'], data['username'])
+
+
+def display_user_provisioning(ctx: Context, prov: dict, username: str):
+    """Render the host provisioning cross-check for a user.
+
+    `prov` is the dict from `sam.provisioning.check_user_provisioning`. Emits a
+    single green line when everything is consistent, otherwise a short table of
+    the specific gaps.
+    """
+    if not prov['recognized']:
+        ctx.console.print(
+            f"⚠️  Host provisioning: user [bold]{username}[/] is not recognized "
+            "on this host.",
+            style="red",
+        )
+        return
+
+    issues = []
+    if prov['uid_matches'] is False:
+        issues.append(("UID mismatch",
+                       f"host reports {prov['uid']} (SAM unix_uid differs)"))
+    if prov['shell_ok'] is False:
+        issues.append(("Login shell", f"{prov['shell']} (no-login)"))
+    if prov['home_exists'] is False:
+        issues.append(("Home directory", f"{prov['home']} (missing)"))
+    for m in prov['missing_project_groups']:
+        issues.append(("Missing group",
+                       f"{m['projcode']} (gid {m['unix_gid']}) — not a member"))
+
+    if not issues:
+        ctx.console.print(
+            "[green]✓[/] Host provisioning consistent "
+            "(recognized, uid matches, all project groups present).",
+            style="dim",
+        )
+        return
+
+    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {username}:[/]")
+    table = Table(box=box.SIMPLE, show_header=False)
+    table.add_column("Check", style="cyan")
+    table.add_column("Detail", style="yellow")
+    for label, detail in issues:
+        table.add_row(label, detail)
+    ctx.console.print(table)
+
 
 def display_user_projects(ctx: Context, projects: list, username: str):
     """Display projects for a user."""
@@ -85,11 +132,18 @@ def display_user_projects(ctx: Context, projects: list, username: str):
 
     ctx.console.print(f"\n{label} projects for {username}:", style="bold underline")
 
+    # In the "All" view a project can be Active while the user's membership
+    # in it has ended; surface that with a Membership column so the listing
+    # doesn't contradict the "Active Projects" count / the web UI.
+    show_membership = ctx.inactive_projects
+
     table = Table(box=box.SIMPLE_HEAD)
     table.add_column("#", style="dim", width=4)
     table.add_column("Code", style="cyan bold")
     table.add_column("Title")
     table.add_column("Role", style="magenta")
+    if show_membership:
+        table.add_column("Membership")
     table.add_column("Status")
     if ctx.very_verbose:
         table.add_column("Alloc End", style="yellow")
@@ -98,8 +152,15 @@ def display_user_projects(ctx: Context, projects: list, username: str):
         status_style = "green" if p['active'] else "red"
         status_str = "Active" if p['active'] else "Inactive"
 
-        row = [str(i), p['projcode'], p['title'], p['role'],
-               f"[{status_style}]{status_str}[/]"]
+        row = [str(i), p['projcode'], p['title'], p['role']]
+
+        if show_membership:
+            m_active = p.get('membership_active', True)
+            m_style = "green" if m_active else "red"
+            m_str = "Active" if m_active else "Ended"
+            row.append(f"[{m_style}]{m_str}[/]")
+
+        row.append(f"[{status_style}]{status_str}[/]")
 
         if ctx.very_verbose:
             row.append(fmt.date_str(p['latest_allocation_end'], null='—'))

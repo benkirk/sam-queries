@@ -17,6 +17,7 @@ from sam.schemas.forms.user import (
 )
 
 from webapp.extensions import db
+from webapp.utils.htmx import read_active_only
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.disk_usage import (
     build_disk_subtree,
@@ -1316,7 +1317,7 @@ def tree_fragment(project):
     """
     from webapp.api.access_control import _user_can_access_project, _get_sam_user
 
-    active_only = request.args.get('active_only') == '1'
+    active_only = read_active_only(request.args)
     root = project.get_root() if hasattr(project, 'get_root') else project
     sam_user = _get_sam_user()
     can_view = (

@@ -1,7 +1,9 @@
 """Data extraction for user CLI output. No Rich, no I/O."""
 
+from datetime import datetime
 from typing import Optional
 from sam import User
+from sam.provisioning import check_user_provisioning
 
 
 def build_user_core(user: User) -> dict:
@@ -43,8 +45,29 @@ def build_user_detail(user: User) -> dict:
 
 
 def build_user_projects(user: User, inactive: bool) -> list:
-    """List of projects for a user (active or all)."""
+    """List of projects for a user (active or all).
+
+    Each row carries both the project's own active flag (``active``) and
+    whether *this user's* membership window is still open
+    (``membership_active``). The two diverge for someone who has been
+    removed from a still-active project: the project reads Active but the
+    membership has ended. Only the ``inactive`` path (``all_projects``)
+    surfaces such rows, since ``active_projects()`` already filters on the
+    membership window — so without ``membership_active`` the "All projects"
+    listing would render an ex-member's rows as "Active" and contradict the
+    "Active Projects: 0" count and the web UI.
+    """
     projects = user.all_projects if inactive else user.active_projects()
+
+    # Projcodes where this user's membership window is currently open.
+    now = datetime.now()
+    active_membership_codes = {
+        au.account.project.projcode
+        for au in user.accounts
+        if au.account and au.account.project
+        and (au.end_date is None or au.end_date >= now)
+    }
+
     out = []
     for p in projects:
         if p.lead == user:
@@ -63,9 +86,21 @@ def build_user_projects(user: User, inactive: bool) -> list:
             'title': p.title,
             'role': role,
             'active': p.active,
+            'membership_active': p.projcode in active_membership_codes,
             'latest_allocation_end': latest_end,
         })
     return out
+
+
+def build_user_provisioning(user: User) -> dict:
+    """Host provisioning cross-check for a user.
+
+    Returns the dict from ``check_user_provisioning`` (recognized?, uid match,
+    shell/home, project-group coverage). Callers gate on
+    ``ctx.check_provisioning`` before invoking this — off-host it reads as
+    ``recognized: False``, which the display renders as "unavailable here".
+    """
+    return check_user_provisioning(user, user.active_projects())
 
 
 def build_user_search_results(users: list, pattern: str) -> dict:

@@ -265,6 +265,52 @@ def display_project(ctx: Context, data: dict, extra_title_info: str = "",
         ctx.console.print(Panel(tree, title="Project Hierarchy",
                                 border_style="blue", expand=False))
 
+    if data.get('provisioning') is not None:
+        display_project_provisioning(ctx, data['provisioning'], data['projcode'])
+
+
+def display_project_provisioning(ctx: Context, prov: dict, projcode: str):
+    """Render the host provisioning cross-check for a project.
+
+    `prov` is the dict from `sam.provisioning.check_project_provisioning`. Emits
+    a single green line when the OS group is faithful to the SAM roster,
+    otherwise a short table of the specific discrepancies.
+    """
+    if not prov['group_exists']:
+        ctx.console.print(
+            f"⚠️  Host provisioning: no unix group for [bold]{projcode}[/] "
+            f"(gid {prov['gid']}) on this host.",
+            style="red",
+        )
+        return
+
+    issues = []
+    if prov['name_matches'] is False:
+        issues.append(("Group name",
+                       f"{prov['group_name']} (does not match {projcode})"))
+    for username in prov['missing_from_group']:
+        issues.append(("Missing member",
+                       f"{username} — in SAM roster, not in unix group"))
+    for username in prov['extra_in_group']:
+        issues.append(("Ghost member",
+                       f"{username} — in unix group, no active SAM membership"))
+
+    if not issues:
+        ctx.console.print(
+            f"[green]✓[/] Host provisioning consistent (unix group [bold]{prov['group_name']}[/] "
+            f"matches SAM roster, {prov['sam_member_count']} members).",
+            style="dim",
+        )
+        return
+
+    ctx.console.print(f"\n[bold yellow]Host provisioning issues for {projcode}:[/]")
+    table = Table(box=box.SIMPLE, show_header=False)
+    table.add_column("Check", style="cyan")
+    table.add_column("Detail", style="yellow")
+    for label, detail in issues:
+        table.add_row(label, detail)
+    ctx.console.print(table)
+
 
 def display_project_users(ctx: Context, users: list, projcode: str):
     """Display users for a project from `build_project_users`."""

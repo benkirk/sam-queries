@@ -16,7 +16,7 @@ seeding because it ran against a per-worker MySQL `system_status_test_*`
 database. We use the same `commit()` semantics under the SQLite tempfile,
 which gets DELETE-cleaned at the start of each test by the fixture.
 """
-from datetime import datetime
+from datetime import timedelta
 
 import pytest
 
@@ -26,6 +26,7 @@ from system_status import (
     CasperNodeTypeStatus,
     QueueStatus,
 )
+from system_status.timeutil import utcnow_naive
 
 
 pytestmark = pytest.mark.integration
@@ -37,8 +38,12 @@ def seed_data(session):
     Mirrors the legacy `seed_data` helper. Creates one Derecho status with
     one queue, one Casper status with one node-type and one queue. Enough
     rows to satisfy the dashboard route templates without being verbose.
+
+    Timestamps are naive-UTC (utcnow_naive) to match the collector storage
+    convention — datetime.now() would read hours stale under a non-UTC
+    local TZ and trip the stale-data banner in unrelated tests.
     """
-    now = datetime.now()
+    now = utcnow_naive()
 
     derecho = DerechoStatus(
         timestamp=now,
@@ -351,3 +356,52 @@ class TestStatusDashboard:
         response = auth_client.get('/status/nodetype-history/casper/cpu?hours=720')
         assert response.status_code == 200
         assert b'/status/casper?hours=720' in response.data
+
+
+class TestStaleBanner:
+    """Per-system stale-data banner: snapshots older than
+    STATUS_STALE_MINUTES raise a warning banner; fresh ones don't.
+    """
+
+    BANNER = b'No status updates in'
+
+    def test_fresh_data_no_banner(self, auth_client, status_session):
+        seed_data(status_session)
+        for page in ('/status/derecho', '/status/casper'):
+            response = auth_client.get(page)
+            assert response.status_code == 200
+            assert self.BANNER not in response.data
+
+    def test_stale_data_shows_banner_with_age(self, auth_client, status_session):
+        seed_data(status_session)
+        status_session.query(DerechoStatus).update(
+            {'timestamp': utcnow_naive() - timedelta(hours=2)}
+        )
+        status_session.commit()
+        response = auth_client.get('/status/derecho')
+        assert response.status_code == 200
+        assert self.BANNER in response.data
+        assert b'2 hours' in response.data
+        assert b'Derecho monitoring may be interrupted' in response.data
+
+    def test_stale_is_per_system(self, auth_client, status_session):
+        """A stale Derecho snapshot must not raise the banner on Casper."""
+        seed_data(status_session)
+        status_session.query(DerechoStatus).update(
+            {'timestamp': utcnow_naive() - timedelta(hours=2)}
+        )
+        status_session.commit()
+        response = auth_client.get('/status/casper')
+        assert response.status_code == 200
+        assert self.BANNER not in response.data
+
+    def test_just_inside_threshold_no_banner(self, auth_client, status_session):
+        """14 minutes old with the default 15-minute threshold → fresh."""
+        seed_data(status_session)
+        status_session.query(DerechoStatus).update(
+            {'timestamp': utcnow_naive() - timedelta(minutes=14)}
+        )
+        status_session.commit()
+        response = auth_client.get('/status/derecho')
+        assert response.status_code == 200
+        assert self.BANNER not in response.data

@@ -12,6 +12,7 @@ from cli.project.builders import (
     build_project_rolling,
     build_project_tree,
     build_project_users,
+    build_project_provisioning,
     build_project_search_results,
     build_expiring_projects,
 )
@@ -63,6 +64,8 @@ class ProjectSearchCommand(BaseProjectCommand):
                 data['tree'] = build_project_tree(project)
             if json_mode or list_users:
                 data['users'] = build_project_users(project)
+            if self.ctx.check_provisioning:
+                data['provisioning'] = build_project_provisioning(project)
 
             if json_mode:
                 output_json(data)

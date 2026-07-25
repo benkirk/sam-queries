@@ -13,6 +13,7 @@ from webapp.utils.htmx import (
     handle_htmx_soft_delete,
     htmx_not_found,
     htmx_success_message,
+    read_active_only,
 )
 from webapp.extensions import db
 from webapp.utils.rbac import (
@@ -44,7 +45,7 @@ def htmx_facilities_card():
     """
     from sam.resources.facilities import Facility
 
-    active_only = request.args.get('active_only') == '1'
+    active_only = read_active_only(request.args)
 
     facility_q = db.session.query(Facility).order_by(Facility.facility_name)
     if active_only:

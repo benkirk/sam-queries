@@ -19,8 +19,14 @@ production hosts and therefore requires the UCAR VPN.
 
 The response schemas are specified in
 [`docs/apis/SYSTEMS_INTEGRATION_APIs.md`](../../docs/apis/SYSTEMS_INTEGRATION_APIs.md).
-~37 comparison rules run across the five APIs, each returning a
+~40 comparison rules run across the five APIs, each returning a
 pass/fail `CheckResult` with sample mismatch lines.
+
+Most rules are one-directional (*legacy ⊆ new*) to absorb DB-mirror lag.
+`directory_access` additionally carries three checks in the reverse
+direction — surplus group members, surplus account usernames, and a
+"no dangling group members" self-consistency invariant asserted against
+each payload on its own. The other four APIs are still forward-only.
 
 ## Required environment variables
 

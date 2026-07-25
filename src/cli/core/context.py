@@ -17,6 +17,12 @@ class Context:
         self.inactive_projects: bool = False
         self.inactive_users: bool = False
         self.output_format: str = 'rich'
+
+        # Host provisioning cross-check: defaults on where the data is
+        # meaningful (NCAR_HOST / SAM_CHECK_PROVISIONING). The user/project
+        # commands may override this from their --provisioning flag.
+        from sam.provisioning import is_provisioned_host
+        self.check_provisioning: bool = is_provisioned_host()
         self.console = Console()
         self.stderr_console = Console(file=sys.stderr)
 

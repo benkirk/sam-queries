@@ -13,6 +13,7 @@ from webapp.utils.htmx import (
     handle_htmx_soft_delete,
     htmx_not_found,
     htmx_success_message,
+    read_active_only,
 )
 from webapp.extensions import db
 from webapp.utils.rbac import (
@@ -84,7 +85,7 @@ def htmx_resources_card():
     from sam.resources.machines import Machine, Queue
     from sam.resources.facilities import Facility
 
-    active_only = request.args.get('active_only') == '1'
+    active_only = read_active_only(request.args)
     now = datetime.now()
 
     resource_q = db.session.query(Resource).order_by(Resource.resource_name)

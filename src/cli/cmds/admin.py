@@ -64,11 +64,16 @@ def cli(ctx: Context, verbose: bool, output_format: str):
 @click.option('--validate', is_flag=True, help='Validate user data integrity')
 @click.option('--list-projects', is_flag=True, help='List all projects')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@click.option('--provisioning/--no-provisioning', default=None,
+              help='Cross-check host provisioning (auto-on on a provisioned host)')
 @pass_context
-def user(ctx: Context, username, validate, list_projects, verbose):
+def user(ctx: Context, username, validate, list_projects, verbose, provisioning):
     """Administrative user commands."""
     if verbose:
         ctx.verbose = True
+
+    if provisioning is not None:
+        ctx.check_provisioning = provisioning
 
     command = UserAdminCommand(ctx)
     exit_code = command.execute(username, validate=validate, list_projects=list_projects)
@@ -95,13 +100,18 @@ def user(ctx: Context, username, validate, list_projects, verbose):
 @click.option('--list-users', is_flag=True, help='List all users')
 @click.option('--facilities', '-F', multiple=True, default=['UNIV', 'WNA'], help='Facilities to include (default: UNIV, WNA). Use * for all facilities.')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@click.option('--provisioning/--no-provisioning', default=None,
+              help='Cross-check host provisioning (auto-on on a provisioned host)')
 @pass_context
 def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_resource,
             upcoming_expirations, recent_expirations,
-            notify, dry_run, email_list, deactivate, force, since, list_users, facilities, verbose):
+            notify, dry_run, email_list, deactivate, force, since, list_users, facilities, verbose, provisioning):
     """Administrative project commands."""
     if verbose:
         ctx.verbose = True
+
+    if provisioning is not None:
+        ctx.check_provisioning = provisioning
 
     # Validate that --resource requires --audit-trees
     if audit_resource and not audit_trees:

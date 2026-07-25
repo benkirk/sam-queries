@@ -20,7 +20,7 @@ from flask_login import login_required, current_user
 from marshmallow import ValidationError
 
 from sam.queries.users import get_users_on_project
-from sam.schemas.forms.user import AddMemberForm
+from sam.schemas.forms.user import AddMemberForm, GrantMemberAccessForm
 from webapp.extensions import db
 from webapp.utils.htmx import htmx_success
 from webapp.api.access_control import (
@@ -56,14 +56,7 @@ def members_fragment(project):
     if not members:
         return '<p class="text-muted mb-0">No members found or project not accessible</p>'
 
-    return render_template(
-        'project_members/fragments/members_table.html',
-        members=sorted(members, key=lambda member: member["display_name"]),
-        projcode=project.projcode,
-        project=project,
-        can_manage=can_manage_project_members(current_user, project),
-        can_change_admin=can_change_admin(current_user, project)
-    )
+    return _render_members_table(project.projcode, project)
 
 
 @bp.route('/<projcode>/add-form')
@@ -213,6 +206,71 @@ def htmx_change_admin(project):
     return _render_members_table(projcode, project)
 
 
+@bp.route('/<projcode>/grant-access', methods=['POST'])
+@login_required
+@require_member_management
+def htmx_grant_access(project):
+    """Grant a member access to every project resource they are missing (htmx).
+
+    The member-list "Grant access" fix for a partial-access member. Derives
+    the member's missing resources from the shared detector
+    (``Project.get_members_access_status``) and loops the idempotent
+    ``grant_user_resource_access`` over them, then re-renders the table.
+    """
+    from sam.manage import grant_user_resource_access, management_transaction
+    from sam.core.users import User
+
+    projcode = project.projcode
+    try:
+        form_data = GrantMemberAccessForm().load(request.form)
+    except ValidationError as e:
+        errors = '; '.join(GrantMemberAccessForm.flatten_errors(e.messages))
+        return f'<div class="alert alert-danger">{errors}</div>', 400
+
+    username = form_data['username']
+    user = db.session.query(User).filter_by(username=username).first()
+    if not user:
+        return f'<div class="alert alert-danger">User "{username}" not found</div>', 404
+
+    # Derive this member's missing resources from the shared detector.
+    status = project.get_members_access_status()
+    missing = next(
+        (row['missing'] for row in status['members']
+         if row['user'].user_id == user.user_id),
+        [],
+    )
+
+    try:
+        with management_transaction(db.session):
+            for gap in missing:
+                grant_user_resource_access(
+                    db.session, project.project_id, user.user_id, gap['resource_id']
+                )
+    except (ValueError, Exception) as e:
+        return f'<div class="alert alert-danger">{e}</div>', 400
+
+    return _render_members_table(projcode, project)
+
+
+def _members_access_by_username(project):
+    """Map ``username -> {status, missing_names, is_lead}`` for the member
+    list's partial-access warning.
+
+    Uses the shared detector ``Project.get_members_access_status`` so the
+    card indicator, the CLI, and the operator access grid classify partial
+    access identically.
+    """
+    status = project.get_members_access_status()
+    return {
+        row['user'].username: {
+            'status': row['status'],
+            'missing_names': sorted(m['resource_name'] for m in row['missing']),
+            'is_lead': row['is_lead'],
+        }
+        for row in status['members']
+    }
+
+
 def _render_members_table(projcode, project):
     """Render the members table fragment for a project (shared by htmx routes)."""
     members = get_users_on_project(db.session, projcode)
@@ -222,5 +280,6 @@ def _render_members_table(projcode, project):
         projcode=projcode,
         project=project,
         can_manage=can_manage_project_members(current_user, project),
-        can_change_admin=can_change_admin(current_user, project)
+        can_change_admin=can_change_admin(current_user, project),
+        access_by_username=_members_access_by_username(project),
     )

@@ -31,7 +31,7 @@ Quick reference
 """
 import math
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional, Union
 from zoneinfo import ZoneInfo
 
@@ -286,6 +286,43 @@ def hours(
     return f"{seconds / 3600:,.{decimals}f}"
 
 
+def ago(
+    delta: Optional[timedelta],
+    *,
+    null:  str = '—',
+) -> str:
+    """Format an elapsed timedelta as a human-readable age.
+
+    Rounds to the single largest sensible unit — a monitoring gap reads
+    better as "29 hours" than "1 day 5 hours 12 minutes".  Used by the
+    status-dashboard stale-data banner ("No status updates in {age}").
+
+    Args:
+        delta: Elapsed time as a datetime.timedelta.  None → null.
+        null:  Placeholder returned for None values.
+
+    Examples:
+        ago(timedelta(seconds=30))   → 'less than a minute'
+        ago(timedelta(minutes=18))   → '18 minutes'
+        ago(timedelta(minutes=75))   → '75 minutes'
+        ago(timedelta(hours=29))     → '29 hours'
+        ago(timedelta(days=3))       → '3 days'
+        ago(None)                    → '—'
+    """
+    if delta is None:
+        return null
+    mins = max(delta.total_seconds(), 0) / 60
+    if mins < 1:
+        return 'less than a minute'
+    if mins < 90:
+        n, unit = round(mins), 'minute'
+    elif mins < 48 * 60:
+        n, unit = round(mins / 60), 'hour'
+    else:
+        n, unit = round(mins / 1440), 'day'
+    return f"{n} {unit}{'s' if n != 1 else ''}"
+
+
 def factor(
     x:        Optional[Union[int, float]],
     *,
@@ -430,6 +467,7 @@ def register_jinja_filters(app) -> None:
         fmt_size    — {{ value | fmt_size }}
         fmt_hours   — {{ seconds | fmt_hours }}
         fmt_factor  — {{ multiplier | fmt_factor }}   → '×0.70'
+        fmt_ago     — {{ timedelta | fmt_ago }}       → '29 hours'
     """
     app.jinja_env.filters['fmt_number']   = number
     app.jinja_env.filters['fmt_pct']      = pct
@@ -437,6 +475,7 @@ def register_jinja_filters(app) -> None:
     app.jinja_env.filters['fmt_size']     = size
     app.jinja_env.filters['fmt_hours']    = hours
     app.jinja_env.filters['fmt_factor']   = factor
+    app.jinja_env.filters['fmt_ago']      = ago
     app.jinja_env.filters['to_local_dt']  = to_local_dt
     # Resource-type allocation unit label ('hours' / 'TiB' / None). Used on
     # the headline "<n> allocated" figures. Usage:

@@ -106,6 +106,138 @@ class TestRevokeUserResourceAccess:
             )
 
 
+class TestGetMembersAccessStatus:
+    """Tests for Project.get_members_access_status — the shared detector that
+    backs the member-list warning, the CLI, and the operator access grid."""
+
+    def _project_two_active_resources(self, session):
+        project = make_project(session)
+        r1 = make_resource(session)
+        r2 = make_resource(session)
+        acct1 = make_account(session, project=project, resource=r1)
+        acct2 = make_account(session, project=project, resource=r2)
+        make_allocation(session, account=acct1)
+        make_allocation(session, account=acct2)
+        return project, r1, r2, acct1, acct2
+
+    def _add_member(self, session, project):
+        member = make_user(session)
+        past = datetime.now() - timedelta(days=1)
+        add_user_to_project(
+            session, project.project_id, member.user_id, start_date=past
+        )
+        session.expire_all()
+        return member
+
+    def _row_for(self, status, user_id):
+        return next(r for r in status['members'] if r['user'].user_id == user_id)
+
+    def test_full_access_member(self, session):
+        project, r1, r2, _, _ = self._project_two_active_resources(session)
+        member = self._add_member(session, project)
+
+        row = self._row_for(project.get_members_access_status(), member.user_id)
+        assert row['status'] == 'full'
+        assert row['missing'] == []
+        assert row['has'] == {r1.resource_name, r2.resource_name}
+        assert row['is_lead'] is False
+
+    def test_partial_access_carries_resource_id(self, session):
+        project, r1, r2, _, acct2 = self._project_two_active_resources(session)
+        member = self._add_member(session, project)
+
+        # Drop the member's access to r2 only (out-of-band partial error).
+        bad = session.query(AccountUser).filter_by(
+            account_id=acct2.account_id, user_id=member.user_id
+        ).one()
+        session.delete(bad)
+        session.flush()
+        session.expire_all()
+
+        row = self._row_for(project.get_members_access_status(), member.user_id)
+        assert row['status'] == 'partial'
+        assert [m['resource_name'] for m in row['missing']] == [r2.resource_name]
+        # The grant loop needs a usable resource_id.
+        assert row['missing'][0]['resource_id'] == acct2.resource_id
+
+    def test_no_access_member(self, session):
+        # jpereira's real shape: the member still belongs to the project (via
+        # a resource with no active allocation) but has lost access to every
+        # active-allocation resource. r1 has an active allocation, r2 does not.
+        project = make_project(session)
+        r1 = make_resource(session)
+        r2 = make_resource(session)
+        acct1 = make_account(session, project=project, resource=r1)
+        make_account(session, project=project, resource=r2)
+        make_allocation(session, account=acct1)  # only r1 is active
+        member = self._add_member(session, project)
+
+        # Drop the member's r1 (active) access; keep r2 so they remain a member.
+        bad = session.query(AccountUser).filter_by(
+            account_id=acct1.account_id, user_id=member.user_id
+        ).one()
+        session.delete(bad)
+        session.flush()
+        session.expire_all()
+
+        row = self._row_for(project.get_members_access_status(), member.user_id)
+        assert row['status'] == 'none'
+        assert row['has'] == set()
+        assert {m['resource_name'] for m in row['missing']} == {r1.resource_name}
+
+    def test_lead_is_flagged(self, session):
+        project, *_ = self._project_two_active_resources(session)
+        row = self._row_for(
+            project.get_members_access_status(), project.project_lead_user_id
+        )
+        assert row['is_lead'] is True
+
+    def test_active_only_denominator(self, session):
+        # r2's account has no active allocation → excluded when active_only,
+        # included when active_only=False.
+        project = make_project(session)
+        r1 = make_resource(session)
+        r2 = make_resource(session)
+        make_allocation(session, account=make_account(session, project=project, resource=r1))
+        make_account(session, project=project, resource=r2)  # no allocation
+        session.expire_all()
+
+        cols_active = {
+            c['resource_name']
+            for c in project.get_members_access_status(active_only=True)['columns']
+        }
+        cols_all = {
+            c['resource_name']
+            for c in project.get_members_access_status(active_only=False)['columns']
+        }
+        assert r1.resource_name in cols_active
+        assert r2.resource_name not in cols_active
+        assert {r1.resource_name, r2.resource_name} <= cols_all
+
+    def test_grant_over_missing_restores_full(self, session):
+        """End-to-end: the exact loop the grant route runs makes a member whole."""
+        project, r1, r2, _, acct2 = self._project_two_active_resources(session)
+        member = self._add_member(session, project)
+        bad = session.query(AccountUser).filter_by(
+            account_id=acct2.account_id, user_id=member.user_id
+        ).one()
+        session.delete(bad)
+        session.flush()
+        session.expire_all()
+
+        status = project.get_members_access_status()
+        missing = self._row_for(status, member.user_id)['missing']
+        for gap in missing:
+            grant_user_resource_access(
+                session, project.project_id, member.user_id, gap['resource_id']
+            )
+        session.expire_all()
+
+        row = self._row_for(project.get_members_access_status(), member.user_id)
+        assert row['status'] == 'full'
+        assert row['missing'] == []
+
+
 class TestReconcileProjectAccess:
     def test_reconcile_fills_partial_access(self, session):
         project = make_project(session)

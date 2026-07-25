@@ -62,6 +62,17 @@ class AddMemberForm(HtmxFormSchema):
         return data
 
 
+class GrantMemberAccessForm(HtmxFormSchema):
+    """Grant an existing project member access to all resources they are
+    currently missing (the member-list "Grant access" fix).
+
+    Only the username is submitted; the set of missing resources is derived
+    server-side from ``Project.get_members_access_status``. User existence /
+    membership checks require DB access and stay in the route per CLAUDE.md §9.
+    """
+    username = f.Str(required=True, validate=v.Length(min=1))
+
+
 class EditAllocationForm(HtmxFormSchema):
     amount = f.Float(required=True, validate=v.Range(min=0, min_inclusive=False))
     start_date = f.Date('%Y-%m-%d', load_default=None)
