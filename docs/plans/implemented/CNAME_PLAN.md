@@ -36,13 +36,37 @@ external ingress LB — would let `samuel.k8s` stay private, but needs a
 stable LB target from NRIT and fights the platform's `.k8s.ucar.edu`
 automation; not recommended unless a hard requirement emerges.)
 
+## Findings from the 2026-07-22 investigation (supersede parts of this doc)
+
+1. **Ingress admission: CONFIRMED OK.** `kubectl apply --dry-run=server` of an
+   Ingress with `host: sam.hpc.ucar.edu` on `nginx-external` in `sam-queries`
+   is **accepted** (a control run with the existing host was rejected for a
+   *different* reason — duplicate host/path — proving the webhook chain ran).
+   The CIRRUS team confirmed: *"No CIRRUS concerns, we do this with
+   gdex.ucar.edu."* So `values.yaml`'s "must end in .k8s.ucar.edu" is a
+   convention, not enforced policy.
+2. **`hpc.ucar.edu` is issuable: CONFIRMED.** Sysadmins: *"the same certinext
+   acme that the rest of ucar uses works fine for .hpc."*
+3. **The ACME mechanism is domain delegation, not a solvable challenge** —
+   this corrects Prerequisite 1 as originally written. The live Order shows
+   `initialState: valid` with an unexercised `sectigo-email-01` challenge; no
+   HTTP-01/DNS-01 ever ran. Issuance therefore never depended on DNS existing.
+4. **`gdex` is a working precedent on our own ingress IP** (`128.117.41.126`):
+   `gdex.ucar.edu` CNAMEs to `gdex.k8s.ucar.edu` and is served by one multi-SAN
+   cert — `SAN: gdex.k8s.ucar.edu, api.gdex.ucar.edu, gdex.ucar.edu`. Exactly
+   the shape implemented here.
+5. **`visibility` is already `external`** — the "was 'internal'" note below is
+   stale.
+6. **Watch item:** on 2026-07-22 the issuer's ACME account returned
+   `401 ... The account is currently suspended` for *every* order, including
+   one for the already-delegated `samuel.k8s.ucar.edu`. Account-wide and
+   unrelated to the new hostname. `incommon-cert-samuel` renews 2026-08-05 and
+   expires 2026-10-10, so this is a production concern in its own right if it
+   recurs.
+
 ## Prerequisites (external — verify/request before deploying)
 
-1. **CIRRUS / NRIT platform check** — confirm the external ingress class
-   (`nginx-external`) will serve a non-`.k8s.ucar.edu` Host, and that
-   cert-manager's `incommon` ClusterIssuer can issue a cert for
-   `sam.hpc.ucar.edu` (ACME challenge must be satisfiable for a
-   `hpc.ucar.edu` name). This is the #1 unknown and gates everything.
+1. ~~**CIRRUS / NRIT platform check**~~ — **RESOLVED**, see findings 1-4 above.
 2. **Entra app registration** (file UCAR IT ticket — see
    `docs/AUTHENTICATION.md:361`): add to the existing app
    - reply URL `https://sam.hpc.ucar.edu/auth/oidc/callback`

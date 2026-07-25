@@ -153,7 +153,7 @@ Same code, four deployment shapes. The only thing that changes is
 | **Local Docker Compose** (`docker compose up webdev`) | `http://localhost:5050` | Stub auto-login (`DISABLE_AUTH=1`) | n/a | n/a |
 | **Local k8s** (Docker Desktop, `values-local.yaml`) | port-forwarded | Stub auto-login (`DISABLE_AUTH=1`) | n/a | n/a |
 | **Fargate staging** | `https://sam-staging.csgsam.ucar.edu` | OIDC | AWS SSM `/sam/staging/oidc-*` | `https://sam-staging.csgsam.ucar.edu/auth/oidc/callback` |
-| **CIRRUS k8s** (samuel) | `https://samuel.k8s.ucar.edu` | OIDC | OpenBao `csg/sam-oidc` | `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
+| **CIRRUS k8s** (samuel) | `https://sam.hpc.ucar.edu` (advertised)<br>`https://samuel.k8s.ucar.edu` (platform alias) | OIDC | OpenBao `csg/sam-oidc` | one per host — `https://sam.hpc.ucar.edu/auth/oidc/callback` and `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
 | Future ECS production | tbd | OIDC | AWS SSM `/sam/production/oidc-*` | tbd |
 | Future k8s staging | tbd | OIDC | OpenBao `csg/sam-staging-oidc` | tbd |
 
@@ -182,7 +182,7 @@ ECS injects values as env vars into the container at task start
 Flask reads from os.environ at startup
 ```
 
-**On Kubernetes** (CIRRUS, samuel.k8s.ucar.edu):
+**On Kubernetes** (CIRRUS — sam.hpc.ucar.edu / samuel.k8s.ucar.edu):
 
 ```
 Operator writes -> OpenBao (csg/sam-oidc path)
@@ -428,8 +428,12 @@ What we worry about, what we don't, and why.
   [`tests/unit/test_oidc_auth.py`](../tests/unit/test_oidc_auth.py)
   lines 319-353.
 - **VPN gating.** The Fargate ALB is restricted to the UCAR VPN CIDR
-  (`128.117.0.0/16`); samuel.k8s.ucar.edu is internal-ingress only.
-  External attackers can't even reach the login page.
+  (`128.117.0.0/16`), so external attackers can't reach its login page.
+  This no longer applies to the CIRRUS deployment: it moved to
+  `visibility: external` (`helm/values.yaml`) and is publicly reachable at
+  both `sam.hpc.ucar.edu` and `samuel.k8s.ucar.edu`. Its exposure is
+  governed by the ZAP-hardening baseline, edge rate limiting, and CSP
+  rather than by network position.
 
 ### What we worry about (and what we're doing)
 

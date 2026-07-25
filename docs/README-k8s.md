@@ -18,7 +18,7 @@ The production chart depends on three things that don't exist locally:
 | Dependency | Production | Local |
 |---|---|---|
 | **Secrets** | External Secrets Operator pulls creds from OpenBao | `helm/local-secrets.sh` creates k8s Secrets from `../.env` |
-| **Ingress** | Traefik + InCommon TLS cert-manager | Skipped — use `kubectl port-forward` instead |
+| **Ingress** | `nginx-external` ingress controller + InCommon TLS via cert-manager | Skipped — use `kubectl port-forward` instead |
 | **Databases** | `sam-sql.ucar.edu`, `csg-postgres.k8s.ucar.edu` | Local MySQL via `host.docker.internal` |
 
 `helm/values-local.yaml` sets `useExternalSecret: false` on all three credential blocks,
@@ -205,6 +205,15 @@ The Entra app's reply URLs must include `https://samuel.k8s.ucar.edu/auth/oidc/c
 The post-logout redirect URI `https://samuel.k8s.ucar.edu/` must also be allowlisted
 (see `infrastructure/README.md` "OIDC SSO Integration" for the IT handoff checklist).
 
+Because the deployment now serves a second hostname, the **same pair must be
+registered for `sam.hpc.ucar.edu`** — reply URL
+`https://sam.hpc.ucar.edu/auth/oidc/callback` and post-logout
+`https://sam.hpc.ucar.edu/` — keeping the `samuel.k8s.ucar.edu` entries in
+place. Once both are registered, drop the static `OIDC_REDIRECT_URI` from
+`values.yaml` so the callback is derived from whichever host the user is on
+(`url_for(..., _external=True)` + `ProxyFix`); until then, login only works via
+`samuel.k8s.ucar.edu`.
+
 ### Per-environment matrix
 
 | Deployment | URL | Auth provider | OIDC creds source | Reply URL on Entra |
@@ -212,7 +221,7 @@ The post-logout redirect URI `https://samuel.k8s.ucar.edu/` must also be allowli
 | Local Docker Compose (`webdev`) | `http://localhost:5050` | stub (`DISABLE_AUTH=1`) | n/a | n/a |
 | Local k8s (Docker Desktop, `values-local.yaml`) | port-forwarded | stub (`DISABLE_AUTH=1`) | n/a | n/a |
 | Fargate staging | `https://sam-staging.csgsam.ucar.edu` | oidc | AWS SSM `/sam/staging/oidc-*` | `https://sam-staging.csgsam.ucar.edu/auth/oidc/callback` |
-| CIRRUS k8s (this chart) | `https://samuel.k8s.ucar.edu` | oidc | OpenBao `csg/sam-oidc` | `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
+| CIRRUS k8s (this chart) | `https://sam.hpc.ucar.edu` (advertised)<br>`https://samuel.k8s.ucar.edu` (platform alias) | oidc | OpenBao `csg/sam-oidc` | both `https://sam.hpc.ucar.edu/auth/oidc/callback` and `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
 | Future: ECS production | tbd | oidc | AWS SSM `/sam/production/oidc-*` | tbd |
 | Future: k8s staging | tbd | oidc | OpenBao `csg/sam-staging-oidc` | tbd |
 
@@ -222,12 +231,33 @@ templates and Terraform modules stay identical.
 
 ### Accessing the App
 
-No port-forward needed. Once deployed, Traefik routes HTTPS traffic automatically:
+No port-forward needed. Once deployed, the `nginx-external` ingress controller
+routes HTTPS traffic automatically. Two hostnames serve the **same** deployment
+in parallel — there is no redirect between them:
 
-**https://samuel.k8s.ucar.edu**
+| Hostname | Role |
+|---|---|
+| **https://sam.hpc.ucar.edu** | **Advertised name** — the one to communicate to users |
+| https://samuel.k8s.ucar.edu | Platform primary / cert CN. Kept for CIRRUS automation, health checks, and the parity + systems-integration tooling |
 
-TLS is provisioned automatically by cert-manager using the `incommon` ClusterIssuer.
-The certificate is stored in the `incommon-cert-samuel` k8s Secret.
+`sam.hpc.ucar.edu` is a CNAME to `samuel.k8s.ucar.edu`, so both resolve to the
+same ingress. The chart renders one ingress rule per host from
+`webapp.tls.fqdn` + `webapp.tls.extraHosts` (`helm/values.yaml`), and lists all
+of them in a single `tls:` block.
+
+TLS is provisioned automatically by cert-manager using the `incommon`
+ClusterIssuer — one **multi-SAN** certificate covering every host above, stored
+in the `incommon-cert-samuel` k8s Secret. To add another alias, append it to
+`webapp.tls.extraHosts` and to `INGRESS_HOSTS` in
+`scripts/lib/cirrus_common.sh`; cert-manager reissues to cover it.
+
+> **Interim caveat.** Until the Entra app registration lists
+> `https://sam.hpc.ucar.edu/auth/oidc/callback` as a reply URL *and*
+> `OIDC_REDIRECT_URI` is dropped from `values.yaml` (so the callback is derived
+> per-host), **login via `sam.hpc.ucar.edu` will fail** — the static redirect
+> sends the callback to `samuel.k8s.ucar.edu`, where the PKCE/state cookie set
+> on `sam.hpc` doesn't exist. Anonymous pages work fine. Log in via
+> `samuel.k8s.ucar.edu` until then.
 
 ### Upgrade / Redeploy
 

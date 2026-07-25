@@ -69,8 +69,17 @@ webapp:
   group: samuel                           # Group label for related resources
   path: /                                 # URL path suffix
   tls:
-    fqdn: samuel.k8s.ucar.edu             # Must be unique and end in .k8s.ucar.edu
-    secretName: incommon-cert-samuel      # Unique TLS secret name for your FQDN
+    # Platform-primary name: unique, ends in .k8s.ucar.edu, and becomes the CN
+    # of the issued certificate. Keep it — CIRRUS automation and the parity /
+    # systems-integration tooling all address the app by this name.
+    fqdn: samuel.k8s.ucar.edu
+    # Advertised alias(es), served in parallel with fqdn (no redirect between
+    # them). Each renders its own ingress rule and joins the single multi-SAN
+    # cert below. sam.hpc.ucar.edu is a CNAME -> samuel.k8s.ucar.edu; the same
+    # pattern gdex.ucar.edu uses on this ingress controller.
+    extraHosts:
+      - sam.hpc.ucar.edu
+    secretName: incommon-cert-samuel      # one multi-SAN secret covers every host above
   ingress:
     visibility: external                  # internal or external
     # Edge rate limiting (nginx ingress controller), IN FRONT of the app-layer

@@ -34,7 +34,14 @@ WEBAPP_NAME="samuel"
 WEBAPP_PORT=5050
 REDIS_NAME="samuel-redis"
 REDIS_PORT=6379
+# INGRESS_HOST is the platform-primary name (helm webapp.tls.fqdn) and the CN of
+# the issued cert. INGRESS_HOSTS is every name the ingress answers for — primary
+# plus helm webapp.tls.extraHosts — all covered by the one multi-SAN TLS_SECRET.
+# Keep both in lockstep with helm/values.yaml. Scripts that address the app by a
+# single canonical name use INGRESS_HOST; scripts that verify edge behaviour
+# should iterate INGRESS_HOSTS so an alias can't silently regress.
 INGRESS_HOST="samuel.k8s.ucar.edu"
+INGRESS_HOSTS=("samuel.k8s.ucar.edu" "sam.hpc.ucar.edu")
 TLS_SECRET="incommon-cert-samuel"
 HEALTH_PATH="/api/v1/health/ready"
 
@@ -74,6 +81,9 @@ handle_common_arg() {
         -n|--namespace) NAMESPACE="$2"; _CONSUMED=2;;
         -r|--release)   RELEASE="$2";   _CONSUMED=2;;
         --context)      CONTEXT="$2";   _CONSUMED=2;;
+        # Narrow edge checks to ONE host (both the canonical name and the
+        # iteration list), e.g. to probe an alias in isolation.
+        --ingress-host) INGRESS_HOST="$2"; INGRESS_HOSTS=("$2"); _CONSUMED=2;;
         --no-color)     USE_COLOR=0;    _CONSUMED=1;;
         -v|--verbose)   VERBOSE=1;      _CONSUMED=1;;
         -h|--help)      usage_from_header "$0"; exit 0;;
