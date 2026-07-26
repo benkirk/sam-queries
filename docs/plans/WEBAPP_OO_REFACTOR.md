@@ -24,6 +24,10 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
   - [x] 1.5 `invalidate_queue_cache()` ownership + `allowed_facility_names()` (admin site kept active_only=False — divergence surfaced for Ben)
   - [x] 1.6 GET-side date parsing (end-of-day note in commit) + `sort_link` macro
   - [x] PR 1 opened — #375 (webapp_quick_wins → staging, −1,105 net)
+  - [x] Playwright smoke of the manual checklist — all 4 items pass; results
+        posted as a comment on #375 (menu=99 w/ 6 recovered; charts+empty-state
+        byte-identical; queue edit→API fresh both directions, DB restored;
+        sort/paginate green on shared macro)
 - PAUSE after PR 1 opens, before any Phase-2 (PR 2) work — per Ben 2026-07-26
 - **PR 2 — form-layer OO refactor (≈ −1,100..1,400 LOC)**
   - [ ] 2.1 `HtmxFormHandler` + adapter + parity tests
