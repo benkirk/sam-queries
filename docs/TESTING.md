@@ -2,10 +2,13 @@
 
 ## Overview
 
-The SAM test suite has **~1,400 tests** across five tiers, running in
-**~67 seconds** on a laptop with pytest-xdist parallelism. A separate
-**17-test performance suite** runs serially in ~26 seconds and is gated
-behind `pytest -m perf`.
+The SAM test suite has **~3,100 collected tests** (as of 2026-07) across
+five tiers, running in **~95 seconds** on a laptop with pytest-xdist
+parallelism. A separate **~23-test performance suite** (query-count and
+latency baselines) is gated behind `pytest -m perf`.
+
+> This file is the single source of truth for suite size and timings —
+> other docs link here rather than restating numbers.
 
 All tests run against an **isolated `mysql-test` container** (host port
 3307). A hard safety guard in `tests/conftest.py` refuses to run against

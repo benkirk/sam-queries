@@ -318,7 +318,7 @@ tests/
     └── ...
 ```
 
-**Current status**: **380 tests passed, 16 skipped, 77.47% coverage**
+**Current status**: see [docs/TESTING.md](TESTING.md) for suite size, tiers, and timings
 
 **Key test files to review**:
 - `test_basic_read.py` - Simple ORM query examples
@@ -466,14 +466,16 @@ docker compose down
 
 ## Frontend Technologies (Light Touch)
 
-### 12. Bootstrap 4
+### 12. Bootstrap 5
 
-**What we use**: Bootstrap 4.6.2 via CDN
+**What we use**: Bootstrap 5.3.3, **vendored** (self-hosted under
+`src/webapp/static/vendor/` — see that directory's README for the pinned
+asset inventory; no CDN dependency, required for the CSP policy)
 
 **Learning Resources**:
-- [Bootstrap 4 Documentation](https://getbootstrap.com/docs/4.6/) - Component reference
-- [Bootstrap Grid System](https://getbootstrap.com/docs/4.6/layout/grid/) - Layout basics
-- [Bootstrap Components](https://getbootstrap.com/docs/4.6/components/alerts/) - UI elements
+- [Bootstrap 5.3 Documentation](https://getbootstrap.com/docs/5.3/) - Component reference
+- [Bootstrap Grid System](https://getbootstrap.com/docs/5.3/layout/grid/) - Layout basics
+- [Bootstrap Components](https://getbootstrap.com/docs/5.3/components/alerts/) - UI elements
 
 **What to focus on**:
 - **Grid system**: Rows, columns, responsive breakpoints
@@ -585,7 +587,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 **Project-specific**:
 - **Admin interface**: Available at `/admin` (requires authentication)
 - **Custom ModelViews**: `src/webapp/admin/` - customized CRUD interfaces
-- **Theme**: Bootstrap4 with Lumen swatch
+- **Theme**: Bootstrap 5 (vendored)
 - Includes expiration monitoring dashboards
 
 ---
@@ -777,7 +779,7 @@ pytest -k "test_user" -v
 pytest -m "not slow"
 
 # Check code coverage for specific module
-pytest tests/ --cov=sam.schemas --cov-report=term-missing
+pytest --cov=src --cov-report=term-missing
 
 # View dependency tree
 pipdeptree
@@ -883,8 +885,7 @@ Brief summary (50 chars or less)
 - What was added/modified/fixed
 
 ## Test Results (if applicable)
-- Tests passed: 380
-- Coverage: 77.47%
+- Tests passed: <count from the run>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -1014,7 +1015,7 @@ for result in expiring_projects:
 - [MySQL 9.0](https://dev.mysql.com/doc/refman/9.0/en/)
 - [pytest](https://docs.pytest.org/)
 - [Docker](https://docs.docker.com/)
-- [Bootstrap 4](https://getbootstrap.com/docs/4.6/)
+- [Bootstrap 5.3](https://getbootstrap.com/docs/5.3/)
 
 ### Learning Resources
 - [Real Python](https://realpython.com/) - Python tutorials
@@ -1035,6 +1036,6 @@ This guide is a living document. If you find gaps or have suggestions, please co
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-12-23
+**Document Version**: 1.1
+**Last Updated**: 2026-07-26
 **Maintained By**: Development Team
