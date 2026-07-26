@@ -9,7 +9,8 @@
     url_for('admin_dashboard.htmx_resource_type_edit', resource_type_id=resource_type.resource_type_id),
     '#editResourceTypeFormContainer',
     'Save Changes',
-    is_edit=True
+    is_edit=True,
+    errors=errors
 ) %}
         {{ readonly_display('Resource Type', resource_type.resource_type, muted=False, strong=True) }}
 

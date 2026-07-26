@@ -10,7 +10,9 @@
           {{ text_field('facility_name', 'Name', required=True, ...) }}
       {% endcall %}
 
-  Forms that surface validation errors pass them in explicitly:
+  Every caller passes the error list through explicitly (macro arguments
+  shadow the template context, so the context `errors` set by the form
+  handlers is invisible here unless forwarded):
       {% call htmx_form(url_for('…'), '#…', 'Save', errors=errors) %}
 
   Parameters:
@@ -21,9 +23,11 @@
     is_edit       - Kept for backward compatibility; no longer changes button
                     color since Unity NCAR uses btn-primary uniformly.
     submit_class  - Override button class entirely (e.g. 'btn-outline-primary')
-    errors        - Optional list of validation-error strings; rendered as a
-                    Bootstrap danger alert above the footer.  Omit / pass none
-                    (the default) on forms that have no error surface.
+    errors        - List of validation-error strings; rendered as a Bootstrap
+                    danger alert above the footer.  Always pass errors=errors —
+                    otherwise form-level messages (exception fallbacks,
+                    _schema-keyed validation) are silently dropped.  Undefined
+                    on initial GET renders is fine (falsy).
     disabled      - When truthy, the submit button is replaced with an inert
                     "Disabled" indicator so the form cannot be submitted. Inputs
                     stay visible/editable. Used to soft-disable a workflow via a

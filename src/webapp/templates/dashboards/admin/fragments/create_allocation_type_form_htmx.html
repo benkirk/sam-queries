@@ -8,7 +8,8 @@
     url_for('admin_dashboard.htmx_allocation_type_create'),
     '#createAllocationTypeFormContainer',
     'Create Allocation Type',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {# Cascading facility/panel selects kept inline — dynamic dependent options
            with optional description suffix don't fit the generic select macro. #}

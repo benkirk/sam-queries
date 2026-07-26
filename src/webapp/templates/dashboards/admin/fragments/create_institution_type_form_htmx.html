@@ -5,7 +5,8 @@
     url_for('admin_dashboard.htmx_institution_type_create'),
     '#createInstitutionTypeFormContainer',
     'Create Institution Type',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {{ text_field('type', 'Type Name',
                       required=True, maxlength=45,

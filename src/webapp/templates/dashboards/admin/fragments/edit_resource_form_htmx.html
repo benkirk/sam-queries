@@ -10,7 +10,8 @@
     url_for('admin_dashboard.htmx_resource_edit', resource_id=resource.resource_id),
     '#editResourceFormContainer',
     'Save Changes',
-    is_edit=True
+    is_edit=True,
+    errors=errors
 ) %}
         <div class="row mb-3">
             <div class="col-md-6">
