@@ -94,8 +94,9 @@ collectors/
 │   └── casper.log
 │
 └── docs/                        # Documentation
-    ├── PBS_COLLECTORS_PLAN.md   # Original implementation plan
-    └── PBS_COLLECTORS_ADD_RESERVATIONS_PLAN.md # Reservation tracking plan
+    └── implemented/             # Archived build-phase plans
+        ├── PBS_COLLECTORS_PLAN.md
+        └── PBS_COLLECTORS_ADD_RESERVATIONS_PLAN.md
 ```
 
 ## Collector Output
@@ -310,7 +311,7 @@ curl -X POST http://localhost:5050/api/v1/status/derecho \
 
 ## Next Steps (Deferred)
 
-The following are documented in `docs/PBS_COLLECTORS_PLAN.md` but deferred for future implementation:
+The following are documented in `docs/implemented/PBS_COLLECTORS_PLAN.md` but deferred for future implementation:
 
 - Cron-based deployment
 - Log rotation (logrotate)
@@ -320,7 +321,7 @@ The following are documented in `docs/PBS_COLLECTORS_PLAN.md` but deferred for f
 
 ## Architecture
 
-See `docs/PBS_COLLECTORS_PLAN.md` for detailed architecture documentation including:
+See `docs/implemented/PBS_COLLECTORS_PLAN.md` for detailed architecture documentation including:
 - Data flow diagrams
 - Error handling strategy
 - API endpoint schemas

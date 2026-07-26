@@ -1,5 +1,10 @@
 # Handoff: Hammer k8s (fs-scans load + protection-chain verification)
 
+> **Status (2026-07-26): moved to implemented/.** One-off load-test
+> runbook for verifying the PR #323/#324 hardening, which shipped
+> 2026-06-21. Kept because the hammer procedure is reusable for future
+> re-baselining (e.g. after hpc-usage-queries query optimizations).
+
 **Purpose.** Reproduce, from a fresh session, the load-pressure test we ran against
 the live `samuel` deploy on nwc1 — exercise the gthread worker model, the fs-scans
 `statement_timeout`, and the route-level graceful-degradation, under deliberately
