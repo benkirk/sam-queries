@@ -154,6 +154,7 @@ from .facilities import (
     EditFacilityForm,
     CreateFacilityForm,
     CreatePanelForm,
+    EditPanelForm,
     EditPanelSessionForm,
     EditAllocationTypeForm,
     CreateAllocationTypeForm,

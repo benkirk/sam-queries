@@ -36,7 +36,11 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         1111→509 lines; 75 characterization tests written FIRST and pinned
         through the migration; mnemonic-code + contract-delete stay bespoke;
         found pre-existing quirk: mnemonic template never renders `errors`)
-  - [ ] 2.3 facilities + resources registrar migrations
+  - [x] 2.3 facilities + resources registrar migrations (−433 net; new
+        EditPanelForm; queue-create sentinel → after_commit kwarg; deltas:
+        panel edit now schema-validated, queue-create FK error drops the
+        'Error creating queue:' prefix, queue cache clear now success-only;
+        70 characterization tests written first)
   - [ ] 2.4 31 hand-rolled shape-C handlers → handler subclasses
   - [ ] 2.5 §9 conformance (exemption schemas + shape-D migrations)
   - [ ] 2.6 typeahead factory
