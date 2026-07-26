@@ -82,6 +82,26 @@ plt.rcParams.update({
 })
 
 
+def _fig_to_svg(fig) -> str:
+    """Serialize a figure to SVG and ALWAYS close it.
+
+    savefig can raise on pathological data; without the finally the figure
+    would leak in the Agg backend's global registry until process restart.
+    """
+    try:
+        svg_io = StringIO()
+        fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
+        return svg_io.getvalue()
+    finally:
+        plt.close(fig)
+
+
+def _empty_state(msg: str, extra_classes: str = '') -> str:
+    """The no-data placeholder fragment charts return instead of an SVG."""
+    classes = f'text-center text-muted {extra_classes}'.rstrip()
+    return f'<div class="{classes}">{msg}</div>'
+
+
 # Unity NCAR palette ordered for chart use. Indices 0-2 are the brand spine
 # (blue → navy → vermilion); 3-4 the warm accents (gold, orange); 5-7 the
 # teal family (teal, sky, light-blue); 8-9 are tertiary fillers. Sequential
@@ -244,14 +264,14 @@ def generate_usage_timeseries_matplotlib(daily_data, link_to_day_rows=False,
         SVG string ready for template rendering
     """
     if not daily_data:
-        return '<div class="text-center text-muted">No usage data recorded for this period</div>'
+        return _empty_state('No usage data recorded for this period')
 
     dates = list(daily_data.get('dates') or [])
     vals  = list(daily_data.get('values') or [])
 
     combined = sorted(zip(dates, vals))
     if not combined:
-        return '<div class="text-center text-muted">No usage data recorded for this period</div>'
+        return _empty_state('No usage data recorded for this period')
 
     dates, vals = zip(*combined)
     dates = list(dates)
@@ -271,10 +291,7 @@ def generate_usage_timeseries_matplotlib(daily_data, link_to_day_rows=False,
     ax.grid(True, alpha=0.3)
     fig.autofmt_xdate()
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 def _usage_stacked_cache_key(timeseries, metric='charges'):
@@ -313,7 +330,7 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
         SVG string ready for template rendering.
     """
     if not timeseries or not timeseries.get('dates') or not timeseries.get('series'):
-        return '<div class="text-center text-muted">No usage data recorded for this period</div>'
+        return _empty_state('No usage data recorded for this period')
 
     dates = list(timeseries['dates'])
     series = list(timeseries['series'])
@@ -377,10 +394,7 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
 
     fig.autofmt_xdate()
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -424,12 +438,12 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None, metric='bytes')
     date-formatted. Legend on the right.
     """
     if not timeseries or not timeseries.get('dates') or not timeseries.get('series'):
-        return '<div class="text-center text-muted">No disk-usage history for this period</div>'
+        return _empty_state('No disk-usage history for this period')
 
     dates = list(timeseries['dates'])
     series = list(timeseries['series'])
     if not dates or not series:
-        return '<div class="text-center text-muted">No disk-usage history for this period</div>'
+        return _empty_state('No disk-usage history for this period')
 
     if metric == 'files':
         # Raw file counts: no scaling; compact integer y-axis ticks.
@@ -501,10 +515,7 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None, metric='bytes')
 
     fig.autofmt_xdate()
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -550,8 +561,8 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
     top-to-bottom matching the visual stack order.
     """
     if not timeseries or not timeseries.get('dates') or not timeseries.get('series'):
-        return ('<div class="text-center text-muted py-4">'
-                'No per-user / per-project history for this period</div>')
+        return _empty_state('No per-user / per-project history for this period',
+                            extra_classes='py-4')
 
     dates = [_to_display_tz(d) if isinstance(d, datetime) else d
              for d in timeseries['dates']]
@@ -636,10 +647,7 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
 
     fig.autofmt_xdate()
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -735,7 +743,7 @@ def generate_distribution_histogram(hist, *, log_y=False, metric='data') -> str:
     Returns a "no data" placeholder div when the histogram is empty.
     """
     if not hist or not hist.get('bucket_labels'):
-        return '<div class="text-center text-muted">No distribution data for this scope</div>'
+        return _empty_state('No distribution data for this scope')
 
     is_bytes = (metric != 'files')
     labels = list(hist['bucket_labels'])
@@ -794,10 +802,7 @@ def generate_distribution_histogram(hist, *, log_y=False, metric='data') -> str:
         ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, axis='y', alpha=0.3)
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -818,7 +823,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
         SVG string ready for template rendering
     """
     if not history_data:
-        return '<div class="text-center text-muted">No history data available for this node type</div>'
+        return _empty_state('No history data available for this node type')
 
     timestamps = [_to_display_tz(d['timestamp']) for d in history_data]
     nodes_available = [d.get('nodes_available', 0) for d in history_data]
@@ -859,10 +864,7 @@ def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
 
     fig.autofmt_xdate()
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -883,7 +885,7 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
         SVG string ready for template rendering
     """
     if not history_data:
-        return '<div class="text-center text-muted">No history data available for this queue</div>'
+        return _empty_state('No history data available for this queue')
 
     timestamps = [_to_display_tz(d['timestamp']) for d in history_data]
     running_jobs = [d.get('running_jobs', 0) for d in history_data]
@@ -927,10 +929,7 @@ def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
 
     fig.autofmt_xdate()
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -968,7 +967,7 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
         SVG string ready for template rendering
     """
     if not facility_data:
-        return '<div class="text-center text-muted">No facility data available</div>'
+        return _empty_state('No facility data available')
 
     raw_names = [d['facility'] for d in facility_data]
     raw_values = [d['annualized_rate'] for d in facility_data]
@@ -994,10 +993,7 @@ def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
 
     ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -1018,7 +1014,7 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
         SVG string ready for template rendering
     """
     if not type_data:
-        return '<div class="text-center text-muted">No allocation type data available</div>'
+        return _empty_state('No allocation type data available')
 
     raw_names = [d['allocation_type'] for d in type_data]
     raw_values = [d['total_amount'] for d in type_data]
@@ -1044,10 +1040,7 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
 
     ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -1107,7 +1100,7 @@ def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
         SVG string ready for template rendering.
     """
     if not entity_data:
-        return '<div class="text-center text-muted">No usage data available</div>'
+        return _empty_state('No usage data available')
 
     prefix = '#disk-ent-owner-' if kind == 'owner' else '#disk-ent-group-'
     numeric_label = 'uid ' if kind == 'owner' else 'gid '
@@ -1165,10 +1158,7 @@ def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
         if i < len(leg_texts):
             leg_texts[i].set_url(url)
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -1295,14 +1285,14 @@ def generate_pace_chart_matplotlib(
         SVG string ready for template rendering.
     """
     if not allocations:
-        return '<div class="text-center text-muted">No allocations available</div>'
+        return _empty_state('No allocations available')
 
     window_start = active_at - timedelta(days=window_days)
     window_end = active_at + timedelta(days=window_days)
 
     days, bands = _pace_bands(allocations, active_at, window_start, window_end)
     if not bands:
-        return '<div class="text-center text-muted">No allocations in the ±{}d window</div>'.format(window_days)
+        return _empty_state('No allocations in the ±{}d window'.format(window_days))
 
     # today_idx on the full daily grid — needed both for ranking by
     # past/future rate (band heights at the step) and for the later
@@ -1470,7 +1460,4 @@ def generate_pace_chart_matplotlib(
     ax.grid(True, alpha=0.2)
     fig.autofmt_xdate()
 
-    svg_io = StringIO()
-    fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-    plt.close(fig)
-    return svg_io.getvalue()
+    return _fig_to_svg(fig)
