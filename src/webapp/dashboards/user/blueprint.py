@@ -18,6 +18,7 @@ from sam.schemas.forms.user import (
 
 from webapp.extensions import db
 from webapp.api.helpers import parse_input_start_date, parse_input_end_date
+from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
 from webapp.utils.htmx import read_active_only
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.disk_usage import (
@@ -213,6 +214,37 @@ def htmx_shell_form(username):
     )
 
 
+class _SetShellHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Set a user's login shell; success re-renders the display row."""
+
+    schema_cls = SetShellForm
+    template = 'dashboards/user/fragments/shell_form_htmx.html'
+    exception_map = ((ValueError, lambda e: str(e)),)
+
+    def clean(self, data):
+        if data['shell_name'] not in self.allowable:
+            raise FormError(f'Shell {data["shell_name"]!r} is not in the allowable set.')
+        return data
+
+    def perform(self, data):
+        self.user.set_login_shell(data['shell_name'])
+
+    def context(self):
+        return {
+            'sam_user': self.user,
+            'current_shell': get_user_current_shell(db.session, self.user),
+            'allowable_shells': self.allowable,
+        }
+
+    def on_success(self, result):
+        return render_template(
+            'dashboards/user/fragments/shell_display_htmx.html',
+            sam_user=self.user,
+            current_shell=get_user_current_shell(db.session, self.user),
+            can_edit_shell=True,
+        )
+
+
 @bp.route('/htmx/shell/<username>', methods=['POST'])
 @login_required
 def htmx_set_shell(username):
@@ -220,49 +252,8 @@ def htmx_set_shell(username):
     user, err = _load_user_for_shell(username)
     if err:
         return err
-
-    allowable = get_allowable_shell_names(db.session)
-
-    try:
-        form_data = SetShellForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/user/fragments/shell_form_htmx.html',
-            sam_user=user,
-            current_shell=get_user_current_shell(db.session, user),
-            allowable_shells=allowable,
-            errors=SetShellForm.flatten_errors(e.messages),
-        )
-
-    shell_name = form_data['shell_name']
-    if shell_name not in allowable:
-        return render_template(
-            'dashboards/user/fragments/shell_form_htmx.html',
-            sam_user=user,
-            current_shell=get_user_current_shell(db.session, user),
-            allowable_shells=allowable,
-            errors=[f'Shell {shell_name!r} is not in the allowable set.'],
-        )
-
-    from sam.manage import management_transaction
-    try:
-        with management_transaction(db.session):
-            user.set_login_shell(shell_name)
-    except ValueError as e:
-        return render_template(
-            'dashboards/user/fragments/shell_form_htmx.html',
-            sam_user=user,
-            current_shell=get_user_current_shell(db.session, user),
-            allowable_shells=allowable,
-            errors=[str(e)],
-        )
-
-    return render_template(
-        'dashboards/user/fragments/shell_display_htmx.html',
-        sam_user=user,
-        current_shell=get_user_current_shell(db.session, user),
-        can_edit_shell=True,
-    )
+    return _SetShellHandler(
+        user=user, allowable=get_allowable_shell_names(db.session)).handle()
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +326,29 @@ def htmx_primary_gid_form(username):
     )
 
 
+class _SetPrimaryGidHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Set a user's primary GID; success re-renders the display row."""
+
+    schema_cls = SetPrimaryGidForm
+    template = 'dashboards/user/fragments/primary_gid_form_htmx.html'
+    exception_map = ((ValueError, lambda e: str(e)),)
+
+    def perform(self, data):
+        self.user.set_primary_gid(data['unix_gid'])
+
+    def context(self):
+        return {'sam_user': self.user, 'available_groups': self.available}
+
+    def on_success(self, result):
+        from sam.core.groups import resolve_group_name
+        return render_template(
+            'dashboards/user/fragments/primary_gid_display_htmx.html',
+            sam_user=self.user,
+            primary_group_name=resolve_group_name(db.session, self.user.primary_gid),
+            can_edit_primary_gid=True,
+        )
+
+
 @bp.route('/htmx/primary-gid/<username>', methods=['POST'])
 @login_required
 def htmx_set_primary_gid(username):
@@ -342,38 +356,10 @@ def htmx_set_primary_gid(username):
     user, err = _load_user_for_primary_gid(username)
     if err:
         return err
-
-    available = _available_primary_groups(db.session, user.username)
-
-    try:
-        form_data = SetPrimaryGidForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/user/fragments/primary_gid_form_htmx.html',
-            sam_user=user,
-            available_groups=available,
-            errors=SetPrimaryGidForm.flatten_errors(e.messages),
-        )
-
-    from sam.manage import management_transaction
-    try:
-        with management_transaction(db.session):
-            user.set_primary_gid(form_data['unix_gid'])
-    except ValueError as e:
-        return render_template(
-            'dashboards/user/fragments/primary_gid_form_htmx.html',
-            sam_user=user,
-            available_groups=available,
-            errors=[str(e)],
-        )
-
-    from sam.core.groups import resolve_group_name
-    return render_template(
-        'dashboards/user/fragments/primary_gid_display_htmx.html',
-        sam_user=user,
-        primary_group_name=resolve_group_name(db.session, user.primary_gid),
-        can_edit_primary_gid=True,
-    )
+    return _SetPrimaryGidHandler(
+        user=user,
+        available=_available_primary_groups(db.session, user.username),
+    ).handle()
 
 
 @bp.route('/htmx/group-members/<group_name>')
@@ -1402,60 +1388,42 @@ def htmx_edit_allocation_form(allocation):
     )
 
 
-@bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
-@login_required
-@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
-def htmx_edit_allocation(allocation):
-    """
-    Handle edit allocation form submission (htmx).
+class _UserEditAllocationHandler(HtmxFormHandler):
+    """Edit an allocation from the user dashboard; success closes the modal
+    and fires `allocationUpdated` so an open project-details modal reloads."""
 
-    On error: returns the form with error messages.
-    On success: returns a script that closes the modal and triggers a
-    refresh event so any open project details modal reloads.
-    """
-    from sam.manage import update_allocation, management_transaction
+    schema_cls = EditAllocationForm
+    template = 'dashboards/user/fragments/edit_allocation_form_htmx.html'
+    exception_map = ((Exception, lambda e: str(e)),)   # bare messages, as before
 
-    allocation_id = allocation.allocation_id
-    account = allocation.account
-    resource_name = account.resource.resource_name if account and account.resource else 'Unknown'
-    projcode = request.form.get('projcode', '')
+    def clean(self, data):
+        updates = {
+            'amount': data['amount'],
+            'end_date': data['end_date'],  # None explicitly clears end date
+            'description': data['description'],
+        }
+        if data.get('start_date'):
+            updates['start_date'] = datetime.combine(data['start_date'], datetime.min.time())
+        return updates
 
-    try:
-        form_data = EditAllocationForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/user/fragments/edit_allocation_form_htmx.html',
-            allocation=allocation,
-            resource_name=resource_name,
-            projcode=projcode,
-            errors=EditAllocationForm.flatten_errors(e.messages)
+    def perform(self, updates):
+        from sam.manage import update_allocation
+        update_allocation(
+            db.session, self.allocation.allocation_id, current_user.user_id,
+            **updates,
         )
 
-    updates = {
-        'amount': form_data['amount'],
-        'end_date': form_data['end_date'],  # None explicitly clears end date
-        'description': form_data['description'],
-    }
-    if form_data.get('start_date'):
-        updates['start_date'] = datetime.combine(form_data['start_date'], datetime.min.time())
+    def context(self):
+        account = self.allocation.account
+        return {
+            'allocation': self.allocation,
+            'resource_name': (account.resource.resource_name
+                              if account and account.resource else 'Unknown'),
+            'projcode': request.form.get('projcode', ''),
+        }
 
-    try:
-        with management_transaction(db.session):
-            update_allocation(
-                db.session, allocation_id, current_user.user_id,
-                **updates
-            )
-    except (ValueError, Exception) as e:
-        return render_template(
-            'dashboards/user/fragments/edit_allocation_form_htmx.html',
-            allocation=allocation,
-            resource_name=resource_name,
-            projcode=projcode,
-            errors=[str(e)]
-        )
-
-    # Success — close modal and trigger refresh
-    response = make_response('''
+    def on_success(self, result):
+        response = make_response('''
         <div class="modal-body text-center text-success py-4">
             <i class="fas fa-check-circle fa-2x"></i>
             <p class="mt-2 mb-0">Allocation updated successfully</p>
@@ -1470,8 +1438,22 @@ def htmx_edit_allocation(allocation):
         }, 1000);
         </script>
     ''')
-    response.headers['HX-Trigger'] = 'allocationUpdated'
-    return response
+        response.headers['HX-Trigger'] = 'allocationUpdated'
+        return response
+
+
+@bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_edit_allocation(allocation):
+    """
+    Handle edit allocation form submission (htmx).
+
+    On error: returns the form with error messages.
+    On success: returns a script that closes the modal and triggers a
+    refresh event so any open project details modal reloads.
+    """
+    return _UserEditAllocationHandler(allocation=allocation).handle()
 
 
 # ---------------------------------------------------------------------------
@@ -1548,6 +1530,45 @@ def htmx_threshold_form(project, resource_name, window):
     )
 
 
+class _SaveThresholdHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Save one rolling-window threshold; success re-renders the rolling
+    section (not a modal fragment)."""
+
+    schema_cls = SetThresholdForm
+    template = 'dashboards/user/fragments/threshold_form_htmx.html'
+
+    def perform(self, data):
+        if self.window == 30:
+            self.account.update_thresholds(first_threshold=data['threshold_pct'])
+        else:
+            self.account.update_thresholds(second_threshold=data['threshold_pct'])
+
+    def context(self):
+        return {
+            'projcode': self.project.projcode,
+            'resource_name': self.resource_name,
+            'window': self.window,
+            'current_threshold': request.form.get('threshold_pct', ''),
+        }
+
+    def on_success(self, result):
+        projcode = self.project.projcode
+        rolling_usage = get_project_rolling_usage(
+            db.session, projcode, resource_name=self.resource_name)
+        rolling_resource = rolling_usage.get(self.resource_name, {})
+        windows = rolling_resource.get('windows', {})
+        return render_template(
+            'dashboards/user/fragments/rolling_rate_htmx.html',
+            projcode=projcode,
+            resource_name=self.resource_name,
+            rolling_30=windows.get(30),
+            rolling_90=windows.get(90),
+            rolling_is_inheriting=rolling_resource.get('is_inheriting', False),
+            rolling_root_projcode=rolling_resource.get('root_projcode'),
+            can_edit_threshold=True,
+        )
+
+
 @bp.route('/htmx/threshold/<projcode>/<resource_name>/<int:window>', methods=['POST'])
 @login_required
 @require_threshold_edit
@@ -1559,43 +1580,10 @@ def htmx_save_threshold(project, resource_name, window):
     Returns the re-rendered rolling section on success, or the form with an
     error message on validation failure.
     """
-    from sam.manage import management_transaction
-
-    projcode = project.projcode
     account = _get_account(project, resource_name)
     if not account:
         return '<div class="alert alert-danger">Account not found for this resource</div>', 404
-
-    try:
-        form_data = SetThresholdForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/user/fragments/threshold_form_htmx.html',
-            projcode=projcode,
-            resource_name=resource_name,
-            window=window,
-            current_threshold=request.form.get('threshold_pct', ''),
-            errors=SetThresholdForm.flatten_errors(e.messages),
-        )
-    new_val = form_data['threshold_pct']
-
-    with management_transaction(db.session):
-        if window == 30:
-            account.update_thresholds(first_threshold=new_val)
-        else:
-            account.update_thresholds(second_threshold=new_val)
-
-    rolling_usage = get_project_rolling_usage(db.session, projcode, resource_name=resource_name)
-    rolling_resource = rolling_usage.get(resource_name, {})
-    windows = rolling_resource.get('windows', {})
-
-    return render_template(
-        'dashboards/user/fragments/rolling_rate_htmx.html',
-        projcode=projcode,
-        resource_name=resource_name,
-        rolling_30=windows.get(30),
-        rolling_90=windows.get(90),
-        rolling_is_inheriting=rolling_resource.get('is_inheriting', False),
-        rolling_root_projcode=rolling_resource.get('root_projcode'),
-        can_edit_threshold=True,
-    )
+    return _SaveThresholdHandler(
+        project=project, resource_name=resource_name,
+        window=window, account=account,
+    ).handle()

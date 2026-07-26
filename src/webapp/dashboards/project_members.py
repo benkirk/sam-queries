@@ -19,9 +19,12 @@ from flask import Blueprint, render_template, request
 from flask_login import login_required, current_user
 from marshmallow import ValidationError
 
+from sam.manage import add_user_to_project
 from sam.queries.users import get_users_on_project
 from sam.schemas.forms.user import AddMemberForm, GrantMemberAccessForm
+from sam.core.users import User
 from webapp.extensions import db
+from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_success
 from webapp.api.access_control import (
     require_admin_change,
@@ -77,6 +80,56 @@ def htmx_add_member_form(project):
     )
 
 
+class _AddMemberHandler(HtmxFormHandler):
+    """Add a member to a project; custom success fragment carries an OOB
+    swap of the members table."""
+
+    schema_cls = AddMemberForm
+    template = 'project_members/fragments/add_member_form_htmx.html'
+
+    def clean(self, data):
+        self.member = db.session.query(User).filter_by(
+            username=data['username']).first()
+        if not self.member:
+            raise FormError(f'User "{data["username"]}" not found')
+        return data
+
+    def perform(self, data):
+        start_date = (datetime.combine(data['start_date'], datetime.min.time())
+                      if data.get('start_date') else None)
+        add_user_to_project(
+            db.session, self.project.project_id, self.member.user_id,
+            start_date, data['end_date'],
+        )
+
+    def context(self):
+        return {
+            'projcode': self.project.projcode,
+            'start_date': request.form.get('start_date', ''),
+            'end_date': request.form.get('end_date', ''),
+        }
+
+    def render_errors(self, errors, field_errors=None):
+        # username is a hidden input fed by the search picker — its errors
+        # have no visible field to attach to, so surface them in the panel.
+        field_errors = dict(field_errors or {})
+        errors = list(errors) + [f'Username: {m}'
+                                 for m in field_errors.pop('username', [])]
+        return super().render_errors(errors, field_errors)
+
+    def on_success(self, result):
+        projcode = self.project.projcode
+        message = f'Added {self.member.display_name} to project {projcode}'
+        return htmx_success(
+            'project_members/fragments/add_member_success_htmx.html',
+            {'closeModal': 'addMemberModal'},
+            toast=message,
+            message=message,
+            projcode=projcode,
+            members_html=_render_members_table(projcode, self.project),
+        )
+
+
 @bp.route('/<projcode>/add', methods=['POST'])
 @login_required
 @require_member_management
@@ -90,63 +143,7 @@ def htmx_add_member(project):
     On success: returns a success message + OOB swap to update the members
     table, then auto-closes the modal.
     """
-    from sam.manage import add_user_to_project, management_transaction
-    from sam.core.users import User
-
-    projcode = project.projcode
-    try:
-        form_data = AddMemberForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'project_members/fragments/add_member_form_htmx.html',
-            projcode=projcode,
-            start_date=request.form.get('start_date', ''),
-            end_date=request.form.get('end_date', ''),
-            errors=AddMemberForm.flatten_errors(e.messages)
-        )
-
-    username = form_data['username']
-    start_date = datetime.combine(form_data['start_date'], datetime.min.time()) if form_data.get('start_date') else None
-    end_date = form_data['end_date']
-
-    # Look up the user
-    user = db.session.query(User).filter_by(username=username).first()
-    if not user:
-        return render_template(
-            'project_members/fragments/add_member_form_htmx.html',
-            projcode=projcode,
-            start_date=request.form.get('start_date', ''),
-            end_date=request.form.get('end_date', ''),
-            errors=[f'User "{username}" not found']
-        )
-
-    # Add the member
-    try:
-        with management_transaction(db.session):
-            add_user_to_project(
-                db.session, project.project_id, user.user_id,
-                start_date, end_date
-            )
-    except (ValueError, Exception) as e:
-        return render_template(
-            'project_members/fragments/add_member_form_htmx.html',
-            projcode=projcode,
-            start_date=request.form.get('start_date', ''),
-            end_date=request.form.get('end_date', ''),
-            errors=[str(e)]
-        )
-
-    # Success — render updated members table for OOB swap
-    members_html = _render_members_table(projcode, project)
-
-    return htmx_success(
-        'project_members/fragments/add_member_success_htmx.html',
-        {'closeModal': 'addMemberModal'},
-        toast=f'Added {user.display_name} to project {projcode}',
-        message=f'Added {user.display_name} to project {projcode}',
-        projcode=projcode,
-        members_html=members_html
-    )
+    return _AddMemberHandler(project=project).handle()
 
 
 @bp.route('/<projcode>/<username>', methods=['DELETE'])

@@ -19,6 +19,7 @@ from webapp.utils.htmx import (
 from webapp.extensions import db
 from webapp.api.v1.queue import invalidate_queue_cache
 from webapp.utils.fk_validation import validate_fk_existence
+from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
 )
@@ -323,6 +324,37 @@ def htmx_queue_edit_form(queue_id):
     )
 
 
+class _EditQueueHandler(HtmxFormHandler):
+    """Update a queue; the end-date cross-field check needs the ORM
+    object's start_date, and success invalidates the queue API cache."""
+
+    schema_cls = EditQueueForm
+    template = 'dashboards/admin/fragments/edit_queue_form_htmx.html'
+    error_prefix = 'Error updating queue'
+
+    def clean(self, data):
+        if (data.get('end_date') and self.queue.start_date
+                and data['end_date'] <= self.queue.start_date):
+            raise FormError('End date must be after start date.')
+        return data
+
+    def perform(self, data):
+        self.queue.update(
+            description=data['description'],
+            wall_clock_hours_limit=data['wall_clock_hours_limit'],
+            end_date=data['end_date'],
+        )
+
+    def after_commit(self, result):
+        invalidate_queue_cache()
+
+    def context(self):
+        return {'queue': self.queue}
+
+    def triggers(self, result):
+        return _RESOURCES_TRIGGERS
+
+
 @bp.route('/htmx/queue-edit/<int:queue_id>', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_RESOURCES)
@@ -334,44 +366,7 @@ def htmx_queue_edit(queue_id):
     if not queue:
         return htmx_not_found('Queue')
 
-    # Cross-field check requiring the ORM object's start_date — done after
-    # validation so this route uses the schema directly rather than the helper.
-    from marshmallow import ValidationError
-    try:
-        data = EditQueueForm().load(request.form)
-    except ValidationError as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_queue_form_htmx.html',
-            queue=queue,
-            errors=EditQueueForm.flatten_errors(e.messages),
-            form=request.form,
-        )
-
-    if data.get('end_date') and queue.start_date and data['end_date'] <= queue.start_date:
-        return render_template(
-            'dashboards/admin/fragments/edit_queue_form_htmx.html',
-            queue=queue,
-            errors=['End date must be after start date.'],
-            form=request.form,
-        )
-
-    try:
-        with management_transaction(db.session):
-            queue.update(
-                description=data['description'],
-                wall_clock_hours_limit=data['wall_clock_hours_limit'],
-                end_date=data['end_date'],
-            )
-    except Exception as e:
-        return render_template(
-            'dashboards/admin/fragments/edit_queue_form_htmx.html',
-            queue=queue,
-            errors=[f'Error updating queue: {e}'],
-            form=request.form,
-        )
-
-    invalidate_queue_cache()
-    return htmx_success_message(_RESOURCES_TRIGGERS, 'Saved successfully.')
+    return _EditQueueHandler(queue=queue).handle()
 
 
 # ── Queue Delete ───────────────────────────────────────────────────────────
@@ -643,54 +638,67 @@ def htmx_admin_disk_root_new_form():
     )
 
 
+class _DiskRootFormHandler(HtmxFormHandler):
+    """Shared lifecycle for the disk-root create/edit modals: checkbox
+    injection, DISK-resource validation, duplicate-key translation."""
+
+    def form_input(self):
+        # Inject explicit booleans for checkboxes (absent from request.form
+        # when unchecked) per CLAUDE.md §9.
+        raw = {k: v for k, v in request.form.items() if v != ''}
+        raw['charging_exempt'] = 'charging_exempt' in request.form
+        raw['active'] = 'active' in request.form
+        return raw
+
+    def clean(self, data):
+        from sam.resources.resources import Resource
+        target = db.session.get(Resource, data['resource_id'])
+        if (not target or not target.resource_type
+                or target.resource_type.resource_type != 'DISK'):
+            raise FormError('Selected resource does not exist or is not a disk resource.')
+        return data
+
+    def _write(self, data):
+        raise NotImplementedError
+
+    def perform(self, data):
+        from sqlalchemy.exc import IntegrityError
+        try:
+            self._write(data)
+        except IntegrityError:
+            raise FormError(
+                f'Root directory "{data["root_directory"]}" already exists.')
+
+    def triggers(self, result):
+        return _RESOURCES_TRIGGERS
+
+
+class _DiskRootCreateHandler(_DiskRootFormHandler):
+    schema_cls = CreateDiskResourceRootDirectoryForm
+    template = 'dashboards/admin/fragments/disk_root_new_form_htmx.html'
+    error_prefix = 'Error creating root directory'
+    success_message = 'Root directory created.'
+
+    def _write(self, data):
+        from sam.resources.resources import DiskResourceRootDirectory
+        DiskResourceRootDirectory.create(
+            db.session,
+            resource_id=data['resource_id'],
+            root_directory=data['root_directory'],
+            charging_exempt=data['charging_exempt'],
+            active=data['active'],
+        )
+
+    def context(self):
+        return {'disk_resources': _disk_resources()}
+
+
 @bp.route('/htmx/admin/disk-roots/create', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_RESOURCES)
 def htmx_admin_disk_root_create():
     """Create a new DiskResourceRootDirectory row."""
-    from marshmallow import ValidationError
-    from sqlalchemy.exc import IntegrityError
-    from sam.resources.resources import Resource, ResourceType, DiskResourceRootDirectory
-
-    def _reload(errors, form=None):
-        return render_template(
-            'dashboards/admin/fragments/disk_root_new_form_htmx.html',
-            disk_resources=_disk_resources(),
-            errors=errors,
-            form=form if form is not None else request.form,
-        )
-
-    # Pre-process: drop empty strings + inject explicit booleans for checkboxes
-    # (absent from request.form when unchecked) per CLAUDE.md §9.
-    raw = {k: v for k, v in request.form.items() if v != ''}
-    raw['charging_exempt'] = 'charging_exempt' in request.form
-    raw['active'] = 'active' in request.form
-
-    try:
-        data = CreateDiskResourceRootDirectoryForm().load(raw)
-    except ValidationError as e:
-        return _reload(CreateDiskResourceRootDirectoryForm.flatten_errors(e.messages))
-
-    target = db.session.get(Resource, data['resource_id'])
-    if not target or not target.resource_type or target.resource_type.resource_type != 'DISK':
-        return _reload(['Selected resource does not exist or is not a disk resource.'])
-
-    try:
-        with management_transaction(db.session):
-            DiskResourceRootDirectory.create(
-                db.session,
-                resource_id=data['resource_id'],
-                root_directory=data['root_directory'],
-                charging_exempt=data['charging_exempt'],
-                active=data['active'],
-            )
-    except IntegrityError:
-        db.session.rollback()
-        return _reload([f'Root directory "{data["root_directory"]}" already exists.'])
-    except Exception as e:
-        return _reload([f'Error creating root directory: {e}'])
-
-    return htmx_success_message(_RESOURCES_TRIGGERS, 'Root directory created.')
+    return _DiskRootCreateHandler().handle()
 
 
 @bp.route('/htmx/admin/disk-roots/<int:dr_id>/edit-form')
@@ -711,58 +719,36 @@ def htmx_admin_disk_root_edit_form(dr_id):
     )
 
 
+class _DiskRootEditHandler(_DiskRootFormHandler):
+    schema_cls = EditDiskResourceRootDirectoryForm
+    template = 'dashboards/admin/fragments/disk_root_edit_form_htmx.html'
+    error_prefix = 'Error updating root directory'
+    success_message = 'Root directory updated.'
+
+    def _write(self, data):
+        self.dr.update(
+            resource_id=data['resource_id'],
+            root_directory=data['root_directory'],
+            charging_exempt=data['charging_exempt'],
+            active=data['active'],
+        )
+
+    def context(self):
+        return {'dr': self.dr, 'disk_resources': _disk_resources()}
+
+
 @bp.route('/htmx/admin/disk-roots/<int:dr_id>/edit', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_RESOURCES)
 def htmx_admin_disk_root_edit(dr_id):
     """Update a DiskResourceRootDirectory row."""
-    from marshmallow import ValidationError
-    from sqlalchemy.exc import IntegrityError
-    from sam.resources.resources import Resource, DiskResourceRootDirectory
+    from sam.resources.resources import DiskResourceRootDirectory
 
     dr = db.session.get(DiskResourceRootDirectory, dr_id)
     if not dr:
         return '<div class="alert alert-danger">Root directory not found.</div>', 404
 
-    def _reload(errors, form=None):
-        return render_template(
-            'dashboards/admin/fragments/disk_root_edit_form_htmx.html',
-            dr=dr,
-            disk_resources=_disk_resources(),
-            errors=errors,
-            form=form if form is not None else request.form,
-        )
-
-    # Pre-process: drop empty strings + inject explicit booleans for checkboxes
-    # (absent from request.form when unchecked) per CLAUDE.md §9.
-    raw = {k: v for k, v in request.form.items() if v != ''}
-    raw['charging_exempt'] = 'charging_exempt' in request.form
-    raw['active'] = 'active' in request.form
-
-    try:
-        data = EditDiskResourceRootDirectoryForm().load(raw)
-    except ValidationError as e:
-        return _reload(EditDiskResourceRootDirectoryForm.flatten_errors(e.messages))
-
-    target = db.session.get(Resource, data['resource_id'])
-    if not target or not target.resource_type or target.resource_type.resource_type != 'DISK':
-        return _reload(['Selected resource does not exist or is not a disk resource.'])
-
-    try:
-        with management_transaction(db.session):
-            dr.update(
-                resource_id=data['resource_id'],
-                root_directory=data['root_directory'],
-                charging_exempt=data['charging_exempt'],
-                active=data['active'],
-            )
-    except IntegrityError:
-        db.session.rollback()
-        return _reload([f'Root directory "{data["root_directory"]}" already exists.'])
-    except Exception as e:
-        return _reload([f'Error updating root directory: {e}'])
-
-    return htmx_success_message(_RESOURCES_TRIGGERS, 'Root directory updated.')
+    return _DiskRootEditHandler(dr=dr).handle()
 
 
 @bp.route('/htmx/admin/disk-roots/<int:dr_id>/toggle-active', methods=['POST'])

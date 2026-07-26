@@ -41,7 +41,15 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         panel edit now schema-validated, queue-create FK error drops the
         'Error creating queue:' prefix, queue cache clear now success-only;
         70 characterization tests written first)
-  - [ ] 2.4 31 hand-rolled shape-C handlers → handler subclasses
+  - [x] 2.4 shape-C handlers → HtmxFormHandler subclasses (21 of 31 sites;
+        −93 net — classes trade closure deletion for scaffolding, win is
+        structure). Added `FlattenedFieldErrors` mixin for the 7 templates
+        without form_fields macros (preserves legacy panel presentation).
+        Deliberately NOT migrated: bulk-deactivate + queue-cleanup wizards,
+        mnemonic-code, panel-session (bespoke per plan), grant-access +
+        remove/change-admin (alert-response), rate_limits + status outage
+        (2.5 triage). Admin edit-allocation latent 500 was already fixed
+        by #373 — no delta. 22 new HTTP-layer tests.
   - [ ] 2.5 §9 conformance (exemption schemas + shape-D migrations)
   - [ ] 2.6 typeahead factory
   - [ ] PR 2 opened

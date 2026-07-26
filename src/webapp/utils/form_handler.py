@@ -208,7 +208,7 @@ class HtmxFormHandler:
             else:  # ValidationError('msg') from clean() — form-level
                 field_errors, form_level = {}, list(e.messages)
             return self.render_errors(form_level, field_errors)
-        except FormError as e:
+        except (FormError, FKValidationError) as e:
             return self.render_errors(e.errors)
 
         try:
@@ -224,6 +224,19 @@ class HtmxFormHandler:
 
         self.after_commit(result)
         return self.on_success(result)
+
+
+class FlattenedFieldErrors:
+    """Mixin for handlers whose template has no per-field form_fields.html
+    macros: fold field errors into the top alert panel (labelled, matching
+    the legacy ``flatten_errors`` presentation) so they stay visible.
+    """
+
+    def render_errors(self, errors, field_errors=None):
+        flat = [f'{field.replace("_", " ").title()}: {msg}'
+                for field, msgs in (field_errors or {}).items()
+                for msg in msgs]
+        return super().render_errors(list(errors) + flat, {})
 
 
 class _KwargFormHandler(HtmxFormHandler):
