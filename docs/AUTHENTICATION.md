@@ -209,27 +209,61 @@ out of your way by design.
 ### What you'll see in normal local development
 
 ```bash
-# Start everything
-docker compose up
+# Start the dev server (code-synced, port 5050)
+docker compose up webdev --watch
 
 # Browse to http://localhost:5050
-# You're auto-logged in as benkirk (or whoever DEV_AUTO_LOGIN_USER says).
-# No login page, no password, no Microsoft involvement.
+# The stub login page appears with a "Quick Login" panel of test
+# usernames (driven by DEV_QUICK_LOGIN_USERS in webapp/config.py).
+# Click any username — stub auth accepts any password. No Microsoft
+# involvement.
 ```
 
-This works because `compose.yaml` sets `DISABLE_AUTH=1`, which
-activates a small Flask middleware
-([`src/webapp/utils/dev_auth.py`](../src/webapp/utils/dev_auth.py))
-that auto-authenticates every request as the configured user via the
-stub provider. The stub provider accepts any password for any active
-SAM user -- never run it in production.
+The click-login page is the default on purpose: it makes switching
+between users with different permission sets a one-click operation
+(see *Testing RBAC locally* below). The stub provider accepts any
+password for any active SAM user -- never run it in production.
 
-To impersonate a different user locally:
+Notes on the other run modes:
 
-```bash
-# In .env or as a docker compose env override:
-DEV_AUTO_LOGIN_USER=someone_else
-```
+- `docker compose up` (the `webapp` service, host port **7050**) runs
+  the production-like image with `DISABLE_AUTH=0` pinned in
+  `compose.yaml` -- you get the same stub login page, just without
+  code sync.
+- True auto-login (skip the login page entirely) exists but is opt-in:
+  set `DISABLE_AUTH=1` *and* run a config where
+  `DEV_AUTO_LOGIN_ALLOWED` is true; then
+  [`src/webapp/utils/dev_auth.py`](../src/webapp/utils/dev_auth.py)
+  authenticates every request as `DEV_AUTO_LOGIN_USER`. It is **not**
+  the default anywhere.
+
+### Testing RBAC locally
+
+A user's permission set is the union of two layers (both in
+[`src/webapp/utils/rbac.py`](../src/webapp/utils/rbac.py)):
+
+1. **POSIX group bundles** -- each group the user belongs to
+   (`get_user_group_access()`) whose name has a `GROUP_PERMISSIONS`
+   entry contributes that bundle.
+2. **Per-user overrides** -- `USER_PERMISSION_OVERRIDES` grants
+   specific `Permission` members to individual usernames on top.
+
+There is no dependency on the SAM `role_user`/`role` tables and no
+dev-only bypass -- dev, test, and production resolve permissions the
+same way. To exercise a specific permission set:
+
+1. Point `USER_PERMISSION_OVERRIDES` at your username with the exact
+   subset you want to test (or `set(Permission)` for admin-equivalent).
+2. `docker compose up webdev --watch`, Quick-Login as that user, and
+   verify the expected tabs/action buttons appear. The user card on
+   `/` lists the resolved permission set.
+3. Re-login after edits (`--watch` picks up the code change).
+
+Troubleshooting: "no roles assigned" means no bundled POSIX group and
+no override entry; missing edit buttons mean the route decorator (or
+the gating macros in
+`templates/dashboards/fragments/action_buttons.html`) requires a
+permission you don't hold.
 
 ### Running real OIDC locally (rare)
 
