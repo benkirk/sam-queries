@@ -55,7 +55,10 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         `_resources_with_queues()` (−170); ChangeProjectAdminForm +
         LinkAllocationParentForm (schema-only conformance); sweep confirmed
         rate_limits + outage handlers already conformant (left alone)
-  - [ ] 2.6 typeahead factory
+  - [x] 2.6 typeahead factory — `register_typeahead` in utils/htmx.py;
+        7 of 9 endpoints migrated (groups, impersonate alias, org FK ×2,
+        contract FK, parent-project FK, adjustment picker); multi-context
+        user search + facility-scoped project search stay bespoke
   - [ ] PR 2 opened
 
 ## Context

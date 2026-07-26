@@ -188,6 +188,56 @@ def handle_htmx_form_post(
     ).handle()
 
 
+def register_typeahead(bp, *, rule, endpoint, permission, search, template,
+                       ctx_key, min_len=2, any_facility=False,
+                       active_only_default=False):
+    """Register a search-as-you-type GET endpoint on ``bp``.
+
+    Standard shape shared by the FK pickers and admin search boxes:
+    read ``q``, return '' below ``min_len``, run ``search``, render the
+    result-list fragment. Endpoints whose branching is the feature (the
+    multi-context user search, the facility-scoped project search) stay
+    hand-written.
+
+    Args:
+        rule / endpoint: URL rule and endpoint name — passed explicitly so
+                         existing template ``hx-get`` URLs stay stable.
+        permission:      Permission gating the endpoint.
+        any_facility:    use ``require_permission_any_facility`` instead of
+                         ``require_permission`` (scoped-manager pickers).
+        search:          callable ``(q, active_only) -> list`` running the
+                         actual query (ignore ``active_only`` when the
+                         endpoint has no toggle).
+        template:        result-list fragment.
+        ctx_key:         template variable receiving the result list
+                         (``q`` is always passed alongside).
+        min_len:         minimum query length (below → empty response).
+        active_only_default: default for ``read_active_only`` when the
+                         param is absent (see that helper's docstring).
+    """
+    # Local imports: cycle — rbac and several blueprints import from this
+    # module at import time.
+    from flask import request as _request
+    from flask_login import login_required
+    from webapp.utils.rbac import (
+        require_permission, require_permission_any_facility,
+    )
+
+    def view():
+        q = (_request.args.get('q') or '').strip()
+        if len(q) < min_len:
+            return ''
+        active_only = read_active_only(_request.args,
+                                       default=active_only_default)
+        return render_template(template, q=q, **{ctx_key: search(q, active_only)})
+
+    view.__name__ = endpoint
+    gate = (require_permission_any_facility(permission) if any_facility
+            else require_permission(permission))
+    bp.add_url_rule(rule, endpoint=endpoint,
+                    view_func=login_required(gate(view)))
+
+
 def htmx_not_found(name='Resource', status=404):
     """Standard 404 response fragment for missing entities.
 

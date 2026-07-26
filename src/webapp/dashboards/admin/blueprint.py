@@ -12,7 +12,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
 from webapp.utils.htmx import (htmx_success, htmx_success_message, htmx_not_found,
-                               read_active_only)
+                               read_active_only, register_typeahead)
 from flask_login import login_required, current_user, login_user
 from datetime import datetime, timedelta
 from webapp.api.helpers import parse_input_end_date
@@ -727,46 +727,37 @@ def htmx_search_users():
     return render_template(template, users=users, q=q)
 
 
-@bp.route('/htmx/search/groups')
-@login_required
-@require_permission_any_facility(Permission.VIEW_GROUPS)
-def htmx_search_groups():
-    """Search adhoc groups by name or GID. Returns the result-list fragment."""
+def _search_groups(q, active_only):
     from sam.queries.lookups import search_groups_by_pattern
-
-    q = request.args.get('q', '').strip()
-    if len(q) < 2:
-        return ''
-
-    active_only = read_active_only(request.args)
-    groups = search_groups_by_pattern(db.session, q, limit=20, active_only=active_only)
-    return render_template(
-        'dashboards/admin/fragments/group_search_results_htmx.html',
-        groups=groups,
-        q=q,
-    )
+    return search_groups_by_pattern(db.session, q, limit=20,
+                                    active_only=active_only)
 
 
-# Keep old impersonate endpoint as alias for backward compatibility
-@bp.route('/htmx/search-users-impersonate')
-@login_required
-@require_permission(Permission.IMPERSONATE_USERS)
-def htmx_search_users_impersonate():
-    """Alias for /htmx/search/users?context=impersonate (deprecated)."""
+register_typeahead(
+    bp, rule='/htmx/search/groups', endpoint='htmx_search_groups',
+    permission=Permission.VIEW_GROUPS, any_facility=True,
+    search=_search_groups,
+    template='dashboards/admin/fragments/group_search_results_htmx.html',
+    ctx_key='groups',
+)
+
+
+def _search_users_impersonate(q, active_only):
     from sam.queries.users import search_users_by_pattern
+    return search_users_by_pattern(db.session, q, limit=20,
+                                   active_only=active_only)
 
-    query = request.args.get('q', '').strip()
-    active_only = read_active_only(request.args)
 
-    if len(query) < 2:
-        return ''
-
-    users = search_users_by_pattern(db.session, query, limit=20, active_only=active_only)
-
-    return render_template(
-        'dashboards/admin/fragments/user_search_results_htmx.html',
-        users=users
-    )
+# Old impersonate endpoint kept as alias for backward compatibility —
+# deprecated in favor of /htmx/search/users?context=impersonate.
+register_typeahead(
+    bp, rule='/htmx/search-users-impersonate',
+    endpoint='htmx_search_users_impersonate',
+    permission=Permission.IMPERSONATE_USERS,
+    search=_search_users_impersonate,
+    template='dashboards/admin/fragments/user_search_results_htmx.html',
+    ctx_key='users',
+)
 
 
 @bp.route('/htmx/search-projects')

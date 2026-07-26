@@ -9,7 +9,8 @@ from datetime import datetime
 
 from flask import render_template, request, redirect, url_for
 from webapp.utils.htmx import (htmx_success, htmx_success_message,
-                               handle_htmx_form_post, read_active_only)
+                               handle_htmx_form_post, read_active_only,
+                               register_typeahead)
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
@@ -307,92 +308,67 @@ def htmx_alloc_types_for_panel():
     )
 
 
-@bp.route('/htmx/org-search-for-project')
-@login_required
-@require_permission_any_facility(Permission.CREATE_PROJECTS)
-def htmx_org_search_for_project():
-    """Search organizations for the project create form FK picker.
+# FK pickers on the project create form. The .fk-search-result click
+# handlers (defined in the form template) set the hidden organization_id /
+# contract_id / parent_id inputs.
 
-    Returns an HTML fragment with .fk-search-result items whose click handler
-    (defined in the form template) sets the hidden ``organization_id`` input.
-    """
+def _search_orgs_for_project(q, active_only):
     from sam.core.organizations import Organization
-
-    query = request.args.get('q', '').strip()
-    if len(query) < 2:
-        return ''
-
-    orgs = (
+    return (
         db.session.query(Organization)
         .filter(
             Organization.is_active,
-            Organization.name.ilike(f'%{query}%') | Organization.acronym.ilike(f'%{query}%')
+            Organization.name.ilike(f'%{q}%') | Organization.acronym.ilike(f'%{q}%')
         )
         .order_by(Organization.name)
         .limit(15)
         .all()
     )
 
-    return render_template(
-        'dashboards/admin/fragments/org_search_results_fk_htmx.html',
-        orgs=orgs,
-    )
 
-
-@bp.route('/htmx/contract-search-for-project')
-@login_required
-@require_permission_any_facility(Permission.CREATE_PROJECTS)
-def htmx_contract_search_for_project():
-    """Search contracts for the project create form FK picker.
-
-    Returns an HTML fragment with .fk-search-result items whose click handler
-    (defined in the form template) sets the hidden ``contract_id`` input.
-    """
+def _search_contracts_for_project(q, active_only):
     from sam.projects.contracts import Contract
-
-    query = request.args.get('q', '').strip()
-    if len(query) < 2:
-        return ''
-
-    contracts = (
+    return (
         db.session.query(Contract)
         .filter(
-            Contract.contract_number.ilike(f'%{query}%') | Contract.title.ilike(f'%{query}%')
+            Contract.contract_number.ilike(f'%{q}%') | Contract.title.ilike(f'%{q}%')
         )
         .order_by(Contract.contract_number)
         .limit(10)
         .all()
     )
 
-    return render_template(
-        'dashboards/admin/fragments/contract_search_results_fk_htmx.html',
-        contracts=contracts,
-    )
 
-
-@bp.route('/htmx/project-search-for-parent')
-@login_required
-@require_permission_any_facility(Permission.CREATE_PROJECTS)
-def htmx_project_search_for_parent():
-    """Search projects for use as parent FK in the create form.
-
-    Returns an HTML fragment with .fk-search-result items whose click handler
-    (defined in the form template) sets the hidden ``parent_id`` input.
-    """
+def _search_projects_for_parent(q, active_only):
     from sam.queries.projects import search_projects_by_code_or_title
+    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
 
-    query = request.args.get('q', '').strip()
-    if len(query) < 1:
-        return ''
 
-    projects = search_projects_by_code_or_title(
-        db.session, query, active=True
-    )[:10]
+register_typeahead(
+    bp, rule='/htmx/org-search-for-project', endpoint='htmx_org_search_for_project',
+    permission=Permission.CREATE_PROJECTS, any_facility=True,
+    search=_search_orgs_for_project,
+    template='dashboards/admin/fragments/org_search_results_fk_htmx.html',
+    ctx_key='orgs',
+)
 
-    return render_template(
-        'dashboards/admin/fragments/project_search_results_fk_htmx.html',
-        projects=projects,
-    )
+register_typeahead(
+    bp, rule='/htmx/contract-search-for-project',
+    endpoint='htmx_contract_search_for_project',
+    permission=Permission.CREATE_PROJECTS, any_facility=True,
+    search=_search_contracts_for_project,
+    template='dashboards/admin/fragments/contract_search_results_fk_htmx.html',
+    ctx_key='contracts',
+)
+
+register_typeahead(
+    bp, rule='/htmx/project-search-for-parent',
+    endpoint='htmx_project_search_for_parent',
+    permission=Permission.CREATE_PROJECTS, any_facility=True,
+    search=_search_projects_for_parent,
+    template='dashboards/admin/fragments/project_search_results_fk_htmx.html',
+    ctx_key='projects', min_len=1,
+)
 
 
 @bp.route('/htmx/project-projcode-preview')

@@ -15,6 +15,7 @@ from webapp.utils.htmx import (
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    register_typeahead,
 )
 from webapp.extensions import db
 from webapp.api.v1.queue import invalidate_queue_cache
@@ -580,34 +581,28 @@ def htmx_queue_cleanup(resource_id):
 # endpoint (admin/blueprint.py) with context='fk'.
 
 
-@bp.route('/htmx/search-organizations')
-@login_required
-@require_permission(Permission.CREATE_RESOURCES)
-def htmx_search_organizations():
-    """
-    Search organizations for FK fields (e.g. prim_responsible_org_id on Resource).
-    """
+def _search_organizations_fk(q, active_only):
+    """Active-org FK search (e.g. prim_responsible_org_id on Resource)."""
     from sam.core.organizations import Organization
-
-    query = request.args.get('q', '').strip()
-    if len(query) < 2:
-        return ''
-
-    orgs = (
+    return (
         db.session.query(Organization)
         .filter(
             Organization.is_active,
-            Organization.name.ilike(f'%{query}%') | Organization.acronym.ilike(f'%{query}%')
+            Organization.name.ilike(f'%{q}%') | Organization.acronym.ilike(f'%{q}%')
         )
         .order_by(Organization.name)
         .limit(15)
         .all()
     )
 
-    return render_template(
-        'dashboards/admin/fragments/org_search_results_fk_htmx.html',
-        orgs=orgs,
-    )
+
+register_typeahead(
+    bp, rule='/htmx/search-organizations', endpoint='htmx_search_organizations',
+    permission=Permission.CREATE_RESOURCES,
+    search=_search_organizations_fk,
+    template='dashboards/admin/fragments/org_search_results_fk_htmx.html',
+    ctx_key='orgs',
+)
 
 
 # ---------------------------------------------------------------------------
