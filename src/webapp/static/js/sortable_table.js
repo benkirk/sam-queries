@@ -114,6 +114,9 @@
         });
     }
 
+    // For content injected outside htmx (e.g. lazy-loading.js fetch)
+    window.bindSortableTables = bindWithin;
+
     document.addEventListener('DOMContentLoaded', function () { bindWithin(document); });
     document.body && document.body.addEventListener('htmx:afterSwap', function (e) {
         bindWithin(e.detail.target);

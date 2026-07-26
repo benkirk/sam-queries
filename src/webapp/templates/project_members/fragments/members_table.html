@@ -17,12 +17,15 @@
 
 <div class="table-responsive">
     <table class="table table-sm table-hover mb-0">
+        {# Client-side sorting via sortable_table.js; Name sorts by
+           "last, first" (data-sort-value), matching the server's initial
+           order (hence sort-asc on Name). #}
         <thead class="thead-light">
             <tr>
-                <th>Name</th>
-                <th>Username</th>
-                <th>Email</th>
-                <th>Role</th>
+                <th class="sortable-header sort-asc" data-sort="text">Name</th>
+                <th class="sortable-header" data-sort="text">Username</th>
+                <th class="sortable-header" data-sort="text">Email</th>
+                <th class="sortable-header" data-sort="numeric">Role</th>
                 {% if can_manage %}
                 <th class="text-end" style="width: 180px;">Actions</th>
                 {% endif %}
@@ -32,7 +35,7 @@
             {% for member in members %}
             {% set acc = access_by_username.get(member.username) if access_by_username else None %}
             <tr>
-                <td>
+                <td data-sort-value="{{ member.last_name or '' }}, {{ member.first_name or '' }}">
                     <i class="fas fa-user text-muted me-1"></i>
                     <strong>{{ member.display_name }}</strong>
                     {% if acc and acc.status != 'full' and not acc.is_lead %}
@@ -70,15 +73,16 @@
                         {% endif %}
                     {% endif %}
                 </td>
-                <td><code>{{ member.username }}</code></td>
-                <td>
+                <td data-sort-value="{{ member.username }}"><code>{{ member.username }}</code></td>
+                {# '~' sorts after letters so N/A rows land last ascending #}
+                <td data-sort-value="{{ member.email or '~' }}">
                     {% if member.email %}
                     <a href="mailto:{{ member.email }}">{{ member.email }}</a>
                     {% else %}
                     <span class="text-muted">N/A</span>
                     {% endif %}
                 </td>
-                <td>
+                <td data-sort-value="{{ {'Lead': 0, 'Admin': 1, 'Member': 2}[member.role] }}">
                     {% if member.role == 'Lead' %}
                         <span class="badge bg-primary">
                             <i class="fas fa-star"></i> Lead

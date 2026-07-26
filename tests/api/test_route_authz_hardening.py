@@ -217,8 +217,13 @@ class TestPrivilegedAccessPreserved:
 
     def test_members_fragment(self, auth_client, lead_project):
         _, project = lead_project
-        assert auth_client.get(
-            f'/project-members/{project.projcode}').status_code == 200
+        resp = auth_client.get(f'/project-members/{project.projcode}')
+        assert resp.status_code == 200
+        # Sortable-header contract (sortable_table.js): clickable column
+        # headers + per-cell sort keys must survive template changes.
+        html = resp.get_data(as_text=True)
+        assert 'sortable-header' in html
+        assert 'data-sort-value' in html
 
     def test_rolling_section(self, auth_client, lead_project):
         _, project = lead_project

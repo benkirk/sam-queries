@@ -21,6 +21,9 @@ function loadLazyContainer(container) {
             $container.attr('data-loaded', 'true');
             // Let htmx discover hx-* attributes on newly injected content
             if (window.htmx) htmx.process(container);
+            // Bind sortable headers — this fetch path fires neither
+            // DOMContentLoaded nor htmx:afterSwap (sortable_table.js's hooks)
+            if (window.bindSortableTables) window.bindSortableTables(container);
         })
         .catch(error => {
             console.error('Error loading content:', error);
