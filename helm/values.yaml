@@ -111,7 +111,9 @@ webapp:
     path: /api/v1/health                 # base; /live and /ready appended
     startup:
       periodSeconds: 5
-      failureThreshold: 30               # ~150s budget for gunicorn (33 workers) to boot
+      failureThreshold: 30               # ~150s budget for gunicorn to boot (generous
+                                         #   headroom from the pre-gthread 33-worker era;
+                                         #   today's ~9 workers start much faster)
     liveness:
       periodSeconds: 15
       timeoutSeconds: 3
