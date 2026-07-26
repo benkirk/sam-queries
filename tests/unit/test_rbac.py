@@ -14,8 +14,6 @@ from webapp.utils.rbac import (
     Permission,
     can_impersonate,
     get_user_permissions,
-    has_all_permissions,
-    has_any_permission,
     has_permission,
     has_permission_for_facility,
     user_facility_scope,
@@ -119,27 +117,6 @@ class TestPredicates:
     def test_has_permission_false_when_not_granted(self):
         user = _StubUser(roles=['ssg'])
         assert not has_permission(user, Permission.SYSTEM_ADMIN)
-
-    def test_has_any_permission_short_circuits_on_match(self):
-        user = _StubUser(roles=['ssg'])
-        assert has_any_permission(
-            user, Permission.SYSTEM_ADMIN, Permission.VIEW_PROJECTS
-        )
-
-    def test_has_any_permission_false_when_none_match(self):
-        user = _StubUser(roles=['ssg'])
-        assert not has_any_permission(
-            user, Permission.SYSTEM_ADMIN, Permission.MANAGE_ROLES
-        )
-
-    def test_has_all_permissions_requires_full_intersection(self):
-        user = _StubUser(roles=['ssg'])
-        assert has_all_permissions(
-            user, Permission.VIEW_PROJECTS, Permission.VIEW_ALLOCATIONS
-        )
-        assert not has_all_permissions(
-            user, Permission.VIEW_PROJECTS, Permission.SYSTEM_ADMIN
-        )
 
 
 # ---------------------------------------------------------------------------

@@ -440,36 +440,6 @@ def filter_rows_by_facility(rows, allowed):
     return [r for r in rows if r.get('facility') in allowed_set]
 
 
-def has_any_permission(user, *permissions: Permission) -> bool:
-    """
-    Check if user has any of the specified permissions.
-
-    Args:
-        user: AuthUser object
-        *permissions: Permission values to check
-
-    Returns:
-        True if user has at least one permission, False otherwise
-    """
-    user_perms = get_user_permissions(user)
-    return bool(user_perms.intersection(permissions))
-
-
-def has_all_permissions(user, *permissions: Permission) -> bool:
-    """
-    Check if user has all of the specified permissions.
-
-    Args:
-        user: AuthUser object
-        *permissions: Permission values to check
-
-    Returns:
-        True if user has all permissions, False otherwise
-    """
-    user_perms = get_user_permissions(user)
-    return set(permissions).issubset(user_perms)
-
-
 def can_impersonate(caller, target) -> bool:
     """
     Decide whether ``caller`` is permitted to impersonate ``target``.
@@ -506,13 +476,6 @@ def has_role(user, role_name: str) -> bool:
     role-name checks.
     """
     return user.has_role(role_name)
-
-
-def has_any_role(user, *role_names: str) -> bool:
-    """
-    Check if user belongs to any of the specified group bundles.
-    """
-    return user.has_any_role(*role_names)
 
 
 # Decorator for requiring permissions in views
@@ -561,52 +524,6 @@ def require_permission_any_facility(permission: Permission):
             if not current_user.is_authenticated:
                 abort(401)
             if not has_permission_any_facility(current_user, permission):
-                abort(403)
-            return f(*args, **kwargs)
-        return decorated_function
-    return decorator
-
-
-def require_any_permission(*permissions: Permission):
-    """
-    Decorator to require any of the specified permissions.
-
-    Usage:
-        @app.route('/reports')
-        @login_required
-        @require_any_permission(Permission.VIEW_REPORTS, Permission.SYSTEM_ADMIN)
-        def view_report():
-            ...
-    """
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            if not current_user.is_authenticated:
-                abort(401)
-            if not has_any_permission(current_user, *permissions):
-                abort(403)
-            return f(*args, **kwargs)
-        return decorated_function
-    return decorator
-
-
-def require_role(*role_names: str):
-    """
-    Decorator to require any of the specified group bundles.
-
-    Usage:
-        @app.route('/admin')
-        @login_required
-        @require_role('admin', 'facility_manager')
-        def admin_panel():
-            ...
-    """
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            if not current_user.is_authenticated:
-                abort(401)
-            if not has_any_role(current_user, *role_names):
                 abort(403)
             return f(*args, **kwargs)
         return decorated_function
