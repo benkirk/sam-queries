@@ -32,9 +32,8 @@ SAM uses a modern Python web stack with focus on:
 - **Production ready**: Containerized deployment, structured logging, audit trails
 
 **Key Stats**:
-- **Database**: 97 tables, 91+ ORM models (94% coverage)
-- **Tests**: 380 passed, 77.47% code coverage
-- **Test Speed**: 32 seconds (parallel, no coverage) / 97 seconds (with coverage)
+- **Database**: ~100 tables mirrored by ORM models
+- **Tests**: see [docs/TESTING.md](TESTING.md) for suite size and timings
 - **API Endpoints**: RESTful under `/api/v1/` with Marshmallow serialization
 
 ---
@@ -305,13 +304,12 @@ source ../.env && pytest -m "not slow"
 ```
 tests/
 ├── unit/                      # Unit tests (fast)
-│   ├── test_basic_read.py            # Basic ORM queries (26 tests)
-│   ├── test_crud_operations.py       # Create/update/delete (tests)
-│   ├── test_new_models.py            # New models coverage (51 tests)
-│   └── test_query_functions.py       # Query functions (41 tests)
+│   ├── test_basic_read.py            # Basic ORM queries
+│   ├── test_crud_operations.py       # Create/update/delete
+│   └── test_query_functions.py       # Query functions
 ├── integration/               # Integration tests
-│   ├── test_schema_validation.py     # Schema drift detection (18 tests)
-│   └── test_views.py                 # Database views (24 tests)
+│   ├── test_schema_validation.py     # Schema drift detection
+│   └── test_views.py                 # Database views
 └── api/                       # API endpoint tests (14 files)
     ├── test_users.py
     ├── test_projects.py
@@ -709,7 +707,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 - [ ] Study CI/CD workflows (`.github/workflows/`)
 
 **Day 4: Production Considerations**
-- [ ] Read [docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/PRODUCTION_IMPROVEMENTS.md)
+- [ ] Read [docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/implemented/PRODUCTION_IMPROVEMENTS.md)
 - [ ] Understand Gunicorn configuration
 - [ ] Review database connection pooling
 - [ ] Study logging and monitoring requirements
@@ -808,7 +806,7 @@ pipdeptree
    - Authentication and authorization
    - Development server setup
 
-4. **[docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/PRODUCTION_IMPROVEMENTS.md)** - Production readiness
+4. **[docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/implemented/PRODUCTION_IMPROVEMENTS.md)** - Production readiness
    - Security improvements
    - Operational enhancements
    - Deployment checklist
@@ -865,11 +863,11 @@ pipdeptree
 5. **Run full test suite**: `pytest tests/` (with coverage)
 6. **Check schema validation** if ORM models changed
 7. **Write detailed commit message** (see git history for format)
-8. **Create pull request** to `main`
+8. **Create pull request** to `staging` (staging → main promotion is a separate manual PR)
 
 ### Code Quality
 - **Tests required**: For any new functionality
-- **Coverage target**: 70% minimum (project currently at 77.47%)
+- **Coverage target**: 70% minimum
 - **Follow patterns**: Use existing code as examples
 - **Type hints**: Add where helpful
 - **Docstrings**: Clear, concise, with examples when useful
@@ -949,10 +947,10 @@ for result in expiring_projects:
 - **Properties**: Use `@property` for derived values (`user.primary_email`, `project.active`)
 
 ### Testing Tips
-- **Fast iteration**: Use `--no-cov` flag (32s vs 97s)
+- **Fast iteration**: Use `--no-cov` flag (coverage tracing slows the run considerably)
 - **Parallel execution**: Automatic via pytest-xdist, workers get isolated databases
 - **Schema validation**: Run after any ORM model changes
-- **Coverage target**: 70% minimum (currently at 77.47%)
+- **Coverage target**: 70% minimum
 
 ---
 

@@ -57,15 +57,16 @@ admin if you think this is wrong.
 
 ### What about logging in locally?
 
-When you run the app on your laptop with `docker compose up` or
-`helm install -f values-local.yaml`, you don't see the login screen at
-all -- the app auto-logs you in as a test user (`benkirk` by default,
-configurable via `DEV_AUTO_LOGIN_USER`). This is intentional. Local dev
-shouldn't depend on Microsoft being reachable, and we don't want
-developers's laptops talking to UCAR's identity provider with shared
-production credentials. See [Local development](#local-development) for
-how to opt into a "real" OIDC flow if you ever need to debug a
-Microsoft-side issue.
+When you run the app on your laptop with `docker compose up webdev`,
+you get a stub login page with a "Quick Login" panel of test usernames --
+click one and you're in (any password works). Local dev shouldn't depend
+on Microsoft being reachable, and we don't want developers' laptops
+talking to UCAR's identity provider with shared production credentials.
+Local k8s (`helm install -f values-local.yaml`) goes one step further
+and auto-logs you in via `DISABLE_AUTH=1`. See
+[Local development](#local-development) for the details and for how to
+opt into a "real" OIDC flow if you ever need to debug a Microsoft-side
+issue.
 
 ---
 
@@ -150,7 +151,7 @@ Same code, four deployment shapes. The only thing that changes is
 
 | Deployment | URL | How auth works | OIDC creds source | Reply URL on Entra |
 |---|---|---|---|---|
-| **Local Docker Compose** (`docker compose up webdev`) | `http://localhost:5050` | Stub auto-login (`DISABLE_AUTH=1`) | n/a | n/a |
+| **Local Docker Compose** (`docker compose up webdev`) | `http://localhost:5050` | Stub login page (Quick Login; any password) | n/a | n/a |
 | **Local k8s** (Docker Desktop, `values-local.yaml`) | port-forwarded | Stub auto-login (`DISABLE_AUTH=1`) | n/a | n/a |
 | **Fargate staging** | `https://sam-staging.csgsam.ucar.edu` | OIDC | AWS SSM `/sam/staging/oidc-*` | `https://sam-staging.csgsam.ucar.edu/auth/oidc/callback` |
 | **CIRRUS k8s** (samuel) | `https://sam.hpc.ucar.edu` (advertised)<br>`https://samuel.k8s.ucar.edu` (platform alias) | OIDC | OpenBao `csg/sam-oidc` | one per host — `https://sam.hpc.ucar.edu/auth/oidc/callback` and `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
@@ -513,9 +514,7 @@ In rough priority order:
    on staging Fargate, so it runs `DevelopmentConfig` (DEBUG=True,
    `SESSION_COOKIE_SECURE=False`). Masked today because staging is
    HTTP-only behind UCAR VPN. Will need to be set when HTTPS is added
-   on staging (see
-   [`.cursor/rules/infrastructure-overview.mdc`](../.cursor/rules/infrastructure-overview.mdc)
-   "DNS Subdomain Readiness Checklist" item #2).
+   on staging.
 3. **Mock OIDC IdP for integration tests.** Today the tests at
    [`tests/unit/test_oidc_auth.py`](../tests/unit/test_oidc_auth.py)
    mock Authlib at the function boundary -- they catch code-path

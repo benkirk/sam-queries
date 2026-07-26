@@ -275,8 +275,8 @@ http://127.0.0.1:5050/api/v1/projects/<projcode>/members
 # Get project allocations with current usage
 http://127.0.0.1:5050/api/v1/projects/<projcode>/allocations
 
-# Get account balance
-http://127.0.0.1:5050/api/v1/accounts/<account_id>/balance
+# Get one allocation with usage
+http://127.0.0.1:5050/api/v1/allocations/<allocation_id>
 
 # List projects expiring soon
 http://127.0.0.1:5050/api/v1/projects/expiring
@@ -331,7 +331,7 @@ pytest-xdist against the isolated `mysql-test` container.
 
 2. **Add to exports** in `sam/__init__.py`
 
-3. **Create tests** in `tests/test_new_models.py`:
+3. **Create tests** in the matching `tests/unit/` module:
    ```python
    def test_new_model_count(session):
        count = session.query(NewModel).count()
