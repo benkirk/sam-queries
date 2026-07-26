@@ -1,5 +1,14 @@
 # k8s Deployment Hardening — gunicorn worker model + fs-scans query bound
 
+> **Status (2026-07-26): SHIPPED via PR #324 (2026-06-21) — moved to
+> implemented/.** The gthread worker class and fs-scans
+> `statement_timeout` are live (`containers/webapp/gunicorn_config.py`,
+> `helm/values.yaml: workerClass: gthread`). The verification checklist
+> below was never formally ticked, but the configuration has run in
+> production since the merge. The "Open follow-ups (NOT this PR)"
+> items — per-pod memory right-sizing under gthread and cpu
+> request/limit coherence — remain deferred to a future PR.
+
 **Branch:** `k8s_deployment_hardening` · **PR base:** `staging` · **Deploy:** manual
 `workflow_dispatch` of the CIRRUS deploy on this branch → deploy-probe-test iterate.
 
