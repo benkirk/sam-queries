@@ -156,6 +156,35 @@ class ExchangeAllocationForm(HtmxFormSchema):
             )
 
 
+class AllocateResidualForm(HtmxFormSchema):
+    """Allocate part of a parent allocation's carve-out residual to a sub-project.
+
+    ``target`` is a composite value from a single ``<select>``:
+
+    - ``alloc:<id>`` — bump an existing frontier carve-out allocation;
+    - ``proj:<id>`` — create a new standalone allocation on an uncovered
+      direct child branch.
+
+    The manage layer re-validates the target against the server-computed
+    frontier (``get_carveout_frontier``) and the amount against the
+    unallocated residual — DB-dependent checks stay out of the schema per
+    CLAUDE.md §9.
+    """
+    target = f.Str(
+        required=True,
+        validate=v.Regexp(r'^(alloc|proj):\d+$', error='Invalid target selection.'),
+    )
+    amount = f.Float(required=True, validate=v.Range(min=0, min_inclusive=False))
+    comment = f.Str(load_default=None)
+
+    @post_load
+    def split_target(self, data, **kwargs):
+        kind, _, ident = data['target'].partition(':')
+        data['target_allocation_id'] = int(ident) if kind == 'alloc' else None
+        data['target_project_id'] = int(ident) if kind == 'proj' else None
+        return data
+
+
 class AddAllocationForm(HtmxFormSchema):
     """Validate the admin 'Add Allocation' form (Edit Project → Allocations tab).
 

@@ -14,7 +14,7 @@
       - One <tbody> per resource: a header row (collapsible on click) + a tree body
       - All rows share the same <colgroup> → progress bars align perfectly
 #}
-{% from 'dashboards/shared/project_tree.html' import render_project_tree, render_project_tree_rows with context %}
+{% from 'dashboards/shared/project_tree.html' import render_project_tree, render_project_tree_rows, shared_badge with context %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 
 {# ── Point-in-time status badge ──────────────────────────────────────────
@@ -168,11 +168,11 @@
                     hx-trigger="click"
                     data-bs-toggle="modal"
                     data-bs-target="#editAllocationModal"
-                    title="Edit allocation">
+                    title="Edit allocation" aria-label="Edit allocation">
               <i class="fas fa-pencil-alt"></i>
             </button>
             {% elif root_alloc and root_alloc.is_inheriting %}
-            <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+            {{ shared_badge() }}
             {% endif %}
           </td>
         </tr>
@@ -224,7 +224,11 @@
             {% if root_alloc %}{{ root_alloc.remaining | fmt_number }}{% endif %}
           </td>
 
-          {# Col 7: shared badge #}
+          {# Col 7: shared badge.  Deliberately NOT the interactive
+             shared_badge() popover here: the whole <tr> is a collapse
+             toggle and Bootstrap's data-api fires in capture phase, so a
+             focusable badge would toggle the accordion on every click.
+             The expanded tree rows below carry the explained badge. #}
           <td style="vertical-align:middle;">
             {% if root_alloc and root_alloc.is_inheriting %}
             <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>

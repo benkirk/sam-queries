@@ -36,6 +36,15 @@
 
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
+{% from 'dashboards/fragments/help.html' import help_icon, term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_shared_alloc, g_unallocated with context %}
+
+{#- The 'shared' badge, upgraded to a click popover explaining the linkage.
+    Used by both tree macros below so the affordance stays identical. -#}
+{% macro shared_badge() -%}
+{{ term('shared', g_shared_alloc(), rich=True, title='Shared allocation',
+        extra_class='badge bg-secondary bg-opacity-25 text-dark border small') }}
+{%- endmacro %}
 
 {% macro render_project_tree(nodes,
                               current_projcode='',
@@ -91,7 +100,7 @@
         <span class="text-muted" style="width:40px;flex-shrink:0;text-align:right;">{{ res.percent_used | fmt_pct }}</span>
         <span class="text-muted" style="width:80px;flex-shrink:0;text-align:right;">{{ res.allocated | fmt_number }}</span>
         {%- if res.is_inheriting -%}
-        <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+        {{ shared_badge() }}
         {%- endif -%}
         {%- if can_edit_allocations and res.allocation_id -%}
         <button class="btn btn-sm btn-outline-warning py-0 px-1 flex-shrink-0"
@@ -101,7 +110,7 @@
                 hx-trigger="click"
                 data-bs-toggle="modal"
                 data-bs-target="#editAllocationModal"
-                title="Edit allocation">
+                title="Edit allocation" aria-label="Edit allocation">
           <i class="fas fa-pencil-alt"></i>
         </button>
         {%- endif -%}
@@ -226,9 +235,16 @@
     {%- if res %}{{ res.percent_used | fmt_pct }}{%- endif %}
   </td>
 
-  {# ── Col 4: allocated amount ───────────────────────────────────────── #}
+  {# ── Col 4: allocated amount (+ unallocated residual on carve-out parents) #}
   <td class="text-end text-muted small" style="vertical-align:middle; white-space:nowrap;">
     {%- if res %}{{ res.allocated | fmt_number }}
+      {%- if res.carve_residual %}
+      <div class="{{ 'text-danger' if res.carve_residual.raw_residual < 0 else 'text-success' }}"
+           style="font-size:0.68rem;">
+        {{ term(res.carve_residual.raw_residual | fmt_number ~ ' unallocated',
+                g_unallocated(), rich=True, title='Unallocated remainder') }}
+      </div>
+      {%- endif %}
     {%- elif alloc_by_projcode is not none %}<em>—</em>
     {%- endif %}
   </td>
@@ -247,10 +263,10 @@
     {%- endif %}
   </td>
 
-  {# ── Col 7: shared badge + edit button + exchange button ──────────── #}
+  {# ── Col 7: shared badge + edit / allocate-down / exchange buttons ── #}
   <td style="vertical-align:middle; white-space:nowrap;">
     {%- if res and res.is_inheriting -%}
-    <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+    {{ shared_badge() }}
     {%- endif -%}
     {%- if can_edit_allocations and res and res.allocation_id -%}
     <button class="btn btn-sm btn-outline-warning py-0 px-1 ms-1"
@@ -260,9 +276,33 @@
             hx-trigger="click"
             data-bs-toggle="modal"
             data-bs-target="#editAllocationModal"
-            title="Edit allocation">
+            title="Edit allocation" aria-label="Edit allocation">
       <i class="fas fa-pencil-alt"></i>
     </button>
+    {%- endif -%}
+    {#- Allocate-down lives on any parent node with carve-out children.
+        Visibility is per-node: can_allocate is precomputed against THIS
+        node's ancestry (EDIT_ALLOCATIONS or lead/admin of the node or any
+        ancestor) in htmx_project_allocation_tree. -#}
+    {%- if res and res.carve_residual -%}
+      {%- if res.carve_residual.can_allocate
+             and res.carve_residual.residual > 0
+             and res.carve_residual.has_targets -%}
+    <button class="btn btn-sm btn-outline-success py-0 px-1 ms-1"
+            style="font-size:0.7rem;"
+            hx-get="{{ url_for('admin_dashboard.htmx_allocate_down_form', allocation_id=res.allocation_id) }}"
+            hx-target="#allocateDownFormContainer"
+            hx-trigger="click"
+            data-bs-toggle="modal"
+            data-bs-target="#allocateDownModal"
+            title="Allocate unallocated remainder to a sub-project"
+            aria-label="Allocate unallocated remainder to a sub-project">
+      <i class="fas fa-level-down-alt"></i>
+    </button>
+      {%- elif res.carve_residual.raw_residual < 0 -%}
+    <span class="badge bg-danger bg-opacity-25 text-danger border small ms-1"
+          title="Sub-project carve-outs exceed this allocation — see sam-admin project --audit-trees">over-carved</span>
+      {%- endif -%}
     {%- endif -%}
     {#- Exchange lives on the edit-page (current) project's row only.
         Eligibility is decided by the caller — exchange_url is set iff

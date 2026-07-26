@@ -1,5 +1,15 @@
 {# Fragment: Project Members Table with Management Controls #}
 
+{# Open the shared #userDetailsModal (base_admin / status pages) with this
+   user's card. Applied to cells/links — NOT the <tr> — because Bootstrap's
+   data-api runs in the capture phase, so nested action buttons could never
+   stopPropagation a row-level modal toggle. #}
+{% macro user_modal_attrs(username) -%}
+data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+hx-get="{{ url_for('admin_dashboard.user_card', username=username) }}"
+hx-target="#userDetailsModalBody" hx-swap="innerHTML"
+{%- endmacro %}
+
 <div class="d-flex justify-content-between align-items-center mb-2">
     <span class="text-muted small">
         {{ members|length }} member{{ 's' if members|length != 1 else '' }}
@@ -17,12 +27,18 @@
 
 <div class="table-responsive">
     <table class="table table-sm table-hover mb-0">
+        {# Client-side sorting via sortable_table.js; Name sorts by
+           "last, first" (data-sort-value), matching the server's initial
+           order (hence sort-asc on Name). The left-hand sort handle
+           sorts the same column by first name (data-sort-first). #}
         <thead class="thead-light">
             <tr>
-                <th>Name</th>
-                <th>Username</th>
-                <th>Email</th>
-                <th>Role</th>
+                <th class="sortable-header sort-asc" data-sort="text" title="Sort by last name"><span
+                    class="sort-handle" data-sort-attr="sort-first"
+                    title="Sort by first name"></span>Name</th>
+                <th class="sortable-header" data-sort="text">Username</th>
+                <th class="sortable-header" data-sort="text">Email</th>
+                <th class="sortable-header" data-sort="numeric">Role</th>
                 {% if can_manage %}
                 <th class="text-end" style="width: 180px;">Actions</th>
                 {% endif %}
@@ -32,9 +48,19 @@
             {% for member in members %}
             {% set acc = access_by_username.get(member.username) if access_by_username else None %}
             <tr>
-                <td>
-                    <i class="fas fa-user text-muted me-1"></i>
+                {# data-sort-first uses display_name (nickname-aware) so the
+                   first-name sort matches what the user actually reads. #}
+                <td data-sort-value="{{ member.last_name or '' }}, {{ member.first_name or '' }}"
+                    data-sort-first="{{ member.display_name }}">
+                    {% if can_view_users %}
+                    <a href="#" class="text-decoration-none text-reset"
+                       title="View user details"
+                       {{ user_modal_attrs(member.username) }}>
+                        <strong>{{ member.display_name }}</strong>
+                    </a>
+                    {% else %}
                     <strong>{{ member.display_name }}</strong>
+                    {% endif %}
                     {% if acc and acc.status != 'full' and not acc.is_lead %}
                         {% set missing_str = acc.missing_names | join(', ') %}
                         {% if can_manage %}
@@ -70,15 +96,18 @@
                         {% endif %}
                     {% endif %}
                 </td>
-                <td><code>{{ member.username }}</code></td>
-                <td>
+                <td data-sort-value="{{ member.username }}"
+                    {% if can_view_users %}class="cursor-pointer" {{ user_modal_attrs(member.username) }}{% endif %}><code>{{ member.username }}</code></td>
+                {# '~' sorts after letters so N/A rows land last ascending #}
+                <td data-sort-value="{{ member.email or '~' }}">
                     {% if member.email %}
                     <a href="mailto:{{ member.email }}">{{ member.email }}</a>
                     {% else %}
                     <span class="text-muted">N/A</span>
                     {% endif %}
                 </td>
-                <td>
+                <td data-sort-value="{{ {'Lead': 0, 'Admin': 1, 'Member': 2}[member.role] }}"
+                    {% if can_view_users %}class="cursor-pointer" {{ user_modal_attrs(member.username) }}{% endif %}>
                     {% if member.role == 'Lead' %}
                         <span class="badge bg-primary">
                             <i class="fas fa-star"></i> Lead

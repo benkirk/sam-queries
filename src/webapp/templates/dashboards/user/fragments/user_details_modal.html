@@ -16,3 +16,7 @@
         </div>
     </div>
 </div>
+
+{# The user card's group badges open this — it must be a sibling of the
+   user modal (page level), never nested inside it. #}
+{% include 'dashboards/user/fragments/group_members_modal.html' %}

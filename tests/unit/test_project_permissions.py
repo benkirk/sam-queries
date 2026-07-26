@@ -11,6 +11,7 @@ import pytest
 
 from webapp.utils.project_permissions import (
     _is_project_steward,
+    can_allocate_residual,
     can_change_admin,
     can_edit_consumption_threshold,
     can_exchange_allocations,
@@ -334,6 +335,55 @@ class TestCanExchangeAllocations:
         user = create_mock_user(user_id=99, roles=['nusd'])
         project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
         assert can_exchange_allocations(user, project)
+
+
+# ---------------------------------------------------------------------------
+# can_allocate_residual — steward-with-ancestors (mirrors can_exchange)
+# ---------------------------------------------------------------------------
+
+class TestCanAllocateResidual:
+    """Allocating a parent node's carve-out residual downward redistributes
+    within an already-awarded total (the parent's amount never changes), so
+    it follows the exchange rule: system EDIT_ALLOCATIONS OR lead/admin of
+    the node or any ancestor. Checked against the NODE being acted on —
+    a child's lead cannot allocate the parent's residual."""
+
+    def test_lead_of_node_can_allocate(self):
+        user = create_mock_user(user_id=42, roles=[])
+        project = create_mock_project(project_lead_user_id=42)
+        assert can_allocate_residual(user, project)
+
+    def test_admin_of_node_can_allocate(self):
+        user = create_mock_user(user_id=42, roles=[])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=42)
+        assert can_allocate_residual(user, project)
+
+    def test_ancestor_lead_can_allocate_at_nested_node(self):
+        # Root lead acting at an intermediate parent node — the nested-tree
+        # case: David Lawrence (CESM0002 lead) allocating CHILD01's residual.
+        root = create_mock_project(project_lead_user_id=42)
+        mid = create_mock_project(project_lead_user_id=998, parent=root)
+        user = create_mock_user(user_id=42, roles=[])
+        assert can_allocate_residual(user, mid)
+
+    def test_child_lead_cannot_allocate_at_parent(self):
+        # Authorization walks UP, never down: leading a child grants nothing
+        # on the parent's residual.
+        root = create_mock_project(project_lead_user_id=999)
+        user = create_mock_user(user_id=42, roles=[])
+        # user leads a child of root, but is checked against root itself.
+        _child = create_mock_project(project_lead_user_id=42, parent=root)
+        assert not can_allocate_residual(user, root)
+
+    def test_outsider_blocked(self):
+        user = create_mock_user(user_id=42, roles=[])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
+        assert not can_allocate_residual(user, project)
+
+    def test_facility_manager_grants_via_system_permission(self):
+        user = create_mock_user(user_id=99, roles=['nusd'])
+        project = create_mock_project(project_lead_user_id=999, project_admin_user_id=998)
+        assert can_allocate_residual(user, project)
 
 
 # ---------------------------------------------------------------------------

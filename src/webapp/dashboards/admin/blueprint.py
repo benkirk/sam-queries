@@ -342,6 +342,8 @@ def group_card(group_name):
         group=group,
         members_by_branch=members_by_branch,
         primary_gid_users=primary_gid_users,
+        # Same gate as the user_card route the member rows target.
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
     )
 
 

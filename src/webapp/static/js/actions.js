@@ -56,6 +56,23 @@
         el.value = el.value.toUpperCase();
     });
 
+    /* Open the shared #userDetailsModal (content loaded by the hx-get on
+     * the same element). Used instead of data-bs-toggle by user rows that
+     * can sit inside ANOTHER modal (e.g. the group-members modal stacked
+     * over an open user modal): a Bootstrap toggle would close the open
+     * user modal rather than re-show it. Hides the hosting modal first. */
+    window.registerAction('show-user-details', function (el, evt) {
+        evt.preventDefault();
+        var host = el.closest('.modal.show');
+        if (host && host.id !== 'userDetailsModal') {
+            bootstrap.Modal.getOrCreateInstance(host).hide();
+        }
+        var target = document.getElementById('userDetailsModal');
+        if (target) {
+            bootstrap.Modal.getOrCreateInstance(target).show();
+        }
+    });
+
     /* Filter-bar "Reset" buttons: reset the form, then re-submit it so
      * the htmx fragment reloads with defaults. */
     window.registerAction('form-reset-submit', function (el) {

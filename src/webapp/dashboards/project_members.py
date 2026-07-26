@@ -32,7 +32,7 @@ from webapp.utils.project_permissions import (
     can_change_admin,
     can_manage_project_members,
 )
-from webapp.utils.rbac import Permission
+from webapp.utils.rbac import Permission, has_permission_any_facility
 
 
 bp = Blueprint('project_members', __name__, url_prefix='/project-members')
@@ -274,12 +274,18 @@ def _members_access_by_username(project):
 def _render_members_table(projcode, project):
     """Render the members table fragment for a project (shared by htmx routes)."""
     members = get_users_on_project(db.session, projcode)
+    # Initial order must match the Name header's sort-asc indicator
+    # (sortable_table.js only re-sorts on click): last name, then first.
     return render_template(
         'project_members/fragments/members_table.html',
-        members=sorted(members, key=lambda m: m["display_name"]),
+        members=sorted(members, key=lambda m: ((m['last_name'] or '').lower(),
+                                              (m['first_name'] or '').lower())),
         projcode=projcode,
         project=project,
         can_manage=can_manage_project_members(current_user, project),
         can_change_admin=can_change_admin(current_user, project),
+        # Same gate as the admin_dashboard.user_card route the member
+        # rows link to — don't render click affordances that would 403.
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
         access_by_username=_members_access_by_username(project),
     )

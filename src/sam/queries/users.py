@@ -46,7 +46,8 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
         projcode: Project code
 
     Returns:
-        List of dicts with keys: username, display_name, email, role
+        List of dicts with keys: username, unix_id, display_name,
+        first_name, last_name, email, role
         Roles: 'Lead', 'Admin', 'Member'
     """
     project = session.query(Project)\
@@ -68,6 +69,8 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
         'username': lead.username,
         'unix_id': lead.unix_uid,
         'display_name': lead.display_name,
+        'first_name': lead.first_name,
+        'last_name': lead.last_name,
         'email': lead.primary_email,
         'role': 'Lead'
     }
@@ -79,6 +82,8 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
             'username': admin.username,
             'unix_id': admin.unix_uid,
             'display_name': admin.display_name,
+            'first_name': admin.first_name,
+            'last_name': admin.last_name,
             'email': admin.primary_email,
             'role': 'Admin'
         }
@@ -107,6 +112,8 @@ def get_users_on_project(session: Session, projcode: str) -> List[Dict]:
                 'username': member.username,
                 'unix_id': member.unix_uid,
                 'display_name': member.display_name,
+                'first_name': member.first_name,
+                'last_name': member.last_name,
                 'email': member.primary_email,
                 'role': 'Member'
             }

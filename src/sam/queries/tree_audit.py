@@ -21,7 +21,10 @@ project), so it drifts as awards are made.  ``audit_allocation_trees()`` is the
 check; ``sam-admin project --audit-trees`` is the operator-facing front end.
 
 Note this module *does* classify pool-vs-carve children — that judgement lives
-here, in the audit, and deliberately nowhere else.
+here, in :func:`is_pool_member`, the single classification site.  It is shared
+with :func:`sam.manage.allocations.get_carveout_frontier` (the per-node
+residual/frontier decomposition behind the admin "allocate down" workflow);
+keep the two consumers in lock-step by changing only that function.
 """
 
 from typing import Dict, List, Optional
@@ -118,6 +121,27 @@ _SQL_BAD_DATES = text("""
 """)
 
 
+def is_pool_member(*, linked: bool, child_amount: float, parent_amount: float) -> bool:
+    """
+    THE pool-vs-carve classification rule — single site, shared.
+
+    A child allocation is a **pool member** of its parent's allocation when it
+    is linked via ``parent_allocation_id`` (the authoritative signal) OR its
+    amount equals the parent's — the fallback for pools that were never
+    formally linked, which are common.  Every other child is a **carve-out**
+    and consumes part of the parent's amount.
+
+    Exact float equality is deliberate: it mirrors the SQL fallback
+    (``ch.amount = par.amount``) and the fairshare tree's carve test, where a
+    child off by even one unit is a carve-out.
+
+    Consumed by :func:`audit_allocation_trees` below and by
+    :func:`sam.manage.allocations.get_carveout_frontier` — keep them in
+    lock-step by changing only this function.
+    """
+    return linked or child_amount == parent_amount
+
+
 def audit_allocation_trees(
     session: Session,
     resource_name: Optional[str] = None,
@@ -167,7 +191,9 @@ def audit_allocation_trees(
         })
 
         child_amount = float(row.child_amount)
-        if row.linked or row.equal_amount:
+        if is_pool_member(linked=bool(row.linked),
+                          child_amount=child_amount,
+                          parent_amount=float(row.parent_amount)):
             group['pool_children'].append({
                 'projcode': row.child_projcode,
                 'amount':   child_amount,

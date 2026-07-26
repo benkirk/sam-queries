@@ -57,6 +57,7 @@ from sam.queries.statistics import (
     get_user_statistics,
 )
 from sam.queries.projects import search_projects_by_code_or_title
+from sam.queries.users import get_users_on_project
 from sam.queries.lookups import get_user_group_access, get_group_members
 from sam.core.groups import (
     AdhocGroup,
@@ -1397,6 +1398,29 @@ class TestProjectQueries:
             assert p.active is False
 
 
+class TestGetUsersOnProject:
+
+    EXPECTED_KEYS = {'username', 'unix_id', 'display_name',
+                     'first_name', 'last_name', 'email', 'role'}
+
+    def test_returns_lead_with_all_keys(self, session, active_project):
+        """Every member dict carries the documented keys (incl. the
+        first_name/last_name sort keys used by the members table)."""
+        members = get_users_on_project(session, active_project.projcode)
+        assert len(members) > 0
+        for m in members:
+            assert set(m.keys()) == self.EXPECTED_KEYS
+            assert m['role'] in ('Lead', 'Admin', 'Member')
+        lead = active_project.lead
+        by_username = {m['username']: m for m in members}
+        assert by_username[lead.username]['role'] == 'Lead'
+        assert by_username[lead.username]['first_name'] == lead.first_name
+        assert by_username[lead.username]['last_name'] == lead.last_name
+
+    def test_unknown_project_returns_empty(self, session):
+        assert get_users_on_project(session, 'ZZZZ9999') == []
+
+
 # ============================================================================
 # Allocation summary with annualized rates
 # ============================================================================
@@ -1618,6 +1642,9 @@ class TestGetGroupMembers:
         assert by_user[u1.username]['primary_email'] == 'alice@example.org'
         assert by_user[u2.username]['primary_email'] is None
         assert 'Alice' in by_user[u1.username]['display_name']
+        # Sort keys used by the shared user-rows table macros
+        assert by_user[u1.username]['first_name'] == 'Alice'
+        assert by_user[u1.username]['last_name'] == 'Amos'
 
     def test_branch_filter_excludes_other_branches(self, session):
         grp = _make_adhoc_group(session)

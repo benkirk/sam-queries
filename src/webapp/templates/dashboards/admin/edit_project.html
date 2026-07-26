@@ -276,6 +276,24 @@
   </div>
 </div>
 
+<!-- Allocate to Sub-project Modal (lazy-loaded) -->
+<div class="modal fade" id="allocateDownModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-success text-white">
+        <h5 class="modal-title"><i class="fas fa-level-down-alt"></i> Allocate to Sub-project</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div id="allocateDownFormContainer">
+        <div class="modal-body text-center text-muted py-3">
+          <i class="fas fa-spinner fa-spin fa-2x"></i>
+          <p class="mt-2">Loading…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Edit Allocation Modal (lazy-loaded) -->
 <div class="modal fade" id="editAllocationModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -295,6 +313,10 @@
 </div>
 
 {% include 'dashboards/shared/project_details_modal.html' %}
+
+{# Member rows in the Members tab open user cards here (this page extends
+   dashboards/base, not base_admin, so it assembles its own modal set). #}
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
 
 <!-- Include member management modals (reused from user dashboard) -->
 {% include 'project_members/fragments/member_modals_htmx.html' %}
