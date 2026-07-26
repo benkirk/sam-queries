@@ -59,8 +59,13 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         7 of 9 endpoints migrated (groups, impersonate alias, org FK ×2,
         contract FK, parent-project FK, adjustment picker); multi-context
         user search + facility-scoped project search stay bespoke
-  - [x] PR 2 opened (oo_refactor → staging; source −729 net, +2,654 test
-        lines incl. the 239-route parity snapshot; full suite 3098 passed)
+  - [x] PR 2 opened — #376 (oo_refactor → staging; source −729 net,
+        +2,654 test lines incl. the 239-route parity snapshot)
+  - [x] Playwright smoke — all probe groups green; caught + fixed one real
+        bug (admin exemption-create 500 on error re-render; queue_id
+        errors invisible on the cascading select) in d9251f3 with 3
+        regression tests; queue 12→13→12 round-trip proved after_commit
+        cache invalidation; results on #376. Final suite: 3101 passed.
 
 ## Context
 
