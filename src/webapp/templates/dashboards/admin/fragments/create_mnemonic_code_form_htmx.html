@@ -5,7 +5,8 @@
     url_for('admin_dashboard.htmx_mnemonic_code_create'),
     '#createMnemonicCodeFormContainer',
     'Create Mnemonic Code',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {# Code field — special: monospace, uppercase, pattern, narrow width.
            Kept inline to preserve all attrs. #}

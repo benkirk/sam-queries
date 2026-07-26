@@ -125,17 +125,14 @@ class TestMnemonicCodeStaysBespoke:
         resp = auth_client.get('/admin/htmx/mnemonic-code-create-form')
         assert resp.status_code == 200
 
-    def test_invalid_code_rerenders(self, auth_client):
-        # NOTE: the create_mnemonic_code template does not render the
-        # `errors` context at all, so validation feedback is currently
-        # invisible — the form just comes back. Pinned as-is (pre-existing
-        # behavior; route is out of scope for the registrar migration).
+    def test_invalid_code_rerenders_with_error(self, auth_client):
         resp = auth_client.post('/admin/htmx/mnemonic-code-create',
                                 data={'code': 'nope!', 'description': 'x'})
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers   # not treated as success
+        assert 'Code must be exactly 3 uppercase letters' in resp.text
 
-    def test_duplicate_code_rerenders(self, auth_client, session):
+    def test_duplicate_code_rerenders_with_error(self, auth_client, session):
         from sam.core.organizations import MnemonicCode
         existing = session.query(MnemonicCode).first()
         if existing is None:
@@ -145,3 +142,4 @@ class TestMnemonicCodeStaysBespoke:
                                       'description': 'brand new description'})
         assert resp.status_code == 200
         assert 'HX-Trigger' not in resp.headers
+        assert f'Code &#34;{existing.code}&#34; already exists.' in resp.text
