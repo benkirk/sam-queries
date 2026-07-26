@@ -314,6 +314,10 @@
 
 {% include 'dashboards/shared/project_details_modal.html' %}
 
+{# Member rows in the Members tab open user cards here (this page extends
+   dashboards/base, not base_admin, so it assembles its own modal set). #}
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
+
 <!-- Include member management modals (reused from user dashboard) -->
 {% include 'project_members/fragments/member_modals_htmx.html' %}
 
