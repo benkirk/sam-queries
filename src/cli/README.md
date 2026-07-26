@@ -2,51 +2,52 @@
 
 ## Overview
 
-The SAM CLI has been refactored into a modular, class-based architecture that supports both the existing `sam-search` command and a new `sam-admin` command for administrative functions.
+The SAM CLI is a modular, class-based Click application providing two
+entry points (declared in `pyproject.toml [project.scripts]`):
+
+- **`sam-search`** — user-facing search and query tool
+- **`sam-admin`** — administrative superset (validation, reconciliation,
+  charge ingest, cache refresh); admin commands extend the search
+  command classes via inheritance
+
+This architecture is deliberately mirrored by the `jobhist` CLI in the
+peer **hpc-usage-queries** repo (same `Context`/`BaseCommand` shape, exit
+codes, JSON envelope, and `ExporterRegistry` interface) — if you change
+any of those contracts here, update both repos in lockstep. See
+`hpc-usage-queries/devel/job_history/README.md` § *CLI Architecture* for
+the canonical recipe.
 
 ## Directory Structure
 
 ```
 cli/
 ├── core/                     # Shared infrastructure
-│   ├── __init__.py
 │   ├── context.py            # Context class (session, console, flags, output_format)
-│   ├── base.py               # Base command classes
+│   ├── base.py               # Base command classes (+ optional-plugin gating)
 │   ├── output.py             # output_json() + _SAMEncoder
 │   └── utils.py              # Exit codes, utilities
 ├── user/                     # User commands
-│   ├── __init__.py
 │   ├── builders.py           # ORM → dict extractors (no Rich)
-│   ├── commands.py           # UserSearchCommand, UserAdminCommand
-│   └── display.py            # display_user(), display_user_projects() — dict input only
-├── project/                  # Project commands
-│   ├── __init__.py
-│   ├── builders.py           # ORM → dict extractors
-│   ├── commands.py           # ProjectSearchCommand, ProjectAdminCommand
-│   └── display.py            # display_project(), display_project_users() — dict input only
+│   ├── commands.py           # UserSearchCommand, UserAdminCommand, ...
+│   └── display.py            # display_user(), ... — dict input only
+├── project/                  # Project commands (same builders/commands/display split)
 ├── allocations/              # Allocation commands
-│   ├── __init__.py
-│   ├── commands.py           # AllocationSearchCommand
-│   └── display.py            # display_allocation_summary() — dict input
-├── accounting/               # Accounting commands
-│   ├── __init__.py
-│   ├── commands.py           # AccountingSearchCommand, AccountingAdminCommand
-│   └── display.py            # dict input
+├── accounting/               # Charge rollups, per-job queries, summary ingest
+├── notifications/            # Expiration email delivery (email.py)
+├── templates/                # Expiration email templates
 └── cmds/                     # Entry points
-    ├── __init__.py
-    ├── search.py             # sam-search entry point
-    └── admin.py              # sam-admin entry point
+    ├── search.py             # sam-search
+    └── admin.py              # sam-admin
 ```
 
 ## Design Principles
 
-1. **Command Classes**: Encapsulate business logic, reusable via inheritance
-2. **Display Functions**: Module-level, take **plain dicts only** — never ORM objects
-3. **Builder Functions**: Per-domain `builders.py` extracts ORM data into dicts;
+1. **Command Classes**: encapsulate business logic, reusable via inheritance
+2. **Display Functions**: module-level, take **plain dicts only** — never ORM objects
+3. **Builder Functions**: per-domain `builders.py` extracts ORM data into dicts;
    the same dict feeds both Rich `display_*()` and JSON `output_json()`
-4. **Entry Points**: Minimal CLI wiring, delegate to command classes
-5. **Single Context**: Shared Context class for session, configuration, and `output_format`
-6. **Zero Breaking Changes**: `sam-search` Rich behaviour identical to original
+4. **Entry Points**: minimal CLI wiring, delegate to command classes
+5. **Single Context**: shared Context class for session, configuration, and `output_format`
 
 ## Output Formats
 
@@ -98,28 +99,23 @@ BaseProjectCommand
 ├── ProjectExpirationCommand
 └── ProjectAdminCommand (extends ProjectSearchCommand)
 
-# Allocation commands (allocations/commands.py)
-BaseAllocationCommand
-└── AllocationSearchCommand
+# Allocation commands follow the same pattern; the accounting commands
+# (AccountingSearchCommand, AccountingJobsCommand, AccountingAdminCommand)
+# extend BaseCommand directly.
 ```
 
-## Entry Points
+Some accounting commands (per-job queries) require the optional
+`hpc-usage-queries` plugin, gated via `require_plugin(HPC_USAGE_QUERIES)`
+in `core/base.py`; daily-rollup queries work without it.
 
-### sam-search
-User-facing search CLI - all original functionality preserved:
-- User searches (exact, pattern, abandoned, with active projects)
-- Project searches (exact, pattern, expirations)
-- Allocation queries with flexible grouping
+## Exit Codes
 
-### sam-admin
-Administrative commands extending search functionality:
-- User validation (`sam-admin user <username> --validate`)
-- Project validation (`sam-admin project <projcode> --validate`)
-- Project reconciliation (`sam-admin project <projcode> --reconcile`)
+`EXIT_SUCCESS=0` / `EXIT_NOT_FOUND=1` / `EXIT_ERROR=2` /
+`EXIT_KEYBOARD_INTERRUPT=130` — shared verbatim with the `jobhist` CLI.
 
 ## Adding New Commands
 
-1. **Create command class** in appropriate domain module:
+1. **Create a command class** in the appropriate domain module:
    ```python
    from cli.core.base import BaseUserCommand
 
@@ -129,68 +125,35 @@ Administrative commands extending search functionality:
            return EXIT_SUCCESS
    ```
 
-2. **Add display functions** if needed in domain's `display.py`:
+2. **Add a builder + display function** if needed — the builder returns a
+   plain dict (feeds JSON directly); the display function renders that
+   dict with Rich:
    ```python
-   def display_new_thing(ctx: Context, thing):
-       # Display logic using Rich
-       pass
+   def display_new_thing(ctx: Context, thing: dict):
+       ...
    ```
 
-3. **Wire up in entry point** (`cmds/search.py` or `cmds/admin.py`):
+3. **Wire up in the entry point** (`cmds/search.py` or `cmds/admin.py`):
    ```python
    @cli.command()
    @click.option('--flag', is_flag=True)
    @pass_context
    def new_command(ctx: Context, flag):
-       command = NewUserCommand(ctx)
-       exit_code = command.execute(flag=flag)
-       sys.exit(exit_code)
+       sys.exit(NewUserCommand(ctx).execute(flag=flag))
    ```
 
-4. **Write tests** following existing patterns in `tests/unit/test_sam_search_cli.py`
-
-## Key Files
-
-- **core/context.py**: Shared state (session, console, verbose flags)
-- **core/base.py**: Abstract base classes for commands
-- **core/utils.py**: Exit codes and utilities
-- **user/commands.py**: All user-related command classes
-- **user/display.py**: User display functions
-- **project/commands.py**: All project-related command classes
-- **project/display.py**: Project display functions
-- **allocations/commands.py**: Allocation query commands
-- **allocations/display.py**: Allocation display functions
-- **cmds/search.py**: sam-search entry point
-- **cmds/admin.py**: sam-admin entry point
+4. **Write tests** following `tests/unit/test_sam_search_cli.py`
+   (CliRunner-based) and the subprocess smoke tests in
+   `tests/integration/`.
 
 ## Backward Compatibility
 
-The original `sam_search_cli.py` has been preserved as `sam_search_cli_original.py` for reference. A compatibility shim at `sam_search_cli.py` re-exports the CLI from the new location, ensuring existing imports continue to work.
+`src/sam_search_cli.py` is a compatibility shim that re-exports the CLI
+from `cli.cmds.search`, so historical imports keep working.
 
 ## Testing
 
-All existing tests pass without modification (except import path update):
-- 20 unit tests in `tests/unit/test_sam_search_cli.py`
-- Full integration test suite (437 tests total)
-
-Run tests:
-```bash
-# Fast iteration (no coverage)
-source ../.env && pytest tests/unit/test_sam_search_cli.py --no-cov
-
-# Full test suite
-source ../.env && pytest tests/ --no-cov
-```
-
-## Future Extensions
-
-Easy to add:
-- New search commands (add command class, wire up in search.py)
-- New admin features (extend admin command classes)
-- New domains (add `cli/resources/` following same pattern)
-- Output formats (add JSON mode to display functions)
-
-Requires planning:
-- Interactive mode (needs event loop, state management)
-- Async operations (commands currently synchronous)
-- GUI frontend (display layer tied to Rich console)
+CLI coverage lives in `tests/unit/test_sam_search_cli.py`,
+`tests/unit/test_cli_json_builders.py`, and the entry-point smoke tests
+under `tests/integration/`. See `docs/TESTING.md` for how to run the
+suite (isolated `mysql-test` container, xdist parallelism).
