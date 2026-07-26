@@ -2133,16 +2133,18 @@ def htmx_detach_allocation(allocation):
 @require_allocation_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_link_allocation_to_parent(allocation):
     """Re-link a standalone child allocation to its parent-project allocation."""
+    from marshmallow import ValidationError
     from sam.manage.allocations import link_allocation_to_parent
+    from sam.schemas.forms import LinkAllocationParentForm
 
     projcode = allocation.account.project.projcode
 
     try:
-        parent_allocation_id = int(request.form.get('parent_allocation_id', '0'))
-    except (TypeError, ValueError):
-        return '<div class="alert alert-danger">Invalid parent allocation id.</div>', 400
-    if parent_allocation_id <= 0:
-        return '<div class="alert alert-danger">Missing parent allocation id.</div>', 400
+        form_data = LinkAllocationParentForm().load(request.form)
+    except ValidationError as e:
+        msgs = '; '.join(m for ms in e.messages.values() for m in ms)
+        return f'<div class="alert alert-danger">{msgs}</div>', 400
+    parent_allocation_id = form_data['parent_allocation_id']
 
     try:
         with management_transaction(db.session):

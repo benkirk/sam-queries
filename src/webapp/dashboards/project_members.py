@@ -183,10 +183,12 @@ def htmx_change_admin(project):
     Returns the updated members table HTML on success.
     """
     from sam.manage import change_project_admin, management_transaction
-    from sam.core.users import User
+    from sam.schemas.forms.user import ChangeProjectAdminForm
 
     projcode = project.projcode
-    admin_username = request.form.get('admin_username', '').strip()
+    # No required fields — the load cannot raise; it exists for §9
+    # conformance (empty string and absent both normalize to None).
+    admin_username = ChangeProjectAdminForm().load(request.form)['admin_username']
 
     try:
         with management_transaction(db.session):

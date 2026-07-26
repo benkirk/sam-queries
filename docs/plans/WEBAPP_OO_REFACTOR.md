@@ -50,7 +50,11 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         remove/change-admin (alert-response), rate_limits + status outage
         (2.5 triage). Admin edit-allocation latent 500 was already fixed
         by #373 — no delta. 22 new HTTP-layer tests.
-  - [ ] 2.5 §9 conformance (exemption schemas + shape-D migrations)
+  - [x] 2.5 §9 conformance — forms/operational.py (3 exemption schemas w/
+        legacy-parity messages), exemption trio → handler subclasses sharing
+        `_resources_with_queues()` (−170); ChangeProjectAdminForm +
+        LinkAllocationParentForm (schema-only conformance); sweep confirmed
+        rate_limits + outage handlers already conformant (left alone)
   - [ ] 2.6 typeahead factory
   - [ ] PR 2 opened
 
