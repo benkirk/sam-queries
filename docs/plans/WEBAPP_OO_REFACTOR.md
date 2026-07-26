@@ -59,7 +59,8 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         7 of 9 endpoints migrated (groups, impersonate alias, org FK ×2,
         contract FK, parent-project FK, adjustment picker); multi-context
         user search + facility-scoped project search stay bespoke
-  - [ ] PR 2 opened
+  - [x] PR 2 opened (oo_refactor → staging; source −729 net, +2,654 test
+        lines incl. the 239-route parity snapshot; full suite 3098 passed)
 
 ## Context
 
