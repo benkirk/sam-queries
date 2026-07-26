@@ -1,0 +1,16 @@
+{# Group-members modal shell — populated by user_dashboard.htmx_group_members
+   via the group badges on the user card. Lives at page level (included next
+   to the user-details modal shell): it must NOT render inside another modal,
+   or its backdrop stacks above a dialog trapped in the parent modal's
+   stacking context (grey screen, no dialog). #}
+<div class="modal fade" id="groupMembersModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
+        <div class="modal-content" id="groupMembersContainer">
+            <div class="modal-body text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
