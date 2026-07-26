@@ -1,7 +1,8 @@
 # Display Formatting Migration Plan
 
 **Module**: `src/sam/fmt.py` (introduced in commit `b3cda8a`)
-**Status**: Module + Jinja2 filters wired; call sites not yet migrated.
+**Status**: IMPLEMENTED — module, Jinja2 filters, and call-site migration all
+landed; `sam.fmt` usage is now mandated in CLAUDE.md ("Display Formatting").
 
 ---
 
