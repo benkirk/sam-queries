@@ -32,7 +32,10 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
 - **PR 2 — form-layer OO refactor (≈ −1,100..1,400 LOC)**
   - [x] 2.1 `HtmxFormHandler` + adapter + parity tests (2938 passed, zero
         existing-test edits; route-map snapshot = 239 dashboard routes)
-  - [ ] 2.2 `CrudSpec` registrar + orgs migration (8 entities)
+  - [x] 2.2 `CrudSpec` registrar + orgs migration (8 entities; orgs_routes
+        1111→509 lines; 75 characterization tests written FIRST and pinned
+        through the migration; mnemonic-code + contract-delete stay bespoke;
+        found pre-existing quirk: mnemonic template never renders `errors`)
   - [ ] 2.3 facilities + resources registrar migrations
   - [ ] 2.4 31 hand-rolled shape-C handlers → handler subclasses
   - [ ] 2.5 §9 conformance (exemption schemas + shape-D migrations)
