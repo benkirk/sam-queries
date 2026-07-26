@@ -31,6 +31,7 @@ from flask import abort
 from webapp.utils.rbac import (
     apply_facility_scope, filter_rows_by_facility, require_permission,
     require_permission_any_facility, user_facility_scope, Permission,
+    allowed_facility_names as _allowed_facility_names,
 )
 from webapp.api.access_control import require_project_access
 from sam.resources.resources import Resource
@@ -267,18 +268,8 @@ def _audit_page_context():
         .all()
     ]
 
-    from sam.resources.facilities import Facility as FacilityModel
-    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
-    if allowed is None:
-        allowed_facility_names = [
-            f.facility_name for f in
-            db.session.query(FacilityModel)
-            .filter(FacilityModel.is_active)
-            .order_by(FacilityModel.facility_name)
-            .all()
-        ]
-    else:
-        allowed_facility_names = sorted(allowed)
+    allowed_facility_names = _allowed_facility_names(
+        current_user, Permission.VIEW_PROJECTS)
 
     return {
         'audit_start_date': audit_start_date.strftime('%Y-%m-%d'),
@@ -347,18 +338,8 @@ def projects():
     # from ``?facilities=...`` clamped against allowed — so a forged
     # out-of-scope value falls back to the full allowed set rather than
     # widening or erroring.
-    from sam.resources.facilities import Facility as FacilityModel
-    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
-    if allowed is None:
-        allowed_facility_names = [
-            f.facility_name for f in
-            db.session.query(FacilityModel)
-            .filter(FacilityModel.is_active)
-            .order_by(FacilityModel.facility_name)
-            .all()
-        ]
-    else:
-        allowed_facility_names = sorted(allowed)
+    allowed_facility_names = _allowed_facility_names(
+        current_user, Permission.VIEW_PROJECTS)
     requested_facilities = request.args.getlist('facilities')
     selected_facilities = apply_facility_scope(
         requested_facilities, Permission.VIEW_PROJECTS,

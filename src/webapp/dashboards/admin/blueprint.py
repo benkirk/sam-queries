@@ -31,6 +31,7 @@ from webapp.utils.rbac import (
     has_permission, has_permission_any_facility, Permission,
     require_permission, require_permission_any_facility,
     user_facility_scope,
+    allowed_facility_names as _allowed_facility_names,
 )
 import logging
 logger = logging.getLogger(__name__)
@@ -74,15 +75,11 @@ def projects():
     # otherwise. The template iterates this to build the expirations
     # facility multi-select so scoped users can't see (or pick)
     # facilities they cannot act on.
-    from sam.resources.facilities import Facility
-    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
-    if allowed is None:
-        allowed_facility_names = [
-            f.facility_name for f in
-            db.session.query(Facility).order_by(Facility.facility_name).all()
-        ]
-    else:
-        allowed_facility_names = sorted(allowed)
+    # active_only=False preserves this page's pre-helper behavior — it was
+    # the one copy of this block that skipped the Facility.is_active
+    # filter, so inactive facilities appear in the multi-select here.
+    allowed_facility_names = _allowed_facility_names(
+        current_user, Permission.VIEW_PROJECTS, active_only=False)
 
     # The two default selections carry over from the hardcoded template
     # (UNIV and WNA). Keep them only if they survive the allowed set.

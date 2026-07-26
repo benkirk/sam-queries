@@ -16,6 +16,7 @@ from webapp.utils.htmx import (
     read_active_only,
 )
 from webapp.extensions import db
+from webapp.api.v1.queue import invalidate_queue_cache
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility, Permission,
 )
@@ -32,26 +33,6 @@ from .blueprint import bp
 
 
 _RESOURCES_TRIGGERS = {'closeActiveModal': {}, 'reloadResourcesCard': {}}
-
-
-def _invalidate_queue_api_cache():
-    """Drop the memoized GET /api/v1/queue payloads.
-
-    The systems-integration tooling polls that endpoint for per-queue wallclock
-    limits, and it is memoized (see webapp/api/v1/queue.py). Without this,
-    editing or expiring a queue here leaves consumers on stale data until
-    someone POSTs /api/v1/queue/refresh by hand. Mirrors that route's body.
-    """
-    from webapp.extensions import cache
-    from webapp.caching import caching
-    from webapp.api.v1.queue import (
-        get_queues, get_queues_for_resource, _queue_data,
-    )
-
-    cache.delete_memoized(get_queues)
-    cache.delete_memoized(get_queues_for_resource)
-    cache.delete_memoized(_queue_data)
-    caching.clear('flask')
 
 
 def _active_resources():
@@ -583,7 +564,7 @@ def htmx_queue_create():
     # early lets a concurrent read re-cache the pre-insert payload. A clear on a
     # failed commit is harmless (just a cold cache), so the flag is enough.
     if attempted:
-        _invalidate_queue_api_cache()
+        invalidate_queue_cache()
 
     return response
 
@@ -655,7 +636,7 @@ def htmx_queue_edit(queue_id):
             form=request.form,
         )
 
-    _invalidate_queue_api_cache()
+    invalidate_queue_cache()
     return htmx_success_message(_RESOURCES_TRIGGERS, 'Saved successfully.')
 
 
@@ -679,7 +660,7 @@ def htmx_queue_delete(queue_id):
     except Exception as e:
         return f'<div class="alert alert-danger">Error: {e}</div>', 500
 
-    _invalidate_queue_api_cache()
+    invalidate_queue_cache()
     return ''
 
 
@@ -857,7 +838,7 @@ def htmx_queue_cleanup(resource_id):
             errors=[f'Error expiring queues: {e}'],
         )
 
-    _invalidate_queue_api_cache()
+    invalidate_queue_cache()
     n = len(to_expire)
     return htmx_success_message(
         _RESOURCES_TRIGGERS,

@@ -393,6 +393,31 @@ def user_facility_scope(user, permission: Permission):
     return {f for f, perms in scoped.items() if permission in perms}
 
 
+def allowed_facility_names(user, permission: Permission, *, active_only=True):
+    """
+    The user's facility-name universe for ``permission``, as a sorted list.
+
+    For facility-scoped users this is their grant (sorted); for unscoped
+    users (system-permission holders) it is every facility name in the DB,
+    filtered to active facilities unless ``active_only=False``.
+
+    Use for building facility selector vocabularies (multi-selects,
+    filter pills) — enforcement still belongs to ``apply_facility_scope``
+    / ``filter_rows_by_facility`` at query time.
+    """
+    allowed = user_facility_scope(user, permission)
+    if allowed is not None:
+        return sorted(allowed)
+    # Deferred: importing sam models at rbac module load would trigger the
+    # ORM init chain before create_app is ready.
+    from sam.resources.facilities import Facility
+    from webapp.extensions import db
+    q = db.session.query(Facility)
+    if active_only:
+        q = q.filter(Facility.is_active)
+    return [f.facility_name for f in q.order_by(Facility.facility_name).all()]
+
+
 def apply_facility_scope(requested, permission: Permission, default=None):
     """
     Combine a user-submitted ``facilities`` list with the caller's

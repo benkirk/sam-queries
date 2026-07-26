@@ -95,6 +95,20 @@ def get_queues_for_resource(resource_name: str):
     return jsonify(result)
 
 
+def invalidate_queue_cache():
+    """Drop the memoized queue payloads so the next GET recomputes.
+
+    Owned here, next to the memoized functions it clears. The admin
+    dashboard's queue-edit routes call this after a successful write so
+    the systems-integration consumers polling GET /api/v1/queue see the
+    change immediately.
+    """
+    cache.delete_memoized(get_queues)
+    cache.delete_memoized(get_queues_for_resource)
+    cache.delete_memoized(_queue_data)
+    caching.clear('flask')
+
+
 @bp.route('/refresh', methods=['POST'])
 @csrf.exempt          # token path is Basic-auth (no cookies); the session
                       # path losing CSRF on an idempotent cache refresh is
@@ -109,8 +123,5 @@ def refresh_cache():
     Returns:
         JSON with {"status": "ok"}
     """
-    cache.delete_memoized(get_queues)
-    cache.delete_memoized(get_queues_for_resource)
-    cache.delete_memoized(_queue_data)
-    caching.clear('flask')
+    invalidate_queue_cache()
     return jsonify({'status': 'ok'})
