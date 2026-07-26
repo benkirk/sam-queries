@@ -17,3 +17,11 @@
         </div>
     </div>
 </div>
+
+{# The modal body (user/partials/project_details_modal.html → project_card's
+   render_project_resources) renders per-allocation edit pencils that target
+   #editAllocationModal / #editAllocationFormContainer. Those live in the
+   fragment below, so include it here — otherwise the pencils are a silent
+   no-op (htmx:targetError + no Bootstrap target) on any page that shows the
+   project details modal without also remembering this second include. #}
+{% include 'dashboards/user/fragments/allocation_modals.html' %}
