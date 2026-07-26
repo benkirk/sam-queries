@@ -1,24 +1,71 @@
-{# Shared macro: render generic Name / Username / Email <tr> rows for user lists.
+{# Shared macros: sortable Name / Username / Email user tables.
 
    users: iterable of dicts or objects exposing:
      - display_name: str
+     - first_name / last_name: Optional[str]  (sort keys; optional)
      - username: str
      - primary_email: Optional[str]   (preferred key)
        or 'email' for back-compat with existing project-members table
+     - active / locked / is_active    (optional, ORM objects: adds status
+       badges and mutes inactive rows)
 
-   Visual style mirrors project_members/fragments/members_table.html so lists
-   of users feel like the same component across the app.
+   can_view_users: gate on Permission.VIEW_USERS (any facility) — matches
+   the admin_dashboard.user_card route the links target. When true, the
+   name and username cells open the shared #userDetailsModal. The click
+   uses data-action="show-user-details" (actions.js) rather than a
+   Bootstrap toggle: these rows can sit inside the group-members modal,
+   itself stacked over an already-open #userDetailsModal, and a toggle
+   would close it instead of re-showing it.
+
+   Visual style mirrors project_members/fragments/members_table.html so
+   lists of users feel like the same component across the app.
 #}
-{% macro render_user_rows(users) %}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+
+{# Sortable header row (sortable_table.js): Name sorts by "last, first",
+   the left-hand handle by displayed first name. #}
+{% macro user_table_head() %}
+    <tr>
+        <th class="sortable-header" data-sort="text" title="Sort by last name"><span
+            class="sort-handle" data-sort-attr="sort-first"
+            title="Sort by first name"></span>Name</th>
+        <th class="sortable-header" data-sort="text">Username</th>
+        <th class="sortable-header" data-sort="text">Email</th>
+    </tr>
+{% endmacro %}
+
+{% macro _user_modal_attrs(username) -%}
+data-action="show-user-details"
+hx-get="{{ url_for('admin_dashboard.user_card', username=username) }}"
+hx-target="#userDetailsModalBody" hx-swap="innerHTML"
+{%- endmacro %}
+
+{% macro render_user_rows(users, can_view_users=false) %}
     {% for u in users %}
     {% set email = (u.primary_email if u.primary_email is defined else u.email) %}
-    <tr>
-        <td>
-            <i class="fas fa-user text-muted me-1"></i>
+    <tr{% if u.is_active is defined and not u.is_active %} class="text-muted"{% endif %}>
+        {# data-sort-first uses display_name (nickname-aware) so the
+           first-name sort matches what the user actually reads. #}
+        <td data-sort-value="{{ u.last_name or '' }}, {{ u.first_name or '' }}"
+            data-sort-first="{{ u.display_name }}">
+            {% if can_view_users %}
+            <a href="#" class="text-decoration-none text-reset"
+               title="View user details"
+               {{ _user_modal_attrs(u.username) }}>
+                <strong>{{ u.display_name }}</strong>
+            </a>
+            {% else %}
             <strong>{{ u.display_name }}</strong>
+            {% endif %}
+            {% if u.active is defined %}
+                {% if not u.active %}{{ status_badge('inactive', extra='ms-1', small=True) }}
+                {% elif u.locked %}{{ status_badge('locked', extra='ms-1', small=True) }}{% endif %}
+            {% endif %}
         </td>
-        <td><code>{{ u.username }}</code></td>
-        <td>
+        <td data-sort-value="{{ u.username }}"
+            {% if can_view_users %}class="cursor-pointer" {{ _user_modal_attrs(u.username) }}{% endif %}><code>{{ u.username }}</code></td>
+        {# '~' sorts after letters so N/A rows land last ascending #}
+        <td data-sort-value="{{ email or '~' }}">
             {% if email %}
             <a href="mailto:{{ email }}">{{ email }}</a>
             {% else %}

@@ -47,7 +47,8 @@ from sam.resources.resources import Resource
 from sam.summaries.disk_summaries import DiskChargeSummary
 from sqlalchemy import func
 from webapp.utils.project_permissions import can_edit_consumption_threshold
-from webapp.utils.rbac import require_permission, Permission, has_permission
+from webapp.utils.rbac import (require_permission, Permission, has_permission,
+                               has_permission_any_facility)
 from webapp.api.access_control import (
     require_allocation_permission,
     require_project_access,
@@ -389,6 +390,8 @@ def htmx_group_members(group_name):
     return render_template(
         'dashboards/fragments/group_members_fragment.html',
         group=data,
+        # Same gate as the admin_dashboard.user_card route the rows target.
+        can_view_users=has_permission_any_facility(current_user, Permission.VIEW_USERS),
     )
 
 

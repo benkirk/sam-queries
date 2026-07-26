@@ -246,7 +246,8 @@ def get_group_members(
             'unix_gid': int,
             'access_branch_name': str,
             'members': [
-                {'username': str, 'display_name': str, 'primary_email': Optional[str]},
+                {'username': str, 'display_name': str, 'first_name': Optional[str],
+                 'last_name': Optional[str], 'primary_email': Optional[str]},
                 ...
             ],
         }
@@ -275,12 +276,16 @@ def get_group_members(
             members.append({
                 'username': user.username,
                 'display_name': user.display_name,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
                 'primary_email': user.primary_email,
             })
         else:
             members.append({
                 'username': uname,
                 'display_name': uname,
+                'first_name': None,
+                'last_name': None,
                 'primary_email': None,
             })
 

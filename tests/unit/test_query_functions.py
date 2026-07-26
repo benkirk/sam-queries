@@ -1642,6 +1642,9 @@ class TestGetGroupMembers:
         assert by_user[u1.username]['primary_email'] == 'alice@example.org'
         assert by_user[u2.username]['primary_email'] is None
         assert 'Alice' in by_user[u1.username]['display_name']
+        # Sort keys used by the shared user-rows table macros
+        assert by_user[u1.username]['first_name'] == 'Alice'
+        assert by_user[u1.username]['last_name'] == 'Amos'
 
     def test_branch_filter_excludes_other_branches(self, session):
         grp = _make_adhoc_group(session)
