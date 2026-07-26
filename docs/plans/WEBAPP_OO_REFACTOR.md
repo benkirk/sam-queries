@@ -202,6 +202,151 @@ stay bespoke.
 baseline unchanged. PR-level manual: click-through per affected card — valid + invalid
 submissions, inline field errors render, modals close, cards reload.
 
+## Appendix — Phase-2 design detail (restart-safe; validated against real code)
+
+### HtmxFormHandler core (`src/webapp/utils/form_handler.py`, new, ~170 ln)
+
+```python
+class FormError(Exception):
+    """User-facing rejection from clean()/perform(); carries error strings."""
+    def __init__(self, *errors):
+        self.errors = [str(e) for e in errors]
+        super().__init__('; '.join(self.errors))
+
+class HtmxFormHandler:
+    # declarative config (override per subclass)
+    schema_cls = None; template = None
+    partial = False
+    error_prefix = 'Error'; success_message = 'Saved successfully.'
+    success_redirect = None          # str | callable(result)
+    exception_map = ()               # ((ExcType, msg_or_callable), ...)
+
+    def __init__(self, **entities):  # route-loaded ORM objects (decorator-injected or looked up)
+        for k, v in entities.items(): setattr(self, k, v)
+
+    # hooks: form_input() -> request.form (pre-schema mutation);
+    # load(raw) -> schema_cls().load(raw, partial=self.partial);
+    # clean(data) -> data (PUT gating vs request.form, ORM cross-field checks; may raise FormError);
+    # perform(data) (the write; runs INSIDE management_transaction; required);
+    # after_commit(result) (cache invalidation);
+    # context() -> {} (error re-render context: entity, dropdowns);
+    # triggers(result) -> {} ; detail(result) -> None;
+    # on_success(result) -> htmx_success_message(triggers, message, detail) or HX-Redirect
+    #   when success_redirect set (flash + make_response('' , 200) + HX-Redirect header);
+    # render_errors(errors, field_errors=None) -> render_template(template,
+    #   errors=..., field_errors=..., form=request.form, **self.context())
+
+    def handle(self):
+        try:
+            payload = self.clean(self.load(self.form_input()))
+        except ValidationError as e:
+            field_errors, form_level = self.schema_cls.split_errors(e.messages)
+            return self.render_errors(form_level, field_errors)   # split ONLY (Ben's unify decision)
+        except FormError as e:
+            return self.render_errors(e.errors)
+        try:
+            with management_transaction(db.session):
+                result = self.perform(payload)
+        except (FormError, FKValidationError) as e:
+            return self.render_errors(e.errors)
+        except Exception as e:
+            for exc_type, msg in self.exception_map:
+                if isinstance(e, exc_type):
+                    return self.render_errors([msg(e) if callable(msg) else msg])
+            return self.render_errors([f'{self.error_prefix}: {e}'])
+        self.after_commit(result)
+        return self.on_success(result)
+```
+
+### Adapter (`handle_htmx_form_post` keeps EXACT signature; body → `_KwargFormHandler`)
+Mapping: `do_action→perform`, `extra_context`+`context_fn`→`context()`,
+`success_triggers`→`triggers()` (callable-or-dict), `success_detail`→`detail()`,
+`success_message/success_redirect/error_prefix` → same-name attrs,
+NEW optional kwarg `after_commit=None` (kills the `attempted={}` sentinel wrapper in
+resources_routes.py queue-edit, currently ~:540-570 post-PR1). Gate: full pytest green
+with ZERO existing-test edits. Also add `modal_triggers(*reload_events)` to utils/htmx.py
+(fresh dict per call) replacing 4 `_X_TRIGGERS` constants + ~20 inline literals as touched.
+
+### CrudSpec registrar (`src/webapp/dashboards/admin/crud.py`, new, ~220 ln)
+Frozen dataclass fields: `slug, name, model, id_param (explicit — url kwarg names vary:
+org_id/inst_id/group_id/...), context_key, edit_schema, create_schema,
+edit_fields=(), create_fields=(), edit_kwargs=None, create_kwargs=None,
+edit_context=None (obj->dict), create_context=None (()->dict, re-run on error re-render),
+triggers={}, edit_permission/create_permission/delete_permission,
+after_commit=None, actions=('edit','create','delete'), endpoint_base=None (default slug→snake)`.
+`register_crud(bp, spec)` emits via `bp.add_url_rule` with endpoints IDENTICAL to current
+view-fn names (`htmx_{base}_edit_form`, `_edit`, `_create_form`, `_create`, `_delete`) and
+identical rule strings (`/htmx/{slug}-edit-form/<int:{id_param}>` etc.) — template url_for
+untouched. Permissions applied as `login_required(require_permission(P)(view))`.
+Preserve not-found asymmetry EXACTLY: edit-form GET → warning-div/200; POST/DELETE →
+htmx_not_found (danger/404). POST bodies delegate to handle_htmx_form_post.
+Set `view.__name__ = endpoint`. Docstring hard rule: needs-more-than-spec ⇒ stays bespoke.
+Eligible: orgs 8/9 (mnemonic-code bespoke, GID logic), facilities 2-3/4 (panel-edit needs
+trivial schema first in forms/facilities.py; panel-session bespoke — documented ORM
+cross-field check), resources 4-5 (queue uses after_commit=invalidate_queue_cache from
+api/v1/queue.py — landed in PR 1).
+
+### Worked migration examples (validated; pre-PR1 line refs, re-grep after rebase)
+- `htmx_project_update` projects_routes.py:770 (71→~51): partial=True; form_input strips
+  GOVERNANCE_FIELDS unless can_edit_project_governance; perform = validate_fk_existence
+  (4 FK tuples) + project.update(**data); triggers {'reloadEditProjectDetails': projcode}.
+- `htmx_edit_allocation` projects_routes.py:2078 (101→~68): partial=True; clean() gates
+  updates on request.form presence (amount/start_date truthy; end_date/description by key
+  presence — empty end_date CLEARS), raises FormError('No changes provided.') if empty;
+  perform: optional detach_allocation on break_inheritance=='true' then
+  update_allocation(db.session, id, current_user.user_id, **updates); exception_map
+  InheritingAllocationException → long detach-first message; context() has cheap-on-error
+  frontier/parent_info. FIXES latent 500: old code KeyError'd on non-numeric amount
+  (form_data={} then updates['amount']=form_data['amount']) — note in commit msg.
+- `htmx_add_member` project_members.py:80 (70→~41): clean() looks up User by username,
+  FormError if missing (stores self.member); perform → add_user_to_project;
+  on_success OVERRIDE → htmx_success custom template + OOB _render_members_table,
+  {'closeModal': 'addMemberModal'}.
+- Micro-deltas to note per migrated handler: generic exceptions gain `'{prefix}: {e}'`
+  where a few rendered bare str(e); 8 handlers' manual empty-string pre-drop is redundant
+  (HtmxFormSchema._strip_empty_strings) and vanishes; error UI switches flatten→split
+  (INTENDED, Ben approved) — check each template imports form_fields.html macros
+  (they render field_errors since #336).
+
+### Commit 2.5 schema specs (sam/schemas/forms/operational.py, new)
+- CreateWallclockExemptionForm: queue_id Int req, start_date Date req, end_date via
+  normalize_end_date req, time_limit_hours Float Range(min=0, min_inclusive=False),
+  comment optional; date order via assert_date_range.
+- AdminCreateWallclockExemptionForm(Create...): + user_id Int req (FK-picker variant).
+- EditWallclockExemptionForm: end_date, time_limit_hours, comment; end-vs-ORM-start_date
+  check lives in handler clean(). Migrate exemption trio admin/blueprint.py:843/:977/:1099
+  (~278→~110+60); shared _resources_with_queues() (currently copy-pasted 4×).
+- ChangeProjectAdminForm (forms/user.py) for project_members.py:181 — schema only,
+  handler STAYS a function (28 ln, alert/table response).
+- Sweep: `grep -rn 'strptime\|float(\|int(request' src/webapp/dashboards` on POST/PUT
+  handlers only. DO NOT touch outage datetime-local JS (#337).
+
+### Commit 2.6 typeahead factory
+`register_typeahead(bp, *, slug, endpoint, permission, search, template, ctx_key,
+min_len=2, limit=20, active_only_default=False)` in utils/htmx.py; migrate ~5-6 of 9
+(groups, organizations ×2, impersonate alias...). Bespoke stay: 4-way context multiplexer
+admin/blueprint.py:~657 and facility-scoped project search :~772.
+
+### Phase-2 verification gates
+- Route-map parity test (snapshot (endpoint, rule, methods) of dashboard blueprints) added
+  in 2.1, green every commit. Characterization tests FIRST per migrated file (valid post /
+  schema-error / domain-error / success-trigger header) — htmx_project_update, admin
+  htmx_edit_allocation, htmx_add_member have authz-only coverage today.
+- Grep gates → 0 by end: `except ValidationError` in dashboards/ (31); local `_reload`/
+  `_render_with_errors` closures (14); strptime/float ladders in POST handlers.
+- tests/perf/test_route_query_counts.py baseline unchanged.
+- Test invocation: `source etc/config_env.sh && export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam' && pytest -q` (~85s; container samuel-mysql-test on 3307 already running). Full-suite tally after PR 1: 2915 passed / 25 skipped / 1 xfailed.
+
+### Session logistics
+- Branch: rebase `oo_refactor` onto `webapp_quick_wins` (PR 2 needs invalidate_queue_cache)
+  or onto staging once #375 merges. PRs → staging. One PR, ordered commits (Ben's rule).
+- Admin page-crawl harness (for any future admin-surface change):
+  scratchpad/capture_admin_snapshot.py (run from a copy at tests/unit/zz_*.py so conftest
+  fixtures resolve; ADMIN_SNAPSHOT_OUT env var; normalizes CSRF+nonce+navbar; `projects`
+  custom view is run-to-run nondeterministic — exclude its hash).
+- Open reviewer questions on PR #375: admin facility multi-select active_only=False
+  (latent-bug suspicion); end-of-day end_date semantics on user-dashboard GET ranges.
+
 ## Net effect
 ≈ −2,400 to −2,700 LOC; one ~170-line class expressing the form lifecycle; one ~220-line
 declarative CRUD registrar; #336 inline-field-error follow-up completed; one latent 500
