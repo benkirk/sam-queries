@@ -859,6 +859,14 @@ class _AddExemptionHandler(HtmxFormHandler):
             'today': datetime.now().strftime('%Y-%m-%d'),
         }
 
+    def render_errors(self, errors, field_errors=None):
+        # queue_id is the cascading Resource→Queue inline <select>, not a
+        # form_fields macro — its errors have no inline slot, so surface
+        # them in the panel (the schema messages are full sentences).
+        field_errors = dict(field_errors or {})
+        errors = list(errors) + field_errors.pop('queue_id', [])
+        return super().render_errors(errors, field_errors)
+
     def triggers(self, result):
         return {'closeActiveModal': {},
                 'reloadUserCard': self.sam_user.username,
@@ -907,7 +915,13 @@ class _AdminCreateExemptionHandler(_AddExemptionHandler):
         return data
 
     def context(self):
-        return dict(super().context(), sam_user=None)
+        # Not super().context() — that reads self.sam_user, which is only
+        # set once clean() has run (schema errors re-render before that).
+        return {
+            'sam_user': None,
+            'resources': _resources_with_queues(),
+            'today': datetime.now().strftime('%Y-%m-%d'),
+        }
 
     def triggers(self, result):
         return {'closeActiveModal': {}, 'reloadResourcesCard': {}}

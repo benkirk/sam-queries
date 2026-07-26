@@ -207,6 +207,28 @@ class TestAdminDirectoryModals:
         assert 'HX-Trigger' not in resp.headers
 
 
+class TestExemptionHandlers:
+
+    def test_admin_create_empty_post_rerenders(self, auth_client):
+        # Regression: the error re-render context must not depend on
+        # attributes only set in clean() (schema errors fire first).
+        resp = auth_client.post('/admin/htmx/admin/exemption/create', data={})
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'User is required.' in html
+        assert 'Queue is required.' in html
+
+    def test_user_scoped_create_empty_post_rerenders(self, auth_client):
+        resp = auth_client.post('/admin/htmx/exemption/benkirk', data={})
+        assert resp.status_code == 200
+        assert 'Queue is required.' in resp.get_data(as_text=True)
+
+    def test_edit_missing_id_404s(self, auth_client):
+        resp = auth_client.post(f'/admin/htmx/exemption-edit/{MISSING_ID}',
+                                data={})
+        assert resp.status_code == 404
+
+
 class TestAccessGridToggle:
 
     def test_unknown_fks_report_both_errors(self, auth_client,
