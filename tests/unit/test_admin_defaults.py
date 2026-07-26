@@ -319,28 +319,43 @@ class TestBackwardCompatibility:
 
 
 class TestDefaultViewRegistry:
-    """The _DEFAULT_MODELS spec-loop in add_default_models.py replaces the
-    93 generated one-per-model `class XDefaultAdmin(SAMModelView): pass`
-    declarations. These assertions pin the registration surface so a spec
-    edit that drops or renames an endpoint fails loudly."""
+    """Default views are auto-detected from the SAM declarative registry
+    (add_default_models.py) — every mapped model gets one. These
+    assertions pin the registration surface so registry or slug-derivation
+    drift fails loudly."""
 
-    def test_all_default_views_registered(self, app):
-        from webapp.admin.add_default_models import _DEFAULT_MODELS
+    def test_every_sam_model_has_a_default_view(self, app):
+        from webapp.admin.add_default_models import (
+            _camel_to_snake, sam_model_classes,
+        )
 
         admin = app.extensions['admin'][0]
         registered = {v.endpoint for v in admin._views
                       if v.endpoint.startswith('default_views/')}
-        assert len(_DEFAULT_MODELS) == 93
-        assert registered == {f'default_views/{ep}' for _, ep in _DEFAULT_MODELS}
+        expected = {f'default_views/{_camel_to_snake(cls.__name__)}'
+                    for cls in sam_model_classes()}
+        assert registered == expected
+        # The original generated listing had 93; auto-detection recovered
+        # 6 models the manual list had drifted past. Floor, not exact —
+        # new models are supposed to grow this.
+        assert len(registered) >= 99
 
     def test_sampled_endpoints_and_menu_names(self, app):
         admin = app.extensions['admin'][0]
         by_endpoint = {v.endpoint: v for v in admin._views}
         for endpoint, name in (
+            # Long-standing entries (URL stability for the original 93)
             ('default_views/academic_status', 'AcademicStatus'),
             ('default_views/account', 'Account'),
             ('default_views/allocation', 'Allocation'),
             ('default_views/xras_user_view', 'XrasUserView'),
+            # Recovered by auto-detection (absent from the manual list)
+            ('default_views/country', 'Country'),
+            ('default_views/gid_allocation', 'GidAllocation'),
+            ('default_views/manual_task', 'ManualTask'),
+            ('default_views/product', 'Product'),
+            ('default_views/state_prov', 'StateProv'),
+            ('default_views/synchronizer', 'Synchronizer'),
         ):
             assert endpoint in by_endpoint
             view = by_endpoint[endpoint]
