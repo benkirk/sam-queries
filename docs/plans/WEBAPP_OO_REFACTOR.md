@@ -30,7 +30,8 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         sort/paginate green on shared macro)
 - PAUSE after PR 1 opens, before any Phase-2 (PR 2) work — per Ben 2026-07-26
 - **PR 2 — form-layer OO refactor (≈ −1,100..1,400 LOC)**
-  - [ ] 2.1 `HtmxFormHandler` + adapter + parity tests
+  - [x] 2.1 `HtmxFormHandler` + adapter + parity tests (2938 passed, zero
+        existing-test edits; route-map snapshot = 239 dashboard routes)
   - [ ] 2.2 `CrudSpec` registrar + orgs migration (8 entities)
   - [ ] 2.3 facilities + resources registrar migrations
   - [ ] 2.4 31 hand-rolled shape-C handlers → handler subclasses

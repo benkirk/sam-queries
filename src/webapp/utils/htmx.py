@@ -1,9 +1,7 @@
 import json
-from flask import flash, make_response, render_template, request
-from marshmallow import ValidationError
+from flask import make_response, render_template
 
 from webapp.extensions import db
-from webapp.utils.fk_validation import FKValidationError
 from sam.manage import management_transaction
 
 
@@ -85,6 +83,21 @@ def htmx_success_message(triggers, message, detail=None):
     )
 
 
+def modal_triggers(*reload_events):
+    """HX-Trigger payload that closes the active modal and fires reload
+    events for the affected card(s). Returns a fresh dict per call —
+    safe to mutate at the call site.
+
+    Example:
+        modal_triggers('reloadFacilitiesCard')
+        → {'closeActiveModal': {}, 'reloadFacilitiesCard': {}}
+    """
+    triggers = {'closeActiveModal': {}}
+    for event in reload_events:
+        triggers[event] = {}
+    return triggers
+
+
 def handle_htmx_form_post(
     *,
     schema_cls,
@@ -97,6 +110,7 @@ def handle_htmx_form_post(
     error_prefix='Error',
     extra_context=None,
     context_fn=None,
+    after_commit=None,
 ):
     """Handle the standard HTMX create/edit form POST flow.
 
@@ -145,49 +159,33 @@ def handle_htmx_form_post(
         context_fn:        Optional callable returning a dict of additional
                            re-render context — use this when the context needs
                            a fresh DB query (e.g. dropdown options).
+        after_commit:      Optional callable `result -> None` run after the
+                           transaction commits — post-commit side effects
+                           like cache invalidation, never DB writes.
+
+    Handlers that need more than these kwargs express — partial loads,
+    PUT gating, cross-field ORM checks, exception mapping, custom success
+    responses — subclass `webapp.utils.form_handler.HtmxFormHandler`
+    (this function is a thin adapter over the same lifecycle).
 
     Returns: Flask response (rendered fragment or htmx_success_message).
     """
-    def _render_with_errors(errs, field_errors=None):
-        ctx = {}
-        if extra_context:
-            ctx.update(extra_context)
-        if context_fn is not None:
-            ctx.update(context_fn())
-        ctx['errors'] = errs
-        ctx['field_errors'] = field_errors or {}
-        ctx['form'] = request.form
-        return render_template(template, **ctx)
-
-    try:
-        data = schema_cls().load(request.form)
-    except ValidationError as e:
-        field_errors, form_level = schema_cls.split_errors(e.messages)
-        return _render_with_errors(form_level, field_errors=field_errors)
-
-    try:
-        with management_transaction(db.session):
-            result = do_action(data)
-    except FKValidationError as e:
-        return _render_with_errors(e.errors)
-    except Exception as e:  # noqa: BLE001 — surface to the user
-        return _render_with_errors([f'{error_prefix}: {e}'])
-
-    detail = success_detail(result) if callable(success_detail) else success_detail
-
-    if success_redirect is not None:
-        # Full-page navigation instead of the in-modal success fragment:
-        # HX-Redirect makes htmx set window.location, so carry the
-        # confirmation as a flash for the destination page to render.
-        url = success_redirect(result) if callable(success_redirect) else success_redirect
-        flash(f'{success_message} {detail}' if detail else success_message,
-              'success')
-        resp = make_response('', 200)
-        resp.headers['HX-Redirect'] = url
-        return resp
-
-    triggers = success_triggers(result) if callable(success_triggers) else success_triggers
-    return htmx_success_message(triggers, success_message, detail=detail)
+    # Local import: cycle — form_handler imports htmx_success_message
+    # from this module.
+    from webapp.utils.form_handler import _KwargFormHandler
+    return _KwargFormHandler(
+        schema_cls=schema_cls,
+        template=template,
+        do_action=do_action,
+        success_triggers=success_triggers,
+        success_message=success_message,
+        success_detail=success_detail,
+        success_redirect=success_redirect,
+        error_prefix=error_prefix,
+        extra_context=extra_context,
+        context_fn=context_fn,
+        after_commit=after_commit,
+    ).handle()
 
 
 def htmx_not_found(name='Resource', status=404):
