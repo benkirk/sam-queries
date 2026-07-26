@@ -17,6 +17,7 @@ from sam.schemas.forms.user import (
 )
 
 from webapp.extensions import db
+from webapp.api.helpers import parse_input_start_date, parse_input_end_date
 from webapp.utils.htmx import read_active_only
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.disk_usage import (
@@ -437,15 +438,12 @@ def resource_details(project):
 
     # Parse date range (default to last 90 days)
     try:
-        if request.args.get('start_date'):
-            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
-        else:
-            start_date = datetime.now() - timedelta(days=90)
-
-        if request.args.get('end_date'):
-            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
-        else:
-            end_date = datetime.now()
+        start_date = (parse_input_start_date(request.args['start_date'])
+                      if request.args.get('start_date')
+                      else datetime.now() - timedelta(days=90))
+        end_date = (parse_input_end_date(request.args['end_date'])
+                    if request.args.get('end_date')
+                    else datetime.now())
     except ValueError:
         flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
         return redirect(url_for('user_dashboard.index'))
@@ -690,9 +688,9 @@ def _resolve_scope_projcodes(project, scope_projcode):
 def _parse_subtree_dates(start_raw, end_raw):
     """Parse YYYY-MM-DD start / end query params; defaults to last 90 days."""
     try:
-        start_date = (datetime.strptime(start_raw, '%Y-%m-%d')
+        start_date = (parse_input_start_date(start_raw)
                       if start_raw else datetime.now() - timedelta(days=90))
-        end_date = (datetime.strptime(end_raw, '%Y-%m-%d')
+        end_date = (parse_input_end_date(end_raw)
                     if end_raw else datetime.now())
     except ValueError:
         return None, None, 'Invalid date format. Please use YYYY-MM-DD.'
@@ -821,14 +819,12 @@ def resource_details_usage_chart(project):
         metric = 'charges'
 
     try:
-        if request.args.get('start_date'):
-            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
-        else:
-            start_date = datetime.now() - timedelta(days=90)
-        if request.args.get('end_date'):
-            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
-        else:
-            end_date = datetime.now()
+        start_date = (parse_input_start_date(request.args['start_date'])
+                      if request.args.get('start_date')
+                      else datetime.now() - timedelta(days=90))
+        end_date = (parse_input_end_date(request.args['end_date'])
+                    if request.args.get('end_date')
+                    else datetime.now())
     except ValueError:
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
@@ -922,14 +918,12 @@ def resource_details_disk_usage_chart(project):
 
     # Same default window as the disk page (last 90 days).
     try:
-        if request.args.get('start_date'):
-            start_date = datetime.strptime(request.args.get('start_date'), '%Y-%m-%d')
-        else:
-            start_date = datetime.now() - timedelta(days=90)
-        if request.args.get('end_date'):
-            end_date = datetime.strptime(request.args.get('end_date'), '%Y-%m-%d')
-        else:
-            end_date = datetime.now()
+        start_date = (parse_input_start_date(request.args['start_date'])
+                      if request.args.get('start_date')
+                      else datetime.now() - timedelta(days=90))
+        end_date = (parse_input_end_date(request.args['end_date'])
+                    if request.args.get('end_date')
+                    else datetime.now())
     except ValueError:
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 

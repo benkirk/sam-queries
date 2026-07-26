@@ -1,0 +1,37 @@
+{#
+  Sortable-column header link for htmx table fragments.
+
+  Import WITH CONTEXT — the macro reads the fragment's render context:
+    sortable_columns, sort, fragment_url, target_id, form_id
+
+    {% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
+
+  Used by the allocations audit tables (transactions / adjustments). The
+  jobs and disk-scans tables have their own variants with different
+  parameter semantics — do not fold those in here.
+#}
+{% macro sort_link(col, label, align='') %}
+{% if col in sortable_columns %}
+    {% set is_active = (sort['sort_by'] == col) %}
+    {% set next_dir = 'asc' if (is_active and sort['sort_dir'] == 'desc') else 'desc' %}
+    <a class="text-decoration-none {{ align }}"
+       href="#"
+       hx-get="{{ fragment_url }}?sort_by={{ col }}&sort_dir={{ next_dir }}&page=1"
+       hx-target="#{{ target_id }}"
+       hx-include="#{{ form_id }}"
+       hx-swap="innerHTML">
+        {{ label }}
+        {% if is_active %}
+            {% if sort['sort_dir'] == 'asc' %}
+                <i class="fas fa-caret-up ms-1"></i>
+            {% else %}
+                <i class="fas fa-caret-down ms-1"></i>
+            {% endif %}
+        {% else %}
+            <i class="fas fa-sort text-muted small ms-1"></i>
+        {% endif %}
+    </a>
+{% else %}
+    {{ label }}
+{% endif %}
+{% endmacro %}
