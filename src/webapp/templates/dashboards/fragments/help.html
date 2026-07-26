@@ -57,9 +57,11 @@
 
 {# ─── inline term with a dotted-underline tooltip ──────────────────────────
    Renders <label> with a help cue. rich=True upgrades it to a click popover.
+   extra_class lets a caller merge in additional classes (e.g. badge styling)
+   while keeping the help-term cue and tooltip wiring.
 #}
-{% macro term(label, text, rich=False, title=None, placement='top') %}
-<span class="help-term"
+{% macro term(label, text, rich=False, title=None, placement='top', extra_class='') %}
+<span class="help-term{% if extra_class %} {{ extra_class }}{% endif %}"
       tabindex="0"
       {%- if rich %}
       data-bs-toggle="popover"

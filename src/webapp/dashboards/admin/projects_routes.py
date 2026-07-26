@@ -4,11 +4,13 @@ Admin dashboard — Project management routes.
 Covers: Project creation (Phase A).  Edit/allocation management (Phase B).
 """
 
+import calendar
 from datetime import datetime
 
 from flask import render_template, request, redirect, url_for
 from webapp.utils.htmx import (htmx_success, htmx_success_message,
-                               handle_htmx_form_post, read_active_only)
+                               handle_htmx_form_post, read_active_only,
+                               register_typeahead)
 from webapp.utils.fk_validation import FKValidationError, validate_fk_existence
 from flask_login import login_required, current_user
 
@@ -29,9 +31,21 @@ from webapp.utils.project_permissions import (
     can_edit_project_governance,
     can_modify_allocations,
     can_exchange_allocations,
+    can_allocate_residual,
 )
 from sam.manage import management_transaction
+from sam.accounting.allocations import InheritingAllocationException
 from sam.core.groups import GidAllocation, NoAvailableGidError
+from sam.schemas.forms import (
+    AccessGridToggleForm, AddAllocationForm, AllocateResidualForm,
+    EditAllocationForm, EditProjectForm, ExchangeAllocationForm,
+    ExtendAllocationsForm, RenewAllocationsForm,
+)
+from sam.schemas.forms.projects import (
+    AddLinkedContractForm, AddLinkedDirectoryForm, AddLinkedOrganizationForm,
+    EditLinkedDirectoryForm,
+)
+from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
 
 from .blueprint import bp
 
@@ -294,92 +308,67 @@ def htmx_alloc_types_for_panel():
     )
 
 
-@bp.route('/htmx/org-search-for-project')
-@login_required
-@require_permission_any_facility(Permission.CREATE_PROJECTS)
-def htmx_org_search_for_project():
-    """Search organizations for the project create form FK picker.
+# FK pickers on the project create form. The .fk-search-result click
+# handlers (defined in the form template) set the hidden organization_id /
+# contract_id / parent_id inputs.
 
-    Returns an HTML fragment with .fk-search-result items whose click handler
-    (defined in the form template) sets the hidden ``organization_id`` input.
-    """
+def _search_orgs_for_project(q, active_only):
     from sam.core.organizations import Organization
-
-    query = request.args.get('q', '').strip()
-    if len(query) < 2:
-        return ''
-
-    orgs = (
+    return (
         db.session.query(Organization)
         .filter(
             Organization.is_active,
-            Organization.name.ilike(f'%{query}%') | Organization.acronym.ilike(f'%{query}%')
+            Organization.name.ilike(f'%{q}%') | Organization.acronym.ilike(f'%{q}%')
         )
         .order_by(Organization.name)
         .limit(15)
         .all()
     )
 
-    return render_template(
-        'dashboards/admin/fragments/org_search_results_fk_htmx.html',
-        orgs=orgs,
-    )
 
-
-@bp.route('/htmx/contract-search-for-project')
-@login_required
-@require_permission_any_facility(Permission.CREATE_PROJECTS)
-def htmx_contract_search_for_project():
-    """Search contracts for the project create form FK picker.
-
-    Returns an HTML fragment with .fk-search-result items whose click handler
-    (defined in the form template) sets the hidden ``contract_id`` input.
-    """
+def _search_contracts_for_project(q, active_only):
     from sam.projects.contracts import Contract
-
-    query = request.args.get('q', '').strip()
-    if len(query) < 2:
-        return ''
-
-    contracts = (
+    return (
         db.session.query(Contract)
         .filter(
-            Contract.contract_number.ilike(f'%{query}%') | Contract.title.ilike(f'%{query}%')
+            Contract.contract_number.ilike(f'%{q}%') | Contract.title.ilike(f'%{q}%')
         )
         .order_by(Contract.contract_number)
         .limit(10)
         .all()
     )
 
-    return render_template(
-        'dashboards/admin/fragments/contract_search_results_fk_htmx.html',
-        contracts=contracts,
-    )
 
-
-@bp.route('/htmx/project-search-for-parent')
-@login_required
-@require_permission_any_facility(Permission.CREATE_PROJECTS)
-def htmx_project_search_for_parent():
-    """Search projects for use as parent FK in the create form.
-
-    Returns an HTML fragment with .fk-search-result items whose click handler
-    (defined in the form template) sets the hidden ``parent_id`` input.
-    """
+def _search_projects_for_parent(q, active_only):
     from sam.queries.projects import search_projects_by_code_or_title
+    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
 
-    query = request.args.get('q', '').strip()
-    if len(query) < 1:
-        return ''
 
-    projects = search_projects_by_code_or_title(
-        db.session, query, active=True
-    )[:10]
+register_typeahead(
+    bp, rule='/htmx/org-search-for-project', endpoint='htmx_org_search_for_project',
+    permission=Permission.CREATE_PROJECTS, any_facility=True,
+    search=_search_orgs_for_project,
+    template='dashboards/admin/fragments/org_search_results_fk_htmx.html',
+    ctx_key='orgs',
+)
 
-    return render_template(
-        'dashboards/admin/fragments/project_search_results_fk_htmx.html',
-        projects=projects,
-    )
+register_typeahead(
+    bp, rule='/htmx/contract-search-for-project',
+    endpoint='htmx_contract_search_for_project',
+    permission=Permission.CREATE_PROJECTS, any_facility=True,
+    search=_search_contracts_for_project,
+    template='dashboards/admin/fragments/contract_search_results_fk_htmx.html',
+    ctx_key='contracts',
+)
+
+register_typeahead(
+    bp, rule='/htmx/project-search-for-parent',
+    endpoint='htmx_project_search_for_parent',
+    permission=Permission.CREATE_PROJECTS, any_facility=True,
+    search=_search_projects_for_parent,
+    template='dashboards/admin/fragments/project_search_results_fk_htmx.html',
+    ctx_key='projects', min_len=1,
+)
 
 
 @bp.route('/htmx/project-projcode-preview')
@@ -766,6 +755,61 @@ GOVERNANCE_FIELDS = frozenset({
 })
 
 
+class _ProjectUpdateHandler(HtmxFormHandler):
+    """Validate and apply project metadata updates."""
+
+    schema_cls = EditProjectForm
+    template = 'dashboards/admin/fragments/edit_project_details_htmx.html'
+    partial = True
+    error_prefix = 'Error updating project'
+    success_message = 'Project updated successfully.'
+
+    def form_input(self):
+        # Governance fields are admin-only. When a non-admin steward
+        # submits, drop those keys before marshmallow sees them.
+        # Defense-in-depth: the template renders them as read-only text for
+        # non-admins (so browsers don't submit them), but a crafted curl
+        # request could include them.
+        if can_edit_project_governance(current_user, self.project):
+            return request.form
+        return {k: v for k, v in request.form.items()
+                if k not in GOVERNANCE_FIELDS}
+
+    def perform(self, data):
+        from sam.projects.areas import AreaOfInterest
+        from sam.accounting.allocations import AllocationType
+        from sam.core.users import User
+        validate_fk_existence(
+            db.session,
+            (User, data.get('project_lead_user_id'), 'project lead'),
+            (User, data.get('project_admin_user_id'), 'project admin'),
+            (AreaOfInterest, data.get('area_of_interest_id'), 'area of interest'),
+            (AllocationType, data.get('allocation_type_id'), 'allocation type'),
+        )
+        self.project.update(**data)
+
+    def context(self):
+        current_facility_id = None
+        current_panel_id = None
+        if self.project.allocation_type and self.project.allocation_type.panel:
+            current_panel_id = self.project.allocation_type.panel_id
+            if self.project.allocation_type.panel.facility:
+                current_facility_id = self.project.allocation_type.panel.facility_id
+        return {
+            'project': self.project,
+            'current_facility_id': current_facility_id,
+            'current_panel_id': current_panel_id,
+            'can_edit_governance': can_edit_project_governance(current_user, self.project),
+            **_project_form_data(form=request.form),
+        }
+
+    def triggers(self, result):
+        return {'reloadEditProjectDetails': self.project.projcode}
+
+    def detail(self, result):
+        return f'{self.project.projcode} — {self.project.title}'
+
+
 @bp.route('/htmx/project-update/<projcode>', methods=['POST'])
 @login_required
 @require_project_permission(Permission.EDIT_PROJECTS)
@@ -777,66 +821,7 @@ def htmx_project_update(project):
     area_of_interest_id); governance-field submissions are stripped
     server-side before validation.
     """
-    from sam.projects.areas import AreaOfInterest
-    from sam.accounting.allocations import AllocationType
-    from sam.core.users import User
-    from sam.schemas.forms import EditProjectForm
-    from marshmallow import ValidationError
-
-    current_facility_id = None
-    current_panel_id = None
-    if project.allocation_type and project.allocation_type.panel:
-        current_panel_id = project.allocation_type.panel_id
-        if project.allocation_type.panel.facility:
-            current_facility_id = project.allocation_type.panel.facility_id
-
-    # Governance fields are admin-only. When a non-admin steward submits,
-    # drop those keys before marshmallow sees them. Defense-in-depth: the
-    # template renders them as read-only text for non-admins (so browsers
-    # don't submit them), but a crafted curl request could include them.
-    if can_edit_project_governance(current_user, project):
-        form_input = request.form
-    else:
-        form_input = {k: v for k, v in request.form.items()
-                      if k not in GOVERNANCE_FIELDS}
-
-    def _render_with_errors(errs):
-        return render_template(
-            'dashboards/admin/fragments/edit_project_details_htmx.html',
-            project=project,
-            current_facility_id=current_facility_id,
-            current_panel_id=current_panel_id,
-            can_edit_governance=can_edit_project_governance(current_user, project),
-            errors=errs,
-            form=request.form,
-            **_project_form_data(form=request.form),
-        )
-
-    try:
-        data = EditProjectForm().load(form_input, partial=True)
-    except ValidationError as e:
-        return _render_with_errors(EditProjectForm.flatten_errors(e.messages))
-
-    try:
-        with management_transaction(db.session):
-            validate_fk_existence(
-                db.session,
-                (User, data.get('project_lead_user_id'), 'project lead'),
-                (User, data.get('project_admin_user_id'), 'project admin'),
-                (AreaOfInterest, data.get('area_of_interest_id'), 'area of interest'),
-                (AllocationType, data.get('allocation_type_id'), 'allocation type'),
-            )
-            project.update(**data)
-    except FKValidationError as e:
-        return _render_with_errors(e.errors)
-    except Exception as e:  # noqa: BLE001
-        return _render_with_errors([f'Error updating project: {e}'])
-
-    return htmx_success_message(
-        {'reloadEditProjectDetails': project.projcode},
-        'Project updated successfully.',
-        detail=f'{project.projcode} — {project.title}',
-    )
+    return _ProjectUpdateHandler(project=project).handle()
 
 
 @bp.route('/htmx/project-allocation-tree/<projcode>')
@@ -938,6 +923,41 @@ def htmx_project_allocation_tree(project):
             .all()
         }
 
+    # Carve-out residual per (parent node, dedicated resource allocation):
+    # surfaced only on nodes that actually have carve-out children (pure
+    # pool nodes and fully-uncovered parents keep the Add/Propagate flows).
+    # Cost note: one frontier walk per parent-node allocation — this route
+    # already calls get_detailed_allocation_usage per node, which is far
+    # heavier; admin tree views are small and rare.
+    #
+    # Frontier date-filtering uses the displayed allocation row's own
+    # window, so a historical/future `active_at` view stays coherent: the
+    # residual shown always belongs to the row it annotates.
+    from sam.manage.allocations import get_carveout_frontier
+    from sam.accounting.allocations import Allocation
+    for node in all_nodes:
+        if not any(c.active for c in node.children):
+            continue
+        node_can = None   # lazy per-node permission memo
+        for rname, rdata in resources_by_projcode[node.projcode].items():
+            if not rdata.get('allocation_id') or rdata.get('is_inheriting'):
+                continue
+            alloc = db.session.get(Allocation, rdata['allocation_id'])
+            if alloc is None:
+                continue
+            frontier = get_carveout_frontier(db.session, alloc)
+            if not frontier.carve_children:
+                continue
+            if node_can is None:
+                node_can = can_allocate_residual(current_user, node)
+            rdata['carve_residual'] = {
+                'residual': frontier.residual,
+                'raw_residual': frontier.raw_residual,
+                'carve_total': frontier.carve_total,
+                'can_allocate': node_can,
+                'has_targets': bool(frontier.carve_children or frontier.open_projects),
+            }
+
     return render_template(
         'dashboards/admin/fragments/project_allocation_tree_htmx.html',
         root=root,
@@ -995,112 +1015,91 @@ def htmx_add_allocation_form(project):
     )
 
 
+class _AddAllocationHandler(HtmxFormHandler):
+    """Create a new account + allocation for the project, optionally
+    propagating to active sub-projects."""
+
+    schema_cls = AddAllocationForm
+    template = 'dashboards/admin/fragments/add_allocation_form_htmx.html'
+    error_prefix = 'Error creating allocation'
+    success_message = 'Allocation created successfully.'
+
+    def clean(self, data):
+        # FK existence check — requires DB access, stays out of the schema.
+        from sam.resources.resources import Resource
+        self.resource = db.session.get(Resource, data['resource_id'])
+        if not self.resource:
+            raise FormError('Selected resource does not exist.')
+        return data
+
+    def perform(self, data):
+        from sam.manage.allocations import (
+            create_allocation, propagate_allocation_to_subprojects,
+        )
+        start_date = (
+            datetime.combine(data['start_date'], datetime.min.time())
+            if data.get('start_date') else None
+        )
+        parent_alloc = create_allocation(
+            db.session,
+            project_id=self.project.project_id,
+            resource_id=self.resource.resource_id,
+            amount=data.get('amount'),
+            start_date=start_date,
+            end_date=data.get('end_date'),
+            description=data.get('description'),
+            user_id=current_user.user_id,
+        )
+        if data.get('apply_to_subprojects', False) and self.project.has_children:
+            descendants = [d for d in self.project.get_descendants() if d.active]
+            return propagate_allocation_to_subprojects(
+                db.session, parent_alloc, descendants,
+                user_id=current_user.user_id, skip_existing=True,
+            )
+        return [], []
+
+    def context(self):
+        from sam.resources.resources import Resource
+        linked_ids = _resources_with_allocation(self.project)
+        available = [
+            r for r in (db.session.query(Resource)
+                        .filter(Resource.is_active)
+                        .order_by(Resource.resource_name)
+                        .all())
+            if r.resource_id not in linked_ids
+        ]
+        now = datetime.now()
+        last_day = calendar.monthrange(now.year + 1, now.month)[1]
+        return {
+            'project': self.project,
+            'available_resources': available,
+            'today': now.strftime('%Y-%m-%d'),
+            'default_end_date': f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}',
+            'project_has_children': self.project.has_children,
+            'child_count': len([d for d in self.project.get_descendants() if d.active]),
+        }
+
+    def triggers(self, result):
+        return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
+
+    def detail(self, result):
+        child_created, child_skipped = result
+        detail = f'{self.project.projcode} — {self.resource.resource_name}'
+        if child_created or child_skipped:
+            detail += (
+                f'. Propagated to {len(child_created)} sub-project(s)'
+                + (f'; {len(child_skipped)} already had an allocation (skipped).'
+                   if child_skipped else '.')
+            )
+        return detail
+
+
 @bp.route('/htmx/add-allocation/<projcode>', methods=['POST'])
 @login_required
 @require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_add_allocation(project):
     """Create a new account + allocation for the project."""
-    from sam.resources.resources import Resource
-    from sam.manage.allocations import create_allocation
-    from sam.schemas.forms import AddAllocationForm
-    from marshmallow import ValidationError
-
-    errors = []
-
-    # Pre-process: drop empty strings (marshmallow would reject '' for Int/Float/Date);
-    # inject explicit False for unchecked checkbox.
-    data = {k: v for k, v in request.form.items() if v != ''}
-    data['apply_to_subprojects'] = 'apply_to_subprojects' in request.form
-
-    try:
-        form_data = AddAllocationForm().load(data)
-    except ValidationError as e:
-        errors.extend(AddAllocationForm.flatten_errors(e.messages))
-        form_data = {}
-
-    # FK existence check — requires DB access, stays in the route
-    resource = None
-    if form_data.get('resource_id'):
-        resource = db.session.get(Resource, form_data['resource_id'])
-        if not resource:
-            errors.append('Selected resource does not exist.')
-
-    # Coerce start_date (date) → datetime; end_date is already datetime-or-None via post_load
-    start_date = (
-        datetime.combine(form_data['start_date'], datetime.min.time())
-        if form_data.get('start_date') else None
-    )
-    end_date = form_data.get('end_date')
-    amount = form_data.get('amount')
-    description = form_data.get('description')
-    apply_to_subprojects = form_data.get('apply_to_subprojects', False)
-
-    def _reload_add_form(extra_errors=None):
-        import calendar
-        from sam.resources.resources import Resource as R
-        linked_ids = _resources_with_allocation(project)
-        available = (
-            db.session.query(R)
-            .filter(R.is_active)
-            .order_by(R.resource_name)
-            .all()
-        )
-        available = [r for r in available if r.resource_id not in linked_ids]
-        active_desc = [d for d in project.get_descendants() if d.active]
-        now = datetime.now()
-        last_day = calendar.monthrange(now.year + 1, now.month)[1]
-        default_end = f'{now.year + 1:04d}-{now.month:02d}-{last_day:02d}'
-        return render_template(
-            'dashboards/admin/fragments/add_allocation_form_htmx.html',
-            project=project,
-            available_resources=available,
-            today=now.strftime('%Y-%m-%d'),
-            default_end_date=default_end,
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-            project_has_children=project.has_children,
-            child_count=len(active_desc),
-        )
-
-    if errors:
-        return _reload_add_form()
-
-    try:
-        from sam.manage.allocations import propagate_allocation_to_subprojects
-        with management_transaction(db.session):
-            parent_alloc = create_allocation(
-                db.session,
-                project_id=project.project_id,
-                resource_id=resource.resource_id,
-                amount=amount,
-                start_date=start_date,
-                end_date=end_date,
-                description=description,
-                user_id=current_user.user_id,
-            )
-            if apply_to_subprojects and project.has_children:
-                descendants = [d for d in project.get_descendants() if d.active]
-                child_created, child_skipped = propagate_allocation_to_subprojects(
-                    db.session, parent_alloc, descendants,
-                    user_id=current_user.user_id, skip_existing=True,
-                )
-            else:
-                child_created, child_skipped = [], []
-    except Exception as e:
-        return _reload_add_form([f'Error creating allocation: {e}'])
-
-    detail = f'{project.projcode} — {resource.resource_name}'
-    if child_created or child_skipped:
-        detail += (
-            f'. Propagated to {len(child_created)} sub-project(s)'
-            + (f'; {len(child_skipped)} already had an allocation (skipped).' if child_skipped else '.')
-        )
-
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
-        'Allocation created successfully.',
-        detail=detail,
-    )
+    return _AddAllocationHandler(project=project).handle()
 
 
 # ---------------------------------------------------------------------------
@@ -1208,8 +1207,9 @@ def htmx_exchange_allocation_form(project, resource_id):
             '<div class="modal-body">'
             '<div class="alert alert-info">'
             '<i class="fas fa-info-circle"></i> '
-            'Exchange requires at least two dedicated allocations for this resource '
-            'within the project subtree. Inherited (shared) allocations do not count.'
+            'Exchange requires at least two standalone sub-project allocations '
+            'for this resource within the allocation tree. Shared (linked) '
+            'allocations do not count.'
             '</div></div>'
         )
     return render_template(
@@ -1221,100 +1221,244 @@ def htmx_exchange_allocation_form(project, resource_id):
     )
 
 
+class _ExchangeAllocationHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Validate and apply an allocation exchange within the project's subtree."""
+
+    schema_cls = ExchangeAllocationForm
+    template = 'dashboards/admin/fragments/exchange_allocation_form_htmx.html'
+    error_prefix = 'Error exchanging allocations'
+    success_message = 'Allocation exchanged successfully.'
+    exception_map = (
+        (InheritingAllocationException, lambda e: str(e)),
+        (ValueError, lambda e: str(e)),
+    )
+
+    def __init__(self, **entities):
+        super().__init__(**entities)
+        raw = request.form.get('resource_id', '').strip()
+        try:
+            self.resource_id = int(raw)
+        except (TypeError, ValueError):
+            self.resource_id = None
+        self.active_at = _parse_active_at_arg(request.form.get('active_at', ''))
+
+    def form_input(self):
+        if self.resource_id is None:
+            raise FormError('Resource is required.')
+        return request.form
+
+    def clean(self, data):
+        # Restrict endpoints to the edit-page project's subtree — prevents
+        # forged allocation IDs from outside the authorized scope.
+        candidates, self.resource = _exchange_candidates(
+            self.project, self.resource_id, active_at=self.active_at)
+        by_id = {c['allocation_id']: c for c in candidates}
+        self.from_cand = by_id.get(data['from_allocation_id'])
+        self.to_cand = by_id.get(data['to_allocation_id'])
+        if self.from_cand is None or self.to_cand is None:
+            raise FormError(
+                "Selected allocation is not in this project's allocation tree "
+                "for the chosen resource.")
+
+        # Strict overdraft: cannot push FROM remaining below zero.
+        from_remaining = self.from_cand['amount'] - self.from_cand['used']
+        if data['amount'] > from_remaining:
+            raise FormError(
+                f"Exchange amount ({data['amount']:g}) exceeds FROM remaining "
+                f"balance ({from_remaining:g}).")
+        return data
+
+    def perform(self, data):
+        from sam.manage.allocations import exchange_allocations
+        exchange_allocations(
+            db.session,
+            from_allocation_id=data['from_allocation_id'],
+            to_allocation_id=data['to_allocation_id'],
+            amount=data['amount'],
+            user_id=current_user.user_id,
+        )
+        return data['amount']
+
+    def context(self):
+        candidates, resource = (
+            _exchange_candidates(self.project, self.resource_id,
+                                 active_at=self.active_at)
+            if self.resource_id else ([], None)
+        )
+        return {
+            'project': self.project,
+            'resource': resource,
+            'candidates': candidates,
+            'active_at': self.active_at.strftime('%Y-%m-%d'),
+        }
+
+    def triggers(self, result):
+        return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
+
+    def detail(self, amount):
+        return (
+            f"{self.resource.resource_name}: -{amount:g} {self.from_cand['projcode']} / "
+            f"+{amount:g} {self.to_cand['projcode']}"
+        )
+
+
 @bp.route('/htmx/exchange-allocation/<projcode>', methods=['POST'])
 @login_required
 @require_project_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_exchange_allocation(project):
     """Validate and apply an allocation exchange within the project's subtree."""
-    from sam.accounting.allocations import Allocation, InheritingAllocationException
-    from sam.manage.allocations import exchange_allocations
-    from sam.schemas.forms import ExchangeAllocationForm
-    from marshmallow import ValidationError
+    return _ExchangeAllocationHandler(project=project).handle()
 
-    errors = []
-    resource_id_raw = request.form.get('resource_id', '').strip()
-    try:
-        resource_id = int(resource_id_raw)
-    except (TypeError, ValueError):
-        resource_id = None
 
-    active_at = _parse_active_at_arg(request.form.get('active_at', ''))
+# ---------------------------------------------------------------------------
+# Allocate residual down (Edit Project → Allocations tab)
+# ---------------------------------------------------------------------------
 
-    try:
-        form_data = ExchangeAllocationForm().load(request.form)
-    except ValidationError as e:
-        errors.extend(ExchangeAllocationForm.flatten_errors(e.messages))
-        form_data = {}
+def _allocate_down_context(allocation):
+    """Build the frontier + candidate lists for the allocate-down modal.
 
-    def _reload_exchange_form(extra_errors=None):
-        candidates, resource = (
-            _exchange_candidates(project, resource_id, active_at=active_at)
-            if resource_id else ([], None)
-        )
-        return render_template(
-            'dashboards/admin/fragments/exchange_allocation_form_htmx.html',
-            project=project,
-            resource=resource,
-            candidates=candidates,
-            active_at=active_at.strftime('%Y-%m-%d'),
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-        )
+    Returns (frontier, bump_candidates, create_candidates, resource).
+    Candidates mirror what ``allocate_residual_to_child`` will accept, so
+    the form can only offer valid targets (the manage op re-validates —
+    that membership check is the forged-ID defense).
+    """
+    from sam.manage.allocations import get_carveout_frontier
 
-    if resource_id is None:
-        return _reload_exchange_form(['Resource is required.'])
-
-    if errors:
-        return _reload_exchange_form()
-
-    from_id = form_data['from_allocation_id']
-    to_id = form_data['to_allocation_id']
-    amount = form_data['amount']
-
-    # Restrict endpoints to the edit-page project's subtree — prevents
-    # forged allocation IDs from outside the authorized scope.
-    candidates, resource = _exchange_candidates(project, resource_id, active_at=active_at)
-    by_id = {c['allocation_id']: c for c in candidates}
-    from_cand = by_id.get(from_id)
-    to_cand = by_id.get(to_id)
-    if from_cand is None or to_cand is None:
-        return _reload_exchange_form([
-            'Selected allocation is not in this project subtree for the chosen resource.'
-        ])
-
-    # Strict overdraft: cannot push FROM remaining below zero.
-    from_remaining = from_cand['amount'] - from_cand['used']
-    if amount > from_remaining:
-        return _reload_exchange_form([
-            f"Exchange amount ({amount:g}) exceeds FROM remaining balance "
-            f"({from_remaining:g})."
-        ])
-
-    try:
-        with management_transaction(db.session):
-            exchange_allocations(
-                db.session,
-                from_allocation_id=from_id,
-                to_allocation_id=to_id,
-                amount=amount,
-                user_id=current_user.user_id,
-            )
-    except InheritingAllocationException as e:
-        return _reload_exchange_form([str(e)])
-    except ValueError as e:
-        return _reload_exchange_form([str(e)])
-    except Exception as e:
-        return _reload_exchange_form([f'Error exchanging allocations: {e}'])
-
-    detail = (
-        f"{resource.resource_name}: -{amount:g} {from_cand['projcode']} / "
-        f"+{amount:g} {to_cand['projcode']}"
+    frontier = get_carveout_frontier(db.session, allocation)
+    bump_candidates = sorted(
+        ({
+            'allocation_id': a.allocation_id,
+            'projcode': a.account.project.projcode,
+            'title': a.account.project.title or '',
+            'amount': a.amount,
+        } for a in frontier.carve_children),
+        key=lambda c: c['projcode'],
     )
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
-        'Allocation exchanged successfully.',
-        detail=detail,
+    create_candidates = sorted(
+        ({
+            'project_id': p.project_id,
+            'projcode': p.projcode,
+            'title': p.title or '',
+        } for p in frontier.open_projects),
+        key=lambda c: c['projcode'],
     )
+    return frontier, bump_candidates, create_candidates, allocation.account.resource
+
+
+@bp.route('/htmx/allocate-down-form/<int:allocation_id>')
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_allocate_down_form(allocation):
+    """Render the allocate-down modal for one parent allocation.
+
+    Offers the parent's unallocated residual (amount − Σ carve-outs on the
+    direct frontier) for assignment to a sub-project — either by increasing
+    an existing carve-out or by creating a new standalone allocation on an
+    uncovered branch. The parent's own amount never changes.
+    """
+    if allocation.deleted or allocation.is_inheriting:
+        return (
+            '<div class="modal-body">'
+            '<div class="alert alert-info">'
+            '<i class="fas fa-info-circle"></i> '
+            'This is a shared allocation — it mirrors its parent and has no '
+            'unallocated remainder of its own. Allocate from the parent '
+            'allocation instead.'
+            '</div></div>'
+        )
+
+    frontier, bump_candidates, create_candidates, resource = \
+        _allocate_down_context(allocation)
+
+    if frontier.raw_residual < 0:
+        return (
+            '<div class="modal-body">'
+            '<div class="alert alert-warning">'
+            '<i class="fas fa-exclamation-triangle"></i> '
+            f'Sub-project carve-outs ({frontier.carve_total:g}) exceed this '
+            f'allocation ({float(allocation.amount):g}). Resolve the deficit '
+            'before allocating further — see '
+            '<code>sam-admin project --audit-trees</code>.'
+            '</div></div>'
+        )
+    if frontier.residual <= 0 or not (bump_candidates or create_candidates):
+        return (
+            '<div class="modal-body">'
+            '<div class="alert alert-info">'
+            '<i class="fas fa-info-circle"></i> '
+            'Nothing to allocate: this allocation has no unallocated remainder '
+            'available for its sub-projects.'
+            '</div></div>'
+        )
+
+    return render_template(
+        'dashboards/admin/fragments/allocate_down_form_htmx.html',
+        allocation=allocation,
+        parent_projcode=allocation.account.project.projcode,
+        frontier=frontier,
+        bump_candidates=bump_candidates,
+        create_candidates=create_candidates,
+        resource=resource,
+    )
+
+
+class _AllocateDownHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Validate and apply an allocate-down (sub-allocation) of the residual."""
+
+    schema_cls = AllocateResidualForm
+    template = 'dashboards/admin/fragments/allocate_down_form_htmx.html'
+    error_prefix = 'Error allocating to sub-project'
+    success_message = 'Sub-allocation applied successfully.'
+    exception_map = (
+        (InheritingAllocationException, lambda e: str(e)),
+        (ValueError, lambda e: str(e)),
+    )
+
+    def perform(self, data):
+        from sam.manage.allocations import allocate_residual_to_child
+        self.amount = data['amount']
+        return allocate_residual_to_child(
+            db.session,
+            self.allocation.allocation_id,
+            current_user.user_id,
+            amount=data['amount'],
+            target_allocation_id=data['target_allocation_id'],
+            target_project_id=data['target_project_id'],
+            comment=data.get('comment'),
+        )
+
+    def context(self):
+        frontier, bump_candidates, create_candidates, resource = \
+            _allocate_down_context(self.allocation)
+        return {
+            'allocation': self.allocation,
+            'parent_projcode': self.allocation.account.project.projcode,
+            'frontier': frontier,
+            'bump_candidates': bump_candidates,
+            'create_candidates': create_candidates,
+            'resource': resource,
+        }
+
+    def triggers(self, result):
+        return {'closeActiveModal': {},
+                'reloadAllocationTree': self.allocation.account.project.projcode}
+
+    def detail(self, child):
+        from sam.manage.allocations import get_carveout_frontier
+        residual_after = get_carveout_frontier(db.session, self.allocation).residual
+        return (
+            f"{self.allocation.account.resource.resource_name}: "
+            f"+{self.amount:g} → {child.account.project.projcode} "
+            f"(unallocated remainder now {residual_after:g})"
+        )
+
+
+@bp.route('/htmx/allocate-down/<int:allocation_id>', methods=['POST'])
+@login_required
+@require_allocation_permission(Permission.EDIT_ALLOCATIONS)
+def htmx_allocate_down(allocation):
+    """Validate and apply an allocate-down (sub-allocation) of the residual."""
+    return _AllocateDownHandler(allocation=allocation).handle()
 
 
 # ---------------------------------------------------------------------------
@@ -1459,156 +1603,143 @@ def htmx_renew_allocations_form(project):
     )
 
 
+class _RenewAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Create renewed allocations for the selected resources."""
+
+    schema_cls = RenewAllocationsForm
+    template = 'dashboards/admin/fragments/renew_allocations_form_htmx.html'
+    error_prefix = 'Error renewing allocations'
+    success_message = 'Allocations renewed successfully.'
+
+    def form_input(self):
+        # Collect multi-valued resource_ids + flatten scale_<rid> inputs into
+        # the 'scales' dict the schema expects. Missing/blank scale entries
+        # default to 1.0 inside renew_project_allocations().
+        data = {k: v for k, v in request.form.items()
+                if v != '' and not k.startswith('scale_')}
+        data['resource_ids'] = [
+            int(v) for v in request.form.getlist('resource_ids') if v
+        ]
+        data['scales'] = {
+            int(k.removeprefix('scale_')): v
+            for k, v in request.form.items()
+            if k.startswith('scale_') and v.strip()
+        }
+        return data
+
+    def clean(self, data):
+        self.new_start = datetime.combine(data['new_start_date'], datetime.min.time())
+        self.new_end = data['new_end_date']   # already datetime via post_load
+        self.source_dt = datetime.combine(data['source_active_at'], datetime.min.time())
+
+        # Pre-flight: classify each requested resource so we can produce
+        # accurate error messages and (when needed) prompt the admin to set
+        # replace_existing.
+        from sam.manage.renew import analyze_renew_preconditions
+        from sam.resources.resources import Resource
+        preconditions = analyze_renew_preconditions(
+            db.session,
+            root_project_id=self.root.project_id,
+            source_active_at=self.source_dt,
+            new_start=self.new_start,
+            new_end=self.new_end,
+            resource_ids=data['resource_ids'],
+        )
+        self.resource_name = {
+            r.resource_id: r.resource_name
+            for r in db.session.query(Resource).filter(
+                Resource.resource_id.in_(data['resource_ids'])
+            )
+        }
+        self.no_source_ids = [rid for rid, s in preconditions.items() if s == 'no_source']
+        self.overlap_ids = [rid for rid, s in preconditions.items() if s == 'overlap']
+        replace_existing = data.get('replace_existing', False)
+
+        # Bail early with a specific error when NOTHING can be renewed.
+        if (not any(s == 'ok' for s in preconditions.values())
+                and not (replace_existing and self.overlap_ids)):
+            msgs = []
+            if self.overlap_ids:
+                names = self._names(self.overlap_ids)
+                msgs.append(
+                    f'Already has allocations overlapping '
+                    f'{self.new_start.strftime("%Y-%m-%d")} → '
+                    f'{self.new_end.strftime("%Y-%m-%d")}: {names}. '
+                    f'Tick "Replace existing" to supersede them.'
+                )
+            if self.no_source_ids:
+                msgs.append(
+                    f'No active root allocation at '
+                    f'{self.source_dt.strftime("%Y-%m-%d")} for: '
+                    f'{self._names(self.no_source_ids)}.'
+                )
+            raise FormError(*msgs)
+        return data
+
+    def _names(self, resource_ids):
+        return ', '.join(sorted(self.resource_name.get(r, f'#{r}')
+                                for r in resource_ids))
+
+    def perform(self, data):
+        from sam.manage.renew import renew_project_allocations
+        self.replace_existing = data.get('replace_existing', False)
+        created = renew_project_allocations(
+            db.session,
+            root_project_id=self.root.project_id,
+            source_active_at=self.source_dt,
+            new_start=self.new_start,
+            new_end=self.new_end,
+            resource_ids=data['resource_ids'],
+            scales=data.get('scales') or {},
+            user_id=current_user.user_id,
+            replace_existing=self.replace_existing,
+        )
+        if not created:
+            # Defensive fallback — preconditions said 'ok' for at least one,
+            # but nothing was created. Shouldn't happen but keep a sane message.
+            raise FormError(
+                'No allocations were renewed. Please review the form and try again.')
+        return created
+
+    def context(self):
+        source_dt = datetime.combine(
+            _parse_active_at_arg(request.form.get('source_active_at', '')).date(),
+            datetime.min.time())
+        return {
+            'project': self.project,
+            'root': self.root,
+            'candidates': _build_renew_candidates(self.root, source_dt),
+            'source_active_at': source_dt.strftime('%Y-%m-%d'),
+            'default_start': request.form.get('new_start_date', ''),
+            'default_end': request.form.get('new_end_date', ''),
+        }
+
+    def triggers(self, result):
+        return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
+
+    def detail(self, created):
+        detail_parts = [
+            f'{self.root.projcode}: renewed {len(created)} allocation(s) for '
+            f'{self.new_start.strftime("%Y-%m-%d")} → '
+            f'{self.new_end.strftime("%Y-%m-%d")}'
+        ]
+        if self.replace_existing and self.overlap_ids:
+            detail_parts.append(
+                f'replaced overlapping allocations for: {self._names(self.overlap_ids)}')
+        if self.no_source_ids:
+            detail_parts.append(
+                f'skipped (no source at {self.source_dt.strftime("%Y-%m-%d")}): '
+                f'{self._names(self.no_source_ids)}')
+        return '; '.join(detail_parts)
+
+
 @bp.route('/htmx/renew-allocations/<projcode>', methods=['POST'])
 @login_required
 @require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_renew_allocations(project):
     """Create renewed allocations for the selected resources."""
-    from sam.resources.resources import Resource
-    from sam.manage.renew import renew_project_allocations, analyze_renew_preconditions
-    from sam.schemas.forms import RenewAllocationsForm
-    from marshmallow import ValidationError
-
     root = project.get_root() if hasattr(project, 'get_root') else project
-
-    errors = []
-
-    # Pre-process: drop empty strings; collect multi-valued resource_ids list.
-    data = {k: v for k, v in request.form.items() if v != ''}
-    data['resource_ids'] = [
-        int(v) for v in request.form.getlist('resource_ids') if v
-    ]
-    # Per-resource scale inputs: scale_<resource_id> → float. Missing/blank
-    # entries default to 1.0 inside renew_project_allocations().
-    data['scales'] = {
-        int(k.removeprefix('scale_')): v
-        for k, v in request.form.items()
-        if k.startswith('scale_') and v.strip()
-    }
-    # Strip the flattened scale_* keys so marshmallow's unknown=EXCLUDE isn't
-    # invoked on inputs we've already collapsed into the 'scales' dict.
-    for k in list(data):
-        if k.startswith('scale_'):
-            del data[k]
-    # Inject explicit False for the replace_existing checkbox when unchecked.
-    data['replace_existing'] = 'replace_existing' in request.form
-
-    try:
-        form_data = RenewAllocationsForm().load(data)
-    except ValidationError as e:
-        errors.extend(RenewAllocationsForm.flatten_errors(e.messages))
-        form_data = {}
-
-    def _reload_renew_form(extra_errors=None):
-        source_active_at = form_data.get('source_active_at') \
-            or _parse_active_at_arg(request.form.get('source_active_at', '')).date()
-        # Normalize to datetime
-        source_dt = (
-            datetime.combine(source_active_at, datetime.min.time())
-            if hasattr(source_active_at, 'year') else datetime.now()
-        )
-        candidates = _build_renew_candidates(root, source_dt)
-        return render_template(
-            'dashboards/admin/fragments/renew_allocations_form_htmx.html',
-            project=project,
-            root=root,
-            candidates=candidates,
-            source_active_at=source_dt.strftime('%Y-%m-%d'),
-            default_start=request.form.get('new_start_date', ''),
-            default_end=request.form.get('new_end_date', ''),
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-        )
-
-    if errors:
-        return _reload_renew_form()
-
-    new_start = datetime.combine(
-        form_data['new_start_date'], datetime.min.time()
-    )
-    new_end = form_data['new_end_date']   # already datetime via post_load
-    source_dt = datetime.combine(
-        form_data['source_active_at'], datetime.min.time()
-    )
-
-    replace_existing = form_data.get('replace_existing', False)
-
-    # Pre-flight: classify each requested resource so we can produce accurate
-    # error messages and (when needed) prompt the admin to set replace_existing.
-    preconditions = analyze_renew_preconditions(
-        db.session,
-        root_project_id=root.project_id,
-        source_active_at=source_dt,
-        new_start=new_start,
-        new_end=new_end,
-        resource_ids=form_data['resource_ids'],
-    )
-    resource_name = {
-        r.resource_id: r.resource_name
-        for r in db.session.query(Resource).filter(
-            Resource.resource_id.in_(form_data['resource_ids'])
-        )
-    }
-
-    no_source_ids = [rid for rid, s in preconditions.items() if s == 'no_source']
-    overlap_ids   = [rid for rid, s in preconditions.items() if s == 'overlap']
-
-    # Bail early with a specific error when NOTHING can be renewed.
-    if not any(s == 'ok' for s in preconditions.values()) and not (replace_existing and overlap_ids):
-        msgs = []
-        if overlap_ids:
-            names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in overlap_ids))
-            msgs.append(
-                f'Already has allocations overlapping '
-                f'{new_start.strftime("%Y-%m-%d")} → {new_end.strftime("%Y-%m-%d")}: {names}. '
-                f'Tick "Replace existing" to supersede them.'
-            )
-        if no_source_ids:
-            names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in no_source_ids))
-            msgs.append(
-                f'No active root allocation at '
-                f'{source_dt.strftime("%Y-%m-%d")} for: {names}.'
-            )
-        return _reload_renew_form(msgs)
-
-    try:
-        with management_transaction(db.session):
-            created = renew_project_allocations(
-                db.session,
-                root_project_id=root.project_id,
-                source_active_at=source_dt,
-                new_start=new_start,
-                new_end=new_end,
-                resource_ids=form_data['resource_ids'],
-                scales=form_data.get('scales') or {},
-                user_id=current_user.user_id,
-                replace_existing=replace_existing,
-            )
-    except Exception as e:
-        return _reload_renew_form([f'Error renewing allocations: {e}'])
-
-    if not created:
-        # Defensive fallback — preconditions said 'ok' for at least one, but
-        # nothing was created. Shouldn't happen but keep a sane message.
-        return _reload_renew_form([
-            'No allocations were renewed. Please review the form and try again.'
-        ])
-
-    detail_parts = [
-        f'{root.projcode}: renewed {len(created)} allocation(s) for '
-        f'{new_start.strftime("%Y-%m-%d")} → {new_end.strftime("%Y-%m-%d")}'
-    ]
-    if replace_existing and overlap_ids:
-        names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in overlap_ids))
-        detail_parts.append(f'replaced overlapping allocations for: {names}')
-    if no_source_ids:
-        names = ', '.join(sorted(resource_name.get(r, f'#{r}') for r in no_source_ids))
-        detail_parts.append(f'skipped (no source at {source_dt.strftime("%Y-%m-%d")}): {names}')
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
-        'Allocations renewed successfully.',
-        detail='; '.join(detail_parts),
-    )
+    return _RenewAllocationsHandler(project=project, root=root).handle()
 
 
 # ---------------------------------------------------------------------------
@@ -1695,101 +1826,87 @@ def htmx_extend_allocations_form(project):
     )
 
 
+class _ExtendAllocationsHandler(FlattenedFieldErrors, HtmxFormHandler):
+    """Push end_date forward on the selected allocations."""
+
+    schema_cls = ExtendAllocationsForm
+    template = 'dashboards/admin/fragments/extend_allocations_form_htmx.html'
+    error_prefix = 'Error extending allocations'
+    success_message = 'Allocations extended successfully.'
+
+    def form_input(self):
+        data = {k: v for k, v in request.form.items() if v != ''}
+        data['resource_ids'] = [
+            int(v) for v in request.form.getlist('resource_ids') if v
+        ]
+        return data
+
+    def clean(self, data):
+        self.new_end = data['new_end_date']   # datetime via post_load
+        self.source_dt = datetime.combine(
+            data['source_active_at'], datetime.min.time())
+
+        # Block shortening: new_end must strictly exceed every selected
+        # resource's current end date at the source.
+        from sam.manage.renew import find_source_alloc_at
+        latest_current_end = None
+        for rid in data['resource_ids']:
+            src = find_source_alloc_at(self.root, rid, self.source_dt)
+            if src is None or src.end_date is None:
+                continue
+            if latest_current_end is None or src.end_date > latest_current_end:
+                latest_current_end = src.end_date
+        if latest_current_end is not None and self.new_end <= latest_current_end:
+            raise FormError(
+                f'New end date must be later than the current latest end date '
+                f'({latest_current_end.strftime("%Y-%m-%d")}).')
+        return data
+
+    def perform(self, data):
+        from sam.manage.extend import extend_project_allocations
+        updated = extend_project_allocations(
+            db.session,
+            root_project_id=self.root.project_id,
+            source_active_at=self.source_dt,
+            new_end=self.new_end,
+            resource_ids=data['resource_ids'],
+            user_id=current_user.user_id,
+        )
+        if not updated:
+            raise FormError(
+                'No allocations were extended. Either the selected resources '
+                'are open-ended or already end on/after the requested date.')
+        return updated
+
+    def context(self):
+        source_dt = datetime.combine(
+            _parse_active_at_arg(request.form.get('source_active_at', '')).date(),
+            datetime.min.time())
+        return {
+            'project': self.project,
+            'root': self.root,
+            'candidates': _build_extend_candidates(self.root, source_dt),
+            'source_active_at': source_dt.strftime('%Y-%m-%d'),
+            'default_end': request.form.get('new_end_date', ''),
+        }
+
+    def triggers(self, result):
+        return {'closeActiveModal': {}, 'reloadAllocationTree': self.project.projcode}
+
+    def detail(self, updated):
+        return (
+            f'{self.root.projcode}: extended {len(updated)} allocation(s) to '
+            f'{self.new_end.strftime("%Y-%m-%d")}'
+        )
+
+
 @bp.route('/htmx/extend-allocations/<projcode>', methods=['POST'])
 @login_required
 @require_project_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_extend_allocations(project):
     """Push end_date forward on the selected allocations."""
-    from sam.manage.extend import extend_project_allocations
-    from sam.schemas.forms import ExtendAllocationsForm
-    from marshmallow import ValidationError
-
     root = project.get_root() if hasattr(project, 'get_root') else project
-
-    errors = []
-
-    data = {k: v for k, v in request.form.items() if v != ''}
-    data['resource_ids'] = [
-        int(v) for v in request.form.getlist('resource_ids') if v
-    ]
-
-    try:
-        form_data = ExtendAllocationsForm().load(data)
-    except ValidationError as e:
-        errors.extend(ExtendAllocationsForm.flatten_errors(e.messages))
-        form_data = {}
-
-    def _reload_extend_form(extra_errors=None):
-        source_active_at = form_data.get('source_active_at') \
-            or _parse_active_at_arg(request.form.get('source_active_at', '')).date()
-        source_dt = (
-            datetime.combine(source_active_at, datetime.min.time())
-            if hasattr(source_active_at, 'year') else datetime.now()
-        )
-        candidates = _build_extend_candidates(root, source_dt)
-        return render_template(
-            'dashboards/admin/fragments/extend_allocations_form_htmx.html',
-            project=project,
-            root=root,
-            candidates=candidates,
-            source_active_at=source_dt.strftime('%Y-%m-%d'),
-            default_end=request.form.get('new_end_date', ''),
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-        )
-
-    if errors:
-        return _reload_extend_form()
-
-    new_end = form_data['new_end_date']   # datetime via post_load
-    source_dt = datetime.combine(
-        form_data['source_active_at'], datetime.min.time()
-    )
-
-    # Block shortening: new_end must strictly exceed every selected
-    # resource's current end date at the source.
-    from sam.manage.renew import find_source_alloc_at
-    latest_current_end = None
-    for rid in form_data['resource_ids']:
-        src = find_source_alloc_at(root, rid, source_dt)
-        if src is None or src.end_date is None:
-            continue
-        if latest_current_end is None or src.end_date > latest_current_end:
-            latest_current_end = src.end_date
-    if latest_current_end is not None and new_end <= latest_current_end:
-        return _reload_extend_form([
-            f'New end date must be later than the current latest end date '
-            f'({latest_current_end.strftime("%Y-%m-%d")}).'
-        ])
-
-    try:
-        with management_transaction(db.session):
-            updated = extend_project_allocations(
-                db.session,
-                root_project_id=root.project_id,
-                source_active_at=source_dt,
-                new_end=new_end,
-                resource_ids=form_data['resource_ids'],
-                user_id=current_user.user_id,
-            )
-    except Exception as e:
-        return _reload_extend_form([f'Error extending allocations: {e}'])
-
-    if not updated:
-        return _reload_extend_form([
-            'No allocations were extended. Either the selected resources '
-            'are open-ended or already end on/after the requested date.'
-        ])
-
-    detail = (
-        f'{root.projcode}: extended {len(updated)} allocation(s) to '
-        f'{new_end.strftime("%Y-%m-%d")}'
-    )
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
-        'Allocations extended successfully.',
-        detail=detail,
-    )
+    return _ExtendAllocationsHandler(project=project, root=root).handle()
 
 
 @bp.route('/htmx/edit-allocation-form/<int:allocation_id>')
@@ -1797,13 +1914,18 @@ def htmx_extend_allocations(project):
 @require_allocation_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_edit_allocation_form(allocation):
     """Return the edit-allocation form fragment (loaded into modal)."""
-    from sam.manage.allocations import get_partitioned_descendant_sum, date_ranges_overlap
+    from sam.manage.allocations import get_carveout_frontier, date_ranges_overlap
     from sam.accounting.accounts import Account
 
     projcode = allocation.account.project.projcode
 
-    # Flaw 1 fix: sum standalone (non-inherited) descendant allocations only
-    partitioned_sum = get_partitioned_descendant_sum(db.session, allocation)
+    # Direct-frontier decomposition: carve-outs vs pool members among the
+    # nearest allocated descendants. Drives the "Assigned to sub-projects /
+    # Unallocated" strip — the same numbers the allocation tree and the
+    # allocate-down modal show, so the three surfaces always agree.
+    frontier = None
+    if not allocation.is_inheriting:
+        frontier = get_carveout_frontier(db.session, allocation)
 
     # Parent info for inheriting allocations
     parent_info = None
@@ -1865,11 +1987,94 @@ def htmx_edit_allocation_form(allocation):
         'dashboards/admin/fragments/edit_allocation_form_htmx.html',
         allocation=allocation,
         projcode=projcode,
-        partitioned_sum=partitioned_sum,
+        frontier=frontier,
         parent_info=parent_info,
         unlinked_descendants_count=unlinked_descendants_count,
         relink_candidate=relink_candidate,
     )
+
+
+class _EditAllocationHandler(HtmxFormHandler):
+    """Validate and apply allocation edits with cascade + audit logging."""
+
+    schema_cls = EditAllocationForm
+    template = 'dashboards/admin/fragments/edit_allocation_form_htmx.html'
+    partial = True
+    error_prefix = 'Error updating allocation'
+    success_message = 'Allocation updated successfully.'
+    exception_map = (
+        (InheritingAllocationException, (
+            'Cannot directly edit a shared allocation. '
+            'Check "I understand — permanently break inheritance and allow '
+            'editing these fields" to detach it first, or edit the parent '
+            'allocation — changes are applied here automatically.')),
+    )
+
+    def form_input(self):
+        # Drop empty amount/start_date up front (partial load must not see
+        # them at all). An empty end_date is different: the schema strips it
+        # and load_default fills None, and clean()'s presence-gate on
+        # request.form is what turns that None into a deliberate
+        # clear-to-open-ended update.
+        data = dict(request.form)
+        for k in ('amount', 'start_date'):
+            if data.get(k) == '':
+                data.pop(k, None)
+        return data
+
+    def clean(self, data):
+        # Gate updates on original form presence so unspecified fields
+        # aren't overwritten and empty-string end_date correctly clears.
+        updates = {}
+        if request.form.get('amount'):
+            updates['amount'] = data['amount']
+        if request.form.get('start_date'):
+            updates['start_date'] = datetime.combine(
+                data['start_date'], datetime.min.time())
+        if 'end_date' in request.form:
+            updates['end_date'] = data.get('end_date')  # datetime or None
+        if 'description' in request.form:
+            updates['description'] = data.get('description')
+        if not updates:
+            raise FormError('No changes provided.')
+        return updates
+
+    def perform(self, updates):
+        from sam.manage.allocations import update_allocation, detach_allocation
+        alloc_id = self.allocation.allocation_id
+        if (self.allocation.is_inheriting
+                and request.form.get('break_inheritance') == 'true'):
+            # DETACH then EDIT: two audit records — intentional.
+            # detach_allocation() calls session.flush() so is_inheriting is
+            # False in the identity map before update_allocation() runs.
+            detach_allocation(db.session, alloc_id, current_user.user_id)
+        update_allocation(db.session, alloc_id, current_user.user_id, **updates)
+
+    def context(self):
+        from sam.manage.allocations import get_carveout_frontier
+        frontier = (get_carveout_frontier(db.session, self.allocation)
+                    if not self.allocation.is_inheriting else None)
+        parent_info = None
+        if self.allocation.is_inheriting and self.allocation.parent:
+            p = self.allocation.parent
+            parent_proj = p.account.project if p.account else None
+            parent_info = {
+                'allocation_id': p.allocation_id,
+                'amount': p.amount,
+                'projcode': parent_proj.projcode if parent_proj and parent_proj.active else None,
+            }
+        return {
+            'allocation': self.allocation,
+            'projcode': self.allocation.account.project.projcode,
+            'frontier': frontier,
+            'parent_info': parent_info,
+            'unlinked_descendants_count': 0,  # skip expensive recompute on error re-renders
+            'relink_candidate': None,         # skip recompute on error re-renders
+        }
+
+    def triggers(self, result):
+        return {'closeActiveModal': {},
+                'reloadAllocationTree': self.allocation.account.project.projcode}
 
 
 @bp.route('/htmx/edit-allocation/<int:allocation_id>', methods=['POST'])
@@ -1877,100 +2082,7 @@ def htmx_edit_allocation_form(allocation):
 @require_allocation_facility_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_edit_allocation(allocation):
     """Validate and apply allocation edits with cascade + audit logging."""
-    from sam.accounting.allocations import InheritingAllocationException
-    from sam.manage.allocations import update_allocation, detach_allocation
-    from sam.manage.allocations import get_partitioned_descendant_sum
-    from sam.schemas.forms import EditAllocationForm
-    from marshmallow import ValidationError
-
-    alloc_id = allocation.allocation_id
-    projcode = allocation.account.project.projcode
-
-    break_inheritance = request.form.get('break_inheritance') == 'true'
-
-    errors = []
-
-    # Pre-process form data: drop empty amount/start_date (marshmallow would
-    # reject '' for Float/Date). end_date='' is a valid "clear to open-ended"
-    # signal — let the schema's post_load convert it to None.
-    data = dict(request.form)
-    for k in ('amount', 'start_date'):
-        if data.get(k) == '':
-            data.pop(k, None)
-
-    try:
-        form_data = EditAllocationForm().load(data, partial=True)
-    except ValidationError as e:
-        errors.extend(EditAllocationForm.flatten_errors(e.messages))
-        form_data = {}
-
-    # Build updates dict — gate on original form presence so unspecified fields
-    # aren't overwritten and empty-string end_date correctly clears.
-    updates = {}
-    if request.form.get('amount'):
-        updates['amount'] = form_data['amount']
-    if request.form.get('start_date'):
-        updates['start_date'] = datetime.combine(
-            form_data['start_date'], datetime.min.time()
-        )
-    if 'end_date' in request.form:
-        updates['end_date'] = form_data.get('end_date')  # datetime or None
-    if 'description' in request.form:
-        updates['description'] = form_data.get('description')
-
-    def _reload_edit_form(extra_errors=None):
-        # Recompute context for re-render
-        partitioned_sum = get_partitioned_descendant_sum(db.session, allocation)
-        p_info = None
-        if allocation.is_inheriting and allocation.parent:
-            p = allocation.parent
-            parent_proj = p.account.project if p.account else None
-            p_info = {
-                'allocation_id': p.allocation_id,
-                'amount': p.amount,
-                'projcode': parent_proj.projcode if parent_proj and parent_proj.active else None,
-            }
-        return render_template(
-            'dashboards/admin/fragments/edit_allocation_form_htmx.html',
-            allocation=allocation,
-            projcode=projcode,
-            partitioned_sum=partitioned_sum,
-            parent_info=p_info,
-            unlinked_descendants_count=0,  # skip expensive recompute on error re-renders
-            relink_candidate=None,         # skip recompute on error re-renders
-            errors=(extra_errors or []) + errors,
-            form=request.form,
-        )
-
-    if errors:
-        return _reload_edit_form()
-
-    if not updates:
-        return _reload_edit_form(['No changes provided.'])
-
-    try:
-        with management_transaction(db.session):
-            if allocation.is_inheriting and break_inheritance:
-                # DETACH then EDIT: two audit records — intentional.
-                # detach_allocation() calls session.flush() so is_inheriting is
-                # False in the identity map before update_allocation() runs.
-                detach_allocation(db.session, alloc_id, current_user.user_id)
-                update_allocation(db.session, alloc_id, current_user.user_id, **updates)
-            else:
-                update_allocation(db.session, alloc_id, current_user.user_id, **updates)
-    except InheritingAllocationException:
-        return _reload_edit_form([
-            'Cannot directly edit an inherited allocation. '
-            'Check "I understand — break inheritance" to detach it first, '
-            'or edit the parent allocation to cascade changes automatically.'
-        ])
-    except Exception as e:
-        return _reload_edit_form([f'Error updating allocation: {e}'])
-
-    return htmx_success_message(
-        {'closeActiveModal': {}, 'reloadAllocationTree': projcode},
-        'Allocation updated successfully.',
-    )
+    return _EditAllocationHandler(allocation=allocation).handle()
 
 
 @bp.route('/htmx/detach-allocation/<int:allocation_id>', methods=['POST'])
@@ -1997,16 +2109,18 @@ def htmx_detach_allocation(allocation):
 @require_allocation_permission(Permission.EDIT_ALLOCATIONS)
 def htmx_link_allocation_to_parent(allocation):
     """Re-link a standalone child allocation to its parent-project allocation."""
+    from marshmallow import ValidationError
     from sam.manage.allocations import link_allocation_to_parent
+    from sam.schemas.forms import LinkAllocationParentForm
 
     projcode = allocation.account.project.projcode
 
     try:
-        parent_allocation_id = int(request.form.get('parent_allocation_id', '0'))
-    except (TypeError, ValueError):
-        return '<div class="alert alert-danger">Invalid parent allocation id.</div>', 400
-    if parent_allocation_id <= 0:
-        return '<div class="alert alert-danger">Missing parent allocation id.</div>', 400
+        form_data = LinkAllocationParentForm().load(request.form)
+    except ValidationError as e:
+        msgs = '; '.join(m for ms in e.messages.values() for m in ms)
+        return f'<div class="alert alert-danger">{msgs}</div>', 400
+    parent_allocation_id = form_data['parent_allocation_id']
 
     try:
         with management_transaction(db.session):
@@ -2055,8 +2169,10 @@ def htmx_propagate_to_remaining(allocation):
         return f'<div class="alert alert-danger">Error: {e}</div>', 400
     return htmx_success_message(
         {'closeActiveModal': {}, 'reloadAllocationTree': project.projcode},
-        f'Created {len(created)} child allocation(s).'
-        + (f' {len(skipped)} skipped (already existed).' if skipped else ''),
+        'Shared allocations created successfully.',
+        detail=(f'{len(created)} sub-project(s)'
+                + (f'; {len(skipped)} skipped (already had an allocation)'
+                   if skipped else '')),
     )
 
 
@@ -2154,15 +2270,55 @@ def htmx_project_linked_elements(project):
     return _render_linked_elements(project)
 
 
+class _LinkedElementAddHandler(HtmxFormHandler):
+    """Base for the linked-elements add handlers.
+
+    There is no per-field form to re-render — validation and domain errors
+    both land as an alert list on the whole linked-elements fragment, and
+    success re-renders it fresh.
+    """
+
+    def render_errors(self, errors, field_errors=None):
+        flat = [f'{field.replace("_", " ").title()}: {msg}'
+                for field, msgs in (field_errors or {}).items()
+                for msg in msgs]
+        return _render_linked_elements(self.project, errors=list(errors) + flat)
+
+    def on_success(self, result):
+        db.session.refresh(self.project)
+        return _render_linked_elements(self.project)
+
+
+class _AddProjectOrganizationHandler(_LinkedElementAddHandler):
+    schema_cls = AddLinkedOrganizationForm
+    error_prefix = 'Error adding organization'
+
+    def clean(self, data):
+        from sam.core.organizations import Organization
+        self.org = db.session.get(Organization, data['organization_id'])
+        if not self.org:
+            raise FormError('Organization not found.')
+        # Prevent duplicate active links
+        if any(po.organization_id == data['organization_id'] and po.is_active
+               for po in self.project.organizations):
+            raise FormError(f'"{self.org.name}" is already linked to this project.')
+        return data
+
+    def perform(self, data):
+        from sam.core.organizations import ProjectOrganization
+        ProjectOrganization.create(
+            db.session,
+            project_id=self.project.project_id,
+            organization_id=data['organization_id'],
+        )
+
+
 @bp.route('/htmx/project/<projcode>/organizations/add', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_add_project_organization(projcode):
     """Link an organization to a project (NCAR facility only)."""
-    from marshmallow import ValidationError
-    from sam.schemas.forms.projects import AddLinkedOrganizationForm
     from sam.projects.projects import Project
-    from sam.core.organizations import Organization, ProjectOrganization
 
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
@@ -2176,33 +2332,7 @@ def htmx_add_project_organization(projcode):
     if facility_name not in _ORG_LINK_FACILITIES:
         return _render_linked_elements(project, errors=['Organization links are not available for this facility.'])
 
-    try:
-        form_data = AddLinkedOrganizationForm().load(request.form)
-    except ValidationError as e:
-        return _render_linked_elements(project, errors=AddLinkedOrganizationForm.flatten_errors(e.messages))
-
-    org_id = form_data['organization_id']
-    org = db.session.get(Organization, org_id)
-    if not org:
-        return _render_linked_elements(project, errors=['Organization not found.'])
-
-    # Prevent duplicate active links
-    existing = [po for po in project.organizations if po.organization_id == org_id and po.is_active]
-    if existing:
-        return _render_linked_elements(project, errors=[f'"{org.name}" is already linked to this project.'])
-
-    try:
-        with management_transaction(db.session):
-            ProjectOrganization.create(
-                db.session,
-                project_id=project.project_id,
-                organization_id=org_id,
-            )
-    except Exception as e:
-        return _render_linked_elements(project, errors=[f'Error adding organization: {e}'])
-
-    db.session.refresh(project)
-    return _render_linked_elements(project)
+    return _AddProjectOrganizationHandler(project=project).handle()
 
 
 @bp.route('/htmx/project/<projcode>/organizations/<int:po_id>/remove', methods=['POST'])
@@ -2231,47 +2361,43 @@ def htmx_remove_project_organization(projcode, po_id):
     return _render_linked_elements(project)
 
 
+class _AddProjectContractHandler(_LinkedElementAddHandler):
+    schema_cls = AddLinkedContractForm
+    error_prefix = 'Error adding contract'
+
+    def clean(self, data):
+        from sam.projects.contracts import Contract
+        contract = db.session.get(Contract, data['contract_id'])
+        if not contract:
+            raise FormError('Contract not found.')
+        # Prevent duplicate links
+        if any(pc.contract_id == data['contract_id']
+               for pc in self.project.contracts):
+            raise FormError(f'Contract "{contract.contract_number}" is already '
+                            f'linked to this project.')
+        return data
+
+    def perform(self, data):
+        from sam.projects.contracts import ProjectContract
+        ProjectContract.create(
+            db.session,
+            project_id=self.project.project_id,
+            contract_id=data['contract_id'],
+        )
+
+
 @bp.route('/htmx/project/<projcode>/contracts/add', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_add_project_contract(projcode):
     """Link a contract to a project."""
-    from marshmallow import ValidationError
-    from sam.schemas.forms.projects import AddLinkedContractForm
     from sam.projects.projects import Project
-    from sam.projects.contracts import Contract, ProjectContract
 
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
         return '<div class="alert alert-danger">Project not found.</div>', 404
 
-    try:
-        form_data = AddLinkedContractForm().load(request.form)
-    except ValidationError as e:
-        return _render_linked_elements(project, errors=AddLinkedContractForm.flatten_errors(e.messages))
-
-    contract_id = form_data['contract_id']
-    contract = db.session.get(Contract, contract_id)
-    if not contract:
-        return _render_linked_elements(project, errors=['Contract not found.'])
-
-    # Prevent duplicate links
-    existing = [pc for pc in project.contracts if pc.contract_id == contract_id]
-    if existing:
-        return _render_linked_elements(project, errors=[f'Contract "{contract.contract_number}" is already linked to this project.'])
-
-    try:
-        with management_transaction(db.session):
-            ProjectContract.create(
-                db.session,
-                project_id=project.project_id,
-                contract_id=contract_id,
-            )
-    except Exception as e:
-        return _render_linked_elements(project, errors=[f'Error adding contract: {e}'])
-
-    db.session.refresh(project)
-    return _render_linked_elements(project)
+    return _AddProjectContractHandler(project=project).handle()
 
 
 @bp.route('/htmx/project/<projcode>/contracts/<int:pc_id>/remove', methods=['POST'])
@@ -2311,6 +2437,34 @@ def htmx_remove_project_contract(projcode, pc_id):
     return _render_linked_elements(project)
 
 
+class _AddProjectDirectoryHandler(_LinkedElementAddHandler):
+    schema_cls = AddLinkedDirectoryForm
+    error_prefix = 'Error adding directory'
+
+    def clean(self, data):
+        from sam.resources.resources import DiskResourceRootDirectory
+        root = db.session.get(DiskResourceRootDirectory, data['root_directory_id'])
+        if not root or root.root_directory == '/':
+            raise FormError('Selected disk root is invalid.')
+
+        self.directory_name = _assemble_directory_name(root, data['directory_suffix'])
+
+        # Prevent duplicate active entries
+        if any(pd.directory_name == self.directory_name and pd.is_active
+               for pd in self.project.directories):
+            raise FormError(f'Directory "{self.directory_name}" is already '
+                            f'linked to this project.')
+        return data
+
+    def perform(self, data):
+        from sam.projects.projects import ProjectDirectory
+        ProjectDirectory.create(
+            db.session,
+            project_id=self.project.project_id,
+            directory_name=self.directory_name,
+        )
+
+
 @bp.route('/htmx/project/<projcode>/directories/add', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
@@ -2320,43 +2474,13 @@ def htmx_add_project_directory(projcode):
     Input is now (root_directory_id, directory_suffix); the route looks up
     the chosen root, rejects '/', and assembles the final directory_name.
     """
-    from marshmallow import ValidationError
-    from sam.schemas.forms.projects import AddLinkedDirectoryForm
-    from sam.projects.projects import Project, ProjectDirectory
-    from sam.resources.resources import DiskResourceRootDirectory
+    from sam.projects.projects import Project
 
     project = Project.get_by_projcode(db.session, projcode)
     if not project:
         return '<div class="alert alert-danger">Project not found.</div>', 404
 
-    try:
-        form_data = AddLinkedDirectoryForm().load(request.form)
-    except ValidationError as e:
-        return _render_linked_elements(project, errors=AddLinkedDirectoryForm.flatten_errors(e.messages))
-
-    root = db.session.get(DiskResourceRootDirectory, form_data['root_directory_id'])
-    if not root or root.root_directory == '/':
-        return _render_linked_elements(project, errors=['Selected disk root is invalid.'])
-
-    directory_name = _assemble_directory_name(root, form_data['directory_suffix'])
-
-    # Prevent duplicate active entries
-    existing = [pd for pd in project.directories if pd.directory_name == directory_name and pd.is_active]
-    if existing:
-        return _render_linked_elements(project, errors=[f'Directory "{directory_name}" is already linked to this project.'])
-
-    try:
-        with management_transaction(db.session):
-            ProjectDirectory.create(
-                db.session,
-                project_id=project.project_id,
-                directory_name=directory_name,
-            )
-    except Exception as e:
-        return _render_linked_elements(project, errors=[f'Error adding directory: {e}'])
-
-    db.session.refresh(project)
-    return _render_linked_elements(project)
+    return _AddProjectDirectoryHandler(project=project).handle()
 
 
 @bp.route('/htmx/project/<projcode>/directories/<int:pd_id>/remove', methods=['POST'])
@@ -2483,6 +2607,52 @@ def htmx_admin_project_directory_new_form():
     )
 
 
+class _DirectoryFormMixin:
+    """Shared clean() for the admin project-directory create/edit modals:
+    validate root + target project, assemble the final directory_name."""
+
+    def clean(self, data):
+        from sam.projects.projects import Project
+        from sam.resources.resources import DiskResourceRootDirectory
+        root = db.session.get(DiskResourceRootDirectory, data['root_directory_id'])
+        if not root or root.root_directory == '/':
+            raise FormError('Selected disk root is invalid.')
+        self.target_project = db.session.get(Project, data['project_id'])
+        if not self.target_project:
+            raise FormError('Selected project does not exist.')
+        self.directory_name = _assemble_directory_name(root, data['directory_suffix'])
+        return data
+
+
+class _AdminDirectoryCreateHandler(_DirectoryFormMixin, HtmxFormHandler):
+    schema_cls = EditLinkedDirectoryForm
+    template = 'dashboards/admin/fragments/project_directory_new_form_htmx.html'
+    error_prefix = 'Error creating directory'
+    success_message = 'Project directory created.'
+
+    def clean(self, data):
+        data = super().clean(data)
+        if any(pd.directory_name == self.directory_name and pd.is_active
+               for pd in self.target_project.directories):
+            raise FormError(f'Directory "{self.directory_name}" is already '
+                            f'linked to {self.target_project.projcode}.')
+        return data
+
+    def perform(self, data):
+        from sam.projects.projects import ProjectDirectory
+        ProjectDirectory.create(
+            db.session,
+            project_id=data['project_id'],
+            directory_name=self.directory_name,
+        )
+
+    def context(self):
+        return {'disk_roots': _disk_roots_for_picker()}
+
+    def triggers(self, result):
+        return _PROJECT_DIRECTORIES_RELOAD_TRIGGERS
+
+
 @bp.route('/htmx/admin/project-directories/create', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
@@ -2493,57 +2663,7 @@ def htmx_admin_project_directory_create():
     The route validates the chosen root (must exist and not equal '/'),
     assembles the final directory_name, and creates the row.
     """
-    from marshmallow import ValidationError
-    from sam.schemas.forms.projects import EditLinkedDirectoryForm
-    from sam.projects.projects import Project, ProjectDirectory
-    from sam.resources.resources import DiskResourceRootDirectory
-
-    disk_roots = _disk_roots_for_picker()
-
-    def _reload(errors):
-        return render_template(
-            'dashboards/admin/fragments/project_directory_new_form_htmx.html',
-            disk_roots=disk_roots,
-            errors=errors,
-            form=request.form,
-        )
-
-    try:
-        form_data = EditLinkedDirectoryForm().load(request.form)
-    except ValidationError as e:
-        return _reload(EditLinkedDirectoryForm.flatten_errors(e.messages))
-
-    root = db.session.get(DiskResourceRootDirectory, form_data['root_directory_id'])
-    if not root or root.root_directory == '/':
-        return _reload(['Selected disk root is invalid.'])
-
-    target_project = db.session.get(Project, form_data['project_id'])
-    if not target_project:
-        return _reload(['Selected project does not exist.'])
-
-    directory_name = _assemble_directory_name(root, form_data['directory_suffix'])
-
-    duplicates = [
-        pd for pd in target_project.directories
-        if pd.directory_name == directory_name and pd.is_active
-    ]
-    if duplicates:
-        return _reload([f'Directory "{directory_name}" is already linked to {target_project.projcode}.'])
-
-    try:
-        with management_transaction(db.session):
-            ProjectDirectory.create(
-                db.session,
-                project_id=form_data['project_id'],
-                directory_name=directory_name,
-            )
-    except Exception as e:
-        return _reload([f'Error creating directory: {e}'])
-
-    return htmx_success_message(
-        _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
-        'Project directory created.',
-    )
+    return _AdminDirectoryCreateHandler().handle()
 
 
 @bp.route('/htmx/admin/project-directories/<int:pd_id>/edit-form')
@@ -2575,64 +2695,47 @@ def htmx_admin_project_directory_edit_form(pd_id):
     )
 
 
+class _AdminDirectoryEditHandler(_DirectoryFormMixin, HtmxFormHandler):
+    schema_cls = EditLinkedDirectoryForm
+    template = 'dashboards/admin/fragments/project_directory_edit_form_htmx.html'
+    error_prefix = 'Error updating directory'
+    success_message = 'Project directory updated.'
+
+    def perform(self, data):
+        self.pd.update(
+            directory_name=self.directory_name,
+            project_id=data['project_id'],
+        )
+
+    def context(self):
+        # Decompose afresh so banner state stays consistent on re-render.
+        disk_roots = _disk_roots_for_picker()
+        default_root, default_suffix = _decompose_directory_name(
+            self.pd.directory_name, disk_roots)
+        return {
+            'pd': self.pd,
+            'disk_roots': disk_roots,
+            'default_root': default_root,
+            'default_suffix': default_suffix,
+            'is_orphaned': (default_root is None),
+        }
+
+    def triggers(self, result):
+        return _PROJECT_DIRECTORIES_RELOAD_TRIGGERS
+
+
 @bp.route('/htmx/admin/project-directories/<int:pd_id>/edit', methods=['POST'])
 @login_required
 @require_permission(Permission.EDIT_PROJECTS)
 def htmx_admin_project_directory_edit(pd_id):
     """Update a project_directory row's directory_name and/or linked project."""
-    from marshmallow import ValidationError
-    from sam.schemas.forms.projects import EditLinkedDirectoryForm
-    from sam.projects.projects import Project, ProjectDirectory
-    from sam.resources.resources import DiskResourceRootDirectory
+    from sam.projects.projects import ProjectDirectory
 
     pd = db.session.get(ProjectDirectory, pd_id)
     if not pd:
         return '<div class="alert alert-danger">Directory not found.</div>', 404
 
-    disk_roots = _disk_roots_for_picker()
-
-    def _reload(errors):
-        # Decompose afresh so banner state stays consistent on re-render.
-        default_root, default_suffix = _decompose_directory_name(pd.directory_name, disk_roots)
-        return render_template(
-            'dashboards/admin/fragments/project_directory_edit_form_htmx.html',
-            pd=pd,
-            disk_roots=disk_roots,
-            default_root=default_root,
-            default_suffix=default_suffix,
-            is_orphaned=(default_root is None),
-            errors=errors,
-            form=request.form,
-        )
-
-    try:
-        form_data = EditLinkedDirectoryForm().load(request.form)
-    except ValidationError as e:
-        return _reload(EditLinkedDirectoryForm.flatten_errors(e.messages))
-
-    root = db.session.get(DiskResourceRootDirectory, form_data['root_directory_id'])
-    if not root or root.root_directory == '/':
-        return _reload(['Selected disk root is invalid.'])
-
-    target_project = db.session.get(Project, form_data['project_id'])
-    if not target_project:
-        return _reload(['Selected project does not exist.'])
-
-    directory_name = _assemble_directory_name(root, form_data['directory_suffix'])
-
-    try:
-        with management_transaction(db.session):
-            pd.update(
-                directory_name=directory_name,
-                project_id=form_data['project_id'],
-            )
-    except Exception as e:
-        return _reload([f'Error updating directory: {e}'])
-
-    return htmx_success_message(
-        _PROJECT_DIRECTORIES_RELOAD_TRIGGERS,
-        'Project directory updated.',
-    )
+    return _AdminDirectoryEditHandler(pd=pd).handle()
 
 
 @bp.route('/htmx/admin/project-directories/<int:pd_id>/deactivate', methods=['POST'])
@@ -2825,56 +2928,61 @@ def htmx_access_grid(project):
     return _render_access_grid(project, _access_grid_active_only(request.args))
 
 
+class _AccessGridToggleHandler(HtmxFormHandler):
+    """Grant or revoke one member's access to one project resource.
+
+    Errors and success both re-render the whole grid fragment — there is
+    no per-field form to attach inline errors to.
+    """
+
+    schema_cls = AccessGridToggleForm
+    exception_map = ((ValueError, lambda e: str(e)),)
+
+    def form_input(self):
+        data = {k: v for k, v in request.form.items() if v != ''}
+        data['grant'] = 'grant' in request.form
+        return data
+
+    def clean(self, data):
+        # FK existence checks (schemas don't touch the DB).
+        from sam.core.users import User
+        from sam.resources.resources import Resource
+        validate_fk_existence(
+            db.session,
+            (User, data['user_id'], 'user'),
+            (Resource, data['resource_id'], 'resource'),
+        )
+        return data
+
+    def perform(self, data):
+        from sam.manage import (
+            grant_user_resource_access, revoke_user_resource_access,
+        )
+        action = (grant_user_resource_access if data['grant']
+                  else revoke_user_resource_access)
+        action(db.session, self.project.project_id,
+               data['user_id'], data['resource_id'])
+
+    def render_errors(self, errors, field_errors=None):
+        flat = [f'{field.replace("_", " ").title()}: {msg}'
+                for field, msgs in (field_errors or {}).items()
+                for msg in msgs]
+        return _render_access_grid(self.project, self.active_only,
+                                   errors=list(errors) + flat)
+
+    def on_success(self, result):
+        return _render_access_grid(self.project, self.active_only)
+
+
 @bp.route('/htmx/access-grid/<projcode>/toggle', methods=['POST'])
 @login_required
 @require_project_operator_access
 def htmx_access_grid_toggle(project):
     """Grant or revoke one member's access to one project resource."""
-    from marshmallow import ValidationError
-    from sam.schemas.forms import AccessGridToggleForm
-    from sam.core.users import User
-    from sam.resources.resources import Resource
-    from sam.manage import (
-        grant_user_resource_access, revoke_user_resource_access,
-    )
-
-    active_only = _access_grid_active_only(request.form)
-
-    data = {k: v for k, v in request.form.items() if v != ''}
-    data['grant'] = 'grant' in request.form
-    try:
-        form_data = AccessGridToggleForm().load(data)
-    except ValidationError as e:
-        return _render_access_grid(
-            project, active_only,
-            errors=AccessGridToggleForm.flatten_errors(e.messages),
-        )
-
-    # FK existence checks (schemas don't touch the DB).
-    errors = []
-    if not db.session.get(User, form_data['user_id']):
-        errors.append('Selected user does not exist.')
-    if not db.session.get(Resource, form_data['resource_id']):
-        errors.append('Selected resource does not exist.')
-    if errors:
-        return _render_access_grid(project, active_only, errors=errors)
-
-    try:
-        with management_transaction(db.session):
-            if form_data['grant']:
-                grant_user_resource_access(
-                    db.session, project.project_id,
-                    form_data['user_id'], form_data['resource_id'],
-                )
-            else:
-                revoke_user_resource_access(
-                    db.session, project.project_id,
-                    form_data['user_id'], form_data['resource_id'],
-                )
-    except ValueError as e:
-        return _render_access_grid(project, active_only, errors=[str(e)])
-
-    return _render_access_grid(project, active_only)
+    return _AccessGridToggleHandler(
+        project=project,
+        active_only=_access_grid_active_only(request.form),
+    ).handle()
 
 
 @bp.route('/htmx/access-grid/<projcode>/reconcile', methods=['POST'])

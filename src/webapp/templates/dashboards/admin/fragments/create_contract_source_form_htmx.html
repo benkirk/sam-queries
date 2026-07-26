@@ -5,7 +5,8 @@
     url_for('admin_dashboard.htmx_contract_source_create'),
     '#createContractSourceFormContainer',
     'Create Contract Source',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {{ text_field('contract_source', 'Source Name',
                       required=True, maxlength=50,

@@ -62,6 +62,36 @@ class AddMemberForm(HtmxFormSchema):
         return data
 
 
+class ChangeProjectAdminForm(HtmxFormSchema):
+    """Change or clear a project's admin from the member list.
+
+    ``admin_username`` empty/absent means "remove the admin role" — the
+    base ``@pre_load`` strips empty strings, so both spellings arrive as
+    None. User existence / membership checks require DB access and stay in
+    the route per CLAUDE.md §9.
+    """
+    admin_username = f.Str(load_default=None)
+
+    @post_load
+    def strip_username(self, data, **kwargs):
+        if data.get('admin_username') is not None:
+            data['admin_username'] = data['admin_username'].strip() or None
+        return data
+
+
+class LinkAllocationParentForm(HtmxFormSchema):
+    """Re-link a standalone child allocation to a parent allocation.
+
+    Subtree/compatibility validation happens in
+    ``link_allocation_to_parent`` (requires DB access).
+    """
+    parent_allocation_id = f.Int(
+        required=True,
+        validate=v.Range(min=1, error='Missing parent allocation id.'),
+        error_messages={'required': 'Missing parent allocation id.',
+                        'invalid': 'Invalid parent allocation id.'})
+
+
 class GrantMemberAccessForm(HtmxFormSchema):
     """Grant an existing project member access to all resources they are
     currently missing (the member-list "Grant access" fix).
@@ -154,6 +184,35 @@ class ExchangeAllocationForm(HtmxFormSchema):
             raise ValidationError(
                 {'to_allocation_id': ['FROM and TO allocations must differ.']}
             )
+
+
+class AllocateResidualForm(HtmxFormSchema):
+    """Allocate part of a parent allocation's carve-out residual to a sub-project.
+
+    ``target`` is a composite value from a single ``<select>``:
+
+    - ``alloc:<id>`` — bump an existing frontier carve-out allocation;
+    - ``proj:<id>`` — create a new standalone allocation on an uncovered
+      direct child branch.
+
+    The manage layer re-validates the target against the server-computed
+    frontier (``get_carveout_frontier``) and the amount against the
+    unallocated residual — DB-dependent checks stay out of the schema per
+    CLAUDE.md §9.
+    """
+    target = f.Str(
+        required=True,
+        validate=v.Regexp(r'^(alloc|proj):\d+$', error='Invalid target selection.'),
+    )
+    amount = f.Float(required=True, validate=v.Range(min=0, min_inclusive=False))
+    comment = f.Str(load_default=None)
+
+    @post_load
+    def split_target(self, data, **kwargs):
+        kind, _, ident = data['target'].partition(':')
+        data['target_allocation_id'] = int(ident) if kind == 'alloc' else None
+        data['target_project_id'] = int(ident) if kind == 'proj' else None
+        return data
 
 
 class AddAllocationForm(HtmxFormSchema):

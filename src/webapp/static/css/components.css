@@ -253,6 +253,13 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
 .sortable-header.sort-asc::after { content: ' \2191'; color: #495057; }
 .sortable-header.sort-desc::after { content: ' \2193'; color: #495057; }
 
+/* Secondary sort handle inside a sortable header (sortable_table.js):
+   its own arrow for an alternate sort key on the same column, e.g.
+   first-name sort to the left of "Name" (which sorts by last name). */
+.sortable-header .sort-handle::after { content: '\2195 '; color: #adb5bd; font-size: 0.8em; }
+.sortable-header .sort-handle.sort-asc::after { content: '\2191 '; color: #495057; }
+.sortable-header .sort-handle.sort-desc::after { content: '\2193 '; color: #495057; }
+
 /* resource_details Historical Usage / Usage by User tables.
    Each lazily-loaded user/queue/date subtree renders as its own nested
    <table> inside a colspan cell, so without a fixed layout its columns

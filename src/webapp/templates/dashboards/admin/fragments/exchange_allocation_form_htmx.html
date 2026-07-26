@@ -18,6 +18,8 @@
     form        — request.form on validation re-render
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_exchange with context %}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_exchange_allocation', projcode=project.projcode),
@@ -33,10 +35,12 @@
 
   <div class="alert alert-info py-2 mb-3 small">
     <i class="fas fa-exchange-alt me-1"></i>
-    Moves amount between dedicated allocations on
+    Moves an amount between standalone sub-project allocations on
     <strong>{{ resource.resource_name }}</strong> within
-    <code>{{ project.projcode }}</code>'s subtree. Dates are not changed.
-    Inherited descendants of either side cascade automatically.
+    <code>{{ project.projcode }}</code>'s allocation tree — one goes down, the
+    other up. Dates are not changed. Shared allocations linked to either side
+    follow automatically.
+    {{ help_icon(g_exchange(), rich=True, title='Exchange', placement='right') }}
   </div>
 
   {# FROM project #}

@@ -10,7 +10,8 @@
     url_for('admin_dashboard.htmx_allocation_type_edit', allocation_type_id=allocation_type.allocation_type_id),
     '#editAllocationTypeFormContainer',
     'Save Changes',
-    is_edit=True
+    is_edit=True,
+    errors=errors
 ) %}
         <div class="row mb-3">
             <div class="col-md-6">

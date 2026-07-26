@@ -9,7 +9,8 @@
     url_for('admin_dashboard.htmx_contract_source_edit', source_id=source.contract_source_id),
     '#editContractSourceFormContainer',
     'Save Changes',
-    is_edit=True
+    is_edit=True,
+    errors=errors
 ) %}
         {{ readonly_display('Source ID', source.contract_source_id) }}
 

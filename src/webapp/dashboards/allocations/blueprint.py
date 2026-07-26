@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
-from webapp.utils.htmx import handle_htmx_form_post
+from webapp.utils.htmx import handle_htmx_form_post, register_typeahead
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
     count_recent_allocation_transactions,
@@ -31,6 +31,7 @@ from flask import abort
 from webapp.utils.rbac import (
     apply_facility_scope, filter_rows_by_facility, require_permission,
     require_permission_any_facility, user_facility_scope, Permission,
+    allowed_facility_names as _allowed_facility_names,
 )
 from webapp.api.access_control import require_project_access
 from sam.resources.resources import Resource
@@ -267,18 +268,8 @@ def _audit_page_context():
         .all()
     ]
 
-    from sam.resources.facilities import Facility as FacilityModel
-    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
-    if allowed is None:
-        allowed_facility_names = [
-            f.facility_name for f in
-            db.session.query(FacilityModel)
-            .filter(FacilityModel.is_active)
-            .order_by(FacilityModel.facility_name)
-            .all()
-        ]
-    else:
-        allowed_facility_names = sorted(allowed)
+    allowed_facility_names = _allowed_facility_names(
+        current_user, Permission.VIEW_PROJECTS)
 
     return {
         'audit_start_date': audit_start_date.strftime('%Y-%m-%d'),
@@ -347,18 +338,8 @@ def projects():
     # from ``?facilities=...`` clamped against allowed — so a forged
     # out-of-scope value falls back to the full allowed set rather than
     # widening or erroring.
-    from sam.resources.facilities import Facility as FacilityModel
-    allowed = user_facility_scope(current_user, Permission.VIEW_PROJECTS)
-    if allowed is None:
-        allowed_facility_names = [
-            f.facility_name for f in
-            db.session.query(FacilityModel)
-            .filter(FacilityModel.is_active)
-            .order_by(FacilityModel.facility_name)
-            .all()
-        ]
-    else:
-        allowed_facility_names = sorted(allowed)
+    allowed_facility_names = _allowed_facility_names(
+        current_user, Permission.VIEW_PROJECTS)
     requested_facilities = request.args.getlist('facilities')
     selected_facilities = apply_facility_scope(
         requested_facilities, Permission.VIEW_PROJECTS,
@@ -1016,32 +997,24 @@ def htmx_create_adjustment_form():
     )
 
 
-@bp.route('/htmx/project_search_for_adjustment')
-@login_required
-@require_permission(Permission.EDIT_ALLOCATIONS)
-def htmx_project_search_for_adjustment():
-    """Search-as-you-type backend for the Create Adjustment project picker.
-
-    Mirrors ``admin_dashboard.htmx_project_search_for_parent`` but guarded
-    by ``EDIT_ALLOCATIONS`` (the permission that also gates the Create
-    Adjustment button). Returns the same results template so the shared
-    ``fk-picker.js`` click handler populates the hidden ``project_id``
-    input on selection.
-    """
+def _search_projects_for_adjustment(q, active_only):
     from sam.queries.projects import search_projects_by_code_or_title
+    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
 
-    query = (request.args.get('q') or '').strip()
-    if len(query) < 1:
-        return ''
 
-    projects = search_projects_by_code_or_title(
-        db.session, query, active=True,
-    )[:10]
-
-    return render_template(
-        'dashboards/admin/fragments/project_search_results_fk_htmx.html',
-        projects=projects,
-    )
+# Search-as-you-type backend for the Create Adjustment project picker.
+# Mirrors admin_dashboard.htmx_project_search_for_parent but guarded by
+# EDIT_ALLOCATIONS (the permission that also gates the Create Adjustment
+# button); shares the results template so fk-picker.js populates the
+# hidden project_id input on selection.
+register_typeahead(
+    bp, rule='/htmx/project_search_for_adjustment',
+    endpoint='htmx_project_search_for_adjustment',
+    permission=Permission.EDIT_ALLOCATIONS,
+    search=_search_projects_for_adjustment,
+    template='dashboards/admin/fragments/project_search_results_fk_htmx.html',
+    ctx_key='projects', min_len=1,
+)
 
 
 @bp.route('/htmx/resources_for_project')

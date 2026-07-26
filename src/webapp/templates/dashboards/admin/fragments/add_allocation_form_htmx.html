@@ -28,6 +28,8 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {% from 'dashboards/fragments/form_fields.html'
     import date_field, text_field with context %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_shared_alloc with context %}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_add_allocation', projcode=project.projcode),
@@ -76,7 +78,7 @@
            placeholder="e.g. 500000">
     <div class="form-text">
       <span class="number-preview text-primary fw-semibold"></span>
-      <span class="text-muted">Core-hours for HPC; TB for storage resources.</span>
+      <span class="text-muted">Core-hours for HPC; TiB for storage resources.</span>
     </div>
   </div>
 
@@ -113,19 +115,21 @@
           {{ child_count }} active sub-project{{ 's' if child_count != 1 else '' }}
         </span>
       </label>
+      {{ help_icon(g_shared_alloc(), rich=True, title='Shared allocation', placement='right') }}
     </div>
     <div class="form-text mt-1 ms-4">
-      Creates a linked child allocation for each active sub-project using the same amount
-      and dates. The allocation tree mirrors the project tree — each sub-project's
-      allocation points to its immediate parent's allocation. Sub-projects that already
-      have an allocation for this resource are skipped.
+      Creates a <strong>shared allocation</strong> for each active sub-project,
+      linked to this one with the same amount and dates. The allocation tree
+      mirrors the project tree — each sub-project's allocation is linked to its
+      immediate parent's. Sub-projects that already have an allocation for this
+      resource are skipped.
     </div>
   </div>
   {% else %}
   <div class="alert alert-info py-2 mb-0 small">
     <i class="fas fa-info-circle"></i>
     To allocate to a sub-project, add the parent allocation here first,
-    then return to add child allocations to the sub-project directly.
+    then return to add the sub-project's own allocation directly.
   </div>
   {% endif %}
 

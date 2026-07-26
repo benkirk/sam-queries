@@ -5,7 +5,8 @@
     url_for('admin_dashboard.htmx_panel_create'),
     '#createPanelFormContainer',
     'Create Panel',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {{ text_field('panel_name', 'Panel Name',
                       required=True, maxlength=30,

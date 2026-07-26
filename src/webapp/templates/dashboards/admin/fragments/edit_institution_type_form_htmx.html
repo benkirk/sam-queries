@@ -10,7 +10,8 @@
     url_for('admin_dashboard.htmx_institution_type_edit', institution_type_id=inst_type.institution_type_id),
     '#editInstitutionTypeFormContainer',
     'Save Changes',
-    is_edit=True
+    is_edit=True,
+    errors=errors
 ) %}
         {{ readonly_display('Type ID', inst_type.institution_type_id) }}
 

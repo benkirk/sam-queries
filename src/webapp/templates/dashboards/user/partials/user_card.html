@@ -313,16 +313,9 @@
     {% endif %}
 </div>
 
-{# Group-members modal — populated by user_dashboard.htmx_group_members #}
-<div class="modal fade" id="groupMembersModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable">
-        <div class="modal-content" id="groupMembersContainer">
-            <div class="modal-body text-center py-4">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+{# The #groupMembersModal shell the group badges target lives at page
+   level (dashboards/user/fragments/group_members_modal.html, included
+   alongside the user-details modal shell) — NOT here. When this card is
+   fetched into #userDetailsModalBody, a shell emitted by the macro would
+   sit nested inside the open modal and could never display. #}
 {% endmacro %}

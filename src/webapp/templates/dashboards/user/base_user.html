@@ -25,5 +25,7 @@
 {% block user_content %}{% endblock %}
 
 {% include 'dashboards/shared/project_details_modal.html' %}
+{# Member rows in the project modal open user cards here #}
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
 
 {% endblock %}

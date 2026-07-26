@@ -11,32 +11,14 @@ with ORM models written to mirror it faithfully. This document captures consider
 
 ---
 
-## Schema Management Strategy (Alembic)
+## Schema Management Strategy (Alembic) — IMPLEMENTED
 
-Before any migration, the right tool is **Alembic** (maintained by the SQLAlchemy team).
-
-**How it fits this project:**
-- Auto-generates migration scripts from ORM model diffs (`alembic revision --autogenerate`)
-- Tracks schema history in an `alembic_version` table
-- Supports upgrade/downgrade, making schema changes reversible
-- Works with SQLAlchemy 2.0 natively
-- Existing `tests/integration/test_schema_validation.py` drift-detection tests shift from
-  primary safety net → secondary sanity check once Alembic owns the schema
-
-**Bootstrapping from current state:**
-```bash
-alembic init alembic
-# Edit alembic/env.py to point at SAM Base metadata
-alembic stamp head    # Mark current DB as baseline without running migrations
-# Future model changes:
-alembic revision --autogenerate -m "add_foo_column"
-alembic upgrade head
-```
-
-**Views:** tables marked `info: {'is_view': True}` require special handling —
-Alembic's autogenerate will try to manage them as tables. Add them to
-`exclude_tables` in `env.py` and manage view DDL via `op.execute()` in hand-written
-migrations.
+Alembic is now in place (see `migrations/` and
+`implemented/ADD_ALEMBRIC_and_SYSTEM_STATUS_REFACTOR.md` for how it was
+introduced). The one recommendation from the original section that still
+matters for a future MySQL→PostgreSQL move: views marked
+`info: {'is_view': True}` must stay excluded from autogenerate, with view
+DDL managed via `op.execute()` in hand-written migrations.
 
 ---
 

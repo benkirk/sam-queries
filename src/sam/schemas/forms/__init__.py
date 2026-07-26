@@ -154,6 +154,7 @@ from .facilities import (
     EditFacilityForm,
     CreateFacilityForm,
     CreatePanelForm,
+    EditPanelForm,
     EditPanelSessionForm,
     EditAllocationTypeForm,
     CreateAllocationTypeForm,
@@ -204,9 +205,12 @@ from .projects import (
 )
 from .user import (
     AddMemberForm,
+    ChangeProjectAdminForm,
+    LinkAllocationParentForm,
     GrantMemberAccessForm,
     EditAllocationForm,
     ExchangeAllocationForm,
+    AllocateResidualForm,
     AddAllocationForm,
     RenewAllocationsForm,
     ExtendAllocationsForm,
@@ -223,6 +227,11 @@ from .admin import (
 from .status import (
     CreateOutageForm,
     EditOutageForm,
+)
+from .operational import (
+    CreateWallclockExemptionForm,
+    AdminCreateWallclockExemptionForm,
+    EditWallclockExemptionForm,
 )
 
 __all__ = [
@@ -277,9 +286,12 @@ __all__ = [
     'AccessGridToggleForm',
     # User
     'AddMemberForm',
+    'ChangeProjectAdminForm',
+    'LinkAllocationParentForm',
     'GrantMemberAccessForm',
     'EditAllocationForm',
     'ExchangeAllocationForm',
+    'AllocateResidualForm',
     'AddAllocationForm',
     'RenewAllocationsForm',
     'ExtendAllocationsForm',
@@ -293,4 +305,8 @@ __all__ = [
     # Status
     'CreateOutageForm',
     'EditOutageForm',
+    # Operational
+    'CreateWallclockExemptionForm',
+    'AdminCreateWallclockExemptionForm',
+    'EditWallclockExemptionForm',
 ]

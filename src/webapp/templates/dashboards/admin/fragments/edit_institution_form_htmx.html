@@ -10,7 +10,8 @@
     url_for('admin_dashboard.htmx_institution_edit', inst_id=institution.institution_id),
     '#editInstitutionFormContainer',
     'Save Changes',
-    is_edit=True
+    is_edit=True,
+    errors=errors
 ) %}
         <div class="row mb-3">
             <div class="col-md-6">

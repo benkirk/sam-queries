@@ -9,7 +9,8 @@
     url_for('admin_dashboard.htmx_aoi_group_edit', group_id=group.area_of_interest_group_id),
     '#editAoiGroupFormContainer',
     'Save Changes',
-    is_edit=True
+    is_edit=True,
+    errors=errors
 ) %}
         {{ readonly_display('Group ID', group.area_of_interest_group_id) }}
 

@@ -9,10 +9,14 @@
     projcode                 — projcode of the owning project
     errors                   — list of validation error strings (on re-render)
     form                     — request.form on validation error re-render
-    partitioned_sum          — float: sum of standalone (non-inherited, parent_allocation_id IS NULL)
-                               descendant allocations for this resource. Meaningful only for Case 2b
-                               (partitioned children). Do NOT use allocation.children for this —
-                               those are shared-pool copies with the same amount as the parent.
+    frontier                 — CarveoutFrontier|None (None when inheriting): the
+                               direct-frontier decomposition from
+                               sam.manage.allocations.get_carveout_frontier.
+                               Drives the "Assigned to sub-projects / Unallocated"
+                               strip — the same numbers as the allocation tree and
+                               the allocate-down modal. Do NOT use
+                               allocation.children for this — those are shared-pool
+                               copies with the same amount as the parent.
     parent_info              — dict|None: {allocation_id, amount, projcode} for inheriting allocs
     unlinked_descendants_count — int: active descendants with NO allocation for this resource
                                (counts by resource existence, not by allocation.children membership,
@@ -25,6 +29,9 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
 {% from 'dashboards/fragments/form_fields.html'
     import number_field, date_field, text_field with context %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html'
+    import g_shared_alloc, g_standalone_alloc, g_unallocated, g_detach with context %}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_edit_allocation', allocation_id=allocation.allocation_id),
@@ -42,17 +49,18 @@
 
   <div class="alert alert-warning py-2 mb-2">
     <i class="fas fa-lock"></i>
-    <strong>Inherited allocation.</strong>
-    Linked to parent
+    <strong>Shared allocation.</strong>
+    {{ help_icon(g_shared_alloc(), rich=True, title='Shared allocation') }}
+    Linked to the parent allocation
     {% if parent_info %}
       ({% if parent_info.projcode %}
         <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=parent_info.projcode) }}"
            class="alert-link">{{ parent_info.projcode }}</a>,
       {% endif %}
-      alloc #{{ parent_info.allocation_id }}, {{ parent_info.amount | fmt_number }}).
+      #{{ parent_info.allocation_id }}, {{ parent_info.amount | fmt_number }}).
     {% endif %}
-    Edit the <strong>parent allocation</strong> — changes cascade here automatically.
-    Only the description below is specific to this sub-project.
+    Edit the <strong>parent allocation</strong> — changes are applied here
+    automatically. Only the description below is specific to this sub-project.
   </div>
 
   <div class="mb-3">
@@ -60,6 +68,7 @@
             data-bs-toggle="collapse" data-bs-target="#breakInheritanceSection">
       <i class="fas fa-unlink me-1"></i> Break inheritance...
     </button>
+    {{ help_icon(g_detach(), rich=True, title='Breaking inheritance', placement='right') }}
     <div class="collapse mt-2" id="breakInheritanceSection">
       <div class="border border-danger rounded p-3 bg-danger bg-opacity-10">
         <p class="text-danger fw-semibold mb-2">
@@ -67,8 +76,9 @@
           Warning: This action is permanent and cannot be automatically undone.
         </p>
         <p class="small mb-2">
-          Future edits to the parent allocation will <strong>no longer cascade here</strong>.
-          This allocation becomes fully independent. The parent's amount is not adjusted.
+          Future edits to the parent allocation will <strong>no longer be applied
+          here</strong>. This allocation becomes standalone, and its amount counts
+          as a carve-out of the parent's total. The parent's amount is not adjusted.
         </p>
         <div class="alert alert-secondary py-2 mb-2 small">
           <i class="fas fa-info-circle me-1"></i>
@@ -100,36 +110,38 @@
   </div>
   {% endif %}
 
-  {# ── Section A: Shared-pool cascade notice (inherited children) ─── #}
+  {# ── Section A: Shared-pool notice (linked children) ──────────────── #}
   {% if allocation.children %}
   {%- set live_children = allocation.children | selectattr('deleted', 'equalto', False) | list -%}
   <div class="alert alert-info py-2 mb-2">
     <i class="fas fa-sitemap"></i>
     This allocation has <strong>{{ live_children | length }}</strong>
-    child allocation{{ 's' if live_children | length != 1 else '' }}.
-    Changes to amount, start date, or end date cascade automatically.
+    shared sub-project allocation{{ 's' if live_children | length != 1 else '' }}.
+    {{ help_icon(g_shared_alloc(), rich=True, title='Shared allocation') }}
+    Changes to amount, start date, or end date are applied to them automatically.
   </div>
   {% endif %}
 
-  {# ── Section B: Partitioned descendant sum (Case 2b — standalone children) #}
-  {# partitioned_sum sums non-inherited descendant allocations (parent_allocation_id IS NULL). #}
-  {# Do NOT use allocation.children for this — those are shared-pool copies.               #}
-  {% if partitioned_sum is defined and partitioned_sum > 0 %}
+  {# ── Section B: Carve-out summary (frontier decomposition) ─────────── #}
+  {# frontier.carve_total sums the standalone carve-out allocations on the  #}
+  {# direct frontier — the same numbers as the allocation tree and the      #}
+  {# allocate-down modal. Do NOT use allocation.children — shared copies.   #}
+  {% if frontier is defined and frontier and frontier.carve_total > 0 %}
   <div class="d-flex gap-3 align-items-center flex-wrap small mb-3">
-    <span><strong>Standalone descendant total:</strong> {{ partitioned_sum | fmt_number }}</span>
+    <span><strong>Assigned to sub-projects:</strong> {{ frontier.carve_total | fmt_number }}</span>
     <span><strong>This allocation:</strong> {{ allocation.amount | fmt_number }}</span>
-    <span><strong>Available:</strong>
-      {% set avail = allocation.amount - partitioned_sum %}
-      <span class="{{ 'text-danger fw-semibold' if avail < 0 else 'text-success' }}">
-        {{ avail | fmt_number }}
+    <span><strong>Unallocated:</strong>
+      <span class="{{ 'text-danger fw-semibold' if frontier.raw_residual < 0 else 'text-success' }}">
+        {{ frontier.raw_residual | fmt_number }}
       </span>
+      {{ help_icon(g_unallocated(), rich=True, title='Unallocated remainder') }}
     </span>
   </div>
-  {% if partitioned_sum > allocation.amount %}
+  {% if frontier.raw_residual < 0 %}
   {# Advisory only — non-blocking. Admin may be mid-transition. #}
   <div class="alert alert-warning py-1 mb-3 small">
     <i class="fas fa-exclamation-triangle"></i>
-    Standalone descendant allocations total exceeds this allocation's amount.
+    Sub-project carve-outs total more than this allocation's amount.
     Check amounts for charging consistency. Saving is still permitted.
   </div>
   {% endif %}
@@ -148,7 +160,7 @@
     <button type="button" class="btn  btn-outline-secondary ms-2"
             hx-post="{{ url_for('admin_dashboard.htmx_propagate_to_remaining', allocation_id=allocation.allocation_id) }}"
             hx-target="#editAllocationFormContainer"
-            hx-confirm="Create linked child allocations for {{ unlinked_descendants_count }} remaining sub-project(s)?"
+            hx-confirm="Create shared allocations for {{ unlinked_descendants_count }} remaining sub-project(s)?"
             data-confirm-title="Propagate allocation"
             data-confirm-variant="warning"
             data-confirm-label="Propagate to {{ unlinked_descendants_count }}">
@@ -184,7 +196,7 @@
               data-confirm-title="Re-link to parent allocation"
               data-confirm-variant="warning"
               data-confirm-label="Re-link">
-        <i class="fas fa-link me-1"></i> Relink to parent
+        <i class="fas fa-link me-1"></i> Re-link to parent
       </button>
     </div>
   </div>
@@ -195,6 +207,7 @@
   <div class="alert alert-secondary py-1 mb-3 small">
     <i class="fas fa-cube me-1"></i>
     Standalone allocation — not linked to any parent or sub-project allocations.
+    {{ help_icon(g_standalone_alloc(), rich=True, title='Standalone allocation') }}
   </div>
   {% endif %}
 
@@ -225,6 +238,7 @@
                        ~ ('<span class="text-muted"> Edit parent allocation to change this.</span>' if disabled else '') %}
 
   {{ number_field('amount', 'Amount',
+                  required=True,
                   min=0.01, step='any',
                   disabled=disabled,
                   default=allocation.amount,
@@ -237,6 +251,7 @@
   <div class="row">
     <div class="col-md-6">
       {{ date_field('start_date', 'Start Date',
+                    optional_text='',
                     disabled=disabled,
                     default=allocation.start_date,
                     label_class='form-label fw-semibold',

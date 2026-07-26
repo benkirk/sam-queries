@@ -32,9 +32,8 @@ SAM uses a modern Python web stack with focus on:
 - **Production ready**: Containerized deployment, structured logging, audit trails
 
 **Key Stats**:
-- **Database**: 97 tables, 91+ ORM models (94% coverage)
-- **Tests**: 380 passed, 77.47% code coverage
-- **Test Speed**: 32 seconds (parallel, no coverage) / 97 seconds (with coverage)
+- **Database**: ~100 tables mirrored by ORM models
+- **Tests**: see [docs/TESTING.md](TESTING.md) for suite size and timings
 - **API Endpoints**: RESTful under `/api/v1/` with Marshmallow serialization
 
 ---
@@ -305,20 +304,19 @@ source ../.env && pytest -m "not slow"
 ```
 tests/
 ├── unit/                      # Unit tests (fast)
-│   ├── test_basic_read.py            # Basic ORM queries (26 tests)
-│   ├── test_crud_operations.py       # Create/update/delete (tests)
-│   ├── test_new_models.py            # New models coverage (51 tests)
-│   └── test_query_functions.py       # Query functions (41 tests)
+│   ├── test_basic_read.py            # Basic ORM queries
+│   ├── test_crud_operations.py       # Create/update/delete
+│   └── test_query_functions.py       # Query functions
 ├── integration/               # Integration tests
-│   ├── test_schema_validation.py     # Schema drift detection (18 tests)
-│   └── test_views.py                 # Database views (24 tests)
+│   ├── test_schema_validation.py     # Schema drift detection
+│   └── test_views.py                 # Database views
 └── api/                       # API endpoint tests (14 files)
     ├── test_users.py
     ├── test_projects.py
     └── ...
 ```
 
-**Current status**: **380 tests passed, 16 skipped, 77.47% coverage**
+**Current status**: see [docs/TESTING.md](TESTING.md) for suite size, tiers, and timings
 
 **Key test files to review**:
 - `test_basic_read.py` - Simple ORM query examples
@@ -466,14 +464,16 @@ docker compose down
 
 ## Frontend Technologies (Light Touch)
 
-### 12. Bootstrap 4
+### 12. Bootstrap 5
 
-**What we use**: Bootstrap 4.6.2 via CDN
+**What we use**: Bootstrap 5.3.3, **vendored** (self-hosted under
+`src/webapp/static/vendor/` — see that directory's README for the pinned
+asset inventory; no CDN dependency, required for the CSP policy)
 
 **Learning Resources**:
-- [Bootstrap 4 Documentation](https://getbootstrap.com/docs/4.6/) - Component reference
-- [Bootstrap Grid System](https://getbootstrap.com/docs/4.6/layout/grid/) - Layout basics
-- [Bootstrap Components](https://getbootstrap.com/docs/4.6/components/alerts/) - UI elements
+- [Bootstrap 5.3 Documentation](https://getbootstrap.com/docs/5.3/) - Component reference
+- [Bootstrap Grid System](https://getbootstrap.com/docs/5.3/layout/grid/) - Layout basics
+- [Bootstrap Components](https://getbootstrap.com/docs/5.3/components/alerts/) - UI elements
 
 **What to focus on**:
 - **Grid system**: Rows, columns, responsive breakpoints
@@ -585,7 +585,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 **Project-specific**:
 - **Admin interface**: Available at `/admin` (requires authentication)
 - **Custom ModelViews**: `src/webapp/admin/` - customized CRUD interfaces
-- **Theme**: Bootstrap4 with Lumen swatch
+- **Theme**: Bootstrap 5 (vendored)
 - Includes expiration monitoring dashboards
 
 ---
@@ -707,7 +707,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 - [ ] Study CI/CD workflows (`.github/workflows/`)
 
 **Day 4: Production Considerations**
-- [ ] Read [docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/PRODUCTION_IMPROVEMENTS.md)
+- [ ] Read [docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/implemented/PRODUCTION_IMPROVEMENTS.md)
 - [ ] Understand Gunicorn configuration
 - [ ] Review database connection pooling
 - [ ] Study logging and monitoring requirements
@@ -777,7 +777,7 @@ pytest -k "test_user" -v
 pytest -m "not slow"
 
 # Check code coverage for specific module
-pytest tests/ --cov=sam.schemas --cov-report=term-missing
+pytest --cov=src --cov-report=term-missing
 
 # View dependency tree
 pipdeptree
@@ -806,7 +806,7 @@ pipdeptree
    - Authentication and authorization
    - Development server setup
 
-4. **[docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/PRODUCTION_IMPROVEMENTS.md)** - Production readiness
+4. **[docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/implemented/PRODUCTION_IMPROVEMENTS.md)** - Production readiness
    - Security improvements
    - Operational enhancements
    - Deployment checklist
@@ -863,11 +863,11 @@ pipdeptree
 5. **Run full test suite**: `pytest tests/` (with coverage)
 6. **Check schema validation** if ORM models changed
 7. **Write detailed commit message** (see git history for format)
-8. **Create pull request** to `main`
+8. **Create pull request** to `staging` (staging → main promotion is a separate manual PR)
 
 ### Code Quality
 - **Tests required**: For any new functionality
-- **Coverage target**: 70% minimum (project currently at 77.47%)
+- **Coverage target**: 70% minimum
 - **Follow patterns**: Use existing code as examples
 - **Type hints**: Add where helpful
 - **Docstrings**: Clear, concise, with examples when useful
@@ -883,8 +883,7 @@ Brief summary (50 chars or less)
 - What was added/modified/fixed
 
 ## Test Results (if applicable)
-- Tests passed: 380
-- Coverage: 77.47%
+- Tests passed: <count from the run>
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -948,10 +947,10 @@ for result in expiring_projects:
 - **Properties**: Use `@property` for derived values (`user.primary_email`, `project.active`)
 
 ### Testing Tips
-- **Fast iteration**: Use `--no-cov` flag (32s vs 97s)
+- **Fast iteration**: Use `--no-cov` flag (coverage tracing slows the run considerably)
 - **Parallel execution**: Automatic via pytest-xdist, workers get isolated databases
 - **Schema validation**: Run after any ORM model changes
-- **Coverage target**: 70% minimum (currently at 77.47%)
+- **Coverage target**: 70% minimum
 
 ---
 
@@ -1014,7 +1013,7 @@ for result in expiring_projects:
 - [MySQL 9.0](https://dev.mysql.com/doc/refman/9.0/en/)
 - [pytest](https://docs.pytest.org/)
 - [Docker](https://docs.docker.com/)
-- [Bootstrap 4](https://getbootstrap.com/docs/4.6/)
+- [Bootstrap 5.3](https://getbootstrap.com/docs/5.3/)
 
 ### Learning Resources
 - [Real Python](https://realpython.com/) - Python tutorials
@@ -1035,6 +1034,6 @@ This guide is a living document. If you find gaps or have suggestions, please co
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-12-23
+**Document Version**: 1.1
+**Last Updated**: 2026-07-26
 **Maintained By**: Development Team

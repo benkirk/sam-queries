@@ -6,6 +6,7 @@ Complete index of all documentation in the SAM Queries project.
 
 - **[README.md](../README.md)** - Project overview and quick start
 - **[SETUP_SUMMARY.md](SETUP_SUMMARY.md)** - Quick reference for setup (3-step guide)
+- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Onboarding + technology primer
 - **[LOCAL_SETUP.md](LOCAL_SETUP.md)** - Complete local development setup guide
   - Prerequisites
   - Step-by-step installation
@@ -59,6 +60,10 @@ Complete index of all documentation in the SAM Queries project.
   - Operating the workflow (manual dispatch, audit, negative test)
   - Failure modes and rollback
 
+- **[README-k8s.md](README-k8s.md)** - Kubernetes/Helm deployment guide
+  (local Docker Desktop + CIRRUS production; see also [helm/README.md](../helm/README.md))
+- **[k8s.md](k8s.md)** - kubectl / OIDC cheat sheet for the nwc1 cluster
+
 - **[STAGING.md](STAGING.md)** - AWS ECS staging environment
   - Separate from CIRRUS — runs on ECS/RDS for VPN-gated test access
 
@@ -82,10 +87,10 @@ Complete index of all documentation in the SAM Queries project.
   - Authentication
   - Role-based access control
 
-- **[tests/docs/README.md](../tests/docs/README.md)** - Testing guide
-  - Running tests
-  - Writing tests
-  - Coverage
+- **[TESTING.md](TESTING.md)** - Testing guide
+  - Suite size, tiers, and timings (single source of truth)
+  - Isolation model (SAVEPOINT rollback, mysql-test container)
+  - Writing tests (fixtures vs factories)
 
 ## 🔌 API Reference
 
@@ -142,7 +147,7 @@ sam-search project SCSG0001
 - **Fix Docker issues?** → [DOCKER_TROUBLESHOOTING.md](DOCKER_TROUBLESHOOTING.md)
 - **Start webapp?** → [WEBAPP_SETUP.md](WEBAPP_SETUP.md)
 - **Understand ORM?** → [CLAUDE.md](../CLAUDE.md)
-- **Write tests?** → [tests/docs/README.md](../tests/docs/README.md)
+- **Write tests?** → [TESTING.md](TESTING.md)
 - **Use the API?** → [src/webapp/README.md](../src/webapp/README.md)
 - **Use systems integration APIs?** → [apis/SYSTEMS_INTEGRATION_APIs.md](apis/SYSTEMS_INTEGRATION_APIs.md)
 
@@ -160,22 +165,32 @@ sam-search project SCSG0001
 docs/
 ├── INDEX.md                    # This file
 ├── SETUP_SUMMARY.md           # Quick reference
+├── GETTING_STARTED.md         # Onboarding + technology primer
 ├── LOCAL_SETUP.md             # Complete setup guide
 ├── CREDENTIALS.md             # Credential configuration
+├── AUTHENTICATION.md          # OIDC/SSO flow + local auth modes
 ├── DATABASE_SWITCHING.md      # Database switching guide
+├── TESTING.md                 # Test suite guide (counts live here)
 ├── SCRIPTS.md                 # Script reference
 ├── DOCKER_TROUBLESHOOTING.md  # Docker issues
 ├── WEBAPP_SETUP.md            # Webapp setup
-└── apis/
-    ├── SYSTEMS_INTEGRATION_APIs.md   # Directory access, project access, fairshare tree
-    └── CHARGING_INTEGRATION.md       # HPC charge ingest integration
+├── CIRRUS_PUBLISHING.md       # Image build + CIRRUS GitOps deploy
+├── README-k8s.md / k8s.md     # Kubernetes deployment + cheat sheet
+├── STAGING.md                 # AWS ECS staging environment
+├── apis/
+│   ├── SYSTEMS_INTEGRATION_APIs.md   # Directory access, project access, fairshare tree
+│   ├── CHARGING_INTEGRATION.md       # HPC charge ingest integration
+│   └── HPC_DATA_COLLECTORS_GUIDE.md  # Collector implementation guide
+├── plans/                     # Active plans (implemented/ holds shipped ones)
+└── presentations/             # Quarto → pptx presentation infra
 
 ../
 ├── README.md                  # Project overview
 ├── CONTRIBUTING.md            # Development guide
-├── CLAUDE.md                  # Technical reference
+├── CLAUDE.md                  # Technical reference (agent-facing)
 ├── src/webapp/README.md       # Web UI & API docs
-└── tests/docs/README.md       # Testing guide
+├── src/cli/README.md          # CLI architecture guide
+└── helm/README.md             # Kubernetes chart overview
 ```
 
 ## 🆘 Need Help?

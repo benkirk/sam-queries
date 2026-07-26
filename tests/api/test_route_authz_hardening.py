@@ -188,8 +188,15 @@ class TestLeadStewardAccess:
         assert resp.status_code == 200
 
     def test_members_fragment(self):
-        assert self.client.get(
-            f'/project-members/{self.project.projcode}').status_code == 200
+        resp = self.client.get(f'/project-members/{self.project.projcode}')
+        assert resp.status_code == 200
+        # A plain lead (no VIEW_USERS) gets the sortable table but no
+        # user-card modal affordances (which would 403 at user_card).
+        html = resp.get_data(as_text=True)
+        assert 'sortable-header' in html
+        from webapp.utils.rbac import USER_FACILITY_PERMISSIONS
+        if self.project.lead.username not in USER_FACILITY_PERMISSIONS:
+            assert 'userDetailsModal' not in html
 
     def test_member_add_form(self):
         assert self.client.get(
@@ -217,8 +224,17 @@ class TestPrivilegedAccessPreserved:
 
     def test_members_fragment(self, auth_client, lead_project):
         _, project = lead_project
-        assert auth_client.get(
-            f'/project-members/{project.projcode}').status_code == 200
+        resp = auth_client.get(f'/project-members/{project.projcode}')
+        assert resp.status_code == 200
+        # Sortable-header contract (sortable_table.js): clickable column
+        # headers + per-cell sort keys must survive template changes.
+        html = resp.get_data(as_text=True)
+        assert 'sortable-header' in html
+        assert 'data-sort-value' in html
+        # First-name sort handle on the Name column
+        assert 'sort-handle' in html
+        # VIEW_USERS holders get user-card modal affordances on the rows
+        assert 'userDetailsModal' in html
 
     def test_rolling_section(self, auth_client, lead_project):
         _, project = lead_project

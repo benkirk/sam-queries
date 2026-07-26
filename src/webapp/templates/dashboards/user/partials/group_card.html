@@ -1,15 +1,17 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
-{% from 'dashboards/fragments/user_rows.html' import render_user_rows %}
+{% from 'dashboards/fragments/user_rows.html' import render_user_rows, user_table_head %}
 
 {# Admin: render a single AdhocGroup.
 
    Context:
      group:             AdhocGroup ORM object
-     members_by_branch: dict[branch_name] -> list of {username, display_name, primary_email}
+     members_by_branch: dict[branch_name] -> list of {username, display_name,
+                        first_name, last_name, primary_email}
      primary_gid_users: list of User ORM objects whose primary_gid == group.unix_gid
      is_admin:          bool (admin-only UI gate)
+     can_view_users:    bool — user rows open the user-details modal
 #}
-{% macro render_group_card(group, members_by_branch=None, primary_gid_users=None, is_admin=False) %}
+{% macro render_group_card(group, members_by_branch=None, primary_gid_users=None, is_admin=False, can_view_users=False) %}
 {% set members_by_branch = members_by_branch or {} %}
 {% set primary_gid_users = primary_gid_users or [] %}
 {% set branches = members_by_branch.keys() | list %}
@@ -104,28 +106,10 @@
                     <div class="table-responsive">
                         <table class="table table-sm table-hover mb-0">
                             <thead class="thead-light">
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Username</th>
-                                    <th>Email</th>
-                                </tr>
+                                {{ user_table_head() }}
                             </thead>
                             <tbody>
-                                {% for u in primary_gid_users %}
-                                <tr class="{% if not u.is_active %}text-muted{% endif %}">
-                                    <td>
-                                        <i class="fas fa-user text-muted me-1"></i>
-                                        <strong>{{ u.display_name }}</strong>
-                                        {% if not u.active %}{{ status_badge('inactive', extra='ms-1', small=True) }}
-                                        {% elif u.locked %}{{ status_badge('locked', extra='ms-1', small=True) }}{% endif %}
-                                    </td>
-                                    <td><code>{{ u.username }}</code></td>
-                                    <td>
-                                        {% if u.primary_email %}<a href="mailto:{{ u.primary_email }}">{{ u.primary_email }}</a>
-                                        {% else %}<span class="text-muted">N/A</span>{% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
+                                {{ render_user_rows(primary_gid_users, can_view_users=can_view_users) }}
                             </tbody>
                         </table>
                     </div>
@@ -162,14 +146,10 @@
                 <div class="table-responsive">
                     <table class="table table-sm table-hover mb-0">
                         <thead class="thead-light">
-                            <tr>
-                                <th>Name</th>
-                                <th>Username</th>
-                                <th>Email</th>
-                            </tr>
+                            {{ user_table_head() }}
                         </thead>
                         <tbody>
-                            {{ render_user_rows(members_by_branch[b]) }}
+                            {{ render_user_rows(members_by_branch[b], can_view_users=can_view_users) }}
                         </tbody>
                     </table>
                 </div>

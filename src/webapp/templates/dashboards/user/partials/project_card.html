@@ -350,6 +350,19 @@
 
         <div id="{{ card_id }}" class="collapse{{ ' show' if is_expanded else '' }}">
             <div class="card-body">
+                {# Manage Project button — top of the card body (matches the
+                   project-details modal) so long member lists / trees don't
+                   push it out of reach. Leads/admins also see it (they land
+                   on the same page with a constrained edit surface). #}
+                {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
+                <div class="d-flex justify-content-end mb-2">
+                    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
+                       class="btn  btn-primary">
+                        <i class="fas fa-edit"></i> Manage Project
+                    </a>
+                </div>
+                {% endif %}
+
                 <!-- Project Info -->
                 {{ render_project_info(project) }}
 
@@ -391,18 +404,6 @@
                 </div>
                 {# Active-only tree toggle uses the tree-toggle-active-only
                    action (static/js/form-helpers.js). #}
-                {% endif %}
-
-                {# Edit Project button — inside the card body, visible only when expanded.
-                   Project leads/admins also see the button (they land on the same page
-                   with a constrained edit surface). #}
-                {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
-                <div class="d-flex justify-content-end mt-3 pt-2 border-top">
-                    <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
-                       class="btn  btn-primary">
-                        <i class="fas fa-edit"></i> Manage Project
-                    </a>
-                </div>
                 {% endif %}
 
             </div>

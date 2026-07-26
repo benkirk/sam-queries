@@ -8,8 +8,8 @@
          import g_rolling_rate, g_txn_types, g_shared_pool, g_elapsed, g_au,
                 g_core_hours, g_charges, g_tib, g_tib_years, g_adjustment with context %}
 
-  Tooltip strings (returned by the *_short macros) are one short line.
-  Popover strings (the plain macros) may contain simple HTML.
+  Strings used as hover tooltips (rich=False) should be one short line.
+  Popover strings (rich=True) may contain simple HTML.
 #}
 
 
@@ -37,10 +37,65 @@ early in the allotted period.
 {%- endmacro %}
 
 {% macro g_shared_pool() -%}
-This allocation draws from a pool shared with sibling projects under a master
-allocation. The bar shows total pool consumption; the lighter inner segment
-(and "(N yours)") is this project's own contribution.
+This allocation draws from a pool shared with other projects in the same
+allocation tree — every member carries the full pool amount. The bar shows
+total pool consumption; the lighter inner segment (and "(N yours)") is this
+project's own contribution.
 {%- endmacro %}
+
+{# ── Allocation trees: shared / standalone / carve-out / unallocated ──
+   One vocabulary for the admin Allocations tab and its forms. A "shared"
+   allocation is linked to its parent (a pool copy); a "standalone" one has
+   its own amount; a standalone sub-project allocation with a distinct
+   amount is a "carve-out" of its parent's total; what the parent has not
+   yet carved out is its "unallocated" remainder. #}
+
+{% macro g_shared_alloc() -%}
+This allocation is <strong>linked to its parent project's allocation</strong>
+and mirrors it: same amount and dates, drawing from the same shared pool.
+Edits to the parent are applied here automatically. Usage by this project
+still rolls up to the pool's total consumption.
+{%- endmacro %}
+
+{% macro g_standalone_alloc() -%}
+This allocation has its <strong>own amount and dates</strong> — it is not
+linked to a parent allocation. When it sits under a parent project's
+allocation for the same resource, it <em>carves out</em> part of the
+parent's total.
+{%- endmacro %}
+
+{% macro g_unallocated() -%}
+The part of this allocation <strong>not yet assigned to sub-projects</strong>:
+its amount minus the sub-project carve-outs on the same resource.
+Sub-projects sharing the pool (linked, or carrying the same amount) do not
+count against it. Assigning it to a sub-project increases that sub-project's
+own allocation <em>without changing this one</em>.
+{%- endmacro %}
+
+{% macro g_exchange() -%}
+Moves an amount between two <strong>standalone sub-project allocations</strong>
+on the same resource — one goes down, the other up, so the allocation tree's
+total is unchanged. Dates are not changed.
+{%- endmacro %}
+
+{% macro g_renew_vs_extend() -%}
+<strong>Renew</strong> creates a new allocation period, mirroring the current
+amounts and tree structure. <strong>Extend</strong> only moves the end date of
+the existing allocations — amounts are unchanged.
+{%- endmacro %}
+
+{% macro g_renew_scale() -%}
+Multiplier applied to each renewed amount — 1 renews at the same size, 0.5
+halves it, 2 doubles it.
+{%- endmacro %}
+
+{% macro g_detach() -%}
+Breaking the link makes this allocation <strong>standalone</strong>: edits to
+the parent allocation no longer apply here, and its amount becomes a
+carve-out of the parent's total. Usage still rolls up to the parent project,
+and the parent's amount is not adjusted.
+{%- endmacro %}
+
 
 {% macro g_elapsed() -%}
 Marks how far through the allocation period today falls — a pacing reference,

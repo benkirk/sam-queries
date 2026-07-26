@@ -20,6 +20,8 @@
     form              — request.form on validation error re-render
 #}
 {% from 'dashboards/fragments/modal_form.html' import htmx_form %}
+{% from 'dashboards/fragments/help.html' import help_icon, term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_renew_vs_extend, g_renew_scale with context %}
 
 {% call htmx_form(
     url_for('admin_dashboard.htmx_renew_allocations', projcode=project.projcode),
@@ -37,7 +39,9 @@
     (tree root of <code>{{ project.projcode }}</code>)
     {% endif %}
     based on allocations active at <strong>{{ source_active_at }}</strong>.
-    The new allocations mirror the current amounts and tree topology.
+    Renewing creates a <strong>new allocation period</strong> mirroring the
+    current amounts and tree structure.
+    {{ help_icon(g_renew_vs_extend(), rich=True, title='Renew vs. Extend', placement='right') }}
   </div>
 
   {# Preserve source date for the POST — not user-editable in v1. #}
@@ -48,7 +52,7 @@
     <i class="fas fa-exclamation-triangle"></i>
     No renewable allocations found for this project at
     <strong>{{ source_active_at }}</strong>.
-    Try a different "Active At" date on the Allocations tab.
+    Try a different "Active at" date on the Allocations tab.
   </div>
   {% else %}
 
@@ -92,7 +96,7 @@
             <th style="width:2.5rem;"></th>
             <th>Resource</th>
             <th class="text-end">Amount</th>
-            <th class="text-end" style="width:4rem;">Scale</th>
+            <th class="text-end" style="width:4rem;">{{ term('Scale', g_renew_scale()) }}</th>
             <th class="text-end">Source Period</th>
             <th class="text-end">Tree</th>
           </tr>
@@ -161,7 +165,7 @@
            {% if replace_checked %}checked{% endif %}>
     <label class="form-check-label small" for="renewReplaceExisting">
       <i class="fas fa-exclamation-triangle text-warning me-1"></i>
-      <strong>Replace existing</strong> — soft-delete any allocations that
+      <strong>Replace existing</strong> — retire any allocations that
       already overlap the target period before renewing. Use to correct
       a prior accidental renew onto the same dates.
     </label>

@@ -1,5 +1,12 @@
 # Phase 2: Collapse the disk-charging pipeline onto `disk_charge_summary`
 
+> **Status (2026-07-26): PR-A/B/C SHIPPED — moved to implemented/.**
+> `disk_charge_summary` is wired through `sam/queries/disk_usage.py`,
+> `sam/summaries/disk_summaries.py`, and `sam/manage/summaries.py`.
+> PR-D (historical backfill) was explicitly deferred and remains open.
+> Test counts and CLAUDE.md section numbers below are period-accurate
+> snapshots; do not update them.
+
 ## Restart instructions (read first when picking this up cold)
 
 - Phase 1 has already shipped on branch `disk_orm_sync` as commit `42138a8`

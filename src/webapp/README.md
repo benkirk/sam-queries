@@ -5,20 +5,23 @@ Flask-based web administration interface for the Systems Accounting Manager (SAM
 ## Features
 
 - **Flask-Admin Interface**: Full CRUD operations for all SAM database tables
-- **Authentication**: Pluggable authentication system (stub, LDAP, SAML)
-- **Role-Based Access Control (RBAC)**: Fine-grained permissions based on user roles
+  (dev-only; gated by the `FLASK_ADMIN_ENABLED` kill-switch, off in production)
+- **Authentication**: Pluggable authentication system (stub, LDAP, OIDC)
+- **Role-Based Access Control (RBAC)**: Permissions from POSIX group bundles + per-user overrides
 - **Dashboard**: Statistics and monitoring for projects, users, and allocations
 - **Expiration Monitoring**: Track upcoming and expired project allocations
 - **REST API**: Comprehensive JSON API for users, projects, allocations, and expirations
-- **Bootstrap 4 UI**: Modern, responsive interface
+- **Bootstrap 5 UI**: Modern, responsive interface (vendored assets, htmx-driven fragments)
 
 ## Quick Start
 
 ### 1. Install Dependencies
 
+Dependencies come from the repo-level conda environment (there is no
+webapp-local `requirements.txt`):
+
 ```bash
-cd src/webapp
-pip install -r requirements.txt
+source etc/config_env.sh   # from the repo root — activates conda, loads .env
 ```
 
 ### 2. Configure Database
@@ -51,7 +54,8 @@ as production.
 ### 4. Run Development Server
 
 ```bash
-python run.py
+# From the repo root — preferred (rebuilds + live-reloads on change)
+docker compose up webdev --watch
 ```
 
 The application will be available at: `http://localhost:5050`
@@ -69,46 +73,34 @@ The stub authenticator accepts any password for existing, active, non-locked use
 ```
 src/webapp/
 ├── README.md                   # This file
-├── DESIGN.md                   # Detailed design documentation
-├── requirements.txt            # Python dependencies
 ├── run.py                      # Application factory & dev server
+├── config.py                   # Config class hierarchy (Dev/Prod/Testing)
 ├── extensions.py               # Flask extension instances
-├── auth/                       # Authentication module
-│   ├── models.py               # AuthUser (Flask-Login wrapper)
-│   ├── providers.py            # Auth providers (stub, LDAP, SAML)
-│   └── blueprint.py            # Login/logout routes
-├── admin/                      # Flask-Admin views
-│   ├── views.py                # Custom admin index
-│   ├── custom_model_views.py   # RBAC-enabled model views
-│   ├── expiration_views.py     # Expiration dashboard
-│   └── ...
-├── dashboards/                 # Dashboard blueprints
+├── auth/                       # Authentication (AuthProvider ABC: stub, LDAP, OIDC)
+├── admin/                      # Flask-Admin views (dev-only, kill-switch gated)
+├── api/                        # REST API v1 + access-control decorators
+│   ├── access_control.py       # @require_project_access etc.
+│   └── v1/                     # users, projects, charges, allocations, status,
+│                               #   health, admin + legacy-compat endpoints
+├── audit/                      # Implicit model-audit logging (SQLAlchemy events)
+├── caching/                    # Caching facade + adapters (Redis/Flask/chart)
+├── dashboards/                 # htmx dashboard blueprints
+│   ├── admin/                  # Admin dashboard (projects, orgs, resources, …)
+│   ├── allocations/            # Allocations dashboard
+│   ├── status/                 # System-status dashboard
 │   ├── user/                   # User dashboard
-│   │   └── blueprint.py        # User dashboard routes
-│   └── status/                 # Status dashboard (future)
-├── utils/                      # Utilities
-│   └── rbac.py                 # RBAC permissions and decorators
-├── api/                        # REST API v1
-│   └── v1/
-│       ├── __init__.py         # API package initialization
-│       ├── users.py            # User endpoints (list, details, projects)
-│       ├── projects.py         # Project endpoints (list, details, members,
-│       │                       #   allocations, expiring, recently_expired)
-│       └── charges.py          # Charge/balance endpoints
-├── schemas/                    # Marshmallow-SQLAlchemy schemas
-│   ├── __init__.py             # Base schema + exports
-│   ├── user.py                 # User schemas (3 tiers)
-│   ├── project.py              # Project schemas (3 tiers)
-│   ├── resource.py             # Resource schemas
-│   ├── allocation.py           # Allocation/balance schemas ⭐ KEY
-│   └── charges.py              # Charge summary schemas
-└── templates/                  # Jinja2 templates
-    ├── auth/
-    │   ├── login.html
-    │   └── profile.html
-    └── admin/
-        └── ...
+│   ├── charts.py               # Matplotlib SVG chart generators
+│   └── project_members.py      # Project-member management
+├── disk_scans/                 # Filesystem-scan views (hpc-usage-queries plugin)
+├── jobs/                       # Job-history views (hpc-usage-queries plugin)
+├── limiter/                    # Rate-limiting facade (mirrors caching/)
+├── utils/                      # rbac, htmx helpers, nav registry, csp, …
+├── static/                     # Vendored Bootstrap 5 / htmx / FontAwesome + app JS/CSS
+└── templates/                  # Jinja2 templates (dashboards/, admin/, auth/, …)
 ```
+
+Marshmallow schemas live outside the webapp in `src/sam/schemas/` (API
+serialization) and `src/sam/schemas/forms/` (htmx/API form validation).
 
 ## API Serialization with Marshmallow
 
@@ -175,41 +167,30 @@ For detailed schema documentation, see [CLAUDE.md](../../CLAUDE.md#marshmallow-s
 
 ## Authentication & Authorization
 
-### Roles
+### Group bundles (not DB roles)
 
-The system supports the following roles:
+There is no role table behind webapp authorization. A user's permission set
+is the union of:
 
-- **admin**: Full system access
-- **facility_manager**: Can manage projects, allocations, and resources
-- **project_lead**: Can view projects and allocations
-- **user**: Read-only access to projects and allocations
-- **analyst**: Read-only access to everything with export capabilities
+1. The `GROUP_PERMISSIONS` bundles for POSIX groups they belong to
+   (e.g. `csg`, `nusd`, `ssg`) — see `webapp/utils/rbac.py`.
+2. Any per-user grant in `USER_PERMISSION_OVERRIDES` (same file), including
+   facility-scoped grants via `USER_FACILITY_PERMISSIONS`.
 
 ### Permissions
 
-Permissions are defined in `webapp/utils/rbac.py`:
-
-- User management: `VIEW_USERS`, `EDIT_USERS`, `CREATE_USERS`, `DELETE_USERS`
-- Project management: `VIEW_PROJECTS`, `EDIT_PROJECTS`, etc.
-- Allocation management: `VIEW_ALLOCATIONS`, `EDIT_ALLOCATIONS`, etc.
-- Reports: `VIEW_REPORTS`, `EXPORT_DATA`
-- System: `MANAGE_ROLES`, `SYSTEM_ADMIN`
+Permissions are defined in the `Permission` enum in `webapp/utils/rbac.py`
+(user/project/allocation/resource management, reports, system admin, …).
+Route-level enforcement uses `@require_permission(...)` /
+`@require_permission_any_facility(...)` from the same module, plus the
+project-scoped decorators in `webapp/api/access_control.py`.
 
 ### Switching Authentication Providers
 
-To switch from stub auth to enterprise auth, update `run.py`:
-
-```python
-# Development (stub)
-app.config['AUTH_PROVIDER'] = 'stub'
-
-# Production (LDAP)
-app.config['AUTH_PROVIDER'] = 'ldap'
-app.config['LDAP_URL'] = 'ldap://ldap.example.org'
-app.config['LDAP_BASE_DN'] = 'ou=users,dc=example,dc=org'
-```
-
-**Note:** LDAP and SAML providers require implementation. See `DESIGN.md` for details.
+Provider selection is environment-driven (`AUTH_PROVIDER` = `stub`, `ldap`,
+or `oidc`; see `webapp/auth/providers.py` and `config.py`). Production runs
+OIDC; development defaults to the stub provider with Quick Login buttons for
+RBAC testing.
 
 ## Main Features
 
@@ -445,6 +426,14 @@ Status: 403
 
 ## Development
 
+### Import Policy
+
+Imports belong at module top by default. A function-local import is the
+exception and must carry a one-line reason comment — an import cycle, the
+SAM ORM init-chain load order (see `webapp/api/access_control.py`), or an
+optional dependency. Hoist locals opportunistically only in files you are
+already modifying, and verify with pytest plus an app boot.
+
 ### Adding a New Permission
 
 1. Add to `Permission` enum in `webapp/utils/rbac.py`:
@@ -452,9 +441,9 @@ Status: 403
    VIEW_SOMETHING = "view_something"
    ```
 
-2. Add to role mappings in `ROLE_PERMISSIONS`:
+2. Add to the group-bundle mappings in `GROUP_PERMISSIONS`:
    ```python
-   "admin": [Permission.VIEW_SOMETHING, ...],
+   "csg": [Permission.VIEW_SOMETHING, ...],
    ```
 
 3. Use in views:
@@ -596,8 +585,8 @@ This means authentication is required. Navigate to `/auth/login` to log in.
 ### "Forbidden - insufficient permissions"
 
 Your user account doesn't have the required permission for this action. Check:
-1. User has appropriate role assigned in `role_user` table
-2. Role has appropriate permission in `ROLE_PERMISSIONS` dict
+1. The user belongs to a POSIX group with a `GROUP_PERMISSIONS` bundle
+2. Or has a per-user grant in `USER_PERMISSION_OVERRIDES` (`webapp/utils/rbac.py`)
 
 ### Database connection errors
 
@@ -606,31 +595,19 @@ Check:
 2. Database server is accessible
 3. `SAM_DB_*` environment variables are set
 
-### "Role not found"
-
-Ensure roles exist in the `role` table:
-```sql
-SELECT * FROM role;
-```
-
-Create missing roles:
-```sql
-INSERT INTO role (name, description) VALUES ('admin', 'Administrator');
-```
-
 ## Further Documentation
 
-- **DESIGN.md**: Detailed architecture and design decisions
-- **requirements.txt**: Python package dependencies
+- **../../CLAUDE.md**: Project conventions (form validation, route protection,
+  display formatting, testing)
+- **../cli/README.md**: CLI architecture (shared conventions with the webapp)
 - **Flask-Admin docs**: https://flask-admin.readthedocs.io/
 - **Flask-Login docs**: https://flask-login.readthedocs.io/
 
 ## Support
 
 For questions or issues:
-1. Check the documentation in `DESIGN.md`
-2. Review the code comments
-3. Contact the SAM development team
+1. Check `../../CLAUDE.md` and the code comments
+2. Contact the SAM development team
 
 ## License
 

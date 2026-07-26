@@ -32,6 +32,18 @@ class CreatePanelForm(HtmxFormSchema):
     description = f.Str(load_default=None)
 
 
+class EditPanelForm(HtmxFormSchema):
+    description = f.Str(load_default=None)
+    active = f.Bool(load_default=False)
+
+    @post_load
+    def strip_description(self, data, **kwargs):
+        # Parity with the pre-schema handler: whitespace-only → None.
+        if data.get('description') is not None:
+            data['description'] = data['description'].strip() or None
+        return data
+
+
 class EditPanelSessionForm(HtmxFormSchema):
     start_date = f.Date('%Y-%m-%d', required=True)
     end_date = f.Str(load_default=None)    # handled in post_load for 23:59:59
