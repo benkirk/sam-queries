@@ -5,15 +5,20 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
 
 ## Progress
 
-- [ ] Step 0 — this doc committed; baseline pytest green
+- [x] Step 0 — this doc committed; baseline pytest green (2916 passed)
 - **PR 1 — peripheral quick wins (≈ −1,300 LOC)**
-  - [ ] 1.1 dead-code deletion (api/helpers responses, rbac decorators, clients/)
-  - [ ] 1.2 stale docs (DESIGN.md, REFACTORING_PLAN.md, README, import policy)
-  - [ ] 1.3 charts.py `_fig_to_svg` + `_empty_state`
-  - [ ] 1.4 Flask-Admin spec-loop (93 empty classes → loop)
-  - [ ] 1.5 `invalidate_queue_cache()` ownership + `allowed_facility_names()`
-  - [ ] 1.6 GET-side date parsing + `sort_link` macro consolidation
+  - [x] 1.1 dead-code deletion (−164; also removed test-only predicates has_any_permission/has_all_permissions/has_any_role)
+  - [x] 1.2 stale docs (−702)
+  - [x] 1.3 charts.py `_fig_to_svg` + `_empty_state` (−13 net, leak fix)
+  - [x] 1.4 Flask-Admin spec-loop (−358) — approved by Ben after page-output
+        snapshot proof: 947 URL rules + 106 view registrations + 105/106
+        normalized page hashes byte-identical; the one differing page
+        (`projects`, custom ProjectAdmin, untouched) differs between two
+        runs of identical code (inherent render nondeterminism)
+  - [x] 1.5 `invalidate_queue_cache()` ownership + `allowed_facility_names()` (admin site kept active_only=False — divergence surfaced for Ben)
+  - [x] 1.6 GET-side date parsing (end-of-day note in commit) + `sort_link` macro
   - [ ] PR 1 opened
+- PAUSE after PR 1 opens, before any Phase-2 (PR 2) work — per Ben 2026-07-26
 - **PR 2 — form-layer OO refactor (≈ −1,100..1,400 LOC)**
   - [ ] 2.1 `HtmxFormHandler` + adapter + parity tests
   - [ ] 2.2 `CrudSpec` registrar + orgs migration (8 entities)
