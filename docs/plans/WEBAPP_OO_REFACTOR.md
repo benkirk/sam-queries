@@ -30,13 +30,42 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         sort/paginate green on shared macro)
 - PAUSE after PR 1 opens, before any Phase-2 (PR 2) work — per Ben 2026-07-26
 - **PR 2 — form-layer OO refactor (≈ −1,100..1,400 LOC)**
-  - [ ] 2.1 `HtmxFormHandler` + adapter + parity tests
-  - [ ] 2.2 `CrudSpec` registrar + orgs migration (8 entities)
-  - [ ] 2.3 facilities + resources registrar migrations
-  - [ ] 2.4 31 hand-rolled shape-C handlers → handler subclasses
-  - [ ] 2.5 §9 conformance (exemption schemas + shape-D migrations)
-  - [ ] 2.6 typeahead factory
-  - [ ] PR 2 opened
+  - [x] 2.1 `HtmxFormHandler` + adapter + parity tests (2938 passed, zero
+        existing-test edits; route-map snapshot = 239 dashboard routes)
+  - [x] 2.2 `CrudSpec` registrar + orgs migration (8 entities; orgs_routes
+        1111→509 lines; 75 characterization tests written FIRST and pinned
+        through the migration; mnemonic-code + contract-delete stay bespoke;
+        found pre-existing quirk: mnemonic template never renders `errors`)
+  - [x] 2.3 facilities + resources registrar migrations (−433 net; new
+        EditPanelForm; queue-create sentinel → after_commit kwarg; deltas:
+        panel edit now schema-validated, queue-create FK error drops the
+        'Error creating queue:' prefix, queue cache clear now success-only;
+        70 characterization tests written first)
+  - [x] 2.4 shape-C handlers → HtmxFormHandler subclasses (21 of 31 sites;
+        −93 net — classes trade closure deletion for scaffolding, win is
+        structure). Added `FlattenedFieldErrors` mixin for the 7 templates
+        without form_fields macros (preserves legacy panel presentation).
+        Deliberately NOT migrated: bulk-deactivate + queue-cleanup wizards,
+        mnemonic-code, panel-session (bespoke per plan), grant-access +
+        remove/change-admin (alert-response), rate_limits + status outage
+        (2.5 triage). Admin edit-allocation latent 500 was already fixed
+        by #373 — no delta. 22 new HTTP-layer tests.
+  - [x] 2.5 §9 conformance — forms/operational.py (3 exemption schemas w/
+        legacy-parity messages), exemption trio → handler subclasses sharing
+        `_resources_with_queues()` (−170); ChangeProjectAdminForm +
+        LinkAllocationParentForm (schema-only conformance); sweep confirmed
+        rate_limits + outage handlers already conformant (left alone)
+  - [x] 2.6 typeahead factory — `register_typeahead` in utils/htmx.py;
+        7 of 9 endpoints migrated (groups, impersonate alias, org FK ×2,
+        contract FK, parent-project FK, adjustment picker); multi-context
+        user search + facility-scoped project search stay bespoke
+  - [x] PR 2 opened — #376 (oo_refactor → staging; source −729 net,
+        +2,654 test lines incl. the 239-route parity snapshot)
+  - [x] Playwright smoke — all probe groups green; caught + fixed one real
+        bug (admin exemption-create 500 on error re-render; queue_id
+        errors invisible on the cascading select) in d9251f3 with 3
+        regression tests; queue 12→13→12 round-trip proved after_commit
+        cache invalidation; results on #376. Final suite: 3101 passed.
 
 ## Context
 

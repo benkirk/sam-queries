@@ -5,7 +5,8 @@
     url_for('admin_dashboard.htmx_nsf_program_create'),
     '#createNsfProgramFormContainer',
     'Create NSF Program',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {{ text_field('nsf_program_name', 'Program Name',
                       required=True, maxlength=255,

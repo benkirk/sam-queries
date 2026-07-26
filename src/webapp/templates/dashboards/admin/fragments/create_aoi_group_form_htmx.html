@@ -5,7 +5,8 @@
     url_for('admin_dashboard.htmx_aoi_group_create'),
     '#createAoiGroupFormContainer',
     'Create AOI Group',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {{ text_field('name', 'Name',
                       required=True, maxlength=100,

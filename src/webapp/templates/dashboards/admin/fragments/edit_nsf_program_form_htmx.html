@@ -9,7 +9,8 @@
     url_for('admin_dashboard.htmx_nsf_program_edit', nsf_program_id=program.nsf_program_id),
     '#editNsfProgramFormContainer',
     'Save Changes',
-    is_edit=True
+    is_edit=True,
+    errors=errors
 ) %}
         {{ readonly_display('Program ID', program.nsf_program_id) }}
 

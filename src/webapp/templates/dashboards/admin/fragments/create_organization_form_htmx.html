@@ -5,7 +5,8 @@
     url_for('admin_dashboard.htmx_organization_create'),
     '#createOrganizationFormContainer',
     'Create Organization',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {{ text_field('name', 'Name',
                       required=True, maxlength=100,

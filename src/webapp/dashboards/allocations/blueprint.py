@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
-from webapp.utils.htmx import handle_htmx_form_post
+from webapp.utils.htmx import handle_htmx_form_post, register_typeahead
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
     count_recent_allocation_transactions,
@@ -997,32 +997,24 @@ def htmx_create_adjustment_form():
     )
 
 
-@bp.route('/htmx/project_search_for_adjustment')
-@login_required
-@require_permission(Permission.EDIT_ALLOCATIONS)
-def htmx_project_search_for_adjustment():
-    """Search-as-you-type backend for the Create Adjustment project picker.
-
-    Mirrors ``admin_dashboard.htmx_project_search_for_parent`` but guarded
-    by ``EDIT_ALLOCATIONS`` (the permission that also gates the Create
-    Adjustment button). Returns the same results template so the shared
-    ``fk-picker.js`` click handler populates the hidden ``project_id``
-    input on selection.
-    """
+def _search_projects_for_adjustment(q, active_only):
     from sam.queries.projects import search_projects_by_code_or_title
+    return search_projects_by_code_or_title(db.session, q, active=True)[:10]
 
-    query = (request.args.get('q') or '').strip()
-    if len(query) < 1:
-        return ''
 
-    projects = search_projects_by_code_or_title(
-        db.session, query, active=True,
-    )[:10]
-
-    return render_template(
-        'dashboards/admin/fragments/project_search_results_fk_htmx.html',
-        projects=projects,
-    )
+# Search-as-you-type backend for the Create Adjustment project picker.
+# Mirrors admin_dashboard.htmx_project_search_for_parent but guarded by
+# EDIT_ALLOCATIONS (the permission that also gates the Create Adjustment
+# button); shares the results template so fk-picker.js populates the
+# hidden project_id input on selection.
+register_typeahead(
+    bp, rule='/htmx/project_search_for_adjustment',
+    endpoint='htmx_project_search_for_adjustment',
+    permission=Permission.EDIT_ALLOCATIONS,
+    search=_search_projects_for_adjustment,
+    template='dashboards/admin/fragments/project_search_results_fk_htmx.html',
+    ctx_key='projects', min_len=1,
+)
 
 
 @bp.route('/htmx/resources_for_project')

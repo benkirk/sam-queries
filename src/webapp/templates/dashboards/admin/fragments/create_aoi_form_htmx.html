@@ -5,7 +5,8 @@
     url_for('admin_dashboard.htmx_aoi_create'),
     '#createAoiFormContainer',
     'Create Area of Interest',
-    submit_icon='plus'
+    submit_icon='plus',
+    errors=errors
 ) %}
         {{ text_field('area_of_interest', 'Name',
                       required=True, maxlength=255,
