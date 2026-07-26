@@ -21,7 +21,7 @@ This repository provides tools to interact with SAM data programmatically, repla
 ## Features
 
 ### Python ORM (SQLAlchemy 2.0)
-- 91+ ORM models covering 94% of SAM database tables
+- ~100 ORM models mirroring the SAM database tables
 - Type-safe queries with full relationship navigation
 - Automated schema validation to prevent drift
 - Test coverage for all major models
@@ -45,7 +45,7 @@ This repository provides tools to interact with SAM data programmatically, repla
 ### Web UI (Flask-Admin)
 - Admin dashboard with CRUD operations for SAM tables
 - Role-based access control
-- Bootstrap 4 interface
+- Bootstrap 5 interface (vendored assets)
 
 ### REST API
 - RESTful endpoints for users, projects, allocations, charges
@@ -488,7 +488,7 @@ Features:
 - Dashboard with statistics and expiration monitoring
 - CRUD operations for users, projects, allocations
 - Role-based access control (admin, facility_manager, project_lead, user, analyst)
-- Bootstrap 4 interface
+- Bootstrap 5 interface (vendored assets)
 
 For detailed Web UI documentation, see **[src/webapp/README.md](src/webapp/README.md)**.
 
@@ -512,9 +512,6 @@ sam-queries/
 ├── conda-env.yaml              # Conda environment specification
 ├── .env                         # Database credentials (you create this)
 │
-├── bin/
-│   └── sam_search               # Bash wrapper for sam_search.py
-│
 ├── collectors/                  # Data collectors for system status
 │   ├── run_collectors.sh        # Driver script for all collectors
 │   ├── casper/                  # Casper HPC collectors
@@ -527,9 +524,9 @@ sam-queries/
 │   ├── collectors/              # Container for running collectors
 │   └── webapp/                  # Container for the web application
 │
-├── docs/                        # Project documentation
-│   ├── SYSTEM_DASHBOARD_PLAN.md # System status dashboard implementation plan
-│   └── HPC_DATA_COLLECTORS_GUIDE.md # Guide for implementing HPC data collectors
+├── docs/                        # Project documentation (see docs/INDEX.md)
+│   ├── apis/                    # Systems-integration / charging / collector API guides
+│   └── plans/                   # Active plans (implemented/ holds shipped ones)
 │
 ├── etc/
 │   └── config_env.sh            # Environment configuration script
@@ -550,8 +547,10 @@ sam-queries/
 │   ├── sam/                     # SQLAlchemy ORM models (SAM database)
 │   │   ├── __init__.py          # Main exports
 │   │   ├── base.py              # Base classes, mixins
-│   │   ├── session.py           # Database session factory
-│   │   ├── queries.py           # Common query functions
+│   │   ├── session/             # Database session factory
+│   │   ├── queries/             # Common query functions
+│   │   ├── schemas/             # Marshmallow schemas (serialization + forms/)
+│   │   ├── manage/              # Multi-entity write ops + management_transaction
 │   │   ├── core/                # Users, organizations, institutions
 │   │   ├── projects/            # Projects, contracts, areas
 │   │   ├── resources/           # Resources, machines, facilities
@@ -589,11 +588,13 @@ sam-queries/
 │       │   ├── status/          # System status dashboard
 │       │   └── allocations/     # Allocations overview dashboard
 │       ├── api/                 # REST API v1 endpoints
-│       ├── schemas/             # Marshmallow-SQLAlchemy schemas
-│       ├── utils/               # RBAC, utilities
-│       └── templates/           # Jinja2 templates
+│       ├── utils/               # RBAC, htmx helpers, form-handler classes
+│       └── templates/           # Jinja2 templates (vendored Bootstrap 5.3.3)
 │
-├── tests/                       # Comprehensive test suite (~1400 tests)
+├── helm/                        # Kubernetes chart (see helm/README.md)
+├── migrations/                  # Alembic migrations (system_status database)
+│
+├── tests/                       # Test suite (see docs/TESTING.md)
 │   ├── conftest.py              # Safety guard + session/app/client fixtures
 │   ├── factories/               # Layer-2 builder functions for write-path tests
 │   ├── unit/                    # Unit tests (ORM, queries, CLI, webapp)
@@ -625,7 +626,13 @@ sam-queries/
 
 ### Development Guides
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Comprehensive development guide
+- **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** - Onboarding + technology primer
+- **[docs/TESTING.md](docs/TESTING.md)** - Test suite guide (size, tiers, isolation model)
+- **[docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)** - OIDC/SSO flow + local auth modes
+- **[docs/CIRRUS_PUBLISHING.md](docs/CIRRUS_PUBLISHING.md)** - Image build + CIRRUS GitOps deploy
+- **[docs/INDEX.md](docs/INDEX.md)** - Full documentation index
 - **[src/webapp/README.md](src/webapp/README.md)** - Web UI and REST API documentation
+- **[src/cli/README.md](src/cli/README.md)** - CLI architecture and extension guide
 
 ### Technical Reference
 - **[CLAUDE.md](CLAUDE.md)** - Detailed technical documentation:
@@ -648,9 +655,9 @@ sam-queries/
 
 ## Testing
 
-**~1400 tests** across ORM, query layer, CLI, API endpoints, webapp
-routes, and Flask-Admin. Passes in ~65 seconds on a laptop with xdist
-parallelism.
+A comprehensive suite covers the ORM, query layer, CLI, API endpoints,
+webapp routes, and Flask-Admin — see **[docs/TESTING.md](docs/TESTING.md)**
+for current size, tier breakdown, and timings (parallel via xdist).
 
 The test suite runs against an **isolated `mysql-test` container**
 (host port 3307), never the shared dev database. A hard safety guard
@@ -898,13 +905,13 @@ For additional troubleshooting, see **[CONTRIBUTING.md](CONTRIBUTING.md#troubles
 
 - **Python 3.13** - Modern Python with type hints
 - **SQLAlchemy 2.0** - Declarative ORM with relationship navigation
-- **MySQL/MariaDB** - Production database (97 tables, 91+ ORM models)
+- **MySQL/MariaDB** - Production database (~100 tables mirrored by ORM models)
 - **Flask** - Web framework for admin UI and REST API
 - **Flask-Admin** - Admin interface with CRUD operations
 - **Flask-Login** - Session-based authentication (browser clients)
 - **bcrypt** - Password/API key hashing for machine-to-machine auth
 - **Marshmallow-SQLAlchemy** - JSON serialization schemas
-- **pytest** - Comprehensive test framework (~1400 tests, parallel via xdist)
+- **pytest** - Comprehensive test framework (see docs/TESTING.md; parallel via xdist)
 - **pytest-xdist** - Parallel test execution (3x speedup)
 - **Click** - CLI framework for sam-search command
 - **Docker Compose** - Containerized development environment

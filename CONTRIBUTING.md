@@ -8,7 +8,7 @@ This repository provides:
 - **Python ORM models** (SQLAlchemy 2.0) for the SAM database
 - **CLI tool** (`sam-search`) for quick user/project lookups
 - **REST API** (Flask) for programmatic access to SAM data
-- **Comprehensive test suite** with schema validation (380+ tests, 77.47% coverage)
+- **Comprehensive test suite** with schema validation (see [docs/TESTING.md](docs/TESTING.md))
 
 ## Quick Start for Impatient Users
 
@@ -314,17 +314,10 @@ pytest tests/ --cov-report=html
 - **API schemas** (`test_schemas.py`) - Marshmallow serialization tests
 - **Views** (`test_views.py`) - Database view queries
 
-**Expected results with read-only access:**
-- ~360+ passed
-- ~20 skipped (CRUD tests)
-- 0 failed
-- Execution time: ~32 seconds (parallel without coverage)
-
-**With local database:**
-- 380+ passed
-- ~16 skipped
-- 0 failed
-- Execution time: ~32 seconds (parallel without coverage), ~97 seconds (with coverage)
+**Expected results:** everything passes (a handful of environment-dependent
+skips are normal). Current suite size and timings live in
+[docs/TESTING.md](docs/TESTING.md) — the suite runs in parallel via
+pytest-xdist against the isolated `mysql-test` container.
 
 ### Adding New Features
 
@@ -357,7 +350,10 @@ pytest tests/ --cov-report=html
 
 #### Adding API Endpoints
 
-1. **Create Marshmallow schema** in `src/sam.schemas/`:
+1. **Create Marshmallow schema** in `src/sam/schemas/` (serialization) or
+   `src/sam/schemas/forms/` (POST/PUT form validation — see CLAUDE.md §9
+   for the handler tiers: `handle_htmx_form_post`, `CrudSpec`,
+   `HtmxFormHandler`):
    ```python
    from sam.schemas import BaseSchema
    from marshmallow import fields
