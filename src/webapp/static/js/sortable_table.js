@@ -28,6 +28,16 @@
  * `sort-asc` to a header just renders the arrow indicator; nothing is
  * re-sorted until a user clicks. Click toggles asc/desc; data-sort-attr
  * lets a single colspan cell carry sort keys for several columns.
+ *
+ * Secondary sort handle (two sort keys in ONE column):
+ *   <th class="sortable-header" data-sort="text">
+ *     <span class="sort-handle" data-sort-attr="sort-first"
+ *           title="Sort by first name"></span>Name</th>
+ *   ...
+ *   <td data-sort-value="last, first" data-sort-first="first last">…</td>
+ *   The handle renders its own arrow (components.css) and sorts by its
+ *   data-sort-attr key; clicking the rest of the header sorts by the
+ *   cell's data-sort-value as usual.
  */
 (function () {
     'use strict';
@@ -55,55 +65,70 @@
         return isAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     }
 
+    /** Sort `table` and move the arrow indicator to `indicatorEl`
+     *  (the clicked th, or a .sort-handle inside one). */
+    function applySort(table, indicatorEl, colIndex, sortType, sortAttr) {
+        var isAsc = !indicatorEl.classList.contains('sort-asc');
+        table.querySelectorAll('th, th .sort-handle').forEach(function (h) {
+            h.classList.remove('sort-asc', 'sort-desc');
+        });
+        indicatorEl.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+
+        var groups = Array.from(
+            table.querySelectorAll('tbody.sortable-group')
+        );
+        if (groups.length) {
+            // Multi-tbody mode: reorder the tbody nodes
+            // themselves. Sort key comes from each group's
+            // first <tr>. parent.appendChild moves the node
+            // (it doesn't clone) so unmarked tbodies — the
+            // Total row, the empty-state row — stay in place
+            // as long as they were rendered before the
+            // sortable group block.
+            var parent = groups[0].parentNode;
+            groups.sort(function (a, b) {
+                return compareKeys(
+                    extractKey(a.querySelector('tr'), colIndex, sortAttr),
+                    extractKey(b.querySelector('tr'), colIndex, sortAttr),
+                    sortType, isAsc
+                );
+            });
+            groups.forEach(function (g) { parent.appendChild(g); });
+            return;
+        }
+
+        // Single-tbody mode (existing behavior).
+        var tbody = table.querySelector('tbody');
+        var rows = Array.from(tbody.querySelectorAll('tr'));
+        rows.sort(function (a, b) {
+            return compareKeys(
+                extractKey(a, colIndex, sortAttr),
+                extractKey(b, colIndex, sortAttr),
+                sortType, isAsc
+            );
+        });
+        rows.forEach(function (r) { tbody.appendChild(r); });
+    }
+
     function bindTable(table) {
         if (table.dataset.sortableBound === '1') return;
         table.dataset.sortableBound = '1';
 
         table.querySelectorAll('th.sortable-header').forEach(function (th) {
+            var colIndex = Array.from(th.parentNode.children).indexOf(th);
+
             th.addEventListener('click', function () {
-                var colIndex = Array.from(th.parentNode.children).indexOf(th);
-                var sortType = th.dataset.sort;
-                var sortAttr = th.dataset.sortAttr;
-                var isAsc = !th.classList.contains('sort-asc');
-                table.querySelectorAll('th').forEach(function (h) {
-                    h.classList.remove('sort-asc', 'sort-desc');
-                });
-                th.classList.add(isAsc ? 'sort-asc' : 'sort-desc');
+                applySort(table, th, colIndex, th.dataset.sort, th.dataset.sortAttr);
+            });
 
-                var groups = Array.from(
-                    table.querySelectorAll('tbody.sortable-group')
-                );
-                if (groups.length) {
-                    // Multi-tbody mode: reorder the tbody nodes
-                    // themselves. Sort key comes from each group's
-                    // first <tr>. parent.appendChild moves the node
-                    // (it doesn't clone) so unmarked tbodies — the
-                    // Total row, the empty-state row — stay in place
-                    // as long as they were rendered before the
-                    // sortable group block.
-                    var parent = groups[0].parentNode;
-                    groups.sort(function (a, b) {
-                        return compareKeys(
-                            extractKey(a.querySelector('tr'), colIndex, sortAttr),
-                            extractKey(b.querySelector('tr'), colIndex, sortAttr),
-                            sortType, isAsc
-                        );
-                    });
-                    groups.forEach(function (g) { parent.appendChild(g); });
-                    return;
-                }
-
-                // Single-tbody mode (existing behavior).
-                var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr'));
-                rows.sort(function (a, b) {
-                    return compareKeys(
-                        extractKey(a, colIndex, sortAttr),
-                        extractKey(b, colIndex, sortAttr),
-                        sortType, isAsc
-                    );
+            // Secondary handles: own key via data-sort-attr, own arrow.
+            th.querySelectorAll('.sort-handle[data-sort-attr]').forEach(function (handle) {
+                handle.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                    applySort(table, handle, colIndex,
+                              handle.dataset.sort || th.dataset.sort,
+                              handle.dataset.sortAttr);
                 });
-                rows.forEach(function (r) { tbody.appendChild(r); });
             });
         });
     }
