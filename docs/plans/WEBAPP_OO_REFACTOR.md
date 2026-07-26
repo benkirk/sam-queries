@@ -15,6 +15,12 @@ Branches: PR 1 = `webapp_quick_wins`, PR 2 = `oo_refactor` (stacked on PR 1). Bo
         normalized page hashes byte-identical; the one differing page
         (`projects`, custom ProjectAdmin, untouched) differs between two
         runs of identical code (inherent render nondeterminism)
+  - [x] 1.4b (Ben's suggestion) auto-detect models from the SAM declarative
+        registry (excluding __bind_key__ models); slug derivation reproduces
+        all 93 legacy endpoints exactly; recovered 6 models the manual list
+        had drifted past (Country, GidAllocation, ManualTask, Product,
+        StateProv, Synchronizer); crawl proof: 0 removed, 6 added (all 200),
+        existing page bodies byte-identical nav-stripped
   - [x] 1.5 `invalidate_queue_cache()` ownership + `allowed_facility_names()` (admin site kept active_only=False — divergence surfaced for Ben)
   - [x] 1.6 GET-side date parsing (end-of-day note in commit) + `sort_link` macro
   - [ ] PR 1 opened
