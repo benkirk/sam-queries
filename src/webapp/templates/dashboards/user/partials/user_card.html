@@ -1,4 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/help.html' import help_icon with context %}
+{% from 'dashboards/fragments/glossary.html' import g_former_projects with context %}
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
                           current_shell=None, allowable_shells=None, can_edit_shell=False,
                           available_groups=None, can_edit_primary_gid=False) %}
@@ -158,6 +160,34 @@
                     {% endif %}
                 </div>
             </div>
+
+            <!-- Inactive / former projects — operators only. Solid badge =
+                 project deactivated; outline badge = active project whose
+                 membership has ended (see g_former_projects). -->
+            {% if is_admin and has_permission_any_facility(Permission.VIEW_PROJECTS) %}
+            {% set former = sam_user.former_projects() %}
+            {% if former.inactive or former.ended %}
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">
+                    Inactive / Former Projects: {{ help_icon(g_former_projects(), rich=True) }}
+                </span>
+                <div class="stat-value text-dark text-detail">
+                    {% for project in former.inactive %}
+                    <a href="{{ url_for('admin_dashboard.projects', projcode=project.projcode) }}"
+                       class="badge bg-secondary text-decoration-none me-1 mb-1">
+                        {{ project.projcode }}
+                    </a>
+                    {% endfor %}
+                    {% for project in former.ended %}
+                    <a href="{{ url_for('admin_dashboard.projects', projcode=project.projcode) }}"
+                       class="badge bg-light text-secondary border text-decoration-none me-1 mb-1">
+                        {{ project.projcode }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
 
             <!-- Active groups (adhoc group membership, tabbed by access branch) -->
             {% if user_groups is not none %}

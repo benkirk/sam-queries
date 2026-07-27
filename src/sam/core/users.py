@@ -424,6 +424,28 @@ class User(Base, TimestampMixin, SessionMixin):
         """Return active projects (default)."""
         return self.active_projects()
 
+    def former_projects(self, as_of: Optional[datetime] = None) -> Dict[str, List['Project']]:
+        """Return non-current project associations, categorized.
+
+        Complements active_projects(): every project the user is linked to
+        (member, lead, or admin) that active_projects() excludes, split by why:
+
+          - 'inactive': projects whose active flag is off
+          - 'ended':    active projects where every membership has expired
+
+        Both lists are sorted by projcode.
+        """
+        active = set(self.active_projects(as_of))
+        associated = {p for p in self._projects_w_dups if p is not None}
+        associated |= set(self.led_projects) | set(self.admin_projects)
+        former = associated - active
+        return {
+            'inactive': sorted((p for p in former if not p.is_active),
+                               key=lambda p: p.projcode),
+            'ended': sorted((p for p in former if p.is_active),
+                            key=lambda p: p.projcode),
+        }
+
     def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:
         """Get currently active account users."""
         check_date = as_of or datetime.now()
