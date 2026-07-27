@@ -122,20 +122,24 @@
   </div>
 
   <div class="d-flex flex-wrap align-items-end gap-3 mt-2">
-    {% for lo_name, hi_name, label, width in [
-        ('min_nodes', 'max_nodes', 'Nodes', '90px'),
-        ('min_cpus',  'max_cpus',  'CPUs',  '90px'),
-        ('min_gpus',  'max_gpus',  'GPUs',  '90px'),
-        ('min_wait_hours', 'max_wait_hours', 'Wait (hours)', '110px')] %}
+    {# step='any' on the float pairs — the browser's default step=1 would
+       reject fractional bounds like 1.5 h at submit time. #}
+    {% for lo_name, hi_name, label, width, step in [
+        ('min_nodes', 'max_nodes', 'Nodes', '90px', '1'),
+        ('min_cpus',  'max_cpus',  'CPUs',  '90px', '1'),
+        ('min_gpus',  'max_gpus',  'GPUs',  '90px', '1'),
+        ('min_wait_hours', 'max_wait_hours', 'Wait (hours)', '110px', 'any'),
+        ('min_elapsed_hours', 'max_elapsed_hours', 'Elapsed (hours)', '110px', 'any'),
+        ('min_reqmem_gb', 'max_reqmem_gb', 'Req mem (GB)', '110px', 'any')] %}
     <div>
       <label class="form-label"><strong>{{ label }}</strong></label>
       <div class="d-flex gap-1">
         <input type="number" class="form-control" name="{{ lo_name }}"
                value="{{ filters[lo_name] if filters[lo_name] is not none }}"
-               placeholder="min" min="0" style="width:{{ width }};">
+               placeholder="min" min="0" step="{{ step }}" style="width:{{ width }};">
         <input type="number" class="form-control" name="{{ hi_name }}"
                value="{{ filters[hi_name] if filters[hi_name] is not none }}"
-               placeholder="max" min="0" style="width:{{ width }};">
+               placeholder="max" min="0" step="{{ step }}" style="width:{{ width }};">
       </div>
     </div>
     {% endfor %}

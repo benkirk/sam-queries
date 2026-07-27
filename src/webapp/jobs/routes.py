@@ -423,6 +423,8 @@ _ROUNDTRIP_KEYS = (
     'name', 'ignore_case',
     'min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
     'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours',
+    'min_elapsed_hours', 'max_elapsed_hours',
+    'min_reqmem_gb', 'max_reqmem_gb',
     # Plugin-native bounds (bar-drill deep links / envelope replays).
     'min_eligible_secs', 'max_eligible_secs',
     'min_elapsed', 'max_elapsed', 'min_reqmem', 'max_reqmem',
@@ -432,6 +434,10 @@ _ROUNDTRIP_KEYS = (
 )
 
 _SECS_PER_HOUR = 3600
+
+# 1 GB = 1024^3 bytes — the plugin's GB↔bytes convention (its CLI's
+# _BYTES_PER_GB); the "GB" panel labels match its bucket-label vocabulary.
+_BYTES_PER_GB = 1024 ** 3
 
 
 def _parse_int_arg(name: str) -> Optional[int]:
@@ -469,7 +475,8 @@ def _parse_job_filters(include_user: bool = True) -> dict:
     """Whitelisted GET parse → service filter kwargs (plugin-native units).
 
     Human-facing units convert at this boundary and nowhere else:
-    ``min/max_wait_hours`` (hours) → ``min/max_eligible_secs`` (seconds).
+    ``min/max_wait_hours`` and ``min/max_elapsed_hours`` (hours →
+    seconds), ``min/max_reqmem_gb`` (GB → bytes, 1024³).
     Unknown params are ignored; malformed numbers degrade to "no filter".
 
     Plugin-native bound params (the names a histogram envelope's
@@ -506,6 +513,14 @@ def _parse_job_filters(include_user: bool = True) -> dict:
         f['min_eligible_secs'] = int(min_wait * _SECS_PER_HOUR)
     if max_wait is not None:
         f['max_eligible_secs'] = int(max_wait * _SECS_PER_HOUR)
+    for arg, target, factor in (
+            ('min_elapsed_hours', 'min_elapsed', _SECS_PER_HOUR),
+            ('max_elapsed_hours', 'max_elapsed', _SECS_PER_HOUR),
+            ('min_reqmem_gb',     'min_reqmem',  _BYTES_PER_GB),
+            ('max_reqmem_gb',     'max_reqmem',  _BYTES_PER_GB)):
+        v = _parse_float_arg(arg)
+        if v is not None:
+            f[target] = int(v * factor)
     for key in ('min_eligible_secs', 'max_eligible_secs',
                 'min_elapsed', 'max_elapsed',
                 'min_reqmem', 'max_reqmem',
@@ -791,6 +806,10 @@ def _panel_filters(machine: str) -> dict:
         'max_gpus':  _parse_int_arg('max_gpus'),
         'min_wait_hours': _parse_float_arg('min_wait_hours'),
         'max_wait_hours': _parse_float_arg('max_wait_hours'),
+        'min_elapsed_hours': _parse_float_arg('min_elapsed_hours'),
+        'max_elapsed_hours': _parse_float_arg('max_elapsed_hours'),
+        'min_reqmem_gb': _parse_float_arg('min_reqmem_gb'),
+        'max_reqmem_gb': _parse_float_arg('max_reqmem_gb'),
         'per_page': per_page,
         'qos_options': _qos_options_safe(machine),
     }
@@ -817,7 +836,9 @@ def _initial_jobs_url(fragment_url: str, machine: str, target_id: str,
     if panel['ignore_case']:
         params['ignore_case'] = '1'
     for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
-                'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours'):
+                'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours',
+                'min_elapsed_hours', 'max_elapsed_hours',
+                'min_reqmem_gb', 'max_reqmem_gb'):
         if panel[key] is not None:
             params[key] = panel[key]
     return f'{fragment_url}?{urlencode(params)}'

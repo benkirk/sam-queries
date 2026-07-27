@@ -2046,6 +2046,46 @@ def test_explore_page_carries_filters_into_initial_url(
     assert 'min_wait_hours=1.5' in body
 
 
+def test_explore_page_elapsed_reqmem_panel_roundtrip(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The panel renders the elapsed/req-mem inputs, echoes deep-linked
+    values back into them, and carries them into the lazy-load URL."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&min_elapsed_hours=2.5&max_reqmem_gb=128'
+    )
+    body = resp.get_data(as_text=True)
+    # Panel inputs exist (all four names) with the deep-linked values.
+    for field in ('min_elapsed_hours', 'max_elapsed_hours',
+                  'min_reqmem_gb', 'max_reqmem_gb'):
+        assert f'name="{field}"' in body
+    assert 'value="2.5"' in body
+    assert 'value="128' in body
+    # …and the initial fragment URL reproduces them.
+    assert 'min_elapsed_hours=2.5' in body
+    assert 'max_reqmem_gb=128' in body
+
+
+def test_fragment_converts_elapsed_hours_and_reqmem_gb(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Panel units convert at the route boundary: hours → seconds for
+    elapsed, GB → bytes (1024³) for requested memory."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&min_elapsed_hours=1.5&max_elapsed_hours=24'
+        '&min_reqmem_gb=0.5&max_reqmem_gb=128'
+    )
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['min_elapsed'] == 5400
+    assert skw['max_elapsed'] == 86400
+    assert skw['min_reqmem'] == 512 * 1024 ** 2      # 0.5 GB
+    assert skw['max_reqmem'] == 128 * 1024 ** 3
+
+
 def test_explore_page_scope_rerooting_badge(
     app, auth_client, active_project, monkeypatch,
 ):
