@@ -22,6 +22,22 @@ _KEY_GROUPS = (
     'project_access',
 )
 
+# Keyspaces owned by the OTHER cache adapters sharing this Redis DB —
+# excluded from flask-cache introspection so their entries don't miscount
+# into the 'other' group. Must list every live non-flask adapter prefix:
+# 'chart:' covers RedisChartCache (chart:<name>:, chart:hits/misses:<name>),
+# the rest are the name-derived RedisTTLAdapter prefixes. A unit test
+# cross-checks this tuple against webapp.caching.adapters().
+_FOREIGN_PREFIXES = (
+    'chart:',
+    'allocation_usage:',
+    'fs_scans:',
+    'fs_scans_filtered:',
+    'jobs:',
+    'jobs_recent:',
+)
+_FOREIGN_PREFIXES_B = tuple(p.encode() for p in _FOREIGN_PREFIXES)
+
 
 class FlaskCacheAdapter(CacheBase):
     """Best-effort introspection of a Flask-Caching instance."""
@@ -74,7 +90,7 @@ class FlaskCacheAdapter(CacheBase):
             return None
         try:
             # Flask-Caching prefixes keys; we scan everything not owned
-            # by our chart/usage adapters (those have their own prefixes).
+            # by the chart/TTL adapters (_FOREIGN_PREFIXES).
             groups: dict[str, dict] = {
                 g: {'entries': 0, 'bytes_approx': 0}
                 for g in (*_KEY_GROUPS, 'other')
@@ -84,15 +100,15 @@ class FlaskCacheAdapter(CacheBase):
             total_entries = 0
             for raw_key in client.scan_iter(match='*', count=200):
                 # Skip keys owned by our other adapters before decoding —
-                # usage:* values are pickle-suffixed bytes that aren't
+                # TTL-adapter keys are pickle-suffixed bytes that aren't
                 # valid UTF-8, so checking on raw bytes avoids a
                 # UnicodeDecodeError on the next line.
                 if isinstance(raw_key, bytes):
-                    if raw_key.startswith(b'chart:') or raw_key.startswith(b'usage:'):
+                    if raw_key.startswith(_FOREIGN_PREFIXES_B):
                         continue
                     key = raw_key.decode('utf-8', errors='replace')
                 else:
-                    if raw_key.startswith('chart:') or raw_key.startswith('usage:'):
+                    if raw_key.startswith(_FOREIGN_PREFIXES):
                         continue
                     key = raw_key
                 total_entries += 1
