@@ -1,8 +1,11 @@
 # Job History Dashboard — SAM-side implementation (Session 2 handoff)
 
-**Status (2026-07-27): IMPLEMENTED.** Plugin side landed on PR #99 (tip
-`24a35ed`; round-2 memory dims moved it to `e07238f` — see
-`JOB_HISTORY_FOLLOWUPS.md`); SAM Commits 1–7 are on `job_history_expansion` as planned, with
+**Status (2026-07-27): IMPLEMENTED; plugin MERGED upstream.** Plugin side
+landed on PR #99 (round-1 `24a35ed`; round-2 memory dims `e07238f`; review
+fix `dcb177f` closing the cpus/nodes bucket tables at the domain floor — see
+`JOB_HISTORY_FOLLOWUPS.md`) and merged through hpc-usage-queries `main`
+2026-07-27, so default builds now include it (no `HPC_USAGE_QUERIES_REF`
+pin needed); SAM Commits 1–7 are on `job_history_expansion` as planned, with
 the deltas recorded in *As-built notes* below. The approved plan of record
 (full rationale, plugin-side commit details) is
 [`JOB_HISTORY_DRILLDOWN.md`](JOB_HISTORY_DRILLDOWN.md); where the two differ,
@@ -37,13 +40,13 @@ THIS doc reflects what actually landed.
 ## How to resume
 
 1. Branch: `job_history_expansion` (this repo). Plugin repo:
-   `~/codes/hpc-usage-queries/devel`, branch `jobs_plugin_search_drilldown`
-   = PR #99, **tip `e07238f5f77317ad36d67f111b92e934eae07528`** (round-2
-   memory dims; round-1 contract below was verified at `24a35ed`).
-2. Rebuild against the pinned sha (both, before any webapp/pytest work):
+   `~/codes/hpc-usage-queries/devel` — PR #99 (final tip `dcb177f`) is
+   **merged to `main`**, so default builds include it (the round-1 contract
+   below was verified at `24a35ed`; `e07238f` added the memory dims).
+2. Rebuild normally (no ref pin — plugin@main has everything):
    ```bash
-   HPC_USAGE_QUERIES_REF=e07238f5f77317ad36d67f111b92e934eae07528 docker compose build webdev
-   HPC_USAGE_QUERIES_REF=e07238f5f77317ad36d67f111b92e934eae07528 source etc/config_env.sh
+   docker compose build webdev
+   source etc/config_env.sh
    make print-env-hash   # confirm the hash-keyed conda-env rebuilt
    ```
 3. Webapp: `docker compose up webdev --watch` → http://localhost:5050 (stub
@@ -51,7 +54,9 @@ THIS doc reflects what actually landed.
    `export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'`.
    **Running pytest directly is authorized for this track** (both repos).
 4. Merge order at the end: plugin PR #99 → staging (then #98 staging→main);
-   SAM PR (this branch → staging) only after.
+   SAM PR (this branch → staging) only after. **DONE 2026-07-27**: plugin
+   merged through main; SAM PR #381 squash-merged to staging; PR #382
+   (round 2) rebased onto staging behind it.
 
 ## As-landed plugin contract (verified, tip 24a35ed)
 

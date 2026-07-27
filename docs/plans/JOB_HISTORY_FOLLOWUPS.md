@@ -1,9 +1,13 @@
 # Job History follow-ups — round 2 (memory dims, bar drill, facet chips, By-Project, elapsed/reqmem inputs)
 
-**Status (2026-07-27): IMPLEMENTED** — plugin P1 pushed as `e07238f`
-(PR #99), SAM S0–S6 on `job_history_followups`. Full suite 3,257 green
-(+ CI emulation with `CACHE_REDIS_URL`); plugin suite 565. Playwright
-smoke + stacked PR are the remaining steps. As-built deltas from the
+**Status (2026-07-27): IMPLEMENTED & MERGED upstream** — plugin P1 pushed
+as `e07238f` (PR #99); review fix `dcb177f` closed the cpus/nodes bucket
+tables at the domain floor (leading `("0", 0, 0)` bands — sub-floor rows
+were mis-filed into the "1" band, breaking the bar↔drill round-trip);
+PR #99 then merged through hpc-usage-queries `main`. SAM S0–S6 on
+`job_history_followups` (PR #382, rebased onto staging after #381
+merged). Full suite 3,257 green (+ CI emulation with `CACHE_REDIS_URL`);
+plugin suite 565→568. Playwright smoke passed. As-built deltas from the
 plan below:
 
 - **S1**: the per-job table's inline filter parse was UNIFIED onto
