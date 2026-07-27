@@ -116,7 +116,7 @@
        serialized into every hx-include without risking a duplicate
        `qos=` query param. #}
     {% if filters.qos and not qos_options %}<input type="hidden" name="qos" value="{{ filters.qos }}">{% endif %}
-    {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+    {% if filters.exit_status %}<input type="hidden" name="exit_status" value="{{ filters.exit_status }}">{% endif %}
   </form>
 
   <div class="d-flex align-items-center mb-2">

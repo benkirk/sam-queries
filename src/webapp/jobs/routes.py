@@ -10,7 +10,8 @@ Query params (all optional unless noted):
   qos                  — limit to a single QoS / priority class
                          (e.g. 'premium', 'regular', 'economy',
                          'uncharged', 'special')
-  status               — limit to a single PBS exit status (e.g. 'F')
+  exit_status          — limit to a single PBS exit code as text
+                         (e.g. '0' = success, '1', '271')
   page                 — int ≥ 1; default 1
   per_page             — int in [10, 200]; default 50
   sort_by              — one of {'start', 'elapsed', 'qos',
@@ -65,7 +66,7 @@ _SORT_WHITELIST = set(_DEFAULT_COLS)
 # column (now in the main table) so the multiplier sits next to status
 # at the top of the drawer rather than buried beside memory_charges.
 _VERBOSE_EXTRAS = (
-    'status', 'qos_factor',
+    'exit_status', 'qos_factor',
     'queue', 'user',
     'submit', 'end', 'walltime',
     'mpiprocs', 'ompthreads',
@@ -169,7 +170,7 @@ def jobs_fragment(project):
         'user':   (request.args.get('user') or '').strip() or None,
         'queue':  (request.args.get('queue') or '').strip() or None,
         'qos':    (request.args.get('qos') or '').strip() or None,
-        'status': (request.args.get('status') or '').strip() or None,
+        'exit_status': (request.args.get('exit_status') or '').strip() or None,
     }
     page = _parse_pagination()
     sort = _parse_sort()
@@ -309,7 +310,7 @@ def _load_column_specs():
     falls back to the raw column key as the header.
     """
     try:
-        from job_history.cli.search.columns import COLUMNS
+        from job_history import COLUMNS
         return COLUMNS
     except Exception:
         return {}

@@ -1785,7 +1785,7 @@ DEFAULT_RECENT_JOBS = 50
 # plus the four the GPU/CPU classifier needs (cpu/gpu hours + charges). We
 # deliberately never request memory columns — we track but don't bill memory.
 JOB_COLUMNS = (
-    'job_id', 'account', 'user', 'queue', 'qos', 'qos_factor', 'status',
+    'job_id', 'account', 'user', 'queue', 'qos', 'qos_factor', 'exit_status',
     'submit', 'start', 'end', 'elapsed', 'walltime',
     'numnodes', 'numcpus', 'numgpus', 'cputype', 'gputype',
     'cpu_hours', 'gpu_hours', 'cpu_charges', 'gpu_charges',

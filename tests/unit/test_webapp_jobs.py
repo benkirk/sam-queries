@@ -271,7 +271,7 @@ def test_count_jobs_sam_summary_keeps_legacy_queue_name(
     _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        # No status / has_gpus → goes through the SAM summary fast path.
+        # No exit_status / GPU bounds → goes through the SAM summary fast path.
         total = service.count_jobs(
             'derecho', project=active_project, queue='cpu-special',
         )
@@ -284,8 +284,9 @@ def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
     app, active_project, monkeypatch,
 ):
     """When the request adds a filter outside the summary key set
-    (``status``, ``has_gpus``), count_jobs hits the plugin — which DOES
-    need the normalized queue. Mirrors the search_jobs test."""
+    (``exit_status``, ``min_gpus``/``max_gpus``), count_jobs hits the
+    plugin — which DOES need the normalized queue. Mirrors the
+    search_jobs test."""
     from webapp.jobs import service
 
     captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=7)
@@ -294,7 +295,7 @@ def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
         service.count_jobs(
             'derecho', project=active_project,
             queue='cpu-economy',
-            status='F',  # forces plugin path
+            exit_status='1',  # forces plugin path
         )
 
     ckw = captured['last_jobs_count_kwargs']
@@ -404,8 +405,8 @@ def test_count_jobs_sam_summary_ignores_inferred_qos(
 def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
     app, active_project, monkeypatch,
 ):
-    """When count_jobs takes the plugin path (e.g. because status is
-    set), it also runs the queue/qos resolver so 'cpu-special' →
+    """When count_jobs takes the plugin path (e.g. because exit_status
+    is set), it also runs the queue/qos resolver so 'cpu-special' →
     queue='cpu', qos='special' on the plugin call."""
     from webapp.jobs import service
 
@@ -415,7 +416,7 @@ def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
         service.count_jobs(
             'derecho', project=active_project,
             queue='cpu-special',
-            status='F',  # forces plugin path
+            exit_status='1',  # forces plugin path
             valid_qos_names=['premium', 'regular', 'special'],
         )
 
@@ -536,7 +537,7 @@ def _make_row(**overrides):
     to a sensible non-empty value so suppression / drawer tests can opt
     fields back to 0/None without redefining the full superset."""
     base = {
-        'job_id': '500.desched1', 'name': 'demo', 'status': 'F',
+        'job_id': '500.desched1', 'name': 'demo', 'exit_status': '1',
         'user': 'alice', 'account': 'SCSG0001', 'queue': 'main',
         'start': '2026-05-01 10:00:00',
         'end':   '2026-05-01 11:00:00',
@@ -561,8 +562,8 @@ def test_jobs_fragment_pagination_forwards_offset(
     """?page=3&per_page=25 ⇒ service receives offset=50, limit=25.
 
     The count call goes to SAM's CompChargeSummary now, not the plugin —
-    a separate test (``…_status_filter_uses_plugin_count``) covers the
-    plugin-fallback shape.
+    a separate test (``…_exit_status_filter_uses_plugin_count``) covers
+    the plugin-fallback shape.
     """
     captured = _install_mock_plugin(app, monkeypatch,
                                     jobs_search_return=[_make_row()])
@@ -576,18 +577,18 @@ def test_jobs_fragment_pagination_forwards_offset(
     assert kw['offset'] == 50    # (3 - 1) * 25
 
 
-def test_jobs_fragment_status_filter_uses_plugin_count(
+def test_jobs_fragment_exit_status_filter_uses_plugin_count(
     app, auth_client, active_project, monkeypatch,
 ):
     """When the request adds a filter outside CompChargeSummary's key set
-    (``status``, ``has_gpus``), count_jobs delegates to the plugin's
-    ``jobs_count`` rather than SAM's summary."""
+    (``exit_status``, ``min_gpus``/``max_gpus``), count_jobs delegates to
+    the plugin's ``jobs_count`` rather than SAM's summary."""
     captured = _install_mock_plugin(app, monkeypatch,
                                     jobs_search_return=[_make_row()],
                                     jobs_count_return=42)
     resp = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&status=F'
+        '?machine=derecho&exit_status=1'
     )
     assert resp.status_code == 200
     ckw = captured['last_jobs_count_kwargs']
@@ -598,7 +599,7 @@ def test_jobs_fragment_status_filter_uses_plugin_count(
     # whether the snapshot picked a leaf or a tree-parent fixture.
     assert isinstance(ckw['account'], list)
     assert active_project.projcode in ckw['account']
-    assert ckw['status']  == 'F'
+    assert ckw['exit_status'] == '1'
 
 
 def test_jobs_fragment_passes_tree_projcodes(
@@ -799,31 +800,31 @@ def test_jobs_fragment_qos_dropdown_pre_selects_active_filter(
         'QoS dropdown should pre-select the active ?qos= value'
 
 
-def test_jobs_fragment_qos_factor_drawer_after_status(
+def test_jobs_fragment_qos_factor_drawer_after_exit_status(
     app, auth_client, active_project, monkeypatch,
 ):
-    """`qos_factor` is rendered in the drawer immediately after `status`
-    (the re-ordered _VERBOSE_EXTRAS) so the multiplier sits next to the
-    QoS column above the fold of the drawer."""
+    """`qos_factor` is rendered in the drawer immediately after
+    `exit_status` (the re-ordered _VERBOSE_EXTRAS) so the multiplier sits
+    next to the QoS column above the fold of the drawer."""
     _install_mock_plugin(
         app, monkeypatch,
         jobs_search_return=[_make_row(qos='premium', qos_factor=1.5,
-                                      status='F')],
+                                      exit_status='1')],
     )
     resp = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
     )
     body = resp.get_data(as_text=True)
-    # Plugin's COLUMNS dict labels: status="Status", qos_factor="Factor".
+    # Plugin's COLUMNS dict labels: exit_status="Exit", qos_factor="Factor".
     # The <dt> wraps the label with whitespace, so match the bare text;
     # neither label appears elsewhere in the jobs fragment, so the first
     # occurrence is the drawer header.
-    status_idx = body.find('Status')
+    exit_idx = body.find('Exit')
     factor_idx = body.find('Factor')
-    assert status_idx >= 0, 'Status label missing from drawer'
+    assert exit_idx >= 0, 'Exit label (exit_status) missing from drawer'
     assert factor_idx >= 0, 'Factor label (qos_factor) missing from drawer'
-    assert factor_idx > status_idx, \
-        f'expected Status before Factor (qos_factor); got {status_idx=} {factor_idx=}'
+    assert factor_idx > exit_idx, \
+        f'expected Exit (exit_status) before Factor (qos_factor); got {exit_idx=} {factor_idx=}'
 
 
 def test_jobs_fragment_qos_options_populated_from_plugin(

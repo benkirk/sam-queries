@@ -69,8 +69,9 @@ def search_jobs(
     user: Optional[str] = None,
     queue: Optional[str] = None,
     qos: Optional[str] = None,
-    status: Optional[str] = None,
-    has_gpus: Optional[bool] = None,
+    exit_status: Optional[str] = None,
+    min_gpus: Optional[int] = None,
+    max_gpus: Optional[int] = None,
     columns: Optional[Sequence[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -93,11 +94,14 @@ def search_jobs(
         project: SAM Project — supplies the default ``account`` filter
             via ``project.projcode``.
         start, end: Date range filter on ``Job.end``.
-        user, queue, qos, status: Optional plain-text filters.
+        user, queue, qos, exit_status: Optional plain-text filters.
             ``qos`` matches the canonical name in the plugin's
-            ``job_qos`` lookup (e.g. ``'premium'``, ``'regular'``).
-        has_gpus: ``None`` ignore; ``True`` → GPU jobs only; ``False`` →
-            CPU-only jobs.
+            ``job_qos`` lookup (e.g. ``'premium'``, ``'regular'``);
+            ``exit_status`` is the PBS exit code as text (``'0'`` =
+            success).
+        min_gpus, max_gpus: Inclusive bounds on ``Job.numgpus``
+            (``min_gpus=1`` → GPU jobs only; ``max_gpus=0`` →
+            CPU-only jobs).
         columns: Optional column projection. Default is the plugin's
             ``DEFAULT_COLUMNS`` set.
         limit: Optional server-side LIMIT.
@@ -134,11 +138,12 @@ def search_jobs(
         'user':    user,
         'queue':   queue_norm,
         'qos':     qos_norm,
-        'status':  status,
+        'exit_status': exit_status,
         'columns': columns,
         'limit':   limit,
         'offset':  offset,
-        'has_gpus': has_gpus,
+        'min_gpus': min_gpus,
+        'max_gpus': max_gpus,
     }
     if sort_by is not None:
         kwargs['sort_by']  = sort_by
@@ -157,8 +162,9 @@ def count_jobs(
     user: Optional[str] = None,
     queue: Optional[str] = None,
     qos: Optional[str] = None,
-    status: Optional[str] = None,
-    has_gpus: Optional[bool] = None,
+    exit_status: Optional[str] = None,
+    min_gpus: Optional[int] = None,
+    max_gpus: Optional[int] = None,
     account_projcodes: Optional[Sequence[str]] = None,
     valid_qos_names: Sequence[str] = (),
 ) -> int:
@@ -175,7 +181,7 @@ def count_jobs(
     against the production schema). Falls back to the plugin's
     ``JobQueries.jobs_count`` — a ``COUNT(*)`` over the raw ``job``
     table — only when a filter outside the summary key set is in play
-    (``status``, ``has_gpus``). The two counts can disagree under
+    (``exit_status``, ``min_gpus``/``max_gpus``). The two counts can disagree under
     ingester drift; SAM is treated as the source of truth for the
     displayed totalizer since it's the project's accounting authority.
 
@@ -191,8 +197,8 @@ def count_jobs(
     # Fast path: SAM's daily summary covers every filter the drill-down
     # uses. Avoids a 1-second-plus COUNT(*) over the plugin's job table.
     # `qos` is NOT in CompChargeSummary's key set today, so a QoS filter
-    # falls back to the plugin path alongside status / has_gpus.
-    if status is None and has_gpus is None and qos is None:
+    # falls back to the plugin path alongside exit_status / GPU bounds.
+    if exit_status is None and min_gpus is None and max_gpus is None and qos is None:
         return _count_via_sam_summary(
             machine,
             projcodes=projcodes,
@@ -217,8 +223,9 @@ def count_jobs(
             user=user,
             queue=queue_norm,
             qos=qos_norm,
-            status=status,
-            has_gpus=has_gpus,
+            exit_status=exit_status,
+            min_gpus=min_gpus,
+            max_gpus=max_gpus,
         )
 
 
