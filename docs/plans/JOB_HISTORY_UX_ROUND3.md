@@ -1,6 +1,6 @@
 # Job History UX round 3 — cross-repo status & restart doc
 
-**State (2026-07-27): Phase A done (plugin PR #100 under review); Phase B implemented on `redis_and_ux_tweaks` and Playwright-verified against a locally rebuilt container. Remaining: plugin PR #100 merge to `main`, full SAM pytest run (Ben), then the SAM PR to `staging` — which must note the lockstep deploy dependency on #100.**
+**State (2026-07-27): Phase A done; upstream review added two follow-ups to PR #100 (`04684f8` owners_sort_by, `0ae1823` FK-based lookup filters) and SAM reacted (`62c89e2`: threads `owners_sort_by=metric` into the histogram call + cache opts). Phase B implemented on `redis_and_ux_tweaks`, Playwright-verified except the stacked-GPU ranking, which needs a container rebuild at plugin `0ae1823` (the pre-review build TypeErrors on `owners_sort_by` — degrades to the error banner). Remaining: rebuild + GPU-pill re-smoke, #100 merge to `main`, then the SAM PR to `staging` with the lockstep-deploy note (now pinned at plugin ≥ `04684f8`).**
 
 ## The four issues (Ben's review of PRs #381/#382)
 

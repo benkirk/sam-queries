@@ -796,6 +796,10 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         hist = service.jobs_histogram(
             machine, dimension,
             owners_limit=_HIST_OWNERS_LIMIT,
+            # Which top-N survives must follow the displayed metric —
+            # hours-ranked owners cover ~1% of band GPU-hours (plugin
+            # PR #100 review data), rendering a GPU stack as all-"Other".
+            owners_sort_by=_USAGE_SORT_BY[metric],
             account_projcodes=account_projcodes, username=username,
             **filters,
         )

@@ -463,6 +463,7 @@ def jobs_histogram(
     dimension: str,
     *,
     owners_limit: Optional[int] = None,
+    owners_sort_by: Optional[str] = None,
     account_projcodes: Optional[Sequence[str]] = None,
     username: Optional[str] = None,
     valid_qos_names: Sequence[str] = (),
@@ -477,9 +478,11 @@ def jobs_histogram(
 
     ``owners_limit`` forwards to the plugin: each bucket gains a top-N
     per-user ``owners`` mapping (stacked chart segments + the per-band
-    user tier). It joins the cache ``opts`` so enriched and plain
-    envelopes never alias — which also naturally busts pre-upgrade
-    cache entries.
+    user tier). ``owners_sort_by`` picks WHICH top-N survives — it must
+    follow the displayed metric or a GPU-hours view gets owners ranked
+    by combined hours (top-5 measured to cover ~1% of band GPU-hours
+    machine-wide). Both join the cache ``opts`` so variants never alias
+    — which also naturally busts pre-upgrade cache entries.
 
     Results go through the jobs TTL cache: closed windows (``end`` before
     today) land in the long-lived ``historical`` bucket, open ones in
@@ -494,6 +497,8 @@ def jobs_histogram(
         kwargs['account'] = list(account_projcodes)
     if owners_limit is not None:
         kwargs['owners_limit'] = owners_limit
+    if owners_sort_by is not None:
+        kwargs['owners_sort_by'] = owners_sort_by
 
     def _compute():
         mod = get_module()

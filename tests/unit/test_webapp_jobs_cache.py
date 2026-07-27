@@ -308,6 +308,30 @@ def test_service_jobs_histogram_owners_limit_in_key_and_forwarded(app, monkeypat
     assert rich_kwargs['owners_limit'] == 10
 
 
+def test_service_jobs_histogram_owners_sort_in_key_and_forwarded(app, monkeypatch):
+    """owners_sort_by discriminates the cache key — a jobs-ranked owner set
+    must never be served for a GPU-hours request."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+                               owners_sort_by='job_count', **win)
+        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+                               owners_sort_by='gpu_hours', **win)
+        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+                               owners_sort_by='gpu_hours', **win)
+
+    assert len(captured['histogram']) == 2
+    _, jobs_kwargs = captured['histogram'][0]
+    _, gpu_kwargs = captured['histogram'][1]
+    assert jobs_kwargs['owners_sort_by'] == 'job_count'
+    assert gpu_kwargs['owners_sort_by'] == 'gpu_hours'
+
+
 def test_service_jobs_usage_by_sort_in_key_and_forwarded(app, monkeypatch):
     """sort_by reaches the plugin and discriminates the cache key —
     different rankings are different result sets."""

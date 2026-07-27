@@ -2761,9 +2761,11 @@ def test_histogram_ownerless_fallback_keeps_single_level(
     assert '-b0-u1-row' not in body
 
 
-def test_histogram_owners_limit_forwarded(
+def test_histogram_owners_limit_and_sort_forwarded(
     app, auth_client, active_project, monkeypatch,
 ):
+    """owners_limit rides every histogram call, and owners_sort_by follows
+    the metric pill — which top-N survives must match what's displayed."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
     )
@@ -2773,6 +2775,14 @@ def test_histogram_owners_limit_forwarded(
     )
     _dim, kwargs = captured['last_jobs_histogram']
     assert kwargs['owners_limit'] == 10
+    assert kwargs['owners_sort_by'] == 'job_count'   # _DEFAULT_METRIC_HIST
+
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        f'?machine=derecho&metric=gpu_hours'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['owners_sort_by'] == 'gpu_hours'
 
 
 # --- User column ------------------------------------------------------------
