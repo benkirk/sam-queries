@@ -322,24 +322,28 @@ Personas via Quick Login: `benkirk` (full operator), a plain project user,
 6. `docker compose exec` psql: `pg_stat_activity` shows
    `sam-webapp:…:job_history:<machine>` tagging and `statement_timeout`.
 
-## Deferred follow-ups (confirmed deferred as of 2026-07-27)
+## Deferred follow-ups (updated 2026-07-27, post round 2)
 
-- `jobs_facets` filter chips in the explorer (cost: self-exclusion plan
-  flips measured 4.5×; needs a default window policy first).
-- By-Project tab in user mode (needs nothing new server-side —
-  `jobs_usage_by('account', user=<me>)` — UI decision only).
-- Clickable histogram bars (drill via `min_param`/`max_param` envelope,
-  mirroring the disk band-drill; the envelope's self-describing
-  min/max_param fields are already threaded through to the template
-  context, so this is chart + JS work only).
-- `memory_used` histogram dimension upstream if ever asked (one spec row).
-- Explorer inputs for elapsed/reqmem bounds (`min/max_elapsed`,
-  `min/max_reqmem` are already accepted by the service normalizer; only
-  panel fields + roundtrip keys are missing).
+**Items 1–5 SHIPPED in round 2** — branch `job_history_followups`, plan +
+as-built notes in `JOB_HISTORY_FOLLOWUPS.md`:
+
+- ~~`jobs_facets` filter chips in the explorer~~ → S4 (OOB chip strip,
+  90-day-window costs acceptable per the measured policy).
+- ~~By-Project tab in user mode~~ → S5 (`jobs_usage_by_project`,
+  `account` narrowing in user mode only).
+- ~~Clickable histogram bars~~ → S3 (`#jh-bar-<i>` sentinels → inline
+  bucket-row drill via the envelope's `min_param`/`max_param`).
+- ~~`memory_used` histogram dimension~~ → plugin `e07238f` added
+  `memory_used` AND `memory_wasted` (+ four range filters); SAM S1
+  surfaces both as Job Sizes pills.
+- ~~Explorer inputs for elapsed/reqmem bounds~~ → S2.
+
+**Still open** (its own PR, AFTER round 2 merges — Ben's sequencing):
+
 - **Pre-existing, discovered via CI**: `RedisTTLAdapter` namespaces keys
   and `clear()`/`info()` scans by `prefix` only, and the usage cache AND
   both fs_scans buckets all sit on the default `'usage:'` prefix — so on
   Redis, `clear('usage')` / `clear('scans')` wipe each other's entries
-  and their `info()` counts merge. The jobs buckets now pass distinct
+  and their `info()` counts merge. The jobs buckets pass distinct
   `prefix=<name>:` values; migrating fs_scans/usage the same way is a
   separate PR (existing 'usage:' keys orphan until TTL at cutover).

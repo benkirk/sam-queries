@@ -1,5 +1,31 @@
 # Job History follow-ups — round 2 (memory dims, bar drill, facet chips, By-Project, elapsed/reqmem inputs)
 
+**Status (2026-07-27): IMPLEMENTED** — plugin P1 pushed as `e07238f`
+(PR #99), SAM S0–S6 on `job_history_followups`. Full suite 3,257 green
+(+ CI emulation with `CACHE_REDIS_URL`); plugin suite 565. Playwright
+smoke + stacked PR are the remaining steps. As-built deltas from the
+plan below:
+
+- **S1**: the per-job table's inline filter parse was UNIFIED onto
+  `_parse_job_filters(include_user=…)` (the plan's "consider unifying"
+  taken); native bounds parse after human-unit forms, so native wins on
+  a double-spelled bound.
+- **S3**: drill URLs are computed server-side in `_bucket_drill_url` as
+  a parallel `bucket_drills` list (the envelope is a shared cache entry
+  and must not be mutated); a same-named pane bound is dropped in favor
+  of the clicked band's. The chart cache key gained the job_count-
+  positivity vector (clickability follows job_count even on an hours
+  metric).
+- **S4**: the chip strip is rendered by the jobs fragment as an
+  `hx-swap-oob` block (gated by `?chips=1`, sent only by the explorer)
+  rather than by the explorer routes — a statically rendered strip
+  would go stale after the first table refetch. `chips` rides
+  `_ROUNDTRIP_KEYS`, the panel form, and `_initial_jobs_url`.
+- **S5**: `jobs_usage_by_project` raises on empty username or a `user`
+  filter (the strict user-family rule, not pin-overwrites); user-mode
+  `account` narrowing surfaces as a "project:" header badge injected
+  post-service.
+
 ## Context
 
 Round 1 is complete: SAM **PR #381** (`job_history_expansion` → staging) is open with CI
