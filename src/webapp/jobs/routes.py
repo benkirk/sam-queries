@@ -740,9 +740,18 @@ def _panel_filters(machine: str) -> dict:
     """Raw (display-unit) filter values for the explorer's sidebar panel."""
     username, user_id, user_label = _resolve_user_filter()
     per_page = _parse_pagination()['per_page']
+    start = (request.args.get('start') or '').strip()
+    end = (request.args.get('end') or '').strip()
+    if not start and not end:
+        # Unbounded windows are the expensive path (~200 s machine-wide
+        # vs ~0.6 s per month) — default the explorer to the last 90
+        # days. The field is visible in the panel; clearing it opts into
+        # the full history explicitly.
+        from datetime import timedelta
+        start = (date.today() - timedelta(days=90)).isoformat()
     return {
-        'start': (request.args.get('start') or '').strip(),
-        'end':   (request.args.get('end') or '').strip(),
+        'start': start,
+        'end':   end,
         'user': username or '',
         'user_id': user_id or '',
         'user_label': user_label,

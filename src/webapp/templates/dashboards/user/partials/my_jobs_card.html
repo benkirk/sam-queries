@@ -41,6 +41,7 @@
                 cid='my-jobs-m' ~ loop.index,
                 tablist_id='myJobsCardTabs' ~ loop.index,
                 machine=m,
+                start=jobs_window_start,
                 load_trigger=_trigger %}
             {% include 'dashboards/user/partials/jobs_card.html' %}
         {% endwith %}

@@ -225,9 +225,16 @@ def job_history():
     One subtab per plugin machine, each hosting the jobs card in machine
     mode — the card's fragment routes are themselves VIEW_ALL_JOB_DATA-
     gated, so this page gate is the first line, not the only one.
+
+    ``jobs_window_start`` bounds every card tab to the last 90 days by
+    default: an unbounded machine-wide aggregation measures ~200 s
+    against the plugin PG vs ~0.6 s per month-window. The explorer's
+    date fields let an operator widen deliberately.
     """
+    from datetime import date as _date
     return render_template(
         'dashboards/status/job_history_page.html',
+        jobs_window_start=(_date.today() - timedelta(days=90)).isoformat(),
         **_page_context(db.session),
     )
 

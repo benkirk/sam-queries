@@ -172,11 +172,21 @@ def my_data():
 @bp.route('/jobs')
 @login_required
 def my_jobs():
-    """My Jobs page — per-user job-history cards (one pill per machine)."""
+    """My Jobs page — per-user job-history cards (one pill per machine).
+
+    ``jobs_window_start`` bounds every card tab to the last 90 days by
+    default — unbounded plugin aggregations are the expensive path; the
+    explorer's date fields widen deliberately.
+    """
     ctx = _page_context()
     if not ctx['my_jobs_available']:
         abort(404)
-    return render_template('dashboards/user/my_jobs.html', **ctx)
+    from datetime import date as _date
+    return render_template(
+        'dashboards/user/my_jobs.html',
+        jobs_window_start=(_date.today() - timedelta(days=90)).isoformat(),
+        **ctx,
+    )
 
 
 # ---------------------------------------------------------------------------
