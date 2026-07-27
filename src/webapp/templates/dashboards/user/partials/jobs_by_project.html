@@ -1,19 +1,21 @@
 {% from 'dashboards/user/partials/_jobs_macros.html'
    import jobs_disabled, jobs_error, jobs_empty %}
 {#
-  By Project fragment — the logged-in user's per-project usage pie +
-  drillable rows (user mode only; the mirror of jobs_by_user.html, which
-  is hidden there). Context (set in
+  By Project fragment — per-project usage pie + drillable rows, the
+  mirror of jobs_by_user.html. All three modes: user (the pinned user's
+  own projects), machine (operator, whole machine), and project (a
+  parent's account tree). Context (set in
   webapp/jobs/routes.py::_render_by_project):
-    enabled, error, mode ('user'), machine,
+    enabled, error, mode, machine,
     usage   — plugin jobs_usage_by('account') envelope {rows, totals},
-              user-pinned upstream
+              scoped upstream per mode (user pin / tree / unscoped)
     other   — remainder beyond the row cap (totals are pre-truncation)
     metric  — 'jobs' | 'cpu_hours' | 'gpu_hours' (drives the pie)
     pie_svg — chart SVG (clickable #job-proj-<projcode> sentinels)
     fragment_url      — this fragment (metric pill re-fetch)
-    jobs_fragment_url — the user-mode per-job fragment (row drill target,
+    jobs_fragment_url — the mode's per-job fragment (row drill target,
                         narrowed by account=<projcode>)
+    can_view_projects — gates the projcode quick-view modal affordance
     target_id, params — container id + hidden round-trip params
 #}
 
@@ -94,7 +96,22 @@
                         aria-expanded="false" aria-controls="{{ _rid }}-row">
                   <i class="fas fa-chevron-right collapse-icon small"></i>
                 </button>
+                {% if can_view_projects | default(false) %}
+                {# Quick-view modal — in user mode the rows are the pinned
+                   user's own projects (affiliation passes the modal
+                   route's require_project_access); elsewhere the renderer
+                   gates on VIEW_PROJECTS so the click can't 403. #}
+                <button class="btn btn-link p-0"
+                        type="button" title="View project details"
+                        data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                        hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=projcode) }}"
+                        hx-target="#projectDetailsModalBody"
+                        hx-swap="innerHTML">
+                  <code>{{ projcode }}</code>
+                </button>
+                {% else %}
                 <code>{{ projcode }}</code>
+                {% endif %}
                 {% else %}
                 <span class="text-muted" title="jobs with no recorded project">(unknown)</span>
                 {% endif %}
@@ -106,11 +123,12 @@
             {% if projcode %}
             <tr class="collapse" id="{{ _rid }}-row">
               <td colspan="4" class="p-0 border-0">
-                {# Lazy-load this project's slice of MY jobs on first
-                   expand (account narrows, the server-side user pin still
-                   applies). Bind to shown.bs.collapse so a pie-wedge open
-                   triggers it too. Carries the pane's date window +
-                   shared filters into the drill. #}
+                {# Lazy-load this project's job slice on first expand —
+                   account only ever narrows the mode's already-scoped
+                   fragment (user pin / server tree / VIEW_ALL_JOB_DATA).
+                   Bind to shown.bs.collapse so a pie-wedge open triggers
+                   it too. Carries the pane's date window + shared
+                   filters into the drill. #}
                 <div class="p-2 bg-light" id="{{ _rid }}-content"
                      hx-get="{{ jobs_fragment_url }}?machine={{ machine }}&account={{ projcode }}{% if params.start %}&start={{ params.start }}{% endif %}{% if params.end %}&end={{ params.end }}{% endif %}{% if params.queue %}&queue={{ params.queue }}{% endif %}{% if params.qos %}&qos={{ params.qos }}{% endif %}{% if params.exit_status %}&exit_status={{ params.exit_status }}{% endif %}&target_id={{ _rid }}-content"
                      hx-trigger="shown.bs.collapse from:closest tr.collapse once"

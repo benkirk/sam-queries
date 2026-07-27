@@ -12,6 +12,7 @@
     pie_svg — chart SVG (clickable #job-user-<username> sentinels)
     fragment_url      — this fragment (metric pill re-fetch)
     jobs_fragment_url — the mode's per-job fragment (row drill target)
+    can_view_users    — gates the username quick-view modal affordance
     target_id, params — container id + hidden round-trip params
 #}
 
@@ -94,7 +95,20 @@
                         aria-expanded="false" aria-controls="{{ _rid }}-row">
                   <i class="fas fa-chevron-right collapse-icon small"></i>
                 </button>
+                {% if can_view_users | default(false) %}
+                {# Quick-view modal — affordance only rendered when the
+                   viewer passes the user_card route's VIEW_USERS gate. #}
+                <button class="btn btn-link p-0"
+                        type="button" title="View user details"
+                        data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+                        hx-get="{{ url_for('admin_dashboard.user_card', username=uname) }}"
+                        hx-target="#userDetailsModalBody"
+                        hx-swap="innerHTML">
+                  <code>{{ uname }}</code>
+                </button>
+                {% else %}
                 <code>{{ uname }}</code>
+                {% endif %}
                 {% else %}
                 <span class="text-muted" title="jobs with no recorded user">(unknown)</span>
                 {% endif %}

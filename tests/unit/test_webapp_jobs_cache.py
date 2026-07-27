@@ -369,6 +369,33 @@ def test_service_jobs_usage_by_project_forwards_sort(app, monkeypatch):
     assert kwargs['user'] == 'benkirk'
 
 
+def test_service_jobs_usage_by_project_scopes_in_key_and_forwarded(
+    app, monkeypatch,
+):
+    """The non-user-mode scopes: account_projcodes reaches the plugin as
+    ``account`` and discriminates the cache key; the unpinned machine-mode
+    call sends neither ``user`` nor ``account``. Different scopes must
+    never satisfy each other from cache."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_usage_by_project('derecho', **win)                 # machine
+        service.jobs_usage_by_project('derecho', **win)                 # cached
+        service.jobs_usage_by_project(
+            'derecho', account_projcodes=['SCSG0001', 'SCSG0002'], **win)  # tree
+
+    assert len(captured['usage_by']) == 2
+    _, machine_kwargs = captured['usage_by'][0]
+    assert machine_kwargs.get('user') is None   # unpinned (filter None)
+    assert 'account' not in machine_kwargs
+    _, tree_kwargs = captured['usage_by'][1]
+    assert tree_kwargs['account'] == ['SCSG0001', 'SCSG0002']
+
+
 def test_service_jobs_facets_caches_closed_window(app, monkeypatch):
     """Two identical closed-window facet calls → one plugin query; a
     different facet tuple or limit is a different key."""

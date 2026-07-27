@@ -55,7 +55,11 @@ from webapp.dashboards.charts import (
 from webapp.extensions import db
 from webapp.jobs import service
 from webapp.jobs.session import is_enabled
-from webapp.utils.rbac import Permission, require_permission
+from webapp.utils.rbac import (
+    Permission,
+    has_permission_any_facility,
+    require_permission,
+)
 
 bp = Blueprint('jobs', __name__)
 
@@ -270,6 +274,14 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 p.projcode
                 for p in _scope_project(project).get_descendants(include_self=True)
             ]
+            # `account` narrows WITHIN the server-derived tree (the
+            # By Project drill on a parent project). An out-of-tree value
+            # is ignored — the tree stays the security boundary, so a
+            # client can never widen scope with this parameter.
+            requested = (request.args.get('account') or '').strip() or None
+            if requested and requested in account_projcodes:
+                user_account = requested
+                account_projcodes = [requested]
             rows = service.search_jobs(
                 machine, project=project,
                 account_projcodes=account_projcodes, **common, **filters,
@@ -282,8 +294,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         elif mode == 'user':
             # `account` narrows one's OWN jobs to a single projcode (the
             # By Project drill) — safe from the client in this mode only
-            # because the username pin still applies. Project mode keeps
-            # its account list server-derived.
+            # because the username pin still applies.
             user_account = (request.args.get('account') or '').strip() or None
             rows = service.search_jobs_user(
                 machine, pinned_user, account=user_account, **common, **filters,
@@ -293,11 +304,16 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 valid_qos_names=qos_options, **filters,
             )
         else:
+            # `account` narrows the machine-wide view to one projcode
+            # (the By Project drill) — only ever a restriction, and this
+            # route family is gated on VIEW_ALL_JOB_DATA.
+            user_account = (request.args.get('account') or '').strip() or None
             rows = service.search_jobs_machine(
-                machine, **common, **filters,
+                machine, account=user_account, **common, **filters,
             )
             total = service.count_jobs_machine(
-                machine, valid_qos_names=qos_options, **filters,
+                machine, account=user_account,
+                valid_qos_names=qos_options, **filters,
             )
     except Exception as exc:
         # Catch-all so a transient plugin/DB issue degrades to a banner
@@ -694,6 +710,12 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
         if usage else None
     other = _usage_other(usage) if usage else None
 
+    # Same gate as the admin_dashboard.user_card route the username cells
+    # link to — don't render click affordances that would 403.
+    from flask_login import current_user
+    can_view_users = has_permission_any_facility(
+        current_user, Permission.VIEW_USERS)
+
     return render_template(
         template,
         enabled=True, error=error,
@@ -703,19 +725,26 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
         fragment_url=fragment_url,
         jobs_fragment_url=jobs_fragment_url,
         target_id=target_id,
+        can_view_users=can_view_users,
         params=_roundtrip_params(machine, target_id),
     )
 
 
-def _render_by_project(*, machine, fragment_url, jobs_fragment_url,
-                       target_id, username=None):
-    """Renderer for the My Jobs "By Project" tab (user mode only)."""
+def _render_by_project(*, mode, machine, fragment_url, jobs_fragment_url,
+                       target_id, username=None, account_projcodes=None):
+    """Shared renderer for the By Project tab (all three modes).
+
+    Scoping mirrors the service: user mode pins ``username`` (and drops
+    any client ``user`` filter — the pin owns that dimension), project
+    mode passes the server-derived ``account_projcodes`` tree, machine
+    mode passes neither (route gated on VIEW_ALL_JOB_DATA).
+    """
     template = 'dashboards/user/partials/jobs_by_project.html'
     if not is_enabled():
         return render_template(template, enabled=False, error=None,
-                               mode='user', machine=None, target_id=target_id)
+                               mode=mode, machine=None, target_id=target_id)
 
-    filters = _parse_job_filters(include_user=False)
+    filters = _parse_job_filters(include_user=(username is None))
     metric = _parse_metric(_DEFAULT_METRIC_PIE)
 
     usage = None
@@ -723,12 +752,14 @@ def _render_by_project(*, machine, fragment_url, jobs_fragment_url,
     try:
         usage = service.jobs_usage_by_project(
             machine, username=username, limit=_BY_USER_LIMIT,
-            sort_by=_USAGE_SORT_BY[metric], **filters,
+            sort_by=_USAGE_SORT_BY[metric],
+            account_projcodes=account_projcodes, **filters,
         )
     except Exception as exc:
         from flask import current_app
         current_app.logger.exception(
-            'jobs by-project fragment failed: machine=%s', machine,
+            'jobs by-project fragment failed: mode=%s machine=%s',
+            mode, machine,
         )
         error = str(exc)
 
@@ -736,15 +767,24 @@ def _render_by_project(*, machine, fragment_url, jobs_fragment_url,
         usage, metric=metric, sentinel_prefix='job-proj') if usage else None
     other = _usage_other(usage) if usage else None
 
+    # Projcode cells link to user_dashboard.project_details_modal, gated by
+    # require_project_access. In user mode the rows are the pinned user's
+    # own projects (affiliation grants access), so the affordance always
+    # renders; elsewhere require VIEW_PROJECTS so the click can't 403.
+    from flask_login import current_user
+    can_view_projects = (mode == 'user') or has_permission_any_facility(
+        current_user, Permission.VIEW_PROJECTS)
+
     return render_template(
         template,
         enabled=True, error=error,
-        mode='user', machine=machine,
+        mode=mode, machine=machine,
         usage=usage, other=other,
         metric=metric, pie_svg=pie_svg,
         fragment_url=fragment_url,
         jobs_fragment_url=jobs_fragment_url,
         target_id=target_id,
+        can_view_projects=can_view_projects,
         params=_roundtrip_params(machine, target_id),
     )
 
@@ -856,6 +896,36 @@ def by_user_fragment(project):
         mode='project', machine=machine,
         fragment_url=url_for('jobs.by_user_fragment', projcode=project.projcode),
         jobs_fragment_url=url_for('jobs.jobs_fragment', projcode=project.projcode),
+        target_id=target_id,
+        account_projcodes=_tree_projcodes(project),
+    )
+
+
+@bp.route('/<projcode>/by-project')
+@login_required
+@require_project_access
+def by_project_fragment(project):
+    """HTMX fragment: per-projcode usage pie + rows across *project*'s tree.
+
+    Only meaningful for parent projects whose account tree spans more
+    than one projcode (the card gates the tab on that); the tree list is
+    server-derived — the same security boundary as every project-mode
+    fragment. Rows drill into the project jobs fragment narrowed by
+    ``account=<projcode>`` (validated against the tree there).
+    """
+    if not is_enabled():
+        return _render_by_project(mode='project', machine=None,
+                                  fragment_url=None,
+                                  jobs_fragment_url=None, target_id='')
+    machine = _get_machine_or_400()
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-byproj-{project.projcode}-{machine}'
+    return _render_by_project(
+        mode='project', machine=machine,
+        fragment_url=url_for('jobs.by_project_fragment',
+                             projcode=project.projcode),
+        jobs_fragment_url=url_for('jobs.jobs_fragment',
+                                  projcode=project.projcode),
         target_id=target_id,
         account_projcodes=_tree_projcodes(project),
     )
@@ -1092,6 +1162,32 @@ def by_user_machine_fragment(machine):
     )
 
 
+@bp.route('/machine/<machine>/by-project')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def by_project_machine_fragment(machine):
+    """HTMX fragment: machine-wide per-project usage pie + rows (operator).
+
+    The multi-project counterpart of By User; rows drill into the
+    machine jobs fragment narrowed by ``account=<projcode>``.
+    """
+    if not is_enabled():
+        return _render_by_project(mode='machine', machine=None,
+                                  fragment_url=None,
+                                  jobs_fragment_url=None, target_id='')
+    machine = _machine_or_404(machine)
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-byproj-machine-{machine}'
+    return _render_by_project(
+        mode='machine', machine=machine,
+        fragment_url=url_for('jobs.by_project_machine_fragment',
+                             machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_machine_fragment',
+                                  machine=machine),
+        target_id=target_id,
+    )
+
+
 def _machine_histogram(machine, *, dimension, dimension_toggle, endpoint):
     """Common body of the three machine-mode histogram routes."""
     if not is_enabled():
@@ -1206,13 +1302,14 @@ def by_project_user_fragment(machine):
     """
     from flask_login import current_user
     if not is_enabled():
-        return _render_by_project(machine=None, fragment_url=None,
+        return _render_by_project(mode='user', machine=None,
+                                  fragment_url=None,
                                   jobs_fragment_url=None, target_id='')
     machine = _machine_or_404(machine)
     target_id = (request.args.get('target_id') or '').strip() \
         or f'jobs-byproj-user-{machine}'
     return _render_by_project(
-        machine=machine,
+        mode='user', machine=machine,
         fragment_url=url_for('jobs.by_project_user_fragment', machine=machine),
         jobs_fragment_url=url_for('jobs.jobs_user_fragment', machine=machine),
         target_id=target_id,
