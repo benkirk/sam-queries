@@ -2843,15 +2843,21 @@ def test_user_column_hidden_in_user_mode(app, auth_client, monkeypatch):
 
 
 def test_user_column_hidden_uniform_single_page_shows_badge(
-    app, auth_client, active_project, monkeypatch,
+    app, auth_client, monkeypatch,
 ):
     """No pin, no filter, but the whole (single-page) result is one user →
-    column suppressed and the username surfaces as a header badge."""
+    column suppressed and the username surfaces as a header badge.
+
+    Machine mode: its count path always uses the mocked plugin
+    jobs_count. Project mode's unfiltered count takes the SAM-summary
+    fast path (a real comp_charge_summary query), so the single-page
+    premise couldn't be pinned there.
+    """
     rows = [_make_row(job_id='600.desched1', user='solo'),
             _make_row(job_id='601.desched1', user='solo')]
     _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
     resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+        '/dashboards/user/jobs/machine/derecho?machine=derecho'
     )
     body = resp.get_data(as_text=True)
     assert 'sort_by=user' not in body
@@ -2859,7 +2865,7 @@ def test_user_column_hidden_uniform_single_page_shows_badge(
 
 
 def test_user_column_kept_uniform_but_multipage(
-    app, auth_client, active_project, monkeypatch,
+    app, auth_client, monkeypatch,
 ):
     """A uniform PAGE of a multi-page result proves nothing — the column
     stays rather than paying a distinct-count query."""
@@ -2867,7 +2873,7 @@ def test_user_column_kept_uniform_but_multipage(
     _install_mock_plugin(app, monkeypatch, jobs_search_return=rows,
                          jobs_count_return=500)
     resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+        '/dashboards/user/jobs/machine/derecho?machine=derecho'
     )
     body = resp.get_data(as_text=True)
     assert 'sort_by=user' in body
