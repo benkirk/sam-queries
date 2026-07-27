@@ -116,6 +116,80 @@ class TestRedisTTLAdapter:
 
 
 # ---------------------------------------------------------------------------
+# Name-derived prefixes (retirement of the shared 'usage:' default)
+# ---------------------------------------------------------------------------
+
+class TestDerivedPrefixes:
+    """Every adapter must own a distinct keyspace derived from its name.
+
+    Guards both the adapter default (``prefix`` falls back to ``f'{name}:'``)
+    and the factory call sites — a reintroduced shared prefix would resurrect
+    the cross-wipe bug where ``clear('usage')`` deleted fs_scans entries.
+    """
+
+    def test_default_prefix_derives_from_name(self, redis_client):
+        adapter = RedisTTLAdapter(name='somecache', client=redis_client, ttl=60)
+        assert adapter.info()['extras']['prefix'] == 'somecache:'
+
+    def test_explicit_prefix_overrides_derived_default(self, redis_client):
+        adapter = RedisTTLAdapter(
+            name='somecache', client=redis_client, ttl=60, prefix='x:',
+        )
+        assert adapter.info()['extras']['prefix'] == 'x:'
+
+    def test_fs_scans_bucket_prefixes(self, monkeypatch, redis_client):
+        monkeypatch.setenv('CACHE_REDIS_URL', 'redis://fake:6379/0')
+        import webapp.disk_scans.cache as dc
+        monkeypatch.setattr(dc, 'make_redis_client', lambda url=None, **kw: redis_client)
+        saved = dict(dc._adapters)
+        dc._adapters.clear()
+        try:
+            for bucket, expected in (('default', 'fs_scans:'),
+                                     ('filtered', 'fs_scans_filtered:')):
+                adapter = dc.get_cache_adapter(bucket)
+                assert isinstance(adapter, RedisTTLAdapter)
+                assert adapter.info()['extras']['prefix'] == expected
+        finally:
+            dc._adapters.clear()
+            dc._adapters.update(saved)
+
+    def test_jobs_bucket_prefixes(self, monkeypatch, redis_client):
+        monkeypatch.setenv('CACHE_REDIS_URL', 'redis://fake:6379/0')
+        import webapp.jobs.cache as jc
+        monkeypatch.setattr(jc, 'make_redis_client', lambda url=None, **kw: redis_client)
+        saved = dict(jc._adapters)
+        jc._adapters.clear()
+        try:
+            for bucket, expected in (('historical', 'jobs:'),
+                                     ('recent', 'jobs_recent:')):
+                adapter = jc.get_cache_adapter(bucket)
+                assert isinstance(adapter, RedisTTLAdapter)
+                assert adapter.info()['extras']['prefix'] == expected
+        finally:
+            jc._adapters.clear()
+            jc._adapters.update(saved)
+
+    def test_clear_does_not_cross_wipe_other_adapters(self, redis_client):
+        """The historical bug: usage and both fs_scans buckets shared 'usage:'."""
+        usage = RedisTTLAdapter(name='allocation_usage', client=redis_client, ttl=60)
+        scans = RedisTTLAdapter(name='fs_scans', client=redis_client, ttl=60)
+        filtered = RedisTTLAdapter(name='fs_scans_filtered', client=redis_client, ttl=60)
+        usage[('k',)] = 'u'
+        scans[('k',)] = 's'
+        filtered[('k',)] = 'f'
+        # info() counts are per-adapter, not the shared superset
+        assert usage.info()['currsize'] == 1
+        assert scans.info()['currsize'] == 1
+        assert filtered.info()['currsize'] == 1
+        # clearing one adapter leaves the others intact — including the
+        # prefix-of-a-prefix pair (fs_scans: must not glob fs_scans_filtered:)
+        assert scans.clear() == 1
+        assert usage[('k',)] == 'u'
+        assert filtered[('k',)] == 'f'
+        assert ('k',) not in scans
+
+
+# ---------------------------------------------------------------------------
 # RedisChartCache
 # ---------------------------------------------------------------------------
 
@@ -225,9 +299,11 @@ class TestUsageCacheBackendSwitch:
         try:
             adapter = uc.get_cache_adapter()
             assert isinstance(adapter, RedisTTLAdapter)
+            assert adapter.info()['extras']['prefix'] == 'allocation_usage:'
             # Verify it actually uses the fake client.
             adapter[('k',)] = 'v'
-            assert client.exists(b'usage:' + __import__('pickle').dumps(('k',), protocol=4))
+            assert client.exists(
+                b'allocation_usage:' + __import__('pickle').dumps(('k',), protocol=4))
         finally:
             uc._adapter = None
             uc._disabled = False
