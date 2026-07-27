@@ -28,6 +28,45 @@ three deliberate breaking renames) and will be advanced in tandem.
    (mirrors `VIEW_ALL_FILESYSTEM_DATA`; `view_*` naming auto-joins operator ALL_VIEW bundles).
 4. **One SAM PR to staging, ordered commits**: rename absorption → service/cache →
    card → explorer → Status tab → My Jobs.
+5. **Two-session execution with a hard pause after PR #99 is updated** — context gets
+   cleared and the SAM-side session restarts with Playwright available for browser smoke
+   testing. The restart handoff is a committed doc in the SAM repo (house convention).
+6. **Claude runs the test suites directly this time** (both repos) — pytest execution is
+   explicitly authorized for this work.
+
+## Execution phasing — two sessions, hard pause between
+
+### Session 1 (this session): plugin side + handoff
+1. In `/Users/benkirk/codes/hpc-usage-queries/devel` (branch `jobs_plugin_search_drilldown`
+   already checked out): implement plugin Commits 0–3 below; run
+   `pytest job_history/tests/` after each commit; run the timed end-to-end measurements
+   against local dev PG and write the figures into docstrings + plan doc.
+2. Push the branch (updates PR #99). Do NOT merge — Ben reviews.
+3. In SAM: write and commit `docs/plans/JOB_HISTORY_DASHBOARD.md` on `job_history_expansion`
+   as the restart/handoff doc. It must be self-sufficient for a fresh session: the full
+   SAM commit series (§SAM-side plan below), the **as-landed** plugin contract (actual
+   signatures + return shapes + the pinned branch-tip sha), the route/template/cache/chart
+   inventories, RBAC matrix, test inventory, Playwright smoke checklist, and "how to
+   resume" preamble (branch names, rebuild commands, `make print-env-hash`).
+4. Update the session memory (project memory pointing at the handoff doc + in-flight
+   state), report the PR #99 tip sha to Ben, and STOP.
+
+### Between sessions (Ben)
+- Review/approve the updated PR #99 (merge can wait — local dev pins the sha).
+- Rebuild local containers + env against the tip:
+  `HPC_USAGE_QUERIES_REF=<sha> docker compose build webdev` and
+  `HPC_USAGE_QUERIES_REF=<sha> source etc/config_env.sh`.
+- Restart Claude with cleared context + Playwright; point it at
+  `docs/plans/JOB_HISTORY_DASHBOARD.md`.
+
+### Session 2 (fresh context + Playwright): SAM side
+- Execute SAM Commits 1–8 from the handoff doc; run pytest directly after each commit
+  (`tests/unit/test_webapp_jobs*.py` etc., full `pytest` before the PR).
+- Browser verification via Playwright against webdev (:5050) using Quick Login personas:
+  the manual smoke list in §Verification becomes a scripted walk (card tabs lazy-load,
+  pie wedge → row expand, pills re-fetch, explorer deep links, RBAC visibility for
+  operator vs plain user, My Jobs `?user=` pinning).
+- Open the SAM PR to staging; plugin PR #99 merges first, SAM PR after.
 
 ## Cross-repo coordination
 
@@ -208,9 +247,10 @@ NOT in the route-map parity snapshot — only the two new page routes
 - Tests: client-supplied `?user=` ignored in all user fragments; 404 when no machines
 
 ### Commit 8 — docs
-- New `docs/plans/JOB_HISTORY_DASHBOARD.md` (context, mode/permission matrix, route table,
-  cache design, assumed plugin contract, deferred follow-ups: facet chips, By-Project
-  user-mode tab, clickable histogram bars); `src/webapp/README.md` jobs/ line update
+- `docs/plans/JOB_HISTORY_DASHBOARD.md` (created in Session 1 as the handoff doc): update
+  to as-built status — final route table, any contract drift, deferred follow-ups (facet
+  chips, By-Project user-mode tab, clickable histogram bars); `src/webapp/README.md`
+  jobs/ line update
 
 ### Route table (new)
 
@@ -229,9 +269,9 @@ NOT in the route-map parity snapshot — only the two new page routes
    `HPC_USAGE_QUERIES_REF=<sha> source etc/config_env.sh`; `make print-env-hash` to confirm)
 2. `pytest tests/unit/test_webapp_jobs.py tests/unit/test_webapp_jobs_cache.py
    tests/unit/test_webapp_jobs_charts.py tests/unit/test_webapp_disk_scans.py
-   tests/unit/test_rbac.py tests/unit/test_route_map_parity.py`, then full `pytest`
-   (Ben runs the suite by hand)
-3. Manual smoke on webdev (:5050): HPC resource-details → Job History card (4 tabs lazy-load,
+   tests/unit/test_rbac.py tests/unit/test_route_map_parity.py`, then full `pytest` —
+   run by Claude directly (authorized for this work; mysql-test container on :3307)
+3. Playwright smoke on webdev (:5050): HPC resource-details → Job History card (5 tabs lazy-load,
    pie wedge expands user row, pills re-fetch, Open Full View lands filtered); explorer
    `?scope=` re-roots; `/status/job-history` per-machine pills + hidden for non-operators
    (Quick Login); `/user/jobs` shows own jobs only, `?user=other` ignored; Admin →
