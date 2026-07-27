@@ -137,6 +137,10 @@
     {% if filters.queue %}
       <span class="badge bg-light text-dark me-1">queue: {{ filters.queue }}</span>
     {% endif %}
+    {% if filters.account %}
+      {# User-mode account narrowing (the By Project drill). #}
+      <span class="badge bg-light text-dark me-1">project: {{ filters.account }}</span>
+    {% endif %}
     {% if qos_options %}
       {# QoS filter — bound to the hidden filter form via form="…" so
          sort/pagination hx-includes serialize the current selection

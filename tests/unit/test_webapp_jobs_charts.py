@@ -202,3 +202,26 @@ def test_pie_unknown_user_row_is_inert():
     svg = generate_jobs_user_pie_chart(usage)
     assert '#job-user-alice' in svg
     assert '#job-user-None' not in svg
+
+
+def test_pie_sentinel_prefix_parameterized():
+    """The generalized renderer emits the caller's sentinel family — the
+    By Project pie drills data-job-project rows, not user rows."""
+    from webapp.dashboards.charts import generate_jobs_usage_pie_chart
+    rows = [
+        {'value': 'SCSG0001', 'job_count': 5, 'cpu_hours': 50.0, 'gpu_hours': 0.0},
+    ]
+    usage = _usage(rows=rows, totals={'job_count': 5, 'cpu_hours': 50.0,
+                                      'gpu_hours': 0.0})
+    svg = generate_jobs_usage_pie_chart(usage, sentinel_prefix='job-proj')
+    assert '#job-proj-SCSG0001' in svg
+    assert '#job-user-' not in svg
+
+
+def test_pie_sentinel_prefix_in_cache_key():
+    """Identical usage vectors under different sentinel families must not
+    share a cache entry — the embedded drill anchors differ."""
+    from webapp.dashboards.charts import _jobs_usage_pie_cache_key
+    a = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-user')
+    b = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-proj')
+    assert a != b

@@ -336,3 +336,27 @@ def test_service_jobs_usage_by_user_caches(app, monkeypatch):
                                    account_projcodes=['SCSG0001'], **win)
 
     assert len(captured['usage_by']) == 2
+
+
+def test_service_jobs_usage_by_project_caches_under_own_query_type(
+    app, monkeypatch,
+):
+    """usage_by_account is its own cache key family — a by-project call
+    never satisfies (or is satisfied by) a by-user call with the same
+    filter set."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_usage_by_project('derecho', username='benkirk', **win)
+        service.jobs_usage_by_project('derecho', username='benkirk', **win)
+        # Same window as a by-user call → still a fresh plugin query.
+        service.jobs_usage_by_user('derecho', user='benkirk', limit=25, **win)
+
+    assert len(captured['usage_by']) == 2
+    dim, kwargs = captured['usage_by'][0]
+    assert dim == 'account'
+    assert kwargs['user'] == 'benkirk'

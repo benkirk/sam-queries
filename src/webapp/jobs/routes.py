@@ -49,6 +49,7 @@ from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
 from webapp.dashboards.charts import (
     generate_jobs_histogram,
+    generate_jobs_usage_pie_chart,
     generate_jobs_user_pie_chart,
 )
 from webapp.extensions import db
@@ -234,6 +235,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
     rows = []
     total: Optional[int] = None
     account_projcodes = None
+    user_account = None
     try:
         common = dict(
             limit=page['per_page'], offset=offset,
@@ -259,11 +261,17 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 valid_qos_names=qos_options, **filters,
             )
         elif mode == 'user':
+            # `account` narrows one's OWN jobs to a single projcode (the
+            # By Project drill) — safe from the client in this mode only
+            # because the username pin still applies. Project mode keeps
+            # its account list server-derived.
+            user_account = (request.args.get('account') or '').strip() or None
             rows = service.search_jobs_user(
-                machine, pinned_user, **common, **filters,
+                machine, pinned_user, account=user_account, **common, **filters,
             )
             total = service.count_jobs_user(
-                machine, pinned_user, valid_qos_names=qos_options, **filters,
+                machine, pinned_user, account=user_account,
+                valid_qos_names=qos_options, **filters,
             )
         else:
             rows = service.search_jobs_machine(
@@ -330,7 +338,8 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         try:
             facet_chips = service.jobs_facets(
                 machine,
-                account_projcodes=account_projcodes,
+                account_projcodes=(
+                    [user_account] if user_account else account_projcodes),
                 username=pinned_user,
                 valid_qos_names=qos_options,
                 **filters,
@@ -341,6 +350,8 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 'jobs table: facets failed for mode=%s machine=%s',
                 mode, machine,
             )
+    if user_account:
+        filters['account'] = user_account   # header badge (post-service)
 
     # The caller passes the id of the container that owns this fragment so
     # sort / pagination clicks can swap that same container's innerHTML.
@@ -454,7 +465,7 @@ _ROUNDTRIP_KEYS = (
     'min_elapsed', 'max_elapsed', 'min_reqmem', 'max_reqmem',
     'min_memory_used', 'max_memory_used',
     'min_memory_wasted', 'max_memory_wasted',
-    'scope', 'chips',
+    'scope', 'chips', 'account',
 )
 
 _SECS_PER_HOUR = 3600
@@ -594,6 +605,18 @@ def _tree_projcodes(project) -> list:
     ]
 
 
+def _usage_other(usage) -> Optional[dict]:
+    """The upstream limit's remainder: totals are pre-truncation, so any
+    positive difference is real usage by entities beyond the row cap."""
+    totals = usage.get('totals') or {}
+    rows = usage.get('rows') or []
+    rem = {
+        k: (totals.get(k) or 0) - sum((r.get(k) or 0) for r in rows)
+        for k in ('job_count', 'cpu_hours', 'gpu_hours')
+    }
+    return rem if any(v > 1e-9 for v in rem.values()) else None
+
+
 def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
                     target_id, account_projcodes=None):
     """Shared renderer for the By User tab (project + machine modes)."""
@@ -619,25 +642,55 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
         )
         error = str(exc)
 
-    pie_svg = None
-    other = None
-    if usage:
-        pie_svg = generate_jobs_user_pie_chart(usage, metric=metric)
-        totals = usage.get('totals') or {}
-        rows = usage.get('rows') or []
-        # The upstream limit's remainder: totals are pre-truncation, so any
-        # positive difference is real usage by users beyond the row cap.
-        rem = {
-            k: (totals.get(k) or 0) - sum((r.get(k) or 0) for r in rows)
-            for k in ('job_count', 'cpu_hours', 'gpu_hours')
-        }
-        if any(v > 1e-9 for v in rem.values()):
-            other = rem
+    pie_svg = generate_jobs_user_pie_chart(usage, metric=metric) \
+        if usage else None
+    other = _usage_other(usage) if usage else None
 
     return render_template(
         template,
         enabled=True, error=error,
         mode=mode, machine=machine,
+        usage=usage, other=other,
+        metric=metric, pie_svg=pie_svg,
+        fragment_url=fragment_url,
+        jobs_fragment_url=jobs_fragment_url,
+        target_id=target_id,
+        params=_roundtrip_params(machine, target_id),
+    )
+
+
+def _render_by_project(*, machine, fragment_url, jobs_fragment_url,
+                       target_id, username=None):
+    """Renderer for the My Jobs "By Project" tab (user mode only)."""
+    template = 'dashboards/user/partials/jobs_by_project.html'
+    if not is_enabled():
+        return render_template(template, enabled=False, error=None,
+                               mode='user', machine=None, target_id=target_id)
+
+    filters = _parse_job_filters(include_user=False)
+    metric = _parse_metric(_DEFAULT_METRIC_PIE)
+
+    usage = None
+    error = None
+    try:
+        usage = service.jobs_usage_by_project(
+            machine, username=username, limit=_BY_USER_LIMIT, **filters,
+        )
+    except Exception as exc:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs by-project fragment failed: machine=%s', machine,
+        )
+        error = str(exc)
+
+    pie_svg = generate_jobs_usage_pie_chart(
+        usage, metric=metric, sentinel_prefix='job-proj') if usage else None
+    other = _usage_other(usage) if usage else None
+
+    return render_template(
+        template,
+        enabled=True, error=error,
+        mode='user', machine=machine,
         usage=usage, other=other,
         metric=metric, pie_svg=pie_svg,
         fragment_url=fragment_url,
@@ -1084,6 +1137,32 @@ def jobs_user_fragment(machine):
         mode='user', machine=machine,
         fragment_url=url_for('jobs.jobs_user_fragment', machine=machine),
         pinned_user=current_user.username,
+    )
+
+
+@bp.route('/user/<machine>/by-project')
+@login_required
+def by_project_user_fragment(machine):
+    """HTMX fragment: the logged-in user's per-project usage pie + rows.
+
+    The user-mode counterpart of By User (which is hidden there — a pie
+    of one): which projects MY jobs charged. Username pinned server-side
+    like every /user/ route; rows drill into the user-mode jobs fragment
+    narrowed by ``account=<projcode>``.
+    """
+    from flask_login import current_user
+    if not is_enabled():
+        return _render_by_project(machine=None, fragment_url=None,
+                                  jobs_fragment_url=None, target_id='')
+    machine = _machine_or_404(machine)
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-byproj-user-{machine}'
+    return _render_by_project(
+        machine=machine,
+        fragment_url=url_for('jobs.by_project_user_fragment', machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_user_fragment', machine=machine),
+        target_id=target_id,
+        username=current_user.username,
     )
 
 

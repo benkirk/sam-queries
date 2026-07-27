@@ -381,6 +381,7 @@ def search_jobs_user(
     machine: str,
     username: str,
     *,
+    account: Optional[str] = None,
     columns: Optional[Sequence[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -395,6 +396,10 @@ def search_jobs_user(
     and a ``user`` key in *filters* raises rather than being silently
     overwritten — the route must never forward a client-supplied user
     into this mode (mirror of disk_scans' pinned-owner rule).
+
+    ``account`` is a NARROWING filter, safe to accept from the client in
+    this mode only: the user pin still applies, so it restricts which of
+    one's OWN jobs show (the By Project drill), never widens access.
     """
     if not username:
         raise ValueError('search_jobs_user requires a username (user pin).')
@@ -408,6 +413,8 @@ def search_jobs_user(
     JobQueries = mod.JobQueries
 
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if account:
+        kwargs['account'] = account
     kwargs.update({
         'user':    username,
         'columns': columns,
@@ -426,6 +433,7 @@ def count_jobs_user(
     machine: str,
     username: str,
     *,
+    account: Optional[str] = None,
     valid_qos_names: Sequence[str] = (),
     **filters,
 ) -> int:
@@ -442,6 +450,8 @@ def count_jobs_user(
     JobQueries = mod.JobQueries
 
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if account:
+        kwargs['account'] = account
     kwargs['user'] = username
 
     with job_history_session(machine) as session:
@@ -524,6 +534,54 @@ def jobs_usage_by_user(
     opts['limit'] = limit
     return jobs_cache.cached_jobs_aggregation(
         'usage_by_user', machine, opts, _compute,
+        bucket=jobs_cache.bucket_for_window(kwargs.get('end')),
+    )
+
+
+def jobs_usage_by_project(
+    machine: str,
+    *,
+    username: str,
+    limit: Optional[int] = 25,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, Any]:
+    """Cached per-project usage rollup for ONE user's jobs (plugin
+    ``jobs_usage_by('account', user=username)``).
+
+    Backs the My Jobs "By Project" pie: which projects the logged-in
+    user's jobs charged, hours-desc. User-mode-only by construction —
+    the username pin is mandatory and non-negotiable exactly like
+    :func:`search_jobs_user` (raises on empty username or a ``user``
+    filter), so this can never aggregate anyone else's jobs. Same
+    pre-truncation ``totals`` invariant and caching rules as
+    :func:`jobs_usage_by_user`; cached as query type
+    ``'usage_by_account'``.
+    """
+    if not username:
+        raise ValueError(
+            'jobs_usage_by_project requires a username (user pin).')
+    if 'user' in filters:
+        raise ValueError(
+            "jobs_usage_by_project pins user server-side; "
+            "remove the 'user' filter from the call."
+        )
+
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    kwargs['user'] = username
+
+    def _compute():
+        mod = get_module()
+        JobQueries = mod.JobQueries
+        with job_history_session(machine) as session:
+            return JobQueries(session, machine=machine).jobs_usage_by(
+                'account', limit=limit, **kwargs,
+            )
+
+    opts = dict(kwargs)
+    opts['limit'] = limit
+    return jobs_cache.cached_jobs_aggregation(
+        'usage_by_account', machine, opts, _compute,
         bucket=jobs_cache.bucket_for_window(kwargs.get('end')),
     )
 

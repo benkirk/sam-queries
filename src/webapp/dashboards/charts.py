@@ -1249,32 +1249,45 @@ def generate_jobs_histogram(hist, *, metric='jobs') -> str:
     return _fig_to_svg(fig)
 
 
-def _jobs_user_pie_cache_key(entity_data, metric='cpu_hours'):
+def _jobs_usage_pie_cache_key(entity_data, metric='cpu_hours', *,
+                              sentinel_prefix='job-user',
+                              unknown_label='(unknown)'):
+    """sentinel_prefix joins the key: identical usage vectors rendered for
+    different entity kinds carry different drill anchors."""
     key = _JOBS_METRIC_KEYS.get(metric, 'cpu_hours')
     rows = (entity_data or {}).get('rows') or []
     totals = (entity_data or {}).get('totals') or {}
     payload = [(r.get('value'), float(r.get(key) or 0)) for r in rows]
-    return _content_hash([payload, float(totals.get(key) or 0), str(metric)])
+    return _content_hash([payload, float(totals.get(key) or 0), str(metric),
+                          str(sentinel_prefix), str(unknown_label)])
 
 
-@caching.chart_cached(name='jobs_user_pie_chart', maxsize=64,
-                      key_fn=_jobs_user_pie_cache_key)
-def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
-    """Pie of per-user usage from a jobs_usage_by('user') envelope.
+@caching.chart_cached(name='jobs_usage_pie_chart', maxsize=64,
+                      key_fn=_jobs_usage_pie_cache_key)
+def generate_jobs_usage_pie_chart(entity_data, metric='cpu_hours', *,
+                                  sentinel_prefix='job-user',
+                                  unknown_label='(unknown)') -> str:
+    """Pie of per-entity usage from a jobs_usage_by(dimension) envelope.
+
+    Entity-kind-agnostic: the By User tab renders it with
+    ``sentinel_prefix='job-user'`` (via the delegating
+    :func:`generate_jobs_user_pie_chart`), the My Jobs By Project tab
+    with ``'job-proj'``.
 
     Args:
-        entity_data: plugin envelope — ``{'rows': [{'value': username,
+        entity_data: plugin envelope — ``{'rows': [{'value': name,
             'job_count', 'cpu_hours', 'gpu_hours'}, …], 'totals': {…}}``.
             ``totals`` is computed upstream BEFORE any limit truncation.
         metric: ``'jobs'``, ``'cpu_hours'`` (default) or ``'gpu_hours'``.
+        sentinel_prefix: drill-anchor prefix — kept wedges + legend
+            entries carry ``#<sentinel_prefix>-<value>`` sentinels routed
+            by svg-chart-links.js to the matching table row.
+        unknown_label: legend label for a NULL entity value (inert slice).
 
-    The largest users up to a ~90% cumulative share (9 max) get named
+    The largest entities up to a ~90% cumulative share (9 max) get named
     slices; everything else — both beyond-cap rows AND the upstream
     limit's remainder — folds into one inert "Other" slice sized
     ``totals − Σ kept``, so the pie always sums to the true total.
-    Kept wedges + legend entries carry ``#job-user-<username>``
-    sentinels routed by svg-chart-links.js to the matching
-    ``data-job-user`` table row.
     """
     rows = (entity_data or {}).get('rows') or []
     totals = (entity_data or {}).get('totals') or {}
@@ -1291,7 +1304,7 @@ def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
     keep = _pie_cumulative_keep(values_desc)
 
     names = [r.get('value') for r in data[:keep]]
-    labels = [n if n is not None else '(unknown)' for n in names]
+    labels = [n if n is not None else unknown_label for n in names]
     values = list(values_desc[:keep])
     colors = list(UNITY_PALETTE_10[:keep])
 
@@ -1327,10 +1340,10 @@ def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
     # intercepts these, scoped to the originating tab pane.
     leg_patches = legend.get_patches()
     leg_texts = legend.get_texts()
-    for i, uname in enumerate(names):
-        if uname is None:
+    for i, name in enumerate(names):
+        if name is None:
             continue
-        url = f'#job-user-{uname}'
+        url = f'#{sentinel_prefix}-{name}'
         wedges[i].set_url(url)
         if i < len(leg_patches):
             leg_patches[i].set_url(url)
@@ -1338,6 +1351,13 @@ def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
             leg_texts[i].set_url(url)
 
     return _fig_to_svg(fig)
+
+
+def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
+    """By User pie — delegates to the entity-agnostic renderer with the
+    ``#job-user-<username>`` sentinel family."""
+    return generate_jobs_usage_pie_chart(entity_data, metric,
+                                         sentinel_prefix='job-user')
 
 
 # ---------------------------------------------------------------------------

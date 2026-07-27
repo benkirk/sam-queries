@@ -58,6 +58,9 @@
     // user's row, found by data-job-user (see jobs_by_user.html). Same
     // interaction as the disk-scans entity pie.
     var JOB_USER_PREFIX = '#job-user-';
+    // Job-history By Project pie (My Jobs): same interaction, keyed by
+    // data-job-project (see jobs_by_project.html).
+    var JOB_PROJ_PREFIX = '#job-proj-';
     // Job-history histogram (Wait Times / Job Sizes / Durations): a bar
     // click expands the matching band's row in the Bucket-counts table
     // (data-jh-bucket, see jobs_histogram.html), which lazy-loads that
@@ -247,6 +250,15 @@
             if (juser === '') return;
             e.preventDefault();
             openEntityRow('data-job-user', juser, a.closest('.tab-pane'));
+            return;
+        }
+
+        // Jobs pie wedge/legend → expand the project's jobs row (My Jobs)
+        if (href.indexOf(JOB_PROJ_PREFIX) === 0) {
+            var jproj = href.slice(JOB_PROJ_PREFIX.length);
+            if (jproj === '') return;
+            e.preventDefault();
+            openEntityRow('data-job-project', jproj, a.closest('.tab-pane'));
             return;
         }
 

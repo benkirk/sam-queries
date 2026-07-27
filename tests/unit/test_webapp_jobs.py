@@ -2482,6 +2482,117 @@ def test_user_histogram_fragments_ignore_client_user_param(
     assert kwargs['user'] == 'benkirk'
 
 
+_PROJECT_USAGE = {
+    'dimension': 'account',
+    'rows': [
+        {'value': 'SCSG0001', 'job_count': 30, 'cpu_hours': 300.0, 'gpu_hours': 0.0},
+        {'value': 'UABC0002', 'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 2.0},
+    ],
+    'totals': {'job_count': 42, 'cpu_hours': 420.0, 'gpu_hours': 2.0},
+}
+
+
+def test_by_project_fragment_renders_rows_and_pinned_pie(
+    app, auth_client, monkeypatch,
+):
+    """The My Jobs By Project tab: plugin grouped by 'account' with the
+    session user pinned (client ?user= ignored); rows carry
+    data-job-project and the pie #job-proj sentinels."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_usage_by_return=_PROJECT_USAGE,
+    )
+    resp = auth_client.get(
+        '/dashboards/user/jobs/user/derecho/by-project?user=mallory'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    dim, kwargs = captured['last_jobs_usage_by']
+    assert dim == 'account'
+    assert kwargs['user'] == 'benkirk'
+    assert kwargs['limit'] == 25
+    assert 'data-job-project="SCSG0001"' in body
+    assert '#job-proj-SCSG0001' in body
+    # Row drill narrows the user-mode jobs fragment by account.
+    assert '/dashboards/user/jobs/user/derecho?machine=derecho&account=SCSG0001' in body
+
+
+def test_by_project_fragment_404_unknown_machine(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get('/dashboards/user/jobs/user/fugaku/by-project')
+    assert resp.status_code == 404
+
+
+def test_by_project_fragment_disabled_banner(auth_client):
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho/by-project')
+    assert resp.status_code == 200
+    assert 'plugin is not loaded' in resp.get_data(as_text=True)
+
+
+def test_user_fragment_account_narrows_own_jobs(app, auth_client, monkeypatch):
+    """?account=<projcode> narrows the pinned user's OWN jobs — both the
+    rows and the count see it, and the user pin survives."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        '/dashboards/user/jobs/user/derecho?machine=derecho&account=SCSG0001'
+    )
+    assert resp.status_code == 200
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['account'] == 'SCSG0001'
+    assert skw['user'] == 'benkirk'
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw['account'] == 'SCSG0001'
+    assert ckw['user'] == 'benkirk'
+    # The narrowing surfaces as a header badge.
+    assert 'project: SCSG0001' in resp.get_data(as_text=True)
+
+
+def test_project_fragment_ignores_client_account_param(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Project mode keeps its account list server-derived — a client
+    ?account= must not replace the tree pin."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&account=EVIL0001'
+    )
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['account'] == [active_project.projcode] or \
+        active_project.projcode in skw['account']
+    assert 'EVIL0001' not in skw['account']
+
+
+def test_my_jobs_card_offers_by_project_tab(app, auth_client, monkeypatch):
+    """The user-mode card swaps By User for By Project."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get('/user/jobs')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'By Project' in body
+    assert 'by-project' in body
+    assert 'By User' not in body
+
+
+def test_service_jobs_usage_by_project_requires_username(app, monkeypatch):
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+    with app.app_context():
+        with pytest.raises(ValueError, match='username'):
+            service.jobs_usage_by_project('derecho', username='')
+
+
+def test_service_jobs_usage_by_project_rejects_user_filter(app, monkeypatch):
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+    with app.app_context():
+        with pytest.raises(ValueError, match='user'):
+            service.jobs_usage_by_project(
+                'derecho', username='benkirk', user='mallory',
+            )
+
+
 def test_user_explore_page_omits_user_picker(app, auth_client, monkeypatch):
     _install_mock_plugin(app, monkeypatch)
     resp = auth_client.get('/dashboards/user/jobs/user/derecho/explore')
