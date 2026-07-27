@@ -40,7 +40,7 @@
     {%- else -%}
       {{ val | fmt_date }}
     {%- endif -%}
-  {%- elif col == 'job_id' -%}
+  {%- elif col in ('job_id', 'user') -%}
     <code class="small" title="{{ val }}">{{ val }}</code>
   {%- elif col in ('name', 'resources') -%}
     <span title="{{ val }}">{{ val }}</span>
@@ -168,6 +168,11 @@
         QoS: {{ qos_badge.name }}{% if qos_badge.factor is not none %} ({{ qos_badge.factor | fmt_factor }}){% endif %}
       </span>
     {% endif %}
+    {% if user_badge %}
+      {# Whole (single-page) result belongs to one user with no pin/filter
+         in play: the User column is suppressed, so name them here. #}
+      <span class="badge bg-light text-dark me-1">user: {{ user_badge.name }}</span>
+    {% endif %}
     <span class="ms-auto text-muted small">
       {{ total | fmt_number }} job{{ '' if total == 1 else 's' }}
     </span>
@@ -201,7 +206,11 @@
                 </button>
               </td>
               {% for col in visible_cols %}
-                <td class="{% if col in _numeric_cols %}text-end{% endif %}{% if col in ('job_id', 'name') %} text-nowrap small{% endif %}">
+                {# Long job names must not widen the auto-fit column —
+                   truncate with an ellipsis; the full name stays on the
+                   render_value title tooltip. #}
+                <td class="{% if col in _numeric_cols %}text-end{% endif %}{% if col in ('job_id', 'user') %} text-nowrap small{% endif %}{% if col == 'name' %} small text-truncate{% endif %}"
+                    {% if col == 'name' %}style="max-width: 35ch;"{% endif %}>
                   {{ render_value(col, r.get(col)) }}
                 </td>
               {% endfor %}

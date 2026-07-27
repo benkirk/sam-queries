@@ -462,6 +462,7 @@ def jobs_histogram(
     machine: str,
     dimension: str,
     *,
+    owners_limit: Optional[int] = None,
     account_projcodes: Optional[Sequence[str]] = None,
     username: Optional[str] = None,
     valid_qos_names: Sequence[str] = (),
@@ -474,6 +475,12 @@ def jobs_histogram(
     any client-supplied ``user`` filter — the pin always wins), both
     ``None`` is machine-wide (caller must be VIEW_ALL_JOB_DATA-gated).
 
+    ``owners_limit`` forwards to the plugin: each bucket gains a top-N
+    per-user ``owners`` mapping (stacked chart segments + the per-band
+    user tier). It joins the cache ``opts`` so enriched and plain
+    envelopes never alias — which also naturally busts pre-upgrade
+    cache entries.
+
     Results go through the jobs TTL cache: closed windows (``end`` before
     today) land in the long-lived ``historical`` bucket, open ones in
     ``recent``. The envelope is self-describing (``min_param`` /
@@ -485,6 +492,8 @@ def jobs_histogram(
         kwargs['user'] = username
     if account_projcodes is not None:
         kwargs['account'] = list(account_projcodes)
+    if owners_limit is not None:
+        kwargs['owners_limit'] = owners_limit
 
     def _compute():
         mod = get_module()
@@ -506,21 +515,27 @@ def jobs_usage_by_user(
     machine: str,
     *,
     limit: Optional[int] = 50,
+    sort_by: Optional[str] = None,
     account_projcodes: Optional[Sequence[str]] = None,
     valid_qos_names: Sequence[str] = (),
     **filters,
 ) -> Dict[str, Any]:
     """Cached per-user usage rollup (plugin ``jobs_usage_by('user')``).
 
-    Backs the By User pie: rows are hours-desc, ``totals`` is computed
-    upstream BEFORE the limit truncation, so the pie's "Other" slice is
-    ``totals − Σ rows``. No self-exclusion of any filter — ``account``
+    Backs the By User pie: rows are ranked by ``sort_by`` (the plugin's
+    combined-hours default when ``None``) BEFORE the limit truncation, so
+    the surviving top-N follows the viewed metric; ``totals`` is likewise
+    pre-truncation, so the pie's "Other" slice is ``totals − Σ rows``.
+    ``sort_by`` joins the cache ``opts`` — different rankings are
+    different result sets. No self-exclusion of any filter — ``account``
     scoping always applies (it's the security boundary). Same scope and
     caching rules as :func:`jobs_histogram`.
     """
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
     if account_projcodes is not None:
         kwargs['account'] = list(account_projcodes)
+    if sort_by is not None:
+        kwargs['sort_by'] = sort_by
 
     def _compute():
         mod = get_module()
@@ -543,6 +558,7 @@ def jobs_usage_by_project(
     *,
     username: str,
     limit: Optional[int] = 25,
+    sort_by: Optional[str] = None,
     valid_qos_names: Sequence[str] = (),
     **filters,
 ) -> Dict[str, Any]:
@@ -550,8 +566,9 @@ def jobs_usage_by_project(
     ``jobs_usage_by('account', user=username)``).
 
     Backs the My Jobs "By Project" pie: which projects the logged-in
-    user's jobs charged, hours-desc. User-mode-only by construction —
-    the username pin is mandatory and non-negotiable exactly like
+    user's jobs charged, ranked by ``sort_by`` (plugin combined-hours
+    default when ``None``). User-mode-only by construction — the
+    username pin is mandatory and non-negotiable exactly like
     :func:`search_jobs_user` (raises on empty username or a ``user``
     filter), so this can never aggregate anyone else's jobs. Same
     pre-truncation ``totals`` invariant and caching rules as
@@ -569,6 +586,8 @@ def jobs_usage_by_project(
 
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
     kwargs['user'] = username
+    if sort_by is not None:
+        kwargs['sort_by'] = sort_by
 
     def _compute():
         mod = get_module()

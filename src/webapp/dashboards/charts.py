@@ -1184,16 +1184,40 @@ _JOBS_METRIC_LABELS = {
 }
 
 
+def _jobs_bucket_segments(bucket, key):
+    """Per-bucket stacked-bar segments (active-metric units), bottom → top.
+
+    The plugin envelope carries pre-truncated top-N ``owners`` per bucket
+    with authoritative bucket totals, so — unlike the fs_scans
+    ``_bucket_segments``, which derives the long tail locally — the "other"
+    base segment here is ``bucket total − Σ owners`` (it also absorbs
+    NULL-username jobs). Owner segments follow ascending so the largest
+    owner sits at the top of the bar. Empty list when the bucket has no
+    owners (→ drawn as a single flat bar).
+    """
+    owners = bucket.get('owners') or {}
+    if not owners:
+        return []
+    vals = sorted(float((d or {}).get(key) or 0) for d in owners.values())
+    remainder = float(bucket.get(key) or 0) - sum(vals)
+    if remainder > 1e-9:
+        return [remainder] + vals
+    return vals
+
+
 def _jobs_histogram_cache_key(hist, *, metric='jobs'):
     """Hash exactly what the SVG depends on: the bucket labels, the chosen
-    metric's values, the dimension, and null_count (not the full envelope —
-    e.g. min_param/max_param don't affect the rendering). The job_count
-    positivity vector joins the key because it decides which bars carry
-    #jh-bar-<i> drill URLs — an hours-metric SVG with matching hours but a
-    different populated-band set must not be reused."""
+    metric's values and owner-segment split, the dimension, and null_count
+    (not the full envelope — e.g. min_param/max_param don't affect the
+    rendering). The job_count positivity vector joins the key because it
+    decides which bars carry #jh-bar-<i> drill URLs — an hours-metric SVG
+    with matching hours but a different populated-band set must not be
+    reused. Owner names stay out of the key: the SVG carries no owner
+    labels, so only the segment values shape it."""
     key = _JOBS_METRIC_KEYS.get(metric, 'job_count')
     buckets = (hist or {}).get('buckets') or []
-    payload = [(b.get('label'), float(b.get(key) or 0)) for b in buckets]
+    payload = [(b.get('label'), float(b.get(key) or 0),
+                tuple(_jobs_bucket_segments(b, key))) for b in buckets]
     clickable = [int(bool(b.get('job_count'))) for b in buckets]
     return _content_hash([
         payload, clickable, str((hist or {}).get('dimension', '')),
@@ -1204,11 +1228,14 @@ def _jobs_histogram_cache_key(hist, *, metric='jobs'):
 @caching.chart_cached(name='jobs_histogram', maxsize=128,
                       key_fn=_jobs_histogram_cache_key)
 def generate_jobs_histogram(hist, *, metric='jobs') -> str:
-    """Single-series bar chart over a jobs_histogram envelope.
+    """Bar chart over a jobs_histogram envelope; owner-stacked when possible.
 
     Shared by the Wait Times, Job Sizes, and Durations tabs — the envelope's
     bucket vector is already complete and ordered (zeros included), so the
-    x-axis is stable across filter changes.
+    x-axis is stable across filter changes. When buckets carry ``owners``
+    (plugin ``owners_limit``), each bar becomes a single-hue per-user stack
+    over an aggregated remainder base; otherwise the historical flat
+    single-series chart renders unchanged.
 
     Args:
         hist: plugin envelope — ``{'dimension', 'buckets':
@@ -1230,16 +1257,44 @@ def generate_jobs_histogram(hist, *, metric='jobs') -> str:
         return _empty_state('No jobs in this range')
 
     fig, ax = plt.subplots(figsize=(14, 5))
-    bars = ax.bar(range(len(labels)), vals,
-                  color=UNITY_PALETTE_10[0],
-                  edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
     # Populated bands are clickable: #jh-bar-<index> sentinels route
     # through svg-chart-links.js to the matching data-jh-bucket row in
-    # the Bucket-counts table, which lazy-loads that band's jobs.
-    # Index-keyed (not label) so the JS never parses band labels.
-    for i, (rect, b) in enumerate(zip(bars, buckets)):
-        if b.get('job_count'):
-            rect.set_url(f'#jh-bar-{i}')
+    # the bucket table, which drills into that band. Index-keyed (not
+    # label) so the JS never parses band labels. Clickability follows
+    # job_count, not the plotted metric.
+    if not any(b.get('owners') for b in buckets):
+        # Owner-less envelope (owners_limit unset, or an older plugin):
+        # the historical flat single-series chart, byte-identical.
+        bars = ax.bar(range(len(labels)), vals,
+                      color=UNITY_PALETTE_10[0],
+                      edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+        for i, (rect, b) in enumerate(zip(bars, buckets)):
+            if b.get('job_count'):
+                rect.set_url(f'#jh-bar-{i}')
+    else:
+        # Stack per-owner segments (bottom "other" remainder + owners
+        # ascending), shaded within the band's color family — the fs_scans
+        # distribution-histogram treatment: the spread between users is
+        # legible before clicking.
+        colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)]
+                  for i in range(len(labels))]
+        for i, b in enumerate(buckets):
+            segs = _jobs_bucket_segments(b, key)
+            url = f'#jh-bar-{i}' if b.get('job_count') else None
+            if not segs:
+                bar = ax.bar(i, vals[i], color=colors[i],
+                             edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+                if url:
+                    bar.patches[0].set_url(url)
+                continue
+            shades = _shade_family(colors[i], len(segs))
+            bottom = 0.0
+            for seg_val, shade in zip(segs, shades):
+                cont = ax.bar(i, seg_val, bottom=bottom, color=shade,
+                              edgecolor='white', linewidth=0.3)
+                if url:
+                    cont.patches[0].set_url(url)
+                bottom += seg_val
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=30, ha='right')
     ax.set_ylabel(_JOBS_METRIC_LABELS.get(metric, 'Jobs'))

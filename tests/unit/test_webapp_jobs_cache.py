@@ -286,6 +286,65 @@ def test_service_jobs_usage_by_user_forwards_limit_and_account(app, monkeypatch)
     assert 'rows' in out and 'totals' in out
 
 
+def test_service_jobs_histogram_owners_limit_in_key_and_forwarded(app, monkeypatch):
+    """owners_limit reaches the plugin and discriminates the cache key —
+    an enriched envelope must never be served for a plain request (or
+    vice versa)."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_histogram('derecho', 'wait', **win)
+        service.jobs_histogram('derecho', 'wait', owners_limit=10, **win)
+        service.jobs_histogram('derecho', 'wait', owners_limit=10, **win)
+
+    assert len(captured['histogram']) == 2      # 3rd call served from cache
+    _, plain_kwargs = captured['histogram'][0]
+    _, rich_kwargs = captured['histogram'][1]
+    assert 'owners_limit' not in plain_kwargs   # None → omitted entirely
+    assert rich_kwargs['owners_limit'] == 10
+
+
+def test_service_jobs_usage_by_sort_in_key_and_forwarded(app, monkeypatch):
+    """sort_by reaches the plugin and discriminates the cache key —
+    different rankings are different result sets."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_usage_by_user('derecho', **win)
+        service.jobs_usage_by_user('derecho', sort_by='gpu_hours', **win)
+        service.jobs_usage_by_user('derecho', sort_by='gpu_hours', **win)
+
+    assert len(captured['usage_by']) == 2
+    _, default_kwargs = captured['usage_by'][0]
+    _, gpu_kwargs = captured['usage_by'][1]
+    assert 'sort_by' not in default_kwargs      # None → plugin default
+    assert gpu_kwargs['sort_by'] == 'gpu_hours'
+
+
+def test_service_jobs_usage_by_project_forwards_sort(app, monkeypatch):
+    from webapp.jobs import service
+
+    captured = _install_agg_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.jobs_usage_by_project(
+            'derecho', username='benkirk', sort_by='job_count',
+        )
+
+    dimension, kwargs = captured['usage_by'][0]
+    assert dimension == 'account'
+    assert kwargs['sort_by'] == 'job_count'
+    assert kwargs['user'] == 'benkirk'
+
+
 def test_service_jobs_facets_caches_closed_window(app, monkeypatch):
     """Two identical closed-window facet calls → one plugin query; a
     different facet tuple or limit is a different key."""

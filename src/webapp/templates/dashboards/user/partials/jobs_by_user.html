@@ -69,11 +69,13 @@
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-light">
+          {# Initial sort indicator follows the active metric pill — the
+             server ranks rows by it (and the top-N cut is taken in it). #}
           <tr>
             <th class="sortable-header" data-sort="text">User</th>
-            <th class="sortable-header text-end" data-sort="numeric">Jobs</th>
-            <th class="sortable-header text-end sort-desc" data-sort="numeric">CPU-hours</th>
-            <th class="sortable-header text-end" data-sort="numeric">GPU-hours</th>
+            <th class="sortable-header text-end{% if metric == 'jobs' %} sort-desc{% endif %}" data-sort="numeric">Jobs</th>
+            <th class="sortable-header text-end{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">CPU-hours</th>
+            <th class="sortable-header text-end{% if metric == 'gpu_hours' %} sort-desc{% endif %}" data-sort="numeric">GPU-hours</th>
           </tr>
         </thead>
         {% for r in rows %}
@@ -125,7 +127,9 @@
         {% if other %}
         <tbody>
           <tr class="text-muted">
-            <td>Other <span class="small">(beyond top {{ rows | length }})</span></td>
+            <td>Other <span class="small">(beyond top {{ rows | length }} by
+              {{ {'jobs': 'jobs', 'cpu_hours': 'CPU-hours',
+                  'gpu_hours': 'GPU-hours'}[metric] }})</span></td>
             <td class="text-end">{{ other.job_count | fmt_number }}</td>
             <td class="text-end">{{ other.cpu_hours | fmt_number }}</td>
             <td class="text-end">{{ other.gpu_hours | fmt_number }}</td>

@@ -23,8 +23,8 @@ Query params (all optional unless noted):
                          (e.g. '0' = success, '1', '271')
   page                 — int ≥ 1; default 1
   per_page             — int in [10, 200]; default 50
-  sort_by              — one of {'start', 'elapsed', 'qos',
-                         'cpu_charges', 'gpu_charges'}; default None
+  sort_by              — any _DEFAULT_COLS key (e.g. 'user', 'start',
+                         'elapsed', 'qos', 'cpu_charges'); default None
                          (plugin orders by ``Job.end DESC``)
   sort_dir             — 'asc' | 'desc'; default 'desc'
 
@@ -64,19 +64,21 @@ bp = Blueprint('jobs', __name__)
 # route can reject bad input without touching the plugin.
 _VALID_MACHINES = {'derecho', 'casper'}
 
-# Default columns shown when drilled into a user+queue row. user/queue/
-# account are dropped because the row context already pins them.
+# Default columns in the jobs table. queue/account are left to the drawer
+# because the drill contexts pin them; `user` renders by default and is
+# suppressed contextually instead (see _user_col_suppressed).
 _DEFAULT_COLS = (
-    'job_id', 'name', 'qos', 'start', 'elapsed',
+    'job_id', 'user', 'name', 'qos', 'start', 'elapsed',
     'numnodes', 'numcpus', 'numgpus',
     'cpu_charges', 'gpu_charges',
 )
 
 # Every column rendered as a table header is sortable. The plugin maps
-# `job.*` / `charge.*` keys to their SQLAlchemy columns and the
-# computed `*_charges` keys to `hours × COALESCE(qos_factor, 1)`, so
-# every key in _DEFAULT_COLS resolves to a valid ORDER BY at the SQL
-# level. Built from _DEFAULT_COLS to stay in lockstep automatically.
+# `job.*` / `charge.*` keys to their SQLAlchemy columns, lookup-backed
+# keys (`user`) to a joined name column, and the computed `*_charges`
+# keys to `hours × COALESCE(qos_factor, 1)`, so every key in
+# _DEFAULT_COLS resolves to a valid ORDER BY at the SQL level. Built
+# from _DEFAULT_COLS to stay in lockstep automatically.
 _SORT_WHITELIST = set(_DEFAULT_COLS)
 
 # Extra columns revealed in the per-row "expand" drawer. Order is the
@@ -85,7 +87,7 @@ _SORT_WHITELIST = set(_DEFAULT_COLS)
 # at the top of the drawer rather than buried beside memory_charges.
 _VERBOSE_EXTRAS = (
     'exit_status', 'qos_factor',
-    'queue', 'user',
+    'queue',
     'submit', 'end', 'walltime',
     'mpiprocs', 'ompthreads',
     'reqmem', 'memory', 'vmemory',
@@ -157,6 +159,23 @@ def _visible_cols(default_cols, rows):
         if c not in _SUPPRESSIBLE
         or any((r.get(c) or 0) != 0 for r in rows)
     ]
+
+
+def _user_col_suppressed(*, pinned_user, filters, rows, total, per_page):
+    """True when the User column would be single-valued noise.
+
+    Three triggers: the mode pins a user (My Jobs), a ``user=`` filter is
+    active (the By User / per-band drills), or the whole filtered result
+    fits on one page and every row shares one username — the cheap exact
+    case; a multi-page uniform view keeps the column rather than paying a
+    distinct-count query to find out.
+    """
+    if pinned_user is not None or filters.get('user'):
+        return True
+    return bool(
+        rows and total is not None and total <= per_page
+        and len({r.get('user') for r in rows}) == 1
+    )
 
 
 def _scope_project(project) -> Project:
@@ -326,6 +345,20 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 'factor': next(iter(factors)) if len(factors) == 1 else None,
             }
 
+    # Same single-value treatment for the User column. Only the
+    # uniformity trigger needs the header badge: the pin/filter cases
+    # already surface the name via the fragment heading or the `user:`
+    # filter badge.
+    user_badge = None
+    if _user_col_suppressed(pinned_user=pinned_user, filters=filters,
+                            rows=rows, total=total,
+                            per_page=page['per_page']):
+        visible_cols = [c for c in visible_cols if c != 'user']
+        if pinned_user is None and not filters.get('user'):
+            (shared_user,) = {r.get('user') for r in rows}
+            if shared_user is not None:
+                user_badge = {'name': shared_user}
+
     column_specs = _load_column_specs()
 
     # Explorer chip strip (?chips=1): facet counts for the same filter set
@@ -377,6 +410,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         sortable_columns=sorted(_SORT_WHITELIST),
         qos_options=template_qos_options,
         qos_badge=qos_badge,
+        user_badge=user_badge,
         fragment_url=fragment_url,
         target_id=target_id,
         roundtrip_params=_roundtrip_params(machine, target_id),
@@ -450,6 +484,19 @@ _SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus',
 
 # Rows shown in the By User table (the pie itself keeps at most 9 + Other).
 _BY_USER_LIMIT = 25
+
+# Metric pill → plugin jobs_usage_by sort_by key. Ranking must follow the
+# viewed metric or the top-N cut hides e.g. pure-GPU users behind CPU-heavy
+# ones (the Derecho GPU-Hours one-wedge bug).
+_USAGE_SORT_BY = {
+    'jobs': 'job_count',
+    'cpu_hours': 'cpu_hours',
+    'gpu_hours': 'gpu_hours',
+}
+
+# Top-N users carried per histogram bucket (chart stack segments + the
+# per-band user tier). Matches the fs_scans _AH_TOP_SEGMENTS cap.
+_HIST_OWNERS_LIMIT = 10
 
 # Filter query params round-tripped through pill/toggle re-fetches, and —
 # where the per-job fragment understands them — carried into row drill-downs.
@@ -633,6 +680,7 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
     try:
         usage = service.jobs_usage_by_user(
             machine, limit=_BY_USER_LIMIT,
+            sort_by=_USAGE_SORT_BY[metric],
             account_projcodes=account_projcodes, **filters,
         )
     except Exception as exc:
@@ -674,7 +722,8 @@ def _render_by_project(*, machine, fragment_url, jobs_fragment_url,
     error = None
     try:
         usage = service.jobs_usage_by_project(
-            machine, username=username, limit=_BY_USER_LIMIT, **filters,
+            machine, username=username, limit=_BY_USER_LIMIT,
+            sort_by=_USAGE_SORT_BY[metric], **filters,
         )
     except Exception as exc:
         from flask import current_app
@@ -746,6 +795,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     try:
         hist = service.jobs_histogram(
             machine, dimension,
+            owners_limit=_HIST_OWNERS_LIMIT,
             account_projcodes=account_projcodes, username=username,
             **filters,
         )
