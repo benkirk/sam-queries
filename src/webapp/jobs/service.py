@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
+from webapp.jobs import cache as jobs_cache
 from webapp.jobs.session import (
     get_engines,
     get_module,
@@ -78,18 +79,63 @@ def _resolve_queue_and_qos(
     return base, qos
 
 
-def search_jobs(
-    machine: str,
+def _plugin_filter_kwargs(
     *,
-    project,
     start: Optional[date] = None,
     end: Optional[date] = None,
     user: Optional[str] = None,
     queue: Optional[str] = None,
     qos: Optional[str] = None,
     exit_status: Optional[str] = None,
+    name=None,
+    ignore_case: bool = False,
+    min_eligible_secs: Optional[int] = None,
+    max_eligible_secs: Optional[int] = None,
+    min_nodes: Optional[int] = None,
+    max_nodes: Optional[int] = None,
+    min_cpus: Optional[int] = None,
+    max_cpus: Optional[int] = None,
     min_gpus: Optional[int] = None,
     max_gpus: Optional[int] = None,
+    min_elapsed: Optional[int] = None,
+    max_elapsed: Optional[int] = None,
+    min_reqmem: Optional[int] = None,
+    max_reqmem: Optional[int] = None,
+    valid_qos_names: Sequence[str] = (),
+) -> Dict[str, Any]:
+    """Normalize the flat SAM-side filter set into plugin kwargs.
+
+    The single seam every query mode routes through: mirrors the
+    plugin's keyword surface 1:1 (minus ``account``, which each mode
+    pins itself), runs the legacy queue→QoS resolver, and — being
+    keyword-only — rejects unknown filter names with a TypeError instead
+    of silently dropping them. Range bounds are plugin-native units
+    (seconds / bytes / counts), inclusive, NULL-strict.
+    """
+    queue_norm, qos_norm = _resolve_queue_and_qos(queue, qos, valid_qos_names)
+    return {
+        'start': start,
+        'end':   end,
+        'user':  user,
+        'queue': queue_norm,
+        'qos':   qos_norm,
+        'exit_status': exit_status,
+        'name':  name,
+        'ignore_case': bool(ignore_case),
+        'min_eligible_secs': min_eligible_secs,
+        'max_eligible_secs': max_eligible_secs,
+        'min_nodes': min_nodes, 'max_nodes': max_nodes,
+        'min_cpus':  min_cpus,  'max_cpus':  max_cpus,
+        'min_gpus':  min_gpus,  'max_gpus':  max_gpus,
+        'min_elapsed': min_elapsed, 'max_elapsed': max_elapsed,
+        'min_reqmem':  min_reqmem,  'max_reqmem':  max_reqmem,
+    }
+
+
+def search_jobs(
+    machine: str,
+    *,
+    project,
     columns: Optional[Sequence[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -97,6 +143,7 @@ def search_jobs(
     sort_dir: str = 'desc',
     account_projcodes: Optional[Sequence[str]] = None,
     valid_qos_names: Sequence[str] = (),
+    **filters,
 ) -> List[Dict[str, Any]]:
     """Return per-job rows for *project* on *machine*.
 
@@ -111,15 +158,6 @@ def search_jobs(
         machine: Machine name (e.g. 'derecho', 'casper').
         project: SAM Project — supplies the default ``account`` filter
             via ``project.projcode``.
-        start, end: Date range filter on ``Job.end``.
-        user, queue, qos, exit_status: Optional plain-text filters.
-            ``qos`` matches the canonical name in the plugin's
-            ``job_qos`` lookup (e.g. ``'premium'``, ``'regular'``);
-            ``exit_status`` is the PBS exit code as text (``'0'`` =
-            success).
-        min_gpus, max_gpus: Inclusive bounds on ``Job.numgpus``
-            (``min_gpus=1`` → GPU jobs only; ``max_gpus=0`` →
-            CPU-only jobs).
         columns: Optional column projection. Default is the plugin's
             ``DEFAULT_COLUMNS`` set.
         limit: Optional server-side LIMIT.
@@ -129,6 +167,10 @@ def search_jobs(
             filtering. When provided, takes precedence over
             ``project.projcode`` — the upstream plugin applies
             ``Job.account IN (...)``.
+        **filters: The flat filter set — see
+            :func:`_plugin_filter_kwargs` (start/end, user, queue, qos,
+            exit_status, name + ignore_case, and the inclusive min/max
+            bounds). Unknown names raise TypeError.
 
     Returns:
         ``list[dict]`` ordered by *sort_by* (default ``Job.end DESC``);
@@ -144,25 +186,16 @@ def search_jobs(
     mod = get_module()
     JobQueries = mod.JobQueries
 
-    # TODO(legacy-queue-names): see _resolve_queue_and_qos. Promotes
-    # 'cpu-special' → queue='cpu', qos='special' when caller left qos
-    # unset and the suffix matches a known QoS name.
-    queue_norm, qos_norm = _resolve_queue_and_qos(queue, qos, valid_qos_names)
-
-    kwargs: Dict[str, Any] = {
-        'start':   start,
-        'end':     end,
+    # TODO(legacy-queue-names): the normalizer runs _resolve_queue_and_qos,
+    # promoting 'cpu-special' → queue='cpu', qos='special' when the caller
+    # left qos unset and the suffix matches a known QoS name.
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    kwargs.update({
         'account': list(account_projcodes) if account_projcodes is not None else project.projcode,
-        'user':    user,
-        'queue':   queue_norm,
-        'qos':     qos_norm,
-        'exit_status': exit_status,
         'columns': columns,
         'limit':   limit,
         'offset':  offset,
-        'min_gpus': min_gpus,
-        'max_gpus': max_gpus,
-    }
+    })
     if sort_by is not None:
         kwargs['sort_by']  = sort_by
         kwargs['sort_dir'] = sort_dir
@@ -175,16 +208,9 @@ def count_jobs(
     machine: str,
     *,
     project,
-    start: Optional[date] = None,
-    end: Optional[date] = None,
-    user: Optional[str] = None,
-    queue: Optional[str] = None,
-    qos: Optional[str] = None,
-    exit_status: Optional[str] = None,
-    min_gpus: Optional[int] = None,
-    max_gpus: Optional[int] = None,
     account_projcodes: Optional[Sequence[str]] = None,
     valid_qos_names: Sequence[str] = (),
+    **filters,
 ) -> int:
     """Return the total number of jobs matching the search filters.
 
@@ -198,10 +224,11 @@ def count_jobs(
     by default (small pre-aggregated table; sub-millisecond response
     against the production schema). Falls back to the plugin's
     ``JobQueries.jobs_count`` — a ``COUNT(*)`` over the raw ``job``
-    table — only when a filter outside the summary key set is in play
-    (``exit_status``, ``min_gpus``/``max_gpus``). The two counts can disagree under
-    ingester drift; SAM is treated as the source of truth for the
-    displayed totalizer since it's the project's accounting authority.
+    table — whenever ANY filter outside the summary key set is in play
+    (qos, exit_status, name, or any min/max bound). The two counts can
+    disagree under ingester drift; SAM is treated as the source of
+    truth for the displayed totalizer since it's the project's
+    accounting authority.
 
     Returns:
         ``int`` total.
@@ -213,38 +240,37 @@ def count_jobs(
                  else [project.projcode])
 
     # Fast path: SAM's daily summary covers every filter the drill-down
-    # uses. Avoids a 1-second-plus COUNT(*) over the plugin's job table.
-    # `qos` is NOT in CompChargeSummary's key set today, so a QoS filter
-    # falls back to the plugin path alongside exit_status / GPU bounds.
-    if exit_status is None and min_gpus is None and max_gpus is None and qos is None:
+    # uses — but ONLY those. `qos` is NOT in CompChargeSummary's key set
+    # today, so a QoS filter falls back to the plugin path alongside
+    # exit_status / name / every range bound. Gate on the raw filter
+    # names (not the normalized kwargs) so a falsy-but-real bound like
+    # ``max_gpus=0`` still forces the plugin path. ``ignore_case`` is a
+    # modifier on ``name`` (a bool, often explicitly False), not a
+    # filter — without a name it changes nothing, so it never gates.
+    _summary_keys = {'start', 'end', 'user', 'queue', 'ignore_case'}
+    extended = {k: v for k, v in filters.items() if k not in _summary_keys}
+    if all(v is None for v in extended.values()):
         return _count_via_sam_summary(
             machine,
             projcodes=projcodes,
-            start=start, end=end,
-            user=user, queue=queue,
+            start=filters.get('start'), end=filters.get('end'),
+            user=filters.get('user'), queue=filters.get('queue'),
         )
 
     # Plugin fallback for filter shapes outside the summary's key set.
-    # TODO(legacy-queue-names): see _resolve_queue_and_qos. The fast
-    # path above kept the raw composite queue (the summary stores it
-    # that way); the plugin path needs the split + QoS inference.
-    queue_norm, qos_norm = _resolve_queue_and_qos(queue, qos, valid_qos_names)
+    # TODO(legacy-queue-names): the normalizer runs _resolve_queue_and_qos.
+    # The fast path above kept the raw composite queue (the summary
+    # stores it that way); the plugin path needs the split + QoS
+    # inference.
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    kwargs['account'] = (projcodes if account_projcodes is not None
+                         else project.projcode)
 
     mod = get_module()
     JobQueries = mod.JobQueries
 
     with job_history_session(machine) as session:
-        return JobQueries(session, machine=machine).jobs_count(
-            start=start,
-            end=end,
-            account=projcodes if account_projcodes is not None else project.projcode,
-            user=user,
-            queue=queue_norm,
-            qos=qos_norm,
-            exit_status=exit_status,
-            min_gpus=min_gpus,
-            max_gpus=max_gpus,
-        )
+        return JobQueries(session, machine=machine).jobs_count(**kwargs)
 
 
 def _count_via_sam_summary(
@@ -286,6 +312,210 @@ def _count_via_sam_summary(
     if queue:
         q = q.filter(CompChargeSummary.queue == queue)
     return int(q.scalar() or 0)
+
+
+def search_jobs_machine(
+    machine: str,
+    *,
+    columns: Optional[Sequence[str]] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    sort_by: Optional[str] = None,
+    sort_dir: str = 'desc',
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> List[Dict[str, Any]]:
+    """Machine-wide per-job rows — NO account scoping.
+
+    SECURITY: this deliberately issues an unscoped query (every user's
+    jobs, cross-project). The caller MUST sit behind
+    ``@require_permission(Permission.VIEW_ALL_JOB_DATA)`` — there is no
+    fallback pinning here, unlike :func:`search_jobs` (project) and
+    :func:`search_jobs_user` (session user).
+    """
+    mod = get_module()
+    JobQueries = mod.JobQueries
+
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    kwargs.update({'columns': columns, 'limit': limit, 'offset': offset})
+    if sort_by is not None:
+        kwargs['sort_by']  = sort_by
+        kwargs['sort_dir'] = sort_dir
+
+    with job_history_session(machine) as session:
+        return JobQueries(session, machine=machine).jobs_search(**kwargs)
+
+
+def count_jobs_machine(
+    machine: str,
+    *,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> int:
+    """Machine-wide job count — NO account scoping (see search_jobs_machine).
+
+    Always the plugin's ``jobs_count``: the SAM-summary fast path is a
+    per-project accounting table, and machine-wide requests are already
+    permission-gated, low-volume operator surfaces.
+    """
+    mod = get_module()
+    JobQueries = mod.JobQueries
+
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+
+    with job_history_session(machine) as session:
+        return JobQueries(session, machine=machine).jobs_count(**kwargs)
+
+
+def search_jobs_user(
+    machine: str,
+    username: str,
+    *,
+    columns: Optional[Sequence[str]] = None,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    sort_by: Optional[str] = None,
+    sort_dir: str = 'desc',
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> List[Dict[str, Any]]:
+    """Per-job rows hard-pinned to *username* ("My Jobs" mode).
+
+    The pin is server-side and non-negotiable: an empty username raises,
+    and a ``user`` key in *filters* raises rather than being silently
+    overwritten — the route must never forward a client-supplied user
+    into this mode (mirror of disk_scans' pinned-owner rule).
+    """
+    if not username:
+        raise ValueError('search_jobs_user requires a username (user pin).')
+    if 'user' in filters:
+        raise ValueError(
+            "search_jobs_user pins user server-side; "
+            "remove the 'user' filter from the call."
+        )
+
+    mod = get_module()
+    JobQueries = mod.JobQueries
+
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    kwargs.update({
+        'user':    username,
+        'columns': columns,
+        'limit':   limit,
+        'offset':  offset,
+    })
+    if sort_by is not None:
+        kwargs['sort_by']  = sort_by
+        kwargs['sort_dir'] = sort_dir
+
+    with job_history_session(machine) as session:
+        return JobQueries(session, machine=machine).jobs_search(**kwargs)
+
+
+def count_jobs_user(
+    machine: str,
+    username: str,
+    *,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> int:
+    """Job count hard-pinned to *username* (see search_jobs_user)."""
+    if not username:
+        raise ValueError('count_jobs_user requires a username (user pin).')
+    if 'user' in filters:
+        raise ValueError(
+            "count_jobs_user pins user server-side; "
+            "remove the 'user' filter from the call."
+        )
+
+    mod = get_module()
+    JobQueries = mod.JobQueries
+
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    kwargs['user'] = username
+
+    with job_history_session(machine) as session:
+        return JobQueries(session, machine=machine).jobs_count(**kwargs)
+
+
+def jobs_histogram(
+    machine: str,
+    dimension: str,
+    *,
+    account_projcodes: Optional[Sequence[str]] = None,
+    username: Optional[str] = None,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, Any]:
+    """Cached bucket histogram for *dimension* (plugin envelope, verbatim).
+
+    Scope is the caller's job: ``account_projcodes`` pins a project
+    tree (project mode), ``username`` hard-pins user mode (overwriting
+    any client-supplied ``user`` filter — the pin always wins), both
+    ``None`` is machine-wide (caller must be VIEW_ALL_JOB_DATA-gated).
+
+    Results go through the jobs TTL cache: closed windows (``end`` before
+    today) land in the long-lived ``historical`` bucket, open ones in
+    ``recent``. The envelope is self-describing (``min_param`` /
+    ``max_param``) — use those for bar drill-downs, never a hardcoded
+    dimension→kwarg map.
+    """
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if username is not None:
+        kwargs['user'] = username
+    if account_projcodes is not None:
+        kwargs['account'] = list(account_projcodes)
+
+    def _compute():
+        mod = get_module()
+        JobQueries = mod.JobQueries
+        with job_history_session(machine) as session:
+            return JobQueries(session, machine=machine).jobs_histogram(
+                dimension, **kwargs,
+            )
+
+    opts = dict(kwargs)
+    opts['dimension'] = dimension
+    return jobs_cache.cached_jobs_aggregation(
+        'histogram', machine, opts, _compute,
+        bucket=jobs_cache.bucket_for_window(kwargs.get('end')),
+    )
+
+
+def jobs_usage_by_user(
+    machine: str,
+    *,
+    limit: Optional[int] = 50,
+    account_projcodes: Optional[Sequence[str]] = None,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, Any]:
+    """Cached per-user usage rollup (plugin ``jobs_usage_by('user')``).
+
+    Backs the By User pie: rows are hours-desc, ``totals`` is computed
+    upstream BEFORE the limit truncation, so the pie's "Other" slice is
+    ``totals − Σ rows``. No self-exclusion of any filter — ``account``
+    scoping always applies (it's the security boundary). Same scope and
+    caching rules as :func:`jobs_histogram`.
+    """
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if account_projcodes is not None:
+        kwargs['account'] = list(account_projcodes)
+
+    def _compute():
+        mod = get_module()
+        JobQueries = mod.JobQueries
+        with job_history_session(machine) as session:
+            return JobQueries(session, machine=machine).jobs_usage_by(
+                'user', limit=limit, **kwargs,
+            )
+
+    opts = dict(kwargs)
+    opts['limit'] = limit
+    return jobs_cache.cached_jobs_aggregation(
+        'usage_by_user', machine, opts, _compute,
+        bucket=jobs_cache.bucket_for_window(kwargs.get('end')),
+    )
 
 
 def list_qos_names(machine: str) -> List[str]:

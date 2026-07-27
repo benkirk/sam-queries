@@ -33,7 +33,7 @@ bp = Blueprint('api_admin', __name__)
 register_error_handlers(bp)
 
 # Categories understood by caching.clear(); None (omitted) clears all.
-_VALID_CATEGORIES = {'flask', 'chart', 'usage', 'scans'}
+_VALID_CATEGORIES = {'flask', 'chart', 'usage', 'scans', 'jobs'}
 
 
 @bp.route('/cache/refresh', methods=['POST'])

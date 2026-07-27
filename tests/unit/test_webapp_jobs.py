@@ -1304,3 +1304,155 @@ def test_job_history_machines_empty_when_disabled(app):
 
     with app.app_context():
         assert service.job_history_machines() == []
+
+
+# ---------------------------------------------------------------------------
+# Commit 3: mode families + extended-filter count gating
+# ---------------------------------------------------------------------------
+
+def test_search_jobs_machine_forwards_no_account(app, monkeypatch):
+    """Machine mode issues an UNSCOPED query — no account key at all."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs_machine('derecho', user='alice', limit=10)
+
+    kw = captured['last_jobs_search_kwargs']
+    assert 'account' not in kw
+    assert kw['user'] == 'alice'
+    assert kw['limit'] == 10
+
+
+def test_count_jobs_machine_uses_plugin_count(app, monkeypatch):
+    """Machine mode never touches the SAM per-project summary."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=9)
+
+    with app.app_context():
+        total = service.count_jobs_machine('derecho', queue='main')
+
+    assert total == 9
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert 'account' not in ckw
+
+
+def test_search_jobs_user_pins_username(app, monkeypatch):
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs_user('derecho', 'benkirk', queue='main')
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['user'] == 'benkirk'
+
+
+def test_search_jobs_user_rejects_user_filter(app, monkeypatch):
+    """A client-supplied user filter must raise, not be silently dropped."""
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        with pytest.raises(ValueError, match='pins user'):
+            service.search_jobs_user('derecho', 'benkirk', user='mallory')
+
+
+def test_search_jobs_user_requires_username(app, monkeypatch):
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        with pytest.raises(ValueError, match='username'):
+            service.search_jobs_user('derecho', '')
+
+
+def test_count_jobs_user_pins_username(app, monkeypatch):
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=4)
+
+    with app.app_context():
+        total = service.count_jobs_user('derecho', 'benkirk')
+
+    assert total == 4
+    assert captured['last_jobs_count_kwargs']['user'] == 'benkirk'
+
+
+def test_count_jobs_zero_bound_forces_plugin_path(app, active_project, monkeypatch):
+    """max_gpus=0 is a REAL filter (CPU-only) — the falsy value must not
+    slip through the fast-path gate onto the SAM summary."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=2)
+
+    with app.app_context():
+        total = service.count_jobs(
+            'derecho', project=active_project, max_gpus=0,
+        )
+
+    assert total == 2
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['max_gpus'] == 0
+
+
+def test_count_jobs_ignore_case_alone_keeps_fast_path(
+    app, active_project, monkeypatch,
+):
+    """ignore_case without a name filter changes nothing — stay on the
+    SAM-summary fast path."""
+    from webapp.jobs import service
+
+    monkeypatch.setattr(
+        service, '_count_via_sam_summary',
+        lambda machine, **kw: 13,
+    )
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        total = service.count_jobs(
+            'derecho', project=active_project, ignore_case=False,
+        )
+
+    assert total == 13
+    assert captured['last_jobs_count_kwargs'] is None
+
+
+def test_count_jobs_name_filter_forces_plugin_path(
+    app, active_project, monkeypatch,
+):
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=5)
+
+    with app.app_context():
+        service.count_jobs(
+            'derecho', project=active_project,
+            name='wrf*', ignore_case=True,
+        )
+
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['name'] == 'wrf*'
+    assert ckw['ignore_case'] is True
+
+
+def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
+    """_plugin_filter_kwargs is keyword-only: a typo'd filter raises
+    TypeError instead of silently vanishing."""
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        with pytest.raises(TypeError):
+            service.search_jobs(
+                'derecho', project=active_project, min_gups=1,  # typo
+            )
