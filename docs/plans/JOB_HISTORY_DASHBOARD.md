@@ -1,11 +1,37 @@
 # Job History Dashboard — SAM-side implementation (Session 2 handoff)
 
-**Status (2026-07-26):** plugin side DONE and pushed; SAM side NOT STARTED.
-This doc is the restart brief for a fresh session: everything needed to execute
-the SAM work is here or referenced by exact path. The approved plan of record
+**Status (2026-07-27): IMPLEMENTED.** Plugin side landed on PR #99 (tip
+`24a35ed`); SAM Commits 1–7 are on `job_history_expansion` as planned, with
+the deltas recorded in *As-built notes* below. The approved plan of record
 (full rationale, plugin-side commit details) is
 [`JOB_HISTORY_DRILLDOWN.md`](JOB_HISTORY_DRILLDOWN.md); where the two differ,
 THIS doc reflects what actually landed.
+
+## As-built notes (deltas from the plan below)
+
+- **Metric pills landed on ALL aggregation tabs**, not just By User: the
+  three histogram tabs also toggle Jobs / CPU-hours / GPU-hours (the chart
+  generator already supported it; one shared partial).
+- The card carries the resource-details page's **date window** (`start`/
+  `end`) into every tab so aggregations stay bounded by default.
+- `?scope=` subtree re-rooting is honored by **every** project fragment
+  (table + all aggregations + explorer) via `_tree_projcodes` →
+  `_scope_project`, not only the explorer.
+- The per-job fragment's hidden filter form now round-trips the **full**
+  extended filter set (`roundtrip_params`) so explorer pagination/sort
+  keeps name-glob/bounds/wait filters; the fk-picker's `user_id` resolves
+  to a username in `_resolve_user_filter`.
+- The jobs table body is one shared `_jobs_table_response(mode=…)`
+  (project | machine | user) rather than three copies.
+- The By User table appends an inert **"Other (beyond top N)"** row from
+  the pre-truncation totals (limit = 25 rows; pie keeps ≤ 9 + Other).
+- Machine-wide count uses the plugin's `jobs_count` (no SAM-summary fast
+  path — that table is per-project and the operator surfaces are gated +
+  low-volume).
+- `sam-admin cache --category` and the API/HTMX category sets gained
+  `jobs`; `tests/api/test_admin_cache.py`'s pinned category set updated.
+- Histogram bucket tables render inside a collapsed `<details>` under the
+  SVG ("Bucket counts").
 
 ## How to resume
 
@@ -294,12 +320,17 @@ Personas via Quick Login: `benkirk` (full operator), a plain project user,
 6. `docker compose exec` psql: `pg_stat_activity` shows
    `sam-webapp:…:job_history:<machine>` tagging and `statement_timeout`.
 
-## Deferred follow-ups (record outcomes in Commit 8)
+## Deferred follow-ups (confirmed deferred as of 2026-07-27)
 
 - `jobs_facets` filter chips in the explorer (cost: self-exclusion plan
   flips measured 4.5×; needs a default window policy first).
 - By-Project tab in user mode (needs nothing new server-side —
   `jobs_usage_by('account', user=<me>)` — UI decision only).
 - Clickable histogram bars (drill via `min_param`/`max_param` envelope,
-  mirroring the disk band-drill).
+  mirroring the disk band-drill; the envelope's self-describing
+  min/max_param fields are already threaded through to the template
+  context, so this is chart + JS work only).
 - `memory_used` histogram dimension upstream if ever asked (one spec row).
+- Explorer inputs for elapsed/reqmem bounds (`min/max_elapsed`,
+  `min/max_reqmem` are already accepted by the service normalizer; only
+  panel fields + roundtrip keys are missing).
