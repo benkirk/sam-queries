@@ -613,14 +613,8 @@ def resource_details(project):
 
     # Per-job drill-down (hpc-usage-queries) is keyed on the physical
     # machine, not the SAM resource_name — Derecho GPU jobs still live in
-    # the "derecho" DB. None disables the "Show jobs" affordance.
-    rn = (resource_name or '').lower()
-    if 'derecho' in rn:
-        jobs_machine = 'derecho'
-    elif 'casper' in rn:
-        jobs_machine = 'casper'
-    else:
-        jobs_machine = None
+    # the "derecho" DB. None disables the jobs card + "Show jobs" affordance.
+    jobs_machine = _resolve_jobs_machine(resource_name)
 
     return render_template(
         'dashboards/user/resource_details.html',

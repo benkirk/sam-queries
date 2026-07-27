@@ -31,6 +31,22 @@ import pytest
 from flask import Flask
 
 
+@pytest.fixture(autouse=True)
+def _disable_jobs_cache():
+    """Disable the aggregation TTL cache for these tests by default.
+
+    The route tests exercise the service path directly with per-test mock
+    returns; a live cache would leak one test's envelope into the next
+    (same key: filters all None). Explicit cache behavior is covered by
+    test_webapp_jobs_cache.py. Reset on teardown so other modules aren't
+    affected by the process-wide adapter singleton.
+    """
+    from webapp.jobs import cache as _c
+    _c._adapters = {b: None for b in _c._BUCKETS}
+    yield
+    _c._adapters = {}   # clear → buckets re-init on next use
+
+
 # ---------------------------------------------------------------------------
 # init_job_history — startup hook
 # ---------------------------------------------------------------------------
@@ -132,7 +148,9 @@ _DEFAULT_QOS_NAMES = ['economy', 'premium', 'regular', 'special', 'uncharged']
 
 def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
                         jobs_count_return=None, qos_names=None,
-                        machines=('derecho',)):
+                        machines=('derecho',),
+                        jobs_histogram_return=None,
+                        jobs_usage_by_return=None):
     """Wire a mock job_history module onto app.extensions and return the
     captured JobQueries kwargs so tests can assert on the call.
 
@@ -143,6 +161,8 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
     captured = {
         'last_jobs_search_kwargs': None,
         'last_jobs_count_kwargs':  None,
+        'last_jobs_histogram':     None,   # (dimension, kwargs)
+        'last_jobs_usage_by':      None,   # (dimension, kwargs)
     }
     qos_list = (list(qos_names) if qos_names is not None
                 else list(_DEFAULT_QOS_NAMES))
@@ -158,6 +178,20 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
             captured['last_jobs_count_kwargs'] = kwargs
             return jobs_count_return if jobs_count_return is not None \
                 else len(jobs_search_return or [])
+        def jobs_histogram(self, dimension, **kwargs):
+            captured['last_jobs_histogram'] = (dimension, kwargs)
+            if jobs_histogram_return is not None:
+                return dict(jobs_histogram_return, dimension=dimension)
+            return {'dimension': dimension, 'column': 'x', 'unit': 'u',
+                    'min_param': 'min_x', 'max_param': 'max_x',
+                    'buckets': [], 'null_count': 0, 'total_count': 0}
+        def jobs_usage_by(self, dimension, **kwargs):
+            captured['last_jobs_usage_by'] = (dimension, kwargs)
+            if jobs_usage_by_return is not None:
+                return jobs_usage_by_return
+            return {'dimension': dimension, 'rows': [],
+                    'totals': {'job_count': 0, 'cpu_hours': 0.0,
+                               'gpu_hours': 0.0}}
         def list_qos_names(self, **kwargs):
             return list(qos_list)
 
@@ -1456,3 +1490,233 @@ def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
             service.search_jobs(
                 'derecho', project=active_project, min_gups=1,  # typo
             )
+
+
+# ---------------------------------------------------------------------------
+# Commit 5: aggregation fragments (By User / Wait Times / Job Sizes / Durations)
+# ---------------------------------------------------------------------------
+
+def _sample_hist(dimension='wait', null_count=0):
+    return {
+        'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',
+        'min_param': 'min_eligible_secs', 'max_param': 'max_eligible_secs',
+        'buckets': [
+            {'label': '<1m', 'lo': 0, 'hi': 59,
+             'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 0.0},
+            {'label': '1-5m', 'lo': 60, 'hi': 299,
+             'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0},
+        ],
+        'null_count': null_count,
+        'total_count': 14 + null_count,
+    }
+
+
+def _sample_usage(totals=None):
+    return {
+        'dimension': 'user',
+        'rows': [
+            {'value': 'alice', 'job_count': 30, 'cpu_hours': 300.0, 'gpu_hours': 0.0},
+            {'value': 'bob',   'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 2.0},
+        ],
+        'totals': totals or {'job_count': 42, 'cpu_hours': 420.0, 'gpu_hours': 2.0},
+    }
+
+
+def test_by_user_fragment_renders_rows_and_pie(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_usage_by_return=_sample_usage(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'data-job-user="alice"' in body
+    assert 'data-job-user="bob"' in body
+    assert '<svg' in body                       # pie rendered
+    assert '#job-user-alice' in body            # clickable wedge sentinel
+    # No remainder beyond the row cap → no Other row.
+    assert 'beyond top' not in body
+    # Plugin was asked for the user dimension, scoped to the project tree.
+    dim, kwargs = captured['last_jobs_usage_by']
+    assert dim == 'user'
+    assert active_project.projcode in kwargs['account']
+
+
+def test_by_user_fragment_other_row_from_pretruncation_totals(
+    app, auth_client, active_project, monkeypatch,
+):
+    """totals bigger than the visible rows → an inert Other summary row."""
+    usage = _sample_usage(totals={'job_count': 100, 'cpu_hours': 900.0,
+                                  'gpu_hours': 5.0})
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=usage)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'beyond top' in body
+
+
+def test_by_user_fragment_disabled_banner(auth_client, active_project):
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user?machine=derecho'
+    )
+    assert resp.status_code == 200
+    assert 'Per-job data is unavailable' in resp.get_data(as_text=True)
+
+
+def test_by_user_fragment_400_on_invalid_machine(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user?machine=gust'
+    )
+    assert resp.status_code == 400
+
+
+def test_by_user_fragment_404_on_unknown_projcode(auth_client):
+    resp = auth_client.get('/dashboards/user/jobs/NOPE9999/by-user?machine=derecho')
+    assert resp.status_code == 404
+
+
+def test_wait_times_fragment_caption_on_null_count(
+    app, auth_client, active_project, monkeypatch,
+):
+    """null_count > 0 on the wait dimension → the eligible-time caption."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(null_count=7),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'no wait measurement' in body
+    assert 'early 2025 on Derecho' in body
+
+
+def test_wait_times_fragment_no_caption_when_all_measured(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(null_count=0),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times?machine=derecho'
+    )
+    assert 'no wait measurement' not in resp.get_data(as_text=True)
+
+
+def test_wait_times_fragment_pins_wait_dimension(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&dimension=gpus'   # client cannot override the pin
+    )
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'wait'
+
+
+def test_job_sizes_fragment_dimension_pills_and_default(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='nodes'),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # Dimension pills present (only on the Sizes tab).
+    assert 'dimension=cpus' in body
+    assert 'dimension=memory' in body
+    # Default dimension is nodes.
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'nodes'
+
+
+def test_job_sizes_fragment_invalid_dimension_falls_back(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='nodes'),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=bogus'
+    )
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'nodes'
+
+
+def test_job_sizes_fragment_memory_dimension_forwarded(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='memory'),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=memory'
+    )
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'memory'
+
+
+def test_durations_fragment_pins_duration_dimension(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='duration'),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/durations?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'duration'
+    # No dimension pills outside the Sizes tab.
+    assert 'dimension=cpus' not in body
+
+
+def test_histogram_fragment_converts_wait_hours_to_secs(
+    app, auth_client, active_project, monkeypatch,
+):
+    """min/max_wait_hours (human units) convert to eligible_secs at the
+    route boundary — the service/plugin only ever see seconds."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_wait_hours=2&max_wait_hours=4.5'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['min_eligible_secs'] == 7200
+    assert kwargs['max_eligible_secs'] == 16200
+
+
+def test_histogram_fragment_metric_pill_roundtrip(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&metric=cpu_hours'
+    )
+    body = resp.get_data(as_text=True)
+    # The cpu_hours pill is the active one.
+    import re
+    assert re.search(r'active[^>]*>\s*CPU-hours', body) or \
+        re.search(r'CPU-hours', body)

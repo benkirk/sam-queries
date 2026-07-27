@@ -1,6 +1,15 @@
-"""HTMX fragment route for per-job rows on a project's resource-usage page.
+"""HTMX fragment routes for the Job History card (per-job rows + aggregations).
 
-Endpoint: ``GET /dashboards/user/jobs/<projcode>``
+Project-mode endpoints (url_prefix ``/dashboards/user/jobs``):
+
+  GET /<projcode>             — per-job table (the Jobs tab; original route)
+  GET /<projcode>/by-user     — per-user usage pie + drillable rows
+  GET /<projcode>/wait-times  — wait-time histogram (dimension pinned 'wait')
+  GET /<projcode>/job-sizes   — resource-needs histogram (?dimension=
+                                nodes|cpus|gpus|memory)
+  GET /<projcode>/durations   — elapsed-time histogram (pinned 'duration')
+
+Jobs-tab query params: ``GET /dashboards/user/jobs/<projcode>``
 
 Query params (all optional unless noted):
   machine   (required) — 'derecho' or 'casper'
@@ -36,6 +45,10 @@ from flask import Blueprint, abort, render_template, request, url_for
 from flask_login import login_required
 
 from webapp.api.access_control import require_project_access
+from webapp.dashboards.charts import (
+    generate_jobs_histogram,
+    generate_jobs_user_pie_chart,
+)
 from webapp.jobs import service
 from webapp.jobs.session import is_enabled
 
@@ -314,3 +327,282 @@ def _load_column_specs():
         return COLUMNS
     except Exception:
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Aggregation fragments (By User / Wait Times / Job Sizes / Durations)
+# ---------------------------------------------------------------------------
+
+# Chart metric pills shared by the aggregation tabs.
+_METRICS = ('jobs', 'cpu_hours', 'gpu_hours')
+_DEFAULT_METRIC_HIST = 'jobs'
+_DEFAULT_METRIC_PIE = 'cpu_hours'
+
+# Job Sizes tab dimension pills; Wait Times / Durations pin their dimension.
+_SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus', 'memory')
+
+# Rows shown in the By User table (the pie itself keeps at most 9 + Other).
+_BY_USER_LIMIT = 25
+
+# Filter query params round-tripped through pill/toggle re-fetches, and —
+# where the per-job fragment understands them — carried into row drill-downs.
+_ROUNDTRIP_KEYS = (
+    'start', 'end', 'user', 'queue', 'qos', 'exit_status',
+    'name', 'ignore_case',
+    'min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
+    'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours',
+)
+
+_SECS_PER_HOUR = 3600
+
+
+def _parse_int_arg(name: str) -> Optional[int]:
+    raw = (request.args.get(name) or '').strip()
+    if not raw:
+        return None
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return None
+
+
+def _parse_float_arg(name: str) -> Optional[float]:
+    raw = (request.args.get(name) or '').strip()
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return None
+
+
+def _parse_job_filters() -> dict:
+    """Whitelisted GET parse → service filter kwargs (plugin-native units).
+
+    Human-facing units convert at this boundary and nowhere else:
+    ``min/max_wait_hours`` (hours) → ``min/max_eligible_secs`` (seconds).
+    Unknown params are ignored; malformed numbers degrade to "no filter".
+    """
+    f: dict = {
+        'start': _parse_date(request.args.get('start')),
+        'end':   _parse_date(request.args.get('end')),
+        'user':  (request.args.get('user') or '').strip() or None,
+        'queue': (request.args.get('queue') or '').strip() or None,
+        'qos':   (request.args.get('qos') or '').strip() or None,
+        'exit_status': (request.args.get('exit_status') or '').strip() or None,
+        'name':  (request.args.get('name') or '').strip() or None,
+    }
+    if f['name'] is not None:
+        f['ignore_case'] = request.args.get('ignore_case') in ('1', 'true', 'on')
+    for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
+                'min_gpus', 'max_gpus'):
+        v = _parse_int_arg(key)
+        if v is not None:
+            f[key] = v
+    min_wait = _parse_float_arg('min_wait_hours')
+    max_wait = _parse_float_arg('max_wait_hours')
+    if min_wait is not None:
+        f['min_eligible_secs'] = int(min_wait * _SECS_PER_HOUR)
+    if max_wait is not None:
+        f['max_eligible_secs'] = int(max_wait * _SECS_PER_HOUR)
+    return f
+
+
+def _roundtrip_params(machine: str, target_id: str) -> dict:
+    """Raw (display-unit) query params to carry through re-fetches."""
+    params = {
+        k: request.args.get(k) for k in _ROUNDTRIP_KEYS
+        if (request.args.get(k) or '').strip()
+    }
+    params['machine'] = machine
+    params['target_id'] = target_id
+    return params
+
+
+def _get_machine_or_400() -> str:
+    machine = (request.args.get('machine') or '').strip().lower()
+    if machine not in _VALID_MACHINES:
+        abort(400, f'machine must be one of {sorted(_VALID_MACHINES)}')
+    return machine
+
+
+def _parse_metric(default: str) -> str:
+    metric = (request.args.get('metric') or '').strip()
+    return metric if metric in _METRICS else default
+
+
+def _tree_projcodes(project) -> list:
+    """Parent + descendants — same tree expansion as jobs_fragment."""
+    return [p.projcode for p in project.get_descendants(include_self=True)]
+
+
+def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
+                    target_id, account_projcodes=None):
+    """Shared renderer for the By User tab (project + machine modes)."""
+    template = 'dashboards/user/partials/jobs_by_user.html'
+    if not is_enabled():
+        return render_template(template, enabled=False, error=None,
+                               mode=mode, machine=None, target_id=target_id)
+
+    filters = _parse_job_filters()
+    metric = _parse_metric(_DEFAULT_METRIC_PIE)
+
+    usage = None
+    error = None
+    try:
+        usage = service.jobs_usage_by_user(
+            machine, limit=_BY_USER_LIMIT,
+            account_projcodes=account_projcodes, **filters,
+        )
+    except Exception as exc:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs by-user fragment failed: mode=%s machine=%s', mode, machine,
+        )
+        error = str(exc)
+
+    pie_svg = None
+    other = None
+    if usage:
+        pie_svg = generate_jobs_user_pie_chart(usage, metric=metric)
+        totals = usage.get('totals') or {}
+        rows = usage.get('rows') or []
+        # The upstream limit's remainder: totals are pre-truncation, so any
+        # positive difference is real usage by users beyond the row cap.
+        rem = {
+            k: (totals.get(k) or 0) - sum((r.get(k) or 0) for r in rows)
+            for k in ('job_count', 'cpu_hours', 'gpu_hours')
+        }
+        if any(v > 1e-9 for v in rem.values()):
+            other = rem
+
+    return render_template(
+        template,
+        enabled=True, error=error,
+        mode=mode, machine=machine,
+        usage=usage, other=other,
+        metric=metric, pie_svg=pie_svg,
+        fragment_url=fragment_url,
+        jobs_fragment_url=jobs_fragment_url,
+        target_id=target_id,
+        params=_roundtrip_params(machine, target_id),
+    )
+
+
+def _render_histogram(*, mode, machine, dimension, dimension_toggle,
+                      fragment_url, target_id,
+                      account_projcodes=None, username=None):
+    """Shared renderer for the Wait Times / Job Sizes / Durations tabs."""
+    template = 'dashboards/user/partials/jobs_histogram.html'
+    if not is_enabled():
+        return render_template(template, enabled=False, error=None,
+                               mode=mode, machine=None, target_id=target_id,
+                               dimension=dimension,
+                               dimension_toggle=dimension_toggle)
+
+    filters = _parse_job_filters()
+    metric = _parse_metric(_DEFAULT_METRIC_HIST)
+
+    hist = None
+    error = None
+    try:
+        hist = service.jobs_histogram(
+            machine, dimension,
+            account_projcodes=account_projcodes, username=username,
+            **filters,
+        )
+    except Exception as exc:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs histogram fragment failed: mode=%s machine=%s dimension=%s',
+            mode, machine, dimension,
+        )
+        error = str(exc)
+
+    chart_svg = generate_jobs_histogram(hist, metric=metric) if hist else None
+
+    return render_template(
+        template,
+        enabled=True, error=error,
+        mode=mode, machine=machine,
+        hist=hist, chart_svg=chart_svg,
+        metric=metric,
+        dimension=dimension, dimension_toggle=dimension_toggle,
+        size_dimensions=_SIZE_DIMENSIONS,
+        fragment_url=fragment_url,
+        target_id=target_id,
+        params=_roundtrip_params(machine, target_id),
+    )
+
+
+@bp.route('/<projcode>/by-user')
+@login_required
+@require_project_access
+def by_user_fragment(project):
+    """HTMX fragment: per-user usage pie + drillable rows for *project*."""
+    if not is_enabled():
+        return _render_by_user(mode='project', machine=None,
+                               fragment_url=None, jobs_fragment_url=None,
+                               target_id='')
+    machine = _get_machine_or_400()
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-byuser-{project.projcode}-{machine}'
+    return _render_by_user(
+        mode='project', machine=machine,
+        fragment_url=url_for('jobs.by_user_fragment', projcode=project.projcode),
+        jobs_fragment_url=url_for('jobs.jobs_fragment', projcode=project.projcode),
+        target_id=target_id,
+        account_projcodes=_tree_projcodes(project),
+    )
+
+
+def _project_histogram(project, *, dimension, dimension_toggle, endpoint):
+    """Common body of the three project-mode histogram routes."""
+    if not is_enabled():
+        return _render_histogram(mode='project', machine=None,
+                                 dimension=dimension,
+                                 dimension_toggle=dimension_toggle,
+                                 fragment_url=None, target_id='')
+    machine = _get_machine_or_400()
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-{dimension}-{project.projcode}-{machine}'
+    return _render_histogram(
+        mode='project', machine=machine,
+        dimension=dimension, dimension_toggle=dimension_toggle,
+        fragment_url=url_for(endpoint, projcode=project.projcode),
+        target_id=target_id,
+        account_projcodes=_tree_projcodes(project),
+    )
+
+
+@bp.route('/<projcode>/wait-times')
+@login_required
+@require_project_access
+def wait_times_fragment(project):
+    """HTMX fragment: queue-wait histogram (dimension pinned to 'wait')."""
+    return _project_histogram(project, dimension='wait',
+                              dimension_toggle=False,
+                              endpoint='jobs.wait_times_fragment')
+
+
+@bp.route('/<projcode>/job-sizes')
+@login_required
+@require_project_access
+def job_sizes_fragment(project):
+    """HTMX fragment: resource-needs histogram with dimension pills."""
+    dimension = (request.args.get('dimension') or '').strip()
+    if dimension not in _SIZE_DIMENSIONS:
+        dimension = _SIZE_DIMENSIONS[0]
+    return _project_histogram(project, dimension=dimension,
+                              dimension_toggle=True,
+                              endpoint='jobs.job_sizes_fragment')
+
+
+@bp.route('/<projcode>/durations')
+@login_required
+@require_project_access
+def durations_fragment(project):
+    """HTMX fragment: elapsed-time histogram (pinned to 'duration')."""
+    return _project_histogram(project, dimension='duration',
+                              dimension_toggle=False,
+                              endpoint='jobs.durations_fragment')
