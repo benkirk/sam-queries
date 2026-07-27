@@ -940,3 +940,104 @@ def explore_machine_page(machine):
         filters=panel, user_search_url=_user_search_url(),
         per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# User family ("My Jobs") — hard-pinned to the logged-in user
+# ---------------------------------------------------------------------------
+#
+# @login_required ONLY — no permission gate. Safe because every route pins
+# user=current_user.username server-side (the service families raise on a
+# caller-supplied user), so a client-appended ?user=<other> changes nothing.
+# Mirror of the disk_scans pinned-owner rule.
+
+@bp.route('/user/<machine>')
+@login_required
+def jobs_user_fragment(machine):
+    """HTMX fragment: the logged-in user's per-job table on *machine*."""
+    from flask_login import current_user
+    if not is_enabled():
+        return _disabled_jobs_table(username=current_user.username)
+    machine = _machine_or_404(machine)
+    return _jobs_table_response(
+        mode='user', machine=machine,
+        fragment_url=url_for('jobs.jobs_user_fragment', machine=machine),
+        pinned_user=current_user.username,
+    )
+
+
+def _user_histogram(machine, *, dimension, dimension_toggle, endpoint):
+    """Common body of the three user-mode histogram routes."""
+    from flask_login import current_user
+    if not is_enabled():
+        return _render_histogram(mode='user', machine=None,
+                                 dimension=dimension,
+                                 dimension_toggle=dimension_toggle,
+                                 fragment_url=None, target_id='')
+    machine = _machine_or_404(machine)
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-{dimension}-user-{machine}'
+    return _render_histogram(
+        mode='user', machine=machine,
+        dimension=dimension, dimension_toggle=dimension_toggle,
+        fragment_url=url_for(endpoint, machine=machine),
+        target_id=target_id,
+        username=current_user.username,
+    )
+
+
+@bp.route('/user/<machine>/wait-times')
+@login_required
+def wait_times_user_fragment(machine):
+    return _user_histogram(machine, dimension='wait',
+                           dimension_toggle=False,
+                           endpoint='jobs.wait_times_user_fragment')
+
+
+@bp.route('/user/<machine>/job-sizes')
+@login_required
+def job_sizes_user_fragment(machine):
+    dimension = (request.args.get('dimension') or '').strip()
+    if dimension not in _SIZE_DIMENSIONS:
+        dimension = _SIZE_DIMENSIONS[0]
+    return _user_histogram(machine, dimension=dimension,
+                           dimension_toggle=True,
+                           endpoint='jobs.job_sizes_user_fragment')
+
+
+@bp.route('/user/<machine>/durations')
+@login_required
+def durations_user_fragment(machine):
+    return _user_histogram(machine, dimension='duration',
+                           dimension_toggle=False,
+                           endpoint='jobs.durations_user_fragment')
+
+
+@bp.route('/user/<machine>/explore')
+@login_required
+def explore_user_page(machine):
+    """Standalone jobs explorer pinned to the logged-in user ("My Jobs").
+
+    Same page template, ``mode='user'``: the filter panel omits the user
+    picker, and the fragment routes re-pin the username server-side on
+    every fetch — a hand-edited ?user= in the URL changes nothing.
+    """
+    from flask_login import current_user
+    if not is_enabled():
+        return render_template(
+            'dashboards/user/jobs_explore_page.html',
+            mode='user', enabled=False, machine=machine,
+        )
+    machine = _machine_or_404(machine)
+    target_id = 'jobs-explore'
+    fragment_url = url_for('jobs.jobs_user_fragment', machine=machine)
+    panel = _panel_filters(machine)
+    return render_template(
+        'dashboards/user/jobs_explore_page.html',
+        mode='user', enabled=True, machine=machine,
+        username=current_user.username,
+        fragment_url=fragment_url,
+        initial_url=_initial_jobs_url(fragment_url, machine, target_id, panel),
+        filters=panel, user_search_url=_user_search_url(),
+        per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
+    )

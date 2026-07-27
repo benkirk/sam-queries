@@ -63,6 +63,7 @@ from ..charts import (
 )
 from webapp.disk_scans import is_enabled as is_fs_scans_enabled
 from webapp.disk_scans import service as disk_scans_service
+from webapp.jobs import service as jobs_service
 
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
@@ -98,11 +99,17 @@ def _page_context():
         getattr(user_to_display, 'unix_uid', None) is not None
         and fs_scan_resources
     )
+    # My Jobs mirrors My Data: available to every authenticated user (the
+    # job routes pin user=<session user> server-side), hidden only when
+    # the hpc-usage-queries plugin is off / no machine engine is warmed.
+    job_history_machines = jobs_service.job_history_machines()
     return dict(
         user=user_to_display,
         impersonator_id=session.get('impersonator_id'),
         my_data_available=my_data_available,
         fs_scan_resources=fs_scan_resources,
+        my_jobs_available=bool(job_history_machines),
+        job_history_machines=job_history_machines,
     )
 
 
@@ -160,6 +167,16 @@ def my_data():
     if not ctx['my_data_available']:
         abort(404)
     return render_template('dashboards/user/my_data.html', **ctx)
+
+
+@bp.route('/jobs')
+@login_required
+def my_jobs():
+    """My Jobs page — per-user job-history cards (one pill per machine)."""
+    ctx = _page_context()
+    if not ctx['my_jobs_available']:
+        abort(404)
+    return render_template('dashboards/user/my_jobs.html', **ctx)
 
 
 # ---------------------------------------------------------------------------

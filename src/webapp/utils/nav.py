@@ -84,6 +84,16 @@ def _my_data_available():
     return bool(disk_scans_service.scan_capable_resources())
 
 
+def _my_jobs_available():
+    # Mirrors user_dashboard._page_context(): any authenticated user (the
+    # job routes pin the username server-side); hidden only when no
+    # job-history machine engine is warmed.
+    if not current_user.is_authenticated:
+        return False
+    from webapp.jobs import service as jobs_service
+    return bool(jobs_service.job_history_machines())
+
+
 # ── The registry ──────────────────────────────────────────────────────────
 #
 # Section keys: 'blueprint' drives section-level active state; 'endpoint' is
@@ -106,6 +116,8 @@ NAV_SECTIONS = (
              'icon': 'fas fa-user-circle'},
             {'endpoint': 'user_dashboard.my_data', 'label': 'My Data',
              'icon': 'fas fa-hard-drive', 'visible': _my_data_available},
+            {'endpoint': 'user_dashboard.my_jobs', 'label': 'My Jobs',
+             'icon': 'fas fa-list-check', 'visible': _my_jobs_available},
         ),
     },
     {

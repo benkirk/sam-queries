@@ -1941,3 +1941,106 @@ def test_status_tab_hidden_for_plain_user_with_machines(
     resp = non_admin_client.get('/status/derecho')
     assert resp.status_code == 200
     assert '/status/job-history' not in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Commit 7: user family ("My Jobs") — server-side pinning + page/tab
+# ---------------------------------------------------------------------------
+
+_USER_FRAGMENTS = ['', '/wait-times', '/job-sizes', '/durations']
+
+
+@pytest.mark.parametrize('suffix', _USER_FRAGMENTS + ['/explore'])
+def test_user_routes_disabled_banner(auth_client, suffix):
+    """Plugin off → 200 with the unavailable banner (login only, no perm)."""
+    resp = auth_client.get(f'/dashboards/user/jobs/user/derecho{suffix}')
+    assert resp.status_code == 200
+    assert 'Per-job data is unavailable' in resp.get_data(as_text=True)
+
+
+@pytest.mark.parametrize('suffix', _USER_FRAGMENTS + ['/explore'])
+def test_user_routes_404_unknown_machine(app, auth_client, monkeypatch, suffix):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get(f'/dashboards/user/jobs/user/gust{suffix}')
+    assert resp.status_code == 404
+
+
+def test_user_jobs_fragment_pins_session_user(app, auth_client, monkeypatch):
+    """The table is pinned to the logged-in user (benkirk for auth_client)."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=1)
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho')
+    assert resp.status_code == 200
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['user'] == 'benkirk'
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw['user'] == 'benkirk'
+
+
+def test_user_jobs_fragment_ignores_client_user_param(
+    app, auth_client, monkeypatch,
+):
+    """?user=<other> must change nothing — the pin always wins."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=1)
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho?user=mallory')
+    assert resp.status_code == 200
+    assert captured['last_jobs_search_kwargs']['user'] == 'benkirk'
+    assert captured['last_jobs_count_kwargs']['user'] == 'benkirk'
+
+
+@pytest.mark.parametrize('suffix', ['/wait-times', '/job-sizes', '/durations'])
+def test_user_histogram_fragments_ignore_client_user_param(
+    app, auth_client, monkeypatch, suffix,
+):
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_histogram_return=_sample_hist())
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/user/derecho{suffix}?user=mallory'
+    )
+    assert resp.status_code == 200
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['user'] == 'benkirk'
+
+
+def test_user_explore_page_omits_user_picker(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho/explore')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'My Jobs' in body
+    # No user picker in user mode — the pin is not negotiable.
+    assert 'name="user_id"' not in body
+    # Other filter fields still present.
+    assert 'name="queue"' in body
+
+
+def test_my_jobs_page_404_without_machines(auth_client):
+    """Plugin off → no machines → the page 404s (tab is hidden too)."""
+    resp = auth_client.get('/user/jobs')
+    assert resp.status_code == 404
+
+
+def test_my_jobs_page_renders_machine_pills(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho', 'casper'))
+    resp = auth_client.get('/user/jobs')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'my-jobs-subtab-1' in body
+    assert 'Derecho' in body and 'Casper' in body
+    # User-mode card fragments wired per pill.
+    assert '/dashboards/user/jobs/user/casper' in body
+    # By User tab suppressed in user mode.
+    assert 'By User' not in body
+
+
+def test_my_jobs_tab_visibility_follows_machines(app, auth_client, monkeypatch):
+    # Hidden when plugin off…
+    resp = auth_client.get('/user/accounts')
+    assert '/user/jobs' not in resp.get_data(as_text=True)
+    # …visible when machines are up.
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get('/user/accounts')
+    assert '/user/jobs' in resp.get_data(as_text=True)

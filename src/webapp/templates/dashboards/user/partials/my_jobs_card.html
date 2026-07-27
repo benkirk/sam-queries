@@ -1,0 +1,49 @@
+{# ── "My Jobs" tab body (User dashboard) ────────────────────────────────
+   One subtab per plugin machine (job_history_machines, from
+   webapp.jobs.service.job_history_machines()). Each subtab hosts the SAME
+   jobs card the project resource-details page shows, but in user mode —
+   machine-rooted and filtered to the jobs the logged-in user RAN. The
+   username is pinned server-side (see jobs/routes.py user family), so
+   these routes are @login_required only (no VIEW_ALL_JOB_DATA).
+
+   The "By User" tab is hidden in user mode (single user).
+
+   Lazy-load: /user/jobs is a routable page, so the first subtab is
+   visible on page load and its card loads immediately (trigger 'load').
+   Other subtabs load when their own subtab nav-link is shown — bind to
+   the shown event, not click (feedback_persisted_collapse_htmx).
+
+   This partial is only included when job_history_machines is non-empty
+   (the my_jobs route 404s otherwise), so it never needs its own
+   empty/disabled state.
+#}
+<ul class="nav nav-pills mb-3" id="myJobsSubtabs" role="tablist">
+    {% for m in job_history_machines %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if loop.first %}active{% endif %}"
+           id="my-jobs-subtab-{{ loop.index }}"
+           data-bs-toggle="tab" href="#my-jobs-pane-{{ loop.index }}" role="tab">
+            <i class="fas fa-server me-1"></i> {{ m | capitalize }}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+<div class="tab-content" id="myJobsSubtabContent">
+    {% for m in job_history_machines %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+         id="my-jobs-pane-{{ loop.index }}" role="tabpanel">
+        {% if loop.first %}
+            {% set _trigger = 'load once' %}
+        {% else %}
+            {% set _trigger = 'shown.bs.tab once from:#my-jobs-subtab-' ~ loop.index %}
+        {% endif %}
+        {% with mode='user',
+                cid='my-jobs-m' ~ loop.index,
+                tablist_id='myJobsCardTabs' ~ loop.index,
+                machine=m,
+                load_trigger=_trigger %}
+            {% include 'dashboards/user/partials/jobs_card.html' %}
+        {% endwith %}
+    </div>
+    {% endfor %}
+</div>

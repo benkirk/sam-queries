@@ -1631,6 +1631,13 @@
     ]
   ],
   [
+    "user_dashboard.my_jobs",
+    "/user/jobs",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.project_details_modal",
     "/user/project-details-modal/<projcode>",
     [
