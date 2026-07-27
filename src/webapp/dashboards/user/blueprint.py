@@ -63,6 +63,7 @@ from ..charts import (
 )
 from webapp.disk_scans import is_enabled as is_fs_scans_enabled
 from webapp.disk_scans import service as disk_scans_service
+from webapp.jobs import service as jobs_service
 
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
@@ -98,11 +99,17 @@ def _page_context():
         getattr(user_to_display, 'unix_uid', None) is not None
         and fs_scan_resources
     )
+    # My Jobs mirrors My Data: available to every authenticated user (the
+    # job routes pin user=<session user> server-side), hidden only when
+    # the hpc-usage-queries plugin is off / no machine engine is warmed.
+    job_history_machines = jobs_service.job_history_machines()
     return dict(
         user=user_to_display,
         impersonator_id=session.get('impersonator_id'),
         my_data_available=my_data_available,
         fs_scan_resources=fs_scan_resources,
+        my_jobs_available=bool(job_history_machines),
+        job_history_machines=job_history_machines,
     )
 
 
@@ -160,6 +167,26 @@ def my_data():
     if not ctx['my_data_available']:
         abort(404)
     return render_template('dashboards/user/my_data.html', **ctx)
+
+
+@bp.route('/jobs')
+@login_required
+def my_jobs():
+    """My Jobs page — per-user job-history cards (one pill per machine).
+
+    ``jobs_window_start`` bounds every card tab to the last 90 days by
+    default — unbounded plugin aggregations are the expensive path; the
+    explorer's date fields widen deliberately.
+    """
+    ctx = _page_context()
+    if not ctx['my_jobs_available']:
+        abort(404)
+    from datetime import date as _date
+    return render_template(
+        'dashboards/user/my_jobs.html',
+        jobs_window_start=(_date.today() - timedelta(days=90)).isoformat(),
+        **ctx,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -613,14 +640,8 @@ def resource_details(project):
 
     # Per-job drill-down (hpc-usage-queries) is keyed on the physical
     # machine, not the SAM resource_name — Derecho GPU jobs still live in
-    # the "derecho" DB. None disables the "Show jobs" affordance.
-    rn = (resource_name or '').lower()
-    if 'derecho' in rn:
-        jobs_machine = 'derecho'
-    elif 'casper' in rn:
-        jobs_machine = 'casper'
-    else:
-        jobs_machine = None
+    # the "derecho" DB. None disables the jobs card + "Show jobs" affordance.
+    jobs_machine = _resolve_jobs_machine(resource_name)
 
     return render_template(
         'dashboards/user/resource_details.html',

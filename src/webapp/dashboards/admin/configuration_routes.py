@@ -28,7 +28,7 @@ from .blueprint import bp
 
 # Categories accepted by caching.clear(); mirrors the JSON API's set
 # (webapp.api.v1.admin). None (omitted) clears everything.
-_VALID_CACHE_CATEGORIES = {'flask', 'chart', 'usage', 'scans'}
+_VALID_CACHE_CATEGORIES = {'flask', 'chart', 'usage', 'scans', 'jobs'}
 
 
 @bp.route('/htmx/configuration', methods=['GET'])

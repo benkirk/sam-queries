@@ -92,7 +92,10 @@ src/webapp/
 │   ├── charts.py               # Matplotlib SVG chart generators
 │   └── project_members.py      # Project-member management
 ├── disk_scans/                 # Filesystem-scan views (hpc-usage-queries plugin)
-├── jobs/                       # Job-history views (hpc-usage-queries plugin)
+├── jobs/                       # Job-history views (hpc-usage-queries plugin):
+│                               #   5-tab card (project/machine/user modes),
+│                               #   explorer + facet chips, bar→bucket drills,
+│                               #   TTL cache (routes/service/cache)
 ├── limiter/                    # Rate-limiting facade (mirrors caching/)
 ├── utils/                      # rbac, htmx helpers, nav registry, csp, …
 ├── static/                     # Vendored Bootstrap 5 / htmx / FontAwesome + app JS/CSS

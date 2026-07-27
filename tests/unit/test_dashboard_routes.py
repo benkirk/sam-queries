@@ -97,3 +97,20 @@ class TestAdminConfigurationPage:
         })
         assert auth_client.get('/admin/projects').status_code == 200
         assert auth_client.get('/admin/configuration').status_code == 403
+
+
+class TestProjectCardAutoLoad:
+    """``?projcode=`` back-links auto-load the card and flag it for a
+    one-shot scroll into view (``data-reveal-on-load``, consumed by
+    dashboard-init.js). Without the parameter the container stays inert —
+    otherwise every in-place card reload would yank the page to its top."""
+
+    def test_flag_present_with_projcode(self, auth_client, active_project):
+        html = auth_client.get(
+            f'/admin/projects?projcode={active_project.projcode}'
+        ).get_data(as_text=True)
+        assert 'data-reveal-on-load' in html
+
+    def test_flag_absent_without_projcode(self, auth_client):
+        html = auth_client.get('/admin/projects').get_data(as_text=True)
+        assert 'data-reveal-on-load' not in html

@@ -1,0 +1,70 @@
+{#
+  Shared banners + badges for the Job History fragments. Mirrors the
+  disabled / error / empty shape of _disk_scans_macros.html so the jobs
+  tabs degrade identically to the filesystem-scan ones.
+#}
+
+{# Plugin not loaded / no warmed engine — graceful "unavailable" notice
+   (the card may hx-get fragments unconditionally), never a 404. #}
+{% macro jobs_disabled() %}
+  <div class="alert alert-secondary py-2 mb-0" role="status">
+    <small>
+      Per-job data is unavailable: the
+      <code>hpc-usage-queries</code> plugin is not loaded.
+      <a href="/dashboards/admin/configuration"
+         target="_blank" rel="noopener">
+        Check the Database card on the Admin → Configuration page
+      </a>
+      for plugin/DB health.
+    </small>
+  </div>
+{% endmacro %}
+
+{# A jobs query raised (transient plugin/DB issue) — warn inline. #}
+{% macro jobs_error(error) %}
+  <div class="alert alert-warning py-2 mb-0" role="alert">
+    <small>Could not load job-history data: {{ error }}</small>
+  </div>
+{% endmacro %}
+
+{# Query succeeded but matched nothing. #}
+{% macro jobs_empty(message) %}
+  <p class="text-muted small mb-0">{{ message }}</p>
+{% endmacro %}
+
+{# Scope badge for the explorer header: which slice of the machine's jobs
+   this view can see. #}
+{% macro mode_badge(mode, machine, projcode=None, username=None) %}
+  <span class="badge bg-light text-dark border me-1">
+    <i class="fas fa-server me-1"></i>{{ machine }}
+  </span>
+  {% if mode == 'project' and projcode %}
+    <span class="badge bg-light text-dark border me-1">
+      <i class="fas fa-diagram-project me-1"></i>{{ projcode }}
+    </span>
+  {% elif mode == 'user' and username %}
+    <span class="badge bg-light text-dark border me-1">
+      <i class="fas fa-user me-1"></i>{{ username }}
+    </span>
+  {% elif mode == 'machine' %}
+    <span class="badge bg-warning-subtle text-dark border me-1"
+          title="Machine-wide view: every user's jobs, cross-project">
+      <i class="fas fa-globe me-1"></i>all jobs
+    </span>
+  {% endif %}
+{% endmacro %}
+
+{# PBS exit code badge: '0' → success, anything else → failure with the
+   raw code. None/empty → unmeasured em-dash. The raw code stays in
+   title= either way for copy/paste. #}
+{% macro exit_status_badge(val) %}
+  {%- if val is none or val == '' -%}
+    <span class="text-muted">—</span>
+  {%- elif val | string == '0' -%}
+    <span class="badge bg-success-subtle text-success border"
+          title="exit status 0">Success</span>
+  {%- else -%}
+    <span class="badge bg-danger-subtle text-danger border"
+          title="exit status {{ val }}">Failed ({{ val }})</span>
+  {%- endif -%}
+{% endmacro %}

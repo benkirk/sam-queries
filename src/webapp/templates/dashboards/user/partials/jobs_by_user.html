@@ -1,0 +1,138 @@
+{% from 'dashboards/user/partials/_jobs_macros.html'
+   import jobs_disabled, jobs_error, jobs_empty %}
+{#
+  By User fragment — per-user usage pie + drillable rows. Embedded via
+  hx-get from the Job History card (project + machine modes; hidden in
+  user mode). Context (set in webapp/jobs/routes.py::_render_by_user):
+    enabled, error, mode ('project'|'machine'), machine,
+    usage   — plugin jobs_usage_by('user') envelope {rows, totals}
+    other   — {'job_count','cpu_hours','gpu_hours'} remainder beyond the
+              row cap (totals are pre-truncation), or None
+    metric  — 'jobs' | 'cpu_hours' | 'gpu_hours' (drives the pie)
+    pie_svg — chart SVG (clickable #job-user-<username> sentinels)
+    fragment_url      — this fragment (metric pill re-fetch)
+    jobs_fragment_url — the mode's per-job fragment (row drill target)
+    target_id, params — container id + hidden round-trip params
+#}
+
+{% if not enabled %}
+  {{ jobs_disabled() }}
+{% elif error %}
+  {{ jobs_error(error) }}
+{% else %}
+  <form id="jobs-byuser-params-{{ target_id }}" class="d-none">
+    {% for k, v in params.items() %}
+    <input type="hidden" name="{{ k }}" value="{{ v }}">
+    {% endfor %}
+  </form>
+
+  {% set rows = (usage.rows if usage else []) or [] %}
+  {% set totals = (usage.totals if usage else {}) or {} %}
+
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    {# Metric pills — re-fetch this same pane with ?metric=. #}
+    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Pie metric">
+      {% for m, label in [('jobs', 'Jobs'),
+                          ('cpu_hours', 'CPU-hours'),
+                          ('gpu_hours', 'GPU-hours')] %}
+      <button type="button"
+              class="btn btn-outline-secondary {% if metric == m %}active{% endif %}"
+              hx-get="{{ fragment_url }}?metric={{ m }}"
+              hx-target="#{{ target_id }}"
+              hx-include="#jobs-byuser-params-{{ target_id }}"
+              hx-swap="innerHTML">
+        {{ label }}
+      </button>
+      {% endfor %}
+    </div>
+    <span class="ms-auto text-muted small">
+      {{ totals.get('job_count', 0) | fmt_number }} jobs ·
+      {{ totals.get('cpu_hours', 0) | fmt_number }} CPU-h ·
+      {{ totals.get('gpu_hours', 0) | fmt_number }} GPU-h
+    </span>
+  </div>
+
+  {% if not rows %}
+    {{ jobs_empty('No jobs match the current filters.') }}
+  {% else %}
+    {# Usage pie (top ~90% + one "Other"). Wedges and legend entries are
+       clickable (set_url sentinels → svg-chart-links.js) and expand the
+       matching user's row below. #}
+    {% if pie_svg %}
+    <div class="d-flex justify-content-center mb-3 jobs-user-pie">
+      {{ pie_svg | safe }}
+    </div>
+    {% endif %}
+
+    {# MULTI-TBODY (tbody.sortable-group): each user's row and its lazy
+       drill-down detail row reorder together under client sort. #}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="sortable-header" data-sort="text">User</th>
+            <th class="sortable-header text-end" data-sort="numeric">Jobs</th>
+            <th class="sortable-header text-end sort-desc" data-sort="numeric">CPU-hours</th>
+            <th class="sortable-header text-end" data-sort="numeric">GPU-hours</th>
+          </tr>
+        </thead>
+        {% for r in rows %}
+          {% set uname = r.value %}
+          {% set _rid = target_id ~ '-u' ~ loop.index %}
+          <tbody class="sortable-group">
+            {# data-job-user + data-bs-target let a pie-wedge click open this
+               row's collapse (svg-chart-links.js), same as the chevron. #}
+            <tr {% if uname %}data-job-user="{{ uname }}"{% endif %}
+                data-bs-target="#{{ _rid }}-row">
+              <td data-sort-value="{{ uname or '~' }}">
+                {% if uname %}
+                <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
+                        type="button" data-bs-toggle="collapse"
+                        data-bs-target="#{{ _rid }}-row"
+                        aria-expanded="false" aria-controls="{{ _rid }}-row">
+                  <i class="fas fa-chevron-right collapse-icon small"></i>
+                </button>
+                <code>{{ uname }}</code>
+                {% else %}
+                <span class="text-muted" title="jobs with no recorded user">(unknown)</span>
+                {% endif %}
+              </td>
+              <td class="text-end" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
+              <td class="text-end" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
+              <td class="text-end" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
+            </tr>
+            {% if uname %}
+            <tr class="collapse" id="{{ _rid }}-row">
+              <td colspan="4" class="p-0 border-0">
+                {# Lazy-load this user's jobs on first expand. Bind to
+                   shown.bs.collapse (not click) so it fires under
+                   nav-view-persistence restore too. Carries the pane's
+                   date window + shared filters into the drill. #}
+                <div class="p-2 bg-light" id="{{ _rid }}-content"
+                     hx-get="{{ jobs_fragment_url }}?machine={{ machine }}&user={{ uname }}{% if params.start %}&start={{ params.start }}{% endif %}{% if params.end %}&end={{ params.end }}{% endif %}{% if params.queue %}&queue={{ params.queue }}{% endif %}{% if params.qos %}&qos={{ params.qos }}{% endif %}{% if params.exit_status %}&exit_status={{ params.exit_status }}{% endif %}&target_id={{ _rid }}-content"
+                     hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+                     hx-swap="innerHTML">
+                  <p class="text-muted small mb-0">
+                    <i class="fas fa-spinner fa-spin me-1"></i>
+                    Loading {{ uname }}'s jobs…
+                  </p>
+                </div>
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        {% endfor %}
+        {% if other %}
+        <tbody>
+          <tr class="text-muted">
+            <td>Other <span class="small">(beyond top {{ rows | length }})</span></td>
+            <td class="text-end">{{ other.job_count | fmt_number }}</td>
+            <td class="text-end">{{ other.cpu_hours | fmt_number }}</td>
+            <td class="text-end">{{ other.gpu_hours | fmt_number }}</td>
+          </tr>
+        </tbody>
+        {% endif %}
+      </table>
+    </div>
+  {% endif %}
+{% endif %}

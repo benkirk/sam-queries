@@ -151,8 +151,10 @@
         var link = e.target.closest('.project-code-link');
         if (link && link.dataset.projcode) {
             e.preventDefault();
+            var card = document.getElementById('projectCardContainer');
             htmx.ajax('GET', '/admin/project/' + link.dataset.projcode,
-                      {target: '#projectCardContainer', swap: 'innerHTML'});
+                      {target: '#projectCardContainer', swap: 'innerHTML'})
+                .then(function () { revealCard(card); });
         }
     });
 
@@ -187,14 +189,27 @@
     });
 
     /* admin: switch to the Projects tab whenever a project card is loaded
-     * from any context (e.g. user card badges) */
+     * from any context (e.g. user card badges).
+     *
+     * Scrolling is NOT done here: this fires for every swap into the
+     * container, including the in-place reloads after an allocation edit
+     * (modals.js) — those must not yank the page back to the card top.
+     * The paths where the user asked for a different card call
+     * revealCard() themselves (form-helpers.js on a search hit,
+     * htmx-config.js after a create, data-reveal-on-load below). */
     document.body.addEventListener('htmx:afterSwap', function (e) {
         if (e.detail.target && e.detail.target.id === 'projectCardContainer') {
             var projectsTabBtn = document.getElementById('projects-tab');
             if (projectsTabBtn && !projectsTabBtn.classList.contains('active')) {
                 bootstrap.Tab.getOrCreateInstance(projectsTabBtn).show();
             }
-            e.detail.target.scrollIntoView({behavior: 'smooth', block: 'start'});
+        }
+        /* ?projcode= deep links auto-load a card on page load — reveal it
+         * once, then drop the flag so reloads of the same container stay
+         * put. */
+        if (e.detail.target && e.detail.target.hasAttribute('data-reveal-on-load')) {
+            e.detail.target.removeAttribute('data-reveal-on-load');
+            revealCard(e.detail.target);
         }
     });
 

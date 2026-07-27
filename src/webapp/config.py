@@ -145,6 +145,17 @@ class SAMWebappConfig(SAMConfig):
         'pool_recycle':   int(os.getenv('JOB_HISTORY_POOL_RECYCLE',  600)),
     }
 
+    # Server-side Postgres statement_timeout (ms) applied to every
+    # job-history connection. Mirrors FS_SCAN_STATEMENT_TIMEOUT_MS: a
+    # runaway machine-wide aggregation can otherwise hold a PG connection
+    # (and a gthread thread) until the gunicorn worker timeout kills it;
+    # this caps the query server-side so it fails cleanly first. Measured
+    # warm month-window aggregations are ~0.6 s; an unbounded window is
+    # ~200 s — cap comfortably below gunicorn `timeout` (120 s). 0 disables.
+    JOB_HISTORY_STATEMENT_TIMEOUT_MS = int(
+        os.getenv('JOB_HISTORY_STATEMENT_TIMEOUT_MS', '60000')
+    )
+
     # fs-scans plugin (filesystem-scan analytics over the CNPG backend).
     # Master switch only — the plugin reads its own connection settings
     # (FS_SCAN_DB_BACKEND, FS_SCAN_PG_*) from the environment. Collections

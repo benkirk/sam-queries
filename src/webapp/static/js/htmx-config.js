@@ -157,7 +157,8 @@ document.body.addEventListener('loadNewProject', function(evt) {
     if (baseUrl && projcode) {
         setTimeout(function() {
             htmx.ajax('GET', baseUrl + projcode,
-                      {target: '#projectCardContainer', swap: 'innerHTML'});
+                      {target: '#projectCardContainer', swap: 'innerHTML'})
+                .then(function() { revealCard(container); });
         }, 300);
     }
 });

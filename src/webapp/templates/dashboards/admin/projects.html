@@ -47,6 +47,9 @@
              hx-get="{{ url_for('admin_dashboard.project_card', projcode=auto_load_projcode) }}"
              hx-trigger="load"
              hx-swap="innerHTML"
+             {# One-shot scroll to the card a ?projcode= back-link asked for
+                (dashboard-init.js); later reloads of this container don't. #}
+             data-reveal-on-load
              {% endif %}></div>
     </div>
 </div>

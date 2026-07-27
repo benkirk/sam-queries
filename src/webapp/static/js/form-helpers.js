@@ -17,7 +17,9 @@
     /* ── Search-select result buttons (user/group/project searches) ──
      * Replaces hx-on::after-request attributes (htmx evaluates those via
      * Function(), which needs 'unsafe-eval'). After the button's request,
-     * clear the result list and the search input. */
+     * clear the result list and the search input, then scroll the card the
+     * click just loaded into view — revealCard() runs a frame later, so it
+     * measures the page *after* the result list above it is gone. */
     document.body.addEventListener('htmx:afterRequest', function (e) {
         var el = e.detail.elt;
         if (!el.dataset || !el.dataset.clearResults) { return; }
@@ -25,6 +27,8 @@
         if (results) { results.innerHTML = ''; }
         var input = document.getElementById(el.dataset.clearInput);
         if (input) { input.value = ''; }
+        var target = el.getAttribute('hx-target');
+        if (target) { revealCard(document.querySelector(target)); }
     });
 
     /* ── Single-option auto-select after cascading dropdown loads ──

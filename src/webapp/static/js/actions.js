@@ -43,6 +43,37 @@
     document.addEventListener('input',  dispatch('data-action-input'));
     document.addEventListener('submit', dispatch('data-action-submit'));
 
+    /* ── Reveal a freshly-loaded card without scrolling past its header ──
+     *
+     * Two things made the old `scrollIntoView({block: 'start'})` land in
+     * the middle of the card:
+     *
+     *   1. It ran on htmx:afterSwap, *before* the sibling afterRequest
+     *      handler in form-helpers.js empties the search-results list.
+     *      That list sits above the card, so the page shrank by its height
+     *      after the scroll target was computed — the more matches were
+     *      listed, the deeper past the card title you ended up.
+     *   2. block:'start' pins the card's top edge to the viewport's top
+     *      edge, leaving the title flush against it with no margin.
+     *
+     * So: defer a frame (post-clear, post-layout), aim slightly above the
+     * card, and no-op when its header is already comfortably on screen so
+     * an in-place reload never yanks the page around. */
+    var CARD_REVEAL_OFFSET = 16;
+
+    window.revealCard = function (el) {
+        if (!el) { return; }
+        requestAnimationFrame(function () {
+            var top = el.getBoundingClientRect().top;
+            /* Header already visible in the top half — leave it alone. */
+            if (top >= 0 && top <= window.innerHeight / 2) { return; }
+            window.scrollTo({
+                top: Math.max(0, window.scrollY + top - CARD_REVEAL_OFFSET),
+                behavior: 'smooth'
+            });
+        });
+    };
+
     /* ── Generic built-ins ── */
 
     /* Clickable rows/elements that just navigate
@@ -78,6 +109,32 @@
     window.registerAction('form-reset-submit', function (el) {
         var form = document.getElementById(el.dataset.formId);
         form.reset();
+        htmx.trigger(form, 'submit');
+    });
+
+    /* Jobs-explorer facet chips: write the chip's value into the named
+     * field of the filter panel form, then re-submit it (the panel's
+     * hx-trigger="submit" refetches the table + OOB chip strip). An
+     * empty data-value clears the filter — the active chip doubles as
+     * its own clear button. A <select> target (the QoS dropdown) gets
+     * the option appended if the catalog doesn't already list it, so a
+     * facet value can never silently fail to apply. */
+    window.registerAction('set-filter-submit', function (el) {
+        var form = document.getElementById(el.dataset.formId);
+        if (!form) { return; }
+        var field = form.elements[el.dataset.field];
+        if (!field) { return; }
+        var value = el.dataset.value || '';
+        if (field.tagName === 'SELECT' && value &&
+                !Array.prototype.some.call(field.options, function (o) {
+                    return o.value === value;
+                })) {
+            var opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value;
+            field.appendChild(opt);
+        }
+        field.value = value;
         htmx.trigger(form, 'submit');
     });
 

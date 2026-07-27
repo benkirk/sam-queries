@@ -510,6 +510,37 @@
 </div>
 {% endif %}
 
+<!-- Job History Card — per-job drill + aggregation tabs from the
+     hpc-usage-queries plugin. Only for resources that map onto a plugin
+     machine (Derecho/Derecho GPU → derecho, Casper → casper). Collapsed
+     by default: the tabs' queries are the most expensive on this page,
+     so nothing fires until the user opens the card (the first tab's
+     hx-trigger binds to shown.bs.collapse — see
+     feedback_persisted_collapse_htmx). -->
+{% if jobs_machine %}
+<div class="card mb-4">
+    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseJobsHist" aria-expanded="false">
+        <h5 class="mb-0">
+            <i class="fas fa-list-check"></i> Job History
+            {% if has_children and scope != projcode %}
+            <small class="text-muted fw-normal ms-2">{{ scope }}</small>
+            {% endif %}
+            <i class="fas fa-chevron-down float-end transition-smooth"></i>
+        </h5>
+    </div>
+    <div id="collapseJobsHist" class="collapse">
+        <div class="card-body">
+            {% with mode='project', cid='jobs-hist', tablist_id='jobsCardTabs',
+                    machine=jobs_machine, projcode=projcode, scope=scope,
+                    start=start_date, end=end_date,
+                    load_trigger='shown.bs.tab once, shown.bs.collapse once from:#collapseJobsHist' %}
+                {% include 'dashboards/user/partials/jobs_card.html' %}
+            {% endwith %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Allocation Management Modals -->
 {% include 'dashboards/user/fragments/allocation_modals.html' %}
 

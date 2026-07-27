@@ -1,0 +1,83 @@
+{% extends 'dashboards/base.html' %}
+{% from 'dashboards/user/partials/_jobs_filters.html' import jobs_filters %}
+{% from 'dashboards/user/partials/_jobs_macros.html' import jobs_disabled, mode_badge %}
+{#
+  Standalone jobs-explorer page — all three modes, parameterized by *mode*
+  ('project'|'machine'|'user') and *fragment_url* (which per-job fragment
+  to lazy-load). Renders a filter panel above a table container; the
+  container hx-get's *initial_url* (fragment_url pre-loaded with the
+  current filters) on load, and the filter panel / in-table sort +
+  pagination re-fetch into the same container thereafter.
+
+  Context (set in webapp/jobs/routes.py explore_page /
+  explore_machine_page / explore_user_page): mode, enabled, machine,
+  fragment_url, initial_url, filters, user_search_url, per_page_options,
+  target_id, plus mode-specific scope (project, scoped_project, scope /
+  username).
+#}
+
+{% block title %}Job explorer — SAM{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    <h3 class="mb-0">
+      <i class="fas fa-list-check me-2"></i>
+      {% if mode == 'machine' %}
+        {{ machine | capitalize }}
+        <small class="text-muted fw-normal">— all jobs</small>
+      {% elif mode == 'user' %}
+        My Jobs
+        <small class="text-muted fw-normal">— your jobs on {{ machine | capitalize }}</small>
+      {% else %}
+        {{ scoped_project.projcode if scoped_project else project.projcode }}
+        <small class="text-muted fw-normal">jobs on {{ machine | capitalize if machine }}</small>
+      {% endif %}
+    </h3>
+    {% if mode == 'machine' %}
+      <span class="badge bg-warning-subtle text-dark border">
+        <i class="fas fa-shield-halved me-1"></i> Machine-wide (operator view)
+      </span>
+    {% elif mode == 'project' and scope %}
+      <span class="badge bg-secondary-subtle text-dark border"
+            title="Re-rooted to a subtree of {{ project.projcode }}">
+        <i class="fas fa-diagram-project me-1"></i> scope: {{ scope }}
+      </span>
+    {% endif %}
+  </div>
+
+  {% if not enabled %}
+    {{ jobs_disabled() }}
+  {% else %}
+
+  {# Unity NCAR navy panel — same .filter-sidebar tokens as the allocations
+     and disk-scans filters, so this explorer matches the rest of the
+     dashboard. #}
+  <div class="filter-sidebar mb-3">
+    {{ jobs_filters('jobs-filters-panel-' ~ target_id, fragment_url, target_id,
+                    filters, user_search_url, machine, scope,
+                    per_page_options, mode=mode) }}
+  </div>
+
+  {# Facet chip strip — populated out-of-band by the jobs fragment
+     (hx-swap-oob on #jobs-facet-chips-…), so counts and active states
+     always match the table below. Empty until the first fragment load. #}
+  <div id="jobs-facet-chips-{{ target_id }}"></div>
+
+  <div class="card">
+    <div class="card-body p-2">
+      <div id="{{ target_id }}"
+           hx-get="{{ initial_url }}"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+        <p class="text-muted small mb-0 p-2">
+          <i class="fas fa-spinner fa-spin me-1"></i> Loading jobs…
+        </p>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

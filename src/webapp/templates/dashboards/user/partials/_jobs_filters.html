@@ -1,0 +1,166 @@
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
+{#
+  Reusable jobs-explorer filter panel in the Unity .filter-sidebar house
+  style (navy panel + gold title + white controls + "Clear filters"),
+  matching _disk_scans_dir_filters.html. The caller wraps this macro in a
+  <div class="filter-sidebar">. Rendered above the table container on the
+  standalone explorer page; on submit it hx-get's *fragment_url* (the
+  mode's per-job fragment) into #target_id with all of its fields.
+
+  Args:
+    form_id         unique id for this form instance
+    fragment_url    the per-job fragment to fetch (project/machine/user mode)
+    target_id       container the fragment swaps into
+    filters         the parsed _panel_filters() dict (current raw values)
+    user_search_url fk-picker search endpoint (admin_dashboard.htmx_search_users, fk)
+    machine         plugin machine key, echoed back on submit
+    scope           project-mode subtree re-root, echoed back on submit
+    per_page_options  row-count choices for the rows selector
+    mode            'project' | 'machine' | 'user'
+
+  The user picker stores a SAM user_id under ``user_id``; the route
+  resolves it to the PBS username the job data is keyed on (see
+  _resolve_user_filter). User mode pins the username server-side, so the
+  picker is omitted — it must not be possible to re-filter the explorer
+  to another user there.
+#}
+{% macro jobs_filters(form_id, fragment_url, target_id, filters,
+                      user_search_url, machine, scope, per_page_options,
+                      mode='project') %}
+<form id="{{ form_id }}"
+      hx-get="{{ fragment_url }}"
+      hx-target="#{{ target_id }}"
+      hx-swap="innerHTML"
+      hx-trigger="submit">
+  <div class="filter-sidebar-header">
+    <h2 class="filter-sidebar-title">
+      <button class="filter-sidebar-toggle" type="button"
+              data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
+              aria-expanded="true" aria-controls="{{ form_id }}-fields">
+        Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
+      </button>
+    </h2>
+    {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
+       form and re-triggers its htmx submit. fk-picker.js also clears its
+       badge on the native reset event, so the user picker clears too. #}
+    <a class="filter-sidebar-clear" style="cursor: pointer;"
+       data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
+  </div>
+
+  {# Collapsed by default on phones (dashboard-init.js strips .show below md).
+     data-no-persist: the responsive default owns the initial state. #}
+  <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
+
+  {# Scope context — submitted alongside the visible filter controls.
+     chips=1 asks the fragment for the OOB facet-chip strip (explorer is
+     this macro's only consumer; card embeds never send it). #}
+  <input type="hidden" name="machine" value="{{ machine }}">
+  {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
+  <input type="hidden" name="target_id" value="{{ target_id }}">
+  <input type="hidden" name="chips" value="1">
+
+  <div class="d-flex flex-wrap align-items-end gap-3">
+    <div>
+      <label class="form-label"><strong>Jobs ending after</strong></label>
+      <input type="date" class="form-control"
+             name="start" value="{{ filters.start }}"
+             style="width:160px;">
+    </div>
+    <div>
+      <label class="form-label"><strong>Jobs ending before</strong></label>
+      <input type="date" class="form-control"
+             name="end" value="{{ filters.end }}"
+             style="width:160px;">
+    </div>
+
+    {% if mode != 'user' %}
+    <div style="min-width:240px;">
+      {{ fk_search_field('user_id', 'User', user_search_url,
+                         placeholder='Search users…',
+                         optional_text='',
+                         selected_id=filters.user_id or '',
+                         selected_label=filters.user_label or '',
+                         label_class='form-label',
+                         wrapper_class='') }}
+    </div>
+    {% endif %}
+
+    <div>
+      <label class="form-label"><strong>Queue</strong></label>
+      <input type="text" class="form-control" name="queue"
+             value="{{ filters.queue }}" placeholder="e.g. main"
+             style="width:130px;">
+    </div>
+
+    <div>
+      <label class="form-label"><strong>QoS</strong></label>
+      <select class="form-select" name="qos" style="width:140px;">
+        <option value="">All QoS</option>
+        {% for q in filters.qos_options %}
+          <option value="{{ q }}" {% if filters.qos == q %}selected{% endif %}>{{ q }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label"><strong>Exit code</strong></label>
+      <input type="text" class="form-control" name="exit_status"
+             value="{{ filters.exit_status }}" placeholder="0 = success"
+             title="PBS exit code as text — 0 is success"
+             style="width:120px;">
+    </div>
+
+    <div>
+      <label class="form-label"><strong>Job name</strong></label>
+      <input type="text" class="form-control" name="name"
+             value="{{ filters.name }}" placeholder="glob, e.g. wrf*"
+             style="width:160px;">
+    </div>
+
+    <div class="form-check form-switch align-self-center mb-2">
+      <input class="form-check-input" type="checkbox" role="switch"
+             id="{{ form_id }}-icase" name="ignore_case" value="1"
+             {% if filters.ignore_case %}checked{% endif %}>
+      <label class="form-check-label" for="{{ form_id }}-icase">Ignore case</label>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap align-items-end gap-3 mt-2">
+    {# step='any' on the float pairs — the browser's default step=1 would
+       reject fractional bounds like 1.5 h at submit time. #}
+    {% for lo_name, hi_name, label, width, step in [
+        ('min_nodes', 'max_nodes', 'Nodes', '90px', '1'),
+        ('min_cpus',  'max_cpus',  'CPUs',  '90px', '1'),
+        ('min_gpus',  'max_gpus',  'GPUs',  '90px', '1'),
+        ('min_wait_hours', 'max_wait_hours', 'Wait (hours)', '110px', 'any'),
+        ('min_elapsed_hours', 'max_elapsed_hours', 'Elapsed (hours)', '110px', 'any'),
+        ('min_reqmem_gb', 'max_reqmem_gb', 'Req mem (GB)', '110px', 'any')] %}
+    <div>
+      <label class="form-label"><strong>{{ label }}</strong></label>
+      <div class="d-flex gap-1">
+        <input type="number" class="form-control" name="{{ lo_name }}"
+               value="{{ filters[lo_name] if filters[lo_name] is not none }}"
+               placeholder="min" min="0" step="{{ step }}" style="width:{{ width }};">
+        <input type="number" class="form-control" name="{{ hi_name }}"
+               value="{{ filters[hi_name] if filters[hi_name] is not none }}"
+               placeholder="max" min="0" step="{{ step }}" style="width:{{ width }};">
+      </div>
+    </div>
+    {% endfor %}
+
+    <div>
+      <label class="form-label"><strong>Rows</strong></label>
+      <select class="form-select" name="per_page" style="width:100px;">
+        {% for n in per_page_options %}
+          <option value="{{ n }}" {% if filters.per_page == n %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-outline-white ms-auto">
+      <i class="fas fa-filter me-1"></i> Apply
+    </button>
+  </div>
+  </div>
+</form>
+{% endmacro %}
