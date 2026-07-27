@@ -1186,3 +1186,121 @@ def test_gather_runtime_state_surfaces_db_linked_api_keys(app, monkeypatch):
     with app.app_context():
         state = gather_runtime_state(app, db)
     assert state['auth']['api_keys_db_enabled'] is False
+
+
+# ---------------------------------------------------------------------------
+# Commit 2: RBAC grant + connection settings + machines helper
+# ---------------------------------------------------------------------------
+
+def test_view_all_job_data_grants():
+    """Auto-granted to operator bundles via ALL_VIEW; NOT to facility tier."""
+    from webapp.utils.rbac import (
+        GROUP_PERMISSIONS, USER_FACILITY_PERMISSIONS, Permission,
+    )
+    p = Permission.VIEW_ALL_JOB_DATA
+    for bundle in ('nusd', 'csg', 'ssg'):
+        assert p in GROUP_PERMISSIONS[bundle], bundle
+    assert p not in USER_FACILITY_PERMISSIONS['sureshm']['WNA']
+
+
+def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
+    """The connect listener issues SET application_name + statement_timeout.
+
+    ``event.listens_for`` needs a real Engine, so capture the registered
+    listener via a fake decorator and drive it with a stub DBAPI
+    connection — asserting on the exact SQL the listener issues.
+    """
+    from webapp.jobs import session as jobs_session
+
+    registered = {}
+
+    def _fake_listens_for(target, name):
+        def _decorator(fn):
+            registered['fn'] = fn
+            return fn
+        return _decorator
+
+    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
+
+    jobs_session._apply_connection_settings(
+        MagicMock(name='engine'), 'sam-webapp:pod:job_history:derecho',
+        statement_timeout_ms=60000,
+    )
+
+    executed = []
+
+    class _Cursor:
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+        def close(self):
+            pass
+
+    dbapi_conn = MagicMock()
+    dbapi_conn.autocommit = False
+    dbapi_conn.cursor = lambda: _Cursor()
+
+    registered['fn'](dbapi_conn, None)
+
+    assert executed[0] == (
+        "SET application_name = %s",
+        ('sam-webapp:pod:job_history:derecho',),
+    )
+    assert executed[1] == ("SET statement_timeout = %s", ('60000',))
+    # autocommit restored after the SETs.
+    assert dbapi_conn.autocommit is False
+
+
+def test_apply_connection_settings_zero_timeout_skips_set(monkeypatch):
+    """statement_timeout_ms=0 (disabled) issues only the app-name SET."""
+    from webapp.jobs import session as jobs_session
+
+    registered = {}
+
+    def _fake_listens_for(target, name):
+        def _decorator(fn):
+            registered['fn'] = fn
+            return fn
+        return _decorator
+
+    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
+
+    jobs_session._apply_connection_settings(
+        MagicMock(name='engine'), 'tag', statement_timeout_ms=0,
+    )
+
+    executed = []
+
+    class _Cursor:
+        def execute(self, sql, params=None):
+            executed.append(sql)
+        def close(self):
+            pass
+
+    dbapi_conn = MagicMock()
+    dbapi_conn.autocommit = False
+    dbapi_conn.cursor = lambda: _Cursor()
+
+    registered['fn'](dbapi_conn, None)
+
+    assert executed == ["SET application_name = %s"]
+
+
+def test_job_history_machines_sorted_when_enabled(app, monkeypatch):
+    """Sorted engine keys when the plugin is up; [] when disabled."""
+    from webapp.jobs import service
+
+    monkeypatch.setitem(app.extensions, 'hpc_usage_queries', {
+        'module':  types.SimpleNamespace(JobQueries=object),
+        'engines': {'derecho': MagicMock(), 'casper': MagicMock()},
+        'enabled': True,
+    })
+    with app.app_context():
+        assert service.job_history_machines() == ['casper', 'derecho']
+
+
+def test_job_history_machines_empty_when_disabled(app):
+    """TestingConfig keeps the plugin off → no machines offered."""
+    from webapp.jobs import service
+
+    with app.app_context():
+        assert service.job_history_machines() == []

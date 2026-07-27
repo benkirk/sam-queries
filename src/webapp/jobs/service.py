@@ -15,7 +15,25 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
-from webapp.jobs.session import get_module, job_history_session
+from webapp.jobs.session import (
+    get_engines,
+    get_module,
+    is_enabled,
+    job_history_session,
+)
+
+
+def job_history_machines() -> List[str]:
+    """Machines with a warmed job-history engine, sorted.
+
+    Analogue of ``disk_scans.service.scan_capable_resources()`` — the
+    single source for "which machines can the jobs UI offer?". Returns
+    ``[]`` when the plugin is disabled, so nav items / tabs / route
+    validation all degrade together.
+    """
+    if not is_enabled():
+        return []
+    return sorted(get_engines().keys())
 
 
 def _resolve_queue_and_qos(
