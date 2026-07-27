@@ -80,7 +80,8 @@
                          optional_text='',
                          selected_id=filters.user_id or '',
                          selected_label=filters.user_label or '',
-                         label_class='form-label') }}
+                         label_class='form-label',
+                         wrapper_class='') }}
     </div>
     {% endif %}
 
@@ -156,7 +157,7 @@
       </select>
     </div>
 
-    <button type="submit" class="btn btn-outline-white mb-2">
+    <button type="submit" class="btn btn-outline-white ms-auto">
       <i class="fas fa-filter me-1"></i> Apply
     </button>
   </div>

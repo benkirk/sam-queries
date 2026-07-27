@@ -1262,6 +1262,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--ncar-gray);
 }
 
+/* fk-pickers embedded in a horizontal align-items-end filter row (jobs +
+   disk-scans panels, which pass wrapper_class='' to drop the stacked-form
+   mb-3): the empty typeahead dropdown's mt-1 still makes the cell 4px
+   taller than its siblings, floating the picker's label above the other
+   columns' labels. !important is required to beat the utility class. */
+.filter-sidebar .align-items-end .fk-picker-results:empty {
+    margin-top: 0 !important;
+}
+
 /* On phones the horizontal filter rows wrap into a ragged multi-column mess:
    stack every field full-width instead. !important is required to beat the
    inline style="width:###px" attributes that size the fields on desktop

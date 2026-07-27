@@ -356,7 +356,8 @@
                          badge_class='bg-info py-1 px-2',
                          search_class='form-control',
                          selected_id='', selected_label='',
-                         id_prefix=None, label_class='form-label') %}
+                         id_prefix=None, label_class='form-label',
+                         wrapper_class='mb-3') %}
 {%- set _prefix = id_prefix or ('fk_' ~ name) -%}
 {%- set _id_input = _prefix ~ '_id' -%}
 {%- set _badge_id = _prefix ~ '_badge' -%}
@@ -366,7 +367,11 @@
 {%- set _form_id = form.get(name) if form else selected_id -%}
 {%- set _form_label = (form.get(name ~ '_display') if form else None) or selected_label -%}
 {%- set _has_value = (_form_id is not none and _form_id != '') -%}
-<div class="mb-3 fk-picker">
+{# wrapper_class='' for pickers embedded in a horizontal align-items-end
+   filter row — the stacked-form mb-3 makes the cell taller than its
+   siblings there, floating the label above the neighbouring columns'.
+   (A CSS override can't do it: Bootstrap utility margins are !important.) #}
+<div class="{{ wrapper_class }} fk-picker">
     {{ _label(name, label, required=required, optional_text=optional_text, id=_search_id, label_class=label_class) }}
 
     <div id="{{ _selected_id }}" class="fk-picker-selected mb-1"
