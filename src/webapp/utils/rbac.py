@@ -109,6 +109,19 @@ class Permission(Enum):
     # facility-scoped.
     VIEW_ALL_FILESYSTEM_DATA = "view_all_filesystem_data"
 
+    # Job history (elevated)
+    # Browse per-job data across an entire machine, UNSCOPED — every user's
+    # jobs, queues, and charges, cross-project and cross-user (the machine-wide
+    # jobs explorer + the Status page "Job History" tab). The project-scoped
+    # jobs card needs no permission (project access already gates it) and the
+    # "My Jobs" view pins to the session user; this gates only the machine-wide
+    # surfaces. Named ``view_*`` so it is auto-granted to the operator bundles
+    # via ``ALL_VIEW`` (today exactly nusd/csg/ssg) and NOT to the
+    # facility-scoped tier, which enumerates its VIEW_* grants explicitly.
+    # Plugin machines (derecho/casper) don't map onto UNIV/WNA/NCAR
+    # facilities, so this is intentionally global, not facility-scoped.
+    VIEW_ALL_JOB_DATA = "view_all_job_data"
+
     # System administration
     ACCESS_ADMIN_DASHBOARD = "access_admin_dashboard"  # Land on /admin/ and see the navbar tab
     MANAGE_ROLES = "manage_roles"

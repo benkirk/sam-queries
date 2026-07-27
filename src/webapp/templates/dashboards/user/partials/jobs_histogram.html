@@ -1,0 +1,118 @@
+{% from 'dashboards/user/partials/_jobs_macros.html'
+   import jobs_disabled, jobs_error, jobs_empty %}
+{#
+  Histogram fragment — shared by the Wait Times, Job Sizes, and Durations
+  tabs (identical envelope shape; only the dimension differs). Embedded
+  via hx-get from the Job History card. Context (set in
+  webapp/jobs/routes.py::_render_histogram):
+    enabled, error, mode, machine,
+    hist       — plugin jobs_histogram envelope (self-describing: buckets
+                 with label/lo/hi + per-bucket job_count/cpu_hours/
+                 gpu_hours, null_count, total_count, unit)
+    chart_svg  — rendered SVG (or an empty-state div)
+    metric     — 'jobs' | 'cpu_hours' | 'gpu_hours'
+    dimension  — 'wait' | 'nodes' | 'cpus' | 'gpus' | 'memory' | 'duration'
+    dimension_toggle — True only on the Job Sizes tab
+    size_dimensions  — the dimension pill order
+    fragment_url, target_id, params — re-fetch plumbing
+#}
+
+{% if not enabled %}
+  {{ jobs_disabled() }}
+{% elif error %}
+  {{ jobs_error(error) }}
+{% elif not hist %}
+  {{ jobs_empty('No job data for this scope.') }}
+{% else %}
+  <form id="jobs-hist-params-{{ target_id }}" class="d-none">
+    {% for k, v in params.items() %}
+    <input type="hidden" name="{{ k }}" value="{{ v }}">
+    {% endfor %}
+  </form>
+
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    {% if dimension_toggle %}
+      {# Dimension pills — nodes / CPUs / GPUs / memory re-fetch this pane
+         with ?dimension= (memory = REQUESTED memory, Job.reqmem). #}
+      <div class="btn-group btn-group-sm me-1" role="group" aria-label="Size dimension">
+        {% for d, label in [('nodes', 'Nodes'), ('cpus', 'CPUs'),
+                            ('gpus', 'GPUs'), ('memory', 'Memory')] %}
+        <button type="button"
+                class="btn btn-outline-secondary {% if dimension == d %}active{% endif %}"
+                hx-get="{{ fragment_url }}?dimension={{ d }}&metric={{ metric }}"
+                hx-target="#{{ target_id }}"
+                hx-include="#jobs-hist-params-{{ target_id }}"
+                hx-swap="innerHTML">
+          {{ label }}
+        </button>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {# Metric pills — count vs charged hours per bucket. #}
+    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Bar metric">
+      {% for m, label in [('jobs', 'Jobs'),
+                          ('cpu_hours', 'CPU-hours'),
+                          ('gpu_hours', 'GPU-hours')] %}
+      <button type="button"
+              class="btn btn-outline-secondary {% if metric == m %}active{% endif %}"
+              hx-get="{{ fragment_url }}?metric={{ m }}{% if dimension_toggle %}&dimension={{ dimension }}{% endif %}"
+              hx-target="#{{ target_id }}"
+              hx-include="#jobs-hist-params-{{ target_id }}"
+              hx-swap="innerHTML">
+        {{ label }}
+      </button>
+      {% endfor %}
+    </div>
+    <span class="ms-auto text-muted small">
+      {{ hist.total_count | fmt_number }} job{{ '' if hist.total_count == 1 else 's' }}
+    </span>
+  </div>
+
+  {% if chart_svg %}
+  <div class="d-flex justify-content-center mb-2 jobs-histogram-chart">
+    {{ chart_svg | safe }}
+  </div>
+  {% endif %}
+
+  {% if hist.null_count and hist.null_count > 0 %}
+    <p class="text-muted small mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      {% if dimension == 'wait' %}
+        {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
+        in this range have no wait measurement (queued before eligible-time
+        collection began, early 2025 on Derecho) and are excluded.
+      {% else %}
+        {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
+        in this range have no recorded value for this dimension and are excluded.
+      {% endif %}
+    </p>
+  {% endif %}
+
+  {# Bucket table under the SVG — the same full, zero-filled vector the
+     chart renders, so counts are copy/paste-able. #}
+  <details class="mt-1">
+    <summary class="small text-muted">Bucket counts</summary>
+    <div class="table-responsive mt-2">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Range</th>
+            <th class="text-end">Jobs</th>
+            <th class="text-end">CPU-hours</th>
+            <th class="text-end">GPU-hours</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in hist.buckets %}
+          <tr {% if not b.job_count %}class="text-muted"{% endif %}>
+            <td><code>{{ b.label }}</code></td>
+            <td class="text-end">{{ b.job_count | fmt_number }}</td>
+            <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+{% endif %}

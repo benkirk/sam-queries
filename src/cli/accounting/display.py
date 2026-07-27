@@ -280,7 +280,7 @@ def display_jobs_table(ctx: Context, rows: list, start_date, end_date, *,
             ("QoS",      "left",  "white", lambda r: r.get('qos') or ''),
             ("Factor",   "right", "dim",   lambda r: _fmt_factor(r.get('qos_factor'))),
             ("Queue",    "left",  "white", lambda r: r.get('queue') or ''),
-            ("Status",   "left",  "dim",   lambda r: str(r.get('status') or '')),
+            ("Exit",     "left",  "dim",   lambda r: str(r.get('exit_status') or '')),
         ]
 
     table = Table(

@@ -1,0 +1,47 @@
+{# ── Job History tab body (Status dashboard) ────────────────────────────
+   One subtab per plugin machine (job_history_machines, from
+   webapp.jobs.service.job_history_machines()). Each subtab hosts the SAME
+   jobs card the project resource-details page shows, but in machine mode —
+   unscoped over the whole machine (VIEW_ALL_JOB_DATA-gated routes).
+
+   Lazy-load: this partial renders only on its own /status/job-history
+   page, where the first subtab's pane is visible immediately — so its
+   card's first inner tab fires on `load`. Other subtabs load when their
+   own subtab nav-link is shown. Bind to the shown event, not click
+   (feedback_persisted_collapse_htmx). Closed subtabs cost nothing.
+
+   This partial is only included when job_history_machines is non-empty
+   AND the viewer holds VIEW_ALL_JOB_DATA (gated at the route + tab), so
+   it never needs its own empty/disabled state.
+#}
+<ul class="nav nav-pills mb-3" id="jobHistSubtabs" role="tablist">
+    {% for m in job_history_machines %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if loop.first %}active{% endif %}"
+           id="job-hist-subtab-{{ loop.index }}"
+           data-bs-toggle="tab" href="#job-hist-pane-{{ loop.index }}" role="tab">
+            <i class="fas fa-server me-1"></i> {{ m | capitalize }}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+<div class="tab-content" id="jobHistSubtabContent">
+    {% for m in job_history_machines %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+         id="job-hist-pane-{{ loop.index }}" role="tabpanel">
+        {% if loop.first %}
+            {% set _trigger = 'load once' %}
+        {% else %}
+            {% set _trigger = 'shown.bs.tab once from:#job-hist-subtab-' ~ loop.index %}
+        {% endif %}
+        {% with mode='machine',
+                cid='jobs-m' ~ loop.index,
+                tablist_id='jobHistCardTabs' ~ loop.index,
+                machine=m,
+                start=jobs_window_start,
+                load_trigger=_trigger %}
+            {% include 'dashboards/user/partials/jobs_card.html' %}
+        {% endwith %}
+    </div>
+    {% endfor %}
+</div>

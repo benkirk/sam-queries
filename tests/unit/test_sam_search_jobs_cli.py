@@ -35,7 +35,7 @@ def _job(**over):
     """Build a per-job dict shaped like JobQueries.jobs_search() output."""
     row = dict(
         job_id='1234567.desched1', account='SCSG0001', user='benkirk',
-        queue='main', qos='regular', qos_factor=1.0, status='F',
+        queue='main', qos='regular', qos_factor=1.0, exit_status='0',
         submit='2026-05-01T10:00:00', start='2026-05-01T10:05:00',
         end='2026-05-01T12:05:00', elapsed=7200, walltime=7200,
         numnodes=4, numcpus=512, numgpus=0, cputype='milan', gputype=None,

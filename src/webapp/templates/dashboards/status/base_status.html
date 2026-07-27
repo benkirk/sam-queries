@@ -119,6 +119,9 @@
     {'endpoint': 'status_dashboard.filesystem_scans', 'label': 'Filesystem Scans',
      'icon': 'fas fa-magnifying-glass-chart',
      'visible': true if (fs_scan_resources and has_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)) else false},
+    {'endpoint': 'status_dashboard.job_history', 'label': 'Job History',
+     'icon': 'fas fa-list-check',
+     'visible': true if (job_history_machines and has_permission(Permission.VIEW_ALL_JOB_DATA)) else false},
 ], class='mb-4') }}
 
 {% block status_content %}{% endblock %}

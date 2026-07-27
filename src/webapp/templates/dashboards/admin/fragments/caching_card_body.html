@@ -56,6 +56,24 @@
 {% endfor %}
 {% endif %}
 
+{% if cache_state.jobs %}
+<hr class="my-3">
+<div class="text-muted small mb-2"><strong>Job-history cache</strong></div>
+{# Two buckets: closed windows (end < today) are immutable → long TTL;
+   windows touching today keep collecting jobs → short TTL. Looping
+   surfaces each bucket's TTL so the 15-min recent TTL is visible next
+   to the 6-hour historical one. #}
+{% for _b in cache_state.jobs %}
+  <div class="text-muted small mb-1">
+    {{ 'Recent (open windows)' if _b.name == 'jobs_recent'
+       else 'Historical (closed windows)' }}
+    <code class="ms-1">{{ _b.name }}</code>
+  </div>
+  {{ cache_row(_b) }}
+  {% if not loop.last %}<div class="mb-2"></div>{% endif %}
+{% endfor %}
+{% endif %}
+
 {% if cache_state.flask %}
 <hr class="my-3">
 <div class="text-muted small mb-2"><strong>Flask-Cache (HTTP-level)</strong></div>

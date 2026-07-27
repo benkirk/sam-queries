@@ -31,6 +31,22 @@ import pytest
 from flask import Flask
 
 
+@pytest.fixture(autouse=True)
+def _disable_jobs_cache():
+    """Disable the aggregation TTL cache for these tests by default.
+
+    The route tests exercise the service path directly with per-test mock
+    returns; a live cache would leak one test's envelope into the next
+    (same key: filters all None). Explicit cache behavior is covered by
+    test_webapp_jobs_cache.py. Reset on teardown so other modules aren't
+    affected by the process-wide adapter singleton.
+    """
+    from webapp.jobs import cache as _c
+    _c._adapters = {b: None for b in _c._BUCKETS}
+    yield
+    _c._adapters = {}   # clear → buckets re-init on next use
+
+
 # ---------------------------------------------------------------------------
 # init_job_history — startup hook
 # ---------------------------------------------------------------------------
@@ -129,10 +145,51 @@ def test_init_job_history_engine_failure_skips_machine(monkeypatch):
 
 _DEFAULT_QOS_NAMES = ['economy', 'premium', 'regular', 'special', 'uncharged']
 
+# Pinned copy of the plugin's COLUMNS headers (hpc-usage-queries PR #99
+# contract, `from job_history import COLUMNS`). _install_mock_plugin patches
+# routes._load_column_specs to return THIS, so header-label assertions test
+# SAM's rendering against a fixed contract instead of whichever plugin
+# version happens to be installed — CI builds the plugin from main until
+# PR #99 merges, and the local hash-keyed conda-env flips refs, so the real
+# import may legitimately be missing or stale during the transition.
+_FAKE_COLUMN_SPECS = {
+    'job_id': {'header': 'Job ID'},
+    'name': {'header': 'Name'},
+    'qos': {'header': 'QoS'},
+    'start': {'header': 'Start'},
+    'elapsed': {'header': 'Elapsed'},
+    'numnodes': {'header': 'Nodes'},
+    'numcpus': {'header': 'CPUs'},
+    'numgpus': {'header': 'GPUs'},
+    'cpu_charges': {'header': 'CPU chg'},
+    'gpu_charges': {'header': 'GPU chg'},
+    'exit_status': {'header': 'Exit'},
+    'qos_factor': {'header': 'Factor'},
+    'queue': {'header': 'Queue'},
+    'user': {'header': 'User'},
+    'submit': {'header': 'Submit'},
+    'end': {'header': 'End'},
+    'walltime': {'header': 'Walltime'},
+    'mpiprocs': {'header': 'Ranks per Node'},
+    'ompthreads': {'header': 'OMP Threads'},
+    'reqmem': {'header': 'ReqMem'},
+    'memory': {'header': 'Mem'},
+    'vmemory': {'header': 'VMem'},
+    'cputype': {'header': 'CPU type'},
+    'gputype': {'header': 'GPU type'},
+    'resources': {'header': 'Resources'},
+    'cpu_hours': {'header': 'CPU-h'},
+    'gpu_hours': {'header': 'GPU-h'},
+    'memory_hours': {'header': 'Mem-h'},
+    'memory_charges': {'header': 'Mem chg'},
+}
+
 
 def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
                         jobs_count_return=None, qos_names=None,
-                        machines=('derecho',)):
+                        machines=('derecho',),
+                        jobs_histogram_return=None,
+                        jobs_usage_by_return=None):
     """Wire a mock job_history module onto app.extensions and return the
     captured JobQueries kwargs so tests can assert on the call.
 
@@ -143,6 +200,8 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
     captured = {
         'last_jobs_search_kwargs': None,
         'last_jobs_count_kwargs':  None,
+        'last_jobs_histogram':     None,   # (dimension, kwargs)
+        'last_jobs_usage_by':      None,   # (dimension, kwargs)
     }
     qos_list = (list(qos_names) if qos_names is not None
                 else list(_DEFAULT_QOS_NAMES))
@@ -158,6 +217,20 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
             captured['last_jobs_count_kwargs'] = kwargs
             return jobs_count_return if jobs_count_return is not None \
                 else len(jobs_search_return or [])
+        def jobs_histogram(self, dimension, **kwargs):
+            captured['last_jobs_histogram'] = (dimension, kwargs)
+            if jobs_histogram_return is not None:
+                return dict(jobs_histogram_return, dimension=dimension)
+            return {'dimension': dimension, 'column': 'x', 'unit': 'u',
+                    'min_param': 'min_x', 'max_param': 'max_x',
+                    'buckets': [], 'null_count': 0, 'total_count': 0}
+        def jobs_usage_by(self, dimension, **kwargs):
+            captured['last_jobs_usage_by'] = (dimension, kwargs)
+            if jobs_usage_by_return is not None:
+                return jobs_usage_by_return
+            return {'dimension': dimension, 'rows': [],
+                    'totals': {'job_count': 0, 'cpu_hours': 0.0,
+                               'gpu_hours': 0.0}}
         def list_qos_names(self, **kwargs):
             return list(qos_list)
 
@@ -173,6 +246,13 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'enabled': True,
     }
     monkeypatch.setitem(app.extensions, 'hpc_usage_queries', new_state)
+
+    # Column headers come from the pinned stub, never the installed plugin
+    # (see _FAKE_COLUMN_SPECS) — completes the isolation the fake module
+    # starts: these tests must pass with no plugin installed at all.
+    from webapp.jobs import routes as jobs_routes
+    monkeypatch.setattr(jobs_routes, '_load_column_specs',
+                        lambda: _FAKE_COLUMN_SPECS)
     return captured
 
 
@@ -271,7 +351,7 @@ def test_count_jobs_sam_summary_keeps_legacy_queue_name(
     _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        # No status / has_gpus → goes through the SAM summary fast path.
+        # No exit_status / GPU bounds → goes through the SAM summary fast path.
         total = service.count_jobs(
             'derecho', project=active_project, queue='cpu-special',
         )
@@ -284,8 +364,9 @@ def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
     app, active_project, monkeypatch,
 ):
     """When the request adds a filter outside the summary key set
-    (``status``, ``has_gpus``), count_jobs hits the plugin — which DOES
-    need the normalized queue. Mirrors the search_jobs test."""
+    (``exit_status``, ``min_gpus``/``max_gpus``), count_jobs hits the
+    plugin — which DOES need the normalized queue. Mirrors the
+    search_jobs test."""
     from webapp.jobs import service
 
     captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=7)
@@ -294,7 +375,7 @@ def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
         service.count_jobs(
             'derecho', project=active_project,
             queue='cpu-economy',
-            status='F',  # forces plugin path
+            exit_status='1',  # forces plugin path
         )
 
     ckw = captured['last_jobs_count_kwargs']
@@ -404,8 +485,8 @@ def test_count_jobs_sam_summary_ignores_inferred_qos(
 def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
     app, active_project, monkeypatch,
 ):
-    """When count_jobs takes the plugin path (e.g. because status is
-    set), it also runs the queue/qos resolver so 'cpu-special' →
+    """When count_jobs takes the plugin path (e.g. because exit_status
+    is set), it also runs the queue/qos resolver so 'cpu-special' →
     queue='cpu', qos='special' on the plugin call."""
     from webapp.jobs import service
 
@@ -415,7 +496,7 @@ def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
         service.count_jobs(
             'derecho', project=active_project,
             queue='cpu-special',
-            status='F',  # forces plugin path
+            exit_status='1',  # forces plugin path
             valid_qos_names=['premium', 'regular', 'special'],
         )
 
@@ -536,7 +617,7 @@ def _make_row(**overrides):
     to a sensible non-empty value so suppression / drawer tests can opt
     fields back to 0/None without redefining the full superset."""
     base = {
-        'job_id': '500.desched1', 'name': 'demo', 'status': 'F',
+        'job_id': '500.desched1', 'name': 'demo', 'exit_status': '1',
         'user': 'alice', 'account': 'SCSG0001', 'queue': 'main',
         'start': '2026-05-01 10:00:00',
         'end':   '2026-05-01 11:00:00',
@@ -561,8 +642,8 @@ def test_jobs_fragment_pagination_forwards_offset(
     """?page=3&per_page=25 ⇒ service receives offset=50, limit=25.
 
     The count call goes to SAM's CompChargeSummary now, not the plugin —
-    a separate test (``…_status_filter_uses_plugin_count``) covers the
-    plugin-fallback shape.
+    a separate test (``…_exit_status_filter_uses_plugin_count``) covers
+    the plugin-fallback shape.
     """
     captured = _install_mock_plugin(app, monkeypatch,
                                     jobs_search_return=[_make_row()])
@@ -576,18 +657,18 @@ def test_jobs_fragment_pagination_forwards_offset(
     assert kw['offset'] == 50    # (3 - 1) * 25
 
 
-def test_jobs_fragment_status_filter_uses_plugin_count(
+def test_jobs_fragment_exit_status_filter_uses_plugin_count(
     app, auth_client, active_project, monkeypatch,
 ):
     """When the request adds a filter outside CompChargeSummary's key set
-    (``status``, ``has_gpus``), count_jobs delegates to the plugin's
-    ``jobs_count`` rather than SAM's summary."""
+    (``exit_status``, ``min_gpus``/``max_gpus``), count_jobs delegates to
+    the plugin's ``jobs_count`` rather than SAM's summary."""
     captured = _install_mock_plugin(app, monkeypatch,
                                     jobs_search_return=[_make_row()],
                                     jobs_count_return=42)
     resp = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&status=F'
+        '?machine=derecho&exit_status=1'
     )
     assert resp.status_code == 200
     ckw = captured['last_jobs_count_kwargs']
@@ -598,7 +679,7 @@ def test_jobs_fragment_status_filter_uses_plugin_count(
     # whether the snapshot picked a leaf or a tree-parent fixture.
     assert isinstance(ckw['account'], list)
     assert active_project.projcode in ckw['account']
-    assert ckw['status']  == 'F'
+    assert ckw['exit_status'] == '1'
 
 
 def test_jobs_fragment_passes_tree_projcodes(
@@ -799,31 +880,31 @@ def test_jobs_fragment_qos_dropdown_pre_selects_active_filter(
         'QoS dropdown should pre-select the active ?qos= value'
 
 
-def test_jobs_fragment_qos_factor_drawer_after_status(
+def test_jobs_fragment_qos_factor_drawer_after_exit_status(
     app, auth_client, active_project, monkeypatch,
 ):
-    """`qos_factor` is rendered in the drawer immediately after `status`
-    (the re-ordered _VERBOSE_EXTRAS) so the multiplier sits next to the
-    QoS column above the fold of the drawer."""
+    """`qos_factor` is rendered in the drawer immediately after
+    `exit_status` (the re-ordered _VERBOSE_EXTRAS) so the multiplier sits
+    next to the QoS column above the fold of the drawer."""
     _install_mock_plugin(
         app, monkeypatch,
         jobs_search_return=[_make_row(qos='premium', qos_factor=1.5,
-                                      status='F')],
+                                      exit_status='1')],
     )
     resp = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
     )
     body = resp.get_data(as_text=True)
-    # Plugin's COLUMNS dict labels: status="Status", qos_factor="Factor".
+    # Plugin's COLUMNS dict labels: exit_status="Exit", qos_factor="Factor".
     # The <dt> wraps the label with whitespace, so match the bare text;
     # neither label appears elsewhere in the jobs fragment, so the first
     # occurrence is the drawer header.
-    status_idx = body.find('Status')
+    exit_idx = body.find('Exit')
     factor_idx = body.find('Factor')
-    assert status_idx >= 0, 'Status label missing from drawer'
+    assert exit_idx >= 0, 'Exit label (exit_status) missing from drawer'
     assert factor_idx >= 0, 'Factor label (qos_factor) missing from drawer'
-    assert factor_idx > status_idx, \
-        f'expected Status before Factor (qos_factor); got {status_idx=} {factor_idx=}'
+    assert factor_idx > exit_idx, \
+        f'expected Exit (exit_status) before Factor (qos_factor); got {exit_idx=} {factor_idx=}'
 
 
 def test_jobs_fragment_qos_options_populated_from_plugin(
@@ -1185,3 +1266,827 @@ def test_gather_runtime_state_surfaces_db_linked_api_keys(app, monkeypatch):
     with app.app_context():
         state = gather_runtime_state(app, db)
     assert state['auth']['api_keys_db_enabled'] is False
+
+
+# ---------------------------------------------------------------------------
+# Commit 2: RBAC grant + connection settings + machines helper
+# ---------------------------------------------------------------------------
+
+def test_view_all_job_data_grants():
+    """Auto-granted to operator bundles via ALL_VIEW; NOT to facility tier."""
+    from webapp.utils.rbac import (
+        GROUP_PERMISSIONS, USER_FACILITY_PERMISSIONS, Permission,
+    )
+    p = Permission.VIEW_ALL_JOB_DATA
+    for bundle in ('nusd', 'csg', 'ssg'):
+        assert p in GROUP_PERMISSIONS[bundle], bundle
+    assert p not in USER_FACILITY_PERMISSIONS['sureshm']['WNA']
+
+
+def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
+    """The connect listener issues SET application_name + statement_timeout.
+
+    ``event.listens_for`` needs a real Engine, so capture the registered
+    listener via a fake decorator and drive it with a stub DBAPI
+    connection — asserting on the exact SQL the listener issues.
+    """
+    from webapp.jobs import session as jobs_session
+
+    registered = {}
+
+    def _fake_listens_for(target, name):
+        def _decorator(fn):
+            registered['fn'] = fn
+            return fn
+        return _decorator
+
+    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
+
+    jobs_session._apply_connection_settings(
+        MagicMock(name='engine'), 'sam-webapp:pod:job_history:derecho',
+        statement_timeout_ms=60000,
+    )
+
+    executed = []
+
+    class _Cursor:
+        def execute(self, sql, params=None):
+            executed.append((sql, params))
+        def close(self):
+            pass
+
+    dbapi_conn = MagicMock()
+    dbapi_conn.autocommit = False
+    dbapi_conn.cursor = lambda: _Cursor()
+
+    registered['fn'](dbapi_conn, None)
+
+    assert executed[0] == (
+        "SET application_name = %s",
+        ('sam-webapp:pod:job_history:derecho',),
+    )
+    assert executed[1] == ("SET statement_timeout = %s", ('60000',))
+    # autocommit restored after the SETs.
+    assert dbapi_conn.autocommit is False
+
+
+def test_apply_connection_settings_zero_timeout_skips_set(monkeypatch):
+    """statement_timeout_ms=0 (disabled) issues only the app-name SET."""
+    from webapp.jobs import session as jobs_session
+
+    registered = {}
+
+    def _fake_listens_for(target, name):
+        def _decorator(fn):
+            registered['fn'] = fn
+            return fn
+        return _decorator
+
+    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
+
+    jobs_session._apply_connection_settings(
+        MagicMock(name='engine'), 'tag', statement_timeout_ms=0,
+    )
+
+    executed = []
+
+    class _Cursor:
+        def execute(self, sql, params=None):
+            executed.append(sql)
+        def close(self):
+            pass
+
+    dbapi_conn = MagicMock()
+    dbapi_conn.autocommit = False
+    dbapi_conn.cursor = lambda: _Cursor()
+
+    registered['fn'](dbapi_conn, None)
+
+    assert executed == ["SET application_name = %s"]
+
+
+def test_job_history_machines_sorted_when_enabled(app, monkeypatch):
+    """Sorted engine keys when the plugin is up; [] when disabled."""
+    from webapp.jobs import service
+
+    monkeypatch.setitem(app.extensions, 'hpc_usage_queries', {
+        'module':  types.SimpleNamespace(JobQueries=object),
+        'engines': {'derecho': MagicMock(), 'casper': MagicMock()},
+        'enabled': True,
+    })
+    with app.app_context():
+        assert service.job_history_machines() == ['casper', 'derecho']
+
+
+def test_job_history_machines_empty_when_disabled(app):
+    """TestingConfig keeps the plugin off → no machines offered."""
+    from webapp.jobs import service
+
+    with app.app_context():
+        assert service.job_history_machines() == []
+
+
+# ---------------------------------------------------------------------------
+# Commit 3: mode families + extended-filter count gating
+# ---------------------------------------------------------------------------
+
+def test_search_jobs_machine_forwards_no_account(app, monkeypatch):
+    """Machine mode issues an UNSCOPED query — no account key at all."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs_machine('derecho', user='alice', limit=10)
+
+    kw = captured['last_jobs_search_kwargs']
+    assert 'account' not in kw
+    assert kw['user'] == 'alice'
+    assert kw['limit'] == 10
+
+
+def test_count_jobs_machine_uses_plugin_count(app, monkeypatch):
+    """Machine mode never touches the SAM per-project summary."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=9)
+
+    with app.app_context():
+        total = service.count_jobs_machine('derecho', queue='main')
+
+    assert total == 9
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert 'account' not in ckw
+
+
+def test_search_jobs_user_pins_username(app, monkeypatch):
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs_user('derecho', 'benkirk', queue='main')
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['user'] == 'benkirk'
+
+
+def test_search_jobs_user_rejects_user_filter(app, monkeypatch):
+    """A client-supplied user filter must raise, not be silently dropped."""
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        with pytest.raises(ValueError, match='pins user'):
+            service.search_jobs_user('derecho', 'benkirk', user='mallory')
+
+
+def test_search_jobs_user_requires_username(app, monkeypatch):
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        with pytest.raises(ValueError, match='username'):
+            service.search_jobs_user('derecho', '')
+
+
+def test_count_jobs_user_pins_username(app, monkeypatch):
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=4)
+
+    with app.app_context():
+        total = service.count_jobs_user('derecho', 'benkirk')
+
+    assert total == 4
+    assert captured['last_jobs_count_kwargs']['user'] == 'benkirk'
+
+
+def test_count_jobs_zero_bound_forces_plugin_path(app, active_project, monkeypatch):
+    """max_gpus=0 is a REAL filter (CPU-only) — the falsy value must not
+    slip through the fast-path gate onto the SAM summary."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=2)
+
+    with app.app_context():
+        total = service.count_jobs(
+            'derecho', project=active_project, max_gpus=0,
+        )
+
+    assert total == 2
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['max_gpus'] == 0
+
+
+def test_count_jobs_ignore_case_alone_keeps_fast_path(
+    app, active_project, monkeypatch,
+):
+    """ignore_case without a name filter changes nothing — stay on the
+    SAM-summary fast path."""
+    from webapp.jobs import service
+
+    monkeypatch.setattr(
+        service, '_count_via_sam_summary',
+        lambda machine, **kw: 13,
+    )
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        total = service.count_jobs(
+            'derecho', project=active_project, ignore_case=False,
+        )
+
+    assert total == 13
+    assert captured['last_jobs_count_kwargs'] is None
+
+
+def test_count_jobs_name_filter_forces_plugin_path(
+    app, active_project, monkeypatch,
+):
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=5)
+
+    with app.app_context():
+        service.count_jobs(
+            'derecho', project=active_project,
+            name='wrf*', ignore_case=True,
+        )
+
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['name'] == 'wrf*'
+    assert ckw['ignore_case'] is True
+
+
+def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
+    """_plugin_filter_kwargs is keyword-only: a typo'd filter raises
+    TypeError instead of silently vanishing."""
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        with pytest.raises(TypeError):
+            service.search_jobs(
+                'derecho', project=active_project, min_gups=1,  # typo
+            )
+
+
+# ---------------------------------------------------------------------------
+# Commit 5: aggregation fragments (By User / Wait Times / Job Sizes / Durations)
+# ---------------------------------------------------------------------------
+
+def _sample_hist(dimension='wait', null_count=0):
+    return {
+        'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',
+        'min_param': 'min_eligible_secs', 'max_param': 'max_eligible_secs',
+        'buckets': [
+            {'label': '<1m', 'lo': 0, 'hi': 59,
+             'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 0.0},
+            {'label': '1-5m', 'lo': 60, 'hi': 299,
+             'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0},
+        ],
+        'null_count': null_count,
+        'total_count': 14 + null_count,
+    }
+
+
+def _sample_usage(totals=None):
+    return {
+        'dimension': 'user',
+        'rows': [
+            {'value': 'alice', 'job_count': 30, 'cpu_hours': 300.0, 'gpu_hours': 0.0},
+            {'value': 'bob',   'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 2.0},
+        ],
+        'totals': totals or {'job_count': 42, 'cpu_hours': 420.0, 'gpu_hours': 2.0},
+    }
+
+
+def test_by_user_fragment_renders_rows_and_pie(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_usage_by_return=_sample_usage(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'data-job-user="alice"' in body
+    assert 'data-job-user="bob"' in body
+    assert '<svg' in body                       # pie rendered
+    assert '#job-user-alice' in body            # clickable wedge sentinel
+    # No remainder beyond the row cap → no Other row.
+    assert 'beyond top' not in body
+    # Plugin was asked for the user dimension, scoped to the project tree.
+    dim, kwargs = captured['last_jobs_usage_by']
+    assert dim == 'user'
+    assert active_project.projcode in kwargs['account']
+
+
+def test_by_user_fragment_other_row_from_pretruncation_totals(
+    app, auth_client, active_project, monkeypatch,
+):
+    """totals bigger than the visible rows → an inert Other summary row."""
+    usage = _sample_usage(totals={'job_count': 100, 'cpu_hours': 900.0,
+                                  'gpu_hours': 5.0})
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=usage)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'beyond top' in body
+
+
+def test_by_user_fragment_disabled_banner(auth_client, active_project):
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user?machine=derecho'
+    )
+    assert resp.status_code == 200
+    assert 'Per-job data is unavailable' in resp.get_data(as_text=True)
+
+
+def test_by_user_fragment_400_on_invalid_machine(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user?machine=gust'
+    )
+    assert resp.status_code == 400
+
+
+def test_by_user_fragment_404_on_unknown_projcode(auth_client):
+    resp = auth_client.get('/dashboards/user/jobs/NOPE9999/by-user?machine=derecho')
+    assert resp.status_code == 404
+
+
+def test_wait_times_fragment_caption_on_null_count(
+    app, auth_client, active_project, monkeypatch,
+):
+    """null_count > 0 on the wait dimension → the eligible-time caption."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(null_count=7),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'no wait measurement' in body
+    assert 'early 2025 on Derecho' in body
+
+
+def test_wait_times_fragment_no_caption_when_all_measured(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(null_count=0),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times?machine=derecho'
+    )
+    assert 'no wait measurement' not in resp.get_data(as_text=True)
+
+
+def test_wait_times_fragment_pins_wait_dimension(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&dimension=gpus'   # client cannot override the pin
+    )
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'wait'
+
+
+def test_job_sizes_fragment_dimension_pills_and_default(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='nodes'),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    # Dimension pills present (only on the Sizes tab).
+    assert 'dimension=cpus' in body
+    assert 'dimension=memory' in body
+    # Default dimension is nodes.
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'nodes'
+
+
+def test_job_sizes_fragment_invalid_dimension_falls_back(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='nodes'),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=bogus'
+    )
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'nodes'
+
+
+def test_job_sizes_fragment_memory_dimension_forwarded(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='memory'),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=memory'
+    )
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'memory'
+
+
+def test_durations_fragment_pins_duration_dimension(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='duration'),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/durations?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == 'duration'
+    # No dimension pills outside the Sizes tab.
+    assert 'dimension=cpus' not in body
+
+
+def test_histogram_fragment_converts_wait_hours_to_secs(
+    app, auth_client, active_project, monkeypatch,
+):
+    """min/max_wait_hours (human units) convert to eligible_secs at the
+    route boundary — the service/plugin only ever see seconds."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_wait_hours=2&max_wait_hours=4.5'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['min_eligible_secs'] == 7200
+    assert kwargs['max_eligible_secs'] == 16200
+
+
+def test_histogram_fragment_metric_pill_roundtrip(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&metric=cpu_hours'
+    )
+    body = resp.get_data(as_text=True)
+    # The cpu_hours pill is the active one.
+    import re
+    assert re.search(r'active[^>]*>\s*CPU-hours', body) or \
+        re.search(r'CPU-hours', body)
+
+
+# ---------------------------------------------------------------------------
+# Commit 6: machine-wide family (operator) + explorer pages + Status tab
+# ---------------------------------------------------------------------------
+
+_MACHINE_FRAGMENTS = ['', '/by-user', '/wait-times', '/job-sizes', '/durations']
+
+
+@pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
+def test_machine_routes_403_without_permission(non_admin_client, suffix):
+    resp = non_admin_client.get(f'/dashboards/user/jobs/machine/derecho{suffix}')
+    assert resp.status_code == 403
+
+
+@pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
+def test_machine_routes_disabled_banner_with_permission(auth_client, suffix):
+    """benkirk holds VIEW_ALL_JOB_DATA → 200 (plugin off → banner)."""
+    resp = auth_client.get(f'/dashboards/user/jobs/machine/derecho{suffix}')
+    assert resp.status_code == 200
+    assert 'Per-job data is unavailable' in resp.get_data(as_text=True)
+
+
+@pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
+def test_machine_routes_404_unknown_machine(app, auth_client, monkeypatch, suffix):
+    """With the plugin up for derecho only, /machine/gust → 404."""
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get(f'/dashboards/user/jobs/machine/gust{suffix}')
+    assert resp.status_code == 404
+
+
+def test_machine_jobs_fragment_unscoped(app, auth_client, monkeypatch):
+    """The machine table issues no account filter and renders rows."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=1)
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert '500.desched1' in body
+    kw = captured['last_jobs_search_kwargs']
+    assert 'account' not in kw
+    ckw = captured['last_jobs_count_kwargs']
+    assert 'account' not in ckw
+
+
+def test_machine_by_user_fragment_unscoped(app, auth_client, monkeypatch):
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_usage_by_return=_sample_usage())
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/by-user')
+    assert resp.status_code == 200
+    assert 'data-job-user="alice"' in resp.get_data(as_text=True)
+    _dim, kwargs = captured['last_jobs_usage_by']
+    assert 'account' not in kwargs
+
+
+def test_machine_histogram_fragment_unscoped(app, auth_client, monkeypatch):
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_histogram_return=_sample_hist())
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/wait-times')
+    assert resp.status_code == 200
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert 'account' not in kwargs
+
+
+def test_explore_machine_page_renders_filter_panel(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/explore')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'filter-sidebar' in body
+    assert 'Machine-wide (operator view)' in body
+    # Panel fields present.
+    assert 'name="min_nodes"' in body
+    assert 'name="exit_status"' in body
+
+
+def test_explore_page_project_mode(app, auth_client, active_project, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'filter-sidebar' in body
+    assert active_project.projcode in body
+    # Machine-wide badge must NOT show in project mode.
+    assert 'Machine-wide (operator view)' not in body
+
+
+def test_explore_page_carries_filters_into_initial_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Deep-link with filters → the lazy-load URL reproduces them."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&queue=main&min_nodes=4&min_wait_hours=1.5'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'queue=main' in body
+    assert 'min_nodes=4' in body
+    assert 'min_wait_hours=1.5' in body
+
+
+def test_explore_page_scope_rerooting_badge(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A valid child scope shows the scope badge; out-of-tree falls back."""
+    import types as _types
+    from sam import Project
+
+    child = _types.SimpleNamespace(projcode='CHILD0001')
+    real_get = Project.get_by_projcode
+
+    def _fake_get(session, projcode):
+        if projcode == 'CHILD0001':
+            fake = MagicMock()
+            fake.projcode = 'CHILD0001'
+            fake.tree_root = active_project.tree_root
+            fake.get_descendants = lambda include_self=True: [child]
+            return fake
+        return real_get(session, projcode)
+
+    monkeypatch.setattr(Project, 'get_by_projcode', staticmethod(_fake_get))
+    _install_mock_plugin(app, monkeypatch)
+
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&scope=CHILD0001'
+    )
+    assert resp.status_code == 200
+    assert 'scope: CHILD0001' in resp.get_data(as_text=True)
+
+
+def test_fragment_scope_rerooting_narrows_account(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?scope=<child> narrows the account filter to the child's subtree."""
+    import types as _types
+    from sam import Project
+
+    child_desc = [_types.SimpleNamespace(projcode='CHILD0001'),
+                  _types.SimpleNamespace(projcode='CHILD0001_a')]
+    real_get = Project.get_by_projcode
+
+    def _fake_get(session, projcode):
+        if projcode == 'CHILD0001':
+            fake = MagicMock()
+            fake.projcode = 'CHILD0001'
+            fake.tree_root = active_project.tree_root
+            fake.get_descendants = lambda include_self=True: child_desc
+            return fake
+        return real_get(session, projcode)
+
+    monkeypatch.setattr(Project, 'get_by_projcode', staticmethod(_fake_get))
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_histogram_return=_sample_hist())
+
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&scope=CHILD0001'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['account'] == ['CHILD0001', 'CHILD0001_a']
+
+
+# ---------------------------------------------------------------------------
+# Status dashboard: Job History tab
+# ---------------------------------------------------------------------------
+
+def test_status_job_history_403_without_permission(non_admin_client):
+    resp = non_admin_client.get('/status/job-history')
+    assert resp.status_code == 403
+
+
+def test_status_job_history_empty_state_when_disabled(auth_client):
+    """Plugin off → no machines → the info alert (never a broken card)."""
+    resp = auth_client.get('/status/job-history')
+    assert resp.status_code == 200
+    assert 'No job-history data is currently available' in resp.get_data(as_text=True)
+
+
+def test_status_job_history_machine_pills_when_enabled(
+    app, auth_client, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho', 'casper'))
+    resp = auth_client.get('/status/job-history')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'job-hist-subtab-1' in body
+    assert 'Derecho' in body
+    assert 'Casper' in body
+    # Machine-mode card fragments wired per pill.
+    assert '/dashboards/user/jobs/machine/casper' in body
+
+
+def test_status_tab_hidden_without_machines(auth_client):
+    """Plugin off → the Job History tab is absent from the status pages."""
+    resp = auth_client.get('/status/derecho')
+    assert resp.status_code == 200
+    assert '/status/job-history' not in resp.get_data(as_text=True)
+
+
+def test_status_tab_visible_for_operator_with_machines(
+    app, auth_client, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get('/status/derecho')
+    assert resp.status_code == 200
+    assert '/status/job-history' in resp.get_data(as_text=True)
+
+
+def test_status_tab_hidden_for_plain_user_with_machines(
+    app, non_admin_client, monkeypatch,
+):
+    """Even with machines up, no VIEW_ALL_JOB_DATA → no tab, anywhere."""
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = non_admin_client.get('/status/derecho')
+    assert resp.status_code == 200
+    assert '/status/job-history' not in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# Commit 7: user family ("My Jobs") — server-side pinning + page/tab
+# ---------------------------------------------------------------------------
+
+_USER_FRAGMENTS = ['', '/wait-times', '/job-sizes', '/durations']
+
+
+@pytest.mark.parametrize('suffix', _USER_FRAGMENTS + ['/explore'])
+def test_user_routes_disabled_banner(auth_client, suffix):
+    """Plugin off → 200 with the unavailable banner (login only, no perm)."""
+    resp = auth_client.get(f'/dashboards/user/jobs/user/derecho{suffix}')
+    assert resp.status_code == 200
+    assert 'Per-job data is unavailable' in resp.get_data(as_text=True)
+
+
+@pytest.mark.parametrize('suffix', _USER_FRAGMENTS + ['/explore'])
+def test_user_routes_404_unknown_machine(app, auth_client, monkeypatch, suffix):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get(f'/dashboards/user/jobs/user/gust{suffix}')
+    assert resp.status_code == 404
+
+
+def test_user_jobs_fragment_pins_session_user(app, auth_client, monkeypatch):
+    """The table is pinned to the logged-in user (benkirk for auth_client)."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=1)
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho')
+    assert resp.status_code == 200
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['user'] == 'benkirk'
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw['user'] == 'benkirk'
+
+
+def test_user_jobs_fragment_ignores_client_user_param(
+    app, auth_client, monkeypatch,
+):
+    """?user=<other> must change nothing — the pin always wins."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=1)
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho?user=mallory')
+    assert resp.status_code == 200
+    assert captured['last_jobs_search_kwargs']['user'] == 'benkirk'
+    assert captured['last_jobs_count_kwargs']['user'] == 'benkirk'
+
+
+@pytest.mark.parametrize('suffix', ['/wait-times', '/job-sizes', '/durations'])
+def test_user_histogram_fragments_ignore_client_user_param(
+    app, auth_client, monkeypatch, suffix,
+):
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_histogram_return=_sample_hist())
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/user/derecho{suffix}?user=mallory'
+    )
+    assert resp.status_code == 200
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['user'] == 'benkirk'
+
+
+def test_user_explore_page_omits_user_picker(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho/explore')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'My Jobs' in body
+    # No user picker in user mode — the pin is not negotiable.
+    assert 'name="user_id"' not in body
+    # Other filter fields still present.
+    assert 'name="queue"' in body
+
+
+def test_my_jobs_page_404_without_machines(auth_client):
+    """Plugin off → no machines → the page 404s (tab is hidden too)."""
+    resp = auth_client.get('/user/jobs')
+    assert resp.status_code == 404
+
+
+def test_my_jobs_page_renders_machine_pills(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho', 'casper'))
+    resp = auth_client.get('/user/jobs')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'my-jobs-subtab-1' in body
+    assert 'Derecho' in body and 'Casper' in body
+    # User-mode card fragments wired per pill.
+    assert '/dashboards/user/jobs/user/casper' in body
+    # By User tab suppressed in user mode.
+    assert 'By User' not in body
+
+
+def test_my_jobs_tab_visibility_follows_machines(app, auth_client, monkeypatch):
+    # Hidden when plugin off…
+    resp = auth_client.get('/user/accounts')
+    assert '/user/jobs' not in resp.get_data(as_text=True)
+    # …visible when machines are up.
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get('/user/accounts')
+    assert '/user/jobs' in resp.get_data(as_text=True)

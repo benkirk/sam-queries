@@ -101,26 +101,30 @@
 {% else %}
 
   {# Hidden filter form — pagination/sort hx-includes pick up its values
-     so users keep their filters as they page or re-sort. `target_id` is
-     round-tripped here so the next request's response targets the same
-     container this fragment was originally swapped into. #}
+     so users keep their filters as they page or re-sort (including the
+     explorer's extended set: name glob, min/max bounds, wait-hours,
+     scope). `target_id` is round-tripped here so the next request's
+     response targets the same container this fragment was originally
+     swapped into. NB: qos is skipped whenever the visible <select> below
+     renders — it's bound to this form via HTML5 form="…" so its current
+     value is serialized into every hx-include without risking a
+     duplicate `qos=` query param. #}
   <form id="jobs-filters-{{ target_id }}" class="d-none">
-    <input type="hidden" name="machine" value="{{ machine }}">
-    <input type="hidden" name="target_id" value="{{ target_id }}">
-    {% if filters.start %}<input type="hidden" name="start" value="{{ filters.start }}">{% endif %}
-    {% if filters.end %}<input type="hidden" name="end" value="{{ filters.end }}">{% endif %}
-    {% if filters.user %}<input type="hidden" name="user" value="{{ filters.user }}">{% endif %}
-    {% if filters.queue %}<input type="hidden" name="queue" value="{{ filters.queue }}">{% endif %}
-    {# NB: qos is NOT in the hidden form — the visible <select> below is
-       bound to this form via HTML5 form="…" so its current value is
-       serialized into every hx-include without risking a duplicate
-       `qos=` query param. #}
-    {% if filters.qos and not qos_options %}<input type="hidden" name="qos" value="{{ filters.qos }}">{% endif %}
-    {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+    {% for k, v in roundtrip_params.items() %}
+      {% if k != 'qos' or not qos_options %}
+    <input type="hidden" name="{{ k }}" value="{{ v }}">
+      {% endif %}
+    {% endfor %}
   </form>
 
   <div class="d-flex align-items-center mb-2">
+    {% if project %}
     <strong class="me-2">{{ project.projcode }}</strong>
+    {% elif username %}
+    <strong class="me-2"><code>{{ username }}</code></strong>
+    {% else %}
+    <strong class="me-2 text-muted" title="Machine-wide view: every user's jobs">all jobs</strong>
+    {% endif %}
     <span class="text-muted small me-3">{{ machine }}</span>
     {% if filters.start or filters.end %}
       <span class="text-muted small me-3">

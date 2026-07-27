@@ -1,0 +1,13 @@
+{% extends 'dashboards/status/base_status.html' %}
+
+{% block title %}Job History - SAM{% endblock %}
+
+{% block status_content %}
+{% if job_history_machines %}
+    {% include 'dashboards/status/partials/job_history.html' %}
+{% else %}
+<div class="alert alert-info">
+    <i class="fas fa-info-circle"></i> No job-history data is currently available.
+</div>
+{% endif %}
+{% endblock %}

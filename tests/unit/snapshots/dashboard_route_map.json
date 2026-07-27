@@ -1477,6 +1477,13 @@
     ]
   ],
   [
+    "status_dashboard.job_history",
+    "/status/job-history",
+    [
+      "GET"
+    ]
+  ],
+  [
     "status_dashboard.jupyterhub",
     "/status/jupyterhub",
     [
@@ -1619,6 +1626,13 @@
   [
     "user_dashboard.my_data",
     "/user/data",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "user_dashboard.my_jobs",
+    "/user/jobs",
     [
       "GET"
     ]

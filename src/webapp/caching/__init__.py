@@ -119,8 +119,8 @@ class Caching:
 
         Order: flask first, then chart caches in registration order, then
         the usage cache (if enabled), then the two fs-scans buckets (default,
-        filtered). Stable across processes since registration order is
-        deterministic.
+        filtered), then the two jobs buckets (historical, recent). Stable
+        across processes since registration order is deterministic.
         """
         out: List[CacheBase] = [self._flask_adapter, *self._chart_caches]
         try:
@@ -140,6 +140,17 @@ class Caching:
                     out.append(scans)
         except Exception:
             pass
+        try:
+            from webapp.jobs.cache import (
+                _BUCKETS as _JOBS_BUCKETS,
+                get_cache_adapter as get_jobs_adapter,
+            )
+            for bucket in _JOBS_BUCKETS:
+                jobs = get_jobs_adapter(bucket)
+                if jobs:
+                    out.append(jobs)
+        except Exception:
+            pass
         return out
 
     def stats(self) -> dict:
@@ -147,6 +158,7 @@ class Caching:
         from flask import current_app
         from sam.queries.usage_cache import usage_cache_info
         from webapp.disk_scans.cache import fs_scans_cache_info
+        from webapp.jobs.cache import jobs_cache_info
 
         return {
             'backend':         current_app.config.get('CACHE_TYPE'),
@@ -155,6 +167,7 @@ class Caching:
             'chart':           [c.info() for c in self._chart_caches],
             'usage':           usage_cache_info(),
             'scans':           fs_scans_cache_info(),
+            'jobs':            jobs_cache_info(),
         }
 
     def clear(self, category: Optional[str] = None) -> dict:
@@ -170,6 +183,9 @@ class Caching:
         if category in (None, 'scans'):
             from webapp.disk_scans.cache import purge_fs_scans_cache
             result['scans'] = purge_fs_scans_cache()
+        if category in (None, 'jobs'):
+            from webapp.jobs.cache import purge_jobs_cache
+            result['jobs'] = purge_jobs_cache()
         return result
 
 

@@ -1,0 +1,161 @@
+{# ── Job History card (shared, mode-parameterized) ──────────────────────
+   The Jobs / By User / Wait Times / Job Sizes / Durations tab strip, each
+   lazy-loading its jobs.* fragment via hx-get. Shared by the compute
+   resource-details page (mode='project'), the Status dashboard's Job
+   History subtabs (mode='machine'), and the My Jobs page (mode='user').
+
+   Params:
+     mode        'project' | 'machine' | 'user'
+     cid         element-id prefix; namespaces every id so multiple cards on
+                 one page (Status subtabs, My Jobs machine pills) don't collide.
+     tablist_id  id for the <ul class="nav-tabs"> (drives nav-view-persistence's
+                 tab:<id> key; keep stable per card).
+     machine     plugin machine key ('derecho' | 'casper')
+     load_trigger  hx-trigger for the first (Jobs) tab — the only bit of
+                   lazy-load wiring that differs by host: project mode fires
+                   on card-open (collapse) + tab show; machine/user modes fire
+                   when their pane is shown. See feedback_persisted_collapse_htmx.
+     projcode, scope  project mode only.
+     start, end   optional YYYY-MM-DD window carried into every tab (project
+                  mode passes the page's date range so aggregations stay
+                  bounded; url_for drops None values).
+
+   In machine mode there is no account scoping (routes are gated behind
+   VIEW_ALL_JOB_DATA); in user mode the username is pinned server-side and
+   the By User tab is omitted (it would be a pie of one).
+#}
+{# Optional params default to none so url_for drops them (an undefined
+   name would reach url_for as Jinja Undefined and break URL building). #}
+{% set start = start | default(none) %}
+{% set end = end | default(none) %}
+{% set scope = scope | default(none) %}
+{% if mode == 'machine' %}
+    {% set _jobs_url  = url_for('jobs.jobs_machine_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
+    {% set _user_url  = url_for('jobs.by_user_machine_fragment',    machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
+    {% set _wait_url  = url_for('jobs.wait_times_machine_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
+    {% set _sizes_url = url_for('jobs.job_sizes_machine_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
+    {% set _dur_url   = url_for('jobs.durations_machine_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
+    {% set _full_url  = url_for('jobs.explore_machine_page',        machine=machine, start=start, end=end) %}
+{% elif mode == 'user' %}
+    {% set _jobs_url  = url_for('jobs.jobs_user_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
+    {% set _wait_url  = url_for('jobs.wait_times_user_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
+    {% set _sizes_url = url_for('jobs.job_sizes_user_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
+    {% set _dur_url   = url_for('jobs.durations_user_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
+    {% set _full_url  = url_for('jobs.explore_user_page',        machine=machine, start=start, end=end) %}
+    {# no _user_url — the By User tab is hidden in user mode #}
+{% else %}
+    {% set _jobs_url  = url_for('jobs.jobs_fragment',       projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
+    {% set _user_url  = url_for('jobs.by_user_fragment',    projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
+    {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
+    {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
+    {% set _dur_url   = url_for('jobs.durations_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
+    {% set _full_url  = url_for('jobs.explore_page',        projcode=projcode, machine=machine, start=start, end=end, scope=scope) %}
+{% endif %}
+<ul class="nav nav-tabs mb-0" id="{{ tablist_id }}" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="{{ cid }}-jobs-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-jobs"
+                type="button" role="tab"
+                hx-get="{{ _jobs_url }}"
+                hx-target="#{{ cid }}-jobs"
+                hx-swap="innerHTML"
+                hx-trigger="{{ load_trigger }}">
+            <i class="fas fa-list me-1"></i> Jobs
+        </button>
+    </li>
+    {% if mode != 'user' %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ cid }}-byuser-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-byuser"
+                type="button" role="tab"
+                hx-get="{{ _user_url }}"
+                hx-target="#{{ cid }}-byuser"
+                hx-swap="innerHTML"
+                hx-trigger="shown.bs.tab once">
+            <i class="fas fa-users me-1"></i> By User
+        </button>
+    </li>
+    {% endif %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ cid }}-wait-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-wait"
+                type="button" role="tab"
+                hx-get="{{ _wait_url }}"
+                hx-target="#{{ cid }}-wait"
+                hx-swap="innerHTML"
+                hx-trigger="shown.bs.tab once">
+            <i class="fas fa-hourglass-half me-1"></i> Wait Times
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ cid }}-sizes-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-sizes"
+                type="button" role="tab"
+                hx-get="{{ _sizes_url }}"
+                hx-target="#{{ cid }}-sizes"
+                hx-swap="innerHTML"
+                hx-trigger="shown.bs.tab once">
+            <i class="fas fa-layer-group me-1"></i> Job Sizes
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ cid }}-durations-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-durations"
+                type="button" role="tab"
+                hx-get="{{ _dur_url }}"
+                hx-target="#{{ cid }}-durations"
+                hx-swap="innerHTML"
+                hx-trigger="shown.bs.tab once">
+            <i class="fas fa-stopwatch me-1"></i> Durations
+        </button>
+    </li>
+</ul>
+<div class="tab-content border border-top-0 rounded-bottom p-3"
+     id="{{ tablist_id }}Content">
+    <div class="tab-pane fade show active" id="tab-{{ cid }}-jobs" role="tabpanel">
+        {% if _full_url %}
+        <div class="d-flex justify-content-end mb-2">
+            <a class="btn btn-sm btn-outline-primary"
+               href="{{ _full_url }}"
+               target="_blank" rel="noopener">
+                Open full view <i class="fas fa-up-right-from-square ms-1"></i>
+            </a>
+        </div>
+        {% endif %}
+        <div id="{{ cid }}-jobs">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading jobs…
+            </p>
+        </div>
+    </div>
+    {% if mode != 'user' %}
+    <div class="tab-pane fade" id="tab-{{ cid }}-byuser" role="tabpanel">
+        <div id="{{ cid }}-byuser">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading…
+            </p>
+        </div>
+    </div>
+    {% endif %}
+    <div class="tab-pane fade" id="tab-{{ cid }}-wait" role="tabpanel">
+        <div id="{{ cid }}-wait">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading wait times…
+            </p>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="tab-{{ cid }}-sizes" role="tabpanel">
+        <div id="{{ cid }}-sizes">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading job sizes…
+            </p>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="tab-{{ cid }}-durations" role="tabpanel">
+        <div id="{{ cid }}-durations">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading durations…
+            </p>
+        </div>
+    </div>
+</div>
