@@ -100,6 +100,36 @@ def test_histogram_dimension_in_cache_key():
     assert a != b
 
 
+def test_histogram_bars_carry_bucket_sentinels():
+    """Populated bands are wrapped in #jh-bar-<index> anchors (index-keyed,
+    matching data-jh-bucket rows); empty bands get no anchor."""
+    svg = generate_jobs_histogram(_hist(counts=(10, 5, 0)))
+    assert '#jh-bar-0' in svg
+    assert '#jh-bar-1' in svg
+    assert '#jh-bar-2' not in svg
+
+
+def test_histogram_sentinels_follow_job_count_not_metric():
+    """Clickability is decided by job_count even on an hours metric — a band
+    with jobs but zero cpu_hours must still be drillable."""
+    h = _hist(counts=(10, 5, 3), cpu_hours=(100.0, 50.0, 0.0))
+    svg = generate_jobs_histogram(h, metric='cpu_hours')
+    assert '#jh-bar-2' in svg
+
+
+def test_histogram_count_vector_in_cache_key():
+    """Two envelopes with identical hours vectors but different populated
+    band sets must not share a cache entry — the drill URLs differ."""
+    from webapp.dashboards.charts import _jobs_histogram_cache_key
+    a = _jobs_histogram_cache_key(
+        _hist(counts=(10, 5, 3), cpu_hours=(100.0, 50.0, 0.0)),
+        metric='cpu_hours')
+    b = _jobs_histogram_cache_key(
+        _hist(counts=(10, 5, 0), cpu_hours=(100.0, 50.0, 0.0)),
+        metric='cpu_hours')
+    assert a != b
+
+
 # ---------------------------------------------------------------------------
 # generate_jobs_user_pie_chart
 # ---------------------------------------------------------------------------

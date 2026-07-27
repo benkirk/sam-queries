@@ -623,8 +623,35 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
     )
 
 
+def _bucket_drill_url(jobs_fragment_url: str, hist: dict, bucket: dict,
+                      roundtrip: dict) -> Optional[str]:
+    """Per-band URL for the mode's jobs fragment, or None for empty bands.
+
+    Replays the envelope's self-describing bounds verbatim
+    (``{min_param: lo, max_param: hi}``, omitting a ``None`` end — the
+    open side of an unbounded band, including the wasted dimension's
+    negative 'over request' band) plus the pane's round-trip filters.
+    A pane param spelling the same native bound as the band is dropped —
+    the clicked band's meaning wins. The template appends its own
+    ``target_id``.
+    """
+    if not bucket.get('job_count'):
+        return None
+    from urllib.parse import urlencode
+    params = {}
+    if bucket.get('lo') is not None:
+        params[hist['min_param']] = bucket['lo']
+    if bucket.get('hi') is not None:
+        params[hist['max_param']] = bucket['hi']
+    for k, v in roundtrip.items():
+        if k != 'target_id' and k not in params:
+            params[k] = v
+    return f'{jobs_fragment_url}?{urlencode(params)}'
+
+
 def _render_histogram(*, mode, machine, dimension, dimension_toggle,
                       fragment_url, target_id,
+                      jobs_fragment_url=None,
                       account_projcodes=None, username=None):
     """Shared renderer for the Wait Times / Job Sizes / Durations tabs."""
     template = 'dashboards/user/partials/jobs_histogram.html'
@@ -654,6 +681,18 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         error = str(exc)
 
     chart_svg = generate_jobs_histogram(hist, metric=metric) if hist else None
+    params = _roundtrip_params(machine, target_id)
+
+    # One drill URL per band (None for empty bands) — computed here, not
+    # in the template, so the envelope's min_param/max_param replay stays
+    # in one place. A parallel list rather than mutating hist: the
+    # envelope is a shared cache entry.
+    bucket_drills = None
+    if hist and jobs_fragment_url:
+        bucket_drills = [
+            _bucket_drill_url(jobs_fragment_url, hist, b, params)
+            for b in hist.get('buckets') or []
+        ]
 
     return render_template(
         template,
@@ -664,8 +703,9 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         dimension=dimension, dimension_toggle=dimension_toggle,
         size_dimensions=_SIZE_DIMENSIONS,
         fragment_url=fragment_url,
+        bucket_drills=bucket_drills,
         target_id=target_id,
-        params=_roundtrip_params(machine, target_id),
+        params=params,
     )
 
 
@@ -704,6 +744,8 @@ def _project_histogram(project, *, dimension, dimension_toggle, endpoint):
         mode='project', machine=machine,
         dimension=dimension, dimension_toggle=dimension_toggle,
         fragment_url=url_for(endpoint, projcode=project.projcode),
+        jobs_fragment_url=url_for('jobs.jobs_fragment',
+                                  projcode=project.projcode),
         target_id=target_id,
         account_projcodes=_tree_projcodes(project),
     )
@@ -933,6 +975,8 @@ def _machine_histogram(machine, *, dimension, dimension_toggle, endpoint):
         mode='machine', machine=machine,
         dimension=dimension, dimension_toggle=dimension_toggle,
         fragment_url=url_for(endpoint, machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_machine_fragment',
+                                  machine=machine),
         target_id=target_id,
     )
 
@@ -1034,6 +1078,8 @@ def _user_histogram(machine, *, dimension, dimension_toggle, endpoint):
         mode='user', machine=machine,
         dimension=dimension, dimension_toggle=dimension_toggle,
         fragment_url=url_for(endpoint, machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_user_fragment',
+                                  machine=machine),
         target_id=target_id,
         username=current_user.username,
     )

@@ -23,6 +23,9 @@
  *   - Legend href starts with #usage-user-<username> (stacked-by-user
  *     Usage Trend chart on the compute resource-details page) → expand
  *     that user's row in the Usage by User card below.
+ *   - Bar href starts with #jh-bar-<index> (job-history histograms) →
+ *     open the Bucket-counts <details> and expand that band's row,
+ *     which lazy-loads the band's per-job table.
  *
  * Safe on pages where the target containers aren't included — each
  * branch checks for its targets and silently no-ops.
@@ -55,6 +58,12 @@
     // user's row, found by data-job-user (see jobs_by_user.html). Same
     // interaction as the disk-scans entity pie.
     var JOB_USER_PREFIX = '#job-user-';
+    // Job-history histogram (Wait Times / Job Sizes / Durations): a bar
+    // click expands the matching band's row in the Bucket-counts table
+    // (data-jh-bucket, see jobs_histogram.html), which lazy-loads that
+    // band's per-job fragment. The table sits inside a <details> that
+    // must be opened first or the row would expand invisibly.
+    var BAR_JH_PREFIX = '#jh-bar-';
 
     // Distribution histogram (Access-history / File-size tabs) → expand the
     // matching bucket's per-user detail row. The bucket <tr> carries
@@ -80,6 +89,26 @@
     // collapse target in data-bs-target (same attribute the chevron toggles),
     // keyed by attr (data-owner-uid / data-group-gid). Scoped to the clicked
     // chart's tab pane so other panes' identical sentinels never cross-fire.
+    // Jobs-histogram bar → expand the band's bucket row. Same shape as
+    // openBucketRow but keyed on data-jh-bucket, and the row lives inside
+    // a collapsed-by-default <details> that must be opened before the
+    // Bootstrap collapse (and the scroll) can be seen.
+    function openJobsBucketRow(index, scopeEl) {
+        var root = scopeEl || document;
+        var row = root.querySelector('tr[data-jh-bucket="' + index + '"]');
+        if (!row || !window.bootstrap) return;
+        var details = row.closest('details');
+        if (details) details.open = true;
+        var targetSel = row.getAttribute('data-bs-target');
+        if (!targetSel) return;
+        var el = document.querySelector(targetSel);
+        if (!el) return;
+        bootstrap.Collapse.getOrCreateInstance(el, {toggle: false}).show();
+        setTimeout(function () {
+            row.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }, 60);
+    }
+
     function openEntityRow(attr, id, scopeEl) {
         var root = scopeEl || document;
         var row = root.querySelector('tr[' + attr + '="' + id + '"]');
@@ -200,6 +229,15 @@
             if (gid === '') return;
             e.preventDefault();
             openEntityRow('data-group-gid', gid, a.closest('.tab-pane'));
+            return;
+        }
+
+        // Jobs-histogram bar → expand the band's bucket row (scoped pane)
+        if (href.indexOf(BAR_JH_PREFIX) === 0) {
+            var jhIdx = href.slice(BAR_JH_PREFIX.length);
+            if (jhIdx === '') return;
+            e.preventDefault();
+            openJobsBucketRow(jhIdx, a.closest('.tab-pane'));
             return;
         }
 

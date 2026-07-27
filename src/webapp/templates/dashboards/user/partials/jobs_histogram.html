@@ -111,7 +111,12 @@
   {% endif %}
 
   {# Bucket table under the SVG — the same full, zero-filled vector the
-     chart renders, so counts are copy/paste-able. #}
+     chart renders, so counts are copy/paste-able. Populated bands are
+     expandable: the collapse row lazy-loads the mode's per-job fragment
+     filtered to that band's bounds (bucket_drills, computed in
+     _render_histogram). A bar click (#jh-bar-<i> sentinel) opens the
+     matching data-jh-bucket row via svg-chart-links.js, forcing this
+     <details> open first. #}
   <details class="mt-1">
     <summary class="small text-muted">Bucket counts</summary>
     <div class="table-responsive mt-2">
@@ -124,16 +129,49 @@
             <th class="text-end">GPU-hours</th>
           </tr>
         </thead>
-        <tbody>
-          {% for b in hist.buckets %}
-          <tr {% if not b.job_count %}class="text-muted"{% endif %}>
-            <td><code>{{ b.label }}</code></td>
-            <td class="text-end">{{ b.job_count | fmt_number }}</td>
-            <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
-            <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
+        {% for b in hist.buckets %}
+          {% set drill_url = bucket_drills[loop.index0]
+             if bucket_drills else none %}
+          {% set _rid = target_id ~ '-b' ~ loop.index0 %}
+          <tbody>
+            <tr {% if not b.job_count %}class="text-muted"
+                {% else %}data-jh-bucket="{{ loop.index0 }}"
+                          data-bs-target="#{{ _rid }}-row"{% endif %}>
+              <td>
+                {% if drill_url %}
+                <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
+                        type="button" data-bs-toggle="collapse"
+                        data-bs-target="#{{ _rid }}-row"
+                        aria-expanded="false" aria-controls="{{ _rid }}-row">
+                  <i class="fas fa-chevron-right collapse-icon small"></i>
+                </button>
+                {% endif %}
+                <code>{{ b.label }}</code>
+              </td>
+              <td class="text-end">{{ b.job_count | fmt_number }}</td>
+              <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
+              <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
+            </tr>
+            {% if drill_url %}
+            <tr class="collapse" id="{{ _rid }}-row">
+              <td colspan="4" class="p-0 border-0">
+                {# Lazy-load this band's jobs on first expand — bind to
+                   shown.bs.collapse (not click) so a bar-click open
+                   triggers it too. #}
+                <div class="p-2 bg-light" id="{{ _rid }}-content"
+                     hx-get="{{ drill_url }}&target_id={{ _rid }}-content"
+                     hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+                     hx-swap="innerHTML">
+                  <p class="text-muted small mb-0">
+                    <i class="fas fa-spinner fa-spin me-1"></i>
+                    Loading jobs in the {{ b.label }} band…
+                  </p>
+                </div>
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        {% endfor %}
       </table>
     </div>
   </details>

@@ -1926,6 +1926,96 @@ def test_histogram_fragment_converts_wait_hours_to_secs(
     assert kwargs['max_eligible_secs'] == 16200
 
 
+def test_histogram_bucket_rows_carry_band_drill_urls(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Populated bands render data-jh-bucket rows whose collapse content
+    lazy-loads the per-job fragment with the envelope's min/max bounds
+    plus the pane's round-trip filters."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&queue=cpu'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'data-jh-bucket="0"' in body
+    assert 'data-jh-bucket="1"' in body
+    import re
+    url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert f'/dashboards/user/jobs/{active_project.projcode}?' in url0
+    assert 'min_eligible_secs=0' in url0
+    assert 'max_eligible_secs=59' in url0
+    assert 'queue=cpu' in url0             # pane filters carried into the drill
+    assert 'machine=derecho' in url0
+    assert 'target_id=' in url0
+
+
+_WASTED_HIST = {
+    'dimension': 'memory_wasted', 'column': 'memory_wasted', 'unit': 'bytes',
+    'min_param': 'min_memory_wasted', 'max_param': 'max_memory_wasted',
+    'buckets': [
+        {'label': 'over request', 'lo': None, 'hi': -1,
+         'job_count': 3, 'cpu_hours': 30.0, 'gpu_hours': 0.0},
+        {'label': '<1GB', 'lo': 0, 'hi': 2 ** 30 - 1,
+         'job_count': 0, 'cpu_hours': 0.0, 'gpu_hours': 0.0},
+        {'label': '>1GB', 'lo': 2 ** 30, 'hi': None,
+         'job_count': 7, 'cpu_hours': 70.0, 'gpu_hours': 0.0},
+    ],
+    'null_count': 0, 'total_count': 10,
+}
+
+
+def test_histogram_bucket_drill_omits_open_ends(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A None band end is an open side — its param is omitted from the
+    drill URL in both directions: the negative 'over request' band emits
+    only the max bound, the open top band only the min. Empty bands get
+    no drill row at all."""
+    import re
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_WASTED_HIST,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=memory_wasted'
+    )
+    body = resp.get_data(as_text=True)
+
+    url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert 'min_memory_wasted' not in url0
+    assert 'max_memory_wasted=-1' in url0
+
+    assert 'data-jh-bucket="1"' not in body        # empty band: inert row
+    assert re.search(r'id="[^"]*-b1-content"', body) is None
+
+    url2 = re.search(r'id="[^"]*-b2-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert f'min_memory_wasted={2 ** 30}' in url2
+    assert 'max_memory_wasted' not in url2
+
+
+def test_histogram_bucket_drill_band_bound_replaces_pane_param(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When the pane itself is filtered on the same native bound the band
+    replays, the band's value replaces the pane's in the drill URL —
+    never both."""
+    import re
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_eligible_secs=999'
+    )
+    body = resp.get_data(as_text=True)
+    url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert 'min_eligible_secs=0' in url0
+    assert 'min_eligible_secs=999' not in url0
+
+
 def test_histogram_fragment_metric_pill_roundtrip(
     app, auth_client, active_project, monkeypatch,
 ):

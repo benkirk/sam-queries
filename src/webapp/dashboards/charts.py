@@ -1187,12 +1187,16 @@ _JOBS_METRIC_LABELS = {
 def _jobs_histogram_cache_key(hist, *, metric='jobs'):
     """Hash exactly what the SVG depends on: the bucket labels, the chosen
     metric's values, the dimension, and null_count (not the full envelope —
-    e.g. min_param/max_param don't affect the rendering)."""
+    e.g. min_param/max_param don't affect the rendering). The job_count
+    positivity vector joins the key because it decides which bars carry
+    #jh-bar-<i> drill URLs — an hours-metric SVG with matching hours but a
+    different populated-band set must not be reused."""
     key = _JOBS_METRIC_KEYS.get(metric, 'job_count')
     buckets = (hist or {}).get('buckets') or []
     payload = [(b.get('label'), float(b.get(key) or 0)) for b in buckets]
+    clickable = [int(bool(b.get('job_count'))) for b in buckets]
     return _content_hash([
-        payload, str((hist or {}).get('dimension', '')),
+        payload, clickable, str((hist or {}).get('dimension', '')),
         int((hist or {}).get('null_count') or 0), str(metric),
     ])
 
@@ -1226,9 +1230,16 @@ def generate_jobs_histogram(hist, *, metric='jobs') -> str:
         return _empty_state('No jobs in this range')
 
     fig, ax = plt.subplots(figsize=(14, 5))
-    ax.bar(range(len(labels)), vals,
-           color=UNITY_PALETTE_10[0],
-           edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+    bars = ax.bar(range(len(labels)), vals,
+                  color=UNITY_PALETTE_10[0],
+                  edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+    # Populated bands are clickable: #jh-bar-<index> sentinels route
+    # through svg-chart-links.js to the matching data-jh-bucket row in
+    # the Bucket-counts table, which lazy-loads that band's jobs.
+    # Index-keyed (not label) so the JS never parses band labels.
+    for i, (rect, b) in enumerate(zip(bars, buckets)):
+        if b.get('job_count'):
+            rect.set_url(f'#jh-bar-{i}')
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=30, ha='right')
     ax.set_ylabel(_JOBS_METRIC_LABELS.get(metric, 'Jobs'))
