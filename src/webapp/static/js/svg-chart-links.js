@@ -51,6 +51,10 @@
     // Stacked-by-user Usage Trend chart (compute resource-details): a legend
     // username click expands that user's row in the Usage by User card.
     var USAGE_USER_PREFIX = '#usage-user-';
+    // Job-history By User pie: a wedge/legend click expands the matching
+    // user's row, found by data-job-user (see jobs_by_user.html). Same
+    // interaction as the disk-scans entity pie.
+    var JOB_USER_PREFIX = '#job-user-';
 
     // Distribution histogram (Access-history / File-size tabs) → expand the
     // matching bucket's per-user detail row. The bucket <tr> carries
@@ -196,6 +200,15 @@
             if (gid === '') return;
             e.preventDefault();
             openEntityRow('data-group-gid', gid, a.closest('.tab-pane'));
+            return;
+        }
+
+        // Jobs pie wedge/legend → expand the user's jobs row (scoped pane)
+        if (href.indexOf(JOB_USER_PREFIX) === 0) {
+            var juser = href.slice(JOB_USER_PREFIX.length);
+            if (juser === '') return;
+            e.preventDefault();
+            openEntityRow('data-job-user', juser, a.closest('.tab-pane'));
             return;
         }
 

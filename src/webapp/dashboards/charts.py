@@ -1162,6 +1162,174 @@ def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Job-history charts (jobs card: Wait Times / Job Sizes / Durations + By User)
+#
+# Inputs are the hpc-usage-queries plugin envelopes verbatim (see
+# webapp.jobs.service.jobs_histogram / jobs_usage_by_user) — the histogram
+# envelope is self-describing (dimension, unit, full zero-filled bucket
+# vector, null_count), so these renderers never hardcode bucket tables.
+# ---------------------------------------------------------------------------
+
+# UI metric name → plugin bucket/row key. 'jobs' is the count metric; the
+# hours metrics come from the LEFT OUTER JOIN against job_charges upstream.
+_JOBS_METRIC_KEYS = {
+    'jobs':      'job_count',
+    'cpu_hours': 'cpu_hours',
+    'gpu_hours': 'gpu_hours',
+}
+_JOBS_METRIC_LABELS = {
+    'jobs':      'Jobs',
+    'cpu_hours': 'CPU-hours',
+    'gpu_hours': 'GPU-hours',
+}
+
+
+def _jobs_histogram_cache_key(hist, *, metric='jobs'):
+    """Hash exactly what the SVG depends on: the bucket labels, the chosen
+    metric's values, the dimension, and null_count (not the full envelope —
+    e.g. min_param/max_param don't affect the rendering)."""
+    key = _JOBS_METRIC_KEYS.get(metric, 'job_count')
+    buckets = (hist or {}).get('buckets') or []
+    payload = [(b.get('label'), float(b.get(key) or 0)) for b in buckets]
+    return _content_hash([
+        payload, str((hist or {}).get('dimension', '')),
+        int((hist or {}).get('null_count') or 0), str(metric),
+    ])
+
+
+@caching.chart_cached(name='jobs_histogram', maxsize=128,
+                      key_fn=_jobs_histogram_cache_key)
+def generate_jobs_histogram(hist, *, metric='jobs') -> str:
+    """Single-series bar chart over a jobs_histogram envelope.
+
+    Shared by the Wait Times, Job Sizes, and Durations tabs — the envelope's
+    bucket vector is already complete and ordered (zeros included), so the
+    x-axis is stable across filter changes.
+
+    Args:
+        hist: plugin envelope — ``{'dimension', 'buckets':
+            [{'label','lo','hi','job_count','cpu_hours','gpu_hours'}, …],
+            'null_count', 'total_count', …}``.
+        metric: ``'jobs'`` (bucket job counts), ``'cpu_hours'`` or
+            ``'gpu_hours'`` (charged hours per bucket).
+
+    Returns a "no jobs" placeholder div when every bucket is zero.
+    """
+    buckets = (hist or {}).get('buckets') or []
+    if not buckets:
+        return _empty_state('No jobs in this range')
+
+    key = _JOBS_METRIC_KEYS.get(metric, 'job_count')
+    labels = [b.get('label', '') for b in buckets]
+    vals = [float(b.get(key) or 0) for b in buckets]
+    if not any(vals):
+        return _empty_state('No jobs in this range')
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    ax.bar(range(len(labels)), vals,
+           color=UNITY_PALETTE_10[0],
+           edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels, rotation=30, ha='right')
+    ax.set_ylabel(_JOBS_METRIC_LABELS.get(metric, 'Jobs'))
+    ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+    ax.grid(True, axis='y', alpha=0.3)
+
+    return _fig_to_svg(fig)
+
+
+def _jobs_user_pie_cache_key(entity_data, metric='cpu_hours'):
+    key = _JOBS_METRIC_KEYS.get(metric, 'cpu_hours')
+    rows = (entity_data or {}).get('rows') or []
+    totals = (entity_data or {}).get('totals') or {}
+    payload = [(r.get('value'), float(r.get(key) or 0)) for r in rows]
+    return _content_hash([payload, float(totals.get(key) or 0), str(metric)])
+
+
+@caching.chart_cached(name='jobs_user_pie_chart', maxsize=64,
+                      key_fn=_jobs_user_pie_cache_key)
+def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
+    """Pie of per-user usage from a jobs_usage_by('user') envelope.
+
+    Args:
+        entity_data: plugin envelope — ``{'rows': [{'value': username,
+            'job_count', 'cpu_hours', 'gpu_hours'}, …], 'totals': {…}}``.
+            ``totals`` is computed upstream BEFORE any limit truncation.
+        metric: ``'jobs'``, ``'cpu_hours'`` (default) or ``'gpu_hours'``.
+
+    The largest users up to a ~90% cumulative share (9 max) get named
+    slices; everything else — both beyond-cap rows AND the upstream
+    limit's remainder — folds into one inert "Other" slice sized
+    ``totals − Σ kept``, so the pie always sums to the true total.
+    Kept wedges + legend entries carry ``#job-user-<username>``
+    sentinels routed by svg-chart-links.js to the matching
+    ``data-job-user`` table row.
+    """
+    rows = (entity_data or {}).get('rows') or []
+    totals = (entity_data or {}).get('totals') or {}
+    key = _JOBS_METRIC_KEYS.get(metric, 'cpu_hours')
+
+    total = float(totals.get(key) or 0)
+    if not rows or total <= 0:
+        return _empty_state('No usage data available')
+
+    # Upstream sorts by combined hours; re-sort by the *chosen* metric so
+    # e.g. the Jobs view leads with the most job-count-heavy users.
+    data = sorted(rows, key=lambda r: float(r.get(key) or 0), reverse=True)
+    values_desc = [float(r.get(key) or 0) for r in data]
+    keep = _pie_cumulative_keep(values_desc)
+
+    names = [r.get('value') for r in data[:keep]]
+    labels = [n if n is not None else '(unknown)' for n in names]
+    values = list(values_desc[:keep])
+    colors = list(UNITY_PALETTE_10[:keep])
+
+    remainder = total - sum(values)
+    if remainder > 1e-9:
+        names.append(None)                     # inert slice — no set_url
+        labels.append('Other')
+        values.append(remainder)
+        colors.append(UNITY_NCAR_GRAY_LIGHT)
+
+    legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(labels, values)]
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    wedges, _texts, autotexts = ax.pie(
+        values,
+        labels=None,
+        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
+        startangle=_PIE_START_ANGLE,
+        counterclock=False,
+        colors=colors,
+        pctdistance=0.85,
+    )
+    for at, wedge_color in zip(autotexts, colors):
+        at.set_color(_autopct_color_for(wedge_color))
+        at.set_fontweight('bold')
+        at.set_fontsize(8)
+
+    legend = ax.legend(wedges, legend_labels, loc='center left',
+                       bbox_to_anchor=(1.0, 0.5), fontsize=9)
+
+    # Clickable wedges + legend entries → expand the matching table row.
+    # Skip "Other" and unnamed rows (name is None). svg-chart-links.js
+    # intercepts these, scoped to the originating tab pane.
+    leg_patches = legend.get_patches()
+    leg_texts = legend.get_texts()
+    for i, uname in enumerate(names):
+        if uname is None:
+            continue
+        url = f'#job-user-{uname}'
+        wedges[i].set_url(url)
+        if i < len(leg_patches):
+            leg_patches[i].set_url(url)
+        if i < len(leg_texts):
+            leg_texts[i].set_url(url)
+
+    return _fig_to_svg(fig)
+
+
+# ---------------------------------------------------------------------------
 # 6. Allocation pace chart (allocations dashboard)
 #
 # Stacked-area chart where each allocation is one band with a step at
