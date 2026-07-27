@@ -119,8 +119,15 @@ def get_cache_adapter(bucket: str = 'historical') -> Optional[CacheBase]:
             try:
                 client = make_redis_client(redis_url)
                 if client is not None:
+                    # prefix=<name>: — RedisTTLAdapter namespaces keys (and
+                    # clear()/info() scans) by prefix, NOT by name. The two
+                    # jobs buckets can legitimately hold the same key with
+                    # different TTL policies, so each needs its own keyspace
+                    # or the recent bucket's 15-min entries would satisfy
+                    # historical lookups (and vice versa) on shared Redis.
                     adapter = RedisTTLAdapter(
                         name=name, client=client, ttl=ttl, maxsize=size,
+                        prefix=f'{name}:',
                     )
                     _adapters[bucket] = adapter
                     return adapter

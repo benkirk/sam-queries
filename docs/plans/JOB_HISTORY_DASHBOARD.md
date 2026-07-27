@@ -334,3 +334,10 @@ Personas via Quick Login: `benkirk` (full operator), a plain project user,
 - Explorer inputs for elapsed/reqmem bounds (`min/max_elapsed`,
   `min/max_reqmem` are already accepted by the service normalizer; only
   panel fields + roundtrip keys are missing).
+- **Pre-existing, discovered via CI**: `RedisTTLAdapter` namespaces keys
+  and `clear()`/`info()` scans by `prefix` only, and the usage cache AND
+  both fs_scans buckets all sit on the default `'usage:'` prefix — so on
+  Redis, `clear('usage')` / `clear('scans')` wipe each other's entries
+  and their `info()` counts merge. The jobs buckets now pass distinct
+  `prefix=<name>:` values; migrating fs_scans/usage the same way is a
+  separate PR (existing 'usage:' keys orphan until TTL at cutover).

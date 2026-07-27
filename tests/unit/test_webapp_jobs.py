@@ -145,6 +145,45 @@ def test_init_job_history_engine_failure_skips_machine(monkeypatch):
 
 _DEFAULT_QOS_NAMES = ['economy', 'premium', 'regular', 'special', 'uncharged']
 
+# Pinned copy of the plugin's COLUMNS headers (hpc-usage-queries PR #99
+# contract, `from job_history import COLUMNS`). _install_mock_plugin patches
+# routes._load_column_specs to return THIS, so header-label assertions test
+# SAM's rendering against a fixed contract instead of whichever plugin
+# version happens to be installed — CI builds the plugin from main until
+# PR #99 merges, and the local hash-keyed conda-env flips refs, so the real
+# import may legitimately be missing or stale during the transition.
+_FAKE_COLUMN_SPECS = {
+    'job_id': {'header': 'Job ID'},
+    'name': {'header': 'Name'},
+    'qos': {'header': 'QoS'},
+    'start': {'header': 'Start'},
+    'elapsed': {'header': 'Elapsed'},
+    'numnodes': {'header': 'Nodes'},
+    'numcpus': {'header': 'CPUs'},
+    'numgpus': {'header': 'GPUs'},
+    'cpu_charges': {'header': 'CPU chg'},
+    'gpu_charges': {'header': 'GPU chg'},
+    'exit_status': {'header': 'Exit'},
+    'qos_factor': {'header': 'Factor'},
+    'queue': {'header': 'Queue'},
+    'user': {'header': 'User'},
+    'submit': {'header': 'Submit'},
+    'end': {'header': 'End'},
+    'walltime': {'header': 'Walltime'},
+    'mpiprocs': {'header': 'Ranks per Node'},
+    'ompthreads': {'header': 'OMP Threads'},
+    'reqmem': {'header': 'ReqMem'},
+    'memory': {'header': 'Mem'},
+    'vmemory': {'header': 'VMem'},
+    'cputype': {'header': 'CPU type'},
+    'gputype': {'header': 'GPU type'},
+    'resources': {'header': 'Resources'},
+    'cpu_hours': {'header': 'CPU-h'},
+    'gpu_hours': {'header': 'GPU-h'},
+    'memory_hours': {'header': 'Mem-h'},
+    'memory_charges': {'header': 'Mem chg'},
+}
+
 
 def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
                         jobs_count_return=None, qos_names=None,
@@ -207,6 +246,13 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'enabled': True,
     }
     monkeypatch.setitem(app.extensions, 'hpc_usage_queries', new_state)
+
+    # Column headers come from the pinned stub, never the installed plugin
+    # (see _FAKE_COLUMN_SPECS) — completes the isolation the fake module
+    # starts: these tests must pass with no plugin installed at all.
+    from webapp.jobs import routes as jobs_routes
+    monkeypatch.setattr(jobs_routes, '_load_column_specs',
+                        lambda: _FAKE_COLUMN_SPECS)
     return captured
 
 

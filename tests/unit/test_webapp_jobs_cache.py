@@ -17,12 +17,19 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _reset_jobs_cache():
+def _reset_jobs_cache(monkeypatch):
     """Start each test with the cache disabled; reset the singleton after.
 
     A stored ``None`` per bucket means "initialised but disabled"; the
     cache-behavior tests below re-enable by clearing ``_adapters``.
+
+    CACHE_REDIS_URL is dropped so re-init always builds the in-process
+    TTLCacheAdapter: the bucket-policy logic under test is backend-
+    independent, and a real Redis (CI runs with one) is shared across
+    xdist workers — concurrent cache tests would corrupt each other's
+    hit counts and purge totals.
     """
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
     from webapp.jobs import cache as _c
     _c._adapters = {b: None for b in _c._BUCKETS}
     yield
