@@ -2,7 +2,10 @@
 
 **Status (2026-07-26):** plugin side DONE and pushed; SAM side NOT STARTED.
 This doc is the restart brief for a fresh session: everything needed to execute
-the SAM work is here or referenced by exact path.
+the SAM work is here or referenced by exact path. The approved plan of record
+(full rationale, plugin-side commit details) is
+[`JOB_HISTORY_DRILLDOWN.md`](JOB_HISTORY_DRILLDOWN.md); where the two differ,
+THIS doc reflects what actually landed.
 
 ## How to resume
 

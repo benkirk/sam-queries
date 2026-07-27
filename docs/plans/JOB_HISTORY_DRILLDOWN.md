@@ -1,5 +1,10 @@
 # Job History Dashboard — bring job history to fs_scans feature parity
 
+> **Execution note (2026-07-26):** Session 1 (plugin side) is complete — PR #99
+> tip is `24a35ed`. The live session-2 brief, including the **as-landed** plugin
+> contract and measured costs, is [`JOB_HISTORY_DASHBOARD.md`](JOB_HISTORY_DASHBOARD.md);
+> execute from there. This file is the approved plan of record.
+
 ## Context
 
 SAM's disk-scans (fs_scans plugin) feature set — tabbed resource-details card, standalone
