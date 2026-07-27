@@ -51,10 +51,13 @@
      data-no-persist: the responsive default owns the initial state. #}
   <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
 
-  {# Scope context — submitted alongside the visible filter controls. #}
+  {# Scope context — submitted alongside the visible filter controls.
+     chips=1 asks the fragment for the OOB facet-chip strip (explorer is
+     this macro's only consumer; card embeds never send it). #}
   <input type="hidden" name="machine" value="{{ machine }}">
   {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
   <input type="hidden" name="target_id" value="{{ target_id }}">
+  <input type="hidden" name="chips" value="1">
 
   <div class="d-flex flex-wrap align-items-end gap-3">
     <div>

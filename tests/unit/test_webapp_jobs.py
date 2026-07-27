@@ -189,7 +189,9 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
                         jobs_count_return=None, qos_names=None,
                         machines=('derecho',),
                         jobs_histogram_return=None,
-                        jobs_usage_by_return=None):
+                        jobs_usage_by_return=None,
+                        jobs_facets_return=None,
+                        jobs_facets_raises=False):
     """Wire a mock job_history module onto app.extensions and return the
     captured JobQueries kwargs so tests can assert on the call.
 
@@ -202,6 +204,7 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'last_jobs_count_kwargs':  None,
         'last_jobs_histogram':     None,   # (dimension, kwargs)
         'last_jobs_usage_by':      None,   # (dimension, kwargs)
+        'last_jobs_facets_kwargs': None,
     }
     qos_list = (list(qos_names) if qos_names is not None
                 else list(_DEFAULT_QOS_NAMES))
@@ -231,6 +234,13 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
             return {'dimension': dimension, 'rows': [],
                     'totals': {'job_count': 0, 'cpu_hours': 0.0,
                                'gpu_hours': 0.0}}
+        def jobs_facets(self, **kwargs):
+            captured['last_jobs_facets_kwargs'] = kwargs
+            if jobs_facets_raises:
+                raise RuntimeError('facets exploded')
+            if jobs_facets_return is not None:
+                return jobs_facets_return
+            return {d: [] for d in kwargs.get('facets', ())}
         def list_qos_names(self, **kwargs):
             return list(qos_list)
 
@@ -2174,6 +2184,122 @@ def test_fragment_converts_elapsed_hours_and_reqmem_gb(
     assert skw['max_elapsed'] == 86400
     assert skw['min_reqmem'] == 512 * 1024 ** 2      # 0.5 GB
     assert skw['max_reqmem'] == 128 * 1024 ** 3
+
+
+_SAMPLE_FACETS = {
+    'queue': [{'value': 'cpu', 'count': 120}, {'value': 'gpu', 'count': 30},
+              {'value': None, 'count': 2}],
+    'qos': [{'value': 'regular', 'count': 100}, {'value': 'premium', 'count': 50}],
+    'exit_status': [{'value': '0', 'count': 140}, {'value': '271', 'count': 10}],
+}
+
+
+def test_explore_page_initial_url_requests_chips(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The explorer's lazy-load URL asks the fragment for the OOB chip
+    strip, and the page renders the placeholder it swaps into."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'chips=1' in body
+    assert 'id="jobs-facet-chips-jobs-explore"' in body
+    assert 'name="chips"' in body          # panel form round-trips it
+
+
+def test_fragment_chips_render_oob_with_counts(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?chips=1 → the fragment appends an hx-swap-oob strip: value chips
+    with live counts, NULL-FK rows skipped, wired to the panel form."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&chips=1&queue=cpu'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'hx-swap-oob' in body
+    assert 'data-action="set-filter-submit"' in body
+    assert 'data-form-id="jobs-filters-panel-jobs-' in body
+    # Active chip (queue=cpu) highlights and clears on click.
+    import re
+    cpu_chip = re.search(
+        r'<button[^>]*data-field="queue"[^>]*data-value=""[^>]*>', body)
+    assert cpu_chip is not None and 'btn-primary' in cpu_chip.group(0)
+    # Inactive chip carries its value.
+    assert 'data-value="gpu"' in body
+    assert 'data-value="271"' in body
+    # NULL-FK queue row renders no chip (nothing to filter by).
+    assert 'data-value="None"' not in body
+    # The facets call saw the same filter set as the table.
+    fkw = captured['last_jobs_facets_kwargs']
+    assert fkw['queue'] == 'cpu'
+    assert fkw['limit'] == 8
+
+
+def test_fragment_no_chips_without_param(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Card/drill embeds never send chips=1 → no facets query, no OOB."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'hx-swap-oob' not in body
+    assert captured['last_jobs_facets_kwargs'] is None
+
+
+def test_fragment_chips_degrade_on_facets_error(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A facets failure must not take the table down — the fragment
+    renders normally with no chip strip."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_facets_raises=True,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&chips=1'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'hx-swap-oob' not in body
+    assert 'Could not load per-job data' not in body
+
+
+def test_fragment_chips_project_scope_pins_account(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Facets are scoped exactly like the table — the project tree's
+    projcodes pin the account filter."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&chips=1'
+    )
+    fkw = captured['last_jobs_facets_kwargs']
+    assert active_project.projcode in fkw['account']
+
+
+def test_user_fragment_chips_pin_username(app, auth_client, monkeypatch):
+    """User-mode chips describe the pinned user's jobs only — the session
+    username rides into the facets call, client ?user= notwithstanding."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
+    )
+    auth_client.get(
+        '/dashboards/user/jobs/user/derecho'
+        '?machine=derecho&chips=1&user=mallory'
+    )
+    fkw = captured['last_jobs_facets_kwargs']
+    assert fkw['user'] == 'benkirk'
 
 
 def test_explore_page_scope_rerooting_badge(

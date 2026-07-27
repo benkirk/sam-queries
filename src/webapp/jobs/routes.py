@@ -233,6 +233,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
     error = None
     rows = []
     total: Optional[int] = None
+    account_projcodes = None
     try:
         common = dict(
             limit=page['per_page'], offset=offset,
@@ -319,6 +320,28 @@ def _jobs_table_response(*, mode, machine, fragment_url,
 
     column_specs = _load_column_specs()
 
+    # Explorer chip strip (?chips=1): facet counts for the same filter set
+    # this table shows, rendered as an hx-swap-oob block so chips and
+    # table always refresh together (panel submit, chip click, sort,
+    # pagination). Card/drill embeds never send chips=1. Degrades to no
+    # chips on any facet failure — the table is the primary content.
+    facet_chips = None
+    if request.args.get('chips') == '1' and error is None:
+        try:
+            facet_chips = service.jobs_facets(
+                machine,
+                account_projcodes=account_projcodes,
+                username=pinned_user,
+                valid_qos_names=qos_options,
+                **filters,
+            )
+        except Exception:
+            from flask import current_app
+            current_app.logger.exception(
+                'jobs table: facets failed for mode=%s machine=%s',
+                mode, machine,
+            )
+
     # The caller passes the id of the container that owns this fragment so
     # sort / pagination clicks can swap that same container's innerHTML.
     # Falls back to a generic id when called without one (legacy paths).
@@ -346,6 +369,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         fragment_url=fragment_url,
         target_id=target_id,
         roundtrip_params=_roundtrip_params(machine, target_id),
+        facet_chips=facet_chips,
         enabled=True,
         error=error,
     )
@@ -360,7 +384,7 @@ def _disabled_jobs_table(project=None, username=None):
         filters={}, page={'n': 1, 'per_page': _DEFAULT_PER_PAGE},
         sort={'sort_by': None, 'sort_dir': 'desc'},
         total=None, visible_cols=[], verbose_extras=[],
-        column_specs={}, roundtrip_params={},
+        column_specs={}, roundtrip_params={}, facet_chips=None,
         enabled=False, error=None,
     )
 
@@ -430,7 +454,7 @@ _ROUNDTRIP_KEYS = (
     'min_elapsed', 'max_elapsed', 'min_reqmem', 'max_reqmem',
     'min_memory_used', 'max_memory_used',
     'min_memory_wasted', 'max_memory_wasted',
-    'scope',
+    'scope', 'chips',
 )
 
 _SECS_PER_HOUR = 3600
@@ -867,7 +891,7 @@ def _initial_jobs_url(fragment_url: str, machine: str, target_id: str,
     """
     from urllib.parse import urlencode
     params = {'machine': machine, 'target_id': target_id,
-              'per_page': panel['per_page']}
+              'per_page': panel['per_page'], 'chips': '1'}
     if scope:
         params['scope'] = scope
     for key in ('start', 'end', 'queue', 'qos', 'exit_status', 'name'):

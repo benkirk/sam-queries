@@ -528,6 +528,53 @@ def jobs_usage_by_user(
     )
 
 
+def jobs_facets(
+    machine: str,
+    *,
+    facets: Sequence[str] = ('queue', 'qos', 'exit_status'),
+    limit: Optional[int] = 8,
+    account_projcodes: Optional[Sequence[str]] = None,
+    username: Optional[str] = None,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Cached per-dimension value counts (plugin ``jobs_facets``).
+
+    Backs the explorer's filter chips: ``{dim: [{'value', 'count'}, …]}``
+    with live counts for the current window + filters. The plugin's
+    ``self_exclude`` default stays on — a dimension's own filter doesn't
+    constrain its own counts, so the queue chips still list every queue
+    while a queue filter is active (click-to-switch). ``limit`` caps each
+    dimension's chip count; the tail is dropped, not folded.
+
+    Same scope and caching rules as :func:`jobs_histogram` — ``username``
+    hard-pins user mode (never self-excluded: 'user' isn't a requested
+    facet dimension), ``account_projcodes`` pins a project tree, and
+    ``account`` is never self-excluded upstream by design.
+    """
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if username is not None:
+        kwargs['user'] = username
+    if account_projcodes is not None:
+        kwargs['account'] = list(account_projcodes)
+
+    def _compute():
+        mod = get_module()
+        JobQueries = mod.JobQueries
+        with job_history_session(machine) as session:
+            return JobQueries(session, machine=machine).jobs_facets(
+                facets=tuple(facets), limit=limit, **kwargs,
+            )
+
+    opts = dict(kwargs)
+    opts['facets'] = tuple(facets)
+    opts['limit'] = limit
+    return jobs_cache.cached_jobs_aggregation(
+        'facets', machine, opts, _compute,
+        bucket=jobs_cache.bucket_for_window(kwargs.get('end')),
+    )
+
+
 def list_qos_names(machine: str) -> List[str]:
     """Return active QoS names from the plugin's ``job_qos`` lookup table.
 

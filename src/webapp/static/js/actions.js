@@ -112,6 +112,32 @@
         htmx.trigger(form, 'submit');
     });
 
+    /* Jobs-explorer facet chips: write the chip's value into the named
+     * field of the filter panel form, then re-submit it (the panel's
+     * hx-trigger="submit" refetches the table + OOB chip strip). An
+     * empty data-value clears the filter — the active chip doubles as
+     * its own clear button. A <select> target (the QoS dropdown) gets
+     * the option appended if the catalog doesn't already list it, so a
+     * facet value can never silently fail to apply. */
+    window.registerAction('set-filter-submit', function (el) {
+        var form = document.getElementById(el.dataset.formId);
+        if (!form) { return; }
+        var field = form.elements[el.dataset.field];
+        if (!field) { return; }
+        var value = el.dataset.value || '';
+        if (field.tagName === 'SELECT' && value &&
+                !Array.prototype.some.call(field.options, function (o) {
+                    return o.value === value;
+                })) {
+            var opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = value;
+            field.appendChild(opt);
+        }
+        field.value = value;
+        htmx.trigger(form, 'submit');
+    });
+
     /* Confirm-gated plain-form submit (samConfirm is an async Bootstrap
      * modal — always preventDefault, re-submit from onConfirm). Used via
      * <form data-action-submit="confirm-submit" data-confirm-message=...>. */
