@@ -20,6 +20,7 @@ from ..charts import (
 
 from system_status import queries as status_queries
 from webapp.disk_scans import service as disk_scans_service
+from webapp.jobs import service as jobs_service
 
 bp = Blueprint('status_dashboard', __name__, url_prefix='/status')
 logger = logging.getLogger(__name__)
@@ -80,6 +81,10 @@ def _page_context(session):
         # in-template on VIEW_ALL_FILESYSTEM_DATA. has_permission/Permission are
         # template globals (rbac_context_processor).
         fs_scan_resources=disk_scans_service.scan_capable_resources(),
+        # Plugin machines for the gated "Job History" tab — same pattern:
+        # empty (→ tab hidden) when the hpc-usage-queries plugin is off;
+        # visibility additionally gated in-template on VIEW_ALL_JOB_DATA.
+        job_history_machines=jobs_service.job_history_machines(),
     )
 
 
@@ -207,6 +212,22 @@ def filesystem_scans():
     """Filesystem scan summaries page (staff only)."""
     return render_template(
         'dashboards/status/filesystem_scans_page.html',
+        **_page_context(db.session),
+    )
+
+
+@bp.route('/job-history')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def job_history():
+    """Machine-wide job-history page (staff only).
+
+    One subtab per plugin machine, each hosting the jobs card in machine
+    mode — the card's fragment routes are themselves VIEW_ALL_JOB_DATA-
+    gated, so this page gate is the first line, not the only one.
+    """
+    return render_template(
+        'dashboards/status/job_history_page.html',
         **_page_context(db.session),
     )
 

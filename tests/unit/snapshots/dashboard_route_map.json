@@ -1477,6 +1477,13 @@
     ]
   ],
   [
+    "status_dashboard.job_history",
+    "/status/job-history",
+    [
+      "GET"
+    ]
+  ],
+  [
     "status_dashboard.jupyterhub",
     "/status/jupyterhub",
     [

@@ -44,13 +44,17 @@ from typing import Optional
 from flask import Blueprint, abort, render_template, request, url_for
 from flask_login import login_required
 
+from sam.core.users import User
+from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
 from webapp.dashboards.charts import (
     generate_jobs_histogram,
     generate_jobs_user_pie_chart,
 )
+from webapp.extensions import db
 from webapp.jobs import service
 from webapp.jobs.session import is_enabled
+from webapp.utils.rbac import Permission, require_permission
 
 bp = Blueprint('jobs', __name__)
 
@@ -154,37 +158,73 @@ def _visible_cols(default_cols, rows):
     ]
 
 
-@bp.route('/<projcode>')
-@login_required
-@require_project_access
-def jobs_fragment(project):
-    """HTMX fragment: per-job table for *project* on the requested machine."""
-    if not is_enabled():
-        # Render the partial in disabled mode rather than 404 — the
-        # resource-details page may include the hx-get unconditionally
-        # and we want a graceful "feature not available" cell.
-        return render_template(
-            'dashboards/user/partials/jobs_fragment.html',
-            project=project, machine=None, rows=[],
-            filters={}, page={'n': 1, 'per_page': _DEFAULT_PER_PAGE},
-            sort={'sort_by': None, 'sort_dir': 'desc'},
-            total=None, visible_cols=[], verbose_extras=[],
-            column_specs={},
-            enabled=False, error=None,
-        )
+def _scope_project(project) -> Project:
+    """Resolve the ``?scope=`` child project, or fall back to *project*.
 
-    machine = (request.args.get('machine') or '').strip().lower()
-    if machine not in _VALID_MACHINES:
-        abort(400, f'machine must be one of {sorted(_VALID_MACHINES)}')
+    Mirrors ``disk_scans/routes.py:_scope_project`` — an out-of-tree or
+    unknown scope silently falls back to the root project so a fragment
+    can never escape the project the decorator authorized.
+    """
+    scope = (request.args.get('scope') or '').strip()
+    if not scope or scope == project.projcode:
+        return project
+    candidate = Project.get_by_projcode(db.session, scope)
+    if candidate is None or candidate.tree_root != project.tree_root:
+        return project
+    return candidate
 
+
+def _resolve_user_filter() -> tuple:
+    """(username, user_id, label) from ``?user=`` or the fk-picker's ``?user_id=``.
+
+    The explorer's user picker stores a SAM user_id; the per-job data is
+    keyed by PBS username, so resolve here. A raw ``?user=`` (drill-downs,
+    deep links) wins over the picker.
+    """
+    raw = (request.args.get('user') or '').strip()
+    if raw:
+        return raw, None, raw
+    uid_raw = (request.args.get('user_id') or '').strip()
+    if uid_raw.isdigit():
+        u = db.session.get(User, int(uid_raw))
+        if u is not None:
+            return u.username, int(uid_raw), u.username
+    return None, None, ''
+
+
+def _jobs_table_response(*, mode, machine, fragment_url,
+                         project=None, pinned_user=None):
+    """Shared body of the per-job table fragment across the three modes.
+
+    ``mode`` selects the service family (and with it the scoping rule):
+    'project' pins the account filter to *project*'s tree, 'user' hard-pins
+    ``pinned_user`` (any client-supplied user is ignored), 'machine' is
+    unscoped — its routes are VIEW_ALL_JOB_DATA-gated.
+    """
     filters = {
         'start':  _parse_date(request.args.get('start')),
         'end':    _parse_date(request.args.get('end')),
-        'user':   (request.args.get('user') or '').strip() or None,
         'queue':  (request.args.get('queue') or '').strip() or None,
         'qos':    (request.args.get('qos') or '').strip() or None,
         'exit_status': (request.args.get('exit_status') or '').strip() or None,
+        'name':  (request.args.get('name') or '').strip() or None,
     }
+    if filters['name'] is not None:
+        filters['ignore_case'] = request.args.get('ignore_case') in ('1', 'true', 'on')
+    for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
+                'min_gpus', 'max_gpus'):
+        v = _parse_int_arg(key)
+        if v is not None:
+            filters[key] = v
+    min_wait = _parse_float_arg('min_wait_hours')
+    max_wait = _parse_float_arg('max_wait_hours')
+    if min_wait is not None:
+        filters['min_eligible_secs'] = int(min_wait * _SECS_PER_HOUR)
+    if max_wait is not None:
+        filters['max_eligible_secs'] = int(max_wait * _SECS_PER_HOUR)
+    if pinned_user is None:
+        filters['user'], _uid, _ulabel = _resolve_user_filter()
+
     page = _parse_pagination()
     sort = _parse_sort()
     offset = (page['n'] - 1) * page['per_page']
@@ -193,29 +233,19 @@ def jobs_fragment(project):
     # renders without a second fetch. Plugin still validates each key.
     requested_cols = tuple(_DEFAULT_COLS) + tuple(_VERBOSE_EXTRAS)
 
-    # Expand the project tree so a parent's drill-down rows surface jobs
-    # charged to child projcodes. Mirrors the Historical Usage rollup in
-    # webapp/dashboards/user/blueprint.py — `get_descendants(include_self=True)`
-    # returns just [project] for non-tree projects, so single-project
-    # callers get the same effective filter as before.
-    account_projcodes = [
-        p.projcode for p in project.get_descendants(include_self=True)
-    ]
-
     # QoS options for the filter dropdown — sourced from the plugin's
     # job_qos lookup table so a future seed addition flows through
     # without a SAM-side change. Fetched BEFORE search/count so the
-    # same list can also be threaded into service.search_jobs /
-    # count_jobs as ``valid_qos_names``: this lets the legacy queue
-    # normalizer promote a 'cpu-special' drill-down's suffix to a real
-    # QoS filter (was previously discarded). Degrades to [] if the
-    # plugin call fails or the table is empty.
+    # same list can also be threaded into the service as
+    # ``valid_qos_names``: this lets the legacy queue normalizer promote
+    # a 'cpu-special' drill-down's suffix to a real QoS filter. Degrades
+    # to [] if the plugin call fails or the table is empty.
     try:
         qos_options = service.list_qos_names(machine)
     except Exception:
         from flask import current_app
         current_app.logger.exception(
-            'jobs_fragment: list_qos_names failed for machine=%s', machine,
+            'jobs table: list_qos_names failed for machine=%s', machine,
         )
         qos_options = []
 
@@ -223,29 +253,51 @@ def jobs_fragment(project):
     rows = []
     total: Optional[int] = None
     try:
-        rows = service.search_jobs(
-            machine, project=project,
+        common = dict(
             limit=page['per_page'], offset=offset,
             sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
             columns=requested_cols,
-            account_projcodes=account_projcodes,
             valid_qos_names=qos_options,
-            **filters,
         )
-        total = service.count_jobs(
-            machine, project=project,
-            account_projcodes=account_projcodes,
-            valid_qos_names=qos_options,
-            **filters,
-        )
+        if mode == 'project':
+            # Expand the (possibly ?scope=-re-rooted) project tree so a
+            # parent's rows surface jobs charged to child projcodes —
+            # mirrors the Historical Usage rollup.
+            account_projcodes = [
+                p.projcode
+                for p in _scope_project(project).get_descendants(include_self=True)
+            ]
+            rows = service.search_jobs(
+                machine, project=project,
+                account_projcodes=account_projcodes, **common, **filters,
+            )
+            total = service.count_jobs(
+                machine, project=project,
+                account_projcodes=account_projcodes,
+                valid_qos_names=qos_options, **filters,
+            )
+        elif mode == 'user':
+            rows = service.search_jobs_user(
+                machine, pinned_user, **common, **filters,
+            )
+            total = service.count_jobs_user(
+                machine, pinned_user, valid_qos_names=qos_options, **filters,
+            )
+        else:
+            rows = service.search_jobs_machine(
+                machine, **common, **filters,
+            )
+            total = service.count_jobs_machine(
+                machine, valid_qos_names=qos_options, **filters,
+            )
     except Exception as exc:
         # Catch-all so a transient plugin/DB issue degrades to a banner
         # rather than a 500 on the surrounding page. App logger captures
         # the full traceback for diagnosis.
         from flask import current_app
         current_app.logger.exception(
-            'jobs_fragment: search/count failed for project=%s machine=%s',
-            project.projcode, machine,
+            'jobs table: search/count failed for mode=%s machine=%s',
+            mode, machine,
         )
         error = str(exc)
 
@@ -285,17 +337,19 @@ def jobs_fragment(project):
             }
 
     column_specs = _load_column_specs()
-    fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
 
     # The caller passes the id of the container that owns this fragment so
     # sort / pagination clicks can swap that same container's innerHTML.
     # Falls back to a generic id when called without one (legacy paths).
+    scope_key = (project.projcode if project is not None
+                 else (pinned_user or 'all'))
     target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-{project.projcode}-{machine}'
+        or f'jobs-{scope_key}-{machine}'
 
     return render_template(
         'dashboards/user/partials/jobs_fragment.html',
         project=project,
+        username=pinned_user,
         machine=machine,
         rows=rows,
         filters=filters,
@@ -310,8 +364,42 @@ def jobs_fragment(project):
         qos_badge=qos_badge,
         fragment_url=fragment_url,
         target_id=target_id,
+        roundtrip_params=_roundtrip_params(machine, target_id),
         enabled=True,
         error=error,
+    )
+
+
+def _disabled_jobs_table(project=None, username=None):
+    """The per-job table partial in disabled mode — never a 404, so a host
+    page can hx-get it unconditionally."""
+    return render_template(
+        'dashboards/user/partials/jobs_fragment.html',
+        project=project, username=username, machine=None, rows=[],
+        filters={}, page={'n': 1, 'per_page': _DEFAULT_PER_PAGE},
+        sort={'sort_by': None, 'sort_dir': 'desc'},
+        total=None, visible_cols=[], verbose_extras=[],
+        column_specs={}, roundtrip_params={},
+        enabled=False, error=None,
+    )
+
+
+@bp.route('/<projcode>')
+@login_required
+@require_project_access
+def jobs_fragment(project):
+    """HTMX fragment: per-job table for *project* on the requested machine."""
+    if not is_enabled():
+        return _disabled_jobs_table(project=project)
+
+    machine = (request.args.get('machine') or '').strip().lower()
+    if machine not in _VALID_MACHINES:
+        abort(400, f'machine must be one of {sorted(_VALID_MACHINES)}')
+
+    return _jobs_table_response(
+        mode='project', machine=machine,
+        fragment_url=url_for('jobs.jobs_fragment', projcode=project.projcode),
+        project=project,
     )
 
 
@@ -347,10 +435,11 @@ _BY_USER_LIMIT = 25
 # Filter query params round-tripped through pill/toggle re-fetches, and —
 # where the per-job fragment understands them — carried into row drill-downs.
 _ROUNDTRIP_KEYS = (
-    'start', 'end', 'user', 'queue', 'qos', 'exit_status',
+    'start', 'end', 'user', 'user_id', 'queue', 'qos', 'exit_status',
     'name', 'ignore_case',
     'min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
     'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours',
+    'scope',
 )
 
 _SECS_PER_HOUR = 3600
@@ -386,7 +475,7 @@ def _parse_job_filters() -> dict:
     f: dict = {
         'start': _parse_date(request.args.get('start')),
         'end':   _parse_date(request.args.get('end')),
-        'user':  (request.args.get('user') or '').strip() or None,
+        'user':  _resolve_user_filter()[0],
         'queue': (request.args.get('queue') or '').strip() or None,
         'qos':   (request.args.get('qos') or '').strip() or None,
         'exit_status': (request.args.get('exit_status') or '').strip() or None,
@@ -432,8 +521,15 @@ def _parse_metric(default: str) -> str:
 
 
 def _tree_projcodes(project) -> list:
-    """Parent + descendants — same tree expansion as jobs_fragment."""
-    return [p.projcode for p in project.get_descendants(include_self=True)]
+    """(Scoped) parent + descendants — same tree expansion as jobs_fragment.
+
+    Honors ``?scope=`` re-rooting so every card tab and the explorer agree
+    on which slice of the tree they aggregate.
+    """
+    return [
+        p.projcode
+        for p in _scope_project(project).get_descendants(include_self=True)
+    ]
 
 
 def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
@@ -606,3 +702,241 @@ def durations_fragment(project):
     return _project_histogram(project, dimension='duration',
                               dimension_toggle=False,
                               endpoint='jobs.durations_fragment')
+
+
+# ---------------------------------------------------------------------------
+# Explorer full view (project mode) + machine-wide family (operator surfaces)
+# ---------------------------------------------------------------------------
+
+# Row-count choices offered by the explorer's per-page selector.
+_PER_PAGE_OPTIONS = (25, 50, 100, 200)
+
+
+def _machine_or_404(machine: str) -> str:
+    """Validate a path ``<machine>`` against the warmed engines → 404 unknown.
+
+    Dynamic (not the static _VALID_MACHINES): the machine-wide routes only
+    make sense for machines the plugin actually serves right now.
+    """
+    m = (machine or '').strip().lower()
+    if m not in service.job_history_machines():
+        abort(404)
+    return m
+
+
+def _qos_options_safe(machine: str) -> list:
+    """QoS names for the explorer's select; [] on any plugin hiccup."""
+    try:
+        return service.list_qos_names(machine)
+    except Exception:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs explorer: list_qos_names failed for machine=%s', machine,
+        )
+        return []
+
+
+def _panel_filters(machine: str) -> dict:
+    """Raw (display-unit) filter values for the explorer's sidebar panel."""
+    username, user_id, user_label = _resolve_user_filter()
+    per_page = _parse_pagination()['per_page']
+    return {
+        'start': (request.args.get('start') or '').strip(),
+        'end':   (request.args.get('end') or '').strip(),
+        'user': username or '',
+        'user_id': user_id or '',
+        'user_label': user_label,
+        'queue': (request.args.get('queue') or '').strip(),
+        'qos':   (request.args.get('qos') or '').strip(),
+        'exit_status': (request.args.get('exit_status') or '').strip(),
+        'name':  (request.args.get('name') or '').strip(),
+        'ignore_case': request.args.get('ignore_case') in ('1', 'true', 'on'),
+        'min_nodes': _parse_int_arg('min_nodes'),
+        'max_nodes': _parse_int_arg('max_nodes'),
+        'min_cpus':  _parse_int_arg('min_cpus'),
+        'max_cpus':  _parse_int_arg('max_cpus'),
+        'min_gpus':  _parse_int_arg('min_gpus'),
+        'max_gpus':  _parse_int_arg('max_gpus'),
+        'min_wait_hours': _parse_float_arg('min_wait_hours'),
+        'max_wait_hours': _parse_float_arg('max_wait_hours'),
+        'per_page': per_page,
+        'qos_options': _qos_options_safe(machine),
+    }
+
+
+def _initial_jobs_url(fragment_url: str, machine: str, target_id: str,
+                      panel: dict, scope: Optional[str] = None) -> str:
+    """Fragment URL pre-loaded by the explorer page (carries current filters).
+
+    The page's table container ``hx-get``s this on load so a deep-link /
+    reload lands on the same filtered view the panel shows; subsequent panel
+    submits re-fetch via the form's own fields.
+    """
+    from urllib.parse import urlencode
+    params = {'machine': machine, 'target_id': target_id,
+              'per_page': panel['per_page']}
+    if scope:
+        params['scope'] = scope
+    for key in ('start', 'end', 'queue', 'qos', 'exit_status', 'name'):
+        if panel[key]:
+            params[key] = panel[key]
+    if panel['user']:
+        params['user'] = panel['user']
+    if panel['ignore_case']:
+        params['ignore_case'] = '1'
+    for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
+                'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours'):
+        if panel[key] is not None:
+            params[key] = panel[key]
+    return f'{fragment_url}?{urlencode(params)}'
+
+
+def _user_search_url() -> str:
+    """The fk-picker search endpoint for the user filter (context='fk')."""
+    return url_for('admin_dashboard.htmx_search_users', context='fk')
+
+
+@bp.route('/<projcode>/explore')
+@login_required
+@require_project_access
+def explore_page(project):
+    """Standalone full-page jobs explorer for *project* (project mode).
+
+    Renders the filter panel + a table container that lazy-loads
+    ``jobs_fragment`` with the panel's params. ``?scope=<child>`` re-roots
+    to a subtree (same-tree validated); the reusable fragment is shared
+    verbatim with the machine/user modes.
+    """
+    if not is_enabled():
+        return render_template(
+            'dashboards/user/jobs_explore_page.html',
+            mode='project', enabled=False, project=project,
+            scoped_project=project, machine=None,
+        )
+    machine = _get_machine_or_400()
+    scoped = _scope_project(project)
+    target_id = 'jobs-explore'
+    fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
+    panel = _panel_filters(machine)
+    scope = scoped.projcode if scoped.projcode != project.projcode else None
+    return render_template(
+        'dashboards/user/jobs_explore_page.html',
+        mode='project', enabled=True,
+        project=project, scoped_project=scoped, machine=machine,
+        scope=scope,
+        fragment_url=fragment_url,
+        initial_url=_initial_jobs_url(fragment_url, machine, target_id,
+                                      panel, scope=scope),
+        filters=panel, user_search_url=_user_search_url(),
+        per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
+    )
+
+
+@bp.route('/machine/<machine>')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def jobs_machine_fragment(machine):
+    """HTMX fragment: per-job table across an ENTIRE machine (operator)."""
+    if not is_enabled():
+        return _disabled_jobs_table()
+    machine = _machine_or_404(machine)
+    return _jobs_table_response(
+        mode='machine', machine=machine,
+        fragment_url=url_for('jobs.jobs_machine_fragment', machine=machine),
+    )
+
+
+@bp.route('/machine/<machine>/by-user')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def by_user_machine_fragment(machine):
+    """HTMX fragment: machine-wide per-user usage pie + rows (operator)."""
+    if not is_enabled():
+        return _render_by_user(mode='machine', machine=None,
+                               fragment_url=None, jobs_fragment_url=None,
+                               target_id='')
+    machine = _machine_or_404(machine)
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-byuser-machine-{machine}'
+    return _render_by_user(
+        mode='machine', machine=machine,
+        fragment_url=url_for('jobs.by_user_machine_fragment', machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_machine_fragment', machine=machine),
+        target_id=target_id,
+    )
+
+
+def _machine_histogram(machine, *, dimension, dimension_toggle, endpoint):
+    """Common body of the three machine-mode histogram routes."""
+    if not is_enabled():
+        return _render_histogram(mode='machine', machine=None,
+                                 dimension=dimension,
+                                 dimension_toggle=dimension_toggle,
+                                 fragment_url=None, target_id='')
+    machine = _machine_or_404(machine)
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-{dimension}-machine-{machine}'
+    return _render_histogram(
+        mode='machine', machine=machine,
+        dimension=dimension, dimension_toggle=dimension_toggle,
+        fragment_url=url_for(endpoint, machine=machine),
+        target_id=target_id,
+    )
+
+
+@bp.route('/machine/<machine>/wait-times')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def wait_times_machine_fragment(machine):
+    return _machine_histogram(machine, dimension='wait',
+                              dimension_toggle=False,
+                              endpoint='jobs.wait_times_machine_fragment')
+
+
+@bp.route('/machine/<machine>/job-sizes')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def job_sizes_machine_fragment(machine):
+    dimension = (request.args.get('dimension') or '').strip()
+    if dimension not in _SIZE_DIMENSIONS:
+        dimension = _SIZE_DIMENSIONS[0]
+    return _machine_histogram(machine, dimension=dimension,
+                              dimension_toggle=True,
+                              endpoint='jobs.job_sizes_machine_fragment')
+
+
+@bp.route('/machine/<machine>/durations')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def durations_machine_fragment(machine):
+    return _machine_histogram(machine, dimension='duration',
+                              dimension_toggle=False,
+                              endpoint='jobs.durations_machine_fragment')
+
+
+@bp.route('/machine/<machine>/explore')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def explore_machine_page(machine):
+    """Standalone full-page jobs explorer across an ENTIRE machine.
+
+    Machine mode — unscoped, elevated. Same page template as project mode,
+    parameterized by ``mode='machine'`` + the machine fragment URL.
+    """
+    if not is_enabled():
+        return render_template(
+            'dashboards/user/jobs_explore_page.html',
+            mode='machine', enabled=False, machine=machine,
+        )
+    machine = _machine_or_404(machine)
+    target_id = 'jobs-explore'
+    fragment_url = url_for('jobs.jobs_machine_fragment', machine=machine)
+    panel = _panel_filters(machine)
+    return render_template(
+        'dashboards/user/jobs_explore_page.html',
+        mode='machine', enabled=True, machine=machine,
+        fragment_url=fragment_url,
+        initial_url=_initial_jobs_url(fragment_url, machine, target_id, panel),
+        filters=panel, user_search_url=_user_search_url(),
+        per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
+    )

@@ -24,6 +24,11 @@
    VIEW_ALL_JOB_DATA); in user mode the username is pinned server-side and
    the By User tab is omitted (it would be a pie of one).
 #}
+{# Optional params default to none so url_for drops them (an undefined
+   name would reach url_for as Jinja Undefined and break URL building). #}
+{% set start = start | default(none) %}
+{% set end = end | default(none) %}
+{% set scope = scope | default(none) %}
 {% if mode == 'machine' %}
     {% set _jobs_url  = url_for('jobs.jobs_machine_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
     {% set _user_url  = url_for('jobs.by_user_machine_fragment',    machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
@@ -44,8 +49,7 @@
     {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
     {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
     {% set _dur_url   = url_for('jobs.durations_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
-    {# explore_page lands with the explorer commit — until then no button #}
-    {% set _full_url  = none %}
+    {% set _full_url  = url_for('jobs.explore_page',        projcode=projcode, machine=machine, start=start, end=end, scope=scope) %}
 {% endif %}
 <ul class="nav nav-tabs mb-0" id="{{ tablist_id }}" role="tablist">
     <li class="nav-item" role="presentation">

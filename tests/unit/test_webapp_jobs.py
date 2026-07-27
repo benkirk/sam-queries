@@ -1720,3 +1720,224 @@ def test_histogram_fragment_metric_pill_roundtrip(
     import re
     assert re.search(r'active[^>]*>\s*CPU-hours', body) or \
         re.search(r'CPU-hours', body)
+
+
+# ---------------------------------------------------------------------------
+# Commit 6: machine-wide family (operator) + explorer pages + Status tab
+# ---------------------------------------------------------------------------
+
+_MACHINE_FRAGMENTS = ['', '/by-user', '/wait-times', '/job-sizes', '/durations']
+
+
+@pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
+def test_machine_routes_403_without_permission(non_admin_client, suffix):
+    resp = non_admin_client.get(f'/dashboards/user/jobs/machine/derecho{suffix}')
+    assert resp.status_code == 403
+
+
+@pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
+def test_machine_routes_disabled_banner_with_permission(auth_client, suffix):
+    """benkirk holds VIEW_ALL_JOB_DATA → 200 (plugin off → banner)."""
+    resp = auth_client.get(f'/dashboards/user/jobs/machine/derecho{suffix}')
+    assert resp.status_code == 200
+    assert 'Per-job data is unavailable' in resp.get_data(as_text=True)
+
+
+@pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
+def test_machine_routes_404_unknown_machine(app, auth_client, monkeypatch, suffix):
+    """With the plugin up for derecho only, /machine/gust → 404."""
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get(f'/dashboards/user/jobs/machine/gust{suffix}')
+    assert resp.status_code == 404
+
+
+def test_machine_jobs_fragment_unscoped(app, auth_client, monkeypatch):
+    """The machine table issues no account filter and renders rows."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=1)
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert '500.desched1' in body
+    kw = captured['last_jobs_search_kwargs']
+    assert 'account' not in kw
+    ckw = captured['last_jobs_count_kwargs']
+    assert 'account' not in ckw
+
+
+def test_machine_by_user_fragment_unscoped(app, auth_client, monkeypatch):
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_usage_by_return=_sample_usage())
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/by-user')
+    assert resp.status_code == 200
+    assert 'data-job-user="alice"' in resp.get_data(as_text=True)
+    _dim, kwargs = captured['last_jobs_usage_by']
+    assert 'account' not in kwargs
+
+
+def test_machine_histogram_fragment_unscoped(app, auth_client, monkeypatch):
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_histogram_return=_sample_hist())
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/wait-times')
+    assert resp.status_code == 200
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert 'account' not in kwargs
+
+
+def test_explore_machine_page_renders_filter_panel(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/explore')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'filter-sidebar' in body
+    assert 'Machine-wide (operator view)' in body
+    # Panel fields present.
+    assert 'name="min_nodes"' in body
+    assert 'name="exit_status"' in body
+
+
+def test_explore_page_project_mode(app, auth_client, active_project, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore?machine=derecho'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'filter-sidebar' in body
+    assert active_project.projcode in body
+    # Machine-wide badge must NOT show in project mode.
+    assert 'Machine-wide (operator view)' not in body
+
+
+def test_explore_page_carries_filters_into_initial_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Deep-link with filters → the lazy-load URL reproduces them."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&queue=main&min_nodes=4&min_wait_hours=1.5'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'queue=main' in body
+    assert 'min_nodes=4' in body
+    assert 'min_wait_hours=1.5' in body
+
+
+def test_explore_page_scope_rerooting_badge(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A valid child scope shows the scope badge; out-of-tree falls back."""
+    import types as _types
+    from sam import Project
+
+    child = _types.SimpleNamespace(projcode='CHILD0001')
+    real_get = Project.get_by_projcode
+
+    def _fake_get(session, projcode):
+        if projcode == 'CHILD0001':
+            fake = MagicMock()
+            fake.projcode = 'CHILD0001'
+            fake.tree_root = active_project.tree_root
+            fake.get_descendants = lambda include_self=True: [child]
+            return fake
+        return real_get(session, projcode)
+
+    monkeypatch.setattr(Project, 'get_by_projcode', staticmethod(_fake_get))
+    _install_mock_plugin(app, monkeypatch)
+
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&scope=CHILD0001'
+    )
+    assert resp.status_code == 200
+    assert 'scope: CHILD0001' in resp.get_data(as_text=True)
+
+
+def test_fragment_scope_rerooting_narrows_account(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?scope=<child> narrows the account filter to the child's subtree."""
+    import types as _types
+    from sam import Project
+
+    child_desc = [_types.SimpleNamespace(projcode='CHILD0001'),
+                  _types.SimpleNamespace(projcode='CHILD0001_a')]
+    real_get = Project.get_by_projcode
+
+    def _fake_get(session, projcode):
+        if projcode == 'CHILD0001':
+            fake = MagicMock()
+            fake.projcode = 'CHILD0001'
+            fake.tree_root = active_project.tree_root
+            fake.get_descendants = lambda include_self=True: child_desc
+            return fake
+        return real_get(session, projcode)
+
+    monkeypatch.setattr(Project, 'get_by_projcode', staticmethod(_fake_get))
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_histogram_return=_sample_hist())
+
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&scope=CHILD0001'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['account'] == ['CHILD0001', 'CHILD0001_a']
+
+
+# ---------------------------------------------------------------------------
+# Status dashboard: Job History tab
+# ---------------------------------------------------------------------------
+
+def test_status_job_history_403_without_permission(non_admin_client):
+    resp = non_admin_client.get('/status/job-history')
+    assert resp.status_code == 403
+
+
+def test_status_job_history_empty_state_when_disabled(auth_client):
+    """Plugin off → no machines → the info alert (never a broken card)."""
+    resp = auth_client.get('/status/job-history')
+    assert resp.status_code == 200
+    assert 'No job-history data is currently available' in resp.get_data(as_text=True)
+
+
+def test_status_job_history_machine_pills_when_enabled(
+    app, auth_client, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho', 'casper'))
+    resp = auth_client.get('/status/job-history')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'job-hist-subtab-1' in body
+    assert 'Derecho' in body
+    assert 'Casper' in body
+    # Machine-mode card fragments wired per pill.
+    assert '/dashboards/user/jobs/machine/casper' in body
+
+
+def test_status_tab_hidden_without_machines(auth_client):
+    """Plugin off → the Job History tab is absent from the status pages."""
+    resp = auth_client.get('/status/derecho')
+    assert resp.status_code == 200
+    assert '/status/job-history' not in resp.get_data(as_text=True)
+
+
+def test_status_tab_visible_for_operator_with_machines(
+    app, auth_client, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get('/status/derecho')
+    assert resp.status_code == 200
+    assert '/status/job-history' in resp.get_data(as_text=True)
+
+
+def test_status_tab_hidden_for_plain_user_with_machines(
+    app, non_admin_client, monkeypatch,
+):
+    """Even with machines up, no VIEW_ALL_JOB_DATA → no tab, anywhere."""
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = non_admin_client.get('/status/derecho')
+    assert resp.status_code == 200
+    assert '/status/job-history' not in resp.get_data(as_text=True)

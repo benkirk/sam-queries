@@ -60,6 +60,18 @@ def _can_view_fs_scans():
     return bool(disk_scans_service.scan_capable_resources())
 
 
+def _can_view_job_history():
+    # Same gate as the status tab strip: permission AND at least one warmed
+    # job-history engine. job_history_machines() is an in-memory extension
+    # lookup — cheap per request. When the plugin is off, no job-history
+    # link appears anywhere on the page.
+    if not (current_user.is_authenticated
+            and has_permission(current_user, Permission.VIEW_ALL_JOB_DATA)):
+        return False
+    from webapp.jobs import service as jobs_service
+    return bool(jobs_service.job_history_machines())
+
+
 def _my_data_available():
     # Mirrors user_dashboard._page_context(): needs a filesystem identity and
     # at least one warmed scan collection. scan_capable_resources() is a
@@ -112,6 +124,8 @@ NAV_SECTIONS = (
              'icon': 'fas fa-calendar-alt'},
             {'endpoint': 'status_dashboard.filesystem_scans', 'label': 'Filesystem Scans',
              'icon': 'fas fa-magnifying-glass-chart', 'visible': _can_view_fs_scans},
+            {'endpoint': 'status_dashboard.job_history', 'label': 'Job History',
+             'icon': 'fas fa-list-check', 'visible': _can_view_job_history},
         ),
     },
     {
