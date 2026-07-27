@@ -189,7 +189,9 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
                         jobs_count_return=None, qos_names=None,
                         machines=('derecho',),
                         jobs_histogram_return=None,
-                        jobs_usage_by_return=None):
+                        jobs_usage_by_return=None,
+                        jobs_facets_return=None,
+                        jobs_facets_raises=False):
     """Wire a mock job_history module onto app.extensions and return the
     captured JobQueries kwargs so tests can assert on the call.
 
@@ -202,6 +204,7 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
         'last_jobs_count_kwargs':  None,
         'last_jobs_histogram':     None,   # (dimension, kwargs)
         'last_jobs_usage_by':      None,   # (dimension, kwargs)
+        'last_jobs_facets_kwargs': None,
     }
     qos_list = (list(qos_names) if qos_names is not None
                 else list(_DEFAULT_QOS_NAMES))
@@ -231,6 +234,13 @@ def _install_mock_plugin(app, monkeypatch, *, jobs_search_return=None,
             return {'dimension': dimension, 'rows': [],
                     'totals': {'job_count': 0, 'cpu_hours': 0.0,
                                'gpu_hours': 0.0}}
+        def jobs_facets(self, **kwargs):
+            captured['last_jobs_facets_kwargs'] = kwargs
+            if jobs_facets_raises:
+                raise RuntimeError('facets exploded')
+            if jobs_facets_return is not None:
+                return jobs_facets_return
+            return {d: [] for d in kwargs.get('facets', ())}
         def list_qos_names(self, **kwargs):
             return list(qos_list)
 
@@ -1524,6 +1534,47 @@ def test_count_jobs_name_filter_forces_plugin_path(
     assert ckw['ignore_case'] is True
 
 
+def test_count_jobs_memory_bound_forces_plugin_path(
+    app, active_project, monkeypatch,
+):
+    """The new memory bounds are outside the SAM summary's key set — any
+    value (including a negative wasted bound) must take the plugin path."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=3)
+
+    with app.app_context():
+        total = service.count_jobs(
+            'derecho', project=active_project, max_memory_wasted=-1,
+        )
+
+    assert total == 3
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['max_memory_wasted'] == -1
+
+
+def test_search_jobs_forwards_memory_filters(app, active_project, monkeypatch):
+    """_plugin_filter_kwargs mirrors the plugin surface 1:1 — the four new
+    memory bounds flow through search_jobs untouched."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho', project=active_project,
+            min_memory_used=2 * 1024 ** 3, max_memory_used=64 * 1024 ** 3,
+            min_memory_wasted=-(4 * 1024 ** 3), max_memory_wasted=0,
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['min_memory_used'] == 2 * 1024 ** 3
+    assert kw['max_memory_used'] == 64 * 1024 ** 3
+    assert kw['min_memory_wasted'] == -(4 * 1024 ** 3)
+    assert kw['max_memory_wasted'] == 0
+
+
 def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
     """_plugin_filter_kwargs is keyword-only: a typo'd filter raises
     TypeError instead of silently vanishing."""
@@ -1717,6 +1768,140 @@ def test_job_sizes_fragment_memory_dimension_forwarded(
     assert dim == 'memory'
 
 
+def test_job_sizes_fragment_offers_memory_trio_pills(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The Sizes tab renders all six dimension pills, memory trio labeled
+    Req mem / Used mem / Wasted."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='nodes'),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'dimension=memory_used' in body
+    assert 'dimension=memory_wasted' in body
+    assert 'Req mem' in body
+    assert 'Used mem' in body
+    assert 'Wasted' in body
+
+
+@pytest.mark.parametrize('dimension', ['memory_used', 'memory_wasted'])
+def test_job_sizes_fragment_memory_trio_forwarded(
+    app, auth_client, active_project, monkeypatch, dimension,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension=dimension),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        f'?machine=derecho&dimension={dimension}'
+    )
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == dimension
+
+
+def test_job_sizes_wasted_caption_derecho_only(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The whole-node caveat renders on derecho's Wasted view and nowhere
+    else — not on casper (shared nodes make wasted meaningful there) and
+    not on derecho's other dimensions."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_histogram_return=_sample_hist(dimension='memory_wasted'),
+        machines=('derecho', 'casper'),
+    )
+    base = f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+
+    body = auth_client.get(
+        f'{base}?machine=derecho&dimension=memory_wasted').get_data(as_text=True)
+    assert 'node-exclusive' in body
+
+    body = auth_client.get(
+        f'{base}?machine=casper&dimension=memory_wasted').get_data(as_text=True)
+    assert 'node-exclusive' not in body
+
+    body = auth_client.get(
+        f'{base}?machine=derecho&dimension=memory').get_data(as_text=True)
+    assert 'node-exclusive' not in body
+
+
+def test_histogram_fragment_native_bounds_passthrough(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Envelope-native params (min_param/max_param names) pass through
+    verbatim — no display-unit re-derivation, no double conversion."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_eligible_secs=120&max_eligible_secs=900'
+        '&min_reqmem=1073741824&min_memory_used=2147483648'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['min_eligible_secs'] == 120
+    assert kwargs['max_eligible_secs'] == 900
+    assert kwargs['min_reqmem'] == 1073741824
+    assert kwargs['min_memory_used'] == 2147483648
+
+
+def test_histogram_fragment_native_bound_wins_over_human_units(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When a deep link carries both spellings of the same bound, the
+    native form (parsed last) wins."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_wait_hours=2&min_eligible_secs=120'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['min_eligible_secs'] == 120
+
+
+def test_histogram_fragment_negative_wasted_bound_not_clamped(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The 'over request' band replays as max_memory_wasted=-1 — the signed
+    parse must forward the negative, not clamp it to 0 or drop it."""
+    captured = _install_mock_plugin(
+        app, monkeypatch,
+        jobs_histogram_return=_sample_hist(dimension='memory_wasted'),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=memory_wasted&max_memory_wasted=-1'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['max_memory_wasted'] == -1
+
+
+def test_jobs_fragment_native_bounds_forwarded_to_search_and_count(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The per-job table accepts the same native bounds (bar-drill target):
+    both jobs_search and the count see them, and the count leaves the
+    SAM-summary fast path (range bound in play)."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&min_memory_wasted=-4294967296&max_memory_wasted=-1'
+        '&min_elapsed=3600'
+    )
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['min_memory_wasted'] == -4294967296
+    assert skw['max_memory_wasted'] == -1
+    assert skw['min_elapsed'] == 3600
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None                      # plugin path, not SAM summary
+    assert ckw['max_memory_wasted'] == -1
+
+
 def test_durations_fragment_pins_duration_dimension(
     app, auth_client, active_project, monkeypatch,
 ):
@@ -1749,6 +1934,96 @@ def test_histogram_fragment_converts_wait_hours_to_secs(
     _dim, kwargs = captured['last_jobs_histogram']
     assert kwargs['min_eligible_secs'] == 7200
     assert kwargs['max_eligible_secs'] == 16200
+
+
+def test_histogram_bucket_rows_carry_band_drill_urls(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Populated bands render data-jh-bucket rows whose collapse content
+    lazy-loads the per-job fragment with the envelope's min/max bounds
+    plus the pane's round-trip filters."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&queue=cpu'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'data-jh-bucket="0"' in body
+    assert 'data-jh-bucket="1"' in body
+    import re
+    url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert f'/dashboards/user/jobs/{active_project.projcode}?' in url0
+    assert 'min_eligible_secs=0' in url0
+    assert 'max_eligible_secs=59' in url0
+    assert 'queue=cpu' in url0             # pane filters carried into the drill
+    assert 'machine=derecho' in url0
+    assert 'target_id=' in url0
+
+
+_WASTED_HIST = {
+    'dimension': 'memory_wasted', 'column': 'memory_wasted', 'unit': 'bytes',
+    'min_param': 'min_memory_wasted', 'max_param': 'max_memory_wasted',
+    'buckets': [
+        {'label': 'over request', 'lo': None, 'hi': -1,
+         'job_count': 3, 'cpu_hours': 30.0, 'gpu_hours': 0.0},
+        {'label': '<1GB', 'lo': 0, 'hi': 2 ** 30 - 1,
+         'job_count': 0, 'cpu_hours': 0.0, 'gpu_hours': 0.0},
+        {'label': '>1GB', 'lo': 2 ** 30, 'hi': None,
+         'job_count': 7, 'cpu_hours': 70.0, 'gpu_hours': 0.0},
+    ],
+    'null_count': 0, 'total_count': 10,
+}
+
+
+def test_histogram_bucket_drill_omits_open_ends(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A None band end is an open side — its param is omitted from the
+    drill URL in both directions: the negative 'over request' band emits
+    only the max bound, the open top band only the min. Empty bands get
+    no drill row at all."""
+    import re
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_WASTED_HIST,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=memory_wasted'
+    )
+    body = resp.get_data(as_text=True)
+
+    url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert 'min_memory_wasted' not in url0
+    assert 'max_memory_wasted=-1' in url0
+
+    assert 'data-jh-bucket="1"' not in body        # empty band: inert row
+    assert re.search(r'id="[^"]*-b1-content"', body) is None
+
+    url2 = re.search(r'id="[^"]*-b2-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert f'min_memory_wasted={2 ** 30}' in url2
+    assert 'max_memory_wasted' not in url2
+
+
+def test_histogram_bucket_drill_band_bound_replaces_pane_param(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When the pane itself is filtered on the same native bound the band
+    replays, the band's value replaces the pane's in the drill URL —
+    never both."""
+    import re
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_eligible_secs=999'
+    )
+    body = resp.get_data(as_text=True)
+    url0 = re.search(r'id="[^"]*-b0-content"\s+hx-get="([^"]+)"', body).group(1)
+    assert 'min_eligible_secs=0' in url0
+    assert 'min_eligible_secs=999' not in url0
 
 
 def test_histogram_fragment_metric_pill_roundtrip(
@@ -1869,6 +2144,162 @@ def test_explore_page_carries_filters_into_initial_url(
     assert 'queue=main' in body
     assert 'min_nodes=4' in body
     assert 'min_wait_hours=1.5' in body
+
+
+def test_explore_page_elapsed_reqmem_panel_roundtrip(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The panel renders the elapsed/req-mem inputs, echoes deep-linked
+    values back into them, and carries them into the lazy-load URL."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&min_elapsed_hours=2.5&max_reqmem_gb=128'
+    )
+    body = resp.get_data(as_text=True)
+    # Panel inputs exist (all four names) with the deep-linked values.
+    for field in ('min_elapsed_hours', 'max_elapsed_hours',
+                  'min_reqmem_gb', 'max_reqmem_gb'):
+        assert f'name="{field}"' in body
+    assert 'value="2.5"' in body
+    assert 'value="128' in body
+    # …and the initial fragment URL reproduces them.
+    assert 'min_elapsed_hours=2.5' in body
+    assert 'max_reqmem_gb=128' in body
+
+
+def test_fragment_converts_elapsed_hours_and_reqmem_gb(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Panel units convert at the route boundary: hours → seconds for
+    elapsed, GB → bytes (1024³) for requested memory."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&min_elapsed_hours=1.5&max_elapsed_hours=24'
+        '&min_reqmem_gb=0.5&max_reqmem_gb=128'
+    )
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['min_elapsed'] == 5400
+    assert skw['max_elapsed'] == 86400
+    assert skw['min_reqmem'] == 512 * 1024 ** 2      # 0.5 GB
+    assert skw['max_reqmem'] == 128 * 1024 ** 3
+
+
+_SAMPLE_FACETS = {
+    'queue': [{'value': 'cpu', 'count': 120}, {'value': 'gpu', 'count': 30},
+              {'value': None, 'count': 2}],
+    'qos': [{'value': 'regular', 'count': 100}, {'value': 'premium', 'count': 50}],
+    'exit_status': [{'value': '0', 'count': 140}, {'value': '271', 'count': 10}],
+}
+
+
+def test_explore_page_initial_url_requests_chips(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The explorer's lazy-load URL asks the fragment for the OOB chip
+    strip, and the page renders the placeholder it swaps into."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'chips=1' in body
+    assert 'id="jobs-facet-chips-jobs-explore"' in body
+    assert 'name="chips"' in body          # panel form round-trips it
+
+
+def test_fragment_chips_render_oob_with_counts(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?chips=1 → the fragment appends an hx-swap-oob strip: value chips
+    with live counts, NULL-FK rows skipped, wired to the panel form."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&chips=1&queue=cpu'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'hx-swap-oob' in body
+    assert 'data-action="set-filter-submit"' in body
+    assert 'data-form-id="jobs-filters-panel-jobs-' in body
+    # Active chip (queue=cpu) highlights and clears on click.
+    import re
+    cpu_chip = re.search(
+        r'<button[^>]*data-field="queue"[^>]*data-value=""[^>]*>', body)
+    assert cpu_chip is not None and 'btn-primary' in cpu_chip.group(0)
+    # Inactive chip carries its value.
+    assert 'data-value="gpu"' in body
+    assert 'data-value="271"' in body
+    # NULL-FK queue row renders no chip (nothing to filter by).
+    assert 'data-value="None"' not in body
+    # The facets call saw the same filter set as the table.
+    fkw = captured['last_jobs_facets_kwargs']
+    assert fkw['queue'] == 'cpu'
+    assert fkw['limit'] == 8
+
+
+def test_fragment_no_chips_without_param(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Card/drill embeds never send chips=1 → no facets query, no OOB."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'hx-swap-oob' not in body
+    assert captured['last_jobs_facets_kwargs'] is None
+
+
+def test_fragment_chips_degrade_on_facets_error(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A facets failure must not take the table down — the fragment
+    renders normally with no chip strip."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_facets_raises=True,
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&chips=1'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'hx-swap-oob' not in body
+    assert 'Could not load per-job data' not in body
+
+
+def test_fragment_chips_project_scope_pins_account(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Facets are scoped exactly like the table — the project tree's
+    projcodes pin the account filter."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&chips=1'
+    )
+    fkw = captured['last_jobs_facets_kwargs']
+    assert active_project.projcode in fkw['account']
+
+
+def test_user_fragment_chips_pin_username(app, auth_client, monkeypatch):
+    """User-mode chips describe the pinned user's jobs only — the session
+    username rides into the facets call, client ?user= notwithstanding."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
+    )
+    auth_client.get(
+        '/dashboards/user/jobs/user/derecho'
+        '?machine=derecho&chips=1&user=mallory'
+    )
+    fkw = captured['last_jobs_facets_kwargs']
+    assert fkw['user'] == 'benkirk'
 
 
 def test_explore_page_scope_rerooting_badge(
@@ -2049,6 +2480,117 @@ def test_user_histogram_fragments_ignore_client_user_param(
     assert resp.status_code == 200
     _dim, kwargs = captured['last_jobs_histogram']
     assert kwargs['user'] == 'benkirk'
+
+
+_PROJECT_USAGE = {
+    'dimension': 'account',
+    'rows': [
+        {'value': 'SCSG0001', 'job_count': 30, 'cpu_hours': 300.0, 'gpu_hours': 0.0},
+        {'value': 'UABC0002', 'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 2.0},
+    ],
+    'totals': {'job_count': 42, 'cpu_hours': 420.0, 'gpu_hours': 2.0},
+}
+
+
+def test_by_project_fragment_renders_rows_and_pinned_pie(
+    app, auth_client, monkeypatch,
+):
+    """The My Jobs By Project tab: plugin grouped by 'account' with the
+    session user pinned (client ?user= ignored); rows carry
+    data-job-project and the pie #job-proj sentinels."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_usage_by_return=_PROJECT_USAGE,
+    )
+    resp = auth_client.get(
+        '/dashboards/user/jobs/user/derecho/by-project?user=mallory'
+    )
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    dim, kwargs = captured['last_jobs_usage_by']
+    assert dim == 'account'
+    assert kwargs['user'] == 'benkirk'
+    assert kwargs['limit'] == 25
+    assert 'data-job-project="SCSG0001"' in body
+    assert '#job-proj-SCSG0001' in body
+    # Row drill narrows the user-mode jobs fragment by account.
+    assert '/dashboards/user/jobs/user/derecho?machine=derecho&account=SCSG0001' in body
+
+
+def test_by_project_fragment_404_unknown_machine(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get('/dashboards/user/jobs/user/fugaku/by-project')
+    assert resp.status_code == 404
+
+
+def test_by_project_fragment_disabled_banner(auth_client):
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho/by-project')
+    assert resp.status_code == 200
+    assert 'plugin is not loaded' in resp.get_data(as_text=True)
+
+
+def test_user_fragment_account_narrows_own_jobs(app, auth_client, monkeypatch):
+    """?account=<projcode> narrows the pinned user's OWN jobs — both the
+    rows and the count see it, and the user pin survives."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        '/dashboards/user/jobs/user/derecho?machine=derecho&account=SCSG0001'
+    )
+    assert resp.status_code == 200
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['account'] == 'SCSG0001'
+    assert skw['user'] == 'benkirk'
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw['account'] == 'SCSG0001'
+    assert ckw['user'] == 'benkirk'
+    # The narrowing surfaces as a header badge.
+    assert 'project: SCSG0001' in resp.get_data(as_text=True)
+
+
+def test_project_fragment_ignores_client_account_param(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Project mode keeps its account list server-derived — a client
+    ?account= must not replace the tree pin."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&account=EVIL0001'
+    )
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['account'] == [active_project.projcode] or \
+        active_project.projcode in skw['account']
+    assert 'EVIL0001' not in skw['account']
+
+
+def test_my_jobs_card_offers_by_project_tab(app, auth_client, monkeypatch):
+    """The user-mode card swaps By User for By Project."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get('/user/jobs')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'By Project' in body
+    assert 'by-project' in body
+    assert 'By User' not in body
+
+
+def test_service_jobs_usage_by_project_requires_username(app, monkeypatch):
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+    with app.app_context():
+        with pytest.raises(ValueError, match='username'):
+            service.jobs_usage_by_project('derecho', username='')
+
+
+def test_service_jobs_usage_by_project_rejects_user_filter(app, monkeypatch):
+    from webapp.jobs import service
+
+    _install_mock_plugin(app, monkeypatch)
+    with app.app_context():
+        with pytest.raises(ValueError, match='user'):
+            service.jobs_usage_by_project(
+                'derecho', username='benkirk', user='mallory',
+            )
 
 
 def test_user_explore_page_omits_user_picker(app, auth_client, monkeypatch):

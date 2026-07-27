@@ -190,8 +190,8 @@ def test_caching_facade_reports_and_clears_jobs_category(app):
 # ---------------------------------------------------------------------------
 
 def _install_agg_plugin(app, monkeypatch):
-    """Mock plugin capturing jobs_histogram / jobs_usage_by calls."""
-    captured = {'histogram': [], 'usage_by': []}
+    """Mock plugin capturing jobs_histogram / jobs_usage_by / jobs_facets."""
+    captured = {'histogram': [], 'usage_by': [], 'facets': []}
 
     class FakeJobQueries:
         def __init__(self, session, machine='derecho'):
@@ -206,6 +206,10 @@ def _install_agg_plugin(app, monkeypatch):
             captured['usage_by'].append((dimension, kwargs))
             return {'dimension': dimension, 'rows': [],
                     'totals': {'job_count': 0, 'cpu_hours': 0.0, 'gpu_hours': 0.0}}
+
+        def jobs_facets(self, **kwargs):
+            captured['facets'].append(kwargs)
+            return {d: [] for d in kwargs.get('facets', ())}
 
     fake_mod = types.SimpleNamespace(
         get_engine=lambda machine, pool_kwargs=None: MagicMock(),
@@ -282,6 +286,41 @@ def test_service_jobs_usage_by_user_forwards_limit_and_account(app, monkeypatch)
     assert 'rows' in out and 'totals' in out
 
 
+def test_service_jobs_facets_caches_closed_window(app, monkeypatch):
+    """Two identical closed-window facet calls → one plugin query; a
+    different facet tuple or limit is a different key."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_facets('derecho', account_projcodes=['SCSG0001'], **win)
+        service.jobs_facets('derecho', account_projcodes=['SCSG0001'], **win)
+        service.jobs_facets('derecho', account_projcodes=['SCSG0001'],
+                            limit=3, **win)
+
+    assert len(captured['facets']) == 2
+    kwargs = captured['facets'][0]
+    assert kwargs['facets'] == ('queue', 'qos', 'exit_status')
+    assert kwargs['limit'] == 8
+    assert kwargs['account'] == ['SCSG0001']
+
+
+def test_service_jobs_facets_username_pin_overwrites_user_filter(
+    app, monkeypatch,
+):
+    from webapp.jobs import service
+
+    captured = _install_agg_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.jobs_facets('derecho', username='benkirk', user='mallory')
+
+    assert captured['facets'][0]['user'] == 'benkirk'
+
+
 def test_service_jobs_usage_by_user_caches(app, monkeypatch):
     from webapp.jobs import cache as c, service
     c._adapters.clear()
@@ -297,3 +336,27 @@ def test_service_jobs_usage_by_user_caches(app, monkeypatch):
                                    account_projcodes=['SCSG0001'], **win)
 
     assert len(captured['usage_by']) == 2
+
+
+def test_service_jobs_usage_by_project_caches_under_own_query_type(
+    app, monkeypatch,
+):
+    """usage_by_account is its own cache key family — a by-project call
+    never satisfies (or is satisfied by) a by-user call with the same
+    filter set."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_usage_by_project('derecho', username='benkirk', **win)
+        service.jobs_usage_by_project('derecho', username='benkirk', **win)
+        # Same window as a by-user call → still a fresh plugin query.
+        service.jobs_usage_by_user('derecho', user='benkirk', limit=25, **win)
+
+    assert len(captured['usage_by']) == 2
+    dim, kwargs = captured['usage_by'][0]
+    assert dim == 'account'
+    assert kwargs['user'] == 'benkirk'

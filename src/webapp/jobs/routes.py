@@ -49,6 +49,7 @@ from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
 from webapp.dashboards.charts import (
     generate_jobs_histogram,
+    generate_jobs_usage_pie_chart,
     generate_jobs_user_pie_chart,
 )
 from webapp.extensions import db
@@ -201,29 +202,10 @@ def _jobs_table_response(*, mode, machine, fragment_url,
     ``pinned_user`` (any client-supplied user is ignored), 'machine' is
     unscoped — its routes are VIEW_ALL_JOB_DATA-gated.
     """
-    filters = {
-        'start':  _parse_date(request.args.get('start')),
-        'end':    _parse_date(request.args.get('end')),
-        'queue':  (request.args.get('queue') or '').strip() or None,
-        'qos':    (request.args.get('qos') or '').strip() or None,
-        'exit_status': (request.args.get('exit_status') or '').strip() or None,
-        'name':  (request.args.get('name') or '').strip() or None,
-    }
-    if filters['name'] is not None:
-        filters['ignore_case'] = request.args.get('ignore_case') in ('1', 'true', 'on')
-    for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
-                'min_gpus', 'max_gpus'):
-        v = _parse_int_arg(key)
-        if v is not None:
-            filters[key] = v
-    min_wait = _parse_float_arg('min_wait_hours')
-    max_wait = _parse_float_arg('max_wait_hours')
-    if min_wait is not None:
-        filters['min_eligible_secs'] = int(min_wait * _SECS_PER_HOUR)
-    if max_wait is not None:
-        filters['max_eligible_secs'] = int(max_wait * _SECS_PER_HOUR)
-    if pinned_user is None:
-        filters['user'], _uid, _ulabel = _resolve_user_filter()
+    # Same parse as the aggregation fragments — one boundary, one unit
+    # convention. User mode drops the user key entirely (the service
+    # families raise if it sneaks in beside the server-side pin).
+    filters = _parse_job_filters(include_user=(pinned_user is None))
 
     page = _parse_pagination()
     sort = _parse_sort()
@@ -252,6 +234,8 @@ def _jobs_table_response(*, mode, machine, fragment_url,
     error = None
     rows = []
     total: Optional[int] = None
+    account_projcodes = None
+    user_account = None
     try:
         common = dict(
             limit=page['per_page'], offset=offset,
@@ -277,11 +261,17 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 valid_qos_names=qos_options, **filters,
             )
         elif mode == 'user':
+            # `account` narrows one's OWN jobs to a single projcode (the
+            # By Project drill) — safe from the client in this mode only
+            # because the username pin still applies. Project mode keeps
+            # its account list server-derived.
+            user_account = (request.args.get('account') or '').strip() or None
             rows = service.search_jobs_user(
-                machine, pinned_user, **common, **filters,
+                machine, pinned_user, account=user_account, **common, **filters,
             )
             total = service.count_jobs_user(
-                machine, pinned_user, valid_qos_names=qos_options, **filters,
+                machine, pinned_user, account=user_account,
+                valid_qos_names=qos_options, **filters,
             )
         else:
             rows = service.search_jobs_machine(
@@ -338,6 +328,31 @@ def _jobs_table_response(*, mode, machine, fragment_url,
 
     column_specs = _load_column_specs()
 
+    # Explorer chip strip (?chips=1): facet counts for the same filter set
+    # this table shows, rendered as an hx-swap-oob block so chips and
+    # table always refresh together (panel submit, chip click, sort,
+    # pagination). Card/drill embeds never send chips=1. Degrades to no
+    # chips on any facet failure — the table is the primary content.
+    facet_chips = None
+    if request.args.get('chips') == '1' and error is None:
+        try:
+            facet_chips = service.jobs_facets(
+                machine,
+                account_projcodes=(
+                    [user_account] if user_account else account_projcodes),
+                username=pinned_user,
+                valid_qos_names=qos_options,
+                **filters,
+            )
+        except Exception:
+            from flask import current_app
+            current_app.logger.exception(
+                'jobs table: facets failed for mode=%s machine=%s',
+                mode, machine,
+            )
+    if user_account:
+        filters['account'] = user_account   # header badge (post-service)
+
     # The caller passes the id of the container that owns this fragment so
     # sort / pagination clicks can swap that same container's innerHTML.
     # Falls back to a generic id when called without one (legacy paths).
@@ -365,6 +380,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         fragment_url=fragment_url,
         target_id=target_id,
         roundtrip_params=_roundtrip_params(machine, target_id),
+        facet_chips=facet_chips,
         enabled=True,
         error=error,
     )
@@ -379,7 +395,7 @@ def _disabled_jobs_table(project=None, username=None):
         filters={}, page={'n': 1, 'per_page': _DEFAULT_PER_PAGE},
         sort={'sort_by': None, 'sort_dir': 'desc'},
         total=None, visible_cols=[], verbose_extras=[],
-        column_specs={}, roundtrip_params={},
+        column_specs={}, roundtrip_params={}, facet_chips=None,
         enabled=False, error=None,
     )
 
@@ -427,7 +443,10 @@ _DEFAULT_METRIC_HIST = 'jobs'
 _DEFAULT_METRIC_PIE = 'cpu_hours'
 
 # Job Sizes tab dimension pills; Wait Times / Durations pin their dimension.
-_SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus', 'memory')
+# memory = REQUESTED (reqmem); memory_used = consumed (Job.memory);
+# memory_wasted = requested − used (negative ⇒ used more than requested).
+_SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus',
+                    'memory', 'memory_used', 'memory_wasted')
 
 # Rows shown in the By User table (the pie itself keeps at most 9 + Other).
 _BY_USER_LIMIT = 25
@@ -439,10 +458,21 @@ _ROUNDTRIP_KEYS = (
     'name', 'ignore_case',
     'min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
     'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours',
-    'scope',
+    'min_elapsed_hours', 'max_elapsed_hours',
+    'min_reqmem_gb', 'max_reqmem_gb',
+    # Plugin-native bounds (bar-drill deep links / envelope replays).
+    'min_eligible_secs', 'max_eligible_secs',
+    'min_elapsed', 'max_elapsed', 'min_reqmem', 'max_reqmem',
+    'min_memory_used', 'max_memory_used',
+    'min_memory_wasted', 'max_memory_wasted',
+    'scope', 'chips', 'account',
 )
 
 _SECS_PER_HOUR = 3600
+
+# 1 GB = 1024^3 bytes — the plugin's GB↔bytes convention (its CLI's
+# _BYTES_PER_GB); the "GB" panel labels match its bucket-label vocabulary.
+_BYTES_PER_GB = 1024 ** 3
 
 
 def _parse_int_arg(name: str) -> Optional[int]:
@@ -465,22 +495,46 @@ def _parse_float_arg(name: str) -> Optional[float]:
         return None
 
 
-def _parse_job_filters() -> dict:
+def _parse_signed_int_arg(name: str) -> Optional[int]:
+    """Like ``_parse_int_arg`` but negatives are legal (memory_wasted)."""
+    raw = (request.args.get(name) or '').strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _parse_job_filters(include_user: bool = True) -> dict:
     """Whitelisted GET parse → service filter kwargs (plugin-native units).
 
     Human-facing units convert at this boundary and nowhere else:
-    ``min/max_wait_hours`` (hours) → ``min/max_eligible_secs`` (seconds).
+    ``min/max_wait_hours`` and ``min/max_elapsed_hours`` (hours →
+    seconds), ``min/max_reqmem_gb`` (GB → bytes, 1024³).
     Unknown params are ignored; malformed numbers degrade to "no filter".
+
+    Plugin-native bound params (the names a histogram envelope's
+    ``min_param``/``max_param`` announce) pass through verbatim — the bar
+    drill replays a clicked band without re-deriving display units. They
+    parse AFTER the human-unit forms, so if both spell the same bound the
+    native one wins. The ``memory_wasted`` pair is signed: negative bounds
+    select over-request jobs and must not be clamped.
+
+    ``include_user=False`` omits the ``user`` key entirely — the user-mode
+    service family raises if a user filter arrives beside its server-side
+    pin.
     """
     f: dict = {
         'start': _parse_date(request.args.get('start')),
         'end':   _parse_date(request.args.get('end')),
-        'user':  _resolve_user_filter()[0],
         'queue': (request.args.get('queue') or '').strip() or None,
         'qos':   (request.args.get('qos') or '').strip() or None,
         'exit_status': (request.args.get('exit_status') or '').strip() or None,
         'name':  (request.args.get('name') or '').strip() or None,
     }
+    if include_user:
+        f['user'] = _resolve_user_filter()[0]
     if f['name'] is not None:
         f['ignore_case'] = request.args.get('ignore_case') in ('1', 'true', 'on')
     for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
@@ -494,6 +548,25 @@ def _parse_job_filters() -> dict:
         f['min_eligible_secs'] = int(min_wait * _SECS_PER_HOUR)
     if max_wait is not None:
         f['max_eligible_secs'] = int(max_wait * _SECS_PER_HOUR)
+    for arg, target, factor in (
+            ('min_elapsed_hours', 'min_elapsed', _SECS_PER_HOUR),
+            ('max_elapsed_hours', 'max_elapsed', _SECS_PER_HOUR),
+            ('min_reqmem_gb',     'min_reqmem',  _BYTES_PER_GB),
+            ('max_reqmem_gb',     'max_reqmem',  _BYTES_PER_GB)):
+        v = _parse_float_arg(arg)
+        if v is not None:
+            f[target] = int(v * factor)
+    for key in ('min_eligible_secs', 'max_eligible_secs',
+                'min_elapsed', 'max_elapsed',
+                'min_reqmem', 'max_reqmem',
+                'min_memory_used', 'max_memory_used'):
+        v = _parse_int_arg(key)
+        if v is not None:
+            f[key] = v
+    for key in ('min_memory_wasted', 'max_memory_wasted'):
+        v = _parse_signed_int_arg(key)
+        if v is not None:
+            f[key] = v
     return f
 
 
@@ -532,6 +605,18 @@ def _tree_projcodes(project) -> list:
     ]
 
 
+def _usage_other(usage) -> Optional[dict]:
+    """The upstream limit's remainder: totals are pre-truncation, so any
+    positive difference is real usage by entities beyond the row cap."""
+    totals = usage.get('totals') or {}
+    rows = usage.get('rows') or []
+    rem = {
+        k: (totals.get(k) or 0) - sum((r.get(k) or 0) for r in rows)
+        for k in ('job_count', 'cpu_hours', 'gpu_hours')
+    }
+    return rem if any(v > 1e-9 for v in rem.values()) else None
+
+
 def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
                     target_id, account_projcodes=None):
     """Shared renderer for the By User tab (project + machine modes)."""
@@ -557,20 +642,9 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
         )
         error = str(exc)
 
-    pie_svg = None
-    other = None
-    if usage:
-        pie_svg = generate_jobs_user_pie_chart(usage, metric=metric)
-        totals = usage.get('totals') or {}
-        rows = usage.get('rows') or []
-        # The upstream limit's remainder: totals are pre-truncation, so any
-        # positive difference is real usage by users beyond the row cap.
-        rem = {
-            k: (totals.get(k) or 0) - sum((r.get(k) or 0) for r in rows)
-            for k in ('job_count', 'cpu_hours', 'gpu_hours')
-        }
-        if any(v > 1e-9 for v in rem.values()):
-            other = rem
+    pie_svg = generate_jobs_user_pie_chart(usage, metric=metric) \
+        if usage else None
+    other = _usage_other(usage) if usage else None
 
     return render_template(
         template,
@@ -585,8 +659,76 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
     )
 
 
+def _render_by_project(*, machine, fragment_url, jobs_fragment_url,
+                       target_id, username=None):
+    """Renderer for the My Jobs "By Project" tab (user mode only)."""
+    template = 'dashboards/user/partials/jobs_by_project.html'
+    if not is_enabled():
+        return render_template(template, enabled=False, error=None,
+                               mode='user', machine=None, target_id=target_id)
+
+    filters = _parse_job_filters(include_user=False)
+    metric = _parse_metric(_DEFAULT_METRIC_PIE)
+
+    usage = None
+    error = None
+    try:
+        usage = service.jobs_usage_by_project(
+            machine, username=username, limit=_BY_USER_LIMIT, **filters,
+        )
+    except Exception as exc:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs by-project fragment failed: machine=%s', machine,
+        )
+        error = str(exc)
+
+    pie_svg = generate_jobs_usage_pie_chart(
+        usage, metric=metric, sentinel_prefix='job-proj') if usage else None
+    other = _usage_other(usage) if usage else None
+
+    return render_template(
+        template,
+        enabled=True, error=error,
+        mode='user', machine=machine,
+        usage=usage, other=other,
+        metric=metric, pie_svg=pie_svg,
+        fragment_url=fragment_url,
+        jobs_fragment_url=jobs_fragment_url,
+        target_id=target_id,
+        params=_roundtrip_params(machine, target_id),
+    )
+
+
+def _bucket_drill_url(jobs_fragment_url: str, hist: dict, bucket: dict,
+                      roundtrip: dict) -> Optional[str]:
+    """Per-band URL for the mode's jobs fragment, or None for empty bands.
+
+    Replays the envelope's self-describing bounds verbatim
+    (``{min_param: lo, max_param: hi}``, omitting a ``None`` end — the
+    open side of an unbounded band, including the wasted dimension's
+    negative 'over request' band) plus the pane's round-trip filters.
+    A pane param spelling the same native bound as the band is dropped —
+    the clicked band's meaning wins. The template appends its own
+    ``target_id``.
+    """
+    if not bucket.get('job_count'):
+        return None
+    from urllib.parse import urlencode
+    params = {}
+    if bucket.get('lo') is not None:
+        params[hist['min_param']] = bucket['lo']
+    if bucket.get('hi') is not None:
+        params[hist['max_param']] = bucket['hi']
+    for k, v in roundtrip.items():
+        if k != 'target_id' and k not in params:
+            params[k] = v
+    return f'{jobs_fragment_url}?{urlencode(params)}'
+
+
 def _render_histogram(*, mode, machine, dimension, dimension_toggle,
                       fragment_url, target_id,
+                      jobs_fragment_url=None,
                       account_projcodes=None, username=None):
     """Shared renderer for the Wait Times / Job Sizes / Durations tabs."""
     template = 'dashboards/user/partials/jobs_histogram.html'
@@ -616,6 +758,18 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         error = str(exc)
 
     chart_svg = generate_jobs_histogram(hist, metric=metric) if hist else None
+    params = _roundtrip_params(machine, target_id)
+
+    # One drill URL per band (None for empty bands) — computed here, not
+    # in the template, so the envelope's min_param/max_param replay stays
+    # in one place. A parallel list rather than mutating hist: the
+    # envelope is a shared cache entry.
+    bucket_drills = None
+    if hist and jobs_fragment_url:
+        bucket_drills = [
+            _bucket_drill_url(jobs_fragment_url, hist, b, params)
+            for b in hist.get('buckets') or []
+        ]
 
     return render_template(
         template,
@@ -626,8 +780,9 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         dimension=dimension, dimension_toggle=dimension_toggle,
         size_dimensions=_SIZE_DIMENSIONS,
         fragment_url=fragment_url,
+        bucket_drills=bucket_drills,
         target_id=target_id,
-        params=_roundtrip_params(machine, target_id),
+        params=params,
     )
 
 
@@ -666,6 +821,8 @@ def _project_histogram(project, *, dimension, dimension_toggle, endpoint):
         mode='project', machine=machine,
         dimension=dimension, dimension_toggle=dimension_toggle,
         fragment_url=url_for(endpoint, projcode=project.projcode),
+        jobs_fragment_url=url_for('jobs.jobs_fragment',
+                                  projcode=project.projcode),
         target_id=target_id,
         account_projcodes=_tree_projcodes(project),
     )
@@ -768,6 +925,10 @@ def _panel_filters(machine: str) -> dict:
         'max_gpus':  _parse_int_arg('max_gpus'),
         'min_wait_hours': _parse_float_arg('min_wait_hours'),
         'max_wait_hours': _parse_float_arg('max_wait_hours'),
+        'min_elapsed_hours': _parse_float_arg('min_elapsed_hours'),
+        'max_elapsed_hours': _parse_float_arg('max_elapsed_hours'),
+        'min_reqmem_gb': _parse_float_arg('min_reqmem_gb'),
+        'max_reqmem_gb': _parse_float_arg('max_reqmem_gb'),
         'per_page': per_page,
         'qos_options': _qos_options_safe(machine),
     }
@@ -783,7 +944,7 @@ def _initial_jobs_url(fragment_url: str, machine: str, target_id: str,
     """
     from urllib.parse import urlencode
     params = {'machine': machine, 'target_id': target_id,
-              'per_page': panel['per_page']}
+              'per_page': panel['per_page'], 'chips': '1'}
     if scope:
         params['scope'] = scope
     for key in ('start', 'end', 'queue', 'qos', 'exit_status', 'name'):
@@ -794,7 +955,9 @@ def _initial_jobs_url(fragment_url: str, machine: str, target_id: str,
     if panel['ignore_case']:
         params['ignore_case'] = '1'
     for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
-                'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours'):
+                'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours',
+                'min_elapsed_hours', 'max_elapsed_hours',
+                'min_reqmem_gb', 'max_reqmem_gb'):
         if panel[key] is not None:
             params[key] = panel[key]
     return f'{fragment_url}?{urlencode(params)}'
@@ -889,6 +1052,8 @@ def _machine_histogram(machine, *, dimension, dimension_toggle, endpoint):
         mode='machine', machine=machine,
         dimension=dimension, dimension_toggle=dimension_toggle,
         fragment_url=url_for(endpoint, machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_machine_fragment',
+                                  machine=machine),
         target_id=target_id,
     )
 
@@ -975,6 +1140,32 @@ def jobs_user_fragment(machine):
     )
 
 
+@bp.route('/user/<machine>/by-project')
+@login_required
+def by_project_user_fragment(machine):
+    """HTMX fragment: the logged-in user's per-project usage pie + rows.
+
+    The user-mode counterpart of By User (which is hidden there — a pie
+    of one): which projects MY jobs charged. Username pinned server-side
+    like every /user/ route; rows drill into the user-mode jobs fragment
+    narrowed by ``account=<projcode>``.
+    """
+    from flask_login import current_user
+    if not is_enabled():
+        return _render_by_project(machine=None, fragment_url=None,
+                                  jobs_fragment_url=None, target_id='')
+    machine = _machine_or_404(machine)
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-byproj-user-{machine}'
+    return _render_by_project(
+        machine=machine,
+        fragment_url=url_for('jobs.by_project_user_fragment', machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_user_fragment', machine=machine),
+        target_id=target_id,
+        username=current_user.username,
+    )
+
+
 def _user_histogram(machine, *, dimension, dimension_toggle, endpoint):
     """Common body of the three user-mode histogram routes."""
     from flask_login import current_user
@@ -990,6 +1181,8 @@ def _user_histogram(machine, *, dimension, dimension_toggle, endpoint):
         mode='user', machine=machine,
         dimension=dimension, dimension_toggle=dimension_toggle,
         fragment_url=url_for(endpoint, machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_user_fragment',
+                                  machine=machine),
         target_id=target_id,
         username=current_user.username,
     )

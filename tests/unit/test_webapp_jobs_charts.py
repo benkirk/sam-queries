@@ -100,6 +100,36 @@ def test_histogram_dimension_in_cache_key():
     assert a != b
 
 
+def test_histogram_bars_carry_bucket_sentinels():
+    """Populated bands are wrapped in #jh-bar-<index> anchors (index-keyed,
+    matching data-jh-bucket rows); empty bands get no anchor."""
+    svg = generate_jobs_histogram(_hist(counts=(10, 5, 0)))
+    assert '#jh-bar-0' in svg
+    assert '#jh-bar-1' in svg
+    assert '#jh-bar-2' not in svg
+
+
+def test_histogram_sentinels_follow_job_count_not_metric():
+    """Clickability is decided by job_count even on an hours metric — a band
+    with jobs but zero cpu_hours must still be drillable."""
+    h = _hist(counts=(10, 5, 3), cpu_hours=(100.0, 50.0, 0.0))
+    svg = generate_jobs_histogram(h, metric='cpu_hours')
+    assert '#jh-bar-2' in svg
+
+
+def test_histogram_count_vector_in_cache_key():
+    """Two envelopes with identical hours vectors but different populated
+    band sets must not share a cache entry — the drill URLs differ."""
+    from webapp.dashboards.charts import _jobs_histogram_cache_key
+    a = _jobs_histogram_cache_key(
+        _hist(counts=(10, 5, 3), cpu_hours=(100.0, 50.0, 0.0)),
+        metric='cpu_hours')
+    b = _jobs_histogram_cache_key(
+        _hist(counts=(10, 5, 0), cpu_hours=(100.0, 50.0, 0.0)),
+        metric='cpu_hours')
+    assert a != b
+
+
 # ---------------------------------------------------------------------------
 # generate_jobs_user_pie_chart
 # ---------------------------------------------------------------------------
@@ -172,3 +202,26 @@ def test_pie_unknown_user_row_is_inert():
     svg = generate_jobs_user_pie_chart(usage)
     assert '#job-user-alice' in svg
     assert '#job-user-None' not in svg
+
+
+def test_pie_sentinel_prefix_parameterized():
+    """The generalized renderer emits the caller's sentinel family — the
+    By Project pie drills data-job-project rows, not user rows."""
+    from webapp.dashboards.charts import generate_jobs_usage_pie_chart
+    rows = [
+        {'value': 'SCSG0001', 'job_count': 5, 'cpu_hours': 50.0, 'gpu_hours': 0.0},
+    ]
+    usage = _usage(rows=rows, totals={'job_count': 5, 'cpu_hours': 50.0,
+                                      'gpu_hours': 0.0})
+    svg = generate_jobs_usage_pie_chart(usage, sentinel_prefix='job-proj')
+    assert '#job-proj-SCSG0001' in svg
+    assert '#job-user-' not in svg
+
+
+def test_pie_sentinel_prefix_in_cache_key():
+    """Identical usage vectors under different sentinel families must not
+    share a cache entry — the embedded drill anchors differ."""
+    from webapp.dashboards.charts import _jobs_usage_pie_cache_key
+    a = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-user')
+    b = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-proj')
+    assert a != b

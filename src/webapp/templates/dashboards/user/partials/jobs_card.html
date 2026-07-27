@@ -38,11 +38,13 @@
     {% set _full_url  = url_for('jobs.explore_machine_page',        machine=machine, start=start, end=end) %}
 {% elif mode == 'user' %}
     {% set _jobs_url  = url_for('jobs.jobs_user_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
+    {% set _proj_url  = url_for('jobs.by_project_user_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
     {% set _wait_url  = url_for('jobs.wait_times_user_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
     {% set _sizes_url = url_for('jobs.job_sizes_user_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
     {% set _dur_url   = url_for('jobs.durations_user_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
     {% set _full_url  = url_for('jobs.explore_user_page',        machine=machine, start=start, end=end) %}
-    {# no _user_url — the By User tab is hidden in user mode #}
+    {# no _user_url — the By User tab is hidden in user mode (a pie of
+       one); By Project takes its slot: which projects MY jobs charged. #}
 {% else %}
     {% set _jobs_url  = url_for('jobs.jobs_fragment',       projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
     {% set _user_url  = url_for('jobs.by_user_fragment',    projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
@@ -73,6 +75,18 @@
                 hx-swap="innerHTML"
                 hx-trigger="shown.bs.tab once">
             <i class="fas fa-users me-1"></i> By User
+        </button>
+    </li>
+    {% else %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="{{ cid }}-byproj-tab"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-byproj"
+                type="button" role="tab"
+                hx-get="{{ _proj_url }}"
+                hx-target="#{{ cid }}-byproj"
+                hx-swap="innerHTML"
+                hx-trigger="shown.bs.tab once">
+            <i class="fas fa-diagram-project me-1"></i> By Project
         </button>
     </li>
     {% endif %}
@@ -131,6 +145,14 @@
     {% if mode != 'user' %}
     <div class="tab-pane fade" id="tab-{{ cid }}-byuser" role="tabpanel">
         <div id="{{ cid }}-byuser">
+            <p class="text-muted small mb-0">
+                <i class="fas fa-spinner fa-spin me-1"></i> Loading…
+            </p>
+        </div>
+    </div>
+    {% else %}
+    <div class="tab-pane fade" id="tab-{{ cid }}-byproj" role="tabpanel">
+        <div id="{{ cid }}-byproj">
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading…
             </p>

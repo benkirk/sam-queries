@@ -1,7 +1,11 @@
 # Job History Dashboard — SAM-side implementation (Session 2 handoff)
 
-**Status (2026-07-27): IMPLEMENTED.** Plugin side landed on PR #99 (tip
-`24a35ed`); SAM Commits 1–7 are on `job_history_expansion` as planned, with
+**Status (2026-07-27): IMPLEMENTED; plugin MERGED upstream.** Plugin side
+landed on PR #99 (round-1 `24a35ed`; round-2 memory dims `e07238f`; review
+fix `dcb177f` closing the cpus/nodes bucket tables at the domain floor — see
+`JOB_HISTORY_FOLLOWUPS.md`) and merged through hpc-usage-queries `main`
+2026-07-27, so default builds now include it (no `HPC_USAGE_QUERIES_REF`
+pin needed); SAM Commits 1–7 are on `job_history_expansion` as planned, with
 the deltas recorded in *As-built notes* below. The approved plan of record
 (full rationale, plugin-side commit details) is
 [`JOB_HISTORY_DRILLDOWN.md`](JOB_HISTORY_DRILLDOWN.md); where the two differ,
@@ -36,12 +40,13 @@ THIS doc reflects what actually landed.
 ## How to resume
 
 1. Branch: `job_history_expansion` (this repo). Plugin repo:
-   `~/codes/hpc-usage-queries/devel`, branch `jobs_plugin_search_drilldown`
-   = PR #99, **tip `24a35edffd4f1cea633ccebee7c9fdd5308ec1a3`**.
-2. Rebuild against the pinned sha (both, before any webapp/pytest work):
+   `~/codes/hpc-usage-queries/devel` — PR #99 (final tip `dcb177f`) is
+   **merged to `main`**, so default builds include it (the round-1 contract
+   below was verified at `24a35ed`; `e07238f` added the memory dims).
+2. Rebuild normally (no ref pin — plugin@main has everything):
    ```bash
-   HPC_USAGE_QUERIES_REF=24a35edffd4f1cea633ccebee7c9fdd5308ec1a3 docker compose build webdev
-   HPC_USAGE_QUERIES_REF=24a35edffd4f1cea633ccebee7c9fdd5308ec1a3 source etc/config_env.sh
+   docker compose build webdev
+   source etc/config_env.sh
    make print-env-hash   # confirm the hash-keyed conda-env rebuilt
    ```
 3. Webapp: `docker compose up webdev --watch` → http://localhost:5050 (stub
@@ -49,7 +54,9 @@ THIS doc reflects what actually landed.
    `export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'`.
    **Running pytest directly is authorized for this track** (both repos).
 4. Merge order at the end: plugin PR #99 → staging (then #98 staging→main);
-   SAM PR (this branch → staging) only after.
+   SAM PR (this branch → staging) only after. **DONE 2026-07-27**: plugin
+   merged through main; SAM PR #381 squash-merged to staging; PR #382
+   (round 2) rebased onto staging behind it.
 
 ## As-landed plugin contract (verified, tip 24a35ed)
 
@@ -320,24 +327,28 @@ Personas via Quick Login: `benkirk` (full operator), a plain project user,
 6. `docker compose exec` psql: `pg_stat_activity` shows
    `sam-webapp:…:job_history:<machine>` tagging and `statement_timeout`.
 
-## Deferred follow-ups (confirmed deferred as of 2026-07-27)
+## Deferred follow-ups (updated 2026-07-27, post round 2)
 
-- `jobs_facets` filter chips in the explorer (cost: self-exclusion plan
-  flips measured 4.5×; needs a default window policy first).
-- By-Project tab in user mode (needs nothing new server-side —
-  `jobs_usage_by('account', user=<me>)` — UI decision only).
-- Clickable histogram bars (drill via `min_param`/`max_param` envelope,
-  mirroring the disk band-drill; the envelope's self-describing
-  min/max_param fields are already threaded through to the template
-  context, so this is chart + JS work only).
-- `memory_used` histogram dimension upstream if ever asked (one spec row).
-- Explorer inputs for elapsed/reqmem bounds (`min/max_elapsed`,
-  `min/max_reqmem` are already accepted by the service normalizer; only
-  panel fields + roundtrip keys are missing).
+**Items 1–5 SHIPPED in round 2** — branch `job_history_followups`, plan +
+as-built notes in `JOB_HISTORY_FOLLOWUPS.md`:
+
+- ~~`jobs_facets` filter chips in the explorer~~ → S4 (OOB chip strip,
+  90-day-window costs acceptable per the measured policy).
+- ~~By-Project tab in user mode~~ → S5 (`jobs_usage_by_project`,
+  `account` narrowing in user mode only).
+- ~~Clickable histogram bars~~ → S3 (`#jh-bar-<i>` sentinels → inline
+  bucket-row drill via the envelope's `min_param`/`max_param`).
+- ~~`memory_used` histogram dimension~~ → plugin `e07238f` added
+  `memory_used` AND `memory_wasted` (+ four range filters); SAM S1
+  surfaces both as Job Sizes pills.
+- ~~Explorer inputs for elapsed/reqmem bounds~~ → S2.
+
+**Still open** (its own PR, AFTER round 2 merges — Ben's sequencing):
+
 - **Pre-existing, discovered via CI**: `RedisTTLAdapter` namespaces keys
   and `clear()`/`info()` scans by `prefix` only, and the usage cache AND
   both fs_scans buckets all sit on the default `'usage:'` prefix — so on
   Redis, `clear('usage')` / `clear('scans')` wipe each other's entries
-  and their `info()` counts merge. The jobs buckets now pass distinct
+  and their `info()` counts merge. The jobs buckets pass distinct
   `prefix=<name>:` values; migrating fs_scans/usage the same way is a
   separate PR (existing 'usage:' keys orphan until TTL at cutover).

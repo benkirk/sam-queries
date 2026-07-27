@@ -60,6 +60,11 @@
                     per_page_options, mode=mode) }}
   </div>
 
+  {# Facet chip strip — populated out-of-band by the jobs fragment
+     (hx-swap-oob on #jobs-facet-chips-…), so counts and active states
+     always match the table below. Empty until the first fragment load. #}
+  <div id="jobs-facet-chips-{{ target_id }}"></div>
+
   <div class="card">
     <div class="card-body p-2">
       <div id="{{ target_id }}"

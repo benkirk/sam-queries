@@ -101,6 +101,10 @@ def _plugin_filter_kwargs(
     max_elapsed: Optional[int] = None,
     min_reqmem: Optional[int] = None,
     max_reqmem: Optional[int] = None,
+    min_memory_used: Optional[int] = None,
+    max_memory_used: Optional[int] = None,
+    min_memory_wasted: Optional[int] = None,
+    max_memory_wasted: Optional[int] = None,
     valid_qos_names: Sequence[str] = (),
 ) -> Dict[str, Any]:
     """Normalize the flat SAM-side filter set into plugin kwargs.
@@ -110,7 +114,9 @@ def _plugin_filter_kwargs(
     pins itself), runs the legacy queue→QoS resolver, and — being
     keyword-only — rejects unknown filter names with a TypeError instead
     of silently dropping them. Range bounds are plugin-native units
-    (seconds / bytes / counts), inclusive, NULL-strict.
+    (seconds / bytes / counts), inclusive, NULL-strict. The
+    ``memory_wasted`` pair (requested − used bytes) is signed: negative
+    bounds select jobs that used MORE than they requested.
     """
     queue_norm, qos_norm = _resolve_queue_and_qos(queue, qos, valid_qos_names)
     return {
@@ -129,6 +135,10 @@ def _plugin_filter_kwargs(
         'min_gpus':  min_gpus,  'max_gpus':  max_gpus,
         'min_elapsed': min_elapsed, 'max_elapsed': max_elapsed,
         'min_reqmem':  min_reqmem,  'max_reqmem':  max_reqmem,
+        'min_memory_used': min_memory_used,
+        'max_memory_used': max_memory_used,
+        'min_memory_wasted': min_memory_wasted,
+        'max_memory_wasted': max_memory_wasted,
     }
 
 
@@ -371,6 +381,7 @@ def search_jobs_user(
     machine: str,
     username: str,
     *,
+    account: Optional[str] = None,
     columns: Optional[Sequence[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -385,6 +396,10 @@ def search_jobs_user(
     and a ``user`` key in *filters* raises rather than being silently
     overwritten — the route must never forward a client-supplied user
     into this mode (mirror of disk_scans' pinned-owner rule).
+
+    ``account`` is a NARROWING filter, safe to accept from the client in
+    this mode only: the user pin still applies, so it restricts which of
+    one's OWN jobs show (the By Project drill), never widens access.
     """
     if not username:
         raise ValueError('search_jobs_user requires a username (user pin).')
@@ -398,6 +413,8 @@ def search_jobs_user(
     JobQueries = mod.JobQueries
 
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if account:
+        kwargs['account'] = account
     kwargs.update({
         'user':    username,
         'columns': columns,
@@ -416,6 +433,7 @@ def count_jobs_user(
     machine: str,
     username: str,
     *,
+    account: Optional[str] = None,
     valid_qos_names: Sequence[str] = (),
     **filters,
 ) -> int:
@@ -432,6 +450,8 @@ def count_jobs_user(
     JobQueries = mod.JobQueries
 
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if account:
+        kwargs['account'] = account
     kwargs['user'] = username
 
     with job_history_session(machine) as session:
@@ -514,6 +534,101 @@ def jobs_usage_by_user(
     opts['limit'] = limit
     return jobs_cache.cached_jobs_aggregation(
         'usage_by_user', machine, opts, _compute,
+        bucket=jobs_cache.bucket_for_window(kwargs.get('end')),
+    )
+
+
+def jobs_usage_by_project(
+    machine: str,
+    *,
+    username: str,
+    limit: Optional[int] = 25,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, Any]:
+    """Cached per-project usage rollup for ONE user's jobs (plugin
+    ``jobs_usage_by('account', user=username)``).
+
+    Backs the My Jobs "By Project" pie: which projects the logged-in
+    user's jobs charged, hours-desc. User-mode-only by construction —
+    the username pin is mandatory and non-negotiable exactly like
+    :func:`search_jobs_user` (raises on empty username or a ``user``
+    filter), so this can never aggregate anyone else's jobs. Same
+    pre-truncation ``totals`` invariant and caching rules as
+    :func:`jobs_usage_by_user`; cached as query type
+    ``'usage_by_account'``.
+    """
+    if not username:
+        raise ValueError(
+            'jobs_usage_by_project requires a username (user pin).')
+    if 'user' in filters:
+        raise ValueError(
+            "jobs_usage_by_project pins user server-side; "
+            "remove the 'user' filter from the call."
+        )
+
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    kwargs['user'] = username
+
+    def _compute():
+        mod = get_module()
+        JobQueries = mod.JobQueries
+        with job_history_session(machine) as session:
+            return JobQueries(session, machine=machine).jobs_usage_by(
+                'account', limit=limit, **kwargs,
+            )
+
+    opts = dict(kwargs)
+    opts['limit'] = limit
+    return jobs_cache.cached_jobs_aggregation(
+        'usage_by_account', machine, opts, _compute,
+        bucket=jobs_cache.bucket_for_window(kwargs.get('end')),
+    )
+
+
+def jobs_facets(
+    machine: str,
+    *,
+    facets: Sequence[str] = ('queue', 'qos', 'exit_status'),
+    limit: Optional[int] = 8,
+    account_projcodes: Optional[Sequence[str]] = None,
+    username: Optional[str] = None,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Cached per-dimension value counts (plugin ``jobs_facets``).
+
+    Backs the explorer's filter chips: ``{dim: [{'value', 'count'}, …]}``
+    with live counts for the current window + filters. The plugin's
+    ``self_exclude`` default stays on — a dimension's own filter doesn't
+    constrain its own counts, so the queue chips still list every queue
+    while a queue filter is active (click-to-switch). ``limit`` caps each
+    dimension's chip count; the tail is dropped, not folded.
+
+    Same scope and caching rules as :func:`jobs_histogram` — ``username``
+    hard-pins user mode (never self-excluded: 'user' isn't a requested
+    facet dimension), ``account_projcodes`` pins a project tree, and
+    ``account`` is never self-excluded upstream by design.
+    """
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if username is not None:
+        kwargs['user'] = username
+    if account_projcodes is not None:
+        kwargs['account'] = list(account_projcodes)
+
+    def _compute():
+        mod = get_module()
+        JobQueries = mod.JobQueries
+        with job_history_session(machine) as session:
+            return JobQueries(session, machine=machine).jobs_facets(
+                facets=tuple(facets), limit=limit, **kwargs,
+            )
+
+    opts = dict(kwargs)
+    opts['facets'] = tuple(facets)
+    opts['limit'] = limit
+    return jobs_cache.cached_jobs_aggregation(
+        'facets', machine, opts, _compute,
         bucket=jobs_cache.bucket_for_window(kwargs.get('end')),
     )
 
