@@ -1524,6 +1524,47 @@ def test_count_jobs_name_filter_forces_plugin_path(
     assert ckw['ignore_case'] is True
 
 
+def test_count_jobs_memory_bound_forces_plugin_path(
+    app, active_project, monkeypatch,
+):
+    """The new memory bounds are outside the SAM summary's key set — any
+    value (including a negative wasted bound) must take the plugin path."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=3)
+
+    with app.app_context():
+        total = service.count_jobs(
+            'derecho', project=active_project, max_memory_wasted=-1,
+        )
+
+    assert total == 3
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None
+    assert ckw['max_memory_wasted'] == -1
+
+
+def test_search_jobs_forwards_memory_filters(app, active_project, monkeypatch):
+    """_plugin_filter_kwargs mirrors the plugin surface 1:1 — the four new
+    memory bounds flow through search_jobs untouched."""
+    from webapp.jobs import service
+
+    captured = _install_mock_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.search_jobs(
+            'derecho', project=active_project,
+            min_memory_used=2 * 1024 ** 3, max_memory_used=64 * 1024 ** 3,
+            min_memory_wasted=-(4 * 1024 ** 3), max_memory_wasted=0,
+        )
+
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['min_memory_used'] == 2 * 1024 ** 3
+    assert kw['max_memory_used'] == 64 * 1024 ** 3
+    assert kw['min_memory_wasted'] == -(4 * 1024 ** 3)
+    assert kw['max_memory_wasted'] == 0
+
+
 def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
     """_plugin_filter_kwargs is keyword-only: a typo'd filter raises
     TypeError instead of silently vanishing."""
@@ -1715,6 +1756,140 @@ def test_job_sizes_fragment_memory_dimension_forwarded(
     )
     dim, _kwargs = captured['last_jobs_histogram']
     assert dim == 'memory'
+
+
+def test_job_sizes_fragment_offers_memory_trio_pills(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The Sizes tab renders all six dimension pills, memory trio labeled
+    Req mem / Used mem / Wasted."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension='nodes'),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'dimension=memory_used' in body
+    assert 'dimension=memory_wasted' in body
+    assert 'Req mem' in body
+    assert 'Used mem' in body
+    assert 'Wasted' in body
+
+
+@pytest.mark.parametrize('dimension', ['memory_used', 'memory_wasted'])
+def test_job_sizes_fragment_memory_trio_forwarded(
+    app, auth_client, active_project, monkeypatch, dimension,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(dimension=dimension),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        f'?machine=derecho&dimension={dimension}'
+    )
+    dim, _kwargs = captured['last_jobs_histogram']
+    assert dim == dimension
+
+
+def test_job_sizes_wasted_caption_derecho_only(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The whole-node caveat renders on derecho's Wasted view and nowhere
+    else — not on casper (shared nodes make wasted meaningful there) and
+    not on derecho's other dimensions."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_histogram_return=_sample_hist(dimension='memory_wasted'),
+        machines=('derecho', 'casper'),
+    )
+    base = f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+
+    body = auth_client.get(
+        f'{base}?machine=derecho&dimension=memory_wasted').get_data(as_text=True)
+    assert 'node-exclusive' in body
+
+    body = auth_client.get(
+        f'{base}?machine=casper&dimension=memory_wasted').get_data(as_text=True)
+    assert 'node-exclusive' not in body
+
+    body = auth_client.get(
+        f'{base}?machine=derecho&dimension=memory').get_data(as_text=True)
+    assert 'node-exclusive' not in body
+
+
+def test_histogram_fragment_native_bounds_passthrough(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Envelope-native params (min_param/max_param names) pass through
+    verbatim — no display-unit re-derivation, no double conversion."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_eligible_secs=120&max_eligible_secs=900'
+        '&min_reqmem=1073741824&min_memory_used=2147483648'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['min_eligible_secs'] == 120
+    assert kwargs['max_eligible_secs'] == 900
+    assert kwargs['min_reqmem'] == 1073741824
+    assert kwargs['min_memory_used'] == 2147483648
+
+
+def test_histogram_fragment_native_bound_wins_over_human_units(
+    app, auth_client, active_project, monkeypatch,
+):
+    """When a deep link carries both spellings of the same bound, the
+    native form (parsed last) wins."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&min_wait_hours=2&min_eligible_secs=120'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['min_eligible_secs'] == 120
+
+
+def test_histogram_fragment_negative_wasted_bound_not_clamped(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The 'over request' band replays as max_memory_wasted=-1 — the signed
+    parse must forward the negative, not clamp it to 0 or drop it."""
+    captured = _install_mock_plugin(
+        app, monkeypatch,
+        jobs_histogram_return=_sample_hist(dimension='memory_wasted'),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=memory_wasted&max_memory_wasted=-1'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['max_memory_wasted'] == -1
+
+
+def test_jobs_fragment_native_bounds_forwarded_to_search_and_count(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The per-job table accepts the same native bounds (bar-drill target):
+    both jobs_search and the count see them, and the count leaves the
+    SAM-summary fast path (range bound in play)."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&min_memory_wasted=-4294967296&max_memory_wasted=-1'
+        '&min_elapsed=3600'
+    )
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['min_memory_wasted'] == -4294967296
+    assert skw['max_memory_wasted'] == -1
+    assert skw['min_elapsed'] == 3600
+    ckw = captured['last_jobs_count_kwargs']
+    assert ckw is not None                      # plugin path, not SAM summary
+    assert ckw['max_memory_wasted'] == -1
 
 
 def test_durations_fragment_pins_duration_dimension(

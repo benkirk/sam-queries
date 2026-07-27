@@ -101,6 +101,10 @@ def _plugin_filter_kwargs(
     max_elapsed: Optional[int] = None,
     min_reqmem: Optional[int] = None,
     max_reqmem: Optional[int] = None,
+    min_memory_used: Optional[int] = None,
+    max_memory_used: Optional[int] = None,
+    min_memory_wasted: Optional[int] = None,
+    max_memory_wasted: Optional[int] = None,
     valid_qos_names: Sequence[str] = (),
 ) -> Dict[str, Any]:
     """Normalize the flat SAM-side filter set into plugin kwargs.
@@ -110,7 +114,9 @@ def _plugin_filter_kwargs(
     pins itself), runs the legacy queue→QoS resolver, and — being
     keyword-only — rejects unknown filter names with a TypeError instead
     of silently dropping them. Range bounds are plugin-native units
-    (seconds / bytes / counts), inclusive, NULL-strict.
+    (seconds / bytes / counts), inclusive, NULL-strict. The
+    ``memory_wasted`` pair (requested − used bytes) is signed: negative
+    bounds select jobs that used MORE than they requested.
     """
     queue_norm, qos_norm = _resolve_queue_and_qos(queue, qos, valid_qos_names)
     return {
@@ -129,6 +135,10 @@ def _plugin_filter_kwargs(
         'min_gpus':  min_gpus,  'max_gpus':  max_gpus,
         'min_elapsed': min_elapsed, 'max_elapsed': max_elapsed,
         'min_reqmem':  min_reqmem,  'max_reqmem':  max_reqmem,
+        'min_memory_used': min_memory_used,
+        'max_memory_used': max_memory_used,
+        'min_memory_wasted': min_memory_wasted,
+        'max_memory_wasted': max_memory_wasted,
     }
 
 

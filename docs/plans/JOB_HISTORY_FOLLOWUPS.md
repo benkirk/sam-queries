@@ -81,6 +81,9 @@ Files: `job_history/queries/jobs.py`, `job_history/cli/cmds/jobhist.py`,
   zero-fill vector, existing bounds-round-trip invariant loop picks the new specs up
   automatically (verify), one-aggregate-scan guard, CLI conversions, parity-set updates.
 - Push; do NOT merge — Ben reviews. New tip sha replaces `24a35ed` in all pins.
+  **DONE 2026-07-27: tip is `e07238f5f77317ad36d67f111b92e934eae07528`**
+  (suite 546 → 565; dev-PG verified: over-request band == count(max=-1),
+  887 derecho / 2,566 casper).
 
 ## SAM side — stacked PR (`job_history_followups`, base `job_history_expansion`)
 

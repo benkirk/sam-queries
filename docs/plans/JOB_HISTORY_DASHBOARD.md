@@ -1,7 +1,8 @@
 # Job History Dashboard — SAM-side implementation (Session 2 handoff)
 
 **Status (2026-07-27): IMPLEMENTED.** Plugin side landed on PR #99 (tip
-`24a35ed`); SAM Commits 1–7 are on `job_history_expansion` as planned, with
+`24a35ed`; round-2 memory dims moved it to `e07238f` — see
+`JOB_HISTORY_FOLLOWUPS.md`); SAM Commits 1–7 are on `job_history_expansion` as planned, with
 the deltas recorded in *As-built notes* below. The approved plan of record
 (full rationale, plugin-side commit details) is
 [`JOB_HISTORY_DRILLDOWN.md`](JOB_HISTORY_DRILLDOWN.md); where the two differ,
@@ -37,11 +38,12 @@ THIS doc reflects what actually landed.
 
 1. Branch: `job_history_expansion` (this repo). Plugin repo:
    `~/codes/hpc-usage-queries/devel`, branch `jobs_plugin_search_drilldown`
-   = PR #99, **tip `24a35edffd4f1cea633ccebee7c9fdd5308ec1a3`**.
+   = PR #99, **tip `e07238f5f77317ad36d67f111b92e934eae07528`** (round-2
+   memory dims; round-1 contract below was verified at `24a35ed`).
 2. Rebuild against the pinned sha (both, before any webapp/pytest work):
    ```bash
-   HPC_USAGE_QUERIES_REF=24a35edffd4f1cea633ccebee7c9fdd5308ec1a3 docker compose build webdev
-   HPC_USAGE_QUERIES_REF=24a35edffd4f1cea633ccebee7c9fdd5308ec1a3 source etc/config_env.sh
+   HPC_USAGE_QUERIES_REF=e07238f5f77317ad36d67f111b92e934eae07528 docker compose build webdev
+   HPC_USAGE_QUERIES_REF=e07238f5f77317ad36d67f111b92e934eae07528 source etc/config_env.sh
    make print-env-hash   # confirm the hash-keyed conda-env rebuilt
    ```
 3. Webapp: `docker compose up webdev --watch` → http://localhost:5050 (stub

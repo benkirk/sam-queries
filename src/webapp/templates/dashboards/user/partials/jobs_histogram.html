@@ -11,7 +11,8 @@
                  gpu_hours, null_count, total_count, unit)
     chart_svg  — rendered SVG (or an empty-state div)
     metric     — 'jobs' | 'cpu_hours' | 'gpu_hours'
-    dimension  — 'wait' | 'nodes' | 'cpus' | 'gpus' | 'memory' | 'duration'
+    dimension  — 'wait' | 'nodes' | 'cpus' | 'gpus' | 'memory' |
+                 'memory_used' | 'memory_wasted' | 'duration'
     dimension_toggle — True only on the Job Sizes tab
     size_dimensions  — the dimension pill order
     fragment_url, target_id, params — re-fetch plumbing
@@ -32,11 +33,14 @@
 
   <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
     {% if dimension_toggle %}
-      {# Dimension pills — nodes / CPUs / GPUs / memory re-fetch this pane
-         with ?dimension= (memory = REQUESTED memory, Job.reqmem). #}
+      {# Dimension pills re-fetch this pane with ?dimension=. The memory
+         trio: Req mem = requested (Job.reqmem), Used mem = consumed
+         (Job.memory), Wasted = requested − used. #}
       <div class="btn-group btn-group-sm me-1" role="group" aria-label="Size dimension">
         {% for d, label in [('nodes', 'Nodes'), ('cpus', 'CPUs'),
-                            ('gpus', 'GPUs'), ('memory', 'Memory')] %}
+                            ('gpus', 'GPUs'), ('memory', 'Req mem'),
+                            ('memory_used', 'Used mem'),
+                            ('memory_wasted', 'Wasted')] %}
         <button type="button"
                 class="btn btn-outline-secondary {% if dimension == d %}active{% endif %}"
                 hx-get="{{ fragment_url }}?dimension={{ d }}&metric={{ metric }}"
@@ -74,6 +78,17 @@
   </div>
   {% endif %}
 
+  {% if dimension == 'memory_wasted' and machine == 'derecho' %}
+    <p class="text-muted small mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      Derecho schedules whole nodes: every job is assigned all of each
+      node's memory (~235&nbsp;GB) regardless of what it requested, so
+      large "wasted" values here are an artifact of node-exclusive
+      scheduling, not over-requesting. Casper's shared nodes are where
+      this distribution is actionable.
+    </p>
+  {% endif %}
+
   {% if hist.null_count and hist.null_count > 0 %}
     <p class="text-muted small mb-2">
       <i class="fas fa-circle-info me-1"></i>
@@ -81,6 +96,13 @@
         {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
         in this range have no wait measurement (queued before eligible-time
         collection began, early 2025 on Derecho) and are excluded.
+      {% elif dimension == 'memory_used' %}
+        {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
+        in this range have no recorded memory usage and are excluded.
+      {% elif dimension == 'memory_wasted' %}
+        {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
+        in this range are missing the used or requested memory measurement
+        and are excluded.
       {% else %}
         {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
         in this range have no recorded value for this dimension and are excluded.

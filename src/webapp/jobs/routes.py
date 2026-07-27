@@ -201,29 +201,10 @@ def _jobs_table_response(*, mode, machine, fragment_url,
     ``pinned_user`` (any client-supplied user is ignored), 'machine' is
     unscoped — its routes are VIEW_ALL_JOB_DATA-gated.
     """
-    filters = {
-        'start':  _parse_date(request.args.get('start')),
-        'end':    _parse_date(request.args.get('end')),
-        'queue':  (request.args.get('queue') or '').strip() or None,
-        'qos':    (request.args.get('qos') or '').strip() or None,
-        'exit_status': (request.args.get('exit_status') or '').strip() or None,
-        'name':  (request.args.get('name') or '').strip() or None,
-    }
-    if filters['name'] is not None:
-        filters['ignore_case'] = request.args.get('ignore_case') in ('1', 'true', 'on')
-    for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
-                'min_gpus', 'max_gpus'):
-        v = _parse_int_arg(key)
-        if v is not None:
-            filters[key] = v
-    min_wait = _parse_float_arg('min_wait_hours')
-    max_wait = _parse_float_arg('max_wait_hours')
-    if min_wait is not None:
-        filters['min_eligible_secs'] = int(min_wait * _SECS_PER_HOUR)
-    if max_wait is not None:
-        filters['max_eligible_secs'] = int(max_wait * _SECS_PER_HOUR)
-    if pinned_user is None:
-        filters['user'], _uid, _ulabel = _resolve_user_filter()
+    # Same parse as the aggregation fragments — one boundary, one unit
+    # convention. User mode drops the user key entirely (the service
+    # families raise if it sneaks in beside the server-side pin).
+    filters = _parse_job_filters(include_user=(pinned_user is None))
 
     page = _parse_pagination()
     sort = _parse_sort()
@@ -427,7 +408,10 @@ _DEFAULT_METRIC_HIST = 'jobs'
 _DEFAULT_METRIC_PIE = 'cpu_hours'
 
 # Job Sizes tab dimension pills; Wait Times / Durations pin their dimension.
-_SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus', 'memory')
+# memory = REQUESTED (reqmem); memory_used = consumed (Job.memory);
+# memory_wasted = requested − used (negative ⇒ used more than requested).
+_SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus',
+                    'memory', 'memory_used', 'memory_wasted')
 
 # Rows shown in the By User table (the pie itself keeps at most 9 + Other).
 _BY_USER_LIMIT = 25
@@ -439,6 +423,11 @@ _ROUNDTRIP_KEYS = (
     'name', 'ignore_case',
     'min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
     'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours',
+    # Plugin-native bounds (bar-drill deep links / envelope replays).
+    'min_eligible_secs', 'max_eligible_secs',
+    'min_elapsed', 'max_elapsed', 'min_reqmem', 'max_reqmem',
+    'min_memory_used', 'max_memory_used',
+    'min_memory_wasted', 'max_memory_wasted',
     'scope',
 )
 
@@ -465,22 +454,45 @@ def _parse_float_arg(name: str) -> Optional[float]:
         return None
 
 
-def _parse_job_filters() -> dict:
+def _parse_signed_int_arg(name: str) -> Optional[int]:
+    """Like ``_parse_int_arg`` but negatives are legal (memory_wasted)."""
+    raw = (request.args.get(name) or '').strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _parse_job_filters(include_user: bool = True) -> dict:
     """Whitelisted GET parse → service filter kwargs (plugin-native units).
 
     Human-facing units convert at this boundary and nowhere else:
     ``min/max_wait_hours`` (hours) → ``min/max_eligible_secs`` (seconds).
     Unknown params are ignored; malformed numbers degrade to "no filter".
+
+    Plugin-native bound params (the names a histogram envelope's
+    ``min_param``/``max_param`` announce) pass through verbatim — the bar
+    drill replays a clicked band without re-deriving display units. They
+    parse AFTER the human-unit forms, so if both spell the same bound the
+    native one wins. The ``memory_wasted`` pair is signed: negative bounds
+    select over-request jobs and must not be clamped.
+
+    ``include_user=False`` omits the ``user`` key entirely — the user-mode
+    service family raises if a user filter arrives beside its server-side
+    pin.
     """
     f: dict = {
         'start': _parse_date(request.args.get('start')),
         'end':   _parse_date(request.args.get('end')),
-        'user':  _resolve_user_filter()[0],
         'queue': (request.args.get('queue') or '').strip() or None,
         'qos':   (request.args.get('qos') or '').strip() or None,
         'exit_status': (request.args.get('exit_status') or '').strip() or None,
         'name':  (request.args.get('name') or '').strip() or None,
     }
+    if include_user:
+        f['user'] = _resolve_user_filter()[0]
     if f['name'] is not None:
         f['ignore_case'] = request.args.get('ignore_case') in ('1', 'true', 'on')
     for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
@@ -494,6 +506,17 @@ def _parse_job_filters() -> dict:
         f['min_eligible_secs'] = int(min_wait * _SECS_PER_HOUR)
     if max_wait is not None:
         f['max_eligible_secs'] = int(max_wait * _SECS_PER_HOUR)
+    for key in ('min_eligible_secs', 'max_eligible_secs',
+                'min_elapsed', 'max_elapsed',
+                'min_reqmem', 'max_reqmem',
+                'min_memory_used', 'max_memory_used'):
+        v = _parse_int_arg(key)
+        if v is not None:
+            f[key] = v
+    for key in ('min_memory_wasted', 'max_memory_wasted'):
+        v = _parse_signed_int_arg(key)
+        if v is not None:
+            f[key] = v
     return f
 
 
