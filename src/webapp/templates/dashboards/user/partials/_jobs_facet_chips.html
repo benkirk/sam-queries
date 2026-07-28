@@ -4,13 +4,18 @@
   filter set (self-exclusion on: a dimension's own chips stay complete
   while its filter is active, so chips double as switchers).
 
-  Rendered by jobs_fragment.html inside an hx-swap-oob block so the strip
-  refreshes together with the table on every panel submit / chip click /
-  sort / page change. A chip click writes its value into the named field
-  of the filter panel form and re-submits it (data-action
-  "set-filter-submit" in static/js/actions.js — CSP-clean, no inline
-  handlers). The active chip is highlighted and clicking it clears the
-  filter (empty data-value).
+  Rendered by jobs_card.html inside the card wrapper, so the strip is
+  re-rendered by the same request that re-renders the panels — which is
+  exactly when a facet count can change. (It used to be an hx-swap-oob
+  block emitted by the table; once the table became one tab of six, a
+  viewer filtering while looking at a chart would have been left with the
+  previous filter set's counts. Sorting and paging no longer recompute
+  it, either — neither can change a count.)
+
+  A chip click writes its value into the named field of the filter panel
+  form and re-submits it (data-action "set-filter-submit" in
+  static/js/actions.js — CSP-clean, no inline handlers). The active chip
+  is highlighted and clicking it clears the filter (empty data-value).
 
   Args:
     facets   — {dim: [{'value', 'count'}, …]} from service.jobs_facets

@@ -2369,40 +2369,23 @@ _SAMPLE_FACETS = {
 }
 
 
-def test_explore_page_initial_url_requests_chips(
+def test_explore_page_renders_facet_chips_with_counts(
     app, auth_client, active_project, monkeypatch,
 ):
-    """The explorer's Jobs-tab URL asks the fragment for the OOB chip
-    strip, and the page renders the placeholder it swaps into."""
-    _install_mock_plugin(app, monkeypatch)
-    resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}/explore?machine=derecho'
-    )
-    body = resp.get_data(as_text=True)
-    assert 'chips=1' in body
-    # The table lives in the card's Jobs pane now, so the chip placeholder
-    # follows that pane's id.
-    assert 'id="jobs-facet-chips-jobs-explore-jobs"' in body
-
-
-def test_fragment_chips_render_oob_with_counts(
-    app, auth_client, active_project, monkeypatch,
-):
-    """?chips=1 → the fragment appends an hx-swap-oob strip: value chips
-    with live counts, NULL-FK rows skipped, wired to the panel form."""
+    """The strip rides inside the card: value chips with live counts,
+    NULL-FK rows skipped, wired to the filter panel form."""
+    import re
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
     )
-    resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&chips=1&queue=cpu'
-    )
-    body = resp.get_data(as_text=True)
-    assert 'hx-swap-oob' in body
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&queue=cpu'
+    ).get_data(as_text=True)
+
     assert 'data-action="set-filter-submit"' in body
-    assert 'data-form-id="jobs-filters-panel-jobs-' in body
+    assert 'data-form-id="jobs-filters-panel-jobs-explore-jobs"' in body
     # Active chip (queue=cpu) highlights and clears on click.
-    import re
     cpu_chip = re.search(
         r'<button[^>]*data-field="queue"[^>]*data-value=""[^>]*>', body)
     assert cpu_chip is not None and 'btn-primary' in cpu_chip.group(0)
@@ -2411,69 +2394,83 @@ def test_fragment_chips_render_oob_with_counts(
     assert 'data-value="271"' in body
     # NULL-FK queue row renders no chip (nothing to filter by).
     assert 'data-value="None"' not in body
-    # The facets call saw the same filter set as the table.
+    # Facets saw the same filter set as the panels.
     fkw = captured['last_jobs_facets_kwargs']
     assert fkw['queue'] == 'cpu'
     assert fkw['limit'] == 8
 
 
-def test_fragment_no_chips_without_param(
+def test_explore_card_route_refreshes_the_chips(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Card/drill embeds never send chips=1 → no facets query, no OOB."""
+    """Counts refresh with the panels, not with the table — otherwise a
+    viewer who filters while looking at a chart keeps the old counts."""
+    _install_mock_plugin(app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&queue=cpu'
+    ).get_data(as_text=True)
+
+    assert 'data-action="set-filter-submit"' in body
+    assert 'data-value="gpu"' in body
+
+
+def test_jobs_table_fragment_never_queries_facets(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Sorting or paging cannot change a facet count, so the table no
+    longer pays for one — the strip belongs to the shell."""
     captured = _install_mock_plugin(app, monkeypatch)
-    resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
-    )
-    body = resp.get_data(as_text=True)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&chips=1'
+    ).get_data(as_text=True)
+
     assert 'hx-swap-oob' not in body
+    assert 'data-action="set-filter-submit"' not in body
     assert captured['last_jobs_facets_kwargs'] is None
 
 
-def test_fragment_chips_degrade_on_facets_error(
+def test_explore_chips_degrade_on_facets_error(
     app, auth_client, active_project, monkeypatch,
 ):
-    """A facets failure must not take the table down — the fragment
-    renders normally with no chip strip."""
-    _install_mock_plugin(
-        app, monkeypatch, jobs_facets_raises=True,
-    )
+    """A facets failure must not take the page down — the card renders
+    normally with no chip strip."""
+    _install_mock_plugin(app, monkeypatch, jobs_facets_raises=True)
     resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&chips=1'
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho'
     )
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'hx-swap-oob' not in body
-    assert 'Could not load per-job data' not in body
+    assert 'data-action="set-filter-submit"' not in body
+    assert 'id="jobs-explore-card"' in body
 
 
-def test_fragment_chips_project_scope_pins_account(
+def test_explore_chips_project_scope_pins_account(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Facets are scoped exactly like the table — the project tree's
+    """Facets are scoped exactly like the panels — the project tree's
     projcodes pin the account filter."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
     )
     auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&chips=1'
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho'
     )
     fkw = captured['last_jobs_facets_kwargs']
     assert active_project.projcode in fkw['account']
 
 
-def test_user_fragment_chips_pin_username(app, auth_client, monkeypatch):
+def test_explore_user_chips_pin_username(app, auth_client, monkeypatch):
     """User-mode chips describe the pinned user's jobs only — the session
     username rides into the facets call, client ?user= notwithstanding."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
     )
     auth_client.get(
-        '/dashboards/user/jobs/user/derecho'
-        '?machine=derecho&chips=1&user=mallory'
-    )
+        '/dashboards/user/jobs/user/derecho/explore?user=mallory')
     fkw = captured['last_jobs_facets_kwargs']
     assert fkw['user'] == 'benkirk'
 

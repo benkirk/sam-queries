@@ -50,6 +50,13 @@
                   and a second control would fight them.
      show_explore_link  render "Open full view ↗". False on the explorer,
                   which is that view.
+     facet_chips / facet_filters / facet_form_id  explorer only: the
+                  jobs_facets envelope, the filter dict that marks the
+                  active chips, and the panel form a chip click writes
+                  into. The strip lives in the shell rather than beside
+                  the table because the table is one tab of six — a
+                  viewer filtering while looking at a chart would
+                  otherwise keep the previous filter set's counts.
      days         optional lookback (one of jobs_window_pills) — paints the
                   matching period pill active. The pills re-render this whole
                   shell via jobs.jobs_card*_fragment, which is the only way
@@ -101,7 +108,9 @@
                    show_by_user=true, show_by_project=true,
                    panel_params={}, jobs_params=none,
                    days=none, days_persist_id=none,
-                   show_pills=true, show_explore_link=true) %}
+                   show_pills=true, show_explore_link=true,
+                   facet_chips=none, facet_filters={},
+                   facet_form_id=none) %}
 {# The Jobs tab takes the same filters as the aggregations unless the
    caller separates them (the explorer adds per_page). #}
 {% set _jp = jobs_params if jobs_params is not none else panel_params %}
@@ -173,6 +182,10 @@
      data-chart-persist-id="{{ days_persist_id }}"
      data-chart-persist-keys="days"
      {%- endif %}>
+{% if facet_chips %}
+{% from 'dashboards/user/partials/_jobs_facet_chips.html' import jobs_facet_chips %}
+{{ jobs_facet_chips(facet_chips, facet_filters, facet_form_id) }}
+{% endif %}
 <ul class="nav nav-tabs mb-0" id="{{ tablist_id }}" role="tablist">
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="{{ cid }}-jobs-tab"

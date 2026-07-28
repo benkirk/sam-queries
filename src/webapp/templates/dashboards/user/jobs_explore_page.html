@@ -9,9 +9,9 @@
   The filter panel sits above the same six-tab jobs card the resource
   details, Status and My Jobs pages embed, so the charts answer the
   explorer's whole filter set rather than a baked 90-day window. Its Jobs
-  tab IS the per-job table (chips, sort and pagination unchanged), so
-  nothing is duplicated, and the panels stay lazy: a visit that only
-  reads the table costs what it always did.
+  tab IS the per-job table (sort and pagination unchanged), so nothing is
+  duplicated, and the panels stay lazy: a visit that only reads the table
+  costs what it always did.
 
   Applying a filter re-renders the card via its mode's /card route (see
   _jobs_filters.html) — the same mechanism a period pill uses, which is
@@ -60,9 +60,10 @@
     {{ jobs_disabled() }}
   {% else %}
 
-  {# The per-job table's container id, which jobs_fragment.html also
-     derives the chip placeholder and panel-form ids from — one variable
-     so the three can't drift. #}
+  {# The per-job table's container id; the filter panel's form id is
+     derived from it on both sides (here and in _explorer_card_context,
+     which hands it to the chip strip), so a chip click always finds the
+     form it has to re-submit. #}
   {% set table_target = card.cid ~ '-jobs' %}
 
   {# Unity NCAR navy panel — same .filter-sidebar tokens as the allocations
@@ -75,11 +76,9 @@
                     per_page_options, mode=mode) }}
   </div>
 
-  {# Facet chip strip — populated out-of-band by the jobs fragment
-     (hx-swap-oob on #jobs-facet-chips-…), so counts and active states
-     always match the table below. Empty until the first fragment load. #}
-  <div id="jobs-facet-chips-{{ table_target }}"></div>
-
+  {# The facet chip strip rides inside the card (jobs_card.html), so it
+     is re-rendered by the same request that re-renders the panels —
+     which is exactly when a facet count can change. #}
   {{ jobs_card(**card) }}
 
   {% endif %}

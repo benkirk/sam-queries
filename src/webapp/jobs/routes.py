@@ -407,28 +407,6 @@ def _jobs_table_response(*, mode, machine, fragment_url,
 
     column_specs = _load_column_specs()
 
-    # Explorer chip strip (?chips=1): facet counts for the same filter set
-    # this table shows, rendered as an hx-swap-oob block so chips and
-    # table always refresh together (panel submit, chip click, sort,
-    # pagination). Card/drill embeds never send chips=1. Degrades to no
-    # chips on any facet failure — the table is the primary content.
-    facet_chips = None
-    if request.args.get('chips') == '1' and error is None:
-        try:
-            facet_chips = service.jobs_facets(
-                machine,
-                account_projcodes=(
-                    [user_account] if user_account else account_projcodes),
-                username=pinned_user,
-                valid_qos_names=qos_options,
-                **filters,
-            )
-        except Exception:
-            from flask import current_app
-            current_app.logger.exception(
-                'jobs table: facets failed for mode=%s machine=%s',
-                mode, machine,
-            )
     if user_account:
         filters['account'] = user_account   # header badge (post-service)
 
@@ -460,7 +438,6 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         fragment_url=fragment_url,
         target_id=target_id,
         roundtrip_params=_roundtrip_params(machine, target_id),
-        facet_chips=facet_chips,
         enabled=True,
         error=error,
     )
@@ -475,7 +452,7 @@ def _disabled_jobs_table(project=None, username=None):
         filters={}, page={'n': 1, 'per_page': _DEFAULT_PER_PAGE},
         sort={'sort_by': None, 'sort_dir': 'desc'},
         total=None, visible_cols=[], verbose_extras=[],
-        column_specs={}, roundtrip_params={}, facet_chips=None,
+        column_specs={}, roundtrip_params={},
         enabled=False, error=None,
     )
 
@@ -558,7 +535,7 @@ _ROUNDTRIP_KEYS = (
     'min_elapsed', 'max_elapsed', 'min_reqmem', 'max_reqmem',
     'min_memory_used', 'max_memory_used',
     'min_memory_wasted', 'max_memory_wasted',
-    'scope', 'chips', 'account',
+    'scope', 'account',
 )
 
 _SECS_PER_HOUR = 3600
@@ -1322,6 +1299,36 @@ def _explorer_panel_params(panel: dict, scope: Optional[str] = None) -> dict:
     return params
 
 
+def _explorer_facets(mode: str, machine: str, panel: dict, project=None,
+                     username=None) -> Optional[dict]:
+    """Facet counts for the chip strip, under the current filter set.
+
+    Computed by the shell rather than out-of-band from the table, because
+    the table is one tab of six now: a viewer who applies a filter while
+    looking at a chart would otherwise be left with chip counts from the
+    previous filter set. It also stops the strip recomputing on a sort or
+    page click, neither of which can change a facet count.
+
+    Degrades to no chips on any failure — the panels are the content.
+    """
+    try:
+        return service.jobs_facets(
+            machine,
+            account_projcodes=(_tree_projcodes(project)
+                               if project is not None else None),
+            username=username,
+            valid_qos_names=panel.get('qos_options') or (),
+            **_parse_job_filters(include_user=(username is None)),
+        )
+    except Exception:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs explorer: facets failed for mode=%s machine=%s',
+            mode, machine,
+        )
+        return None
+
+
 def _explorer_card_context(*, mode: str, machine: str, project=None,
                            scope: Optional[str] = None) -> tuple:
     """(panel, card context) for the explorer, in every mode.
@@ -1332,17 +1339,23 @@ def _explorer_card_context(*, mode: str, machine: str, project=None,
     only reads the table costs exactly what it did before the charts
     moved in.
     """
+    from flask_login import current_user
     panel = _panel_filters(machine)
     panel_params = _explorer_panel_params(panel, scope)
+    username = current_user.username if mode == 'user' else None
     return panel, _card_context(
         mode=mode, machine=machine,
         cid=_EXPLORER_CID, tablist_id=_EXPLORER_TABLIST,
         projcode=(project.projcode if project is not None else None),
         panel_params=panel_params,
-        # The table takes two params the aggregations have no use for.
-        jobs_params=dict(panel_params, per_page=panel['per_page'], chips='1'),
+        # The table takes one param the aggregations have no use for.
+        jobs_params=dict(panel_params, per_page=panel['per_page']),
         account_projcodes=(_tree_projcodes(project)
                            if project is not None else None),
+        facet_chips=_explorer_facets(mode, machine, panel,
+                                     project=project, username=username),
+        facet_filters=_parse_job_filters(include_user=(username is None)),
+        facet_form_id=f'jobs-filters-panel-{_EXPLORER_CID}-jobs',
         # The filter panel's own date fields own the window here; a pill
         # group beside them would be a second control for one setting.
         days=None,
