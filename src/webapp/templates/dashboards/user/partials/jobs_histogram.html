@@ -29,12 +29,42 @@
     fragment_url, target_id, params — re-fetch plumbing
 #}
 
+{# Why a dimension has no value for a job — one phrasing, used both by the
+   "N excluded" caption under a real distribution and by the empty state
+   below, so the two can't drift. #}
+{% macro _missing_because(dimension) -%}
+  {%- if dimension == 'wait' -%}
+    no wait measurement (queued before eligible-time collection began,
+    early 2025 on Derecho)
+  {%- elif dimension == 'memory_used' -%}
+    no recorded memory usage
+  {%- elif dimension == 'memory_wasted' -%}
+    no used or requested memory measurement
+  {%- else -%}
+    no recorded value for this dimension
+  {%- endif -%}
+{%- endmacro %}
+
 {% if not enabled %}
   {{ jobs_disabled() }}
 {% elif error %}
   {{ jobs_error(error) }}
 {% elif not hist %}
   {{ jobs_empty('No job data for this scope.') }}
+{% elif not hist.buckets %}
+  {# Every band came back zero — _trim_empty_edge_bands trims an all-zero
+     vector to nothing, so there is no distribution to draw. Say which of
+     the two reasons it is instead of an empty axis over a table of
+     zeros: no matching jobs at all, or matching jobs that carry no value
+     on this dimension. #}
+  {% if hist.total_count and hist.null_count == hist.total_count %}
+    {{ jobs_empty('All %s job%s in this range have %s.' % (
+         hist.total_count | fmt_number,
+         '' if hist.total_count == 1 else 's',
+         _missing_because(dimension) | trim)) }}
+  {% else %}
+    {{ jobs_empty('No jobs match these filters.') }}
+  {% endif %}
 {% else %}
   <form id="jobs-hist-params-{{ target_id }}" class="d-none">
     {% for k, v in params.items() %}
@@ -141,21 +171,8 @@
   {% if hist.null_count and hist.null_count > 0 %}
     <p class="text-muted small mb-2">
       <i class="fas fa-circle-info me-1"></i>
-      {% if dimension == 'wait' %}
-        {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
-        in this range have no wait measurement (queued before eligible-time
-        collection began, early 2025 on Derecho) and are excluded.
-      {% elif dimension == 'memory_used' %}
-        {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
-        in this range have no recorded memory usage and are excluded.
-      {% elif dimension == 'memory_wasted' %}
-        {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
-        in this range are missing the used or requested memory measurement
-        and are excluded.
-      {% else %}
-        {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
-        in this range have no recorded value for this dimension and are excluded.
-      {% endif %}
+      {{ hist.null_count | fmt_number }} job{{ '' if hist.null_count == 1 else 's' }}
+      in this range have {{ _missing_because(dimension) }} and are excluded.
     </p>
   {% endif %}
 

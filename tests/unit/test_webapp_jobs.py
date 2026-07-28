@@ -3552,7 +3552,7 @@ def test_card_shell_panels_stay_lazy_after_a_refetch(
 
 
 # ---------------------------------------------------------------------------
-# Job Sizes: leading empty band suppression
+# Job Sizes: empty edge-band suppression
 # ---------------------------------------------------------------------------
 
 def _sizes_hist(first_jobs=0):
@@ -3572,43 +3572,106 @@ def _sizes_hist(first_jobs=0):
     }
 
 
+def _banded_hist(counts):
+    """A nodes-style envelope with one band per entry of *counts*."""
+    return {
+        'dimension': 'nodes', 'column': 'numnodes', 'unit': 'nodes',
+        'min_param': 'min_nodes', 'max_param': 'max_nodes',
+        'buckets': [
+            {'label': str(i), 'lo': i, 'hi': i,
+             'job_count': n, 'cpu_hours': float(n), 'gpu_hours': 0.0}
+            for i, n in enumerate(counts)
+        ],
+        'null_count': 0, 'total_count': sum(counts),
+    }
+
+
+def _labels(hist):
+    return [b['label'] for b in hist['buckets']]
+
+
 def test_trim_drops_a_leading_empty_band():
     """Every job uses ≥1 node, so that 0 band can never fill."""
-    from webapp.jobs.routes import _trim_leading_empty_bands
+    from webapp.jobs.routes import _trim_empty_edge_bands
 
     hist = _sizes_hist()
-    trimmed = _trim_leading_empty_bands(hist)
+    trimmed = _trim_empty_edge_bands(hist)
 
-    assert [b['label'] for b in trimmed['buckets']] == ['1', '2-4']
+    assert _labels(trimmed) == ['1', '2-4']
     # The envelope is a shared cache entry — trimming must copy, not mutate.
-    assert [b['label'] for b in hist['buckets']] == ['0', '1', '2-4']
+    assert _labels(hist) == ['0', '1', '2-4']
 
 
 def test_trim_keeps_a_populated_leading_band():
     """The GPU 0 band holds the CPU-only jobs and stays."""
-    from webapp.jobs.routes import _trim_leading_empty_bands
+    from webapp.jobs.routes import _trim_empty_edge_bands
 
-    trimmed = _trim_leading_empty_bands(_sizes_hist(first_jobs=9))
-    assert [b['label'] for b in trimmed['buckets']] == ['0', '1', '2-4']
+    assert _labels(_trim_empty_edge_bands(_sizes_hist(first_jobs=9))) == \
+        ['0', '1', '2-4']
 
 
-def test_trim_leaves_an_entirely_empty_range_alone():
-    """All-zero → the chart's own placeholder, not a bandless envelope."""
-    from webapp.jobs.routes import _trim_leading_empty_bands
+def test_trim_drops_trailing_empty_bands():
+    """The bucket tables are sized for the biggest machine the plugin
+    serves, so a smaller one's top bands can never fill."""
+    from webapp.jobs.routes import _trim_empty_edge_bands
 
-    hist = _sizes_hist()
-    hist['buckets'] = [dict(b, job_count=0) for b in hist['buckets']]
-    assert _trim_leading_empty_bands(hist)['buckets'] == hist['buckets']
+    hist = _banded_hist([3, 7, 2, 0, 0, 0])
+    trimmed = _trim_empty_edge_bands(hist)
+
+    assert _labels(trimmed) == ['0', '1', '2']
+    assert _labels(hist) == ['0', '1', '2', '3', '4', '5']   # not mutated
+
+
+def test_trim_drops_both_edges_at_once():
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    assert _labels(_trim_empty_edge_bands(
+        _banded_hist([0, 0, 4, 9, 0]))) == ['2', '3']
+
+
+def test_trim_keeps_interior_empty_bands():
+    """A gap inside the distribution is a finding, not noise."""
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    assert _labels(_trim_empty_edge_bands(
+        _banded_hist([0, 5, 0, 0, 8, 0]))) == ['1', '2', '3', '4']
+
+
+def test_trim_keeps_a_single_populated_band():
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    assert _labels(_trim_empty_edge_bands(
+        _banded_hist([0, 0, 6, 0, 0]))) == ['2']
+
+
+def test_trim_empties_an_entirely_empty_range():
+    """All-zero → no bands at all, so the caller renders an empty state
+    instead of a bar-less axis over a table of zeros."""
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    hist = _banded_hist([0, 0, 0])
+    trimmed = _trim_empty_edge_bands(hist)
+
+    assert trimmed['buckets'] == []
+    assert len(hist['buckets']) == 3                         # not mutated
+
+
+def test_trim_tolerates_an_envelope_with_no_bands():
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    hist = _banded_hist([])
+    assert _trim_empty_edge_bands(hist) is hist
+    assert _trim_empty_edge_bands(None) is None
 
 
 def test_trim_ignores_the_displayed_metric():
     """A band of real jobs charging no GPU-hours must not shift the axis."""
-    from webapp.jobs.routes import _trim_leading_empty_bands
+    from webapp.jobs.routes import _trim_empty_edge_bands
 
     hist = _sizes_hist(first_jobs=4)
     hist['buckets'][0]['cpu_hours'] = 0.0
     hist['buckets'][0]['gpu_hours'] = 0.0
-    assert _trim_leading_empty_bands(hist)['buckets'][0]['label'] == '0'
+    assert _trim_empty_edge_bands(hist)['buckets'][0]['label'] == '0'
 
 
 def test_job_sizes_fragment_hides_the_empty_zero_band(
@@ -3642,6 +3705,64 @@ def test_job_sizes_bar_and_row_indices_stay_aligned_after_trim(
     row = re.search(r'data-jh-bucket="0".*?</tr>', body, re.S)
     assert row, 'no bucket-0 row rendered'
     assert '<code>1</code>' in row.group(0)
+
+
+def _job_sizes_body(app, auth_client, project, monkeypatch, hist):
+    _install_mock_plugin(app, monkeypatch, jobs_histogram_return=hist)
+    return auth_client.get(
+        f'/dashboards/user/jobs/{project.projcode}/job-sizes'
+        '?machine=derecho&dimension=nodes'
+    ).get_data(as_text=True)
+
+
+def test_job_sizes_fragment_hides_trailing_empty_bands(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Casper can't fill the top of an axis sized for the biggest machine."""
+    import re
+    body = _job_sizes_body(app, auth_client, active_project, monkeypatch,
+                           _banded_hist([0, 4, 9, 0, 0, 0]))
+    labels = re.findall(r'<code>([^<]+)</code>', body)
+    assert labels == ['1', '2']
+
+
+def test_job_sizes_fragment_keeps_interior_empty_bands(
+    app, auth_client, active_project, monkeypatch,
+):
+    import re
+    body = _job_sizes_body(app, auth_client, active_project, monkeypatch,
+                           _banded_hist([0, 5, 0, 8, 0]))
+    labels = re.findall(r'<code>([^<]+)</code>', body)
+    assert labels == ['1', '2', '3']
+
+
+def test_histogram_with_no_matching_jobs_renders_one_empty_state(
+    app, auth_client, active_project, monkeypatch,
+):
+    """All-zero: one sentence, not a bar-less axis over a table of zeros."""
+    body = _job_sizes_body(app, auth_client, active_project, monkeypatch,
+                           _banded_hist([0, 0, 0]))
+
+    assert 'No jobs match these filters.' in body
+    assert 'Bucket breakdown' not in body
+    assert 'data-jh-bucket' not in body
+
+
+def test_histogram_all_unmeasured_says_so_instead_of_no_jobs(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Matching jobs that carry no value on this dimension are a different
+    story from no matching jobs — Derecho waits before 2025 are the case."""
+    hist = _banded_hist([0, 0, 0])
+    hist.update(dimension='wait', null_count=42, total_count=42)
+    _install_mock_plugin(app, monkeypatch, jobs_histogram_return=hist)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho'
+    ).get_data(as_text=True)
+
+    assert 'no wait measurement' in body
+    assert 'No jobs match these filters.' not in body
 
 
 # ---------------------------------------------------------------------------

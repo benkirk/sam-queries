@@ -889,20 +889,37 @@ def _bucket_drill_url(jobs_fragment_url: str, hist: dict, bucket: dict,
     return f'{jobs_fragment_url}?{urlencode(params)}'
 
 
-def _trim_leading_empty_bands(hist):
-    """Drop leading all-zero bands from a histogram envelope.
+def _trim_empty_edge_bands(hist):
+    """Drop leading AND trailing all-zero bands from a histogram envelope.
 
     The plugin returns a complete, ordered bucket vector — zeros included —
     which is what keeps the x-axis stable as filters change, and that's
-    worth preserving *inside* a distribution. A leading empty band is
-    different: on Job Sizes it's structural, since every job uses at least
-    one node and one CPU, so those dimensions can never fill their 0 band.
-    GPUs are the exception that keeps the rule honest — there the 0 band
-    holds the CPU-only jobs, so it survives on its own merit.
+    worth preserving *inside* a distribution: an interior zero is a gap in
+    the data, a finding in its own right, and it stays.
+
+    The edges are different, and structural rather than a filter artifact:
+
+    * Leading. On Job Sizes every job uses at least one node and one CPU,
+      so those dimensions can never fill their 0 band. GPUs are the
+      exception that keeps the rule honest — there the 0 band holds the
+      CPU-only jobs, so it survives on its own merit.
+    * Trailing. The bucket tables are sized for the largest machine the
+      plugin serves (``CPU_HIST_BUCKETS`` runs to >32768), so a few-hundred
+      node machine spends the top of every node/CPU/GPU/memory axis on
+      bands nothing can ever land in.
 
     Emptiness is judged on ``job_count`` alone, never the displayed metric,
     so flipping Jobs / CPU-hours / GPU-hours can't shift the axis under the
     viewer (a band of real jobs charging no GPU-hours stays put).
+
+    An all-zero vector trims to **nothing**: there is no distribution, and
+    the caller renders an empty state rather than an axis with no bars.
+
+    The tradeoff, recorded because it partly reverses the zero-filled
+    vector's original intent: two panes side by side (Derecho vs Casper
+    subtabs, or before/after a filter change) can now have different axes.
+    Preserving interior zeros is what keeps the shape *within* the
+    populated range comparable.
 
     Returns a shallow copy — the envelope is a shared cache entry and must
     never be mutated — or *hist* itself when there's nothing to trim.
@@ -911,11 +928,14 @@ def _trim_leading_empty_bands(hist):
     lead = 0
     while lead < len(buckets) and not (buckets[lead].get('job_count') or 0):
         lead += 1
-    if not lead or lead == len(buckets):
-        # Nothing to trim, or the whole range is empty — leave that to the
-        # chart's own "no jobs" placeholder rather than serving no bands.
+    if lead == len(buckets):
+        return dict(hist, buckets=[]) if buckets else hist
+    tail = len(buckets)
+    while tail > lead and not (buckets[tail - 1].get('job_count') or 0):
+        tail -= 1
+    if not lead and tail == len(buckets):
         return hist
-    return dict(hist, buckets=buckets[lead:])
+    return dict(hist, buckets=buckets[lead:tail])
 
 
 def _render_histogram(*, mode, machine, dimension, dimension_toggle,
@@ -973,11 +993,14 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     # Trim BEFORE the chart and the drill list: the bar sentinels
     # (#jh-bar-<i>) and the table's data-jh-bucket indices are both
     # positions in this bucket vector, so all three have to see the
-    # same one.
-    hist = _trim_leading_empty_bands(hist)
+    # same one. An all-zero distribution trims to no bands at all, which
+    # is how the template knows to render one empty state instead of a
+    # bar-less axis over a table of zeros.
+    hist = _trim_empty_edge_bands(hist)
+    has_bands = bool((hist or {}).get('buckets'))
 
     chart_svg = (generate_jobs_histogram(hist, metric=metric, log_y=log_on)
-                 if hist else None)
+                 if has_bands else None)
     params = _roundtrip_params(machine, target_id)
 
     # One drill URL per band (None for empty bands) — computed here, not
@@ -985,7 +1008,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     # in one place. A parallel list rather than mutating hist: the
     # envelope is a shared cache entry.
     bucket_drills = None
-    if hist and jobs_fragment_url:
+    if has_bands and jobs_fragment_url:
         bucket_drills = [
             _bucket_drill_url(jobs_fragment_url, hist, b, params)
             for b in hist.get('buckets') or []
