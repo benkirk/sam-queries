@@ -1273,6 +1273,23 @@ def _panel_filters(machine: str) -> dict:
 _EXPLORER_CID = 'jobs-explore'
 _EXPLORER_TABLIST = 'jobsExploreTabs'
 
+# Tab keys the card understands, in strip order. Whitelisted because the
+# value picks which panel fires its query on render.
+_CARD_TABS = ('jobs', 'byuser', 'byproj', 'wait', 'sizes', 'durations')
+
+
+def _parse_active_tab() -> str:
+    """``?active_tab=`` — which card tab the viewer has open.
+
+    Server-side input rather than something the client restores after the
+    swap: the explorer re-renders the whole card on every Apply, and a
+    card that always came back on Jobs would fetch the chart the viewer
+    asked for *and* a per-job table nobody wants (16 s+ machine-wide on
+    Casper). Unknown values fall back to Jobs.
+    """
+    tab = (request.args.get('active_tab') or '').strip()
+    return tab if tab in _CARD_TABS else 'jobs'
+
 # Panel-shaping filters the explorer bakes into every panel URL, in the
 # display units _parse_job_filters reads. `ignore_case` rides along only
 # with a name glob; `machine`, `target_id` and `projcode` are the macro's
@@ -1343,7 +1360,10 @@ def _explorer_card_context(*, mode: str, machine: str, project=None,
     panel = _panel_filters(machine)
     panel_params = _explorer_panel_params(panel, scope)
     username = current_user.username if mode == 'user' else None
+    active_tab = _parse_active_tab()
+    panel['active_tab'] = active_tab      # the form round-trips it back
     return panel, _card_context(
+        active_tab=active_tab,
         mode=mode, machine=machine,
         cid=_EXPLORER_CID, tablist_id=_EXPLORER_TABLIST,
         projcode=(project.projcode if project is not None else None),

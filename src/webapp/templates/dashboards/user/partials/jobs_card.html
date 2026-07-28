@@ -20,10 +20,20 @@
      tablist_id  id for the <ul class="nav-tabs"> (drives nav-view-persistence's
                  tab:<id> key; keep stable per card).
      machine     plugin machine key ('derecho' | 'casper')
-     load_trigger  hx-trigger for the first (Jobs) tab — the only bit of
-                   lazy-load wiring that differs by host: project mode fires
-                   on card-open (collapse) + tab show; machine/user modes fire
+     load_trigger  hx-trigger for the OPEN tab — the only bit of lazy-load
+                   wiring that differs by host: project mode fires on
+                   card-open (collapse) + tab show; machine/user modes fire
                    when their pane is shown. See feedback_persisted_collapse_htmx.
+                   Every other tab waits for `shown.bs.tab once`.
+     active_tab   which tab is open: 'jobs' (default) | 'byuser' |
+                  'byproj' | 'wait' | 'sizes' | 'durations'. It has to be
+                  a server-side input, not something the client restores
+                  afterwards: the explorer re-renders this whole card on
+                  every Apply, and if the answer were always 'jobs' an
+                  Apply from a chart tab would fetch that chart AND a
+                  per-job table nobody asked for (16 s+ on a machine-wide
+                  Casper window). The filter form round-trips it, kept in
+                  sync by nav-view-persistence.js.
      projcode     project mode only.
      show_by_user / show_by_project  whether those tabs can say anything
                   in this scope. Both come from jobs/routes.py's
@@ -110,7 +120,19 @@
                    days=none, days_persist_id=none,
                    show_pills=true, show_explore_link=true,
                    facet_chips=none, facet_filters={},
-                   facet_form_id=none) %}
+                   facet_form_id=none, active_tab='jobs') %}
+{# Only the OPEN panel fires on render; the rest wait to be shown. The
+   host decides which is open (the explorer's filter form round-trips
+   it) so an Apply can't also fetch a panel nobody is looking at. #}
+{% macro _trig(key) -%}
+{{ load_trigger if key == active_tab else 'shown.bs.tab once' }}
+{%- endmacro %}
+{% macro _tabcls(key) -%}
+nav-link{{ ' active' if key == active_tab }}
+{%- endmacro %}
+{% macro _panecls(key) -%}
+tab-pane fade{{ ' show active' if key == active_tab }}
+{%- endmacro %}
 {# The Jobs tab takes the same filters as the aggregations unless the
    caller separates them (the explorer adds per_page). #}
 {% set _jp = jobs_params if jobs_params is not none else panel_params %}
@@ -188,72 +210,78 @@
 {% endif %}
 <ul class="nav nav-tabs mb-0" id="{{ tablist_id }}" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="{{ cid }}-jobs-tab"
+        <button class="{{ _tabcls('jobs') }}" id="{{ cid }}-jobs-tab"
+                data-jobs-tab="jobs"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-jobs"
                 type="button" role="tab"
                 hx-get="{{ _jobs_url }}"
                 hx-target="#{{ cid }}-jobs"
                 hx-swap="innerHTML"
-                hx-trigger="{{ load_trigger }}"{{ _persist(days_persist_id) }}>
+                hx-trigger="{{ _trig('jobs') }}"{{ _persist(days_persist_id) }}>
             <i class="fas fa-list me-1"></i> Jobs
         </button>
     </li>
     {% if _user_url %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-byuser-tab"
+        <button class="{{ _tabcls('byuser') }}" id="{{ cid }}-byuser-tab"
+                data-jobs-tab="byuser"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-byuser"
                 type="button" role="tab"
                 hx-get="{{ _user_url }}"
                 hx-target="#{{ cid }}-byuser"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('byuser') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-users me-1"></i> By User
         </button>
     </li>
     {% endif %}
     {% if _proj_url %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-byproj-tab"
+        <button class="{{ _tabcls('byproj') }}" id="{{ cid }}-byproj-tab"
+                data-jobs-tab="byproj"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-byproj"
                 type="button" role="tab"
                 hx-get="{{ _proj_url }}"
                 hx-target="#{{ cid }}-byproj"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('byproj') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-diagram-project me-1"></i> By Project
         </button>
     </li>
     {% endif %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-wait-tab"
+        <button class="{{ _tabcls('wait') }}" id="{{ cid }}-wait-tab"
+                data-jobs-tab="wait"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-wait"
                 type="button" role="tab"
                 hx-get="{{ _wait_url }}"
                 hx-target="#{{ cid }}-wait"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('wait') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-hourglass-half me-1"></i> Wait Times
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-sizes-tab"
+        <button class="{{ _tabcls('sizes') }}" id="{{ cid }}-sizes-tab"
+                data-jobs-tab="sizes"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-sizes"
                 type="button" role="tab"
                 hx-get="{{ _sizes_url }}"
                 hx-target="#{{ cid }}-sizes"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('sizes') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-layer-group me-1"></i> Job Sizes
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-durations-tab"
+        <button class="{{ _tabcls('durations') }}" id="{{ cid }}-durations-tab"
+                data-jobs-tab="durations"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-durations"
                 type="button" role="tab"
                 hx-get="{{ _dur_url }}"
                 hx-target="#{{ cid }}-durations"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('durations') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-stopwatch me-1"></i> Durations
         </button>
     </li>
@@ -276,7 +304,7 @@
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom p-3"
      id="{{ tablist_id }}Content">
-    <div class="tab-pane fade show active" id="tab-{{ cid }}-jobs" role="tabpanel">
+    <div class="{{ _panecls('jobs') }}" id="tab-{{ cid }}-jobs" role="tabpanel">
         {% if show_explore_link and _full_url %}
         <div class="d-flex justify-content-end mb-2">
             <a class="btn btn-sm btn-outline-primary"
@@ -293,7 +321,7 @@
         </div>
     </div>
     {% if _user_url %}
-    <div class="tab-pane fade" id="tab-{{ cid }}-byuser" role="tabpanel">
+    <div class="{{ _panecls('byuser') }}" id="tab-{{ cid }}-byuser" role="tabpanel">
         <div id="{{ cid }}-byuser"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading…
@@ -302,7 +330,7 @@
     </div>
     {% endif %}
     {% if _proj_url %}
-    <div class="tab-pane fade" id="tab-{{ cid }}-byproj" role="tabpanel">
+    <div class="{{ _panecls('byproj') }}" id="tab-{{ cid }}-byproj" role="tabpanel">
         <div id="{{ cid }}-byproj"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading…
@@ -310,21 +338,21 @@
         </div>
     </div>
     {% endif %}
-    <div class="tab-pane fade" id="tab-{{ cid }}-wait" role="tabpanel">
+    <div class="{{ _panecls('wait') }}" id="tab-{{ cid }}-wait" role="tabpanel">
         <div id="{{ cid }}-wait"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading wait times…
             </p>
         </div>
     </div>
-    <div class="tab-pane fade" id="tab-{{ cid }}-sizes" role="tabpanel">
+    <div class="{{ _panecls('sizes') }}" id="tab-{{ cid }}-sizes" role="tabpanel">
         <div id="{{ cid }}-sizes"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading job sizes…
             </p>
         </div>
     </div>
-    <div class="tab-pane fade" id="tab-{{ cid }}-durations" role="tabpanel">
+    <div class="{{ _panecls('durations') }}" id="tab-{{ cid }}-durations" role="tabpanel">
         <div id="{{ cid }}-durations"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading durations…

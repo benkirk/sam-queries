@@ -73,7 +73,8 @@
     {{ jobs_filters('jobs-filters-panel-' ~ table_target,
                     card_url, card.cid ~ '-card',
                     filters, user_search_url, machine, scope,
-                    per_page_options, mode=mode) }}
+                    per_page_options, mode=mode,
+                    active_tab=card.active_tab) }}
   </div>
 
   {# The facet chip strip rides inside the card (jobs_card.html), so it

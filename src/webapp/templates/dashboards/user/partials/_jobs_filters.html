@@ -21,6 +21,8 @@
     scope           project-mode subtree re-root, echoed back on submit
     per_page_options  row-count choices for the rows selector
     mode            'project' | 'machine' | 'user'
+    active_tab      which card tab is open, round-tripped so the
+                    re-rendered card fetches only that one panel
 
   The user picker stores a SAM user_id under ``user_id``; the route
   resolves it to the PBS username the job data is keyed on (see
@@ -30,7 +32,7 @@
 #}
 {% macro jobs_filters(form_id, card_url, card_target, filters,
                       user_search_url, machine, scope, per_page_options,
-                      mode='project') %}
+                      mode='project', active_tab='jobs') %}
 <form id="{{ form_id }}"
       hx-get="{{ card_url }}"
       hx-target="#{{ card_target }}"
@@ -61,6 +63,11 @@
      the viewer's to set.) #}
   <input type="hidden" name="machine" value="{{ machine }}">
   {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
+  {# Which tab is open, so the re-rendered card comes back with it already
+     active and only that one panel fetches. nav-view-persistence.js keeps
+     this in sync on shown.bs.tab. #}
+  <input type="hidden" name="active_tab" value="{{ active_tab }}"
+         data-jobs-active-tab-input>
 
   <div class="d-flex flex-wrap align-items-end gap-3">
     <div>

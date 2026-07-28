@@ -2287,6 +2287,76 @@ def test_explore_page_filter_form_re_renders_the_card(
     assert '/card?' in attrs and 'surface=explorer' in attrs.replace('&amp;', '&')
 
 
+def test_explore_card_opens_the_tab_the_form_reports(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Apply re-renders the whole card, so the server has to be told which
+    tab is open. Otherwise it always comes back on Jobs and an Apply from
+    a chart fetches that chart AND a per-job table nobody asked for."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&active_tab=sizes'
+    ).get_data(as_text=True)
+
+    sizes_btn = re.search(r'<button[^>]*data-jobs-tab="sizes".*?>', body, re.S)
+    assert sizes_btn and 'active' in sizes_btn.group(0)
+    # …and it is the one that fires on render; the rest wait to be shown.
+    assert 'hx-trigger="load once"' in sizes_btn.group(0)
+    jobs_btn = re.search(r'<button[^>]*data-jobs-tab="jobs".*?>', body, re.S)
+    assert jobs_btn and 'active' not in jobs_btn.group(0)
+    assert 'hx-trigger="shown.bs.tab once"' in jobs_btn.group(0)
+    # The pane follows the button.
+    assert re.search(r'class="tab-pane fade show active" id="tab-jobs-explore-sizes"',
+                     body)
+
+
+def test_explore_card_rejects_an_unknown_active_tab(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The value picks which panel fires a query, so it is whitelisted."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&active_tab=../evil'
+    ).get_data(as_text=True)
+
+    jobs_btn = re.search(r'<button[^>]*data-jobs-tab="jobs".*?>', body, re.S)
+    assert jobs_btn and 'active' in jobs_btn.group(0)
+
+
+def test_explore_page_round_trips_the_active_tab_through_the_form(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&active_tab=wait'
+    ).get_data(as_text=True)
+
+    assert ('<input type="hidden" name="active_tab" value="wait"'
+            in body)
+    assert 'data-jobs-active-tab-input' in body
+
+
+def test_cards_still_open_on_jobs_by_default(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Nothing changes for the embedded cards: Jobs is open and owns the
+    host's load_trigger, every other tab waits to be shown."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=90)).get_data(as_text=True)
+
+    jobs_btn = re.search(r'<button[^>]*data-jobs-tab="jobs".*?>', body, re.S)
+    assert jobs_btn and 'active' in jobs_btn.group(0)
+    assert 'hx-trigger="intersect once"' in jobs_btn.group(0)
+    assert body.count('hx-trigger="shown.bs.tab once"') >= 4
+
+
 def test_explore_page_bakes_filters_into_every_panel_url(
     app, auth_client, active_project, monkeypatch,
 ):
