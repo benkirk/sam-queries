@@ -24,13 +24,26 @@
                    lazy-load wiring that differs by host: project mode fires
                    on card-open (collapse) + tab show; machine/user modes fire
                    when their pane is shown. See feedback_persisted_collapse_htmx.
-     projcode, scope  project mode only.
+     projcode     project mode only.
      jobs_multi_project  project mode only: True when the project's account
                   tree spans >1 projcode — gates the By Project tab (a
                   single-project pie would be a pie of one).
-     start, end   optional YYYY-MM-DD window carried into every tab (project
-                  mode passes the page's date range so aggregations stay
-                  bounded; url_for drops None values).
+     panel_params  dict merged into EVERY panel's hx-get. The cards pass
+                  their window (`start`/`end`, plus `scope` in project
+                  mode); the explorer passes its whole filter set, in the
+                  display units _parse_job_filters reads. It must not
+                  carry `machine`, `projcode` or `target_id` — the macro
+                  supplies those and url_for would raise on a duplicate.
+                  url_for drops None values, so absent filters cost
+                  nothing.
+     jobs_params  same, for the Jobs tab alone, when the table needs
+                  params the aggregations don't (`per_page`). Defaults to
+                  panel_params.
+     show_pills   render the period-pill group. False on the explorer,
+                  where the filter panel's own date fields own the window
+                  and a second control would fight them.
+     show_explore_link  render "Open full view ↗". False on the explorer,
+                  which is that view.
      days         optional lookback (one of jobs_window_pills) — paints the
                   matching period pill active. The pills re-render this whole
                   shell via jobs.jobs_card*_fragment, which is the only way
@@ -79,43 +92,54 @@
 {%- endmacro %}
 
 {% macro jobs_card(mode, cid, tablist_id, machine, load_trigger,
-                   projcode=none, scope=none, jobs_multi_project=false,
-                   start=none, end=none, days=none, days_persist_id=none) %}
+                   projcode=none, jobs_multi_project=false,
+                   panel_params={}, jobs_params=none,
+                   days=none, days_persist_id=none,
+                   show_pills=true, show_explore_link=true) %}
+{# The Jobs tab takes the same filters as the aggregations unless the
+   caller separates them (the explorer adds per_page). #}
+{% set _jp = jobs_params if jobs_params is not none else panel_params %}
+{# `scope` lives in panel_params — that's what routes it into the
+   aggregations, whose _tree_projcodes → _scope_project reads it from
+   request.args. Before it did, a re-rooted subtree silently widened the
+   pies back to the whole tree. The two page-level URLs below need it
+   too, hence the lookup. #}
+{% set _scope = panel_params.get('scope') %}
 {# The explorer link speaks ?days= rather than a computed date so the
    cold-start sync in JS never has to re-derive a window client-side. #}
-{% set _x_start = none if days else start %}
-{% set _x_end = none if days else end %}
+{% set _x_start = none if days else panel_params.get('start') %}
+{% set _x_end = none if days else panel_params.get('end') %}
 {% set _proj_url = none %}
 {% if mode == 'machine' %}
-    {% set _jobs_url  = url_for('jobs.jobs_machine_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
-    {% set _user_url  = url_for('jobs.by_user_machine_fragment',    machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
-    {% set _proj_url  = url_for('jobs.by_project_machine_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
-    {% set _wait_url  = url_for('jobs.wait_times_machine_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
-    {% set _sizes_url = url_for('jobs.job_sizes_machine_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
-    {% set _dur_url   = url_for('jobs.durations_machine_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
+    {% set _jobs_url  = url_for('jobs.jobs_machine_fragment',       machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% set _user_url  = url_for('jobs.by_user_machine_fragment',    machine=machine, target_id=cid ~ '-byuser', **panel_params) %}
+    {% set _proj_url  = url_for('jobs.by_project_machine_fragment', machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
+    {% set _wait_url  = url_for('jobs.wait_times_machine_fragment', machine=machine, target_id=cid ~ '-wait', **panel_params) %}
+    {% set _sizes_url = url_for('jobs.job_sizes_machine_fragment',  machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
+    {% set _dur_url   = url_for('jobs.durations_machine_fragment',  machine=machine, target_id=cid ~ '-durations', **panel_params) %}
     {% set _full_url  = url_for('jobs.explore_machine_page',        machine=machine, start=_x_start, end=_x_end, days=days) %}
     {% set _card_url  = url_for('jobs.jobs_card_machine_fragment',  machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id) %}
 {% elif mode == 'user' %}
-    {% set _jobs_url  = url_for('jobs.jobs_user_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
-    {% set _proj_url  = url_for('jobs.by_project_user_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
-    {% set _wait_url  = url_for('jobs.wait_times_user_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
-    {% set _sizes_url = url_for('jobs.job_sizes_user_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
-    {% set _dur_url   = url_for('jobs.durations_user_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
+    {% set _jobs_url  = url_for('jobs.jobs_user_fragment',       machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% set _proj_url  = url_for('jobs.by_project_user_fragment', machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
+    {% set _wait_url  = url_for('jobs.wait_times_user_fragment', machine=machine, target_id=cid ~ '-wait', **panel_params) %}
+    {% set _sizes_url = url_for('jobs.job_sizes_user_fragment',  machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
+    {% set _dur_url   = url_for('jobs.durations_user_fragment',  machine=machine, target_id=cid ~ '-durations', **panel_params) %}
     {% set _full_url  = url_for('jobs.explore_user_page',        machine=machine, start=_x_start, end=_x_end, days=days) %}
     {% set _card_url  = url_for('jobs.jobs_card_user_fragment',  machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id) %}
     {# no _user_url — the By User tab is hidden in user mode (a pie of
        one); By Project takes its slot: which projects MY jobs charged. #}
 {% else %}
-    {% set _jobs_url  = url_for('jobs.jobs_fragment',       projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
-    {% set _user_url  = url_for('jobs.by_user_fragment',    projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
+    {% set _jobs_url  = url_for('jobs.jobs_fragment',       projcode=projcode, machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% set _user_url  = url_for('jobs.by_user_fragment',    projcode=projcode, machine=machine, target_id=cid ~ '-byuser', **panel_params) %}
     {% if jobs_multi_project %}
-        {% set _proj_url = url_for('jobs.by_project_fragment', projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
+        {% set _proj_url = url_for('jobs.by_project_fragment', projcode=projcode, machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
     {% endif %}
-    {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
-    {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
-    {% set _dur_url   = url_for('jobs.durations_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
-    {% set _full_url  = url_for('jobs.explore_page',        projcode=projcode, machine=machine, start=_x_start, end=_x_end, days=days, scope=scope) %}
-    {% set _card_url  = url_for('jobs.jobs_card_fragment',  projcode=projcode, machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id, scope=scope) %}
+    {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, target_id=cid ~ '-wait', **panel_params) %}
+    {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
+    {% set _dur_url   = url_for('jobs.durations_fragment',  projcode=projcode, machine=machine, target_id=cid ~ '-durations', **panel_params) %}
+    {% set _full_url  = url_for('jobs.explore_page',        projcode=projcode, machine=machine, start=_x_start, end=_x_end, days=days, scope=_scope) %}
+    {% set _card_url  = url_for('jobs.jobs_card_fragment',  projcode=projcode, machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id, scope=_scope) %}
 {% endif %}
 {# url_for always emits at least ?cid=, but don't rely on it for the pills. #}
 {% set _card_q = _card_url ~ ('&' if '?' in _card_url else '?') %}
@@ -207,6 +231,7 @@
     </li>
     {# Period pills ride the tab strip (ms-auto right-aligns them) so the
        window on screen is legible from the same line as the panel names. #}
+    {% if show_pills %}
     <li class="nav-item ms-auto d-flex align-items-center pb-1">
         <div class="btn-group btn-group-sm" role="group" aria-label="Time window"
              {%- if days_persist_id %} data-jobs-days-pills{% endif %}>
@@ -219,11 +244,12 @@
             {% endfor %}
         </div>
     </li>
+    {% endif %}
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom p-3"
      id="{{ tablist_id }}Content">
     <div class="tab-pane fade show active" id="tab-{{ cid }}-jobs" role="tabpanel">
-        {% if _full_url %}
+        {% if show_explore_link and _full_url %}
         <div class="d-flex justify-content-end mb-2">
             <a class="btn btn-sm btn-outline-primary"
                href="{{ _full_url }}" data-jobs-explore-link

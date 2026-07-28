@@ -10,9 +10,10 @@
 {{- jobs_card(mode=mode, cid=cid, tablist_id=tablist_id, machine=machine,
               load_trigger=load_trigger,
               projcode=projcode | default(none),
-              scope=scope | default(none),
               jobs_multi_project=jobs_multi_project | default(false),
-              start=start | default(none),
-              end=end | default(none),
+              panel_params=panel_params | default({}),
+              jobs_params=jobs_params | default(none),
               days=days | default(none),
-              days_persist_id=days_persist_id | default(none)) -}}
+              days_persist_id=days_persist_id | default(none),
+              show_pills=show_pills | default(true),
+              show_explore_link=show_explore_link | default(true)) -}}

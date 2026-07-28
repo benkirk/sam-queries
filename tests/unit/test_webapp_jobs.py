@@ -3355,12 +3355,45 @@ def test_card_fragment_bakes_the_window_into_every_panel_url(
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
 
+    import re
     start = _days_ago(365).isoformat()
+    panel_urls = [u.replace('&amp;', '&')
+                  for u in re.findall(r'hx-get="([^"]+)"', body)]
     for suffix in ('', '/wait-times', '/job-sizes', '/durations'):
-        assert (f'/dashboards/user/jobs/{active_project.projcode}{suffix}'
-                f'?machine=derecho&amp;start={start}') in body, suffix
+        path = f'/dashboards/user/jobs/{active_project.projcode}{suffix}?'
+        matches = [u for u in panel_urls if u.startswith(path)]
+        assert matches, suffix
+        # Param order is url_for's business; what matters is that every
+        # panel carries the machine and the pill's window.
+        assert all('machine=derecho' in u and f'start={start}' in u
+                   for u in matches), suffix
     # A pill is a lookback from today, so the page's own end date is gone.
     assert 'end=' not in body
+
+
+def test_card_fragment_carries_scope_into_every_panel_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A re-rooted subtree has to narrow the aggregations, not just the link.
+
+    The panels resolve ``?scope=`` through ``_tree_projcodes`` ->
+    ``_scope_project``; until it rode ``panel_params`` only the page-level
+    explore link carried it, so a scoped card would have widened its pies
+    back to the whole tree.
+    """
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=90, scope='CHILD0001')
+    ).get_data(as_text=True)
+
+    import re
+    panel_urls = [u.replace('&amp;', '&')
+                  for u in re.findall(r'hx-get="([^"]+)"', body)]
+    for suffix in ('', '/by-user', '/wait-times', '/job-sizes', '/durations'):
+        path = f'/dashboards/user/jobs/{active_project.projcode}{suffix}?'
+        matches = [u for u in panel_urls if u.startswith(path)]
+        assert matches, suffix
+        assert all('scope=CHILD0001' in u for u in matches), suffix
 
 
 def test_card_fragment_marks_the_requested_pill_active(

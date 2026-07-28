@@ -1570,23 +1570,46 @@ def _id_arg(name: str, default: Optional[str] = None) -> Optional[str]:
     return raw
 
 
+def _card_context(*, mode: str, machine: str, **extra) -> dict:
+    """Template context for the jobs card shell.
+
+    The id-shaped args are echoed straight back into element ids and
+    hx-target selectors, so they go through ``_id_arg``. Everything that
+    shapes a panel URL travels in ``panel_params`` / ``jobs_params``,
+    which the caller owns — see ``_render_card_shell`` (period pills) and
+    ``_explorer_card_context`` (the full-view filter panel).
+    """
+    ctx = {
+        'mode': mode,
+        'machine': machine,
+        'cid': _id_arg('cid', 'jobs-card'),
+        'tablist_id': _id_arg('tablist_id', 'jobsCardTabs'),
+        'days_persist_id': _id_arg('days_persist_id'),
+    }
+    ctx.update(extra)
+    return ctx
+
+
 def _render_card_shell(*, mode: str, machine: str, **extra):
     """Re-render the jobs card bound to the requested ``?days=`` window."""
     days = _parse_days() or service.DEFAULT_JOBS_WINDOW_DAYS
+    # A pill is a pure lookback from today, so it drops any end date the
+    # host page baked in rather than re-anchoring the window inside it.
+    panel_params = dict(extra.pop('panel_params', None) or {})
+    panel_params['start'] = _days_start(days).isoformat()
+    panel_params.pop('end', None)
     return render_template(
         'dashboards/user/partials/jobs_card_shell.html',
-        mode=mode, machine=machine,
-        cid=_id_arg('cid', 'jobs-card'),
-        tablist_id=_id_arg('tablist_id', 'jobsCardTabs'),
-        days_persist_id=_id_arg('days_persist_id'),
-        days=days,
-        start=_days_start(days).isoformat(),
-        end=None,
-        # The clicked card is on screen, so this fires straight away; a
-        # sibling card refreshed inside a hidden machine subtab waits until
-        # it is actually shown instead of querying for nobody.
-        load_trigger='intersect once',
-        **extra,
+        **_card_context(
+            mode=mode, machine=machine,
+            days=days,
+            panel_params=panel_params,
+            # The clicked card is on screen, so this fires straight away; a
+            # sibling card refreshed inside a hidden machine subtab waits
+            # until it is actually shown instead of querying for nobody.
+            load_trigger='intersect once',
+            **extra,
+        ),
     )
 
 
@@ -1594,15 +1617,13 @@ def _render_card_shell(*, mode: str, machine: str, **extra):
 @login_required
 @require_project_access
 def jobs_card_fragment(project):
-    """HTMX fragment: *project*'s card shell rebound to a new window.
-
-    A pill is a pure lookback from today, so it drops the page's own end
-    date rather than re-anchoring the window inside it.
-    """
+    """HTMX fragment: *project*'s card shell rebound to a new window."""
     return _render_card_shell(
         mode='project', machine=_get_machine_or_400(),
         projcode=project.projcode,
-        scope=(request.args.get('scope') or '').strip() or None,
+        panel_params={
+            'scope': (request.args.get('scope') or '').strip() or None,
+        },
         jobs_multi_project=len(_tree_projcodes(project)) > 1,
     )
 

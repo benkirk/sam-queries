@@ -39,7 +39,7 @@
                      cid='jobs-m' ~ loop.index,
                      tablist_id='jobHistCardTabs' ~ loop.index,
                      machine=m,
-                     start=jobs_window_start,
+                     panel_params={'start': jobs_window_start},
                      days=jobs_window_days,
                      days_persist_id='jobs-days-status',
                      load_trigger=_trigger) }}
