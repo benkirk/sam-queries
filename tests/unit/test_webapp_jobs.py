@@ -3508,3 +3508,96 @@ def test_card_shell_panels_stay_lazy_after_a_refetch(
 
     assert 'hx-trigger="intersect once"' in body
     assert body.count('hx-trigger="shown.bs.tab once"') >= 4
+
+
+# ---------------------------------------------------------------------------
+# Job Sizes: leading empty band suppression
+# ---------------------------------------------------------------------------
+
+def _sizes_hist(first_jobs=0):
+    """A nodes-style envelope whose 0 band is empty unless asked otherwise."""
+    return {
+        'dimension': 'nodes', 'column': 'numnodes', 'unit': 'nodes',
+        'min_param': 'min_nodes', 'max_param': 'max_nodes',
+        'buckets': [
+            {'label': '0', 'lo': 0, 'hi': 0,
+             'job_count': first_jobs, 'cpu_hours': 0.0, 'gpu_hours': 0.0},
+            {'label': '1', 'lo': 1, 'hi': 1,
+             'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 0.0},
+            {'label': '2-4', 'lo': 2, 'hi': 4,
+             'job_count': 5, 'cpu_hours': 50.0, 'gpu_hours': 3.0},
+        ],
+        'null_count': 0, 'total_count': 17 + first_jobs,
+    }
+
+
+def test_trim_drops_a_leading_empty_band():
+    """Every job uses ≥1 node, so that 0 band can never fill."""
+    from webapp.jobs.routes import _trim_leading_empty_bands
+
+    hist = _sizes_hist()
+    trimmed = _trim_leading_empty_bands(hist)
+
+    assert [b['label'] for b in trimmed['buckets']] == ['1', '2-4']
+    # The envelope is a shared cache entry — trimming must copy, not mutate.
+    assert [b['label'] for b in hist['buckets']] == ['0', '1', '2-4']
+
+
+def test_trim_keeps_a_populated_leading_band():
+    """The GPU 0 band holds the CPU-only jobs and stays."""
+    from webapp.jobs.routes import _trim_leading_empty_bands
+
+    trimmed = _trim_leading_empty_bands(_sizes_hist(first_jobs=9))
+    assert [b['label'] for b in trimmed['buckets']] == ['0', '1', '2-4']
+
+
+def test_trim_leaves_an_entirely_empty_range_alone():
+    """All-zero → the chart's own placeholder, not a bandless envelope."""
+    from webapp.jobs.routes import _trim_leading_empty_bands
+
+    hist = _sizes_hist()
+    hist['buckets'] = [dict(b, job_count=0) for b in hist['buckets']]
+    assert _trim_leading_empty_bands(hist)['buckets'] == hist['buckets']
+
+
+def test_trim_ignores_the_displayed_metric():
+    """A band of real jobs charging no GPU-hours must not shift the axis."""
+    from webapp.jobs.routes import _trim_leading_empty_bands
+
+    hist = _sizes_hist(first_jobs=4)
+    hist['buckets'][0]['cpu_hours'] = 0.0
+    hist['buckets'][0]['gpu_hours'] = 0.0
+    assert _trim_leading_empty_bands(hist)['buckets'][0]['label'] == '0'
+
+
+def test_job_sizes_fragment_hides_the_empty_zero_band(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch, jobs_histogram_return=_sizes_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=nodes'
+    ).get_data(as_text=True)
+
+    import re
+    labels = re.findall(r'<code>([^<]+)</code>', body)
+    assert '0' not in labels
+    assert '1' in labels and '2-4' in labels
+
+
+def test_job_sizes_bar_and_row_indices_stay_aligned_after_trim(
+    app, auth_client, active_project, monkeypatch,
+):
+    """#jh-bar-<i> and data-jh-bucket=<i> both index the trimmed vector."""
+    _install_mock_plugin(app, monkeypatch, jobs_histogram_return=_sizes_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=nodes'
+    ).get_data(as_text=True)
+
+    import re
+    # Band 0 of the rendered chart is now the '1' band, and the row that
+    # answers a click on it must be the one carrying its counts.
+    row = re.search(r'data-jh-bucket="0".*?</tr>', body, re.S)
+    assert row, 'no bucket-0 row rendered'
+    assert '<code>1</code>' in row.group(0)

@@ -860,6 +860,35 @@ def _bucket_drill_url(jobs_fragment_url: str, hist: dict, bucket: dict,
     return f'{jobs_fragment_url}?{urlencode(params)}'
 
 
+def _trim_leading_empty_bands(hist):
+    """Drop leading all-zero bands from a histogram envelope.
+
+    The plugin returns a complete, ordered bucket vector — zeros included —
+    which is what keeps the x-axis stable as filters change, and that's
+    worth preserving *inside* a distribution. A leading empty band is
+    different: on Job Sizes it's structural, since every job uses at least
+    one node and one CPU, so those dimensions can never fill their 0 band.
+    GPUs are the exception that keeps the rule honest — there the 0 band
+    holds the CPU-only jobs, so it survives on its own merit.
+
+    Emptiness is judged on ``job_count`` alone, never the displayed metric,
+    so flipping Jobs / CPU-hours / GPU-hours can't shift the axis under the
+    viewer (a band of real jobs charging no GPU-hours stays put).
+
+    Returns a shallow copy — the envelope is a shared cache entry and must
+    never be mutated — or *hist* itself when there's nothing to trim.
+    """
+    buckets = (hist or {}).get('buckets') or []
+    lead = 0
+    while lead < len(buckets) and not (buckets[lead].get('job_count') or 0):
+        lead += 1
+    if not lead or lead == len(buckets):
+        # Nothing to trim, or the whole range is empty — leave that to the
+        # chart's own "no jobs" placeholder rather than serving no bands.
+        return hist
+    return dict(hist, buckets=buckets[lead:])
+
+
 def _render_histogram(*, mode, machine, dimension, dimension_toggle,
                       fragment_url, target_id,
                       jobs_fragment_url=None,
@@ -908,6 +937,12 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             mode, machine, dimension,
         )
         error = str(exc)
+
+    # Trim BEFORE the chart and the drill list: the bar sentinels
+    # (#jh-bar-<i>) and the table's data-jh-bucket indices are both
+    # positions in this bucket vector, so all three have to see the
+    # same one.
+    hist = _trim_leading_empty_bands(hist)
 
     chart_svg = generate_jobs_histogram(hist, metric=metric) if hist else None
     params = _roundtrip_params(machine, target_id)
