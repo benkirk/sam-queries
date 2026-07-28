@@ -2937,7 +2937,7 @@ def test_histogram_owners_limit_and_sort_forwarded(
     assert kwargs['owners_sort_by'] == 'gpu_hours'
 
 
-# --- Histogram User|Project owner pill (owners_by) --------------------------
+# --- Histogram User|Project owner pill (group_by) ---------------------------
 
 def _sample_hist_project_owners(dimension='wait'):
     """Owner keys are projcodes — the plugin owners_by='account' envelope.
@@ -2963,19 +2963,19 @@ def test_histogram_owner_pill_offered_in_machine_mode(
         '/dashboards/user/jobs/machine/derecho/wait-times'
     ).get_data(as_text=True)
     assert 'aria-label="Owner dimension"' in body
-    assert 'owners_by=account' in body
+    assert 'group_by=project' in body
 
 
 def test_histogram_owner_pill_hidden_in_user_mode_and_param_ignored(
     app, auth_client, monkeypatch,
 ):
-    """User mode never offers the pill, and a crafted ?owners_by=account
+    """User mode never offers the pill, and a crafted ?group_by=project
     is ignored (not forwarded to the plugin)."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
     )
     body = auth_client.get(
-        '/dashboards/user/jobs/user/derecho/wait-times?owners_by=account'
+        '/dashboards/user/jobs/user/derecho/wait-times?group_by=project'
     ).get_data(as_text=True)
     assert 'aria-label="Owner dimension"' not in body
     _dim, kwargs = captured['last_jobs_histogram']
@@ -3002,7 +3002,8 @@ def test_histogram_owners_by_forwarded_only_when_account(
     app, auth_client, monkeypatch,
 ):
     """Soft degradation contract: the default never sends owners_by (an
-    older plugin keeps working); the Project pill sends 'account'."""
+    older plugin keeps working); the Project pill sends the plugin's
+    'account' for the URL's canonical group_by=project."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_project_owners(),
     )
@@ -3010,6 +3011,13 @@ def test_histogram_owners_by_forwarded_only_when_account(
     _dim, kwargs = captured['last_jobs_histogram']
     assert 'owners_by' not in kwargs
 
+    auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times?group_by=project')
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['owners_by'] == 'account'
+
+    # The plugin's own spelling still works — bookmarks and any URL built
+    # before the rename keep resolving to the same view.
     auth_client.get(
         '/dashboards/user/jobs/machine/derecho/wait-times?owners_by=account')
     _dim, kwargs = captured['last_jobs_histogram']
@@ -3021,19 +3029,19 @@ def test_histogram_account_owner_tier_and_drill(
 ):
     """The Project pill drives the whole drill: Project tier header,
     project-modal triggers on owner cells, account= (not user=) on the
-    per-owner jobs drill, 'Other projects' remainder, and the owners_by
+    per-owner jobs drill, 'Other projects' remainder, and the group_by
     round-trip hidden input for the metric pills."""
     import re
     _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_project_owners(),
     )
     body = auth_client.get(
-        '/dashboards/user/jobs/machine/derecho/wait-times?owners_by=account'
+        '/dashboards/user/jobs/machine/derecho/wait-times?group_by=project'
     ).get_data(as_text=True)
     assert '<th>Project</th>' in body
     assert 'Other projects' in body
     assert 'project-details-modal/SCSG0001' in body
-    assert 'name="owners_by" value="account"' in body
+    assert 'name="group_by" value="project"' in body
     m = re.search(r'id="[^"]*-b0-u1-content"\s+hx-get="([^"]+)"', body)
     assert m, 'owner drill div missing'
     url = m.group(1).replace('&amp;', '&')
@@ -3601,3 +3609,89 @@ def test_job_sizes_bar_and_row_indices_stay_aligned_after_trim(
     row = re.search(r'data-jh-bucket="0".*?</tr>', body, re.S)
     assert row, 'no bucket-0 row rendered'
     assert '<code>1</code>' in row.group(0)
+
+
+# ---------------------------------------------------------------------------
+# Shared view lens — the panels' metric / owner / dimension pills persist
+# through the app-wide bucket (nav-view-persistence.js `data-chart-persist-
+# shared`), so a selection survives a period-pill re-render, carries to the
+# sibling panels, and comes back on reload.
+# ---------------------------------------------------------------------------
+
+_LENS = 'data-chart-persist-shared="group_by metric:jobs dimension:jobs"'
+
+
+def _tag_for(body, needle):
+    """The single HTML tag containing `needle`."""
+    i = body.index(needle)
+    return body[body.rindex('<', 0, i):body.index('>', i) + 1]
+
+
+def test_lens_declared_on_both_ends_of_every_pill_panel(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Tab button (injects on fetch) and container (saves on settle).
+
+    Both ends are required: the button is what requests the panel, and the
+    container is the element htmx reports as settled, which is what lets an
+    in-panel pill click persist without a click handler.
+    """
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode,
+                  days_persist_id='jobs-days-status')).get_data(as_text=True)
+
+    for panel in ('byuser', 'wait', 'sizes', 'durations'):
+        assert _LENS in _tag_for(body, f'id="jobs-hist-{panel}-tab"'), panel
+        assert _LENS in _tag_for(body, f'id="jobs-hist-{panel}"'), panel
+
+
+def test_lens_not_declared_on_the_jobs_tab(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The per-job table has none of the three pills — no reason to carry
+    the lens into its URL."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode)).get_data(as_text=True)
+
+    assert _LENS not in _tag_for(body, 'id="jobs-hist-jobs-tab"')
+    assert _LENS not in _tag_for(body, 'id="jobs-hist-jobs"')
+
+
+def test_lens_is_independent_of_window_persistence(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Resource-details opts out of a *stored window* (it would shadow the
+    page's own date range) — that says nothing about the lens, which has no
+    such conflict and persists everywhere."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode)).get_data(as_text=True)
+
+    assert 'data-chart-persist-id' not in body      # no window persistence
+    assert _LENS in body                            # lens regardless
+
+
+# --- Canonical group_by parsing --------------------------------------------
+
+@pytest.mark.parametrize('query,expected', [
+    ('group_by=project', 'project'),
+    ('group_by=user', 'user'),
+    ('owners_by=account', 'project'),   # the plugin's spelling, still honoured
+    ('owners_by=user', 'user'),
+    ('group_by=nonsense', 'user'),
+    ('', 'user'),
+])
+def test_parse_group_by(app, query, expected):
+    from webapp.jobs.routes import _parse_group_by
+    with app.test_request_context(f'/?{query}'):
+        assert _parse_group_by() == expected
+
+
+def test_parse_group_by_prefers_the_canonical_spelling(app):
+    """Both present (a stale round-trip form beside a fresh pill click):
+    group_by wins, so the click a user just made is what renders."""
+    from webapp.jobs.routes import _parse_group_by
+    with app.test_request_context('/?group_by=user&owners_by=account'):
+        assert _parse_group_by() == 'user'

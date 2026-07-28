@@ -701,6 +701,23 @@ def _parse_metric(default: str) -> str:
     return metric if metric in _METRICS else default
 
 
+def _parse_group_by() -> str:
+    """Owner dimension for the histograms' User|Project pill.
+
+    ``group_by=user|project`` is the app-wide spelling — the same one the
+    status dashboard's queue-load chart uses, which is what lets the
+    choice ride the shared view-preference bucket and mean the same thing
+    on both. ``owners_by=user|account`` (the plugin's own vocabulary, and
+    what this pill emitted before) is still honoured so in-flight links
+    and bookmarks keep working. Anything else falls back to 'user'.
+    """
+    raw = (request.args.get('group_by') or '').strip()
+    if raw:
+        return 'project' if raw == 'project' else 'user'
+    legacy = (request.args.get('owners_by') or '').strip()
+    return 'project' if legacy == 'account' else 'user'
+
+
 def _tree_projcodes(project) -> list:
     """(Scoped) parent + descendants — same tree expansion as jobs_fragment.
 
@@ -906,15 +923,17 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
 
     # User|Project owner-dimension pill — offered only where the context
     # spans more than one project (machine mode; a project tree > 1).
-    # Elsewhere ?owners_by= is ignored, so a crafted URL can't flip a
+    # Elsewhere the param is ignored, so a crafted URL can't flip a
     # single-project pane into a redundant per-project breakdown.
     owners_toggle = (mode == 'machine'
                      or (mode == 'project'
                          and account_projcodes is not None
                          and len(account_projcodes) > 1))
-    owners_by = 'user'
-    if owners_toggle and (request.args.get('owners_by') or '').strip() == 'account':
-        owners_by = 'account'
+    group_by = _parse_group_by() if owners_toggle else 'user'
+    # The plugin's word for a project owner is 'account'; the URL and the
+    # shared view-preference bucket speak 'project'. Translate here, at
+    # the one boundary between the two vocabularies.
+    owners_by = 'account' if group_by == 'project' else 'user'
 
     hist = None
     error = None
@@ -960,9 +979,9 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
 
     # Round-trip the non-default owner dimension through the metric /
     # dimension pills' hx-include form (AFTER the drill URLs — the jobs
-    # fragments don't take owners_by).
-    if owners_by != 'user':
-        params = dict(params, owners_by=owners_by)
+    # fragments don't take group_by).
+    if group_by != 'user':
+        params = dict(params, group_by=group_by)
 
     # Same affordance gates as the By User / By Project tables — never
     # render an entity quick-view link that would 403.
@@ -980,7 +999,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         metric=metric,
         dimension=dimension, dimension_toggle=dimension_toggle,
         size_dimensions=_SIZE_DIMENSIONS,
-        owners_by=owners_by, owners_toggle=owners_toggle,
+        group_by=group_by, owners_toggle=owners_toggle,
         can_view_users=can_view_users,
         can_view_projects=can_view_projects,
         fragment_url=fragment_url,

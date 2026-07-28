@@ -1,5 +1,7 @@
 {% from 'dashboards/user/partials/_jobs_macros.html'
    import jobs_disabled, jobs_error, jobs_empty %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {#
   Histogram fragment — shared by the Wait Times, Job Sizes, and Durations
   tabs (identical envelope shape; only the dimension differs). Embedded
@@ -15,8 +17,12 @@
                  'memory_used' | 'memory_wasted' | 'duration'
     dimension_toggle — True only on the Job Sizes tab
     size_dimensions  — the dimension pill order
-    owners_by       — 'user' | 'account': who owns the stacked segments
-                      and the per-band tier
+    group_by        — 'user' | 'project': who owns the stacked segments
+                      and the per-band tier. The URL vocabulary, shared
+                      with the status queue-load chart; routes.py maps
+                      'project' to the plugin's 'account'. The drill URLs
+                      below still key on `account=` — that's the jobs
+                      fragment's own filter param, not this pill.
     owners_toggle   — offer the User|Project pill (multi-project contexts)
     can_view_users / can_view_projects — entity quick-view modal gates
     fragment_url, target_id, params — re-fetch plumbing
@@ -73,13 +79,13 @@
     </div>
     {% if owners_toggle | default(false) %}
     {# Owner-dimension pills — whether users or projects own the stacked
-       segments and the per-band tier. The explicit ?owners_by= wins over
+       segments and the per-band tier. The explicit ?group_by= wins over
        the round-trip form's stale value (Werkzeug reads the first). #}
     <div class="btn-group btn-group-sm me-1" role="group" aria-label="Owner dimension">
-      {% for ob, label in [('user', 'User'), ('account', 'Project')] %}
+      {% for ob, label in [('user', 'User'), ('project', 'Project')] %}
       <button type="button"
-              class="btn btn-outline-secondary {% if owners_by == ob %}active{% endif %}"
-              hx-get="{{ fragment_url }}?owners_by={{ ob }}&metric={{ metric }}{% if dimension_toggle %}&dimension={{ dimension }}{% endif %}"
+              class="btn btn-outline-secondary {% if group_by == ob %}active{% endif %}"
+              hx-get="{{ fragment_url }}?group_by={{ ob }}&metric={{ metric }}{% if dimension_toggle %}&dimension={{ dimension }}{% endif %}"
               hx-target="#{{ target_id }}"
               hx-include="#jobs-hist-params-{{ target_id }}"
               hx-swap="innerHTML">
@@ -139,7 +145,7 @@
      account= for project owners. If the pane already pins ?user=, the
      single-owner shortcut guarantees the appended duplicate carries the
      identical value (Werkzeug reads the first) — benign. #}
-  {% set _okey = 'account' if owners_by | default('user') == 'account'
+  {% set _okey = 'account' if group_by | default('user') == 'project'
      else 'user' %}
   {% macro owner_jobs_drill(dt_id, owner, drill_url, band_label) %}
   <div class="p-2 bg-light" id="{{ dt_id }}"
@@ -171,7 +177,7 @@
         <tr>
           <th>Range</th>
           <th class="text-end">Jobs</th>
-          <th class="text-end">CPU-hours</th>
+          <th class="text-end">{{ term('CPU-hours', g_cpu_hours()) }}</th>
           <th class="text-end">GPU-hours</th>
         </tr>
       </thead>
