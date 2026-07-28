@@ -1,6 +1,100 @@
+{#
+  Date-range picker, in three pieces so the same behaviour can render either
+  as a standalone card or inline in a card-header tab strip.
+
+    date_range_picker(...)  the standalone card — unchanged public shape,
+                            used by the disk resource-details page.
+    drp_pills(...)          just the preset buttons + the Custom toggle.
+    drp_custom(...)         just the <form>: hidden fields, the (hidden until
+                            toggled) date inputs, and the current-range label.
+
+  Callers that compose the two halves themselves own the `.drp` root and its
+  contract, because static/js/pickers.js scopes every button via
+  closest('.drp'): the root needs `data-action-url`, `data-start`, optionally
+  `data-epoch`, and a <script type="application/json" class="drp-hidden">
+  block. See dashboards/user/resource_details.html, where `.drp` is the card
+  header so it can enclose both the tab strip (holding the pills) and the
+  custom-range row below it.
+
+  Two pickers.js contracts that look cosmetic but are not:
+    * `.drp-custom` is toggled with `d-none`, not a Bootstrap collapse.
+    * markActive() paints the active preset by swapping
+      `btn-outline-secondary` → `btn-secondary active`, so preset buttons must
+      keep that starting class alongside data-action/data-days.
+#}
+
+{% macro drp_pills(epoch_date=None, presets=None) %}
+{#
+  Preset buttons + the Custom toggle. Both kinds are type="button": presets
+  navigate via pickers.js (reading .drp-hidden at click time), and the toggle
+  only shows/hides the inputs — neither submits, so this macro does not need
+  to sit inside drp_custom's <form>.
+
+  data-scroll-preserve: nav-view-persistence.js snapshots scrollY on click
+  (capture phase, before pickers.js does the full-page nav) and restores it on
+  reload, so changing the range doesn't jump back to the top. Same mechanism
+  the queue-history time picker uses.
+#}
+<div class="btn-group btn-group-sm" role="group" aria-label="Date range presets">
+    {% if epoch_date %}
+    <button type="button"
+            class="btn btn-outline-secondary"
+            data-action="drp-epoch"
+            data-scroll-preserve>Epoch</button>
+    {% endif %}
+    {% set presets = presets or [('7d', 7), ('30d', 30), ('90d', 90), ('6mo', 180), ('1yr', 365)] %}
+    {% for label, days in presets %}
+    <button type="button"
+            class="btn btn-outline-secondary"
+            data-action="drp-days"
+            data-days="{{ days }}"
+            data-scroll-preserve>{{ label }}</button>
+    {% endfor %}
+</div>
+
+<button type="button"
+        class="btn btn-sm btn-outline-primary"
+        data-action="drp-toggle-custom">
+    <i class="fas fa-calendar-alt"></i> Custom
+</button>
+{% endmacro %}
+
+
+{% macro drp_custom(action, start_date, end_date, hidden_fields={}) %}
+{#
+  The GET form behind the Custom toggle. Also carries the hidden fields, so
+  they travel with a custom-range submit the same way pickers.js sends them
+  with a preset click. The current-range label lives here rather than in the
+  strip: when a custom range is active no preset is highlighted, so this is
+  the only readout of the window.
+#}
+<form method="GET" action="{{ action }}"
+      class="d-flex align-items-center gap-2 flex-grow-1 mb-0">
+    {% for name, value in hidden_fields.items() %}
+    <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+
+    <div class="drp-custom d-none d-flex align-items-center gap-2">
+        <input type="date" name="start_date"
+               value="{{ start_date }}"
+               class="form-control form-control-sm" style="width:140px">
+        <span class="text-muted">→</span>
+        <input type="date" name="end_date"
+               value="{{ end_date }}"
+               class="form-control form-control-sm" style="width:140px">
+        <button type="submit" class="btn btn-sm btn-primary" data-scroll-preserve>
+            <i class="fas fa-check"></i> Apply
+        </button>
+    </div>
+
+    <small class="text-muted ms-auto">{{ start_date }} – {{ end_date }}</small>
+</form>
+{% endmacro %}
+
+
 {% macro date_range_picker(action, start_date, end_date, hidden_fields={}, epoch_date=None, presets=None) %}
 {#
-  Compact date range picker with quick-select presets and optional custom inputs.
+  Compact standalone card.
 
   Parameters:
     action        - form action URL (e.g. url_for('user_dashboard.resource_details'))
@@ -23,61 +117,12 @@
      {%- if epoch_date %} data-epoch="{{ epoch_date }}"{% endif %}>
     <script type="application/json" class="drp-hidden">{{ hidden_fields | tojson }}</script>
     <div class="card-body py-2">
-        <form method="GET" action="{{ action }}">
-            {% for name, value in hidden_fields.items() %}
-            <input type="hidden" name="{{ name }}" value="{{ value }}">
-            {% endfor %}
-            <div class="d-flex align-items-center flex-wrap gap-2">
-                <i class="fas fa-calendar text-muted"></i>
-
-                <!-- Quick-select preset buttons -->
-                <div class="btn-group btn-group-sm" role="group" aria-label="Date range presets">
-                    {# data-scroll-preserve: nav-view-persistence.js snapshots
-                       scrollY on click (capture phase, before pickers.js does
-                       the full-page nav) and restores it on reload, so changing
-                       the range doesn't jump back to the top. Same mechanism the
-                       queue-history time picker uses. #}
-                    {% if epoch_date %}
-                    <button type="button"
-                            class="btn btn-outline-secondary"
-                            data-action="drp-epoch"
-                            data-scroll-preserve>Epoch</button>
-                    {% endif %}
-                    {% set presets = presets or [('7d', 7), ('30d', 30), ('90d', 90), ('6mo', 180), ('1yr', 365)] %}
-                    {% for label, days in presets %}
-                    <button type="button"
-                            class="btn btn-outline-secondary"
-                            data-action="drp-days"
-                            data-days="{{ days }}"
-                            data-scroll-preserve>{{ label }}</button>
-                    {% endfor %}
-                </div>
-
-                <!-- Custom date range toggle -->
-                <button type="button"
-                        class="btn btn-outline-primary"
-                        data-action="drp-toggle-custom">
-                    <i class="fas fa-calendar-alt"></i> Custom
-                </button>
-
-                <!-- Custom date inputs (hidden until toggled) -->
-                <div class="drp-custom d-none d-flex align-items-center gap-2">
-                    <input type="date" name="start_date"
-                           value="{{ start_date }}"
-                           class="form-control form-control-sm" style="width:140px">
-                    <span class="text-muted">→</span>
-                    <input type="date" name="end_date"
-                           value="{{ end_date }}"
-                           class="form-control form-control-sm" style="width:140px">
-                    <button type="submit" class="btn  btn-primary" data-scroll-preserve>
-                        <i class="fas fa-check"></i> Apply
-                    </button>
-                </div>
-
-                <!-- Current range display -->
-                <small class="text-muted ms-auto">{{ start_date }} – {{ end_date }}</small>
-            </div>
-        </form>
+        <div class="d-flex align-items-center flex-wrap gap-2">
+            <i class="fas fa-calendar text-muted"></i>
+            {{ drp_pills(epoch_date=epoch_date, presets=presets) }}
+            {{ drp_custom(action=action, start_date=start_date,
+                          end_date=end_date, hidden_fields=hidden_fields) }}
+        </div>
     </div>
 </div>
 {% endmacro %}
