@@ -2253,6 +2253,30 @@ def test_explore_page_renders_the_jobs_card(
 
 
 @pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
+def test_explore_page_ships_the_entity_modal_shells(
+    app, auth_client, active_project, monkeypatch, mode, url,
+):
+    """By User, By Project and the histograms' owner tier all open
+    quick-view modals whose shells live on the host page. This one
+    extends dashboards/base.html (which includes neither), so without
+    the includes every one of those links is a silent no-op — exactly
+    once each, since duplicate ids break Bootstrap's lookup.
+
+    Pinned per mode: the suppressed panel still leaves the other panels'
+    links, and the histogram owner tier can name either entity.
+    """
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        url.format(projcode=active_project.projcode)).get_data(as_text=True)
+
+    assert body.count('id="userDetailsModal"') == 1
+    assert body.count('id="projectDetailsModal"') == 1
+    # The project shell pulls this in for the per-allocation pencils
+    # inside it — see tests/unit/test_modal_shell_pairing.py.
+    assert body.count('id="editAllocationModal"') == 1
+
+
+@pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
 def test_explore_page_suppresses_pills_and_the_explore_link(
     app, auth_client, active_project, monkeypatch, mode, url,
 ):

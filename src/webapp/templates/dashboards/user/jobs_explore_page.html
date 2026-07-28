@@ -82,6 +82,16 @@
      which is exactly when a facet count can change. #}
   {{ jobs_card(**card) }}
 
+  {# Entity quick-view shells for the card's By User / By Project links and
+     the histograms' owner tier. base_user/base_status include these
+     globally; this page extends dashboards/base.html directly, so without
+     them every one of those links is a silent no-op — the same trap
+     resource_details.html carries a note about. (The project shell pulls
+     allocation_modals.html in itself, for the per-allocation pencils
+     inside it.) #}
+  {% include 'dashboards/user/fragments/user_details_modal.html' %}
+  {% include 'dashboards/shared/project_details_modal.html' %}
+
   {% endif %}
 </div>
 {% endblock %}

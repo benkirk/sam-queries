@@ -114,3 +114,32 @@ class TestProjectCardAutoLoad:
     def test_flag_absent_without_projcode(self, auth_client):
         html = auth_client.get('/admin/projects').get_data(as_text=True)
         assert 'data-reveal-on-load' not in html
+
+
+class TestProjectDetailsModalBody:
+    """The quick-view modal opens from a job table, a chart segment or a
+    tree node — places where the viewer has only ever seen the projcode.
+    The modal header carries that code and nothing else (set by the
+    route's ``setModalTitle`` HX-Trigger), so the body has to be what
+    names the project."""
+
+    def test_body_names_the_project(self, auth_client, active_project):
+        from markupsafe import escape
+
+        resp = auth_client.get(
+            f'/user/project-details-modal/{active_project.projcode}')
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+
+        expected = (str(escape(active_project.title))
+                    if active_project.title else 'Untitled Project')
+        assert expected in body
+
+    def test_header_trigger_still_carries_the_projcode(
+        self, auth_client, active_project,
+    ):
+        """Code in the header, title in the body — a 255-char title would
+        overflow the header, and the code alone doesn't identify anything."""
+        resp = auth_client.get(
+            f'/user/project-details-modal/{active_project.projcode}')
+        assert active_project.projcode in resp.headers['HX-Trigger']

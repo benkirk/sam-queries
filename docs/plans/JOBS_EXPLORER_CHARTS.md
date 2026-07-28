@@ -27,6 +27,13 @@
 >   order is `url_for`'s business.
 > - **C6b**, added after Ben looked at the machine-wide strip: the chip
 >   layout became a grid and the chips stopped being `.btn`s. See C6.
+> - **C5 shipped a regression the tests didn't catch:** By User, By
+>   Project and the histogram owner tier all open quick-view modals whose
+>   *shells* live on the host page, and the explorer extends
+>   `dashboards/base.html`, which includes neither. Every one of those
+>   links was a silent no-op. `resource_details.html` carries a comment
+>   about this exact trap — the explorer needed the same two includes.
+>   Now pinned per mode in `test_explore_page_ships_the_entity_modal_shells`.
 
 ## Context
 
