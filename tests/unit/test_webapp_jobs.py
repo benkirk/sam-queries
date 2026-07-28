@@ -2227,6 +2227,140 @@ def test_fragment_converts_elapsed_hours_and_reqmem_gb(
     assert skw['max_reqmem'] == 128 * 1024 ** 3
 
 
+_EXPLORE_URLS = (
+    ('project', '/dashboards/user/jobs/{projcode}/explore?machine=derecho'),
+    ('machine', '/dashboards/user/jobs/machine/derecho/explore'),
+    ('user', '/dashboards/user/jobs/user/derecho/explore'),
+)
+
+
+@pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
+def test_explore_page_renders_the_jobs_card(
+    app, auth_client, active_project, monkeypatch, mode, url,
+):
+    """The charts live on the full view too — same card, driven by the
+    filter panel instead of a baked window."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        url.format(projcode=active_project.projcode)).get_data(as_text=True)
+
+    assert 'id="jobs-explore-card"' in body
+    assert 'id="jobsExploreTabs"' in body
+    for tab in ('Wait Times', 'Job Sizes', 'Durations'):
+        assert tab in body, tab
+    # By User follows the relevance rule, not the surface.
+    assert ('By User' in body) is (mode != 'user')
+
+
+@pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
+def test_explore_page_suppresses_pills_and_the_explore_link(
+    app, auth_client, active_project, monkeypatch, mode, url,
+):
+    """The panel's date fields own the window here, and this IS the full
+    view — a period pill group and an "Open full view" link would both be
+    second controls for something already on screen."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        url.format(projcode=active_project.projcode)).get_data(as_text=True)
+
+    assert 'aria-label="Time window"' not in body
+    assert 'data-jobs-explore-link' not in body
+
+
+@pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
+def test_explore_page_filter_form_re_renders_the_card(
+    app, auth_client, active_project, monkeypatch, mode, url,
+):
+    """Apply swaps the whole card: that is the only way six panels whose
+    URLs are baked at render time pick up a new filter set."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        url.format(projcode=active_project.projcode)).get_data(as_text=True)
+
+    form = re.search(r'<form id="jobs-filters-panel-jobs-explore-jobs"(.*?)>',
+                     body, re.S)
+    assert form, 'filter form missing'
+    attrs = form.group(1)
+    assert 'hx-target="#jobs-explore-card"' in attrs
+    assert 'hx-swap="outerHTML"' in attrs
+    assert '/card?' in attrs and 'surface=explorer' in attrs.replace('&amp;', '&')
+
+
+def test_explore_page_bakes_filters_into_every_panel_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Every panel — not just the table — answers the current filters."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&queue=main&min_nodes=4&min_wait_hours=1.5'
+    ).get_data(as_text=True)
+
+    panel_urls = [u.replace('&amp;', '&')
+                  for u in re.findall(r'hx-get="([^"]+)"', body)]
+    for suffix in ('/by-user', '/wait-times', '/job-sizes', '/durations'):
+        matches = [u for u in panel_urls
+                   if f'/{active_project.projcode}{suffix}?' in u]
+        assert matches, suffix
+        assert all('queue=main' in u and 'min_nodes=4' in u
+                   and 'min_wait_hours=1.5' in u for u in matches), suffix
+
+
+def test_explore_card_route_rebuilds_from_the_filter_panel(
+    app, auth_client, active_project, monkeypatch,
+):
+    """An Apply lands on the mode's /card route with surface=explorer and
+    reproduces the same panel URLs a deep link would."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&queue=main&min_nodes=4'
+    ).get_data(as_text=True)
+
+    assert 'id="jobs-explore-card"' in body
+    assert 'aria-label="Time window"' not in body      # still no pills
+    panel_urls = [u.replace('&amp;', '&')
+                  for u in re.findall(r'hx-get="([^"]+)"', body)]
+    waits = [u for u in panel_urls if '/wait-times?' in u]
+    assert waits and all('queue=main' in u and 'min_nodes=4' in u
+                         for u in waits)
+
+
+def test_explore_card_route_without_the_surface_flag_is_still_a_pill(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The period pills share these routes; surface= is what tells them
+    apart, so a pill click must keep its pills and its lookback."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&days=30'
+    ).get_data(as_text=True)
+
+    assert 'aria-label="Time window"' in body
+    assert f'start={_days_ago(30).isoformat()}' in body
+
+
+def test_explore_page_user_mode_still_ignores_a_crafted_user(
+    app, auth_client, monkeypatch,
+):
+    """The username is pinned server-side on every fragment; the panel
+    omits the picker so the card can't be re-aimed at someone else."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    body = auth_client.get(
+        '/dashboards/user/jobs/user/derecho/explore?user=someone_else'
+    ).get_data(as_text=True)
+    assert 'name="user_id"' not in body
+
+    auth_client.get(
+        '/dashboards/user/jobs/user/derecho?user=someone_else&machine=derecho')
+    assert captured['last_jobs_search_kwargs']['user'] == 'benkirk'
+
+
 _SAMPLE_FACETS = {
     'queue': [{'value': 'cpu', 'count': 120}, {'value': 'gpu', 'count': 30},
               {'value': None, 'count': 2}],
@@ -2238,7 +2372,7 @@ _SAMPLE_FACETS = {
 def test_explore_page_initial_url_requests_chips(
     app, auth_client, active_project, monkeypatch,
 ):
-    """The explorer's lazy-load URL asks the fragment for the OOB chip
+    """The explorer's Jobs-tab URL asks the fragment for the OOB chip
     strip, and the page renders the placeholder it swaps into."""
     _install_mock_plugin(app, monkeypatch)
     resp = auth_client.get(
@@ -2246,8 +2380,9 @@ def test_explore_page_initial_url_requests_chips(
     )
     body = resp.get_data(as_text=True)
     assert 'chips=1' in body
-    assert 'id="jobs-facet-chips-jobs-explore"' in body
-    assert 'name="chips"' in body          # panel form round-trips it
+    # The table lives in the card's Jobs pane now, so the chip placeholder
+    # follows that pane's id.
+    assert 'id="jobs-facet-chips-jobs-explore-jobs"' in body
 
 
 def test_fragment_chips_render_oob_with_counts(

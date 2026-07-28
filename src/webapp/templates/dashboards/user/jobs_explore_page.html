@@ -1,19 +1,28 @@
 {% extends 'dashboards/base.html' %}
 {% from 'dashboards/user/partials/_jobs_filters.html' import jobs_filters %}
 {% from 'dashboards/user/partials/_jobs_macros.html' import jobs_disabled, mode_badge %}
+{% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
 {#
   Standalone jobs-explorer page — all three modes, parameterized by *mode*
-  ('project'|'machine'|'user') and *fragment_url* (which per-job fragment
-  to lazy-load). Renders a filter panel above a table container; the
-  container hx-get's *initial_url* (fragment_url pre-loaded with the
-  current filters) on load, and the filter panel / in-table sort +
-  pagination re-fetch into the same container thereafter.
+  ('project'|'machine'|'user').
+
+  The filter panel sits above the same six-tab jobs card the resource
+  details, Status and My Jobs pages embed, so the charts answer the
+  explorer's whole filter set rather than a baked 90-day window. Its Jobs
+  tab IS the per-job table (chips, sort and pagination unchanged), so
+  nothing is duplicated, and the panels stay lazy: a visit that only
+  reads the table costs what it always did.
+
+  Applying a filter re-renders the card via its mode's /card route (see
+  _jobs_filters.html) — the same mechanism a period pill uses, which is
+  why the pills themselves are suppressed here: the panel's own date
+  fields own the window.
 
   Context (set in webapp/jobs/routes.py explore_page /
   explore_machine_page / explore_user_page): mode, enabled, machine,
-  fragment_url, initial_url, filters, user_search_url, per_page_options,
-  target_id, plus mode-specific scope (project, scoped_project, scope /
-  username).
+  card (the jobs_card kwargs, from _explorer_card_context), card_url,
+  filters, user_search_url, per_page_options, plus mode-specific scope
+  (project, scoped_project, scope / username).
 #}
 
 {% block title %}Job explorer — SAM{% endblock %}
@@ -51,11 +60,17 @@
     {{ jobs_disabled() }}
   {% else %}
 
+  {# The per-job table's container id, which jobs_fragment.html also
+     derives the chip placeholder and panel-form ids from — one variable
+     so the three can't drift. #}
+  {% set table_target = card.cid ~ '-jobs' %}
+
   {# Unity NCAR navy panel — same .filter-sidebar tokens as the allocations
      and disk-scans filters, so this explorer matches the rest of the
      dashboard. #}
   <div class="filter-sidebar mb-3">
-    {{ jobs_filters('jobs-filters-panel-' ~ target_id, fragment_url, target_id,
+    {{ jobs_filters('jobs-filters-panel-' ~ table_target,
+                    card_url, card.cid ~ '-card',
                     filters, user_search_url, machine, scope,
                     per_page_options, mode=mode) }}
   </div>
@@ -63,20 +78,9 @@
   {# Facet chip strip — populated out-of-band by the jobs fragment
      (hx-swap-oob on #jobs-facet-chips-…), so counts and active states
      always match the table below. Empty until the first fragment load. #}
-  <div id="jobs-facet-chips-{{ target_id }}"></div>
+  <div id="jobs-facet-chips-{{ table_target }}"></div>
 
-  <div class="card">
-    <div class="card-body p-2">
-      <div id="{{ target_id }}"
-           hx-get="{{ initial_url }}"
-           hx-trigger="load"
-           hx-swap="innerHTML">
-        <p class="text-muted small mb-0 p-2">
-          <i class="fas fa-spinner fa-spin me-1"></i> Loading jobs…
-        </p>
-      </div>
-    </div>
-  </div>
+  {{ jobs_card(**card) }}
 
   {% endif %}
 </div>

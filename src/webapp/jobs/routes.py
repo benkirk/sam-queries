@@ -1289,38 +1289,93 @@ def _panel_filters(machine: str) -> dict:
     }
 
 
-def _initial_jobs_url(fragment_url: str, machine: str, target_id: str,
-                      panel: dict, scope: Optional[str] = None) -> str:
-    """Fragment URL pre-loaded by the explorer page (carries current filters).
+# Element ids for the explorer's card. Fixed rather than request-supplied:
+# the page render and every filter-submit re-render must agree on them, and
+# the table's container id (``<cid>-jobs``) is what jobs_fragment.html
+# derives the chip placeholder and panel-form ids from.
+_EXPLORER_CID = 'jobs-explore'
+_EXPLORER_TABLIST = 'jobsExploreTabs'
 
-    The page's table container ``hx-get``s this on load so a deep-link /
-    reload lands on the same filtered view the panel shows; subsequent panel
-    submits re-fetch via the form's own fields.
-    """
-    from urllib.parse import urlencode
-    params = {'machine': machine, 'target_id': target_id,
-              'per_page': panel['per_page'], 'chips': '1'}
+# Panel-shaping filters the explorer bakes into every panel URL, in the
+# display units _parse_job_filters reads. `ignore_case` rides along only
+# with a name glob; `machine`, `target_id` and `projcode` are the macro's
+# to supply. `account` is deliberately absent: it narrows the per-job
+# table but not the aggregations, so baking it in would hide the By
+# Project tab while its neighbours still counted every project.
+_EXPLORER_PANEL_KEYS = (
+    'start', 'end', 'user', 'queue', 'qos', 'exit_status', 'name',
+    'min_nodes', 'max_nodes', 'min_cpus', 'max_cpus', 'min_gpus', 'max_gpus',
+    'min_wait_hours', 'max_wait_hours',
+    'min_elapsed_hours', 'max_elapsed_hours',
+    'min_reqmem_gb', 'max_reqmem_gb',
+)
+
+
+def _explorer_panel_params(panel: dict, scope: Optional[str] = None) -> dict:
+    """The filter panel's current values, as panel-URL query params."""
+    params = {k: panel[k] for k in _EXPLORER_PANEL_KEYS
+              if panel.get(k) not in (None, '')}
+    if panel.get('name') and panel.get('ignore_case'):
+        params['ignore_case'] = '1'
     if scope:
         params['scope'] = scope
-    for key in ('start', 'end', 'queue', 'qos', 'exit_status', 'name'):
-        if panel[key]:
-            params[key] = panel[key]
-    if panel['user']:
-        params['user'] = panel['user']
-    if panel['ignore_case']:
-        params['ignore_case'] = '1'
-    for key in ('min_nodes', 'max_nodes', 'min_cpus', 'max_cpus',
-                'min_gpus', 'max_gpus', 'min_wait_hours', 'max_wait_hours',
-                'min_elapsed_hours', 'max_elapsed_hours',
-                'min_reqmem_gb', 'max_reqmem_gb'):
-        if panel[key] is not None:
-            params[key] = panel[key]
-    return f'{fragment_url}?{urlencode(params)}'
+    return params
+
+
+def _explorer_card_context(*, mode: str, machine: str, project=None,
+                           scope: Optional[str] = None) -> tuple:
+    """(panel, card context) for the explorer, in every mode.
+
+    Shared by the three ``explore_*`` page routes and the three ``/card``
+    routes when the filter panel submits to them, so a deep link and an
+    Apply produce the same card. The panels are lazy, so a visit that
+    only reads the table costs exactly what it did before the charts
+    moved in.
+    """
+    panel = _panel_filters(machine)
+    panel_params = _explorer_panel_params(panel, scope)
+    return panel, _card_context(
+        mode=mode, machine=machine,
+        cid=_EXPLORER_CID, tablist_id=_EXPLORER_TABLIST,
+        projcode=(project.projcode if project is not None else None),
+        panel_params=panel_params,
+        # The table takes two params the aggregations have no use for.
+        jobs_params=dict(panel_params, per_page=panel['per_page'], chips='1'),
+        account_projcodes=(_tree_projcodes(project)
+                           if project is not None else None),
+        # The filter panel's own date fields own the window here; a pill
+        # group beside them would be a second control for one setting.
+        days=None,
+        days_persist_id=None,
+        show_pills=False,
+        show_explore_link=False,
+        load_trigger='load once',
+    )
 
 
 def _user_search_url() -> str:
     """The fk-picker search endpoint for the user filter (context='fk')."""
     return url_for('admin_dashboard.htmx_search_users', context='fk')
+
+
+def _explorer_card_url(mode: str, machine: str, *, projcode=None,
+                       scope=None) -> str:
+    """Where the explorer's filter form submits.
+
+    An Apply re-renders the card shell, which is the only way the six
+    panels pick up a new filter set: each bakes its own into its hx-get
+    at render time. Exactly what a period pill does on the cards, with a
+    bigger param set. ``surface=explorer`` is how the shell route knows
+    to read the filter panel instead of a ``?days=`` lookback.
+    """
+    if mode == 'machine':
+        return url_for('jobs.jobs_card_machine_fragment', machine=machine,
+                       surface='explorer')
+    if mode == 'user':
+        return url_for('jobs.jobs_card_user_fragment', machine=machine,
+                       surface='explorer')
+    return url_for('jobs.jobs_card_fragment', projcode=projcode,
+                   machine=machine, scope=scope, surface='explorer')
 
 
 @bp.route('/<projcode>/explore')
@@ -1329,10 +1384,10 @@ def _user_search_url() -> str:
 def explore_page(project):
     """Standalone full-page jobs explorer for *project* (project mode).
 
-    Renders the filter panel + a table container that lazy-loads
-    ``jobs_fragment`` with the panel's params. ``?scope=<child>`` re-roots
-    to a subtree (same-tree validated); the reusable fragment is shared
-    verbatim with the machine/user modes.
+    The filter panel above the card; the card's six tabs below it, each
+    lazy-loading its fragment with the panel's params — its Jobs tab is
+    the per-job table, so nothing is duplicated. ``?scope=<child>``
+    re-roots to a subtree (same-tree validated).
     """
     if not is_enabled():
         return render_template(
@@ -1342,20 +1397,19 @@ def explore_page(project):
         )
     machine = _get_machine_or_400()
     scoped = _scope_project(project)
-    target_id = 'jobs-explore'
-    fragment_url = url_for('jobs.jobs_fragment', projcode=project.projcode)
-    panel = _panel_filters(machine)
     scope = scoped.projcode if scoped.projcode != project.projcode else None
+    panel, card = _explorer_card_context(
+        mode='project', machine=machine, project=project, scope=scope,
+    )
     return render_template(
         'dashboards/user/jobs_explore_page.html',
         mode='project', enabled=True,
         project=project, scoped_project=scoped, machine=machine,
         scope=scope,
-        fragment_url=fragment_url,
-        initial_url=_initial_jobs_url(fragment_url, machine, target_id,
-                                      panel, scope=scope),
+        card_url=_explorer_card_url('project', machine,
+                                    projcode=project.projcode, scope=scope),
         filters=panel, user_search_url=_user_search_url(),
-        per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
+        per_page_options=_PER_PAGE_OPTIONS, card=card,
     )
 
 
@@ -1484,16 +1538,13 @@ def explore_machine_page(machine):
             mode='machine', enabled=False, machine=machine,
         )
     machine = _machine_or_404(machine)
-    target_id = 'jobs-explore'
-    fragment_url = url_for('jobs.jobs_machine_fragment', machine=machine)
-    panel = _panel_filters(machine)
+    panel, card = _explorer_card_context(mode='machine', machine=machine)
     return render_template(
         'dashboards/user/jobs_explore_page.html',
         mode='machine', enabled=True, machine=machine,
-        fragment_url=fragment_url,
-        initial_url=_initial_jobs_url(fragment_url, machine, target_id, panel),
+        card_url=_explorer_card_url('machine', machine),
         filters=panel, user_search_url=_user_search_url(),
-        per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
+        per_page_options=_PER_PAGE_OPTIONS, card=card,
     )
 
 
@@ -1613,17 +1664,14 @@ def explore_user_page(machine):
             mode='user', enabled=False, machine=machine,
         )
     machine = _machine_or_404(machine)
-    target_id = 'jobs-explore'
-    fragment_url = url_for('jobs.jobs_user_fragment', machine=machine)
-    panel = _panel_filters(machine)
+    panel, card = _explorer_card_context(mode='user', machine=machine)
     return render_template(
         'dashboards/user/jobs_explore_page.html',
         mode='user', enabled=True, machine=machine,
         username=current_user.username,
-        fragment_url=fragment_url,
-        initial_url=_initial_jobs_url(fragment_url, machine, target_id, panel),
+        card_url=_explorer_card_url('user', machine),
         filters=panel, user_search_url=_user_search_url(),
-        per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
+        per_page_options=_PER_PAGE_OPTIONS, card=card,
     )
 
 
@@ -1709,17 +1757,39 @@ def _render_card_shell(*, mode: str, machine: str, **extra):
     )
 
 
+def _is_explorer_surface() -> bool:
+    """``surface=explorer`` — the filter panel submitted, not a pill.
+
+    Both re-render the same shell; they differ only in where the window
+    (and, on the explorer, the rest of the filter set) comes from.
+    """
+    return (request.args.get('surface') or '').strip() == 'explorer'
+
+
+def _render_explorer_shell(*, mode: str, machine: str, project=None,
+                           scope: Optional[str] = None):
+    _panel, card = _explorer_card_context(
+        mode=mode, machine=machine, project=project, scope=scope,
+    )
+    return render_template(
+        'dashboards/user/partials/jobs_card_shell.html', **card,
+    )
+
+
 @bp.route('/<projcode>/card')
 @login_required
 @require_project_access
 def jobs_card_fragment(project):
-    """HTMX fragment: *project*'s card shell rebound to a new window."""
+    """HTMX fragment: *project*'s card shell on a new window or filter set."""
+    machine = _get_machine_or_400()
+    scope = (request.args.get('scope') or '').strip() or None
+    if _is_explorer_surface():
+        return _render_explorer_shell(mode='project', machine=machine,
+                                      project=project, scope=scope)
     return _render_card_shell(
-        mode='project', machine=_get_machine_or_400(),
+        mode='project', machine=machine,
         projcode=project.projcode,
-        panel_params={
-            'scope': (request.args.get('scope') or '').strip() or None,
-        },
+        panel_params={'scope': scope},
         account_projcodes=_tree_projcodes(project),
     )
 
@@ -1729,11 +1799,17 @@ def jobs_card_fragment(project):
 @require_permission(Permission.VIEW_ALL_JOB_DATA)
 def jobs_card_machine_fragment(machine):
     """HTMX fragment: the machine-wide card shell on a new window."""
-    return _render_card_shell(mode='machine', machine=_machine_or_404(machine))
+    machine = _machine_or_404(machine)
+    if _is_explorer_surface():
+        return _render_explorer_shell(mode='machine', machine=machine)
+    return _render_card_shell(mode='machine', machine=machine)
 
 
 @bp.route('/user/<machine>/card')
 @login_required
 def jobs_card_user_fragment(machine):
     """HTMX fragment: the "My Jobs" card shell on a new window."""
-    return _render_card_shell(mode='user', machine=_machine_or_404(machine))
+    machine = _machine_or_404(machine)
+    if _is_explorer_surface():
+        return _render_explorer_shell(mode='user', machine=machine)
+    return _render_card_shell(mode='user', machine=machine)
