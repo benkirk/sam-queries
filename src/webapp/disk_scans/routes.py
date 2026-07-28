@@ -48,6 +48,12 @@ from webapp.disk_scans.scope import (
     ResourceScanScope,
     UserScanScope,
 )
+from webapp.utils.fragments import (
+    ModeSpec,
+    PanelSpec,
+    declare_panels,
+    register_panels,
+)
 from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_grouped
 from webapp.disk_scans.session import get_module, is_enabled
@@ -442,22 +448,6 @@ def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
     )
 
 
-@bp.route('/<projcode>/directories')
-@login_required
-@require_project_access
-def directories_fragment(project):
-    """HTMX fragment: largest directories for *project* (sortable, filterable)."""
-    ctx = _common_ctx(project)
-    fragment_url = url_for('disk_scans.directories_fragment',
-                           projcode=project.projcode)
-
-    return _render_directories_fragment(
-        ctx, fragment_url, mode='project', scope_for=_scope_for('project', ctx),
-        log_label=f"project={ctx['scoped_project'].projcode}",
-        browse=_truthy(request.args.get('browse')),
-    )
-
-
 @bp.route('/<projcode>/directories/explore')
 @login_required
 @require_project_access
@@ -486,27 +476,6 @@ def directories_page(project):
         filters=flt, user_search_url=_user_search_url(),
         limit_options=_LIMIT_OPTIONS, browse=True,
         scope_groups=scope_groups, scope_dir_count=scope_dir_count, **ctx,
-    )
-
-
-@bp.route('/resource/<resource>/directories')
-@login_required
-@require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)
-def directories_resource_fragment(resource):
-    """HTMX fragment: largest directories across an ENTIRE disk resource.
-
-    Resource mode — unscoped, elevated. Gated by ``VIEW_ALL_FILESYSTEM_DATA``
-    at the route (not just the template link), since it exposes every user's
-    paths/sizes across the resource. ``?fileset=`` drills into a sub-path.
-    """
-    ctx = _resource_ctx(resource)
-    fragment_url = url_for('disk_scans.directories_resource_fragment',
-                           resource=resource)
-
-    return _render_directories_fragment(
-        ctx, fragment_url, mode='resource', scope_for=_scope_for('resource', ctx),
-        log_label='resource-wide',
-        browse=_truthy(request.args.get('browse')),
     )
 
 
@@ -590,42 +559,8 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
     )
 
 
-@bp.route('/<projcode>/entities')
-@login_required
-@require_project_access
-def entities_fragment(project):
-    """HTMX fragment: per-owner or per-group rollup (``?kind=owner|group``)."""
-    ctx = _common_ctx(project)
-    fragment_url = url_for('disk_scans.entities_fragment', projcode=project.projcode)
-
-    return _render_entities(
-        ctx, fragment_url, mode='project', scope_for=_scope_for('project', ctx),
-        log_label=f"project={ctx['scoped_project'].projcode}",
-        dir_fragment_url=url_for('disk_scans.directories_fragment',
-                                 projcode=project.projcode),
-    )
-
-
-@bp.route('/resource/<resource>/entities')
-@login_required
-@require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)
-def entities_resource_fragment(resource):
-    """HTMX fragment: owner|group rollup across an ENTIRE disk resource.
-
-    Resource mode — unscoped, elevated (``VIEW_ALL_FILESYSTEM_DATA``). Same
-    partial as project mode; the per-user drill-down degrades to non-clickable
-    since there is no project to scope it to.
-    """
-    ctx = _resource_ctx(resource)
-    fragment_url = url_for('disk_scans.entities_resource_fragment', resource=resource)
-
-    return _render_entities(
-        ctx, fragment_url, mode='resource', scope_for=_scope_for('resource', ctx), log_label='resource-wide',
-        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
-                                 resource=resource),
-    )
-
-
+#: Metrics the file-size distribution can be viewed by. Access-history has
+#: no metric pill, so a stray ?metric= there is ignored (metric_toggle).
 _METRIC_WHITELIST = {'data', 'files'}
 
 
@@ -692,91 +627,6 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
     )
 
 
-@bp.route('/<projcode>/access-history')
-@login_required
-@require_project_access
-def access_history_fragment(project):
-    """HTMX fragment: access-time distribution histogram (server-rendered SVG)."""
-    ctx = _common_ctx(project)
-    fragment_url = url_for('disk_scans.access_history_fragment',
-                           projcode=project.projcode)
-
-    return _render_distribution(
-        ctx, fragment_url, mode='project', scope_for=_scope_for('project', ctx), kind='access_history',
-        bucket_header='Last accessed',
-        log_label=f"project={ctx['scoped_project'].projcode}",
-        dir_fragment_url=url_for('disk_scans.directories_fragment',
-                                 projcode=project.projcode),
-    )
-
-
-@bp.route('/<projcode>/file-sizes')
-@login_required
-@require_project_access
-def file_sizes_fragment(project):
-    """HTMX fragment: file-size distribution histogram (server-rendered SVG).
-
-    Carries a Data ↔ Files metric pill (``?metric=``) since a file-size
-    distribution is equally meaningful by volume or by file count, plus a
-    Log-scale switch (``?log=``) because file-size *data* spans many orders
-    of magnitude — at the cost of the per-user stack gradient.
-    """
-    ctx = _common_ctx(project)
-    fragment_url = url_for('disk_scans.file_sizes_fragment',
-                           projcode=project.projcode)
-
-    return _render_distribution(
-        ctx, fragment_url, mode='project', scope_for=_scope_for('project', ctx), kind='file_sizes',
-        bucket_header='File size',
-        log_label=f"project={ctx['scoped_project'].projcode}",
-        dir_fragment_url=url_for('disk_scans.directories_fragment',
-                                 projcode=project.projcode),
-        metric_toggle=True, log_toggle=True,
-    )
-
-
-@bp.route('/resource/<resource>/access-history')
-@login_required
-@require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)
-def access_history_resource_fragment(resource):
-    """HTMX fragment: access-time histogram across an ENTIRE disk resource.
-
-    Resource mode — unscoped, elevated (``VIEW_ALL_FILESYSTEM_DATA``).
-    """
-    ctx = _resource_ctx(resource)
-    fragment_url = url_for('disk_scans.access_history_resource_fragment',
-                           resource=resource)
-
-    return _render_distribution(
-        ctx, fragment_url, mode='resource', scope_for=_scope_for('resource', ctx), kind='access_history',
-        bucket_header='Last accessed', log_label='resource-wide',
-        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
-                                 resource=resource),
-    )
-
-
-@bp.route('/resource/<resource>/file-sizes')
-@login_required
-@require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)
-def file_sizes_resource_fragment(resource):
-    """HTMX fragment: file-size histogram across an ENTIRE disk resource.
-
-    Resource mode — unscoped, elevated (``VIEW_ALL_FILESYSTEM_DATA``). Same
-    Data ↔ Files metric pill + Log-scale switch as project mode.
-    """
-    ctx = _resource_ctx(resource)
-    fragment_url = url_for('disk_scans.file_sizes_resource_fragment',
-                           resource=resource)
-
-    return _render_distribution(
-        ctx, fragment_url, mode='resource', scope_for=_scope_for('resource', ctx), kind='file_sizes',
-        bucket_header='File size', log_label='resource-wide',
-        dir_fragment_url=url_for('disk_scans.directories_resource_fragment',
-                                 resource=resource),
-        metric_toggle=True, log_toggle=True,
-    )
-
-
 # ---------------------------------------------------------------------------
 # User mode — "My Data": the resource card scoped to the logged-in user's own
 # files. @login_required ONLY (no VIEW_ALL_FILESYSTEM_DATA), so the owner is
@@ -791,25 +641,6 @@ def _no_identity_fragment():
     """Empty state for a user with no ``unix_uid`` — never runs a scan."""
     return render_template(
         'dashboards/user/partials/disk_scans_no_identity.html')
-
-
-@bp.route('/user/<resource>/directories')
-@login_required
-def directories_user_fragment(resource):
-    """HTMX fragment: largest directories the logged-in user OWNS on *resource*."""
-    ctx = _user_ctx(resource)
-    forced = ctx['forced_owner_uid']
-    if forced is None:
-        return _no_identity_fragment()
-    fragment_url = url_for('disk_scans.directories_user_fragment',
-                           resource=resource)
-
-    return _render_directories_fragment(
-        ctx, fragment_url, mode='user', scope_for=_scope_for('user', ctx),
-        log_label=f'user-owned uid={forced}',
-        browse=_truthy(request.args.get('browse')),
-        forced_owner_uid=forced,
-    )
 
 
 @bp.route('/user/<resource>/explore')
@@ -840,42 +671,94 @@ def directories_user_page(resource):
     )
 
 
-@bp.route('/user/<resource>/access-history')
-@login_required
-def access_history_user_fragment(resource):
-    """HTMX fragment: access-time histogram of the user's OWN files on *resource*."""
-    ctx = _user_ctx(resource)
-    forced = ctx['forced_owner_uid']
-    if forced is None:
-        return _no_identity_fragment()
-    fragment_url = url_for('disk_scans.access_history_user_fragment',
-                           resource=resource)
+# ---------------------------------------------------------------------------
+# Route registration — 11 fragment routes from two tables
+# ---------------------------------------------------------------------------
+#
+# Every fragment route was the same four lines (build ctx, build fragment_url,
+# build the scope, call the shared renderer), differing only by mode and
+# panel. `register_panels` generates them from these specs; the endpoint names
+# it derives are pinned by tests/unit/test_route_map_parity.py.
+#
+# The three `explore` PAGES stay hand-written below: their rules are irregular
+# (project mode is /<projcode>/directories/explore, the others /…/explore) and
+# each assembles a page-level context the fragments don't have. That is the
+# registrar's stated rule — a panel needing more than the spec expresses stays
+# a bespoke route.
 
-    return _render_distribution(
-        ctx, fragment_url, mode='user', scope_for=_scope_for('user', ctx), kind='access_history',
-        bucket_header='Last accessed', log_label=f'user-owned uid={forced}',
-        dir_fragment_url=url_for('disk_scans.directories_user_fragment',
-                                 resource=resource),
-        forced_owner_uid=forced,
-    )
+_MODES = (
+    ModeSpec(
+        mode='project', url_prefix='/<projcode>', url_param='projcode',
+        endpoint_suffix='',
+        decorators=(login_required, require_project_access),
+        # require_project_access resolves the projcode to a Project and passes
+        # the object; url_for needs the code back.
+        url_value=lambda project: project.projcode,
+        context=_common_ctx,
+        scope_for=lambda ctx: _scope_for('project', ctx),
+        log_label=lambda ctx: f"project={ctx['scoped_project'].projcode}",
+    ),
+    ModeSpec(
+        # Unscoped: every user's paths and sizes across the resource. The
+        # permission here IS the access control — the service will not
+        # second-guess it.
+        mode='resource', url_prefix='/resource/<resource>', url_param='resource',
+        endpoint_suffix='_resource',
+        decorators=(login_required,
+                    require_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)),
+        context=_resource_ctx,
+        scope_for=lambda ctx: _scope_for('resource', ctx),
+        log_label=lambda ctx: 'resource-wide',
+    ),
+    ModeSpec(
+        # "My Data" — @login_required ONLY, so the owner is pinned
+        # server-side from the session and any client-supplied ?owner_uid is
+        # ignored. No unix_uid means no pin, so the guard renders the empty
+        # state rather than letting an unfiltered whole-resource scan run.
+        mode='user', url_prefix='/user/<resource>', url_param='resource',
+        endpoint_suffix='_user',
+        decorators=(login_required,),
+        context=_user_ctx,
+        scope_for=lambda ctx: _scope_for('user', ctx),
+        log_label=lambda ctx: f"user-owned uid={ctx['forced_owner_uid']}",
+        guard=lambda ctx: (_no_identity_fragment()
+                           if ctx['forced_owner_uid'] is None else None),
+        render_kwargs=lambda ctx: {'forced_owner_uid': ctx['forced_owner_uid']},
+    ),
+)
 
+_PANELS = declare_panels((
+    PanelSpec(
+        key='directories', rule='/directories',
+        render=_render_directories_fragment,
+        # ?browse= turns on the file-browser drill-down (clickable rows +
+        # ancestry breadcrumb) — explorer page only, hence per-request.
+        extra=lambda ctx: {'browse': _truthy(request.args.get('browse'))},
+    ),
+    PanelSpec(
+        key='entities', rule='/entities',
+        render=_render_entities,
+        # No user mode: a single-owner view needs no per-owner rollup, and
+        # the card hides that tab there.
+        modes=('project', 'resource'),
+        siblings={'dir_fragment_url': 'directories'},
+    ),
+    PanelSpec(
+        key='access_history', rule='/access-history',
+        render=_render_distribution,
+        kwargs={'kind': 'access_history', 'bucket_header': 'Last accessed'},
+        siblings={'dir_fragment_url': 'directories'},
+    ),
+    PanelSpec(
+        key='file_sizes', rule='/file-sizes',
+        render=_render_distribution,
+        # A file-size distribution is equally meaningful by volume or by file
+        # count, and its data spans many orders of magnitude — hence both the
+        # metric pill and the log switch, neither of which access-history gets.
+        kwargs={'kind': 'file_sizes', 'bucket_header': 'File size',
+                'metric_toggle': True, 'log_toggle': True},
+        siblings={'dir_fragment_url': 'directories'},
+    ),
+))
 
-@bp.route('/user/<resource>/file-sizes')
-@login_required
-def file_sizes_user_fragment(resource):
-    """HTMX fragment: file-size histogram of the user's OWN files on *resource*."""
-    ctx = _user_ctx(resource)
-    forced = ctx['forced_owner_uid']
-    if forced is None:
-        return _no_identity_fragment()
-    fragment_url = url_for('disk_scans.file_sizes_user_fragment',
-                           resource=resource)
-
-    return _render_distribution(
-        ctx, fragment_url, mode='user', scope_for=_scope_for('user', ctx), kind='file_sizes',
-        bucket_header='File size', log_label=f'user-owned uid={forced}',
-        dir_fragment_url=url_for('disk_scans.directories_user_fragment',
-                                 resource=resource),
-        metric_toggle=True, log_toggle=True,
-        forced_owner_uid=forced,
-    )
+register_panels(bp, modes=_MODES, panels=_PANELS)
