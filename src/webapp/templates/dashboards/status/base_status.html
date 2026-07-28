@@ -1,7 +1,7 @@
 {#
   Shared layout for the system status pages
   (/status/derecho, /status/casper, /status/jupyterhub,
-   /status/reservations, /status/filesystem-scans).
+   /status/filesystem-scans, /status/events).
 
   Provides the header, active-outage banner, and routable tab strip;
   each page fills {% block status_content %}. Context comes from the
@@ -107,21 +107,25 @@
 </div>
 {% endif %}
 
-{% set reservations_label = 'Reservations ({})'.format(reservations|length) if reservations else 'Reservations' %}
+{% set events_label = 'Events ({})'.format(reservations|length) if reservations else 'Events' %}
+{# Events stays LAST in this list on purpose: the two tabs before it are
+   RBAC/plugin-gated and drop out of the strip entirely when hidden, so
+   ordering Events last is what keeps it rightmost for every audience —
+   staff and unprivileged alike. Keep it at the end when adding tabs. #}
 {{ page_tabs([
     {'endpoint': 'status_dashboard.derecho',    'label': 'Derecho',    'icon': 'fas fa-server'},
     {'endpoint': 'status_dashboard.casper',     'label': 'Casper',     'icon': 'fas fa-hdd'},
     {'endpoint': 'status_dashboard.jupyterhub', 'label': 'JupyterHub', 'icon': 'fas fa-book'},
-    {'endpoint': 'status_dashboard.reservations',
-     'label': reservations_label,
-     'icon': 'fas fa-calendar-alt',
-     'visible': true if (reservations or google_calendar_embed_url) else false},
     {'endpoint': 'status_dashboard.filesystem_scans', 'label': 'Filesystem Scans',
      'icon': 'fas fa-magnifying-glass-chart',
      'visible': true if (fs_scan_resources and has_permission(Permission.VIEW_ALL_FILESYSTEM_DATA)) else false},
     {'endpoint': 'status_dashboard.job_history', 'label': 'Job History',
      'icon': 'fas fa-list-check',
      'visible': true if (job_history_machines and has_permission(Permission.VIEW_ALL_JOB_DATA)) else false},
+    {'endpoint': 'status_dashboard.events',
+     'label': events_label,
+     'icon': 'fas fa-calendar-alt',
+     'visible': true if (reservations or google_calendar_embed_url) else false},
 ], class='mb-4') }}
 
 {% block status_content %}{% endblock %}

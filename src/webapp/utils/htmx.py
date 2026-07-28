@@ -5,11 +5,28 @@ from webapp.extensions import db
 from sam.manage import management_transaction
 
 
-#: Values an "Active only" checkbox may arrive as. Templates emit ``1``
-#: (see the ``active_toggle_search`` macro and the admin card toggles) but
-#: the set is deliberately permissive: a checkbox copy-pasted with the
-#: wrong spelling should still work rather than silently fail open.
+#: Values a checkbox / switch may arrive as. Templates emit ``1`` (see the
+#: ``active_toggle_search`` macro, the admin card toggles and the charts'
+#: log-scale switches) but the set is deliberately permissive: a checkbox
+#: copy-pasted with the wrong spelling should still work rather than
+#: silently fail open.
 _TRUTHY = frozenset({'1', 'true', 'on', 'yes'})
+
+
+def is_truthy(raw):
+    """Is a raw query/form value one of the affirmative spellings above?"""
+    return str(raw or '').strip().lower() in _TRUTHY
+
+
+def read_flag(args, name, default=False):
+    """Read a boolean toggle off a request args/form mapping.
+
+    The general form of :func:`read_active_only` — same absent-means-off
+    reasoning (htmx omits an unchecked box entirely), and the same escape
+    hatch for switches with no checkbox behind them.
+    """
+    raw = args.get(name)
+    return default if raw is None else is_truthy(raw)
 
 
 def read_active_only(args, default=False):
@@ -32,10 +49,7 @@ def read_active_only(args, default=False):
     Returns:
         bool
     """
-    raw = args.get('active_only')
-    if raw is None:
-        return default
-    return str(raw).strip().lower() in _TRUTHY
+    return read_flag(args, 'active_only', default)
 
 
 def htmx_success(template, triggers, *, toast=None, toast_variant='success', **ctx):

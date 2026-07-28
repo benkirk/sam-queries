@@ -1205,15 +1205,15 @@ def _jobs_bucket_segments(bucket, key):
     return vals
 
 
-def _jobs_histogram_cache_key(hist, *, metric='jobs'):
+def _jobs_histogram_cache_key(hist, *, metric='jobs', log_y=False):
     """Hash exactly what the SVG depends on: the bucket labels, the chosen
-    metric's values and owner-segment split, the dimension, and null_count
-    (not the full envelope — e.g. min_param/max_param don't affect the
-    rendering). The job_count positivity vector joins the key because it
-    decides which bars carry #jh-bar-<i> drill URLs — an hours-metric SVG
-    with matching hours but a different populated-band set must not be
-    reused. Owner names stay out of the key: the SVG carries no owner
-    labels, so only the segment values shape it."""
+    metric's values and owner-segment split, the dimension, null_count and
+    the y-scale (not the full envelope — e.g. min_param/max_param don't
+    affect the rendering). The job_count positivity vector joins the key
+    because it decides which bars carry #jh-bar-<i> drill URLs — an
+    hours-metric SVG with matching hours but a different populated-band set
+    must not be reused. Owner names stay out of the key: the SVG carries no
+    owner labels, so only the segment values shape it."""
     key = _JOBS_METRIC_KEYS.get(metric, 'job_count')
     buckets = (hist or {}).get('buckets') or []
     payload = [(b.get('label'), float(b.get(key) or 0),
@@ -1221,13 +1221,13 @@ def _jobs_histogram_cache_key(hist, *, metric='jobs'):
     clickable = [int(bool(b.get('job_count'))) for b in buckets]
     return _content_hash([
         payload, clickable, str((hist or {}).get('dimension', '')),
-        int((hist or {}).get('null_count') or 0), str(metric),
+        int((hist or {}).get('null_count') or 0), str(metric), bool(log_y),
     ])
 
 
 @caching.chart_cached(name='jobs_histogram', maxsize=128,
                       key_fn=_jobs_histogram_cache_key)
-def generate_jobs_histogram(hist, *, metric='jobs') -> str:
+def generate_jobs_histogram(hist, *, metric='jobs', log_y=False) -> str:
     """Bar chart over a jobs_histogram envelope; owner-stacked when possible.
 
     Shared by the Wait Times, Job Sizes, and Durations tabs — the envelope's
@@ -1243,6 +1243,12 @@ def generate_jobs_histogram(hist, *, metric='jobs') -> str:
             'null_count', 'total_count', …}``.
         metric: ``'jobs'`` (bucket job counts), ``'cpu_hours'`` or
             ``'gpu_hours'`` (charged hours per bucket).
+        log_y: use a logarithmic y-axis — the treatment the filesystem-scan
+            distribution histogram already offers. Job distributions are
+            heavily skewed (most jobs wait seconds, a few wait days), so a
+            linear axis buries the tail bands entirely. A log scale can't
+            represent a stack meaningfully, so this falls back to one solid
+            bar per band (the band's base color), keeping the drill anchors.
 
     Returns a "no jobs" placeholder div when every bucket is zero.
     """
@@ -1262,11 +1268,16 @@ def generate_jobs_histogram(hist, *, metric='jobs') -> str:
     # the bucket table, which drills into that band. Index-keyed (not
     # label) so the JS never parses band labels. Clickability follows
     # job_count, not the plotted metric.
-    if not any(b.get('owners') for b in buckets):
-        # Owner-less envelope (owners_limit unset, or an older plugin):
-        # the historical flat single-series chart, byte-identical.
+    has_owners = any(b.get('owners') for b in buckets)
+    band_colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)]
+                   for i in range(len(labels))]
+    if not has_owners or log_y:
+        # Owner-less envelope (owners_limit unset, or an older plugin) — the
+        # historical flat single-series chart, byte-identical — and the log
+        # y-axis, on which a stack carries no meaning: one solid bar per
+        # band, in the band color its stack would have used.
         bars = ax.bar(range(len(labels)), vals,
-                      color=UNITY_PALETTE_10[0],
+                      color=(band_colors if has_owners else UNITY_PALETTE_10[0]),
                       edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
         for i, (rect, b) in enumerate(zip(bars, buckets)):
             if b.get('job_count'):
@@ -1276,8 +1287,7 @@ def generate_jobs_histogram(hist, *, metric='jobs') -> str:
         # ascending), shaded within the band's color family — the fs_scans
         # distribution-histogram treatment: the spread between users is
         # legible before clicking.
-        colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)]
-                  for i in range(len(labels))]
+        colors = band_colors
         for i, b in enumerate(buckets):
             segs = _jobs_bucket_segments(b, key)
             url = f'#jh-bar-{i}' if b.get('job_count') else None
@@ -1298,6 +1308,8 @@ def generate_jobs_histogram(hist, *, metric='jobs') -> str:
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=30, ha='right')
     ax.set_ylabel(_JOBS_METRIC_LABELS.get(metric, 'Jobs'))
+    if log_y:
+        ax.set_yscale('log')
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, axis='y', alpha=0.3)
 

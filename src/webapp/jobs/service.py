@@ -12,7 +12,7 @@ return cross-project rows by forgetting a filter.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
 from webapp.jobs import cache as jobs_cache
@@ -22,6 +22,27 @@ from webapp.jobs.session import (
     is_enabled,
     job_history_session,
 )
+
+# Lookback applied when a host doesn't ask for one. Unbounded windows are
+# the expensive path — a machine-wide aggregation measures ~200 s against
+# the plugin PG vs ~0.6 s per month-window — so every surface bounds by
+# default and widens deliberately.
+DEFAULT_JOBS_WINDOW_DAYS = 90
+
+# (days, label) for the card's period pills, exposed to templates as the
+# ``jobs_window_pills`` Jinja global. The ``?days=`` whitelist derives from
+# it so the UI can never offer a window the route would reject.
+JOBS_WINDOW_PILLS = ((30, '30d'), (60, '60d'), (90, '90d'), (365, '1 yr'))
+
+# Accepted ``?days=`` values. Anything else degrades to the default rather
+# than 400ing, so a stale localStorage value from an older pill set can't
+# break a card.
+JOBS_WINDOW_CHOICES = tuple(days for days, _ in JOBS_WINDOW_PILLS)
+
+
+def default_jobs_window_start() -> str:
+    """ISO date DEFAULT_JOBS_WINDOW_DAYS ago — the cards' default window."""
+    return (date.today() - timedelta(days=DEFAULT_JOBS_WINDOW_DAYS)).isoformat()
 
 
 def job_history_machines() -> List[str]:

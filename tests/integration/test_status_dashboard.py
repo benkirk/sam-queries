@@ -3,7 +3,7 @@ Integration tests for System Status Dashboard.
 
 Verifies that dashboard pages render correctly (status 200) using the new
 query layer. The dashboard is routable pages — /status/ 302-redirects to
-/status/derecho, and each system (derecho, casper, jupyterhub, reservations,
+/status/derecho, and each system (derecho, casper, jupyterhub, events,
 filesystem-scans) has its own page sharing the outage banner + tab strip.
 Each test seeds minimal Derecho/Casper data into the per-worker
 SQLite tempfile via the `status_session` fixture, then issues authenticated
@@ -16,6 +16,7 @@ seeding because it ran against a per-worker MySQL `system_status_test_*`
 database. We use the same `commit()` semantics under the SQLite tempfile,
 which gets DELETE-cleaned at the start of each test by the fixture.
 """
+import re
 from datetime import timedelta
 
 import pytest
@@ -356,6 +357,95 @@ class TestStatusDashboard:
         response = auth_client.get('/status/nodetype-history/casper/cpu?hours=720')
         assert response.status_code == 200
         assert b'/status/casper?hours=720' in response.data
+
+
+def tab_strip_hrefs(body):
+    """Hrefs of the status tab strip, in render order.
+
+    The page_tabs strip is the first ``nav nav-tabs`` list on the page —
+    the others (filesystem/queue cards) live inside status_content, which
+    renders after it.
+    """
+    start = body.index('<ul class="nav nav-tabs')
+    return re.findall(r'href="([^"]+)"', body[start:body.index('</ul>', start)])
+
+
+class TestEventsTab:
+    """The Events tab (formerly "Reservations", /status/reservations).
+
+    It is data-gated like the others — hidden with no upcoming
+    reservations and no calendar embed — but when it does render it must
+    be the RIGHTMOST tab for every audience. The two tabs before it are
+    RBAC/plugin-gated and drop out of the strip entirely, so position is
+    asserted at both ends of the permission range.
+    """
+
+    CALENDAR = 'https://calendar.example.invalid/embed'
+
+    @pytest.fixture
+    def calendar(self, app, monkeypatch):
+        """Make the tab visible without seeding a reservation graph."""
+        monkeypatch.setitem(app.config, 'GOOGLE_CALENDAR_EMBED_URL', self.CALENDAR)
+
+    def test_events_page(self, auth_client, status_session, calendar):
+        """GET /status/events returns 200 and renders the events content."""
+        seed_data(status_session)
+        response = auth_client.get('/status/events')
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert 'Maintenance' in body
+        assert self.CALENDAR in body          # calendar embed
+        assert '<title>Events - SAM' in body
+
+    def test_tab_hidden_without_reservations_or_calendar(self, auth_client, status_session,
+                                                         app, monkeypatch):
+        """No upcoming reservations and no calendar → no tab in the strip.
+
+        The embed URL is cleared explicitly: it comes from the
+        environment, so a developer with GOOGLE_CALENDAR_EMBED_URL set in
+        .env would otherwise see the tab render here but not in CI. The
+        navbar dropdown item is ungated (as it was under the old name),
+        so this asserts on the tab strip only.
+        """
+        monkeypatch.setitem(app.config, 'GOOGLE_CALENDAR_EMBED_URL', '')
+        seed_data(status_session)
+        body = auth_client.get('/status/derecho').get_data(as_text=True)
+        assert '/status/events' not in tab_strip_hrefs(body)
+
+    def test_tab_is_rightmost_for_staff(self, auth_client, status_session,
+                                        monkeypatch, calendar):
+        """With every gated tab visible, Events still renders last."""
+        seed_data(status_session)
+        monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                            lambda app=None: ['Campaign_Store'])
+        monkeypatch.setattr('webapp.jobs.service.job_history_machines',
+                            lambda: ['derecho'])
+        hrefs = tab_strip_hrefs(auth_client.get('/status/derecho').get_data(as_text=True))
+        assert '/status/filesystem-scans' in hrefs      # gated tabs did render
+        assert '/status/job-history' in hrefs
+        assert hrefs[-1] == '/status/events'
+
+    def test_tab_is_rightmost_without_gated_tabs(self, non_admin_client, status_session,
+                                                 monkeypatch, calendar):
+        """A user who sees neither gated tab still finds Events rightmost."""
+        seed_data(status_session)
+        monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
+                            lambda app=None: ['Campaign_Store'])
+        monkeypatch.setattr('webapp.jobs.service.job_history_machines',
+                            lambda: ['derecho'])
+        hrefs = tab_strip_hrefs(non_admin_client.get('/status/derecho').get_data(as_text=True))
+        assert '/status/filesystem-scans' not in hrefs
+        assert '/status/job-history' not in hrefs
+        assert hrefs[-1] == '/status/events'
+
+    def test_tab_labeled_events(self, auth_client, status_session, calendar):
+        """The tab reads "Events" — the old label is gone from the strip."""
+        seed_data(status_session)
+        body = auth_client.get('/status/derecho').get_data(as_text=True)
+        start = body.index('<ul class="nav nav-tabs')
+        strip = body[start:body.index('</ul>', start)]
+        assert 'Events' in strip
+        assert 'Reservations' not in strip
 
 
 class TestStaleBanner:

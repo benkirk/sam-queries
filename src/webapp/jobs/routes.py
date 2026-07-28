@@ -8,12 +8,20 @@ Project-mode endpoints (url_prefix ``/dashboards/user/jobs``):
   GET /<projcode>/job-sizes   — resource-needs histogram (?dimension=
                                 nodes|cpus|gpus|memory)
   GET /<projcode>/durations   — elapsed-time histogram (pinned 'duration')
+  GET /<projcode>/card        — the tab shell itself, re-rendered for a new
+                                lookback (?days=); the period pills' target
 
 Jobs-tab query params: ``GET /dashboards/user/jobs/<projcode>``
 
 Query params (all optional unless noted):
   machine   (required) — 'derecho' or 'casper'
   start, end           — YYYY-MM-DD; filters on Job.end
+  days                 — lookback in days, one of
+                         service.JOBS_WINDOW_CHOICES; outranks start/end
+                         (the card's period pills, which can only append
+                         to a URL whose window was baked in at render
+                         time). Normalized back to start= before anything
+                         downstream sees it.
   user                 — limit to a single PBS username
   queue                — limit to a single queue
   qos                  — limit to a single QoS / priority class
@@ -38,7 +46,8 @@ filter cannot leak cross-project rows.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+import re
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from flask import Blueprint, abort, render_template, request, url_for
@@ -55,6 +64,7 @@ from webapp.dashboards.charts import (
 from webapp.extensions import db
 from webapp.jobs import service
 from webapp.jobs.session import is_enabled
+from webapp.utils.htmx import read_flag
 from webapp.utils.rbac import (
     Permission,
     has_permission_any_facility,
@@ -121,6 +131,26 @@ def _parse_date(raw: Optional[str]) -> Optional[date]:
         return datetime.strptime(raw, '%Y-%m-%d').date()
     except ValueError:
         return None
+
+
+def _parse_days() -> Optional[int]:
+    """The card's ``?days=`` lookback pill, or None when not one of ours.
+
+    Lenient like ``_parse_metric``: an unknown or malformed value means
+    "no override", never a 400 — the value can arrive from a client's
+    localStorage, which may outlive a change to the offered windows.
+    """
+    raw = (request.args.get('days') or '').strip()
+    try:
+        days = int(raw)
+    except ValueError:
+        return None
+    return days if days in service.JOBS_WINDOW_CHOICES else None
+
+
+def _days_start(days: int) -> date:
+    """Window start for a ``?days=`` lookback (always relative to today)."""
+    return date.today() - timedelta(days=days)
 
 
 def _parse_pagination():
@@ -596,6 +626,14 @@ def _parse_job_filters(include_user: bool = True) -> dict:
         'exit_status': (request.args.get('exit_status') or '').strip() or None,
         'name':  (request.args.get('name') or '').strip() or None,
     }
+    days = _parse_days()
+    if days is not None:
+        # The card's period pill outranks any window baked into the panel
+        # URL at render time: the client-side persistence layer can only
+        # append ``days`` to a request, never rewrite the ``start`` already
+        # in the path, so precedence has to be settled here.
+        f['start'] = _days_start(days)
+        f['end'] = None
     if include_user:
         f['user'] = _resolve_user_filter()[0]
     if f['name'] is not None:
@@ -639,6 +677,14 @@ def _roundtrip_params(machine: str, target_id: str) -> dict:
         k: request.args.get(k) for k in _ROUNDTRIP_KEYS
         if (request.args.get(k) or '').strip()
     }
+    days = _parse_days()
+    if days is not None:
+        # Normalize the pill to a plain start= at the fragment boundary:
+        # in-panel pills, bar drills and explorer deep links all keep
+        # speaking start/end, so `days` stays out of _ROUNDTRIP_KEYS and
+        # never has to be understood past this point.
+        params['start'] = _days_start(days).isoformat()
+        params.pop('end', None)
     params['machine'] = machine
     params['target_id'] = target_id
     return params
@@ -654,6 +700,34 @@ def _get_machine_or_400() -> str:
 def _parse_metric(default: str) -> str:
     metric = (request.args.get('metric') or '').strip()
     return metric if metric in _METRICS else default
+
+
+def _parse_log() -> bool:
+    """``?log=`` — the histograms' log y-axis switch.
+
+    Same predicate as the filesystem-scan distribution histogram's switch
+    (both go through ``utils.htmx.is_truthy``), so the two can't drift on
+    what counts as checked; unlike that one it is offered on every
+    histogram tab, since every job distribution is skewed enough to want it.
+    """
+    return read_flag(request.args, 'log')
+
+
+def _parse_group_by() -> str:
+    """Owner dimension for the histograms' User|Project pill.
+
+    ``group_by=user|project`` is the app-wide spelling — the same one the
+    status dashboard's queue-load chart uses, which is what lets the
+    choice ride the shared view-preference bucket and mean the same thing
+    on both. ``owners_by=user|account`` (the plugin's own vocabulary, and
+    what this pill emitted before) is still honoured so in-flight links
+    and bookmarks keep working. Anything else falls back to 'user'.
+    """
+    raw = (request.args.get('group_by') or '').strip()
+    if raw:
+        return 'project' if raw == 'project' else 'user'
+    legacy = (request.args.get('owners_by') or '').strip()
+    return 'project' if legacy == 'account' else 'user'
 
 
 def _tree_projcodes(project) -> list:
@@ -815,6 +889,35 @@ def _bucket_drill_url(jobs_fragment_url: str, hist: dict, bucket: dict,
     return f'{jobs_fragment_url}?{urlencode(params)}'
 
 
+def _trim_leading_empty_bands(hist):
+    """Drop leading all-zero bands from a histogram envelope.
+
+    The plugin returns a complete, ordered bucket vector — zeros included —
+    which is what keeps the x-axis stable as filters change, and that's
+    worth preserving *inside* a distribution. A leading empty band is
+    different: on Job Sizes it's structural, since every job uses at least
+    one node and one CPU, so those dimensions can never fill their 0 band.
+    GPUs are the exception that keeps the rule honest — there the 0 band
+    holds the CPU-only jobs, so it survives on its own merit.
+
+    Emptiness is judged on ``job_count`` alone, never the displayed metric,
+    so flipping Jobs / CPU-hours / GPU-hours can't shift the axis under the
+    viewer (a band of real jobs charging no GPU-hours stays put).
+
+    Returns a shallow copy — the envelope is a shared cache entry and must
+    never be mutated — or *hist* itself when there's nothing to trim.
+    """
+    buckets = (hist or {}).get('buckets') or []
+    lead = 0
+    while lead < len(buckets) and not (buckets[lead].get('job_count') or 0):
+        lead += 1
+    if not lead or lead == len(buckets):
+        # Nothing to trim, or the whole range is empty — leave that to the
+        # chart's own "no jobs" placeholder rather than serving no bands.
+        return hist
+    return dict(hist, buckets=buckets[lead:])
+
+
 def _render_histogram(*, mode, machine, dimension, dimension_toggle,
                       fragment_url, target_id,
                       jobs_fragment_url=None,
@@ -829,18 +932,21 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
 
     filters = _parse_job_filters()
     metric = _parse_metric(_DEFAULT_METRIC_HIST)
+    log_on = _parse_log()
 
     # User|Project owner-dimension pill — offered only where the context
     # spans more than one project (machine mode; a project tree > 1).
-    # Elsewhere ?owners_by= is ignored, so a crafted URL can't flip a
+    # Elsewhere the param is ignored, so a crafted URL can't flip a
     # single-project pane into a redundant per-project breakdown.
     owners_toggle = (mode == 'machine'
                      or (mode == 'project'
                          and account_projcodes is not None
                          and len(account_projcodes) > 1))
-    owners_by = 'user'
-    if owners_toggle and (request.args.get('owners_by') or '').strip() == 'account':
-        owners_by = 'account'
+    group_by = _parse_group_by() if owners_toggle else 'user'
+    # The plugin's word for a project owner is 'account'; the URL and the
+    # shared view-preference bucket speak 'project'. Translate here, at
+    # the one boundary between the two vocabularies.
+    owners_by = 'account' if group_by == 'project' else 'user'
 
     hist = None
     error = None
@@ -864,7 +970,14 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         )
         error = str(exc)
 
-    chart_svg = generate_jobs_histogram(hist, metric=metric) if hist else None
+    # Trim BEFORE the chart and the drill list: the bar sentinels
+    # (#jh-bar-<i>) and the table's data-jh-bucket indices are both
+    # positions in this bucket vector, so all three have to see the
+    # same one.
+    hist = _trim_leading_empty_bands(hist)
+
+    chart_svg = (generate_jobs_histogram(hist, metric=metric, log_y=log_on)
+                 if hist else None)
     params = _roundtrip_params(machine, target_id)
 
     # One drill URL per band (None for empty bands) — computed here, not
@@ -878,11 +991,15 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             for b in hist.get('buckets') or []
         ]
 
-    # Round-trip the non-default owner dimension through the metric /
-    # dimension pills' hx-include form (AFTER the drill URLs — the jobs
-    # fragments don't take owners_by).
-    if owners_by != 'user':
-        params = dict(params, owners_by=owners_by)
+    # Round-trip the non-default owner dimension and y-scale through the
+    # metric / dimension pills' hx-include form (AFTER the drill URLs — the
+    # jobs fragments take neither). The switch itself spells ?log= out in
+    # its own URL, which wins over this stale copy: Werkzeug reads the
+    # first value and htmx appends included params after the hx-get query.
+    if group_by != 'user':
+        params = dict(params, group_by=group_by)
+    if log_on:
+        params = dict(params, log='1')
 
     # Same affordance gates as the By User / By Project tables — never
     # render an entity quick-view link that would 403.
@@ -897,10 +1014,10 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         enabled=True, error=error,
         mode=mode, machine=machine,
         hist=hist, chart_svg=chart_svg,
-        metric=metric,
+        metric=metric, log_on=log_on,
         dimension=dimension, dimension_toggle=dimension_toggle,
         size_dimensions=_SIZE_DIMENSIONS,
-        owners_by=owners_by, owners_toggle=owners_toggle,
+        group_by=group_by, owners_toggle=owners_toggle,
         can_view_users=can_view_users,
         can_view_projects=can_view_projects,
         fragment_url=fragment_url,
@@ -1055,11 +1172,14 @@ def _panel_filters(machine: str) -> dict:
     end = (request.args.get('end') or '').strip()
     if not start and not end:
         # Unbounded windows are the expensive path (~200 s machine-wide
-        # vs ~0.6 s per month) — default the explorer to the last 90
-        # days. The field is visible in the panel; clearing it opts into
-        # the full history explicitly.
-        from datetime import timedelta
-        start = (date.today() - timedelta(days=90)).isoformat()
+        # vs ~0.6 s per month) — default the explorer to the same window
+        # the cards use. The card's "Open full view" link hands its
+        # current pill over as ?days=, so the explorer opens on the window
+        # the user was already looking at. The field is visible in the
+        # panel; clearing it opts into the full history explicitly.
+        start = _days_start(
+            _parse_days() or service.DEFAULT_JOBS_WINDOW_DAYS
+        ).isoformat()
     return {
         'start': start,
         'end':   end,
@@ -1424,3 +1544,79 @@ def explore_user_page(machine):
         filters=panel, user_search_url=_user_search_url(),
         per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Card shell (period pills) — one route per mode
+# ---------------------------------------------------------------------------
+#
+# Each panel bakes its window into its own hx-get URL at render time, so
+# changing the period means re-rendering the shell that owns those URLs.
+# These routes do that and nothing else — no plugin queries — so a pill
+# click costs one cheap render and the panels re-fetch lazily as they are
+# shown. Gating mirrors each mode's panel family.
+
+# Shell params echoed straight into element ids and hx-target selectors.
+_ID_ARG_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
+
+def _id_arg(name: str, default: Optional[str] = None) -> Optional[str]:
+    """Read an id-shaped query arg; 400 on anything that isn't id-safe."""
+    raw = (request.args.get(name) or '').strip()
+    if not raw:
+        return default
+    if not _ID_ARG_RE.match(raw):
+        abort(400, f'{name} must match {_ID_ARG_RE.pattern}')
+    return raw
+
+
+def _render_card_shell(*, mode: str, machine: str, **extra):
+    """Re-render the jobs card bound to the requested ``?days=`` window."""
+    days = _parse_days() or service.DEFAULT_JOBS_WINDOW_DAYS
+    return render_template(
+        'dashboards/user/partials/jobs_card.html',
+        mode=mode, machine=machine,
+        cid=_id_arg('cid', 'jobs-card'),
+        tablist_id=_id_arg('tablist_id', 'jobsCardTabs'),
+        days_persist_id=_id_arg('days_persist_id'),
+        days=days,
+        start=_days_start(days).isoformat(),
+        end=None,
+        # The clicked card is on screen, so this fires straight away; a
+        # sibling card refreshed inside a hidden machine subtab waits until
+        # it is actually shown instead of querying for nobody.
+        load_trigger='intersect once',
+        **extra,
+    )
+
+
+@bp.route('/<projcode>/card')
+@login_required
+@require_project_access
+def jobs_card_fragment(project):
+    """HTMX fragment: *project*'s card shell rebound to a new window.
+
+    A pill is a pure lookback from today, so it drops the page's own end
+    date rather than re-anchoring the window inside it.
+    """
+    return _render_card_shell(
+        mode='project', machine=_get_machine_or_400(),
+        projcode=project.projcode,
+        scope=(request.args.get('scope') or '').strip() or None,
+        jobs_multi_project=len(_tree_projcodes(project)) > 1,
+    )
+
+
+@bp.route('/machine/<machine>/card')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def jobs_card_machine_fragment(machine):
+    """HTMX fragment: the machine-wide card shell on a new window."""
+    return _render_card_shell(mode='machine', machine=_machine_or_404(machine))
+
+
+@bp.route('/user/<machine>/card')
+@login_required
+def jobs_card_user_fragment(machine):
+    """HTMX fragment: the "My Jobs" card shell on a new window."""
+    return _render_card_shell(mode='user', machine=_machine_or_404(machine))

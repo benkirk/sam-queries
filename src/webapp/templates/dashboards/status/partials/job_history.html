@@ -39,6 +39,8 @@
                 tablist_id='jobHistCardTabs' ~ loop.index,
                 machine=m,
                 start=jobs_window_start,
+                days=jobs_window_days,
+                days_persist_id='jobs-days-status',
                 load_trigger=_trigger %}
             {% include 'dashboards/user/partials/jobs_card.html' %}
         {% endwith %}

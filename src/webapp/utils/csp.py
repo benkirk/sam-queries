@@ -21,7 +21,7 @@ Design constraints (see docs/plans/implemented/CSP-discussion.md):
   <style> block already requires the HTML-injection failure that Jinja
   autoescaping prevents.
 - frame-src widens to the GOOGLE_CALENDAR_EMBED_URL origin when that
-  iframe is configured (status dashboard reservations tab).
+  iframe is configured (status dashboard Events tab).
 """
 
 from urllib.parse import urlsplit

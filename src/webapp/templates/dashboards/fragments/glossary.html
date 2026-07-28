@@ -122,6 +122,12 @@ Core-hours = cores used × wall-clock hours. The raw usage measure, before
 allocation-unit weighting.
 {%- endmacro %}
 
+{% macro g_cpu_hours() -%}
+CPU-hours = CPUs used × wall-clock hours, measured from PBS job records. Close
+kin to Core-hours, but a different source — job history, not charge summaries —
+so the two won't tie out exactly.
+{%- endmacro %}
+
 {% macro g_charges() -%}
 Allocation units drawn down by this activity over the selected date range — the
 billed amount, not a job count.

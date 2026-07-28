@@ -2937,7 +2937,7 @@ def test_histogram_owners_limit_and_sort_forwarded(
     assert kwargs['owners_sort_by'] == 'gpu_hours'
 
 
-# --- Histogram User|Project owner pill (owners_by) --------------------------
+# --- Histogram User|Project owner pill (group_by) ---------------------------
 
 def _sample_hist_project_owners(dimension='wait'):
     """Owner keys are projcodes — the plugin owners_by='account' envelope.
@@ -2963,19 +2963,19 @@ def test_histogram_owner_pill_offered_in_machine_mode(
         '/dashboards/user/jobs/machine/derecho/wait-times'
     ).get_data(as_text=True)
     assert 'aria-label="Owner dimension"' in body
-    assert 'owners_by=account' in body
+    assert 'group_by=project' in body
 
 
 def test_histogram_owner_pill_hidden_in_user_mode_and_param_ignored(
     app, auth_client, monkeypatch,
 ):
-    """User mode never offers the pill, and a crafted ?owners_by=account
+    """User mode never offers the pill, and a crafted ?group_by=project
     is ignored (not forwarded to the plugin)."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
     )
     body = auth_client.get(
-        '/dashboards/user/jobs/user/derecho/wait-times?owners_by=account'
+        '/dashboards/user/jobs/user/derecho/wait-times?group_by=project'
     ).get_data(as_text=True)
     assert 'aria-label="Owner dimension"' not in body
     _dim, kwargs = captured['last_jobs_histogram']
@@ -3002,7 +3002,8 @@ def test_histogram_owners_by_forwarded_only_when_account(
     app, auth_client, monkeypatch,
 ):
     """Soft degradation contract: the default never sends owners_by (an
-    older plugin keeps working); the Project pill sends 'account'."""
+    older plugin keeps working); the Project pill sends the plugin's
+    'account' for the URL's canonical group_by=project."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_project_owners(),
     )
@@ -3010,6 +3011,13 @@ def test_histogram_owners_by_forwarded_only_when_account(
     _dim, kwargs = captured['last_jobs_histogram']
     assert 'owners_by' not in kwargs
 
+    auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times?group_by=project')
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['owners_by'] == 'account'
+
+    # The plugin's own spelling still works — bookmarks and any URL built
+    # before the rename keep resolving to the same view.
     auth_client.get(
         '/dashboards/user/jobs/machine/derecho/wait-times?owners_by=account')
     _dim, kwargs = captured['last_jobs_histogram']
@@ -3021,19 +3029,19 @@ def test_histogram_account_owner_tier_and_drill(
 ):
     """The Project pill drives the whole drill: Project tier header,
     project-modal triggers on owner cells, account= (not user=) on the
-    per-owner jobs drill, 'Other projects' remainder, and the owners_by
+    per-owner jobs drill, 'Other projects' remainder, and the group_by
     round-trip hidden input for the metric pills."""
     import re
     _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_project_owners(),
     )
     body = auth_client.get(
-        '/dashboards/user/jobs/machine/derecho/wait-times?owners_by=account'
+        '/dashboards/user/jobs/machine/derecho/wait-times?group_by=project'
     ).get_data(as_text=True)
     assert '<th>Project</th>' in body
     assert 'Other projects' in body
     assert 'project-details-modal/SCSG0001' in body
-    assert 'name="owners_by" value="account"' in body
+    assert 'name="group_by" value="project"' in body
     m = re.search(r'id="[^"]*-b0-u1-content"\s+hx-get="([^"]+)"', body)
     assert m, 'owner drill div missing'
     url = m.group(1).replace('&amp;', '&')
@@ -3243,3 +3251,544 @@ def test_by_user_sort_indicator_follows_metric(
     gpu_th = re.search(r'<th[^>]*sort-desc[^>]*>GPU-hours</th>', body)
     assert gpu_th, 'sort-desc must sit on the GPU-hours header'
     assert not re.search(r'<th[^>]*sort-desc[^>]*>CPU-hours</th>', body)
+
+
+# ---------------------------------------------------------------------------
+# Period pills — ?days= parsing, precedence, and the card-shell routes
+# ---------------------------------------------------------------------------
+
+def _days_ago(days):
+    from datetime import date, timedelta
+    return date.today() - timedelta(days=days)
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('30', 30), ('365', 365),
+    ('7', None),        # not an offered window
+    ('abc', None), ('', None), ('90.0', None), ('-90', None),
+])
+def test_parse_days_accepts_only_offered_windows(app, raw, expected):
+    """A stale localStorage value must degrade to the default, never 400."""
+    from webapp.jobs import routes
+
+    with app.test_request_context(f'/?days={raw}'):
+        assert routes._parse_days() == expected
+
+
+def test_days_outranks_the_window_baked_into_the_url(app):
+    """The pill wins over ?start=/?end= — the client can only append days."""
+    from webapp.jobs import routes
+
+    with app.test_request_context('/?start=2020-01-01&end=2020-06-01&days=60'):
+        filters = routes._parse_job_filters()
+
+    assert filters['start'] == _days_ago(60)
+    assert filters['end'] is None
+
+
+def test_start_and_end_survive_when_no_days_given(app):
+    from datetime import date
+    from webapp.jobs import routes
+
+    with app.test_request_context('/?start=2020-01-01&end=2020-06-01'):
+        filters = routes._parse_job_filters()
+
+    assert filters['start'] == date(2020, 1, 1)
+    assert filters['end'] == date(2020, 6, 1)
+
+
+def test_roundtrip_params_normalize_days_to_a_plain_start(app):
+    """`days` is confined to the fragment boundary: panels round-trip start."""
+    from webapp.jobs import routes
+
+    with app.test_request_context('/?days=365&end=2020-06-01'):
+        params = routes._roundtrip_params('derecho', 'tgt')
+
+    assert params['start'] == _days_ago(365).isoformat()
+    assert 'end' not in params
+    assert 'days' not in params
+
+
+def test_panel_filters_default_window_follows_days(app, monkeypatch):
+    """The explorer honours the pill the card handed over in its link."""
+    _install_mock_plugin(app, monkeypatch)
+    from webapp.jobs import routes
+
+    with app.test_request_context('/?days=30'):
+        panel = routes._panel_filters('derecho')
+    assert panel['start'] == _days_ago(30).isoformat()
+
+    with app.test_request_context('/'):
+        panel = routes._panel_filters('derecho')
+    assert panel['start'] == _days_ago(
+        routes.service.DEFAULT_JOBS_WINDOW_DAYS).isoformat()
+
+
+def test_panel_route_applies_days_over_baked_start(
+    app, auth_client, active_project, monkeypatch,
+):
+    """End to end: a panel fetch carrying both uses the injected window."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&start=2020-01-01&days=365'
+    )
+    assert resp.status_code == 200
+    assert captured['last_jobs_search_kwargs']['start'] == _days_ago(365)
+
+
+def _card_url(projcode, **extra):
+    from urllib.parse import urlencode
+    params = {'machine': 'derecho', 'cid': 'jobs-hist',
+              'tablist_id': 'jobsCardTabs'}
+    params.update(extra)
+    return f'/dashboards/user/jobs/{projcode}/card?{urlencode(params)}'
+
+
+def test_card_fragment_bakes_the_window_into_every_panel_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The shell is how the six panels learn a new window."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(_card_url(active_project.projcode, days=365))
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    start = _days_ago(365).isoformat()
+    for suffix in ('', '/wait-times', '/job-sizes', '/durations'):
+        assert (f'/dashboards/user/jobs/{active_project.projcode}{suffix}'
+                f'?machine=derecho&amp;start={start}') in body, suffix
+    # A pill is a lookback from today, so the page's own end date is gone.
+    assert 'end=' not in body
+
+
+def test_card_fragment_marks_the_requested_pill_active(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=30)).get_data(as_text=True)
+
+    import re
+    assert re.search(r'btn btn-primary[^>]*data-days-value="30"', body) or \
+        re.search(r'data-days-value="30"[^>]*btn btn-primary', body)
+    assert 'data-days-value="365"' in body      # the other pills still render
+
+
+def test_card_fragment_unknown_days_falls_back_to_the_default(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=7)).get_data(as_text=True)
+
+    from webapp.jobs.service import DEFAULT_JOBS_WINDOW_DAYS
+    assert f'start={_days_ago(DEFAULT_JOBS_WINDOW_DAYS).isoformat()}' in body
+
+
+@pytest.mark.parametrize('bad', ['jobs hist', 'a"b', '<script>', 'x' * 65])
+def test_card_fragment_400_on_unsafe_element_ids(
+    app, auth_client, active_project, monkeypatch, bad,
+):
+    """cid/tablist_id land in element ids and hx-target selectors."""
+    _install_mock_plugin(app, monkeypatch)
+    assert auth_client.get(
+        _card_url(active_project.projcode, cid=bad)).status_code == 400
+    assert auth_client.get(
+        _card_url(active_project.projcode, tablist_id=bad)).status_code == 400
+
+
+def test_card_fragment_404_on_unknown_projcode(auth_client):
+    assert auth_client.get(_card_url('NOPE9999')).status_code == 404
+
+
+def test_card_fragment_400_on_invalid_machine(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card?machine=gust')
+    assert resp.status_code == 400
+
+
+def test_card_fragment_persist_markers_are_opt_in(
+    app, auth_client, active_project, monkeypatch,
+):
+    """No persist id (resource details) → the window can't outlive the visit."""
+    _install_mock_plugin(app, monkeypatch)
+
+    plain = auth_client.get(
+        _card_url(active_project.projcode)).get_data(as_text=True)
+    assert 'data-jobs-days-card' not in plain
+    assert 'data-chart-persist-id' not in plain
+    assert 'data-days-value' in plain            # pills still work
+
+    kept = auth_client.get(
+        _card_url(active_project.projcode,
+                  days_persist_id='jobs-days-status')).get_data(as_text=True)
+    assert 'data-jobs-days-card' in kept
+    assert 'data-chart-persist-id="jobs-days-status"' in kept
+    assert 'data-chart-persist-keys="days"' in kept
+    assert 'data-jobs-card-url' in kept
+
+
+def test_card_wrapper_declares_no_inheritable_hx_target(
+    app, auth_client, active_project, monkeypatch,
+):
+    """htmx inherits hx-target/hx-swap.
+
+    A pair on the card wrapper would capture every descendant request that
+    doesn't name its own target — a By Project bucket drill swapped the
+    whole card away — so the sibling fan-out goes through htmx.ajax().
+    """
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode,
+                  days_persist_id='jobs-days-status')).get_data(as_text=True)
+
+    wrapper = body[body.index('<div id="jobs-hist-card"'):]
+    wrapper = wrapper[:wrapper.index('>') + 1]
+    assert 'hx-target' not in wrapper
+    assert 'hx-swap' not in wrapper
+
+
+def test_card_fragment_explore_link_hands_over_the_pill(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The link carries ?days=, never a date the JS would have to re-derive."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=365)).get_data(as_text=True)
+
+    import re
+    link = re.search(r'href="([^"]*/explore[^"]*)"', body)
+    assert link, 'explorer link missing'
+    assert 'days=365' in link.group(1)
+    assert 'start=' not in link.group(1)
+
+
+def test_card_machine_route_403_without_permission(non_admin_client):
+    resp = non_admin_client.get('/dashboards/user/jobs/machine/derecho/card')
+    assert resp.status_code == 403
+
+
+def test_card_machine_route_404_unknown_machine(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get('/dashboards/user/jobs/machine/gust/card')
+    assert resp.status_code == 404
+
+
+def test_card_machine_route_renders_machine_mode_shell(
+    app, auth_client, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/card?days=60'
+        '&cid=jobs-m1&tablist_id=jobHistCardTabs1')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert f'start={_days_ago(60).isoformat()}' in body
+    assert 'By User' in body                    # machine mode keeps the pie
+    assert 'id="jobs-m1-card"' in body
+
+
+def test_card_user_route_renders_without_elevated_permission(
+    app, non_admin_client, monkeypatch,
+):
+    """The My Jobs shell is @login_required only — the username is pinned."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = non_admin_client.get(
+        '/dashboards/user/jobs/user/derecho/card?days=30&cid=my-jobs-m1')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert f'start={_days_ago(30).isoformat()}' in body
+    assert '>By User' not in body               # a pie of one, hidden here
+
+
+def test_card_shell_panels_stay_lazy_after_a_refetch(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Only the visible panel refetches; the rest wait to be shown."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=30)).get_data(as_text=True)
+
+    assert 'hx-trigger="intersect once"' in body
+    assert body.count('hx-trigger="shown.bs.tab once"') >= 4
+
+
+# ---------------------------------------------------------------------------
+# Job Sizes: leading empty band suppression
+# ---------------------------------------------------------------------------
+
+def _sizes_hist(first_jobs=0):
+    """A nodes-style envelope whose 0 band is empty unless asked otherwise."""
+    return {
+        'dimension': 'nodes', 'column': 'numnodes', 'unit': 'nodes',
+        'min_param': 'min_nodes', 'max_param': 'max_nodes',
+        'buckets': [
+            {'label': '0', 'lo': 0, 'hi': 0,
+             'job_count': first_jobs, 'cpu_hours': 0.0, 'gpu_hours': 0.0},
+            {'label': '1', 'lo': 1, 'hi': 1,
+             'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 0.0},
+            {'label': '2-4', 'lo': 2, 'hi': 4,
+             'job_count': 5, 'cpu_hours': 50.0, 'gpu_hours': 3.0},
+        ],
+        'null_count': 0, 'total_count': 17 + first_jobs,
+    }
+
+
+def test_trim_drops_a_leading_empty_band():
+    """Every job uses ≥1 node, so that 0 band can never fill."""
+    from webapp.jobs.routes import _trim_leading_empty_bands
+
+    hist = _sizes_hist()
+    trimmed = _trim_leading_empty_bands(hist)
+
+    assert [b['label'] for b in trimmed['buckets']] == ['1', '2-4']
+    # The envelope is a shared cache entry — trimming must copy, not mutate.
+    assert [b['label'] for b in hist['buckets']] == ['0', '1', '2-4']
+
+
+def test_trim_keeps_a_populated_leading_band():
+    """The GPU 0 band holds the CPU-only jobs and stays."""
+    from webapp.jobs.routes import _trim_leading_empty_bands
+
+    trimmed = _trim_leading_empty_bands(_sizes_hist(first_jobs=9))
+    assert [b['label'] for b in trimmed['buckets']] == ['0', '1', '2-4']
+
+
+def test_trim_leaves_an_entirely_empty_range_alone():
+    """All-zero → the chart's own placeholder, not a bandless envelope."""
+    from webapp.jobs.routes import _trim_leading_empty_bands
+
+    hist = _sizes_hist()
+    hist['buckets'] = [dict(b, job_count=0) for b in hist['buckets']]
+    assert _trim_leading_empty_bands(hist)['buckets'] == hist['buckets']
+
+
+def test_trim_ignores_the_displayed_metric():
+    """A band of real jobs charging no GPU-hours must not shift the axis."""
+    from webapp.jobs.routes import _trim_leading_empty_bands
+
+    hist = _sizes_hist(first_jobs=4)
+    hist['buckets'][0]['cpu_hours'] = 0.0
+    hist['buckets'][0]['gpu_hours'] = 0.0
+    assert _trim_leading_empty_bands(hist)['buckets'][0]['label'] == '0'
+
+
+def test_job_sizes_fragment_hides_the_empty_zero_band(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch, jobs_histogram_return=_sizes_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=nodes'
+    ).get_data(as_text=True)
+
+    import re
+    labels = re.findall(r'<code>([^<]+)</code>', body)
+    assert '0' not in labels
+    assert '1' in labels and '2-4' in labels
+
+
+def test_job_sizes_bar_and_row_indices_stay_aligned_after_trim(
+    app, auth_client, active_project, monkeypatch,
+):
+    """#jh-bar-<i> and data-jh-bucket=<i> both index the trimmed vector."""
+    _install_mock_plugin(app, monkeypatch, jobs_histogram_return=_sizes_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
+        '?machine=derecho&dimension=nodes'
+    ).get_data(as_text=True)
+
+    import re
+    # Band 0 of the rendered chart is now the '1' band, and the row that
+    # answers a click on it must be the one carrying its counts.
+    row = re.search(r'data-jh-bucket="0".*?</tr>', body, re.S)
+    assert row, 'no bucket-0 row rendered'
+    assert '<code>1</code>' in row.group(0)
+
+
+# ---------------------------------------------------------------------------
+# Log y-axis switch — parity with the filesystem-scan distribution
+# histograms. Offered on every histogram tab (job distributions are all
+# long-tailed), rides the round-trip form so the other pills keep it, and
+# persists through the shared lens.
+# ---------------------------------------------------------------------------
+
+_HIST_TABS = ('wait-times', 'job-sizes', 'durations')
+
+
+@pytest.mark.parametrize('tab', _HIST_TABS)
+def test_histogram_tabs_offer_the_log_switch_off_by_default(
+    app, auth_client, active_project, monkeypatch, tab,
+):
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_histogram_return=_sample_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/{tab}?machine=derecho'
+    ).get_data(as_text=True)
+
+    assert 'Log scale' in body
+    assert 'id="jobs-hist-log-' in body
+    # Off by default, and the switch offers the ON direction.
+    assert 'log=1' in body
+    assert 'checked' not in body
+
+
+def test_log_on_renders_and_offers_the_way_back(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?log=1 → a chart still renders (solid bars), the switch reflects the
+    state, the band drill anchors survive, and clicking it turns log off."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_histogram_return=_sample_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&log=1'
+    ).get_data(as_text=True)
+
+    assert '<svg' in body
+    assert 'checked' in body
+    assert '#jh-bar-0' in body
+    assert 'log=0' in body
+
+
+def test_log_rides_the_roundtrip_form_so_the_other_pills_keep_it(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The metric / dimension / owner pills carry no ?log= of their own —
+    they inherit it from the hidden params form they hx-include. Absent when
+    off, so a stale `1` can never outlive the switch."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_histogram_return=_sample_hist())
+    url = (f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+           '?machine=derecho')
+
+    on = auth_client.get(url + '&log=1').get_data(as_text=True)
+    assert '<input type="hidden" name="log" value="1">' in on
+
+    off = auth_client.get(url).get_data(as_text=True)
+    assert 'name="log"' not in off
+
+
+def test_log_does_not_leak_into_the_band_drill_urls(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Drill URLs are built before the y-scale joins the params — the jobs
+    table has no log axis and should not be asked about one."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_histogram_return=_sample_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&log=1'
+    ).get_data(as_text=True)
+
+    import re
+    drills = re.findall(r'hx-get="([^"]*min_eligible_secs[^"]*)"', body)
+    assert drills, 'no band drill URLs rendered'
+    assert not [d for d in drills if 'log=' in d]
+
+
+@pytest.mark.parametrize('query,expected', [
+    ('log=1', True),
+    ('log=true', True),
+    ('log=on', True),
+    ('log=0', False),
+    ('log=', False),
+    ('log=nonsense', False),
+    ('', False),
+])
+def test_parse_log(app, query, expected):
+    from webapp.jobs.routes import _parse_log
+    with app.test_request_context(f'/?{query}'):
+        assert _parse_log() is expected
+
+
+# ---------------------------------------------------------------------------
+# Shared view lens — the panels' metric / owner / dimension pills persist
+# through the app-wide bucket (nav-view-persistence.js `data-chart-persist-
+# shared`), so a selection survives a period-pill re-render, carries to the
+# sibling panels, and comes back on reload.
+# ---------------------------------------------------------------------------
+
+_LENS = ('data-chart-persist-shared='
+         '"group_by metric:jobs dimension:jobs log:jobs"')
+
+
+def _tag_for(body, needle):
+    """The single HTML tag containing `needle`."""
+    i = body.index(needle)
+    return body[body.rindex('<', 0, i):body.index('>', i) + 1]
+
+
+def test_lens_declared_on_both_ends_of_every_pill_panel(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Tab button (injects on fetch) and container (saves on settle).
+
+    Both ends are required: the button is what requests the panel, and the
+    container is the element htmx reports as settled, which is what lets an
+    in-panel pill click persist without a click handler.
+    """
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode,
+                  days_persist_id='jobs-days-status')).get_data(as_text=True)
+
+    for panel in ('byuser', 'wait', 'sizes', 'durations'):
+        assert _LENS in _tag_for(body, f'id="jobs-hist-{panel}-tab"'), panel
+        assert _LENS in _tag_for(body, f'id="jobs-hist-{panel}"'), panel
+
+
+def test_lens_not_declared_on_the_jobs_tab(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The per-job table has none of the three pills — no reason to carry
+    the lens into its URL."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode)).get_data(as_text=True)
+
+    assert _LENS not in _tag_for(body, 'id="jobs-hist-jobs-tab"')
+    assert _LENS not in _tag_for(body, 'id="jobs-hist-jobs"')
+
+
+def test_lens_is_independent_of_window_persistence(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Resource-details opts out of a *stored window* (it would shadow the
+    page's own date range) — that says nothing about the lens, which has no
+    such conflict and persists everywhere."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode)).get_data(as_text=True)
+
+    assert 'data-chart-persist-id' not in body      # no window persistence
+    assert _LENS in body                            # lens regardless
+
+
+# --- Canonical group_by parsing --------------------------------------------
+
+@pytest.mark.parametrize('query,expected', [
+    ('group_by=project', 'project'),
+    ('group_by=user', 'user'),
+    ('owners_by=account', 'project'),   # the plugin's spelling, still honoured
+    ('owners_by=user', 'user'),
+    ('group_by=nonsense', 'user'),
+    ('', 'user'),
+])
+def test_parse_group_by(app, query, expected):
+    from webapp.jobs.routes import _parse_group_by
+    with app.test_request_context(f'/?{query}'):
+        assert _parse_group_by() == expected
+
+
+def test_parse_group_by_prefers_the_canonical_spelling(app):
+    """Both present (a stale round-trip form beside a fresh pill click):
+    group_by wins, so the click a user just made is what renders."""
+    from webapp.jobs.routes import _parse_group_by
+    with app.test_request_context('/?group_by=user&owners_by=account'):
+        assert _parse_group_by() == 'user'

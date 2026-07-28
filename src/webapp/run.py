@@ -329,6 +329,11 @@ def create_app(*, config_overrides: dict | None = None):
     app.context_processor(nav_context_processor)
     app.jinja_env.globals['nav_locate'] = nav_locate
 
+    # Period pills on the job-history card, shared with the ?days= whitelist
+    # the fragment routes validate against.
+    from webapp.jobs.service import JOBS_WINDOW_PILLS
+    app.jinja_env.globals['jobs_window_pills'] = JOBS_WINDOW_PILLS
+
     # Central CDN-asset registry (pinned versions + SRI) for templates
     from webapp.vendor_assets import vendor_assets_context_processor
     app.context_processor(vendor_assets_context_processor)

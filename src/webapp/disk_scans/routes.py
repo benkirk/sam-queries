@@ -46,6 +46,7 @@ from webapp.disk_scans import service
 from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_grouped
 from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
+from webapp.utils.htmx import is_truthy
 from webapp.utils.rbac import Permission, require_permission
 
 bp = Blueprint('disk_scans', __name__)
@@ -113,8 +114,9 @@ def _limit() -> int:
     return max(1, min(n, _MAX_LIMIT))
 
 
-def _truthy(v) -> bool:
-    return (v or '').strip().lower() in ('1', 'true', 'on', 'yes')
+#: One spelling of "checked" for the whole app — the job-history
+#: histograms' log switch reads its ``?log=`` through the same predicate.
+_truthy = is_truthy
 
 
 def _atime_recursive_flag() -> bool:
