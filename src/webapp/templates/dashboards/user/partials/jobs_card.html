@@ -56,19 +56,25 @@
 {% macro _persist(pid) -%}
 {%- if pid %} data-chart-persist-id="{{ pid }}" data-chart-persist-keys="days"{% endif -%}
 {%- endmacro %}
-{# The panel lens — which metric, whose segments, and (Job Sizes only)
-   which dimension. Declared on both ends of every panel that has pills:
-   on the tab button, so the stored lens is injected into the panel fetch
-   (including the one a period pill's shell re-render triggers), and on
-   the panel container, which is the element htmx reports as settled — so
-   an in-panel pill click persists with no click handler of its own.
+{# The panel lens — which metric, whose segments, (Job Sizes only) which
+   dimension, and (histograms only) the y-scale. Declared on both ends of
+   every panel that has pills: on the tab button, so the stored lens is
+   injected into the panel fetch (including the one a period pill's shell
+   re-render triggers), and on the panel container, which is the element
+   htmx reports as settled — so an in-panel pill click persists with no
+   click handler of its own.
    `metric:jobs` is family-scoped: the word means something different on
    the queue-load and usage charts, and the families must not collide.
+   `log:jobs` likewise — its vocabulary (0|1) is shared with the
+   filesystem-scan histograms, but a log axis is a per-chart reading aid,
+   not a lens onto the same question, so the two stay independent.
    `group_by` is deliberately bare — user|project means the same thing
    here and on the status queue-load chart, so the choice carries across.
-   The Jobs tab opts out: none of the three apply to a per-job table. #}
+   One list for every panel: a key a panel doesn't offer (dimension and
+   log on the By User / By Project pies) is simply not read by its route.
+   The Jobs tab opts out: none of the four apply to a per-job table. #}
 {% macro _lens() -%}
- data-chart-persist-shared="group_by metric:jobs dimension:jobs"
+ data-chart-persist-shared="group_by metric:jobs dimension:jobs log:jobs"
 {%- endmacro %}
 {# The explorer link speaks ?days= rather than a computed date so the
    cold-start sync in JS never has to re-derive a window client-side. #}

@@ -131,6 +131,40 @@ def test_histogram_count_vector_in_cache_key():
 
 
 # ---------------------------------------------------------------------------
+# generate_jobs_histogram — log y-axis
+# ---------------------------------------------------------------------------
+
+def test_histogram_log_scale_renders_and_differs_from_linear():
+    linear = generate_jobs_histogram(_hist())
+    log = generate_jobs_histogram(_hist(), log_y=True)
+    assert '<svg' in log
+    assert log != linear
+
+
+def test_histogram_log_scale_keeps_bucket_sentinels():
+    """The bars stop stacking on a log axis but stay drillable."""
+    svg = generate_jobs_histogram(_hist(counts=(10, 5, 0)), log_y=True)
+    assert '#jh-bar-0' in svg
+    assert '#jh-bar-1' in svg
+    assert '#jh-bar-2' not in svg
+
+
+def test_histogram_log_scale_in_cache_key():
+    """Same envelope, different y-scale → distinct cache entries."""
+    from webapp.dashboards.charts import _jobs_histogram_cache_key
+    a = _jobs_histogram_cache_key(_hist())
+    b = _jobs_histogram_cache_key(_hist(), log_y=True)
+    assert a != b
+
+
+def test_histogram_log_scale_empty_envelope_still_short_circuits():
+    assert 'No jobs in this range' in generate_jobs_histogram(None, log_y=True)
+    assert 'No jobs in this range' in generate_jobs_histogram(
+        _hist(counts=(0, 0, 0), cpu_hours=(0, 0, 0), gpu_hours=(0, 0, 0)),
+        log_y=True)
+
+
+# ---------------------------------------------------------------------------
 # generate_jobs_histogram — owner-stacked bars (plugin owners_limit envelope)
 # ---------------------------------------------------------------------------
 
@@ -210,6 +244,21 @@ def test_histogram_every_segment_carries_sentinel():
     svg = generate_jobs_histogram(rich)
     assert svg.count('#jh-bar-0') >= 2
     assert '#jh-bar-2' not in svg
+
+
+def test_histogram_log_scale_unstacks_owner_bars():
+    """A log axis can't represent a stack, so an owners envelope collapses to
+    one solid bar per band — one anchor per bucket instead of one per
+    segment — while the linear render of the same envelope keeps its
+    gradient."""
+    rich = _with_owners(_hist(counts=(10, 5, 0)), {
+        0: {'alice': _owner(6, 60.0), 'bob': _owner(4, 40.0)},
+        1: {'alice': _owner(5, 50.0)},
+    })
+    log = generate_jobs_histogram(rich, log_y=True)
+    assert '<svg' in log
+    assert log.count('#jh-bar-0') == 1
+    assert generate_jobs_histogram(rich).count('#jh-bar-0') >= 2
 
 
 def test_histogram_flat_fallback_without_owners():
