@@ -132,12 +132,14 @@ NAV_SECTIONS = (
              'icon': 'fas fa-hdd'},
             {'endpoint': 'status_dashboard.jupyterhub', 'label': 'JupyterHub',
              'icon': 'fas fa-book'},
-            {'endpoint': 'status_dashboard.reservations', 'label': 'Reservations',
-             'icon': 'fas fa-calendar-alt'},
             {'endpoint': 'status_dashboard.filesystem_scans', 'label': 'Filesystem Scans',
              'icon': 'fas fa-magnifying-glass-chart', 'visible': _can_view_fs_scans},
             {'endpoint': 'status_dashboard.job_history', 'label': 'Job History',
              'icon': 'fas fa-list-check', 'visible': _can_view_job_history},
+            # Last on purpose — mirrors the status tab strip, where Events sits
+            # to the right of the gated tabs (see base_status.html).
+            {'endpoint': 'status_dashboard.events', 'label': 'Events',
+             'icon': 'fas fa-calendar-alt'},
         ),
     },
     {

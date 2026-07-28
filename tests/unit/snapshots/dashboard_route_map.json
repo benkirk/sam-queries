@@ -1421,6 +1421,13 @@
     ]
   ],
   [
+    "status_dashboard.events",
+    "/status/events",
+    [
+      "GET"
+    ]
+  ],
+  [
     "status_dashboard.filesystem_scans",
     "/status/filesystem-scans",
     [
@@ -1507,13 +1514,6 @@
   [
     "status_dashboard.queue_history",
     "/status/queue-history/<system>/<queue_name>",
-    [
-      "GET"
-    ]
-  ],
-  [
-    "status_dashboard.reservations",
-    "/status/reservations",
     [
       "GET"
     ]

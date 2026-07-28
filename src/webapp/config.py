@@ -74,7 +74,7 @@ class SAMWebappConfig(SAMConfig):
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE  = os.getenv('LOG_FILE', '')       # empty = console only
 
-    # Google Calendar embed URL (public calendar shown on reservations tab; empty = hidden)
+    # Google Calendar embed URL (public calendar shown on the Events tab; empty = hidden)
     GOOGLE_CALENDAR_EMBED_URL = os.getenv('GOOGLE_CALENDAR_EMBED_URL', '')
 
     # Status collectors tick every ~5 minutes; a snapshot older than this many

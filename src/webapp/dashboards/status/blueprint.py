@@ -69,7 +69,7 @@ def _page_context(session):
         outages=status_queries.get_active_outages(session),
         # Needed on every page: derecho/casper render per-system
         # reservation cards, and the tab strip shows/hides the
-        # Reservations tab based on it.
+        # Events tab (and its count) based on it.
         reservations=status_queries.get_upcoming_reservations(session),
         google_calendar_embed_url=current_app.config.get('GOOGLE_CALENDAR_EMBED_URL', ''),
         now=utcnow_naive(),
@@ -196,11 +196,16 @@ def jupyterhub():
     )
 
 
-@bp.route('/reservations')
-def reservations():
-    """Upcoming reservations page (table + optional Google Calendar embed)."""
+@bp.route('/events')
+def events():
+    """Upcoming maintenance/reservation events (table + optional calendar embed).
+
+    Named for what the page shows an end user — scheduled events — rather
+    than for the PBS reservation rows that back it; the underlying data and
+    query layer keep the reservation vocabulary.
+    """
     return render_template(
-        'dashboards/status/reservations_page.html',
+        'dashboards/status/events_page.html',
         **_page_context(db.session),
     )
 
