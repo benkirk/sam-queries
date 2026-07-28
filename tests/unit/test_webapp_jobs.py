@@ -1293,14 +1293,13 @@ def test_view_all_job_data_grants():
     assert p not in USER_FACILITY_PERMISSIONS['sureshm']['WNA']
 
 
-def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
-    """The connect listener issues SET application_name + statement_timeout.
+def _capture_connect_listener(monkeypatch, **kwargs):
+    """Register the connect listener against a stub engine and return it.
 
-    ``event.listens_for`` needs a real Engine, so capture the registered
-    listener via a fake decorator and drive it with a stub DBAPI
-    connection — asserting on the exact SQL the listener issues.
+    ``event.listens_for`` needs a real Engine, so swap in a fake decorator
+    that just hands back the function being registered.
     """
-    from webapp.jobs import session as jobs_session
+    from webapp.plugins import base as plugin_base
 
     registered = {}
 
@@ -1310,12 +1309,23 @@ def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
             return fn
         return _decorator
 
-    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
+    monkeypatch.setattr(plugin_base.event, 'listens_for', _fake_listens_for)
+    plugin_base.PluginExtension.apply_connection_settings(
+        MagicMock(name='engine'), **kwargs)
+    return registered['fn']
 
-    jobs_session._apply_connection_settings(
-        MagicMock(name='engine'), 'sam-webapp:pod:job_history:derecho',
+
+def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
+    """The connect listener issues SET application_name + statement_timeout.
+
+    Covers the shared PluginExtension implementation, which both the jobs and
+    the fs-scans loaders warm their engines through.
+    """
+    registered = {'fn': _capture_connect_listener(
+        monkeypatch,
+        app_name='sam-webapp:pod:job_history:derecho',
         statement_timeout_ms=60000,
-    )
+    )}
 
     executed = []
 
@@ -1342,21 +1352,8 @@ def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
 
 def test_apply_connection_settings_zero_timeout_skips_set(monkeypatch):
     """statement_timeout_ms=0 (disabled) issues only the app-name SET."""
-    from webapp.jobs import session as jobs_session
-
-    registered = {}
-
-    def _fake_listens_for(target, name):
-        def _decorator(fn):
-            registered['fn'] = fn
-            return fn
-        return _decorator
-
-    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
-
-    jobs_session._apply_connection_settings(
-        MagicMock(name='engine'), 'tag', statement_timeout_ms=0,
-    )
+    registered = {'fn': _capture_connect_listener(
+        monkeypatch, app_name='tag', statement_timeout_ms=0)}
 
     executed = []
 

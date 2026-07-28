@@ -1104,20 +1104,23 @@ def test_collections_for_resource_maps_via_database(monkeypatch):
     """The seam resolves the resource's database, then returns THAT database's
     warmed collections — so Campaign_Store and Destor see disjoint sets."""
     from webapp.disk_scans import session as sess
+    # Patch the extension instance: the module-level names are its bound
+    # methods, and the seam calls its siblings through self.
+    ext = sess.extension
     monkeypatch.setattr(
-        sess, 'database_for_resource',
+        ext, 'database_for_resource',
         lambda r, app=None: {'Campaign_Store': 'campaign', 'Destor': 'destor'}.get(r))
-    monkeypatch.setattr(sess, 'get_databases', lambda app=None: {
+    monkeypatch.setattr(ext, 'get_databases', lambda app=None: {
         'campaign': {'collections': ['cisl', 'mmm'], 'engines': {}},
         'destor':    {'collections': ['gdex'], 'engines': {}},
     })
-    assert sess.collections_for_resource('Campaign_Store') == ['cisl', 'mmm']
-    assert sess.collections_for_resource('Destor') == ['gdex']
+    assert ext.collections_for_resource('Campaign_Store') == ['cisl', 'mmm']
+    assert ext.collections_for_resource('Destor') == ['gdex']
     # Unmapped resource → no database → no collections (never unscoped).
-    assert sess.collections_for_resource('Nope') == []
+    assert ext.collections_for_resource('Nope') == []
     # Mapped but unwarmed database → [].
-    monkeypatch.setattr(sess, 'get_databases', lambda app=None: {})
-    assert sess.collections_for_resource('Campaign_Store') == []
+    monkeypatch.setattr(ext, 'get_databases', lambda app=None: {})
+    assert ext.collections_for_resource('Campaign_Store') == []
 
 
 def test_database_for_resource_reads_config_map(app, monkeypatch):
