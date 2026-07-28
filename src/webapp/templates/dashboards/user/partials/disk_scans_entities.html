@@ -84,103 +84,71 @@
             <th class="sortable-header text-end" data-sort="numeric">Directories</th>
           </tr>
         </thead>
-        {% if _is_owner %}
-          {% for r in rows %}
-            {% set name = r.username %}
-            {% set _oid = target_id ~ '-owner-' ~ r.owner_uid %}
-            <tbody class="sortable-group">
-              {# data-owner-uid + data-bs-target let a pie-wedge click open this
-                 row's collapse (svg-chart-links.js), same as the chevron. #}
-              <tr data-owner-uid="{{ r.owner_uid }}" data-bs-target="#{{ _oid }}-row">
-                <td data-sort-value="{{ name if name else (r.owner_uid | string) }}">
-                  {# Drill into this user's directories — targets the directories
-                     fragment for the current mode (dir_fragment_url): project
-                     (scope-rooted) or resource (whole-FS). #}
-                  {% if dir_fragment_url %}
-                  <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
-                          type="button" data-bs-toggle="collapse"
-                          data-bs-target="#{{ _oid }}-row"
-                          aria-expanded="false" aria-controls="{{ _oid }}-row">
-                    <i class="fas fa-chevron-right collapse-icon small"></i>
-                  </button>
-                  {% endif %}
-                  {% if name %}<code>{{ name }}</code>
-                  {% else %}<span class="text-muted" title="unresolved UID">uid {{ r.owner_uid }}</span>{% endif %}
-                </td>
-                <td class="text-end font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
-                <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
-                <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
-              </tr>
-              {% if dir_fragment_url %}
-              <tr class="collapse" id="{{ _oid }}-row">
-                <td colspan="4" class="p-0 border-0">
-                  {# Lazy-load this user's top directories on first expand
-                     (owner_uid filter → short-TTL 'filtered' cache bucket).
-                     Bind to shown.bs.collapse (not click) so it fires under
-                     nav-view-persistence restore too. #}
-                  <div class="p-2 bg-light"
-                       id="{{ _oid }}"
-                       hx-get="{{ dir_fragment_url }}?owner_uid={{ r.owner_uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _oid }}&limit=20"
-                       hx-trigger="shown.bs.collapse from:closest tr.collapse once"
-                       hx-swap="innerHTML">
-                    <p class="text-muted small mb-0">
-                      <i class="fas fa-spinner fa-spin me-1"></i>
-                      Loading {{ name or ('uid ' ~ r.owner_uid) }}'s directories…
-                    </p>
-                  </div>
-                </td>
-              </tr>
-              {% endif %}
-            </tbody>
-          {% endfor %}
-        {% else %}
-          {% for r in rows %}
-            {% set name = r.groupname %}
-            {% set _gid = target_id ~ '-group-' ~ r.owner_gid %}
-            <tbody class="sortable-group">
-              {# data-group-gid + data-bs-target let a pie-wedge click open this
-                 row's collapse (svg-chart-links.js), same as the chevron. #}
-              <tr data-group-gid="{{ r.owner_gid }}" data-bs-target="#{{ _gid }}-row">
-                <td data-sort-value="{{ name if name else (r.owner_gid | string) }}">
-                  {# Drill into this group's directories — targets the directories
-                     fragment for the current mode (dir_fragment_url). #}
-                  {% if dir_fragment_url %}
-                  <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
-                          type="button" data-bs-toggle="collapse"
-                          data-bs-target="#{{ _gid }}-row"
-                          aria-expanded="false" aria-controls="{{ _gid }}-row">
-                    <i class="fas fa-chevron-right collapse-icon small"></i>
-                  </button>
-                  {% endif %}
-                  {% if name %}<code>{{ name }}</code>
-                  {% else %}<span class="text-muted" title="unresolved GID">gid {{ r.owner_gid }}</span>{% endif %}
-                </td>
-                <td class="text-end font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
-                <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
-                <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
-              </tr>
-              {% if dir_fragment_url %}
-              <tr class="collapse" id="{{ _gid }}-row">
-                <td colspan="4" class="p-0 border-0">
-                  {# Lazy-load this group's top directories on first expand
-                     (owner_gid filter → fs_scans plugin group_id). group_label
-                     carries the resolved name for the filter badge. #}
-                  <div class="p-2 bg-light"
-                       id="{{ _gid }}"
-                       hx-get="{{ dir_fragment_url }}?owner_gid={{ r.owner_gid }}{% if name %}&group_label={{ name | urlencode }}{% endif %}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _gid }}&limit=20"
-                       hx-trigger="shown.bs.collapse from:closest tr.collapse once"
-                       hx-swap="innerHTML">
-                    <p class="text-muted small mb-0">
-                      <i class="fas fa-spinner fa-spin me-1"></i>
-                      Loading {{ name or ('gid ' ~ r.owner_gid) }}'s directories…
-                    </p>
-                  </div>
-                </td>
-              </tr>
-              {% endif %}
-            </tbody>
-          {% endfor %}
-        {% endif %}
+        {# One loop for both kinds. They were two ~48-line copies differing
+           only in the id column, the sentinel attribute, and the drill
+           parameter — the values `_ent` carries below. #}
+        {% set _ent = {
+             'id_field':   'owner_uid' if _is_owner else 'owner_gid',
+             'name_field': 'username'  if _is_owner else 'groupname',
+             'slug':       'owner'     if _is_owner else 'group',
+             'sentinel':   'data-owner-uid' if _is_owner else 'data-group-gid',
+             'drill':      'owner_uid' if _is_owner else 'owner_gid',
+             'id_label':   'uid'       if _is_owner else 'gid',
+             'unresolved': 'unresolved UID' if _is_owner else 'unresolved GID',
+           } %}
+        {% for r in rows %}
+          {% set eid = r[_ent.id_field] %}
+          {% set name = r[_ent.name_field] %}
+          {% set _rid = target_id ~ '-' ~ _ent.slug ~ '-' ~ eid %}
+          <tbody class="sortable-group">
+            {# The sentinel attribute + data-bs-target let a pie-wedge click
+               open this row's collapse (svg-chart-links.js), same as the
+               chevron. #}
+            <tr {{ _ent.sentinel }}="{{ eid }}" data-bs-target="#{{ _rid }}-row">
+              <td data-sort-value="{{ name if name else (eid | string) }}">
+                {# Drill into this entity's directories — targets the
+                   directories fragment for the current mode
+                   (dir_fragment_url): project (scope-rooted) or resource
+                   (whole-FS). #}
+                {% if dir_fragment_url %}
+                <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
+                        type="button" data-bs-toggle="collapse"
+                        data-bs-target="#{{ _rid }}-row"
+                        aria-expanded="false" aria-controls="{{ _rid }}-row">
+                  <i class="fas fa-chevron-right collapse-icon small"></i>
+                </button>
+                {% endif %}
+                {% if name %}<code>{{ name }}</code>
+                {% else %}<span class="text-muted" title="{{ _ent.unresolved }}">{{ _ent.id_label }} {{ eid }}</span>{% endif %}
+              </td>
+              <td class="text-end font-monospace" data-sort-value="{{ r.total_size }}">{{ r.total_size | fmt_size }}</td>
+              <td class="text-end" data-sort-value="{{ r.total_files }}">{{ r.total_files | fmt_number }}</td>
+              <td class="text-end" data-sort-value="{{ r.directory_count }}">{{ r.directory_count | fmt_number }}</td>
+            </tr>
+            {% if dir_fragment_url %}
+            <tr class="collapse" id="{{ _rid }}-row">
+              <td colspan="4" class="p-0 border-0">
+                {# Lazy-load this entity's top directories on first expand
+                   (an owner/group filter routes into the short-TTL
+                   'filtered' cache bucket). group_label carries the
+                   resolved name for the filter badge. Bound to
+                   shown.bs.collapse (not click) so it fires under
+                   nav-view-persistence restore too. #}
+                <div class="p-2 bg-light"
+                     id="{{ _rid }}"
+                     hx-get="{{ dir_fragment_url }}?{{ _ent.drill }}={{ eid }}{% if not _is_owner and name %}&group_label={{ name | urlencode }}{% endif %}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _rid }}&limit=20"
+                     hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+                     hx-swap="innerHTML">
+                  <p class="text-muted small mb-0">
+                    <i class="fas fa-spinner fa-spin me-1"></i>
+                    Loading {{ name or (_ent.id_label ~ ' ' ~ eid) }}'s directories…
+                  </p>
+                </div>
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        {% endfor %}
       </table>
     </div>
   {% endif %}

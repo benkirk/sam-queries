@@ -766,68 +766,75 @@ def _usage_other(usage) -> Optional[dict]:
     return rem if any(v > 1e-9 for v in rem.values()) else None
 
 
-def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
-                    target_id, account_projcodes=None):
-    """Shared renderer for the By User tab (project + machine modes)."""
-    template = 'dashboards/user/partials/jobs_by_user.html'
-    if not is_enabled():
-        return render_template(template, enabled=False, error=None,
-                               mode=mode, machine=None, target_id=target_id)
-
-    filters = _parse_job_filters()
-    metric = _parse_metric(_DEFAULT_METRIC_PIE)
-
-    usage = None
-    error = None
-    try:
-        usage = service.jobs_usage_by_user(
-            machine, _agg_scope(mode, account_projcodes=account_projcodes),
-            limit=_BY_USER_LIMIT, sort_by=_USAGE_SORT_BY[metric], **filters,
-        )
-    except Exception as exc:
-        from flask import current_app
-        current_app.logger.exception(
-            'jobs by-user fragment failed: mode=%s machine=%s', mode, machine,
-        )
-        error = str(exc)
-
-    pie_svg = generate_jobs_user_pie_chart(usage, metric=metric) \
-        if usage else None
-    other = _usage_other(usage) if usage else None
-
-    # Same gate as the admin_dashboard.user_card route the username cells
-    # link to — don't render click affordances that would 403.
-    from flask_login import current_user
-    can_view_users = has_permission_any_facility(
-        current_user, Permission.VIEW_USERS)
-
-    return render_template(
-        template,
-        enabled=True, error=error,
-        mode=mode, machine=machine,
-        usage=usage, other=other,
-        metric=metric, pie_svg=pie_svg,
-        fragment_url=fragment_url,
-        jobs_fragment_url=jobs_fragment_url,
-        target_id=target_id,
-        can_view_users=can_view_users,
-        params=_roundtrip_params(machine, target_id),
-    )
+#: The two usage rollups are the same panel over a different entity. Each
+#: spec is the complete set of things that differ — the template and the
+#: renderer below are shared verbatim.
+_USAGE_ENTITIES = {
+    'user': {
+        'key':            'user',
+        'label':          'User',
+        'form_key':       'byuser',
+        'row_prefix':     '-u',
+        'sentinel':       'job-user',
+        'sentinel_attr':  'data-job-user',
+        'drill_param':    'user',
+        'modal_endpoint': 'admin_dashboard.user_card',
+        'modal_arg':      'username',
+        'modal_target':   'userDetailsModal',
+        'modal_title':    'View user details',
+        'unknown_hint':   'jobs with no recorded user',
+        'loading_suffix': "'s jobs",
+        'service':        'jobs_usage_by_user',
+        'target_stem':    'byuser',
+    },
+    'project': {
+        'key':            'project',
+        'label':          'Project',
+        'form_key':       'byproj',
+        'row_prefix':     '-p',
+        'sentinel':       'job-proj',
+        'sentinel_attr':  'data-job-project',
+        'drill_param':    'account',
+        'modal_endpoint': 'user_dashboard.project_details_modal',
+        'modal_arg':      'projcode',
+        'modal_target':   'projectDetailsModal',
+        'modal_title':    'View project details',
+        'unknown_hint':   'jobs with no recorded project',
+        'loading_suffix': ' jobs',
+        'service':        'jobs_usage_by_project',
+        'target_stem':    'byproj',
+    },
+}
 
 
-def _render_by_project(*, mode, machine, fragment_url, jobs_fragment_url,
-                       target_id, username=None, account_projcodes=None):
-    """Shared renderer for the By Project tab (all three modes).
+def _usage_affordance_permission(entity_key: str, mode: str) -> bool:
+    """Whether to render the entity quick-view modal link.
 
-    Scoping mirrors the service: user mode pins ``username`` (and drops
-    any client ``user`` filter — the pin owns that dimension), project
-    mode passes the server-derived ``account_projcodes`` tree, machine
-    mode passes neither (route gated on VIEW_ALL_JOB_DATA).
+    Never render an affordance that would 403. Projects get one extra
+    allowance: in user mode the rows are the pinned user's OWN projects, and
+    affiliation already passes the modal route's ``require_project_access``.
     """
-    template = 'dashboards/user/partials/jobs_by_project.html'
+    from flask_login import current_user
+    if entity_key == 'user':
+        return has_permission_any_facility(current_user, Permission.VIEW_USERS)
+    return (mode == 'user') or has_permission_any_facility(
+        current_user, Permission.VIEW_PROJECTS)
+
+
+def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
+                        jobs_fragment_url, target_id,
+                        username=None, account_projcodes=None):
+    """Shared renderer for the By User / By Project tabs (all modes).
+
+    Scoping is the scope object's job; what differs here is only the entity
+    the rollup groups by, which ``_USAGE_ENTITIES`` carries.
+    """
+    entity = _USAGE_ENTITIES[entity_key]
+    template = 'dashboards/user/partials/jobs_usage_panel.html'
     if not is_enabled():
         return render_template(template, enabled=False, error=None,
-                               mode=mode, machine=None, target_id=target_id)
+                               mode=mode, machine=None, target_id=target_id,
+                               entity=entity)
 
     filters = _parse_job_filters(include_user=(username is None))
     metric = _parse_metric(_DEFAULT_METRIC_PIE)
@@ -835,7 +842,7 @@ def _render_by_project(*, mode, machine, fragment_url, jobs_fragment_url,
     usage = None
     error = None
     try:
-        usage = service.jobs_usage_by_project(
+        usage = getattr(service, entity['service'])(
             machine,
             _agg_scope(mode, username=username,
                        account_projcodes=account_projcodes),
@@ -844,22 +851,14 @@ def _render_by_project(*, mode, machine, fragment_url, jobs_fragment_url,
     except Exception as exc:
         from flask import current_app
         current_app.logger.exception(
-            'jobs by-project fragment failed: mode=%s machine=%s',
-            mode, machine,
+            'jobs by-%s fragment failed: mode=%s machine=%s',
+            entity_key, mode, machine,
         )
         error = str(exc)
 
     pie_svg = generate_jobs_usage_pie_chart(
-        usage, metric=metric, sentinel_prefix='job-proj') if usage else None
+        usage, metric=metric, sentinel_prefix=entity['sentinel']) if usage else None
     other = _usage_other(usage) if usage else None
-
-    # Projcode cells link to user_dashboard.project_details_modal, gated by
-    # require_project_access. In user mode the rows are the pinned user's
-    # own projects (affiliation grants access), so the affordance always
-    # renders; elsewhere require VIEW_PROJECTS so the click can't 403.
-    from flask_login import current_user
-    can_view_projects = (mode == 'user') or has_permission_any_facility(
-        current_user, Permission.VIEW_PROJECTS)
 
     return render_template(
         template,
@@ -870,8 +869,9 @@ def _render_by_project(*, mode, machine, fragment_url, jobs_fragment_url,
         fragment_url=fragment_url,
         jobs_fragment_url=jobs_fragment_url,
         target_id=target_id,
-        can_view_projects=can_view_projects,
+        can_view_entity=_usage_affordance_permission(entity_key, mode),
         params=_roundtrip_params(machine, target_id),
+        entity=entity,
     )
 
 
@@ -1587,35 +1587,18 @@ def _panel_jobs_table(ctx, fragment_url, *, mode, scope_for, log_label, **_kw):
     )
 
 
-def _panel_by_user(ctx, fragment_url, *, mode, scope_for, log_label,
-                   jobs_fragment_url=None, **_kw):
-    """HTMX fragment: per-user usage pie + drillable rows."""
+def _panel_usage(ctx, fragment_url, *, mode, scope_for, log_label,
+                 entity_key, jobs_fragment_url=None, **_kw):
+    """HTMX fragment: a per-entity usage pie + drillable rows."""
+    entity = _USAGE_ENTITIES[entity_key]
     if ctx['machine'] is None:
-        return _render_by_user(mode=mode, machine=None, fragment_url=None,
-                               jobs_fragment_url=None, target_id='')
-    return _render_by_user(
-        mode=mode, machine=ctx['machine'], fragment_url=fragment_url,
-        jobs_fragment_url=jobs_fragment_url,
-        target_id=_target_id(ctx, 'byuser'),
-        account_projcodes=ctx['account_projcodes'],
-    )
-
-
-def _panel_by_project(ctx, fragment_url, *, mode, scope_for, log_label,
-                      jobs_fragment_url=None, **_kw):
-    """HTMX fragment: per-projcode usage pie + rows.
-
-    Rows drill into the mode's jobs fragment narrowed by
-    ``account=<projcode>`` — validated against the tree there, so the drill
-    can never widen scope.
-    """
-    if ctx['machine'] is None:
-        return _render_by_project(mode=mode, machine=None, fragment_url=None,
-                                  jobs_fragment_url=None, target_id='')
-    return _render_by_project(
-        mode=mode, machine=ctx['machine'], fragment_url=fragment_url,
-        jobs_fragment_url=jobs_fragment_url,
-        target_id=_target_id(ctx, 'byproj'),
+        return _render_usage_panel(entity_key=entity_key, mode=mode,
+                                   machine=None, fragment_url=None,
+                                   jobs_fragment_url=None, target_id='')
+    return _render_usage_panel(
+        entity_key=entity_key, mode=mode, machine=ctx['machine'],
+        fragment_url=fragment_url, jobs_fragment_url=jobs_fragment_url,
+        target_id=_target_id(ctx, entity['target_stem']),
         username=ctx['username'],
         account_projcodes=ctx['account_projcodes'],
     )
@@ -1709,13 +1692,15 @@ _PANELS = declare_panels((
     # The table lives at the mode prefix itself — hence the empty rule.
     PanelSpec(key='jobs', rule='', render=_panel_jobs_table),
     PanelSpec(
-        key='by_user', rule='/by-user', render=_panel_by_user,
+        key='by_user', rule='/by-user', render=_panel_usage,
+        kwargs={'entity_key': 'user'},
         # No user mode: By User there would be a pie of one, so By Project
         # takes its slot.
         modes=('project', 'machine'),
         siblings={'jobs_fragment_url': 'jobs'},
     ),
-    PanelSpec(key='by_project', rule='/by-project', render=_panel_by_project,
+    PanelSpec(key='by_project', rule='/by-project', render=_panel_usage,
+              kwargs={'entity_key': 'project'},
               siblings={'jobs_fragment_url': 'jobs'}),
     PanelSpec(key='wait_times', rule='/wait-times', render=_panel_histogram,
               kwargs={'dimension': 'wait', 'dimension_toggle': False},
