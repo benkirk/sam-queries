@@ -1305,10 +1305,18 @@ _EXPLORER_PANEL_KEYS = (
 )
 
 
-def _explorer_panel_params(panel: dict, scope: Optional[str] = None) -> dict:
-    """The filter panel's current values, as panel-URL query params."""
+def _explorer_panel_params(panel: dict, scope: Optional[str] = None,
+                           include_user: bool = True) -> dict:
+    """The filter panel's current values, as panel-URL query params.
+
+    ``include_user=False`` in user mode: the username is pinned
+    server-side on every fragment, so a client-supplied one is already
+    overwritten. Baking it into the panel URLs would put a parameter on
+    screen that looks like it filters and does not.
+    """
     params = {k: panel[k] for k in _EXPLORER_PANEL_KEYS
-              if panel.get(k) not in (None, '')}
+              if panel.get(k) not in (None, '')
+              and (include_user or k != 'user')}
     if panel.get('name') and panel.get('ignore_case'):
         params['ignore_case'] = '1'
     if scope:
@@ -1357,9 +1365,10 @@ def _explorer_card_context(*, mode: str, machine: str, project=None,
     moved in.
     """
     from flask_login import current_user
-    panel = _panel_filters(machine)
-    panel_params = _explorer_panel_params(panel, scope)
     username = current_user.username if mode == 'user' else None
+    panel = _panel_filters(machine)
+    panel_params = _explorer_panel_params(panel, scope,
+                                          include_user=(username is None))
     active_tab = _parse_active_tab()
     panel['active_tab'] = active_tab      # the form round-trips it back
     return panel, _card_context(

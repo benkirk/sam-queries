@@ -1,5 +1,31 @@
 # Job-history charts in the full-view explorer
 
+> **Status (2026-07-28): IMPLEMENTED.** Branch `job_drilldown_plots`,
+> commits C1–C8 below plus one fix the browser smoke turned up. Full
+> suite 3,429 passed / 30 skipped, and again under CI emulation with
+> `CACHE_REDIS_URL`. As-built deltas from the plan:
+>
+> - **C2**: `panel_trigger` was dropped from the design. An `intersect`
+>   trigger on a *tab button* is useless — the buttons are always
+>   visible, so all six would have fired at once. Lazy loading stays on
+>   `shown.bs.tab once`, and the open tab owns `load_trigger`.
+> - **Risk 1 happened, and cost more than predicted.** Apply from a chart
+>   tab fetched the chart *and* a per-job table nobody asked for (16.9 s
+>   measured, machine-wide Casper). The documented contingency shipped:
+>   the filter form round-trips `active_tab`, whitelisted server-side.
+>   Verified in the network panel — one panel request per Apply.
+> - **C5**: `account` was deliberately left out of the explorer's panel
+>   params (it narrows the table but not the aggregations, so baking it
+>   in would hide By Project while its neighbours still counted every
+>   project). So the plan's "explorer with `account=`" row of the
+>   relevance table describes the card's drill path, not the explorer.
+>   Likewise `user` is dropped from user-mode panel URLs: pinned
+>   server-side, so carrying it would show a parameter that looks like a
+>   filter and isn't.
+> - One test assertion pinned query-param *adjacency*
+>   (`?machine=derecho&start=…`); it now parses the panel URLs, since
+>   order is `url_for`'s business.
+
 ## Context
 
 The job-history card ships six segments — Jobs · By User · By Project · Wait
@@ -81,13 +107,13 @@ The card currently builds each panel URL as
 Replace the fixed `start`/`end` pair with a merged dict:
 
 - New macro args `panel_params={}` (merged into **every** panel `url_for`) and
-  `jobs_extra_params={}` (Jobs tab only — `per_page`, and anything else that
+  `jobs_params=none` (Jobs tab only — `per_page`, and anything else that
   shapes the table but not an aggregation).
-- New display flags `show_pills=true`, `show_explore_link=true`,
-  `panel_trigger='shown.bs.tab once'` (the explorer passes `'intersect once'`
-  for every panel — the trigger `_render_card_shell` already uses for the Jobs
-  tab, and the only one that fires correctly whether a pane becomes visible by
-  initial render or by a later tab switch).
+- New display flags `show_pills=true`, `show_explore_link=true`.
+  (As built, lazy loading stays on `shown.bs.tab once` for every tab
+  but the open one, which owns `load_trigger` — see `active_tab` in
+  the status note above. `intersect` on a tab *button* would have
+  fired all six at once, since the buttons are always visible.)
 - `_render_card_shell` splits into `_card_context(**kwargs) -> dict` + the
   render. `days` becomes optional: when `?days=` is present it wins and
   normalizes to `start=_days_start(days), end=None` exactly as today; when it
@@ -229,7 +255,7 @@ leave default active"), falling back to Jobs.
   **both** `explore_page`, `explore_machine_page`, `explore_user_page` **and**
   the three `/card` routes when called with `surface=explorer`. It turns
   `_panel_filters()` into `panel_params` (display units, empty values dropped)
-  + `jobs_extra_params={'per_page': …}`, folds in `_panel_relevance`, and sets
+  + `jobs_params` (the table's `per_page`), folds in `panel_relevance`, and sets
   `show_pills=False`, `show_explore_link=False`,
   `panel_trigger='intersect once'`, `days_persist_id=None`.
   - `show_pills=False` because the panel's own date fields own the window on

@@ -2425,6 +2425,9 @@ def test_explore_page_user_mode_still_ignores_a_crafted_user(
         '/dashboards/user/jobs/user/derecho/explore?user=someone_else'
     ).get_data(as_text=True)
     assert 'name="user_id"' not in body
+    # Nor is it baked into the panel URLs, where it would look like a
+    # filter that works while the server quietly overrode it.
+    assert 'user=someone_else' not in body
 
     auth_client.get(
         '/dashboards/user/jobs/user/derecho?user=someone_else&machine=derecho')
