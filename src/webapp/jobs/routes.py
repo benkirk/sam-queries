@@ -63,6 +63,12 @@ from webapp.dashboards.charts import (
 )
 from webapp.extensions import db
 from webapp.jobs import service
+from webapp.utils.fragments import (
+    ModeSpec,
+    PanelSpec,
+    declare_panels,
+    register_panels,
+)
 from webapp.jobs.scope import (
     MachineJobScope,
     ProjectJobScope,
@@ -452,25 +458,6 @@ def _disabled_jobs_table(project=None, username=None):
         total=None, visible_cols=[], verbose_extras=[],
         column_specs={}, roundtrip_params={},
         enabled=False, error=None,
-    )
-
-
-@bp.route('/<projcode>')
-@login_required
-@require_project_access
-def jobs_fragment(project):
-    """HTMX fragment: per-job table for *project* on the requested machine."""
-    if not is_enabled():
-        return _disabled_jobs_table(project=project)
-
-    machine = (request.args.get('machine') or '').strip().lower()
-    if machine not in _VALID_MACHINES:
-        abort(400, f'machine must be one of {sorted(_VALID_MACHINES)}')
-
-    return _jobs_table_response(
-        mode='project', machine=machine,
-        fragment_url=url_for('jobs.jobs_fragment', projcode=project.projcode),
-        project=project,
     )
 
 
@@ -1088,111 +1075,6 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     )
 
 
-@bp.route('/<projcode>/by-user')
-@login_required
-@require_project_access
-def by_user_fragment(project):
-    """HTMX fragment: per-user usage pie + drillable rows for *project*."""
-    if not is_enabled():
-        return _render_by_user(mode='project', machine=None,
-                               fragment_url=None, jobs_fragment_url=None,
-                               target_id='')
-    machine = _get_machine_or_400()
-    target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-byuser-{project.projcode}-{machine}'
-    return _render_by_user(
-        mode='project', machine=machine,
-        fragment_url=url_for('jobs.by_user_fragment', projcode=project.projcode),
-        jobs_fragment_url=url_for('jobs.jobs_fragment', projcode=project.projcode),
-        target_id=target_id,
-        account_projcodes=_tree_projcodes(project),
-    )
-
-
-@bp.route('/<projcode>/by-project')
-@login_required
-@require_project_access
-def by_project_fragment(project):
-    """HTMX fragment: per-projcode usage pie + rows across *project*'s tree.
-
-    Only meaningful for parent projects whose account tree spans more
-    than one projcode (the card gates the tab on that); the tree list is
-    server-derived — the same security boundary as every project-mode
-    fragment. Rows drill into the project jobs fragment narrowed by
-    ``account=<projcode>`` (validated against the tree there).
-    """
-    if not is_enabled():
-        return _render_by_project(mode='project', machine=None,
-                                  fragment_url=None,
-                                  jobs_fragment_url=None, target_id='')
-    machine = _get_machine_or_400()
-    target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-byproj-{project.projcode}-{machine}'
-    return _render_by_project(
-        mode='project', machine=machine,
-        fragment_url=url_for('jobs.by_project_fragment',
-                             projcode=project.projcode),
-        jobs_fragment_url=url_for('jobs.jobs_fragment',
-                                  projcode=project.projcode),
-        target_id=target_id,
-        account_projcodes=_tree_projcodes(project),
-    )
-
-
-def _project_histogram(project, *, dimension, dimension_toggle, endpoint):
-    """Common body of the three project-mode histogram routes."""
-    if not is_enabled():
-        return _render_histogram(mode='project', machine=None,
-                                 dimension=dimension,
-                                 dimension_toggle=dimension_toggle,
-                                 fragment_url=None, target_id='')
-    machine = _get_machine_or_400()
-    target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-{dimension}-{project.projcode}-{machine}'
-    return _render_histogram(
-        mode='project', machine=machine,
-        dimension=dimension, dimension_toggle=dimension_toggle,
-        fragment_url=url_for(endpoint, projcode=project.projcode),
-        jobs_fragment_url=url_for('jobs.jobs_fragment',
-                                  projcode=project.projcode),
-        target_id=target_id,
-        account_projcodes=_tree_projcodes(project),
-    )
-
-
-@bp.route('/<projcode>/wait-times')
-@login_required
-@require_project_access
-def wait_times_fragment(project):
-    """HTMX fragment: queue-wait histogram (dimension pinned to 'wait')."""
-    return _project_histogram(project, dimension='wait',
-                              dimension_toggle=False,
-                              endpoint='jobs.wait_times_fragment')
-
-
-@bp.route('/<projcode>/job-sizes')
-@login_required
-@require_project_access
-def job_sizes_fragment(project):
-    """HTMX fragment: resource-needs histogram with dimension pills."""
-    dimension = (request.args.get('dimension') or '').strip()
-    if dimension not in _SIZE_DIMENSIONS:
-        dimension = _SIZE_DIMENSIONS[0]
-    return _project_histogram(project, dimension=dimension,
-                              dimension_toggle=True,
-                              endpoint='jobs.job_sizes_fragment')
-
-
-@bp.route('/<projcode>/durations')
-@login_required
-@require_project_access
-def durations_fragment(project):
-    """HTMX fragment: elapsed-time histogram (pinned to 'duration')."""
-    return _project_histogram(project, dimension='duration',
-                              dimension_toggle=False,
-                              endpoint='jobs.durations_fragment')
-
-
 # ---------------------------------------------------------------------------
 # Explorer full view (project mode) + machine-wide family (operator surfaces)
 # ---------------------------------------------------------------------------
@@ -1458,116 +1340,6 @@ def explore_page(project):
     )
 
 
-@bp.route('/machine/<machine>')
-@login_required
-@require_permission(Permission.VIEW_ALL_JOB_DATA)
-def jobs_machine_fragment(machine):
-    """HTMX fragment: per-job table across an ENTIRE machine (operator)."""
-    if not is_enabled():
-        return _disabled_jobs_table()
-    machine = _machine_or_404(machine)
-    return _jobs_table_response(
-        mode='machine', machine=machine,
-        fragment_url=url_for('jobs.jobs_machine_fragment', machine=machine),
-    )
-
-
-@bp.route('/machine/<machine>/by-user')
-@login_required
-@require_permission(Permission.VIEW_ALL_JOB_DATA)
-def by_user_machine_fragment(machine):
-    """HTMX fragment: machine-wide per-user usage pie + rows (operator)."""
-    if not is_enabled():
-        return _render_by_user(mode='machine', machine=None,
-                               fragment_url=None, jobs_fragment_url=None,
-                               target_id='')
-    machine = _machine_or_404(machine)
-    target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-byuser-machine-{machine}'
-    return _render_by_user(
-        mode='machine', machine=machine,
-        fragment_url=url_for('jobs.by_user_machine_fragment', machine=machine),
-        jobs_fragment_url=url_for('jobs.jobs_machine_fragment', machine=machine),
-        target_id=target_id,
-    )
-
-
-@bp.route('/machine/<machine>/by-project')
-@login_required
-@require_permission(Permission.VIEW_ALL_JOB_DATA)
-def by_project_machine_fragment(machine):
-    """HTMX fragment: machine-wide per-project usage pie + rows (operator).
-
-    The multi-project counterpart of By User; rows drill into the
-    machine jobs fragment narrowed by ``account=<projcode>``.
-    """
-    if not is_enabled():
-        return _render_by_project(mode='machine', machine=None,
-                                  fragment_url=None,
-                                  jobs_fragment_url=None, target_id='')
-    machine = _machine_or_404(machine)
-    target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-byproj-machine-{machine}'
-    return _render_by_project(
-        mode='machine', machine=machine,
-        fragment_url=url_for('jobs.by_project_machine_fragment',
-                             machine=machine),
-        jobs_fragment_url=url_for('jobs.jobs_machine_fragment',
-                                  machine=machine),
-        target_id=target_id,
-    )
-
-
-def _machine_histogram(machine, *, dimension, dimension_toggle, endpoint):
-    """Common body of the three machine-mode histogram routes."""
-    if not is_enabled():
-        return _render_histogram(mode='machine', machine=None,
-                                 dimension=dimension,
-                                 dimension_toggle=dimension_toggle,
-                                 fragment_url=None, target_id='')
-    machine = _machine_or_404(machine)
-    target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-{dimension}-machine-{machine}'
-    return _render_histogram(
-        mode='machine', machine=machine,
-        dimension=dimension, dimension_toggle=dimension_toggle,
-        fragment_url=url_for(endpoint, machine=machine),
-        jobs_fragment_url=url_for('jobs.jobs_machine_fragment',
-                                  machine=machine),
-        target_id=target_id,
-    )
-
-
-@bp.route('/machine/<machine>/wait-times')
-@login_required
-@require_permission(Permission.VIEW_ALL_JOB_DATA)
-def wait_times_machine_fragment(machine):
-    return _machine_histogram(machine, dimension='wait',
-                              dimension_toggle=False,
-                              endpoint='jobs.wait_times_machine_fragment')
-
-
-@bp.route('/machine/<machine>/job-sizes')
-@login_required
-@require_permission(Permission.VIEW_ALL_JOB_DATA)
-def job_sizes_machine_fragment(machine):
-    dimension = (request.args.get('dimension') or '').strip()
-    if dimension not in _SIZE_DIMENSIONS:
-        dimension = _SIZE_DIMENSIONS[0]
-    return _machine_histogram(machine, dimension=dimension,
-                              dimension_toggle=True,
-                              endpoint='jobs.job_sizes_machine_fragment')
-
-
-@bp.route('/machine/<machine>/durations')
-@login_required
-@require_permission(Permission.VIEW_ALL_JOB_DATA)
-def durations_machine_fragment(machine):
-    return _machine_histogram(machine, dimension='duration',
-                              dimension_toggle=False,
-                              endpoint='jobs.durations_machine_fragment')
-
-
 @bp.route('/machine/<machine>/explore')
 @login_required
 @require_permission(Permission.VIEW_ALL_JOB_DATA)
@@ -1601,97 +1373,6 @@ def explore_machine_page(machine):
 # user=current_user.username server-side (the service families raise on a
 # caller-supplied user), so a client-appended ?user=<other> changes nothing.
 # Mirror of the disk_scans pinned-owner rule.
-
-@bp.route('/user/<machine>')
-@login_required
-def jobs_user_fragment(machine):
-    """HTMX fragment: the logged-in user's per-job table on *machine*."""
-    from flask_login import current_user
-    if not is_enabled():
-        return _disabled_jobs_table(username=current_user.username)
-    machine = _machine_or_404(machine)
-    return _jobs_table_response(
-        mode='user', machine=machine,
-        fragment_url=url_for('jobs.jobs_user_fragment', machine=machine),
-        pinned_user=current_user.username,
-    )
-
-
-@bp.route('/user/<machine>/by-project')
-@login_required
-def by_project_user_fragment(machine):
-    """HTMX fragment: the logged-in user's per-project usage pie + rows.
-
-    The user-mode counterpart of By User (which is hidden there — a pie
-    of one): which projects MY jobs charged. Username pinned server-side
-    like every /user/ route; rows drill into the user-mode jobs fragment
-    narrowed by ``account=<projcode>``.
-    """
-    from flask_login import current_user
-    if not is_enabled():
-        return _render_by_project(mode='user', machine=None,
-                                  fragment_url=None,
-                                  jobs_fragment_url=None, target_id='')
-    machine = _machine_or_404(machine)
-    target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-byproj-user-{machine}'
-    return _render_by_project(
-        mode='user', machine=machine,
-        fragment_url=url_for('jobs.by_project_user_fragment', machine=machine),
-        jobs_fragment_url=url_for('jobs.jobs_user_fragment', machine=machine),
-        target_id=target_id,
-        username=current_user.username,
-    )
-
-
-def _user_histogram(machine, *, dimension, dimension_toggle, endpoint):
-    """Common body of the three user-mode histogram routes."""
-    from flask_login import current_user
-    if not is_enabled():
-        return _render_histogram(mode='user', machine=None,
-                                 dimension=dimension,
-                                 dimension_toggle=dimension_toggle,
-                                 fragment_url=None, target_id='')
-    machine = _machine_or_404(machine)
-    target_id = (request.args.get('target_id') or '').strip() \
-        or f'jobs-{dimension}-user-{machine}'
-    return _render_histogram(
-        mode='user', machine=machine,
-        dimension=dimension, dimension_toggle=dimension_toggle,
-        fragment_url=url_for(endpoint, machine=machine),
-        jobs_fragment_url=url_for('jobs.jobs_user_fragment',
-                                  machine=machine),
-        target_id=target_id,
-        username=current_user.username,
-    )
-
-
-@bp.route('/user/<machine>/wait-times')
-@login_required
-def wait_times_user_fragment(machine):
-    return _user_histogram(machine, dimension='wait',
-                           dimension_toggle=False,
-                           endpoint='jobs.wait_times_user_fragment')
-
-
-@bp.route('/user/<machine>/job-sizes')
-@login_required
-def job_sizes_user_fragment(machine):
-    dimension = (request.args.get('dimension') or '').strip()
-    if dimension not in _SIZE_DIMENSIONS:
-        dimension = _SIZE_DIMENSIONS[0]
-    return _user_histogram(machine, dimension=dimension,
-                           dimension_toggle=True,
-                           endpoint='jobs.job_sizes_user_fragment')
-
-
-@bp.route('/user/<machine>/durations')
-@login_required
-def durations_user_fragment(machine):
-    return _user_histogram(machine, dimension='duration',
-                           dimension_toggle=False,
-                           endpoint='jobs.durations_user_fragment')
-
 
 @bp.route('/user/<machine>/explore')
 @login_required
@@ -1821,40 +1502,233 @@ def _render_explorer_shell(*, mode: str, machine: str, project=None,
     )
 
 
-@bp.route('/<projcode>/card')
-@login_required
-@require_project_access
-def jobs_card_fragment(project):
-    """HTMX fragment: *project*'s card shell on a new window or filter set."""
-    machine = _get_machine_or_400()
-    scope = (request.args.get('scope') or '').strip() or None
-    if _is_explorer_surface():
-        return _render_explorer_shell(mode='project', machine=machine,
-                                      project=project, scope=scope)
-    return _render_card_shell(
-        mode='project', machine=machine,
-        projcode=project.projcode,
-        panel_params={'scope': scope},
-        account_projcodes=_tree_projcodes(project),
+# ---------------------------------------------------------------------------
+# Per-mode request context
+# ---------------------------------------------------------------------------
+
+def _machine_for(mode: str, arg) -> Optional[str]:
+    """Resolve the machine for *mode*, or ``None`` when the plugin is off.
+
+    Project mode carries it in ``?machine=`` (one card, many resources);
+    the path-``<machine>`` families carry it in the URL and validate against
+    the warmed engines. When the plugin is disabled we return ``None``
+    WITHOUT validating — otherwise a disabled deployment would 400/404
+    instead of rendering the "unavailable" banner the card expects.
+    """
+    if not is_enabled():
+        return None
+    return _get_machine_or_400() if mode == 'project' else _machine_or_404(arg)
+
+
+def _jobs_ctx(mode: str, arg) -> dict:
+    """The per-request facts every jobs panel needs.
+
+    ``target_suffix`` is the tail of each panel's default ``target_id``; the
+    panel supplies the stem (``byuser`` / ``byproj`` / the histogram
+    dimension). Keeping the two apart is what lets one spec table serve
+    ids like ``jobs-byuser-SCSG0001-derecho`` and ``jobs-wait-machine-casper``.
+    """
+    machine = _machine_for(mode, arg)
+
+    if mode == 'project':
+        return {
+            'machine': machine,
+            'project': arg,
+            'username': None,
+            'account_projcodes': _tree_projcodes(arg),
+            'scope': (request.args.get('scope') or '').strip() or None,
+            'target_suffix': f'{arg.projcode}-{machine}',
+        }
+
+    from flask_login import current_user
+    username = current_user.username if mode == 'user' else None
+    return {
+        'machine': machine,
+        'project': None,
+        'username': username,
+        'account_projcodes': None,
+        'scope': None,
+        'target_suffix': f'{mode}-{machine}',
+    }
+
+
+def _target_id(ctx: dict, stem: str) -> str:
+    """``?target_id=`` round-tripped, else the panel's default for this mode."""
+    return ((request.args.get('target_id') or '').strip()
+            or f"jobs-{stem}-{ctx['target_suffix']}")
+
+
+def _panel_dimension(default: str, toggle: bool) -> str:
+    """The histogram dimension: a whitelisted ``?dimension=`` when the panel
+    offers the pills, else the panel's fixed one."""
+    if not toggle:
+        return default
+    dimension = (request.args.get('dimension') or '').strip()
+    return dimension if dimension in _SIZE_DIMENSIONS else _SIZE_DIMENSIONS[0]
+
+
+# ---------------------------------------------------------------------------
+# Panel adapters — registrar calling convention over the shared renderers
+# ---------------------------------------------------------------------------
+#
+# The registrar hands every panel the same five arguments; these translate
+# that into what each renderer already wanted. They are also where the
+# "plugin disabled" degradation lives: machine is None, and each renderer
+# already knows to draw its unavailable banner rather than query.
+
+def _panel_jobs_table(ctx, fragment_url, *, mode, scope_for, log_label, **_kw):
+    """HTMX fragment: the per-job table."""
+    if ctx['machine'] is None:
+        return _disabled_jobs_table(project=ctx['project'],
+                                    username=ctx['username'])
+    return _jobs_table_response(
+        mode=mode, machine=ctx['machine'], fragment_url=fragment_url,
+        project=ctx['project'], pinned_user=ctx['username'],
     )
 
 
-@bp.route('/machine/<machine>/card')
-@login_required
-@require_permission(Permission.VIEW_ALL_JOB_DATA)
-def jobs_card_machine_fragment(machine):
-    """HTMX fragment: the machine-wide card shell on a new window."""
-    machine = _machine_or_404(machine)
-    if _is_explorer_surface():
-        return _render_explorer_shell(mode='machine', machine=machine)
-    return _render_card_shell(mode='machine', machine=machine)
+def _panel_by_user(ctx, fragment_url, *, mode, scope_for, log_label,
+                   jobs_fragment_url=None, **_kw):
+    """HTMX fragment: per-user usage pie + drillable rows."""
+    if ctx['machine'] is None:
+        return _render_by_user(mode=mode, machine=None, fragment_url=None,
+                               jobs_fragment_url=None, target_id='')
+    return _render_by_user(
+        mode=mode, machine=ctx['machine'], fragment_url=fragment_url,
+        jobs_fragment_url=jobs_fragment_url,
+        target_id=_target_id(ctx, 'byuser'),
+        account_projcodes=ctx['account_projcodes'],
+    )
 
 
-@bp.route('/user/<machine>/card')
-@login_required
-def jobs_card_user_fragment(machine):
-    """HTMX fragment: the "My Jobs" card shell on a new window."""
-    machine = _machine_or_404(machine)
+def _panel_by_project(ctx, fragment_url, *, mode, scope_for, log_label,
+                      jobs_fragment_url=None, **_kw):
+    """HTMX fragment: per-projcode usage pie + rows.
+
+    Rows drill into the mode's jobs fragment narrowed by
+    ``account=<projcode>`` — validated against the tree there, so the drill
+    can never widen scope.
+    """
+    if ctx['machine'] is None:
+        return _render_by_project(mode=mode, machine=None, fragment_url=None,
+                                  jobs_fragment_url=None, target_id='')
+    return _render_by_project(
+        mode=mode, machine=ctx['machine'], fragment_url=fragment_url,
+        jobs_fragment_url=jobs_fragment_url,
+        target_id=_target_id(ctx, 'byproj'),
+        username=ctx['username'],
+        account_projcodes=ctx['account_projcodes'],
+    )
+
+
+def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
+                     dimension, dimension_toggle=False,
+                     jobs_fragment_url=None, **_kw):
+    """HTMX fragment: one of the three distribution histograms."""
+    dim = _panel_dimension(dimension, dimension_toggle)
+    if ctx['machine'] is None:
+        return _render_histogram(mode=mode, machine=None, dimension=dim,
+                                 dimension_toggle=dimension_toggle,
+                                 fragment_url=None, target_id='')
+    return _render_histogram(
+        mode=mode, machine=ctx['machine'],
+        dimension=dim, dimension_toggle=dimension_toggle,
+        fragment_url=fragment_url, jobs_fragment_url=jobs_fragment_url,
+        target_id=_target_id(ctx, dim),
+        account_projcodes=ctx['account_projcodes'],
+        username=ctx['username'],
+    )
+
+
+def _panel_card(ctx, fragment_url, *, mode, scope_for, log_label, **_kw):
+    """HTMX fragment: the card shell, re-rendered on a new window or filters.
+
+    Both surfaces render the same shell; they differ only in where the
+    window (and, on the explorer, the rest of the filter set) comes from.
+    """
+    machine = ctx['machine'] or _get_machine_or_400()
     if _is_explorer_surface():
-        return _render_explorer_shell(mode='user', machine=machine)
-    return _render_card_shell(mode='user', machine=machine)
+        return _render_explorer_shell(mode=mode, machine=machine,
+                                      project=ctx['project'],
+                                      scope=ctx['scope'])
+    extra = {}
+    if mode == 'project':
+        extra = {
+            'projcode': ctx['project'].projcode,
+            'panel_params': {'scope': ctx['scope']},
+            'account_projcodes': ctx['account_projcodes'],
+        }
+    return _render_card_shell(mode=mode, machine=machine, **extra)
+
+
+# ---------------------------------------------------------------------------
+# Route registration — 20 fragment routes from two tables
+# ---------------------------------------------------------------------------
+#
+# Each was the same shape: resolve the machine, build the fragment URL and a
+# default target_id, call the shared renderer with this mode's scoping
+# arguments. `register_panels` generates them; the endpoint names it derives
+# are pinned by tests/unit/test_route_map_parity.py.
+#
+# The three `explore` PAGES stay hand-written above — they build a
+# page-level context (filter panel, facet chips, scope panel) the fragments
+# don't have, which is more than the spec expresses.
+
+_MODES = (
+    ModeSpec(
+        mode='project', url_prefix='/<projcode>', url_param='projcode',
+        endpoint_suffix='',
+        decorators=(login_required, require_project_access),
+        # require_project_access resolves the projcode to a Project and
+        # passes the object; url_for needs the code back.
+        url_value=lambda project: project.projcode,
+        context=lambda project: _jobs_ctx('project', project),
+    ),
+    ModeSpec(
+        # Machine-wide: every user's jobs, cross-project. The permission
+        # here IS the access control — the service will not second-guess it.
+        mode='machine', url_prefix='/machine/<machine>', url_param='machine',
+        endpoint_suffix='_machine',
+        decorators=(login_required,
+                    require_permission(Permission.VIEW_ALL_JOB_DATA)),
+        context=lambda machine: _jobs_ctx('machine', machine),
+    ),
+    ModeSpec(
+        # "My Jobs" — @login_required ONLY. Safe because every panel pins
+        # user=current_user.username server-side (UserJobScope raises on a
+        # caller-supplied user), so a client-appended ?user=<other> changes
+        # nothing. Mirror of the disk_scans pinned-owner rule.
+        mode='user', url_prefix='/user/<machine>', url_param='machine',
+        endpoint_suffix='_user',
+        decorators=(login_required,),
+        context=lambda machine: _jobs_ctx('user', machine),
+    ),
+)
+
+_PANELS = declare_panels((
+    # The table lives at the mode prefix itself — hence the empty rule.
+    PanelSpec(key='jobs', rule='', render=_panel_jobs_table),
+    PanelSpec(
+        key='by_user', rule='/by-user', render=_panel_by_user,
+        # No user mode: By User there would be a pie of one, so By Project
+        # takes its slot.
+        modes=('project', 'machine'),
+        siblings={'jobs_fragment_url': 'jobs'},
+    ),
+    PanelSpec(key='by_project', rule='/by-project', render=_panel_by_project,
+              siblings={'jobs_fragment_url': 'jobs'}),
+    PanelSpec(key='wait_times', rule='/wait-times', render=_panel_histogram,
+              kwargs={'dimension': 'wait', 'dimension_toggle': False},
+              siblings={'jobs_fragment_url': 'jobs'}),
+    PanelSpec(key='job_sizes', rule='/job-sizes', render=_panel_histogram,
+              # The only panel offering the dimension pills, so the
+              # dimension comes from the request rather than the spec.
+              kwargs={'dimension': _SIZE_DIMENSIONS[0], 'dimension_toggle': True},
+              siblings={'jobs_fragment_url': 'jobs'}),
+    PanelSpec(key='durations', rule='/durations', render=_panel_histogram,
+              kwargs={'dimension': 'duration', 'dimension_toggle': False},
+              siblings={'jobs_fragment_url': 'jobs'}),
+    PanelSpec(key='jobs_card', rule='/card', render=_panel_card),
+))
+
+register_panels(bp, modes=_MODES, panels=_PANELS)

@@ -53,8 +53,12 @@ class ModeSpec:
     decorators: Tuple[Callable, ...]
     #: ``(url_arg) -> ctx dict`` for the fragment templates.
     context: Callable[[Any], Dict[str, Any]]
-    #: ``(ctx) -> (subpath -> NavigatorScope)``.
-    scope_for: Callable[[Dict[str, Any]], Callable]
+    #: ``(ctx) -> whatever this navigator's renderers want as their scope
+    #: handle`` — opaque to the registrar. fs-scans returns a
+    #: ``subpath -> ScanScope`` factory (its panels drill into sub-paths);
+    #: jobs leaves it ``None`` because its panels derive a ``JobScope`` from
+    #: the ctx they already receive.
+    scope_for: Callable[[Dict[str, Any]], Any] = lambda ctx: None
     #: ``(ctx) -> str`` for log lines.
     log_label: Callable[[Dict[str, Any]], str] = lambda ctx: ''
     #: When the decorators resolve the URL arg to an object (as
