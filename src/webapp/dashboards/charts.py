@@ -1162,6 +1162,96 @@ def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 5c. Per-user usage pie (compute resource-details "By User" tab)
+#
+# SAM's own comp_charge_summary rollup, not the job-history plugin. Same shape
+# as the disk entity pie above — ~90% cumulative share, inert "Other" — but the
+# click sentinel is ``#usage-user-<username>``, which is the prefix the stacked
+# Usage Trend legend has always used. Reusing it means svg-chart-links.js needs
+# no new table entry and both charts drill into the same Usage-by-User row.
+# ---------------------------------------------------------------------------
+
+
+def _user_usage_pie_cache_key(user_data, metric):
+    # metric selects which column is plotted AND what the legend numbers say,
+    # but it isn't part of the default content_hash(args[0]) key — include it
+    # so charges/jobs/core_hours variants never alias in the LRU.
+    return _content_hash([user_data, metric])
+
+
+@caching.chart_cached(name='user_usage_pie_chart', maxsize=64,
+                      key_fn=_user_usage_pie_cache_key)
+def generate_user_usage_pie_chart(user_data: List[Dict], metric: str = 'charges') -> str:
+    """Pie of ``metric`` by username for the resource-details By User tab.
+
+    Args:
+        user_data: rows from ``get_user_summary_for_project`` — dicts carrying
+            'username' plus the three metric keys ('charges', 'jobs',
+            'core_hours'), which are also the accepted ``metric`` values.
+        metric: which column to plot.
+
+    Returns:
+        SVG string ready for template rendering.
+    """
+    rows = [d for d in (user_data or []) if float(d.get(metric) or 0) > 0]
+    if not rows:
+        return _empty_state('No user activity recorded for this period')
+
+    data = sorted(rows, key=lambda d: float(d[metric]), reverse=True)
+    values_desc = [float(d[metric]) for d in data]
+    keep = _pie_cumulative_keep(values_desc)
+
+    names = [d['username'] for d in data[:keep]]
+    values = list(values_desc[:keep])
+    colors = list(UNITY_PALETTE_10[:keep])
+
+    n_others = len(data) - keep
+    if n_others > 0:
+        names.append(None)                     # inert slice — no set_url
+        values.append(sum(values_desc[keep:]))
+        colors.append(UNITY_NCAR_GRAY_LIGHT)
+
+    legend_labels = [
+        f'{n or f"Other ({n_others})"} ({fmt.number(v)})'
+        for n, v in zip(names, values)
+    ]
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    wedges, _texts, autotexts = ax.pie(
+        values,
+        labels=None,
+        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
+        startangle=_PIE_START_ANGLE,
+        counterclock=False,
+        colors=colors,
+        pctdistance=0.85,
+    )
+    for at, wedge_color in zip(autotexts, colors):
+        at.set_color(_autopct_color_for(wedge_color))
+        at.set_fontweight('bold')
+        at.set_fontsize(8)
+
+    legend = ax.legend(wedges, legend_labels, loc='center left',
+                       bbox_to_anchor=(1.0, 0.5), fontsize=9)
+
+    # Clickable wedges + legend entries → expand that user's row in the table
+    # below. Skip the "Other" slice (name is None).
+    leg_patches = legend.get_patches()
+    leg_texts = legend.get_texts()
+    for i, name in enumerate(names):
+        if name is None:
+            continue
+        url = f'#usage-user-{name}'
+        wedges[i].set_url(url)
+        if i < len(leg_patches):
+            leg_patches[i].set_url(url)
+        if i < len(leg_texts):
+            leg_texts[i].set_url(url)
+
+    return _fig_to_svg(fig)
+
+
+# ---------------------------------------------------------------------------
 # Job-history charts (jobs card: Wait Times / Job Sizes / Durations + By User)
 #
 # Inputs are the hpc-usage-queries plugin envelopes verbatim (see
