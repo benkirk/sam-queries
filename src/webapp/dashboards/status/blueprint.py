@@ -226,15 +226,20 @@ def job_history():
     mode — the card's fragment routes are themselves VIEW_ALL_JOB_DATA-
     gated, so this page gate is the first line, not the only one.
 
-    ``jobs_window_start`` bounds every card tab to the last 90 days by
-    default: an unbounded machine-wide aggregation measures ~200 s
-    against the plugin PG vs ~0.6 s per month-window. The explorer's
-    date fields let an operator widen deliberately.
+    ``jobs_window_start`` bounds every card tab to the default window: an
+    unbounded machine-wide aggregation measures ~200 s against the plugin
+    PG vs ~0.6 s per month-window. ``jobs_window_days`` tells the card
+    which period pill to paint active; the pills (and the explorer's date
+    fields) let an operator widen deliberately.
     """
-    from datetime import date as _date
+    from webapp.jobs.service import (
+        DEFAULT_JOBS_WINDOW_DAYS,
+        default_jobs_window_start,
+    )
     return render_template(
         'dashboards/status/job_history_page.html',
-        jobs_window_start=(_date.today() - timedelta(days=90)).isoformat(),
+        jobs_window_start=default_jobs_window_start(),
+        jobs_window_days=DEFAULT_JOBS_WINDOW_DAYS,
         **_page_context(db.session),
     )
 

@@ -3243,3 +3243,268 @@ def test_by_user_sort_indicator_follows_metric(
     gpu_th = re.search(r'<th[^>]*sort-desc[^>]*>GPU-hours</th>', body)
     assert gpu_th, 'sort-desc must sit on the GPU-hours header'
     assert not re.search(r'<th[^>]*sort-desc[^>]*>CPU-hours</th>', body)
+
+
+# ---------------------------------------------------------------------------
+# Period pills — ?days= parsing, precedence, and the card-shell routes
+# ---------------------------------------------------------------------------
+
+def _days_ago(days):
+    from datetime import date, timedelta
+    return date.today() - timedelta(days=days)
+
+
+@pytest.mark.parametrize('raw,expected', [
+    ('30', 30), ('365', 365),
+    ('7', None),        # not an offered window
+    ('abc', None), ('', None), ('90.0', None), ('-90', None),
+])
+def test_parse_days_accepts_only_offered_windows(app, raw, expected):
+    """A stale localStorage value must degrade to the default, never 400."""
+    from webapp.jobs import routes
+
+    with app.test_request_context(f'/?days={raw}'):
+        assert routes._parse_days() == expected
+
+
+def test_days_outranks_the_window_baked_into_the_url(app):
+    """The pill wins over ?start=/?end= — the client can only append days."""
+    from webapp.jobs import routes
+
+    with app.test_request_context('/?start=2020-01-01&end=2020-06-01&days=60'):
+        filters = routes._parse_job_filters()
+
+    assert filters['start'] == _days_ago(60)
+    assert filters['end'] is None
+
+
+def test_start_and_end_survive_when_no_days_given(app):
+    from datetime import date
+    from webapp.jobs import routes
+
+    with app.test_request_context('/?start=2020-01-01&end=2020-06-01'):
+        filters = routes._parse_job_filters()
+
+    assert filters['start'] == date(2020, 1, 1)
+    assert filters['end'] == date(2020, 6, 1)
+
+
+def test_roundtrip_params_normalize_days_to_a_plain_start(app):
+    """`days` is confined to the fragment boundary: panels round-trip start."""
+    from webapp.jobs import routes
+
+    with app.test_request_context('/?days=365&end=2020-06-01'):
+        params = routes._roundtrip_params('derecho', 'tgt')
+
+    assert params['start'] == _days_ago(365).isoformat()
+    assert 'end' not in params
+    assert 'days' not in params
+
+
+def test_panel_filters_default_window_follows_days(app, monkeypatch):
+    """The explorer honours the pill the card handed over in its link."""
+    _install_mock_plugin(app, monkeypatch)
+    from webapp.jobs import routes
+
+    with app.test_request_context('/?days=30'):
+        panel = routes._panel_filters('derecho')
+    assert panel['start'] == _days_ago(30).isoformat()
+
+    with app.test_request_context('/'):
+        panel = routes._panel_filters('derecho')
+    assert panel['start'] == _days_ago(
+        routes.service.DEFAULT_JOBS_WINDOW_DAYS).isoformat()
+
+
+def test_panel_route_applies_days_over_baked_start(
+    app, auth_client, active_project, monkeypatch,
+):
+    """End to end: a panel fetch carrying both uses the injected window."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&start=2020-01-01&days=365'
+    )
+    assert resp.status_code == 200
+    assert captured['last_jobs_search_kwargs']['start'] == _days_ago(365)
+
+
+def _card_url(projcode, **extra):
+    from urllib.parse import urlencode
+    params = {'machine': 'derecho', 'cid': 'jobs-hist',
+              'tablist_id': 'jobsCardTabs'}
+    params.update(extra)
+    return f'/dashboards/user/jobs/{projcode}/card?{urlencode(params)}'
+
+
+def test_card_fragment_bakes_the_window_into_every_panel_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The shell is how the six panels learn a new window."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(_card_url(active_project.projcode, days=365))
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+
+    start = _days_ago(365).isoformat()
+    for suffix in ('', '/wait-times', '/job-sizes', '/durations'):
+        assert (f'/dashboards/user/jobs/{active_project.projcode}{suffix}'
+                f'?machine=derecho&amp;start={start}') in body, suffix
+    # A pill is a lookback from today, so the page's own end date is gone.
+    assert 'end=' not in body
+
+
+def test_card_fragment_marks_the_requested_pill_active(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=30)).get_data(as_text=True)
+
+    import re
+    assert re.search(r'btn btn-primary[^>]*data-days-value="30"', body) or \
+        re.search(r'data-days-value="30"[^>]*btn btn-primary', body)
+    assert 'data-days-value="365"' in body      # the other pills still render
+
+
+def test_card_fragment_unknown_days_falls_back_to_the_default(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=7)).get_data(as_text=True)
+
+    from webapp.jobs.service import DEFAULT_JOBS_WINDOW_DAYS
+    assert f'start={_days_ago(DEFAULT_JOBS_WINDOW_DAYS).isoformat()}' in body
+
+
+@pytest.mark.parametrize('bad', ['jobs hist', 'a"b', '<script>', 'x' * 65])
+def test_card_fragment_400_on_unsafe_element_ids(
+    app, auth_client, active_project, monkeypatch, bad,
+):
+    """cid/tablist_id land in element ids and hx-target selectors."""
+    _install_mock_plugin(app, monkeypatch)
+    assert auth_client.get(
+        _card_url(active_project.projcode, cid=bad)).status_code == 400
+    assert auth_client.get(
+        _card_url(active_project.projcode, tablist_id=bad)).status_code == 400
+
+
+def test_card_fragment_404_on_unknown_projcode(auth_client):
+    assert auth_client.get(_card_url('NOPE9999')).status_code == 404
+
+
+def test_card_fragment_400_on_invalid_machine(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card?machine=gust')
+    assert resp.status_code == 400
+
+
+def test_card_fragment_persist_markers_are_opt_in(
+    app, auth_client, active_project, monkeypatch,
+):
+    """No persist id (resource details) → the window can't outlive the visit."""
+    _install_mock_plugin(app, monkeypatch)
+
+    plain = auth_client.get(
+        _card_url(active_project.projcode)).get_data(as_text=True)
+    assert 'data-jobs-days-card' not in plain
+    assert 'data-chart-persist-id' not in plain
+    assert 'data-days-value' in plain            # pills still work
+
+    kept = auth_client.get(
+        _card_url(active_project.projcode,
+                  days_persist_id='jobs-days-status')).get_data(as_text=True)
+    assert 'data-jobs-days-card' in kept
+    assert 'data-chart-persist-id="jobs-days-status"' in kept
+    assert 'data-chart-persist-keys="days"' in kept
+    assert 'data-jobs-card-url' in kept
+
+
+def test_card_wrapper_declares_no_inheritable_hx_target(
+    app, auth_client, active_project, monkeypatch,
+):
+    """htmx inherits hx-target/hx-swap.
+
+    A pair on the card wrapper would capture every descendant request that
+    doesn't name its own target — a By Project bucket drill swapped the
+    whole card away — so the sibling fan-out goes through htmx.ajax().
+    """
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode,
+                  days_persist_id='jobs-days-status')).get_data(as_text=True)
+
+    wrapper = body[body.index('<div id="jobs-hist-card"'):]
+    wrapper = wrapper[:wrapper.index('>') + 1]
+    assert 'hx-target' not in wrapper
+    assert 'hx-swap' not in wrapper
+
+
+def test_card_fragment_explore_link_hands_over_the_pill(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The link carries ?days=, never a date the JS would have to re-derive."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=365)).get_data(as_text=True)
+
+    import re
+    link = re.search(r'href="([^"]*/explore[^"]*)"', body)
+    assert link, 'explorer link missing'
+    assert 'days=365' in link.group(1)
+    assert 'start=' not in link.group(1)
+
+
+def test_card_machine_route_403_without_permission(non_admin_client):
+    resp = non_admin_client.get('/dashboards/user/jobs/machine/derecho/card')
+    assert resp.status_code == 403
+
+
+def test_card_machine_route_404_unknown_machine(app, auth_client, monkeypatch):
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    resp = auth_client.get('/dashboards/user/jobs/machine/gust/card')
+    assert resp.status_code == 404
+
+
+def test_card_machine_route_renders_machine_mode_shell(
+    app, auth_client, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/card?days=60'
+        '&cid=jobs-m1&tablist_id=jobHistCardTabs1')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert f'start={_days_ago(60).isoformat()}' in body
+    assert 'By User' in body                    # machine mode keeps the pie
+    assert 'id="jobs-m1-card"' in body
+
+
+def test_card_user_route_renders_without_elevated_permission(
+    app, non_admin_client, monkeypatch,
+):
+    """The My Jobs shell is @login_required only — the username is pinned."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = non_admin_client.get(
+        '/dashboards/user/jobs/user/derecho/card?days=30&cid=my-jobs-m1')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert f'start={_days_ago(30).isoformat()}' in body
+    assert '>By User' not in body               # a pie of one, hidden here
+
+
+def test_card_shell_panels_stay_lazy_after_a_refetch(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Only the visible panel refetches; the rest wait to be shown."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=30)).get_data(as_text=True)
+
+    assert 'hx-trigger="intersect once"' in body
+    assert body.count('hx-trigger="shown.bs.tab once"') >= 4

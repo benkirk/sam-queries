@@ -174,17 +174,22 @@ def my_data():
 def my_jobs():
     """My Jobs page — per-user job-history cards (one pill per machine).
 
-    ``jobs_window_start`` bounds every card tab to the last 90 days by
-    default — unbounded plugin aggregations are the expensive path; the
-    explorer's date fields widen deliberately.
+    ``jobs_window_start`` bounds every card tab to the default window —
+    unbounded plugin aggregations are the expensive path. ``jobs_window_days``
+    tells the card which period pill to paint active; the pills (and the
+    explorer's date fields) widen deliberately.
     """
     ctx = _page_context()
     if not ctx['my_jobs_available']:
         abort(404)
-    from datetime import date as _date
+    from webapp.jobs.service import (
+        DEFAULT_JOBS_WINDOW_DAYS,
+        default_jobs_window_start,
+    )
     return render_template(
         'dashboards/user/my_jobs.html',
-        jobs_window_start=(_date.today() - timedelta(days=90)).isoformat(),
+        jobs_window_start=default_jobs_window_start(),
+        jobs_window_days=DEFAULT_JOBS_WINDOW_DAYS,
         **ctx,
     )
 

@@ -8,12 +8,20 @@ Project-mode endpoints (url_prefix ``/dashboards/user/jobs``):
   GET /<projcode>/job-sizes   — resource-needs histogram (?dimension=
                                 nodes|cpus|gpus|memory)
   GET /<projcode>/durations   — elapsed-time histogram (pinned 'duration')
+  GET /<projcode>/card        — the tab shell itself, re-rendered for a new
+                                lookback (?days=); the period pills' target
 
 Jobs-tab query params: ``GET /dashboards/user/jobs/<projcode>``
 
 Query params (all optional unless noted):
   machine   (required) — 'derecho' or 'casper'
   start, end           — YYYY-MM-DD; filters on Job.end
+  days                 — lookback in days, one of
+                         service.JOBS_WINDOW_CHOICES; outranks start/end
+                         (the card's period pills, which can only append
+                         to a URL whose window was baked in at render
+                         time). Normalized back to start= before anything
+                         downstream sees it.
   user                 — limit to a single PBS username
   queue                — limit to a single queue
   qos                  — limit to a single QoS / priority class
@@ -38,7 +46,8 @@ filter cannot leak cross-project rows.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+import re
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from flask import Blueprint, abort, render_template, request, url_for
@@ -121,6 +130,26 @@ def _parse_date(raw: Optional[str]) -> Optional[date]:
         return datetime.strptime(raw, '%Y-%m-%d').date()
     except ValueError:
         return None
+
+
+def _parse_days() -> Optional[int]:
+    """The card's ``?days=`` lookback pill, or None when not one of ours.
+
+    Lenient like ``_parse_metric``: an unknown or malformed value means
+    "no override", never a 400 — the value can arrive from a client's
+    localStorage, which may outlive a change to the offered windows.
+    """
+    raw = (request.args.get('days') or '').strip()
+    try:
+        days = int(raw)
+    except ValueError:
+        return None
+    return days if days in service.JOBS_WINDOW_CHOICES else None
+
+
+def _days_start(days: int) -> date:
+    """Window start for a ``?days=`` lookback (always relative to today)."""
+    return date.today() - timedelta(days=days)
 
 
 def _parse_pagination():
@@ -596,6 +625,14 @@ def _parse_job_filters(include_user: bool = True) -> dict:
         'exit_status': (request.args.get('exit_status') or '').strip() or None,
         'name':  (request.args.get('name') or '').strip() or None,
     }
+    days = _parse_days()
+    if days is not None:
+        # The card's period pill outranks any window baked into the panel
+        # URL at render time: the client-side persistence layer can only
+        # append ``days`` to a request, never rewrite the ``start`` already
+        # in the path, so precedence has to be settled here.
+        f['start'] = _days_start(days)
+        f['end'] = None
     if include_user:
         f['user'] = _resolve_user_filter()[0]
     if f['name'] is not None:
@@ -639,6 +676,14 @@ def _roundtrip_params(machine: str, target_id: str) -> dict:
         k: request.args.get(k) for k in _ROUNDTRIP_KEYS
         if (request.args.get(k) or '').strip()
     }
+    days = _parse_days()
+    if days is not None:
+        # Normalize the pill to a plain start= at the fragment boundary:
+        # in-panel pills, bar drills and explorer deep links all keep
+        # speaking start/end, so `days` stays out of _ROUNDTRIP_KEYS and
+        # never has to be understood past this point.
+        params['start'] = _days_start(days).isoformat()
+        params.pop('end', None)
     params['machine'] = machine
     params['target_id'] = target_id
     return params
@@ -1055,11 +1100,14 @@ def _panel_filters(machine: str) -> dict:
     end = (request.args.get('end') or '').strip()
     if not start and not end:
         # Unbounded windows are the expensive path (~200 s machine-wide
-        # vs ~0.6 s per month) — default the explorer to the last 90
-        # days. The field is visible in the panel; clearing it opts into
-        # the full history explicitly.
-        from datetime import timedelta
-        start = (date.today() - timedelta(days=90)).isoformat()
+        # vs ~0.6 s per month) — default the explorer to the same window
+        # the cards use. The card's "Open full view" link hands its
+        # current pill over as ?days=, so the explorer opens on the window
+        # the user was already looking at. The field is visible in the
+        # panel; clearing it opts into the full history explicitly.
+        start = _days_start(
+            _parse_days() or service.DEFAULT_JOBS_WINDOW_DAYS
+        ).isoformat()
     return {
         'start': start,
         'end':   end,
@@ -1424,3 +1472,79 @@ def explore_user_page(machine):
         filters=panel, user_search_url=_user_search_url(),
         per_page_options=_PER_PAGE_OPTIONS, target_id=target_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Card shell (period pills) — one route per mode
+# ---------------------------------------------------------------------------
+#
+# Each panel bakes its window into its own hx-get URL at render time, so
+# changing the period means re-rendering the shell that owns those URLs.
+# These routes do that and nothing else — no plugin queries — so a pill
+# click costs one cheap render and the panels re-fetch lazily as they are
+# shown. Gating mirrors each mode's panel family.
+
+# Shell params echoed straight into element ids and hx-target selectors.
+_ID_ARG_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
+
+def _id_arg(name: str, default: Optional[str] = None) -> Optional[str]:
+    """Read an id-shaped query arg; 400 on anything that isn't id-safe."""
+    raw = (request.args.get(name) or '').strip()
+    if not raw:
+        return default
+    if not _ID_ARG_RE.match(raw):
+        abort(400, f'{name} must match {_ID_ARG_RE.pattern}')
+    return raw
+
+
+def _render_card_shell(*, mode: str, machine: str, **extra):
+    """Re-render the jobs card bound to the requested ``?days=`` window."""
+    days = _parse_days() or service.DEFAULT_JOBS_WINDOW_DAYS
+    return render_template(
+        'dashboards/user/partials/jobs_card.html',
+        mode=mode, machine=machine,
+        cid=_id_arg('cid', 'jobs-card'),
+        tablist_id=_id_arg('tablist_id', 'jobsCardTabs'),
+        days_persist_id=_id_arg('days_persist_id'),
+        days=days,
+        start=_days_start(days).isoformat(),
+        end=None,
+        # The clicked card is on screen, so this fires straight away; a
+        # sibling card refreshed inside a hidden machine subtab waits until
+        # it is actually shown instead of querying for nobody.
+        load_trigger='intersect once',
+        **extra,
+    )
+
+
+@bp.route('/<projcode>/card')
+@login_required
+@require_project_access
+def jobs_card_fragment(project):
+    """HTMX fragment: *project*'s card shell rebound to a new window.
+
+    A pill is a pure lookback from today, so it drops the page's own end
+    date rather than re-anchoring the window inside it.
+    """
+    return _render_card_shell(
+        mode='project', machine=_get_machine_or_400(),
+        projcode=project.projcode,
+        scope=(request.args.get('scope') or '').strip() or None,
+        jobs_multi_project=len(_tree_projcodes(project)) > 1,
+    )
+
+
+@bp.route('/machine/<machine>/card')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def jobs_card_machine_fragment(machine):
+    """HTMX fragment: the machine-wide card shell on a new window."""
+    return _render_card_shell(mode='machine', machine=_machine_or_404(machine))
+
+
+@bp.route('/user/<machine>/card')
+@login_required
+def jobs_card_user_fragment(machine):
+    """HTMX fragment: the "My Jobs" card shell on a new window."""
+    return _render_card_shell(mode='user', machine=_machine_or_404(machine))

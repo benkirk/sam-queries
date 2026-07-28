@@ -8,6 +8,9 @@
  *  3. Chart selectors — key: "chart:<id>"         value: JSON params
  *  4. Scroll position — key: "nav:scroll:<path>"  (sessionStorage, one-shot)
  *
+ * The job-history period pills (5) reuse the chart-selector storage under
+ * key "days", plus a card-level fan-out so per-machine subtabs agree.
+ *
  * Tab / collapse handling works for both initial page load and after
  * HTMX swaps or Bootstrap modal close events.
  */
@@ -227,6 +230,112 @@
             localStorage.setItem(CHART_PREFIX + chartEl.dataset.chartPersistId,
                                  JSON.stringify(saved));
         } catch (_) {}
+    });
+
+    // ── Job-history period pills ─────────────────────────────────────────────
+    //
+    // The jobs card's 30d/60d/90d/1yr pills re-render the whole card shell,
+    // because each of its six panels bakes the window into its own hx-get
+    // URL at render time. Markup contract (jobs_card.html):
+    //
+    //   [data-jobs-days-card]    card wrapper; also carries the
+    //                            data-chart-persist-* pair above (key
+    //                            "days") and data-jobs-card-url
+    //   [data-jobs-days-pills]   the pill group inside it
+    //   [data-days-value]        each pill button
+    //   [data-jobs-explore-link] "Open full view", whose ?days= tracks them
+    //
+    // Cards sharing a persist id — the per-machine subtabs on My Jobs and
+    // Status → Job History — stay in lockstep: a click saves the window and
+    // re-renders its siblings. That fan-out goes through htmx.ajax() rather
+    // than hx-* attributes on the wrapper, because hx-target/hx-swap are
+    // inherited: declaring them on a card would hijack every descendant
+    // request that doesn't name its own target.
+
+    var DAYS_KEY = 'days';
+
+    /** The stored window for a persist id, as a string, or null. */
+    function savedDays(persistId) {
+        var raw = null;
+        try { raw = localStorage.getItem(CHART_PREFIX + persistId); } catch (_) { return null; }
+        if (!raw) return null;
+        var saved;
+        try { saved = JSON.parse(raw); } catch (_) { return null; }
+        return (saved && saved[DAYS_KEY]) ? String(saved[DAYS_KEY]) : null;
+    }
+
+    /** Paint *days* as the active pill and point the explorer link at it. */
+    function syncDaysCard(card, days) {
+        if (!days) return;
+        card.querySelectorAll('[data-days-value]').forEach(function (btn) {
+            var on = btn.dataset.daysValue === days;
+            btn.classList.toggle('btn-primary', on);
+            btn.classList.toggle('btn-outline-primary', !on);
+        });
+        // The link speaks ?days=, never a date, so this stays a parameter
+        // swap — no re-deriving client-side a window the server owns.
+        var link = card.querySelector('[data-jobs-explore-link]');
+        if (!link) return;
+        try {
+            var url = new URL(link.getAttribute('href'), window.location.origin);
+            url.searchParams.set(DAYS_KEY, days);
+            url.searchParams.delete('start');
+            url.searchParams.delete('end');
+            link.setAttribute('href', url.pathname + '?' + url.searchParams.toString());
+        } catch (_) {}
+    }
+
+    /** Save on click — synchronously, BEFORE htmx issues any request, so a
+     *  sibling's injected refetch can't read a stale window. The afterSettle
+     *  save above lands too late for that hand-off. */
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        if (!target || !target.closest) return;
+        var btn = target.closest('[data-jobs-days-pills] [data-days-value]');
+        if (!btn) return;
+        var card = btn.closest('[data-jobs-days-card]');
+        if (!card) return;              // pills opted out of persistence
+        var id = card.dataset.chartPersistId;
+        if (!id) return;
+
+        var days = btn.dataset.daysValue;
+        try {
+            localStorage.setItem(CHART_PREFIX + id, JSON.stringify({days: days}));
+        } catch (_) {}
+
+        // Siblings get the window spelled out rather than relying on the
+        // injection above, so the hand-off can't race the save.
+        document.querySelectorAll('[data-jobs-days-card]').forEach(function (other) {
+            if (other === card || other.dataset.chartPersistId !== id) return;
+            var url = other.dataset.jobsCardUrl;
+            if (!url || !window.htmx) return;
+            htmx.ajax('GET', url + (url.indexOf('?') === -1 ? '?' : '&') + DAYS_KEY + '=' + days,
+                      {target: '#' + other.id, swap: 'outerHTML'});
+        });
+    }, true);
+
+    // Cold start: the server renders the default window, so repaint the
+    // pills from storage. The panels need no repaint — the configRequest
+    // injection rewrites every panel fetch, and the route gives ?days=
+    // precedence over the ?start= baked into the URL.
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('[data-jobs-days-card]').forEach(function (card) {
+            var id = card.dataset.chartPersistId;
+            if (id) syncDaysCard(card, savedDays(id));
+        });
+    });
+
+    // A pill swaps out the card that contains it, so the tab restore wired
+    // to htmx:afterSettle — which walks the element that made the request —
+    // finds only a detached button. Restore against the live card instead,
+    // and only while it's on screen: re-showing a saved tab inside a hidden
+    // machine subtab would fire that panel's query for a card nobody is
+    // looking at.
+    document.addEventListener('htmx:load', function (event) {
+        var elt = event.detail && event.detail.elt;
+        var card = (elt && elt.closest) ? elt.closest('[data-jobs-days-card]') : null;
+        if (!card || card.offsetParent === null) return;
+        restoreTabs(card);
     });
 
     // ── Scroll preservation across full-page navigation ──────────────────────
