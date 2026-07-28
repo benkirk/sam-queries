@@ -665,6 +665,10 @@ def resource_details(project):
         can_edit_threshold=can_edit_threshold,
         has_children=has_children,
         scope=scope,
+        # By Project jobs tab only makes sense when the (scoped) account
+        # tree spans more than one projcode — same expansion the jobs
+        # routes use, so tab visibility and row scoping always agree.
+        jobs_multi_project=len(_resolve_scope_projcodes(project, scope)) > 1,
         tree_data=tree_data,
         alloc_start_date=alloc_start_date,
         account_adjustments=account_adjustments,

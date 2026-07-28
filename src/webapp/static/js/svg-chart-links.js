@@ -62,56 +62,17 @@
     // data-job-project (see jobs_by_project.html).
     var JOB_PROJ_PREFIX = '#job-proj-';
     // Job-history histogram (Wait Times / Job Sizes / Durations): a bar
-    // click expands the matching band's row in the Bucket-counts table
-    // (data-jh-bucket, see jobs_histogram.html), which lazy-loads that
-    // band's per-job fragment. The table sits inside a <details> that
-    // must be opened first or the row would expand invisibly.
+    // click expands the matching band's row in the bucket table
+    // (data-jh-bucket, see jobs_histogram.html), which drills into that
+    // band (per-user tier or per-job fragment).
     var BAR_JH_PREFIX = '#jh-bar-';
 
-    // Distribution histogram (Access-history / File-size tabs) → expand the
-    // matching bucket's per-user detail row. The bucket <tr> carries
-    // data-ah-bucket="<index>" and a data-bs-target pointing at its collapse
-    // row (see disk_scans_distribution.html). The lookup is scoped to the
-    // tab pane the clicked bar lives in, so the two tabs' identical
-    // #ah-bar-<index> anchors never cross-fire.
-    function openBucketRow(index, scopeEl) {
-        var root = scopeEl || document;
-        var row = root.querySelector('tr[data-ah-bucket="' + index + '"]');
-        if (!row || !window.bootstrap) return;
-        var targetSel = row.getAttribute('data-bs-target');
-        if (!targetSel) return;
-        var el = document.querySelector(targetSel);
-        if (!el) return;
-        bootstrap.Collapse.getOrCreateInstance(el, {toggle: false}).show();
-        setTimeout(function () {
-            row.scrollIntoView({behavior: 'smooth', block: 'center'});
-        }, 60);
-    }
-
-    // Pie wedge/legend → expand the entity's table row. The row carries the
-    // collapse target in data-bs-target (same attribute the chevron toggles),
-    // keyed by attr (data-owner-uid / data-group-gid). Scoped to the clicked
-    // chart's tab pane so other panes' identical sentinels never cross-fire.
-    // Jobs-histogram bar → expand the band's bucket row. Same shape as
-    // openBucketRow but keyed on data-jh-bucket, and the row lives inside
-    // a collapsed-by-default <details> that must be opened before the
-    // Bootstrap collapse (and the scroll) can be seen.
-    function openJobsBucketRow(index, scopeEl) {
-        var root = scopeEl || document;
-        var row = root.querySelector('tr[data-jh-bucket="' + index + '"]');
-        if (!row || !window.bootstrap) return;
-        var details = row.closest('details');
-        if (details) details.open = true;
-        var targetSel = row.getAttribute('data-bs-target');
-        if (!targetSel) return;
-        var el = document.querySelector(targetSel);
-        if (!el) return;
-        bootstrap.Collapse.getOrCreateInstance(el, {toggle: false}).show();
-        setTimeout(function () {
-            row.scrollIntoView({behavior: 'smooth', block: 'center'});
-        }, 60);
-    }
-
+    // Chart sentinel → expand a table row. The row carries the collapse
+    // target in data-bs-target (same attribute the row/chevron toggles),
+    // keyed by attr: histogram buckets (data-ah-bucket / data-jh-bucket,
+    // index-keyed) and pie/legend entities (data-owner-uid, data-job-user,
+    // …). Scoped to the clicked chart's tab pane so other panes' identical
+    // sentinels never cross-fire.
     function openEntityRow(attr, id, scopeEl) {
         var root = scopeEl || document;
         var row = root.querySelector('tr[' + attr + '="' + id + '"]');
@@ -213,7 +174,7 @@
             var idx = href.slice(BAR_AH_PREFIX.length);
             if (idx === '') return;
             e.preventDefault();
-            openBucketRow(idx, a.closest('.tab-pane'));
+            openEntityRow('data-ah-bucket', idx, a.closest('.tab-pane'));
             return;
         }
 
@@ -240,7 +201,7 @@
             var jhIdx = href.slice(BAR_JH_PREFIX.length);
             if (jhIdx === '') return;
             e.preventDefault();
-            openJobsBucketRow(jhIdx, a.closest('.tab-pane'));
+            openEntityRow('data-jh-bucket', jhIdx, a.closest('.tab-pane'));
             return;
         }
 

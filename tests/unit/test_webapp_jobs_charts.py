@@ -131,6 +131,96 @@ def test_histogram_count_vector_in_cache_key():
 
 
 # ---------------------------------------------------------------------------
+# generate_jobs_histogram — owner-stacked bars (plugin owners_limit envelope)
+# ---------------------------------------------------------------------------
+
+def _with_owners(h, owners_by_index):
+    """Attach an owners mapping to selected buckets of a _hist() envelope."""
+    for i, owners in owners_by_index.items():
+        h['buckets'][i]['owners'] = owners
+    return h
+
+
+def _owner(job_count, cpu, gpu=0.0):
+    return {'job_count': job_count, 'cpu_hours': cpu, 'gpu_hours': gpu}
+
+
+def test_histogram_stacked_when_owners_present():
+    plain = _hist()
+    rich = _with_owners(_hist(), {
+        0: {'alice': _owner(6, 60.0), 'bob': _owner(4, 40.0)},
+        1: {'alice': _owner(5, 50.0)},
+    })
+    svg_plain = generate_jobs_histogram(plain)
+    svg_rich = generate_jobs_histogram(rich)
+    assert '<svg' in svg_rich
+    assert svg_rich != svg_plain
+
+
+def test_histogram_owner_segments_follow_active_metric():
+    """Segments are cut in the ACTIVE metric: two envelopes with identical
+    job-count splits but different cpu splits share a jobs key and diverge
+    on the cpu_hours key."""
+    from webapp.dashboards.charts import _jobs_histogram_cache_key
+    a = _with_owners(_hist(), {
+        0: {'alice': _owner(5, 90.0), 'bob': _owner(5, 10.0)}})
+    b = _with_owners(_hist(), {
+        0: {'alice': _owner(5, 50.0), 'bob': _owner(5, 50.0)}})
+    assert _jobs_histogram_cache_key(a, metric='jobs') == \
+        _jobs_histogram_cache_key(b, metric='jobs')
+    assert _jobs_histogram_cache_key(a, metric='cpu_hours') != \
+        _jobs_histogram_cache_key(b, metric='cpu_hours')
+
+
+def test_histogram_owner_remainder_segment():
+    """Owners summing below the bucket total grow a pale base segment —
+    the beyond-top-N / NULL-user remainder — reflected in the key."""
+    from webapp.dashboards.charts import _jobs_histogram_cache_key, \
+        _jobs_bucket_segments
+    truncated = _with_owners(_hist(), {
+        0: {'alice': _owner(6, 60.0)}})     # bucket holds 10 jobs → 4 unattributed
+    assert _jobs_bucket_segments(truncated['buckets'][0], 'job_count') == \
+        [4.0, 6.0]
+    even = _with_owners(_hist(), {
+        0: {'alice': _owner(5, 50.0), 'bob': _owner(5, 50.0)}})
+    assert _jobs_bucket_segments(even['buckets'][0], 'job_count') == [5.0, 5.0]
+    assert _jobs_histogram_cache_key(truncated) != \
+        _jobs_histogram_cache_key(even)
+    assert '<svg' in generate_jobs_histogram(truncated)
+
+
+def test_histogram_segments_ascending_with_remainder_first():
+    from webapp.dashboards.charts import _jobs_bucket_segments
+    b = {'job_count': 20, 'cpu_hours': 200.0, 'gpu_hours': 0.0,
+         'owners': {'alice': _owner(9, 90.0), 'bob': _owner(3, 30.0),
+                    'carol': _owner(6, 60.0)}}
+    # remainder (20-18=2) first, then owners ascending
+    assert _jobs_bucket_segments(b, 'job_count') == [2.0, 3.0, 6.0, 9.0]
+    assert _jobs_bucket_segments({'job_count': 5}, 'job_count') == []
+
+
+def test_histogram_every_segment_carries_sentinel():
+    """A stacked bucket's segments all carry the SAME #jh-bar-<i> anchor
+    (click anywhere on the bar drills the band); a zero-job bucket stays
+    inert even in a stacked chart."""
+    rich = _with_owners(_hist(counts=(10, 5, 0)), {
+        0: {'alice': _owner(6, 60.0), 'bob': _owner(4, 40.0)},
+        1: {'alice': _owner(5, 50.0)},
+    })
+    svg = generate_jobs_histogram(rich)
+    assert svg.count('#jh-bar-0') >= 2
+    assert '#jh-bar-2' not in svg
+
+
+def test_histogram_flat_fallback_without_owners():
+    """Owner-less envelopes (older plugin / cached) keep the flat path:
+    same sentinels, renders fine."""
+    svg = generate_jobs_histogram(_hist(counts=(10, 5, 0)))
+    assert '<svg' in svg
+    assert '#jh-bar-0' in svg and '#jh-bar-2' not in svg
+
+
+# ---------------------------------------------------------------------------
 # generate_jobs_user_pie_chart
 # ---------------------------------------------------------------------------
 

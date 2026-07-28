@@ -16,22 +16,29 @@
                    on card-open (collapse) + tab show; machine/user modes fire
                    when their pane is shown. See feedback_persisted_collapse_htmx.
      projcode, scope  project mode only.
+     jobs_multi_project  project mode only: True when the project's account
+                  tree spans >1 projcode — gates the By Project tab (a
+                  single-project pie would be a pie of one).
      start, end   optional YYYY-MM-DD window carried into every tab (project
                   mode passes the page's date range so aggregations stay
                   bounded; url_for drops None values).
 
    In machine mode there is no account scoping (routes are gated behind
-   VIEW_ALL_JOB_DATA); in user mode the username is pinned server-side and
-   the By User tab is omitted (it would be a pie of one).
+   VIEW_ALL_JOB_DATA) and both By User and By Project render; in user mode
+   the username is pinned server-side and the By User tab is omitted (it
+   would be a pie of one) — By Project takes its slot.
 #}
 {# Optional params default to none so url_for drops them (an undefined
    name would reach url_for as Jinja Undefined and break URL building). #}
 {% set start = start | default(none) %}
 {% set end = end | default(none) %}
 {% set scope = scope | default(none) %}
+{% set jobs_multi_project = jobs_multi_project | default(false) %}
+{% set _proj_url = none %}
 {% if mode == 'machine' %}
     {% set _jobs_url  = url_for('jobs.jobs_machine_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
     {% set _user_url  = url_for('jobs.by_user_machine_fragment',    machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
+    {% set _proj_url  = url_for('jobs.by_project_machine_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
     {% set _wait_url  = url_for('jobs.wait_times_machine_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
     {% set _sizes_url = url_for('jobs.job_sizes_machine_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
     {% set _dur_url   = url_for('jobs.durations_machine_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
@@ -48,6 +55,9 @@
 {% else %}
     {% set _jobs_url  = url_for('jobs.jobs_fragment',       projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
     {% set _user_url  = url_for('jobs.by_user_fragment',    projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
+    {% if jobs_multi_project %}
+        {% set _proj_url = url_for('jobs.by_project_fragment', projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
+    {% endif %}
     {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
     {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
     {% set _dur_url   = url_for('jobs.durations_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
@@ -77,7 +87,8 @@
             <i class="fas fa-users me-1"></i> By User
         </button>
     </li>
-    {% else %}
+    {% endif %}
+    {% if _proj_url %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="{{ cid }}-byproj-tab"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-byproj"
@@ -150,7 +161,8 @@
             </p>
         </div>
     </div>
-    {% else %}
+    {% endif %}
+    {% if _proj_url %}
     <div class="tab-pane fade" id="tab-{{ cid }}-byproj" role="tabpanel">
         <div id="{{ cid }}-byproj">
             <p class="text-muted small mb-0">

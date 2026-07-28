@@ -532,6 +532,7 @@
         <div class="card-body">
             {% with mode='project', cid='jobs-hist', tablist_id='jobsCardTabs',
                     machine=jobs_machine, projcode=projcode, scope=scope,
+                    jobs_multi_project=jobs_multi_project,
                     start=start_date, end=end_date,
                     load_trigger='shown.bs.tab once, shown.bs.collapse once from:#collapseJobsHist' %}
                 {% include 'dashboards/user/partials/jobs_card.html' %}
@@ -543,6 +544,12 @@
 
 <!-- Allocation Management Modals -->
 {% include 'dashboards/user/fragments/allocation_modals.html' %}
+
+{# Entity quick-view shells for the jobs card's By User / By Project
+   username+projcode links (base_user/base_status include these globally;
+   this page extends dashboards/base.html directly). #}
+{% include 'dashboards/user/fragments/user_details_modal.html' %}
+{% include 'dashboards/shared/project_details_modal.html' %}
 
 {% endblock %}
 

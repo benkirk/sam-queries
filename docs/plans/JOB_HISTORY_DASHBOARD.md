@@ -343,12 +343,10 @@ as-built notes in `JOB_HISTORY_FOLLOWUPS.md`:
   surfaces both as Job Sizes pills.
 - ~~Explorer inputs for elapsed/reqmem bounds~~ → S2.
 
-**Still open** (its own PR, AFTER round 2 merges — Ben's sequencing):
+**Still open**: none.
 
-- **Pre-existing, discovered via CI**: `RedisTTLAdapter` namespaces keys
-  and `clear()`/`info()` scans by `prefix` only, and the usage cache AND
-  both fs_scans buckets all sit on the default `'usage:'` prefix — so on
-  Redis, `clear('usage')` / `clear('scans')` wipe each other's entries
-  and their `info()` counts merge. The jobs buckets pass distinct
-  `prefix=<name>:` values; migrating fs_scans/usage the same way is a
-  separate PR (existing 'usage:' keys orphan until TTL at cutover).
+- ~~`RedisTTLAdapter` shared `'usage:'` prefix (usage cache + both fs_scans
+  buckets → `clear('usage')`/`clear('scans')` cross-wipe, blended `info()`
+  counts)~~ → SHIPPED on `redis_and_ux_tweaks`: name-derived default prefix,
+  flask-adapter `_FOREIGN_PREFIXES` skip list, FLUSHDB-at-deploy cutover.
+  See `REDIS_CACHE_PREFIXES.md`.

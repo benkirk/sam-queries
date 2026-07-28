@@ -180,3 +180,13 @@ charging (e.g. a refund or a usage reclassification). "On shared account from
 &lt;projcode&gt;" means the adjustment landed on a pooled allocation owned by
 another project.
 {%- endmacro %}
+
+{# ── Former project associations on the user card (popover) ── #}
+{% macro g_former_projects() -%}
+Projects this user is linked to but that no longer count as active:
+<br>&bull; <span class="badge bg-secondary">solid</span> — the <strong>project
+itself is inactive</strong> (deactivated)
+<br>&bull; <span class="badge bg-light text-secondary border">outline</span> —
+the project is still active, but this user's
+<strong>membership has ended</strong>.
+{%- endmacro %}

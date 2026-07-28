@@ -26,7 +26,7 @@ Decorating a chart-generating function::
 Inspecting all caches (used by the admin Configuration card)::
 
     caching.stats()            # → dict for the template
-    caching.clear('chart')     # category in {'flask','chart','usage','scans',None}
+    caching.clear('chart')     # category in {'flask','chart','usage','scans','jobs',None}
 """
 
 import logging

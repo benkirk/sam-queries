@@ -286,6 +286,140 @@ def test_service_jobs_usage_by_user_forwards_limit_and_account(app, monkeypatch)
     assert 'rows' in out and 'totals' in out
 
 
+def test_service_jobs_histogram_owners_limit_in_key_and_forwarded(app, monkeypatch):
+    """owners_limit reaches the plugin and discriminates the cache key —
+    an enriched envelope must never be served for a plain request (or
+    vice versa)."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_histogram('derecho', 'wait', **win)
+        service.jobs_histogram('derecho', 'wait', owners_limit=10, **win)
+        service.jobs_histogram('derecho', 'wait', owners_limit=10, **win)
+
+    assert len(captured['histogram']) == 2      # 3rd call served from cache
+    _, plain_kwargs = captured['histogram'][0]
+    _, rich_kwargs = captured['histogram'][1]
+    assert 'owners_limit' not in plain_kwargs   # None → omitted entirely
+    assert rich_kwargs['owners_limit'] == 10
+
+
+def test_service_jobs_histogram_owners_sort_in_key_and_forwarded(app, monkeypatch):
+    """owners_sort_by discriminates the cache key — a jobs-ranked owner set
+    must never be served for a GPU-hours request."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+                               owners_sort_by='job_count', **win)
+        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+                               owners_sort_by='gpu_hours', **win)
+        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+                               owners_sort_by='gpu_hours', **win)
+
+    assert len(captured['histogram']) == 2
+    _, jobs_kwargs = captured['histogram'][0]
+    _, gpu_kwargs = captured['histogram'][1]
+    assert jobs_kwargs['owners_sort_by'] == 'job_count'
+    assert gpu_kwargs['owners_sort_by'] == 'gpu_hours'
+
+
+def test_service_jobs_histogram_owners_by_in_key_and_forwarded(app, monkeypatch):
+    """owners_by='account' discriminates the cache key; the 'user' default
+    is normalized to the omitted form (same key, never forwarded) so a
+    pre-owners_by plugin keeps working on the default path."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_histogram('derecho', 'wait', **win)
+        service.jobs_histogram('derecho', 'wait', owners_by='user', **win)
+        service.jobs_histogram('derecho', 'wait', owners_by='account', **win)
+        service.jobs_histogram('derecho', 'wait', owners_by='account', **win)
+
+    # call 2 aliases call 1 (explicit default == omitted); call 4 hits 3.
+    assert len(captured['histogram']) == 2
+    _, default_kwargs = captured['histogram'][0]
+    _, account_kwargs = captured['histogram'][1]
+    assert 'owners_by' not in default_kwargs
+    assert account_kwargs['owners_by'] == 'account'
+
+
+def test_service_jobs_usage_by_sort_in_key_and_forwarded(app, monkeypatch):
+    """sort_by reaches the plugin and discriminates the cache key —
+    different rankings are different result sets."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_usage_by_user('derecho', **win)
+        service.jobs_usage_by_user('derecho', sort_by='gpu_hours', **win)
+        service.jobs_usage_by_user('derecho', sort_by='gpu_hours', **win)
+
+    assert len(captured['usage_by']) == 2
+    _, default_kwargs = captured['usage_by'][0]
+    _, gpu_kwargs = captured['usage_by'][1]
+    assert 'sort_by' not in default_kwargs      # None → plugin default
+    assert gpu_kwargs['sort_by'] == 'gpu_hours'
+
+
+def test_service_jobs_usage_by_project_forwards_sort(app, monkeypatch):
+    from webapp.jobs import service
+
+    captured = _install_agg_plugin(app, monkeypatch)
+
+    with app.app_context():
+        service.jobs_usage_by_project(
+            'derecho', username='benkirk', sort_by='job_count',
+        )
+
+    dimension, kwargs = captured['usage_by'][0]
+    assert dimension == 'account'
+    assert kwargs['sort_by'] == 'job_count'
+    assert kwargs['user'] == 'benkirk'
+
+
+def test_service_jobs_usage_by_project_scopes_in_key_and_forwarded(
+    app, monkeypatch,
+):
+    """The non-user-mode scopes: account_projcodes reaches the plugin as
+    ``account`` and discriminates the cache key; the unpinned machine-mode
+    call sends neither ``user`` nor ``account``. Different scopes must
+    never satisfy each other from cache."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_usage_by_project('derecho', **win)                 # machine
+        service.jobs_usage_by_project('derecho', **win)                 # cached
+        service.jobs_usage_by_project(
+            'derecho', account_projcodes=['SCSG0001', 'SCSG0002'], **win)  # tree
+
+    assert len(captured['usage_by']) == 2
+    _, machine_kwargs = captured['usage_by'][0]
+    assert machine_kwargs.get('user') is None   # unpinned (filter None)
+    assert 'account' not in machine_kwargs
+    _, tree_kwargs = captured['usage_by'][1]
+    assert tree_kwargs['account'] == ['SCSG0001', 'SCSG0002']
+
+
 def test_service_jobs_facets_caches_closed_window(app, monkeypatch):
     """Two identical closed-window facet calls → one plugin query; a
     different facet tuple or limit is a different key."""
