@@ -1,9 +1,13 @@
-"""Route-map parity gate for the form-layer OO refactor.
+"""Route-map parity gate for registration-mechanics refactors.
 
-The refactor rewrites how dashboard routes are *registered* (handler
-classes, the CRUD registrar) while promising that the registered surface
-— every ``(endpoint, rule, methods)`` triple — is untouched, so template
-``url_for`` calls and htmx attributes keep working.
+Two refactors have rewritten how routes are *registered* while promising
+the registered surface — every ``(endpoint, rule, methods)`` triple — is
+untouched, so template ``url_for`` calls and htmx attributes keep working:
+
+1. the form-layer OO refactor (handler classes, the CRUD registrar), and
+2. the fs-scans ↔ job-history consolidation, which moves the two
+   navigators' 37 fragment routes onto a shared ``ModeSpec``/``PanelSpec``
+   registrar (``docs/plans/FS_SCANS_JOBS_CONSOLIDATION.md``).
 
 This test pins that promise to a checked-in snapshot. A legitimate route
 addition/removal regenerates it:
@@ -21,10 +25,18 @@ import pytest
 
 SNAPSHOT = Path(__file__).parent / 'snapshots' / 'dashboard_route_map.json'
 
-#: Blueprints whose registration mechanics the refactor touches.
+#: Blueprints whose registration mechanics a refactor touches.
+#:
+#: ``jobs`` and ``disk_scans`` are the two fragment navigators. They are
+#: registered from ``webapp/{jobs,disk_scans}/routes.py`` rather than under
+#: ``dashboards/``, but they render into the user/status dashboards and their
+#: endpoints are named by ``url_for`` in a dozen templates — so their surface
+#: needs the same gate.
 DASHBOARD_BLUEPRINTS = (
     'admin_dashboard',
     'allocations_dashboard',
+    'disk_scans',
+    'jobs',
     'project_members',
     'status_dashboard',
     'user_dashboard',

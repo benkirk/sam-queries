@@ -14,7 +14,7 @@ and shipped without touching fs-scans (`JOB_HISTORY_DASHBOARD.md` →
 | plugin loader | `session.py` 322 L | `session.py` 232 L |
 | TTL cache | `cache.py` 253 L | `cache.py` 235 L |
 | query layer | `service.py` 682 L | `service.py` 721 L |
-| blueprint | `routes.py` 944 L, 13 routes | `routes.py` 1857 L, 21 routes |
+| blueprint | `routes.py` 944 L, 14 routes | `routes.py` 1857 L, 23 routes |
 | scoping | `scope.py` 102 L | (inline in routes/service) |
 | modes | project / resource / user | project / machine / user |
 
@@ -57,7 +57,7 @@ Each feature fans its 3 modes out at three layers:
   pinning rule.
 - **routes**: `_common_ctx` / `_resource_ctx` / `_user_ctx`;
   `_project_histogram` / `_machine_histogram` / `_user_histogram` (three ~18 L
-  bodies differing by gate, `target_id` default, scope kwarg); 34 route bodies
+  bodies differing by gate, `target_id` default, scope kwarg); 37 route bodies
   that are mostly `build ctx → url_for → closure → call shared renderer`.
 - **jobs also**: four cached-aggregation wrappers repeating one
   `kwargs → pins → _compute → opts → cached_jobs_aggregation` skeleton.
@@ -221,7 +221,7 @@ become scope-constructor tests — better placed, not lost.
 **C0 (the safety gate).** `tests/unit/test_route_map_parity.py` pinned only the
 five dashboard blueprints. Add `jobs` and `disk_scans` to
 `DASHBOARD_BLUEPRINTS` and regen the snapshot **against unmodified code**, so
-every subsequent commit is provably surface-preserving: all 34
+every subsequent commit is provably surface-preserving: all 37
 `(endpoint, rule, methods)` triples must stay byte-identical.
 
 **C1. `webapp/utils/fragments.py`** — modeled on the accepted `CrudSpec` /
@@ -248,12 +248,12 @@ Carries over CrudSpec's hard rule verbatim: **a panel needing more than the
 spec expresses stays a bespoke route.** The three `explore_*` full pages and
 three `/card` shells stay hand-written unless they fit cleanly.
 
-**C2.** `jobs/routes.py`: 21 routes → two tables + the existing `_render_*`
+**C2.** `jobs/routes.py`: 23 routes → two tables + the existing `_render_*`
 bodies. The three `_*_histogram` helpers collapse to one. The
 `_id_arg`/`target_id` derivation (repeated inline in 7 bodies) moves into
 `ModeSpec`.
 
-**C3.** `disk_scans/routes.py`: 13 routes the same way; the three near-verbatim
+**C3.** `disk_scans/routes.py`: 14 routes the same way; the three near-verbatim
 12-line `_scan` closures disappear (the scope object already carries what they
 were forwarding).
 
@@ -307,7 +307,7 @@ Explicitly out of scope — recorded so a later reader doesn't "finish the job".
 | 10 | C3 — `disk_scans/routes.py` onto the registrar | parity snapshot unchanged |
 | 11 | C4 — usage-panel + entity-table template folds | browser smoke |
 
-C0 goes second so the 34-route surface is pinned *before* anything touches
+C0 goes second so the 37-route surface is pinned *before* anything touches
 route bodies. B precedes C because the registrar needs a scope object to hand
 each render function. Stopping after commit 10 (or 7) leaves a coherent,
 shippable state.
