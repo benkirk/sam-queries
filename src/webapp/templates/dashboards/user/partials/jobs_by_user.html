@@ -1,5 +1,7 @@
 {% from 'dashboards/user/partials/_jobs_macros.html'
    import jobs_disabled, jobs_error, jobs_empty %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {#
   By User fragment — per-user usage pie + drillable rows. Embedded via
   hx-get from the Job History card (project + machine modes; hidden in
@@ -75,7 +77,7 @@
           <tr>
             <th class="sortable-header" data-sort="text">User</th>
             <th class="sortable-header text-end{% if metric == 'jobs' %} sort-desc{% endif %}" data-sort="numeric">Jobs</th>
-            <th class="sortable-header text-end{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">CPU-hours</th>
+            <th class="sortable-header text-end{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">{{ term('CPU-hours', g_cpu_hours()) }}</th>
             <th class="sortable-header text-end{% if metric == 'gpu_hours' %} sort-desc{% endif %}" data-sort="numeric">GPU-hours</th>
           </tr>
         </thead>

@@ -56,6 +56,20 @@
 {% macro _persist(pid) -%}
 {%- if pid %} data-chart-persist-id="{{ pid }}" data-chart-persist-keys="days"{% endif -%}
 {%- endmacro %}
+{# The panel lens — which metric, whose segments, and (Job Sizes only)
+   which dimension. Declared on both ends of every panel that has pills:
+   on the tab button, so the stored lens is injected into the panel fetch
+   (including the one a period pill's shell re-render triggers), and on
+   the panel container, which is the element htmx reports as settled — so
+   an in-panel pill click persists with no click handler of its own.
+   `metric:jobs` is family-scoped: the word means something different on
+   the queue-load and usage charts, and the families must not collide.
+   `group_by` is deliberately bare — user|project means the same thing
+   here and on the status queue-load chart, so the choice carries across.
+   The Jobs tab opts out: none of the three apply to a per-job table. #}
+{% macro _lens() -%}
+ data-chart-persist-shared="group_by metric:jobs dimension:jobs"
+{%- endmacro %}
 {# The explorer link speaks ?days= rather than a computed date so the
    cold-start sync in JS never has to re-derive a window client-side. #}
 {% set _x_start = none if days else start %}
@@ -129,7 +143,7 @@
                 hx-get="{{ _user_url }}"
                 hx-target="#{{ cid }}-byuser"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}>
+                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-users me-1"></i> By User
         </button>
     </li>
@@ -142,7 +156,7 @@
                 hx-get="{{ _proj_url }}"
                 hx-target="#{{ cid }}-byproj"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}>
+                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-diagram-project me-1"></i> By Project
         </button>
     </li>
@@ -154,7 +168,7 @@
                 hx-get="{{ _wait_url }}"
                 hx-target="#{{ cid }}-wait"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}>
+                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-hourglass-half me-1"></i> Wait Times
         </button>
     </li>
@@ -165,7 +179,7 @@
                 hx-get="{{ _sizes_url }}"
                 hx-target="#{{ cid }}-sizes"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}>
+                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-layer-group me-1"></i> Job Sizes
         </button>
     </li>
@@ -176,7 +190,7 @@
                 hx-get="{{ _dur_url }}"
                 hx-target="#{{ cid }}-durations"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}>
+                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-stopwatch me-1"></i> Durations
         </button>
     </li>
@@ -215,7 +229,7 @@
     </div>
     {% if mode != 'user' %}
     <div class="tab-pane fade" id="tab-{{ cid }}-byuser" role="tabpanel">
-        <div id="{{ cid }}-byuser">
+        <div id="{{ cid }}-byuser"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading…
             </p>
@@ -224,7 +238,7 @@
     {% endif %}
     {% if _proj_url %}
     <div class="tab-pane fade" id="tab-{{ cid }}-byproj" role="tabpanel">
-        <div id="{{ cid }}-byproj">
+        <div id="{{ cid }}-byproj"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading…
             </p>
@@ -232,21 +246,21 @@
     </div>
     {% endif %}
     <div class="tab-pane fade" id="tab-{{ cid }}-wait" role="tabpanel">
-        <div id="{{ cid }}-wait">
+        <div id="{{ cid }}-wait"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading wait times…
             </p>
         </div>
     </div>
     <div class="tab-pane fade" id="tab-{{ cid }}-sizes" role="tabpanel">
-        <div id="{{ cid }}-sizes">
+        <div id="{{ cid }}-sizes"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading job sizes…
             </p>
         </div>
     </div>
     <div class="tab-pane fade" id="tab-{{ cid }}-durations" role="tabpanel">
-        <div id="{{ cid }}-durations">
+        <div id="{{ cid }}-durations"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading durations…
             </p>

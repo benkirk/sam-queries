@@ -1,5 +1,7 @@
 {% from 'dashboards/user/partials/_jobs_macros.html'
    import jobs_disabled, jobs_error, jobs_empty %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {#
   By Project fragment — per-project usage pie + drillable rows, the
   mirror of jobs_by_user.html. All three modes: user (the pinned user's
@@ -76,7 +78,7 @@
           <tr>
             <th class="sortable-header" data-sort="text">Project</th>
             <th class="sortable-header text-end{% if metric == 'jobs' %} sort-desc{% endif %}" data-sort="numeric">Jobs</th>
-            <th class="sortable-header text-end{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">CPU-hours</th>
+            <th class="sortable-header text-end{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">{{ term('CPU-hours', g_cpu_hours()) }}</th>
             <th class="sortable-header text-end{% if metric == 'gpu_hours' %} sort-desc{% endif %}" data-sort="numeric">GPU-hours</th>
           </tr>
         </thead>

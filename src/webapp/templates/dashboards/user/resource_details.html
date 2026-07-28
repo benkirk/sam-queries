@@ -447,10 +447,14 @@
         <div class="card-body">
             {# Chart loads via HTMX so the metric pill selector (Charges
                / Job Count / Core-Hours) can swap the SVG in place.
-               nav-view-persistence.js round-trips the `metric` URL
-               param through localStorage via the data-chart-persist-*
-               attributes, so the analyst's choice survives page
-               reloads. #}
+               nav-view-persistence.js round-trips the `metric` URL param
+               through localStorage, so the analyst's choice survives page
+               reloads — and, being stored under the shared `metric:usage`
+               family key rather than a per-page id, follows them from one
+               project's resource page to the next. Family-scoped because
+               these values (charges|jobs|core_hours) are not the ones any
+               other chart's metric pill offers. A resource whose type
+               lacks the stored metric clamps back to charges server-side. #}
             <div id="usage-chart-wrapper"
                  hx-get="{{ url_for('user_dashboard.resource_details_usage_chart',
                                     projcode=projcode,
@@ -461,8 +465,7 @@
                                     metric='charges') }}"
                  hx-trigger="load"
                  hx-swap="innerHTML"
-                 data-chart-persist-id="usage-chart-{{ projcode }}-{{ resource_name }}"
-                 data-chart-persist-keys="metric">
+                 data-chart-persist-shared="metric:usage">
                 <div class="text-center text-muted py-5">
                     <i class="fas fa-spinner fa-spin"></i> Loading chart…
                 </div>

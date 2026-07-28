@@ -22,9 +22,16 @@
     'group_by': group_by, 'state': state, 'metric': metric,
     'hours': hours, 'rank_by': rank_by,
 } %}
+{# Two persistence channels (nav-view-persistence.js): `state` and
+   `rank_by` mean something only here, so they stay in this chart's own
+   bucket; `group_by` (user|project) is the same choice the job-history
+   histograms offer, so it rides the shared bucket and carries across —
+   and `metric` rides it family-scoped, because the word means
+   jobs|cores|gpus|nodes here but something else on every other chart. #}
 <div id="{{ chart_dom_id }}"
      data-chart-persist-id="{{ chart_dom_id }}"
-     data-chart-persist-keys="group_by state metric rank_by">
+     data-chart-persist-keys="state rank_by"
+     data-chart-persist-shared="group_by metric:queue">
     <div class="d-flex flex-wrap flex-lg-nowrap gap-2 mb-3 align-items-end">
         <div>
             <label class="form-label small text-muted mb-1 me-2">Group by</label>
