@@ -292,8 +292,13 @@ tab-pane fade{{ ' show active' if key == active_tab }}
         <div class="btn-group btn-group-sm" role="group" aria-label="Time window"
              {%- if days_persist_id %} data-jobs-days-pills{% endif %}>
             {% for _d, _label in jobs_window_pills %}
+            {# btn-outline-secondary + `active` — the selector convention used
+               by the metric pills, the date presets and the machine subtabs.
+               The old btn-primary/btn-outline-primary pair rendered
+               blue-is-active, backwards against every other selector on the
+               page (same bug 19ab6c0 fixed for the metric pills). #}
             <button type="button" data-days-value="{{ _d }}"
-                    class="btn {% if days == _d %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                    class="btn btn-outline-secondary{% if days == _d %} active{% endif %}"
                     hx-get="{{ _card_q }}days={{ _d }}"
                     hx-target="#{{ cid }}-card"
                     hx-swap="outerHTML">{{ _label }}</button>
