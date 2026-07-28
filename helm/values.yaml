@@ -36,17 +36,28 @@ topologySpread:
 #   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI → DB 1)
 # Single replica, no persistence, no HA. Eviction = allkeys-lru.
 # See docs/plans/REDIS.md.
+#
+# maxmemory sizing: one instance holds all 13 chart SVG caches, both jobs
+# aggregation buckets, both fs-scans buckets, the allocation-usage cache
+# and the whole Flask-Caching layer. A single cached jobs pie SVG measures
+# ~49 KB and owner-stacked histograms run larger, and the jobs explorer
+# multiplies the distinct chart keys in flight (one per filter set viewed
+# inside the 10-minute chart TTL). Headroom is the safe direction because
+# allkeys-lru is instance-GLOBAL: under pressure it is free to evict the
+# rate limiter's DB 1 counters. Container limit keeps ~1.7x maxmemory for
+# redis overhead and fragmentation. Watch `INFO stats: evicted_keys` and
+# `INFO memory: used_memory_peak_human` before changing it again.
 cache:
   enabled: true
   name: samuel-redis
   image: docker.io/library/redis:7-alpine
   port: 6379
-  maxmemoryMB: 64
+  maxmemoryMB: 192
   requests:
-    memory: 32Mi
+    memory: 64Mi
     cpu: 50m
   limits:
-    memory: 96Mi
+    memory: 320Mi
     cpu: 500m
   # Pod/container security hardening. redis:7-alpine ships uid=999(redis)
   # gid=1000(redis) (verified: `docker run --rm redis:7-alpine id redis`);

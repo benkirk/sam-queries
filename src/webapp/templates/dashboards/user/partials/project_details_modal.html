@@ -10,16 +10,26 @@
         {# Check if user can edit allocations #}
         {% set user_can_edit_allocations = has_permission(Permission.EDIT_ALLOCATIONS) if has_permission is defined and Permission is defined else false %}
 
-        {# Edit Project link — visible to EDIT_PROJECTS permission holders
-           AND to project leads/admins (matches can_access_edit_project_page). #}
-        {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
-        <div class="d-flex justify-content-end mb-2">
+        {# The modal header carries the projcode alone (set by the route's
+           setModalTitle HX-Trigger), and nothing below it named the
+           project either — so a viewer who arrived from a job table or a
+           chart segment got an identifier and no idea what it was. Same
+           projcode-then-title shape the dashboard project cards and the
+           allocations usage modal already use; long titles wrap here
+           rather than overflowing the modal header.
+
+           Shares its row with the Edit Project link — visible to
+           EDIT_PROJECTS holders AND to project leads/admins (matches
+           can_access_edit_project_page). #}
+        <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+            <h6 class="mb-0 fw-normal">{{ project.title or 'Untitled Project' }}</h6>
+            {% if can_act_on_project(Permission.EDIT_PROJECTS, project) %}
             <a href="{{ url_for('admin_dashboard.edit_project_page', projcode=project.projcode) }}"
-               class="btn btn-primary">
+               class="btn btn-primary flex-shrink-0">
                 <i class="fas fa-edit"></i> Manage Project
             </a>
+            {% endif %}
         </div>
-        {% endif %}
 
         {# Render project info section #}
         {{ render_project_info(project) }}

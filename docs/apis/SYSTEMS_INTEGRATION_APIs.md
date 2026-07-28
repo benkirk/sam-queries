@@ -768,13 +768,13 @@ Clears caches and returns the number of entries cleared per category.
 
 | Param      | Values                          | Effect                        |
 |------------|---------------------------------|-------------------------------|
-| `category` | `flask` \| `chart` \| `usage` \| `scans` | Clear only that category |
+| `category` | `flask` \| `chart` \| `usage` \| `scans` \| `jobs` | Clear only that category |
 | *(omitted)*| —                               | Clear **all** categories      |
 
 **Response**:
 
 ```json
-{"status": "ok", "cleared": {"flask": 12, "chart": 3, "usage": 0, "scans": 1}}
+{"status": "ok", "cleared": {"flask": 12, "chart": 3, "usage": 0, "scans": 1, "jobs": 4}}
 ```
 
 With `?category=chart`, only the `chart` key is present. An unrecognized

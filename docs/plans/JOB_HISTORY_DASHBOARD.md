@@ -176,9 +176,12 @@ Files: `src/webapp/jobs/routes.py`, `src/webapp/jobs/service.py`,
   username=None, **filters)` and `jobs_usage_by_user(machine, *, limit=50,
   **filters)` (plugin `jobs_usage_by('user', …)`; "Other" = totals − Σrows).
 - NEW `src/webapp/jobs/cache.py` — clone `disk_scans/cache.py` minus the
-  scan-date signature (pure TTL): bucket `historical` (`JOBS_CACHE_TTL`
-  21600 s / 256 entries; windows with `end < today`) and `recent`
-  (`JOBS_RECENT_CACHE_TTL` 900 s / 128; window touches today). Cache ONLY
+  scan-date signature (pure TTL): bucket `historical` (`JOBS_CACHE_TTL`;
+  windows with `end < today`) and `recent` (`JOBS_RECENT_CACHE_TTL` 900 s;
+  window touches today). As-built here was 21600 s / 256 and 900 s / 128;
+  retuned to 1800 s / 512 and 900 s / 512 by `JOBS_EXPLORER_CHARTS.md`
+  (late-arriving records make a closed window only *nearly* immutable, and
+  the explorer fans out far more keys). Cache ONLY
   the aggregations; paged search + counts stay uncached.
   Key: `(query_type, machine, sorted(normalized opts))`.
 - `src/webapp/caching/__init__.py`: register in `adapters()`,
@@ -344,6 +347,15 @@ as-built notes in `JOB_HISTORY_FOLLOWUPS.md`:
 - ~~Explorer inputs for elapsed/reqmem bounds~~ → S2.
 
 **Still open**: none.
+
+**Round 4 (2026-07-28)** — `JOBS_EXPLORER_CHARTS.md`: the explorer stops
+being a bare table and hosts the same six-tab card (its Jobs tab *is* the
+table). Also from that round: `jobs_card.html` became a Jinja macro,
+histogram bands are trimmed at both edges (all-zero → one empty state),
+panel relevance became a single `panel_relevance()` rule feeding both the
+tab strip and the histograms' owner axis, the facet chip strip moved from
+the table's OOB block into the card shell, and the jobs cache TTL/size
+plus Redis `maxmemory` were retuned.
 
 - ~~`RedisTTLAdapter` shared `'usage:'` prefix (usage cache + both fs_scans
   buckets → `clear('usage')`/`clear('scans')` cross-wipe, blended `info()`

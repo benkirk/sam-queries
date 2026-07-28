@@ -241,10 +241,15 @@ def job_history():
         DEFAULT_JOBS_WINDOW_DAYS,
         default_jobs_window_start,
     )
+    from webapp.jobs.routes import panel_relevance as jobs_panel_relevance
     return render_template(
         'dashboards/status/job_history_page.html',
         jobs_window_start=default_jobs_window_start(),
         jobs_window_days=DEFAULT_JOBS_WINDOW_DAYS,
+        # Machine-wide: neither axis is pinned, so both breakdown tabs
+        # render. Derived rather than hardcoded so this page follows the
+        # same rule as the scoped surfaces.
+        jobs_panels=jobs_panel_relevance(mode='machine'),
         **_page_context(db.session),
     )
 

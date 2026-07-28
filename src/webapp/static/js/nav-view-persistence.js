@@ -395,6 +395,26 @@
         restoreTabs(card);
     });
 
+    // ── Job explorer: tell the server which tab is open ──────────────────────
+    //
+    // The explorer's filter panel re-renders the whole card, for the same
+    // reason a pill does. Without this the server would always render Jobs
+    // active, so an Apply while looking at a chart fetched BOTH — the chart
+    // the viewer wanted and a per-job table nobody asked for (16s+ on a
+    // machine-wide Casper window). The form carries the open tab instead, so
+    // the shell comes back with that tab already active and exactly one
+    // panel fetches.
+    //
+    // Markup contract: [data-jobs-tab="<key>"] on each tab button,
+    // [data-jobs-active-tab-input] on the form's hidden field.
+    document.addEventListener('shown.bs.tab', function (event) {
+        var key = event.target && event.target.dataset
+            ? event.target.dataset.jobsTab : null;
+        if (!key) return;
+        document.querySelectorAll('[data-jobs-active-tab-input]')
+            .forEach(function (input) { input.value = key; });
+    });
+
     // ── Scroll preservation across full-page navigation ──────────────────────
     //
     // Time-filter clicks (?hours=N) trigger `window.location.href = ...` or

@@ -3,6 +3,7 @@
 {% from 'dashboards/user/partials/_resource_details_macros.html' import jobs_button, jobs_collapse_row with context %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_core_hours, g_charges with context %}
+{% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
 
 {% block title %}Resource Details - {{ resource_name }} - SAM{% endblock %}
 
@@ -533,13 +534,13 @@
     </div>
     <div id="collapseJobsHist" class="collapse">
         <div class="card-body">
-            {% with mode='project', cid='jobs-hist', tablist_id='jobsCardTabs',
-                    machine=jobs_machine, projcode=projcode, scope=scope,
-                    jobs_multi_project=jobs_multi_project,
-                    start=start_date, end=end_date,
-                    load_trigger='shown.bs.tab once, shown.bs.collapse once from:#collapseJobsHist' %}
-                {% include 'dashboards/user/partials/jobs_card.html' %}
-            {% endwith %}
+            {{ jobs_card(mode='project', cid='jobs-hist', tablist_id='jobsCardTabs',
+                         machine=jobs_machine, projcode=projcode,
+                         show_by_user=jobs_panels.show_by_user,
+                         show_by_project=jobs_panels.show_by_project,
+                         panel_params={'start': start_date, 'end': end_date,
+                                       'scope': scope},
+                         load_trigger='shown.bs.tab once, shown.bs.collapse once from:#collapseJobsHist') }}
         </div>
     </div>
 </div>

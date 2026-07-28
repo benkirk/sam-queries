@@ -160,6 +160,29 @@ def test_jobs_cache_info_shape_enabled():
     assert [i['name'] for i in infos] == ['jobs', 'jobs_recent']
 
 
+def test_jobs_cache_defaults_cap_staleness_at_thirty_minutes():
+    """Job records keep arriving for windows already closed, so even the
+    'historical' bucket is only nearly-immutable. These TTLs are the ONLY
+    freshness lever — the chart SVG caches are keyed by a content hash, so
+    they can never serve a stale panel on their own."""
+    from webapp.jobs import cache as c
+
+    ttls = {b: spec['ttl'][1] for b, spec in c._BUCKETS.items()}
+    assert ttls['historical'] == 1800
+    assert ttls['recent'] == 900
+    assert max(ttls.values()) <= 1800
+
+
+def test_jobs_cache_sizes_fit_the_explorer_fan_out():
+    """One explorer filter set is ~22 aggregation keys (8 histogram
+    dimensions x 2 owner axes + 2 rollups x 3 sort orders), so a
+    cards-era 128 held about six of them."""
+    from webapp.jobs import cache as c
+
+    sizes = {b: spec['size'][1] for b, spec in c._BUCKETS.items()}
+    assert min(sizes.values()) >= 512
+
+
 def test_jobs_cache_info_shape_disabled():
     """With buckets disabled, info still reports both (disabled_info shape)."""
     from webapp.jobs import cache as c

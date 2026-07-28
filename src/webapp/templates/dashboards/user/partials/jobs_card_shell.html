@@ -1,0 +1,24 @@
+{# Thin adapter: lets the /card routes render_template() the jobs_card
+   macro, which is otherwise imported by the host templates. Keeping the
+   macro the single definition means the pill re-render and the initial
+   page render can never drift.
+
+   Every optional arg goes through |default() because the route's context
+   only carries the keys that mode needs (projcode/scope are absent in
+   machine and user modes). #}
+{% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
+{{- jobs_card(mode=mode, cid=cid, tablist_id=tablist_id, machine=machine,
+              load_trigger=load_trigger,
+              projcode=projcode | default(none),
+              show_by_user=show_by_user | default(true),
+              show_by_project=show_by_project | default(true),
+              panel_params=panel_params | default({}),
+              jobs_params=jobs_params | default(none),
+              days=days | default(none),
+              days_persist_id=days_persist_id | default(none),
+              show_pills=show_pills | default(true),
+              show_explore_link=show_explore_link | default(true),
+              facet_chips=facet_chips | default(none),
+              facet_filters=facet_filters | default({}),
+              facet_form_id=facet_form_id | default(none),
+              active_tab=active_tab | default('jobs')) -}}

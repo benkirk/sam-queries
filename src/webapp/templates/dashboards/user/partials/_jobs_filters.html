@@ -3,20 +3,26 @@
   Reusable jobs-explorer filter panel in the Unity .filter-sidebar house
   style (navy panel + gold title + white controls + "Clear filters"),
   matching _disk_scans_dir_filters.html. The caller wraps this macro in a
-  <div class="filter-sidebar">. Rendered above the table container on the
-  standalone explorer page; on submit it hx-get's *fragment_url* (the
-  mode's per-job fragment) into #target_id with all of its fields.
+  <div class="filter-sidebar">.
+
+  On submit it re-renders the whole jobs CARD (hx-swap="outerHTML" onto
+  #card_target), because that is the only way the six panels pick up a
+  new filter set: each bakes its own into its hx-get at render time.
+  Exactly what a period pill does on the cards, with a bigger param set.
+  Only the panel that is actually on screen then fetches.
 
   Args:
     form_id         unique id for this form instance
-    fragment_url    the per-job fragment to fetch (project/machine/user mode)
-    target_id       container the fragment swaps into
+    card_url        the mode's /card route, carrying surface=explorer
+    card_target     element id of the card wrapper to swap
     filters         the parsed _panel_filters() dict (current raw values)
     user_search_url fk-picker search endpoint (admin_dashboard.htmx_search_users, fk)
     machine         plugin machine key, echoed back on submit
     scope           project-mode subtree re-root, echoed back on submit
     per_page_options  row-count choices for the rows selector
     mode            'project' | 'machine' | 'user'
+    active_tab      which card tab is open, round-tripped so the
+                    re-rendered card fetches only that one panel
 
   The user picker stores a SAM user_id under ``user_id``; the route
   resolves it to the PBS username the job data is keyed on (see
@@ -24,13 +30,13 @@
   picker is omitted — it must not be possible to re-filter the explorer
   to another user there.
 #}
-{% macro jobs_filters(form_id, fragment_url, target_id, filters,
+{% macro jobs_filters(form_id, card_url, card_target, filters,
                       user_search_url, machine, scope, per_page_options,
-                      mode='project') %}
+                      mode='project', active_tab='jobs') %}
 <form id="{{ form_id }}"
-      hx-get="{{ fragment_url }}"
-      hx-target="#{{ target_id }}"
-      hx-swap="innerHTML"
+      hx-get="{{ card_url }}"
+      hx-target="#{{ card_target }}"
+      hx-swap="outerHTML"
       hx-trigger="submit">
   <div class="filter-sidebar-header">
     <h2 class="filter-sidebar-title">
@@ -51,13 +57,17 @@
      data-no-persist: the responsive default owns the initial state. #}
   <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
 
-  {# Scope context — submitted alongside the visible filter controls.
-     chips=1 asks the fragment for the OOB facet-chip strip (explorer is
-     this macro's only consumer; card embeds never send it). #}
+  {# Scope context — submitted alongside the visible filter controls, so
+     the card route can rebuild the panel URLs. (The per-panel target_id
+     and the chip request are the card macro's to bake in; they are not
+     the viewer's to set.) #}
   <input type="hidden" name="machine" value="{{ machine }}">
   {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
-  <input type="hidden" name="target_id" value="{{ target_id }}">
-  <input type="hidden" name="chips" value="1">
+  {# Which tab is open, so the re-rendered card comes back with it already
+     active and only that one panel fetches. nav-view-persistence.js keeps
+     this in sync on shown.bs.tab. #}
+  <input type="hidden" name="active_tab" value="{{ active_tab }}"
+         data-jobs-active-tab-input>
 
   <div class="d-flex flex-wrap align-items-end gap-3">
     <div>
