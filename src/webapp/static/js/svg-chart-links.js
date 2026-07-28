@@ -79,6 +79,22 @@
     // index-keyed) and pie/legend entities (data-owner-uid, data-job-user,
     // …). Scoped to the clicked chart's tab pane so other panes' identical
     // sentinels never cross-fire.
+    // A chart link may target a row in a DIFFERENT tab pane: the stacked
+    // Usage Trend chart lives in the resource-details History pane, but its
+    // legend usernames address rows in the By User pane. Opening a collapse
+    // inside a hidden pane would "work" invisibly, so activate the owning
+    // pane first. No-op for same-pane links and for charts outside any tabs.
+    function activateOwningTab(el) {
+        if (!window.bootstrap || !el.closest) return;
+        var pane = el.closest('.tab-pane');
+        if (!pane || !pane.id || pane.classList.contains('active')) return;
+        var trigger = document.querySelector(
+            '[data-bs-toggle="tab"][data-bs-target="#' + pane.id + '"]');
+        if (trigger) {
+            try { bootstrap.Tab.getOrCreateInstance(trigger).show(); } catch (_) {}
+        }
+    }
+
     function openEntityRow(attr, id, scopeEl) {
         var root = scopeEl || document;
         var row = root.querySelector('tr[' + attr + '="' + id + '"]');
@@ -95,6 +111,7 @@
     function openDayRow(isoDate) {
         var row = document.querySelector('tr[data-date="' + isoDate + '"]');
         if (!row || !window.bootstrap) return;
+        activateOwningTab(row);
 
         // 3-level mode: parent month <tbody> must be expanded first
         // so the day <tr> is rendered before we try to open it.
@@ -132,24 +149,22 @@
         }, 60);
     }
 
-    // Legend username → expand that user's row in the Usage by User card.
-    // The user row's first <td> carries data-sort-value="<username>"
+    // Username → expand that user's row in the Usage by User table. Two
+    // charts address it: the By User pie (same pane) and the stacked Usage
+    // Trend legend (History pane), hence activateOwningTab. The user row's
+    // first <td> carries data-sort-value="<username>"
     // (resource_details.html), scoped to #users-table. Looking up by username
     // (not the render-time uid) is robust to the table's client-side
-    // re-sorting. The card body (#collapseUsers) is opened first in case the
-    // analyst collapsed it. Single-triple users render inline with no
-    // collapse target — we just scroll to them.
+    // re-sorting. Single-triple users render inline with no collapse target
+    // — we just scroll to them.
     function openUserRow(username) {
         if (!window.bootstrap) return;
-        var card = document.getElementById('collapseUsers');
-        if (card) {
-            bootstrap.Collapse.getOrCreateInstance(card, {toggle: false}).show();
-        }
         var cell = document.querySelector(
             '#users-table td[data-sort-value="' + username + '"]');
         if (!cell) return;
         var row = cell.closest('tr');
         if (!row) return;
+        activateOwningTab(row);
         var sel = row.getAttribute('data-bs-target');
         if (sel) {
             var el = document.querySelector(sel);
