@@ -17,6 +17,7 @@
    (the my_jobs route 404s otherwise), so it never needs its own
    empty/disabled state.
 #}
+{% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
 <ul class="nav nav-pills mb-3" id="myJobsSubtabs" role="tablist">
     {% for m in job_history_machines %}
     <li class="nav-item" role="presentation">
@@ -37,16 +38,14 @@
         {% else %}
             {% set _trigger = 'shown.bs.tab once from:#my-jobs-subtab-' ~ loop.index %}
         {% endif %}
-        {% with mode='user',
-                cid='my-jobs-m' ~ loop.index,
-                tablist_id='myJobsCardTabs' ~ loop.index,
-                machine=m,
-                start=jobs_window_start,
-                days=jobs_window_days,
-                days_persist_id='jobs-days-my-jobs',
-                load_trigger=_trigger %}
-            {% include 'dashboards/user/partials/jobs_card.html' %}
-        {% endwith %}
+        {{ jobs_card(mode='user',
+                     cid='my-jobs-m' ~ loop.index,
+                     tablist_id='myJobsCardTabs' ~ loop.index,
+                     machine=m,
+                     start=jobs_window_start,
+                     days=jobs_window_days,
+                     days_persist_id='jobs-days-my-jobs',
+                     load_trigger=_trigger) }}
     </div>
     {% endfor %}
 </div>

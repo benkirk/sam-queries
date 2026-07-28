@@ -1,8 +1,17 @@
 {# ── Job History card (shared, mode-parameterized) ──────────────────────
-   The Jobs / By User / Wait Times / Job Sizes / Durations tab strip, each
-   lazy-loading its jobs.* fragment via hx-get. Shared by the compute
-   resource-details page (mode='project'), the Status dashboard's Job
-   History subtabs (mode='machine'), and the My Jobs page (mode='user').
+   The Jobs / By User / By Project / Wait Times / Job Sizes / Durations tab
+   strip, each lazy-loading its jobs.* fragment via hx-get. Shared by the
+   compute resource-details page (mode='project'), the Status dashboard's
+   Job History subtabs (mode='machine'), and the My Jobs page (mode='user').
+
+   Import it, don't include it — the parameter surface is explicit:
+
+     {% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
+     {{ jobs_card(mode='project', cid='jobs-hist', …) }}
+
+   A context-free import is fine: the only globals the body needs
+   (url_for, jobs_window_pills) are true Jinja globals, not context
+   processors.
 
    Params:
      mode        'project' | 'machine' | 'user'
@@ -22,13 +31,13 @@
      start, end   optional YYYY-MM-DD window carried into every tab (project
                   mode passes the page's date range so aggregations stay
                   bounded; url_for drops None values).
-     days        optional lookback (one of jobs_window_pills) — paints the
-                 matching period pill active. The pills re-render this whole
-                 shell via jobs.jobs_card*_fragment, which is the only way
-                 the six tabs can pick up a new window: each bakes its own
-                 into its hx-get at render time. `none` leaves no pill
-                 active, which is how project mode says "showing the page's
-                 own date range, not a lookback".
+     days         optional lookback (one of jobs_window_pills) — paints the
+                  matching period pill active. The pills re-render this whole
+                  shell via jobs.jobs_card*_fragment, which is the only way
+                  the six tabs can pick up a new window: each bakes its own
+                  into its hx-get at render time. `none` leaves no pill
+                  active, which is how project mode says "showing the page's
+                  own date range, not a lookback".
      days_persist_id  optional localStorage key (via the shared
                  data-chart-persist-* contract) for the chosen window.
                  Set it and the selection follows the viewer across machine
@@ -41,14 +50,6 @@
    the username is pinned server-side and the By User tab is omitted (it
    would be a pie of one) — By Project takes its slot.
 #}
-{# Optional params default to none so url_for drops them (an undefined
-   name would reach url_for as Jinja Undefined and break URL building). #}
-{% set start = start | default(none) %}
-{% set end = end | default(none) %}
-{% set scope = scope | default(none) %}
-{% set days = days | default(none) %}
-{% set days_persist_id = days_persist_id | default(none) %}
-{% set jobs_multi_project = jobs_multi_project | default(false) %}
 {# Persisted-window markers, repeated on every tab button: the
    configRequest handler in nav-view-persistence.js only injects into
    elements that carry them THEMSELVES, so each tab has to opt in for its
@@ -76,6 +77,10 @@
 {% macro _lens() -%}
  data-chart-persist-shared="group_by metric:jobs dimension:jobs log:jobs"
 {%- endmacro %}
+
+{% macro jobs_card(mode, cid, tablist_id, machine, load_trigger,
+                   projcode=none, scope=none, jobs_multi_project=false,
+                   start=none, end=none, days=none, days_persist_id=none) %}
 {# The explorer link speaks ?days= rather than a computed date so the
    cold-start sync in JS never has to re-derive a window client-side. #}
 {% set _x_start = none if days else start %}
@@ -274,3 +279,4 @@
     </div>
 </div>
 </div>{# /{{ cid }}-card #}
+{% endmacro %}

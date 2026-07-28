@@ -1574,7 +1574,7 @@ def _render_card_shell(*, mode: str, machine: str, **extra):
     """Re-render the jobs card bound to the requested ``?days=`` window."""
     days = _parse_days() or service.DEFAULT_JOBS_WINDOW_DAYS
     return render_template(
-        'dashboards/user/partials/jobs_card.html',
+        'dashboards/user/partials/jobs_card_shell.html',
         mode=mode, machine=machine,
         cid=_id_arg('cid', 'jobs-card'),
         tablist_id=_id_arg('tablist_id', 'jobsCardTabs'),
