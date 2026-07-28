@@ -214,6 +214,134 @@ class TestDaySubtreeRoute:
 
 
 # ---------------------------------------------------------------------------
+# /user/resource-details/user-pie/<projcode>  (By User pane chart)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def _mock_user_summary(monkeypatch):
+    """Patch get_user_summary_for_project with a multi-user rollup."""
+    captured = {'kwargs': None}
+
+    def _fake(session, projcode, resource, start, end):
+        captured['kwargs'] = {
+            'projcode': projcode, 'resource': resource,
+            'start': start, 'end': end,
+        }
+        return [
+            {'username': 'alice', 'jobs': 20, 'core_hours': 150.0, 'charges': 80.0,
+             'queue_count': 2, 'date_count': 3, 'any_queue': 'main',
+             'any_date': '2026-04-01'},
+            {'username': 'bob', 'jobs': 10, 'core_hours': 50.0, 'charges': 30.0,
+             'queue_count': 1, 'date_count': 1, 'any_queue': 'gpu',
+             'any_date': '2026-04-02'},
+        ]
+
+    monkeypatch.setattr(
+        'webapp.dashboards.user.blueprint.get_user_summary_for_project', _fake,
+    )
+    return captured
+
+
+class TestUserPieRoute:
+    """The By User pane's chart fragment — sibling of the Usage Trend one.
+
+    Its wedges must emit ``#usage-user-<username>`` sentinels, because
+    svg-chart-links.js routes that prefix (and only that prefix) to the
+    Usage-by-User table row. A renamed sentinel breaks the drill-down
+    silently, so it is asserted rather than assumed.
+    """
+
+    def test_renders_pie_with_user_sentinels(
+        self, auth_client, active_project, _mock_user_summary,
+    ):
+        resp = auth_client.get(
+            f'/user/resource-details/user-pie/{active_project.projcode}'
+            '?resource=Derecho&start_date=2026-04-01&end_date=2026-04-30'
+        )
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert '#usage-user-alice' in body
+        assert '#usage-user-bob' in body
+        assert _mock_user_summary['kwargs']['resource'] == 'Derecho'
+
+    def test_missing_resource_returns_400(self, auth_client, active_project):
+        resp = auth_client.get(
+            f'/user/resource-details/user-pie/{active_project.projcode}'
+        )
+        assert resp.status_code == 400
+
+    def test_invalid_date_returns_400(self, auth_client, active_project):
+        resp = auth_client.get(
+            f'/user/resource-details/user-pie/{active_project.projcode}'
+            '?resource=Derecho&start_date=not-a-date'
+        )
+        assert resp.status_code == 400
+
+    def test_no_activity_renders_empty_state(
+        self, auth_client, active_project, monkeypatch,
+    ):
+        monkeypatch.setattr(
+            'webapp.dashboards.user.blueprint.get_user_summary_for_project',
+            lambda *a, **kw: [],
+        )
+        resp = auth_client.get(
+            f'/user/resource-details/user-pie/{active_project.projcode}'
+            '?resource=Derecho'
+        )
+        assert resp.status_code == 200
+        assert 'No user activity recorded' in resp.get_data(as_text=True)
+
+    def test_unsupported_metric_clamps_to_charges(
+        self, auth_client, active_project, _mock_user_summary,
+    ):
+        """A persisted `metric` a resource can't serve must not 400.
+
+        The metric lives in an app-wide localStorage family shared with other
+        surfaces, so a stale value arrives routinely; the pane clamps.
+        """
+        resp = auth_client.get(
+            f'/user/resource-details/user-pie/{active_project.projcode}'
+            '?resource=Derecho&metric=bogus'
+        )
+        assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# ?usage_tab= — which pane the usage card opens on
+# ---------------------------------------------------------------------------
+
+class TestUsageTabParsing:
+    """`usage_tab` is server-side because only the open pane's chart carries
+    ``hx-trigger="load"`` — an unvalidated value would render a tab strip with
+    nothing active and fetch no chart at all.
+    """
+
+    @pytest.mark.parametrize('raw,expected', [
+        ('history', 'history'),
+        ('byuser', 'byuser'),
+        ('', 'history'),
+        ('nonsense', 'history'),
+        (None, 'history'),
+    ])
+    def test_valid_and_unknown_values(self, app, raw, expected):
+        from webapp.dashboards.user.blueprint import _parse_usage_tab
+
+        qs = '' if raw is None else f'?usage_tab={raw}'
+        with app.test_request_context(f'/user/resource-details/X{qs}'):
+            assert _parse_usage_tab(show_by_user=True) == expected
+
+    def test_byuser_clamps_when_pane_is_hidden(self, app):
+        """A single-user project renders no By User button; a stale link
+        selecting it must fall back rather than activate a missing tab."""
+        from webapp.dashboards.user.blueprint import _parse_usage_tab
+
+        with app.test_request_context(
+            '/user/resource-details/X?usage_tab=byuser'
+        ):
+            assert _parse_usage_tab(show_by_user=False) == 'history'
+
+
+# ---------------------------------------------------------------------------
 # /user/resource-details/<projcode>  (main page — access control)
 # ---------------------------------------------------------------------------
 
