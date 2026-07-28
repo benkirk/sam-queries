@@ -43,6 +43,7 @@ from webapp.dashboards.charts import (
     generate_distribution_histogram,
 )
 from webapp.disk_scans import service
+from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_grouped
 from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
@@ -68,21 +69,6 @@ _MAX_LIMIT = 500
 _LIMIT_OPTIONS = (50, 100, 250, 500)
 
 
-def _scope_project(project) -> Project:
-    """Resolve the ``?scope=`` child project, or fall back to *project*.
-
-    Mirrors the validation in
-    ``dashboards/user/blueprint.py:_render_disk_resource_details`` — an
-    out-of-tree or unknown scope silently falls back to the root project so
-    the fragment can never escape the project the decorator authorized.
-    """
-    scope = (request.args.get('scope') or '').strip()
-    if not scope or scope == project.projcode:
-        return project
-    candidate = Project.get_by_projcode(db.session, scope)
-    if candidate is None or candidate.tree_root != project.tree_root:
-        return project
-    return candidate
 
 
 def _common_ctx(project) -> dict:

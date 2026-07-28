@@ -63,6 +63,7 @@ from webapp.dashboards.charts import (
 )
 from webapp.extensions import db
 from webapp.jobs import service
+from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
 from webapp.utils.htmx import read_flag
 from webapp.utils.rbac import (
@@ -212,20 +213,6 @@ def _user_col_suppressed(*, pinned_user, filters, rows, total, per_page):
     )
 
 
-def _scope_project(project) -> Project:
-    """Resolve the ``?scope=`` child project, or fall back to *project*.
-
-    Mirrors ``disk_scans/routes.py:_scope_project`` — an out-of-tree or
-    unknown scope silently falls back to the root project so a fragment
-    can never escape the project the decorator authorized.
-    """
-    scope = (request.args.get('scope') or '').strip()
-    if not scope or scope == project.projcode:
-        return project
-    candidate = Project.get_by_projcode(db.session, scope)
-    if candidate is None or candidate.tree_root != project.tree_root:
-        return project
-    return candidate
 
 
 def _resolve_user_filter() -> tuple:
