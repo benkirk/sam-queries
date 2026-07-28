@@ -1,23 +1,57 @@
-"""Tree-scope resolution — the ``?scope=`` query parameter, in one place.
+"""Scope — who a navigator fragment is allowed to see, and how it says so.
 
-Every project-scoped surface (resource details, its subtree partials, the
-fs-scans and job-history fragments) lets the user re-root the analysis at a
-descendant project by passing ``?scope=<projcode>``. The validation rule is
-the same everywhere and is a **security boundary**: an out-of-tree or unknown
-scope must silently fall back to the authorized root project, never widen
-beyond the tree the route decorator authorized.
+Two related things live here.
 
-That rule had been transcribed seven times. It lives here now.
+**Tree-scope resolution.** Every project-scoped surface (resource details,
+its subtree partials, the fs-scans and job-history fragments) lets the user
+re-root the analysis at a descendant project via ``?scope=<projcode>``. The
+validation rule is the same everywhere and is a **security boundary**: an
+out-of-tree or unknown scope must silently fall back to the authorized root
+project, never widen beyond the tree the route decorator authorized. That
+rule had been transcribed seven times; it lives in
+:func:`resolve_scope_project` now.
+
+**The NavigatorScope protocol.** Both navigators are built on the same three
+modes — project / resource-or-machine / user — which had fanned out into
+per-mode copies at the service layer, the route layer and the context
+builders. A scope object carries the mode's *identity* (what it pins, what
+it may see) so those layers can take one argument instead of branching. The
+concrete hierarchies are per-feature (``webapp/jobs/scope.py``,
+``webapp/disk_scans/scope.py``) because what they pin differs — a PBS
+account vs a set of filesystem path prefixes — but they share this shape so
+the two navigators keep speaking the same vocabulary.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional
 
 from flask import request
 
 from sam.projects.projects import Project
 from webapp.extensions import db
+
+
+class NavigatorScope(ABC):
+    """One navigator surface's slice of its data source.
+
+    Subclasses are cheap value objects built per request from the URL. The
+    security rule for each mode lives in the subclass rather than in prose
+    spread across the service functions:
+
+    * **project** — pins to the authorized project (or its tree).
+    * **resource / machine** — deliberately unscoped; the *route* must be
+      gated on the matching ``VIEW_ALL_*`` permission.
+    * **user** — pins to the session user, server-side and non-negotiable.
+    """
+
+    #: ``'project'`` | ``'resource'`` | ``'machine'`` | ``'user'``
+    mode: str = ''
+
+    @abstractmethod
+    def context(self) -> Dict[str, Any]:
+        """Template context describing this scope (labels, ids, badges)."""
 
 
 def resolve_scope_project(project, scope: Optional[str] = None) -> Project:

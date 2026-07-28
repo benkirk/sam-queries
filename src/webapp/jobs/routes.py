@@ -63,6 +63,11 @@ from webapp.dashboards.charts import (
 )
 from webapp.extensions import db
 from webapp.jobs import service
+from webapp.jobs.scope import (
+    MachineJobScope,
+    ProjectJobScope,
+    UserJobScope,
+)
 from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
 from webapp.utils.htmx import read_flag
@@ -233,6 +238,58 @@ def _resolve_user_filter() -> tuple:
     return None, None, ''
 
 
+def _agg_scope(mode, *, username=None, account_projcodes=None):
+    """JobScope for an aggregation panel, from the values its renderer holds.
+
+    The per-job table has its own builder (:func:`_table_scope`) because it
+    also resolves ``?account=``; the aggregation panels receive an
+    already-resolved tree (or a pinned username) from their route.
+    """
+    if mode == 'project':
+        return ProjectJobScope(account_projcodes=account_projcodes)
+    if mode == 'user':
+        return UserJobScope(username)
+    return MachineJobScope()
+
+
+def _table_scope(mode, *, project=None, pinned_user=None):
+    """Build the JobScope for a fragment, plus the two display values around it.
+
+    Returns ``(scope, account_projcodes, user_account)`` — the latter two
+    only for the template (the resolved tree, and the narrowing projcode a
+    By Project drill selected); the scope carries what the query needs.
+
+    ``?account=`` is a NARROWING filter in every mode, never a widening one:
+
+    * project — narrows within the server-derived tree; an out-of-tree value
+      is ignored, so the tree stays the security boundary.
+    * user — narrows one's OWN jobs, safe from the client here only because
+      the username pin still applies on top.
+    * machine — narrows an already VIEW_ALL_JOB_DATA-gated view.
+    """
+    requested = (request.args.get('account') or '').strip() or None
+
+    if mode == 'project':
+        # Expand the (possibly ?scope=-re-rooted) project tree so a parent's
+        # rows surface jobs charged to child projcodes — mirrors the
+        # Historical Usage rollup.
+        account_projcodes = [
+            p.projcode
+            for p in _scope_project(project).get_descendants(include_self=True)
+        ]
+        user_account = None
+        if requested and requested in account_projcodes:
+            user_account = requested
+            account_projcodes = [requested]
+        return (ProjectJobScope(project, account_projcodes),
+                account_projcodes, user_account)
+
+    if mode == 'user':
+        return UserJobScope(pinned_user, account=requested), None, requested
+
+    return MachineJobScope(account=requested), None, requested
+
+
 def _jobs_table_response(*, mode, machine, fragment_url,
                          project=None, pinned_user=None):
     """Shared body of the per-job table fragment across the three modes.
@@ -274,64 +331,18 @@ def _jobs_table_response(*, mode, machine, fragment_url,
     error = None
     rows = []
     total: Optional[int] = None
-    account_projcodes = None
-    user_account = None
+    scope, account_projcodes, user_account = _table_scope(
+        mode, project=project, pinned_user=pinned_user)
     try:
-        common = dict(
+        rows = service.search_jobs(
+            machine, scope,
             limit=page['per_page'], offset=offset,
             sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
-            columns=requested_cols,
-            valid_qos_names=qos_options,
+            columns=requested_cols, valid_qos_names=qos_options, **filters,
         )
-        if mode == 'project':
-            # Expand the (possibly ?scope=-re-rooted) project tree so a
-            # parent's rows surface jobs charged to child projcodes —
-            # mirrors the Historical Usage rollup.
-            account_projcodes = [
-                p.projcode
-                for p in _scope_project(project).get_descendants(include_self=True)
-            ]
-            # `account` narrows WITHIN the server-derived tree (the
-            # By Project drill on a parent project). An out-of-tree value
-            # is ignored — the tree stays the security boundary, so a
-            # client can never widen scope with this parameter.
-            requested = (request.args.get('account') or '').strip() or None
-            if requested and requested in account_projcodes:
-                user_account = requested
-                account_projcodes = [requested]
-            rows = service.search_jobs(
-                machine, project=project,
-                account_projcodes=account_projcodes, **common, **filters,
-            )
-            total = service.count_jobs(
-                machine, project=project,
-                account_projcodes=account_projcodes,
-                valid_qos_names=qos_options, **filters,
-            )
-        elif mode == 'user':
-            # `account` narrows one's OWN jobs to a single projcode (the
-            # By Project drill) — safe from the client in this mode only
-            # because the username pin still applies.
-            user_account = (request.args.get('account') or '').strip() or None
-            rows = service.search_jobs_user(
-                machine, pinned_user, account=user_account, **common, **filters,
-            )
-            total = service.count_jobs_user(
-                machine, pinned_user, account=user_account,
-                valid_qos_names=qos_options, **filters,
-            )
-        else:
-            # `account` narrows the machine-wide view to one projcode
-            # (the By Project drill) — only ever a restriction, and this
-            # route family is gated on VIEW_ALL_JOB_DATA.
-            user_account = (request.args.get('account') or '').strip() or None
-            rows = service.search_jobs_machine(
-                machine, account=user_account, **common, **filters,
-            )
-            total = service.count_jobs_machine(
-                machine, account=user_account,
-                valid_qos_names=qos_options, **filters,
-            )
+        total = service.count_jobs(
+            machine, scope, valid_qos_names=qos_options, **filters,
+        )
     except Exception as exc:
         # Catch-all so a transient plugin/DB issue degrades to a banner
         # rather than a 500 on the surrounding page. App logger captures
@@ -783,9 +794,8 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
     error = None
     try:
         usage = service.jobs_usage_by_user(
-            machine, limit=_BY_USER_LIMIT,
-            sort_by=_USAGE_SORT_BY[metric],
-            account_projcodes=account_projcodes, **filters,
+            machine, _agg_scope(mode, account_projcodes=account_projcodes),
+            limit=_BY_USER_LIMIT, sort_by=_USAGE_SORT_BY[metric], **filters,
         )
     except Exception as exc:
         from flask import current_app
@@ -839,9 +849,10 @@ def _render_by_project(*, mode, machine, fragment_url, jobs_fragment_url,
     error = None
     try:
         usage = service.jobs_usage_by_project(
-            machine, username=username, limit=_BY_USER_LIMIT,
-            sort_by=_USAGE_SORT_BY[metric],
-            account_projcodes=account_projcodes, **filters,
+            machine,
+            _agg_scope(mode, username=username,
+                       account_projcodes=account_projcodes),
+            limit=_BY_USER_LIMIT, sort_by=_USAGE_SORT_BY[metric], **filters,
         )
     except Exception as exc:
         from flask import current_app
@@ -964,7 +975,11 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
                                dimension=dimension,
                                dimension_toggle=dimension_toggle)
 
-    filters = _parse_job_filters()
+    # User mode drops the user key entirely rather than letting the scope
+    # overwrite it: the pin owns that dimension, and a crafted ?user= must
+    # be ignored, not rejected with a 500 on the surrounding page. Same
+    # convention as the table and By Project fragments.
+    filters = _parse_job_filters(include_user=(username is None))
     metric = _parse_metric(_DEFAULT_METRIC_HIST)
     log_on = _parse_log()
 
@@ -992,6 +1007,8 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     try:
         hist = service.jobs_histogram(
             machine, dimension,
+            _agg_scope(mode, username=username,
+                       account_projcodes=account_projcodes),
             # Both axes pinned ⇒ every band has exactly one owner, so
             # skip the grouping entirely: flat bars, and a band drills
             # straight to its jobs instead of through a one-row tier.
@@ -1001,7 +1018,6 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             # PR #100 review data), rendering a GPU stack as all-"Other".
             owners_sort_by=_USAGE_SORT_BY[metric],
             owners_by=owners_by,
-            account_projcodes=account_projcodes, username=username,
             **filters,
         )
     except Exception as exc:
@@ -1326,9 +1342,9 @@ def _explorer_facets(mode: str, machine: str, panel: dict, project=None,
     try:
         return service.jobs_facets(
             machine,
-            account_projcodes=(_tree_projcodes(project)
-                               if project is not None else None),
-            username=username,
+            _agg_scope(mode, username=username,
+                       account_projcodes=(_tree_projcodes(project)
+                                          if project is not None else None)),
             valid_qos_names=panel.get('qos_options') or (),
             **_parse_job_filters(include_user=(username is None)),
         )
