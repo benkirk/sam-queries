@@ -1,8 +1,8 @@
 # Jobs "By Project" everywhere multi-project + entity modals + histogram User|Project pill
 
-**Status (2026-07-27): Unit P (plugin PR #101) OPEN; Unit 1 (SAM tab/drills/
-modals) IMPLEMENTED on `redis_and_ux_tweaks`; Unit 2 (histogram pill) BLOCKED
-on #101 merge + container rebuild.**
+**Status (2026-07-27): COMPLETE. Unit P = plugin PR #101 (merged; local
+containers carry it); Units 1+2 IMPLEMENTED on `redis_and_ux_tweaks`
+(PR #383). All three units Playwright-verified.**
 
 Cross-repo status doc for the round following Job History UX round 3
 (`JOB_HISTORY_UX_ROUND3.md`). Ben's asks: By Project wherever the context
@@ -44,21 +44,36 @@ Branch `jobs_histogram_owners_by` off `main` (`aed06d6`).
   scope discrimination. Route-map snapshot untouched (jobs blueprint not
   covered).
 
-## Unit 2 — SAM histogram pill (DO AFTER #101 merge + rebuild)
+## Unit 2 — SAM histogram pill (IMPLEMENTED)
 
 - `service.jobs_histogram`: `owners_by=None`, forwarded + cached **only when
   set and != 'user'** → soft degradation, no lockstep (old plugin only breaks
-  the Project pill click).
-- `_render_histogram`: `?owners_by=` param, pill offered only in
-  multi-project contexts (machine mode; project mode w/ `jobs_multi_project`).
+  the Project pill click; the User path never sends the kwarg).
+- `_render_histogram`: `?owners_by=` param honored only in multi-project
+  contexts (machine mode; project tree > 1 — same gate as the By Project
+  tab); round-tripped through the metric/dimension pills via the hidden
+  params form (added AFTER drill URLs, which don't take it).
 - `jobs_histogram.html`: User|Project pill; drives all three drill levels —
-  stacked segments, bucket owner tables (projcode + modal trigger), per-owner
-  jobs drill via `&account=` instead of `&user=`. charts.py unchanged.
-- Tests: pill gating, threading + cache key, account-mode drill URLs.
+  stacked segments, bucket owner tier (Project header, projcode modal
+  triggers, "Other projects"), per-owner jobs drill via `&account=`. The
+  owner rows' collapse toggle moved from the `<tr>` to the chevron + stat
+  `<td>`s (capture-phase rule, fragments/collapse.html) so the nested
+  entity-modal buttons work — user-mode owner cells got the user-modal
+  affordance in the same restructure. charts.py unchanged
+  (`_jobs_bucket_segments` is owner-shape-agnostic).
+- Tests: pill gating (machine / user-ignored / tree-size), soft-degradation
+  forwarding, account tier + drill + round-trip input, owner-cell modals,
+  cache-key discrimination (explicit 'user' aliases the omitted default).
 
 ## Verification
 
-Unit 1 Playwright-smoked on webdev (status → Derecho → Job History): both
-tabs; By Project 25 rows + "Other beyond top 25 by CPU-hours"; UTAM0017 modal
-pop; row drill → `project: UTAM0017` badge + that project's 5,171 jobs;
-By User fredc → User Details modal. Full pytest suite green before commit.
+Playwright-smoked on webdev (status → Derecho → Job History):
+- Unit 1: both tabs; By Project 25 rows + "Other beyond top 25 by
+  CPU-hours"; UTAM0017 modal pop; row drill → `project: UTAM0017` badge +
+  that project's 5,171 jobs; By User fredc → User Details modal.
+- Unit 2 (container at plugin #101): Wait Times Owner-dimension pill;
+  Project pill → per-project bucket tier (UCBK0034 rank 1, 9.5% of band,
+  "Other projects (beyond top 10)"); projcode click pops the project modal
+  without toggling the collapse; chevron drill → `project: UCBK0034` badge
+  + the tier row's exact 50,651 jobs.
+Full pytest suite green before each commit (3325 at unit 2).

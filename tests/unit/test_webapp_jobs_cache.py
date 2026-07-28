@@ -332,6 +332,30 @@ def test_service_jobs_histogram_owners_sort_in_key_and_forwarded(app, monkeypatc
     assert gpu_kwargs['owners_sort_by'] == 'gpu_hours'
 
 
+def test_service_jobs_histogram_owners_by_in_key_and_forwarded(app, monkeypatch):
+    """owners_by='account' discriminates the cache key; the 'user' default
+    is normalized to the omitted form (same key, never forwarded) so a
+    pre-owners_by plugin keeps working on the default path."""
+    from webapp.jobs import cache as c, service
+    c._adapters.clear()
+
+    captured = _install_agg_plugin(app, monkeypatch)
+    win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
+
+    with app.app_context():
+        service.jobs_histogram('derecho', 'wait', **win)
+        service.jobs_histogram('derecho', 'wait', owners_by='user', **win)
+        service.jobs_histogram('derecho', 'wait', owners_by='account', **win)
+        service.jobs_histogram('derecho', 'wait', owners_by='account', **win)
+
+    # call 2 aliases call 1 (explicit default == omitted); call 4 hits 3.
+    assert len(captured['histogram']) == 2
+    _, default_kwargs = captured['histogram'][0]
+    _, account_kwargs = captured['histogram'][1]
+    assert 'owners_by' not in default_kwargs
+    assert account_kwargs['owners_by'] == 'account'
+
+
 def test_service_jobs_usage_by_sort_in_key_and_forwarded(app, monkeypatch):
     """sort_by reaches the plugin and discriminates the cache key —
     different rankings are different result sets."""

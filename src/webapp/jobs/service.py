@@ -472,6 +472,7 @@ def jobs_histogram(
     *,
     owners_limit: Optional[int] = None,
     owners_sort_by: Optional[str] = None,
+    owners_by: Optional[str] = None,
     account_projcodes: Optional[Sequence[str]] = None,
     username: Optional[str] = None,
     valid_qos_names: Sequence[str] = (),
@@ -485,11 +486,15 @@ def jobs_histogram(
     ``None`` is machine-wide (caller must be VIEW_ALL_JOB_DATA-gated).
 
     ``owners_limit`` forwards to the plugin: each bucket gains a top-N
-    per-user ``owners`` mapping (stacked chart segments + the per-band
-    user tier). ``owners_sort_by`` picks WHICH top-N survives — it must
+    per-owner ``owners`` mapping (stacked chart segments + the per-band
+    owner tier). ``owners_sort_by`` picks WHICH top-N survives — it must
     follow the displayed metric or a GPU-hours view gets owners ranked
     by combined hours (top-5 measured to cover ~1% of band GPU-hours
-    machine-wide). Both join the cache ``opts`` so variants never alias
+    machine-wide). ``owners_by='account'`` switches the owner dimension
+    from users to projects; it is forwarded ONLY when set and non-default
+    so a pre-`owners_by` plugin never sees the kwarg — the User pill path
+    keeps working against an older container, only the Project pill
+    degrades. All three join the cache ``opts`` so variants never alias
     — which also naturally busts pre-upgrade cache entries.
 
     Results go through the jobs TTL cache: closed windows (``end`` before
@@ -507,6 +512,8 @@ def jobs_histogram(
         kwargs['owners_limit'] = owners_limit
     if owners_sort_by is not None:
         kwargs['owners_sort_by'] = owners_sort_by
+    if owners_by is not None and owners_by != 'user':
+        kwargs['owners_by'] = owners_by
 
     def _compute():
         mod = get_module()

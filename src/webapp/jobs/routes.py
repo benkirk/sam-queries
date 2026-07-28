@@ -830,6 +830,18 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     filters = _parse_job_filters()
     metric = _parse_metric(_DEFAULT_METRIC_HIST)
 
+    # User|Project owner-dimension pill — offered only where the context
+    # spans more than one project (machine mode; a project tree > 1).
+    # Elsewhere ?owners_by= is ignored, so a crafted URL can't flip a
+    # single-project pane into a redundant per-project breakdown.
+    owners_toggle = (mode == 'machine'
+                     or (mode == 'project'
+                         and account_projcodes is not None
+                         and len(account_projcodes) > 1))
+    owners_by = 'user'
+    if owners_toggle and (request.args.get('owners_by') or '').strip() == 'account':
+        owners_by = 'account'
+
     hist = None
     error = None
     try:
@@ -840,6 +852,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             # hours-ranked owners cover ~1% of band GPU-hours (plugin
             # PR #100 review data), rendering a GPU stack as all-"Other".
             owners_sort_by=_USAGE_SORT_BY[metric],
+            owners_by=owners_by,
             account_projcodes=account_projcodes, username=username,
             **filters,
         )
@@ -865,6 +878,20 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             for b in hist.get('buckets') or []
         ]
 
+    # Round-trip the non-default owner dimension through the metric /
+    # dimension pills' hx-include form (AFTER the drill URLs — the jobs
+    # fragments don't take owners_by).
+    if owners_by != 'user':
+        params = dict(params, owners_by=owners_by)
+
+    # Same affordance gates as the By User / By Project tables — never
+    # render an entity quick-view link that would 403.
+    from flask_login import current_user
+    can_view_users = has_permission_any_facility(
+        current_user, Permission.VIEW_USERS)
+    can_view_projects = (mode == 'user') or has_permission_any_facility(
+        current_user, Permission.VIEW_PROJECTS)
+
     return render_template(
         template,
         enabled=True, error=error,
@@ -873,6 +900,9 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         metric=metric,
         dimension=dimension, dimension_toggle=dimension_toggle,
         size_dimensions=_SIZE_DIMENSIONS,
+        owners_by=owners_by, owners_toggle=owners_toggle,
+        can_view_users=can_view_users,
+        can_view_projects=can_view_projects,
         fragment_url=fragment_url,
         bucket_drills=bucket_drills,
         target_id=target_id,

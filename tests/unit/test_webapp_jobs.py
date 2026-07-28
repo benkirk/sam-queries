@@ -2937,6 +2937,126 @@ def test_histogram_owners_limit_and_sort_forwarded(
     assert kwargs['owners_sort_by'] == 'gpu_hours'
 
 
+# --- Histogram User|Project owner pill (owners_by) --------------------------
+
+def _sample_hist_project_owners(dimension='wait'):
+    """Owner keys are projcodes — the plugin owners_by='account' envelope.
+    Same numeric shape as _sample_hist_owners."""
+    h = _sample_hist(dimension)
+    h['buckets'][0]['owners'] = {
+        'SCSG0001': {'job_count': 6, 'cpu_hours': 30.0, 'gpu_hours': 0.0},
+        'UABC0002': {'job_count': 3, 'cpu_hours': 70.0, 'gpu_hours': 0.0},
+    }
+    h['buckets'][1]['owners'] = {
+        'SCSG0001': {'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0},
+    }
+    return h
+
+
+def test_histogram_owner_pill_offered_in_machine_mode(
+    app, auth_client, monkeypatch,
+):
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    body = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times'
+    ).get_data(as_text=True)
+    assert 'aria-label="Owner dimension"' in body
+    assert 'owners_by=account' in body
+
+
+def test_histogram_owner_pill_hidden_in_user_mode_and_param_ignored(
+    app, auth_client, monkeypatch,
+):
+    """User mode never offers the pill, and a crafted ?owners_by=account
+    is ignored (not forwarded to the plugin)."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    body = auth_client.get(
+        '/dashboards/user/jobs/user/derecho/wait-times?owners_by=account'
+    ).get_data(as_text=True)
+    assert 'aria-label="Owner dimension"' not in body
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert 'owners_by' not in kwargs
+
+
+def test_histogram_owner_pill_follows_project_tree_size(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Project mode offers the pill iff the account tree spans >1
+    projcode — same gate as the By Project tab."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho'
+    ).get_data(as_text=True)
+    multi = len(active_project.get_descendants(include_self=True)) > 1
+    assert ('aria-label="Owner dimension"' in body) == multi
+
+
+def test_histogram_owners_by_forwarded_only_when_account(
+    app, auth_client, monkeypatch,
+):
+    """Soft degradation contract: the default never sends owners_by (an
+    older plugin keeps working); the Project pill sends 'account'."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_project_owners(),
+    )
+    auth_client.get('/dashboards/user/jobs/machine/derecho/wait-times')
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert 'owners_by' not in kwargs
+
+    auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times?owners_by=account')
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['owners_by'] == 'account'
+
+
+def test_histogram_account_owner_tier_and_drill(
+    app, auth_client, monkeypatch,
+):
+    """The Project pill drives the whole drill: Project tier header,
+    project-modal triggers on owner cells, account= (not user=) on the
+    per-owner jobs drill, 'Other projects' remainder, and the owners_by
+    round-trip hidden input for the metric pills."""
+    import re
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_project_owners(),
+    )
+    body = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times?owners_by=account'
+    ).get_data(as_text=True)
+    assert '<th>Project</th>' in body
+    assert 'Other projects' in body
+    assert 'project-details-modal/SCSG0001' in body
+    assert 'name="owners_by" value="account"' in body
+    m = re.search(r'id="[^"]*-b0-u1-content"\s+hx-get="([^"]+)"', body)
+    assert m, 'owner drill div missing'
+    url = m.group(1).replace('&amp;', '&')
+    assert 'account=SCSG0001' in url
+    assert 'user=' not in url
+
+
+def test_histogram_user_owner_cells_offer_user_modal(
+    app, auth_client, monkeypatch,
+):
+    """Under the default User pill the owner tier's usernames carry the
+    same quick-view modal affordance as the By User table (VIEW_USERS
+    gate)."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    body = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times'
+    ).get_data(as_text=True)
+    assert 'data-bs-target="#userDetailsModal"' in body
+    assert '/admin/user/alice' in body
+
+
 # --- User column ------------------------------------------------------------
 
 def test_user_column_structure():
