@@ -2966,20 +2966,40 @@ def test_histogram_owner_pill_offered_in_machine_mode(
     assert 'group_by=project' in body
 
 
-def test_histogram_owner_pill_hidden_in_user_mode_and_param_ignored(
-    app, auth_client, monkeypatch,
+@pytest.mark.parametrize('crafted', ['', '?group_by=user', '?group_by=project'])
+def test_histogram_in_user_mode_stacks_by_project_whatever_the_client_asks(
+    app, auth_client, monkeypatch, crafted,
 ):
-    """User mode never offers the pill, and a crafted ?group_by=project
-    is ignored (not forwarded to the plugin)."""
+    """User mode pins the username, so a per-USER stack is a stack of one.
+
+    The axis that can still vary is the project, so that's what the
+    segments and the per-band tier use — server-decided, with the pill
+    hidden and any crafted ?group_by ignored in both directions.
+    """
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
     )
     body = auth_client.get(
-        '/dashboards/user/jobs/user/derecho/wait-times?group_by=project'
+        f'/dashboards/user/jobs/user/derecho/wait-times{crafted}'
     ).get_data(as_text=True)
     assert 'aria-label="Owner dimension"' not in body
     _dim, kwargs = captured['last_jobs_histogram']
-    assert 'owners_by' not in kwargs
+    assert kwargs.get('owners_by') == 'account'
+
+
+def test_histogram_drops_owner_grouping_when_both_axes_are_pinned(
+    app, auth_client, monkeypatch,
+):
+    """My own jobs on ONE project: every band has exactly one owner, so
+    skip the grouping entirely — flat bars, band drills straight to jobs."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        '/dashboards/user/jobs/user/derecho/wait-times?account=SCSG0001'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert 'owners_limit' not in kwargs
 
 
 def test_histogram_owner_pill_follows_project_tree_size(
@@ -3549,6 +3569,71 @@ def test_card_shell_panels_stay_lazy_after_a_refetch(
 
     assert 'hx-trigger="intersect once"' in body
     assert body.count('hx-trigger="shown.bs.tab once"') >= 4
+
+
+# ---------------------------------------------------------------------------
+# panel_relevance — one rule for "can this scope vary along that axis?",
+# feeding both the tab strip and the histograms' owner axis.
+# ---------------------------------------------------------------------------
+
+def _rel(**kwargs):
+    from webapp.jobs.routes import panel_relevance
+    kwargs.setdefault('mode', 'machine')
+    return panel_relevance(**kwargs)
+
+
+def test_relevance_machine_mode_varies_along_both_axes():
+    r = _rel()
+    assert r['show_by_user'] and r['show_by_project']
+    assert r['owners_toggle'] and r['owners_enabled']
+    assert r['default_group_by'] == 'user'
+
+
+def test_relevance_user_mode_pins_the_user_axis():
+    """By User would be a pie of one; the project axis takes the stack."""
+    r = _rel(mode='user')
+    assert not r['show_by_user']
+    assert r['show_by_project']
+    assert not r['owners_toggle']
+    assert r['default_group_by'] == 'project'
+    assert r['owners_enabled']
+
+
+def test_relevance_user_filter_pins_the_user_axis_in_any_mode():
+    r = _rel(mode='machine', user_filter='alice')
+    assert not r['show_by_user']
+    assert r['default_group_by'] == 'project'
+
+
+def test_relevance_account_filter_pins_the_project_axis():
+    r = _rel(mode='machine', account_filter='SCSG0001')
+    assert r['show_by_user']
+    assert not r['show_by_project']
+    assert not r['owners_toggle']
+    assert r['default_group_by'] == 'user'
+
+
+def test_relevance_single_projcode_tree_pins_the_project_axis():
+    assert not _rel(mode='project',
+                    account_projcodes=['SCSG0001'])['show_by_project']
+    assert _rel(mode='project',
+                account_projcodes=['SCSG0001', 'SCSG0002'])['show_by_project']
+
+
+def test_relevance_drops_owner_grouping_when_both_axes_are_pinned():
+    r = _rel(mode='user', account_filter='SCSG0001')
+    assert not r['show_by_user'] and not r['show_by_project']
+    assert not r['owners_enabled']
+
+
+def test_relevance_needs_no_request_context():
+    """Purity is the point: relevance follows what reaches the PANELS, not
+    request.args. A ?user= on a host *page* URL must not hide a tab whose
+    panels were never filtered by it — so the rule can't read the request.
+    Touching ``request`` here would raise outside a request context."""
+    from flask import has_request_context
+    assert not has_request_context()
+    assert _rel(mode='machine')['show_by_user'] is True
 
 
 # ---------------------------------------------------------------------------

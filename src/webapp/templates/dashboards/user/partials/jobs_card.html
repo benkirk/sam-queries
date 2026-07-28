@@ -25,9 +25,15 @@
                    on card-open (collapse) + tab show; machine/user modes fire
                    when their pane is shown. See feedback_persisted_collapse_htmx.
      projcode     project mode only.
-     jobs_multi_project  project mode only: True when the project's account
-                  tree spans >1 projcode — gates the By Project tab (a
-                  single-project pie would be a pie of one).
+     show_by_user / show_by_project  whether those tabs can say anything
+                  in this scope. Both come from jobs/routes.py's
+                  panel_relevance(), the one rule that also decides which
+                  axis the histograms stack by — so the tab strip and the
+                  panel internals can't disagree. A tab is dropped when
+                  its axis is pinned to a single value: user mode (or a
+                  ?user= filter) makes By User a pie of one; a
+                  single-projcode tree or an ?account= drill does the same
+                  to By Project.
      panel_params  dict merged into EVERY panel's hx-get. The cards pass
                   their window (`start`/`end`, plus `scope` in project
                   mode); the explorer passes its whole filter set, in the
@@ -60,8 +66,7 @@
 
    In machine mode there is no account scoping (routes are gated behind
    VIEW_ALL_JOB_DATA) and both By User and By Project render; in user mode
-   the username is pinned server-side and the By User tab is omitted (it
-   would be a pie of one) — By Project takes its slot.
+   the username is pinned server-side, so By Project takes By User's slot.
 #}
 {# Persisted-window markers, repeated on every tab button: the
    configRequest handler in nav-view-persistence.js only injects into
@@ -92,7 +97,8 @@
 {%- endmacro %}
 
 {% macro jobs_card(mode, cid, tablist_id, machine, load_trigger,
-                   projcode=none, jobs_multi_project=false,
+                   projcode=none,
+                   show_by_user=true, show_by_project=true,
                    panel_params={}, jobs_params=none,
                    days=none, days_persist_id=none,
                    show_pills=true, show_explore_link=true) %}
@@ -109,11 +115,16 @@
    cold-start sync in JS never has to re-derive a window client-side. #}
 {% set _x_start = none if days else panel_params.get('start') %}
 {% set _x_end = none if days else panel_params.get('end') %}
+{% set _user_url = none %}
 {% set _proj_url = none %}
 {% if mode == 'machine' %}
     {% set _jobs_url  = url_for('jobs.jobs_machine_fragment',       machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% if show_by_user %}
     {% set _user_url  = url_for('jobs.by_user_machine_fragment',    machine=machine, target_id=cid ~ '-byuser', **panel_params) %}
+    {% endif %}
+    {% if show_by_project %}
     {% set _proj_url  = url_for('jobs.by_project_machine_fragment', machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
+    {% endif %}
     {% set _wait_url  = url_for('jobs.wait_times_machine_fragment', machine=machine, target_id=cid ~ '-wait', **panel_params) %}
     {% set _sizes_url = url_for('jobs.job_sizes_machine_fragment',  machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
     {% set _dur_url   = url_for('jobs.durations_machine_fragment',  machine=machine, target_id=cid ~ '-durations', **panel_params) %}
@@ -121,7 +132,9 @@
     {% set _card_url  = url_for('jobs.jobs_card_machine_fragment',  machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id) %}
 {% elif mode == 'user' %}
     {% set _jobs_url  = url_for('jobs.jobs_user_fragment',       machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% if show_by_project %}
     {% set _proj_url  = url_for('jobs.by_project_user_fragment', machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
+    {% endif %}
     {% set _wait_url  = url_for('jobs.wait_times_user_fragment', machine=machine, target_id=cid ~ '-wait', **panel_params) %}
     {% set _sizes_url = url_for('jobs.job_sizes_user_fragment',  machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
     {% set _dur_url   = url_for('jobs.durations_user_fragment',  machine=machine, target_id=cid ~ '-durations', **panel_params) %}
@@ -131,9 +144,11 @@
        one); By Project takes its slot: which projects MY jobs charged. #}
 {% else %}
     {% set _jobs_url  = url_for('jobs.jobs_fragment',       projcode=projcode, machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% if show_by_user %}
     {% set _user_url  = url_for('jobs.by_user_fragment',    projcode=projcode, machine=machine, target_id=cid ~ '-byuser', **panel_params) %}
-    {% if jobs_multi_project %}
-        {% set _proj_url = url_for('jobs.by_project_fragment', projcode=projcode, machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
+    {% endif %}
+    {% if show_by_project %}
+    {% set _proj_url = url_for('jobs.by_project_fragment', projcode=projcode, machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
     {% endif %}
     {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, target_id=cid ~ '-wait', **panel_params) %}
     {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
@@ -170,7 +185,7 @@
             <i class="fas fa-list me-1"></i> Jobs
         </button>
     </li>
-    {% if mode != 'user' %}
+    {% if _user_url %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="{{ cid }}-byuser-tab"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-byuser"
@@ -264,7 +279,7 @@
             </p>
         </div>
     </div>
-    {% if mode != 'user' %}
+    {% if _user_url %}
     <div class="tab-pane fade" id="tab-{{ cid }}-byuser" role="tabpanel">
         <div id="{{ cid }}-byuser"{{ _lens() }}>
             <p class="text-muted small mb-0">

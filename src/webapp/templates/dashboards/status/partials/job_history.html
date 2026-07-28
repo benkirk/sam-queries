@@ -39,6 +39,8 @@
                      cid='jobs-m' ~ loop.index,
                      tablist_id='jobHistCardTabs' ~ loop.index,
                      machine=m,
+                     show_by_user=jobs_panels.show_by_user,
+                     show_by_project=jobs_panels.show_by_project,
                      panel_params={'start': jobs_window_start},
                      days=jobs_window_days,
                      days_persist_id='jobs-days-status',

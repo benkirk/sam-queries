@@ -742,6 +742,56 @@ def _tree_projcodes(project) -> list:
     ]
 
 
+def panel_relevance(*, mode: str, user_filter=None, account_filter=None,
+                    account_projcodes=None) -> dict:
+    """Which panels and owner axes can actually vary in this scope.
+
+    A pie of one is noise, and so is a stacked bar whose every band has a
+    single owner. Both fall out of one question asked twice: can the
+    scope vary along the **user** axis, and along the **project** axis?
+
+    The answer comes only from statically-known pins — the mode's
+    server-side pin, the filters baked into the panel URLs, and the
+    server-derived project set — never from query results. So the tab
+    strip and the panel internals are decided before any query runs, and
+    cannot disagree with each other.
+
+    Pure by design (no ``request`` access): callers pass the values that
+    actually reach the panels, which is not the same as whatever is in
+    ``request.args``. A ``?user=`` on a host *page* URL must not hide the
+    By User tab when the card's panels were never filtered by it.
+
+    Args:
+        mode: ``'project'`` | ``'machine'`` | ``'user'``. User mode pins
+            the username server-side, so its user axis is always fixed.
+        user_filter: username the panels are filtered to, if any.
+        account_filter: single projcode the panels are narrowed to, if
+            any (the By Project row drill).
+        account_projcodes: server-derived project set — the (scoped) tree
+            in project mode, ``None`` in machine and user mode where the
+            scope spans every project the viewer may see.
+
+    Returns a dict of:
+        ``show_by_user`` / ``show_by_project`` — render that tab at all.
+        ``owners_toggle`` — offer the histograms' User|Project pill.
+        ``default_group_by`` — which axis owns the stacked segments when
+            the pill isn't offered: the one that can still vary.
+        ``owners_enabled`` — group the histogram by owner at all. False
+            when both axes are pinned, which is what turns the bars flat
+            and lets a band drill straight to its jobs.
+    """
+    user_pinned = (mode == 'user') or bool(user_filter)
+    project_pinned = bool(account_filter) or (
+        account_projcodes is not None and len(account_projcodes) <= 1)
+    return {
+        'show_by_user': not user_pinned,
+        'show_by_project': not project_pinned,
+        'owners_toggle': not user_pinned and not project_pinned,
+        'default_group_by': 'project' if user_pinned else 'user',
+        'owners_enabled': not (user_pinned and project_pinned),
+    }
+
+
 def _usage_other(usage) -> Optional[dict]:
     """The upstream limit's remainder: totals are pre-truncation, so any
     positive difference is real usage by entities beyond the row cap."""
@@ -954,15 +1004,20 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     metric = _parse_metric(_DEFAULT_METRIC_HIST)
     log_on = _parse_log()
 
-    # User|Project owner-dimension pill — offered only where the context
-    # spans more than one project (machine mode; a project tree > 1).
-    # Elsewhere the param is ignored, so a crafted URL can't flip a
-    # single-project pane into a redundant per-project breakdown.
-    owners_toggle = (mode == 'machine'
-                     or (mode == 'project'
-                         and account_projcodes is not None
-                         and len(account_projcodes) > 1))
-    group_by = _parse_group_by() if owners_toggle else 'user'
+    # Who owns the stacked segments and the per-band tier — the same
+    # relevance rule that decides the tab strip, so a pane can never
+    # stack by an axis its scope has pinned to a single value. The pill
+    # is offered only where BOTH axes can vary; elsewhere the param is
+    # ignored, so a crafted URL can't flip a single-project pane into a
+    # redundant per-project breakdown.
+    rel = panel_relevance(
+        mode=mode,
+        user_filter=username or filters.get('user'),
+        account_filter=(request.args.get('account') or '').strip() or None,
+        account_projcodes=account_projcodes,
+    )
+    owners_toggle = rel['owners_toggle']
+    group_by = _parse_group_by() if owners_toggle else rel['default_group_by']
     # The plugin's word for a project owner is 'account'; the URL and the
     # shared view-preference bucket speak 'project'. Translate here, at
     # the one boundary between the two vocabularies.
@@ -973,7 +1028,10 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     try:
         hist = service.jobs_histogram(
             machine, dimension,
-            owners_limit=_HIST_OWNERS_LIMIT,
+            # Both axes pinned ⇒ every band has exactly one owner, so
+            # skip the grouping entirely: flat bars, and a band drills
+            # straight to its jobs instead of through a one-row tier.
+            owners_limit=_HIST_OWNERS_LIMIT if rel['owners_enabled'] else None,
             # Which top-N survives must follow the displayed metric —
             # hours-ranked owners cover ~1% of band GPU-hours (plugin
             # PR #100 review data), rendering a GPU stack as all-"Other".
@@ -1593,7 +1651,8 @@ def _id_arg(name: str, default: Optional[str] = None) -> Optional[str]:
     return raw
 
 
-def _card_context(*, mode: str, machine: str, **extra) -> dict:
+def _card_context(*, mode: str, machine: str, panel_params=None,
+                  account_projcodes=None, **extra) -> dict:
     """Template context for the jobs card shell.
 
     The id-shaped args are echoed straight back into element ids and
@@ -1601,13 +1660,26 @@ def _card_context(*, mode: str, machine: str, **extra) -> dict:
     shapes a panel URL travels in ``panel_params`` / ``jobs_params``,
     which the caller owns — see ``_render_card_shell`` (period pills) and
     ``_explorer_card_context`` (the full-view filter panel).
+
+    Tab visibility is derived from ``panel_params``, not ``request.args``:
+    what a panel is filtered by is exactly what its URL carries.
     """
+    panel_params = panel_params or {}
+    rel = panel_relevance(
+        mode=mode,
+        user_filter=panel_params.get('user'),
+        account_filter=panel_params.get('account'),
+        account_projcodes=account_projcodes,
+    )
     ctx = {
         'mode': mode,
         'machine': machine,
         'cid': _id_arg('cid', 'jobs-card'),
         'tablist_id': _id_arg('tablist_id', 'jobsCardTabs'),
         'days_persist_id': _id_arg('days_persist_id'),
+        'panel_params': panel_params,
+        'show_by_user': rel['show_by_user'],
+        'show_by_project': rel['show_by_project'],
     }
     ctx.update(extra)
     return ctx
@@ -1627,6 +1699,7 @@ def _render_card_shell(*, mode: str, machine: str, **extra):
             mode=mode, machine=machine,
             days=days,
             panel_params=panel_params,
+            account_projcodes=extra.pop('account_projcodes', None),
             # The clicked card is on screen, so this fires straight away; a
             # sibling card refreshed inside a hidden machine subtab waits
             # until it is actually shown instead of querying for nobody.
@@ -1647,7 +1720,7 @@ def jobs_card_fragment(project):
         panel_params={
             'scope': (request.args.get('scope') or '').strip() or None,
         },
-        jobs_multi_project=len(_tree_projcodes(project)) > 1,
+        account_projcodes=_tree_projcodes(project),
     )
 
 

@@ -64,6 +64,7 @@ from ..charts import (
 from webapp.disk_scans import is_enabled as is_fs_scans_enabled
 from webapp.disk_scans import service as disk_scans_service
 from webapp.jobs import service as jobs_service
+from webapp.jobs.routes import panel_relevance as jobs_panel_relevance
 
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
@@ -190,6 +191,10 @@ def my_jobs():
         'dashboards/user/my_jobs.html',
         jobs_window_start=default_jobs_window_start(),
         jobs_window_days=DEFAULT_JOBS_WINDOW_DAYS,
+        # User mode pins the username, so By User would be a pie of one;
+        # By Project takes its slot. Derived, not hardcoded in the
+        # template, so it follows the same rule as every other surface.
+        jobs_panels=jobs_panel_relevance(mode='user'),
         **ctx,
     )
 
@@ -670,10 +675,14 @@ def resource_details(project):
         can_edit_threshold=can_edit_threshold,
         has_children=has_children,
         scope=scope,
-        # By Project jobs tab only makes sense when the (scoped) account
-        # tree spans more than one projcode — same expansion the jobs
-        # routes use, so tab visibility and row scoping always agree.
-        jobs_multi_project=len(_resolve_scope_projcodes(project, scope)) > 1,
+        # Which job-history tabs can say anything about this scope — the
+        # same rule the jobs panels apply internally, fed the same
+        # (scoped) account tree, so tab visibility and row scoping always
+        # agree. The card carries no user/account filter of its own.
+        jobs_panels=jobs_panel_relevance(
+            mode='project',
+            account_projcodes=_resolve_scope_projcodes(project, scope),
+        ),
         tree_data=tree_data,
         alloc_start_date=alloc_start_date,
         account_adjustments=account_adjustments,

@@ -536,7 +536,8 @@
         <div class="card-body">
             {{ jobs_card(mode='project', cid='jobs-hist', tablist_id='jobsCardTabs',
                          machine=jobs_machine, projcode=projcode,
-                         jobs_multi_project=jobs_multi_project,
+                         show_by_user=jobs_panels.show_by_user,
+                         show_by_project=jobs_panels.show_by_project,
                          panel_params={'start': start_date, 'end': end_date,
                                        'scope': scope},
                          load_trigger='shown.bs.tab once, shown.bs.collapse once from:#collapseJobsHist') }}
