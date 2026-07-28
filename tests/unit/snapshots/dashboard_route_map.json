@@ -1932,6 +1932,13 @@
     ]
   ],
   [
+    "user_dashboard.resource_details_user_pie",
+    "/user/resource-details/user-pie/<projcode>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "user_dashboard.resource_details_user_subtree",
     "/user/resource-details/user-subtree/<projcode>",
     [
