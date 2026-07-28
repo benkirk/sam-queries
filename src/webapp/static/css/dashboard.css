@@ -644,6 +644,19 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     padding: .75rem 1.5rem;
 }
 
+/* Identifiers inside a button render in the case they're stored in: the
+   uppercase treatment above is right for button *labels* but wrong for a
+   name the user has to match against a shell prompt or a ticket. It also
+   erases the convention that tells the two apart at a glance — projcodes
+   are uppercase (SCSG0001), usernames lowercase (benkirk) — which the
+   entity quick-view links on the job-history tables and histogram
+   drill-downs lean on. Covers both spellings in use: <code> and
+   .font-monospace. */
+.btn code,
+.btn .font-monospace {
+    text-transform: none;
+}
+
 .btn-primary {
     --bs-btn-bg: var(--ncar-blue);
     --bs-btn-border-color: var(--ncar-blue);
