@@ -699,11 +699,11 @@ def _reset_usage_cache_globals(monkeypatch):
     """
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
     import sam.queries.usage_cache as uc
-    uc._adapter = None
-    uc._disabled = False
+    # disabled=False drops the memoised adapter so the next call re-reads
+    # config, rather than pinning the bucket off.
+    uc._CACHE.reset_for_tests(disabled=False)
     yield
-    uc._adapter = None
-    uc._disabled = False
+    uc._CACHE.reset_for_tests(disabled=False)
 
 
 # ============================================================================
@@ -766,7 +766,7 @@ class TestUsageCacheModule:
     """
     Tests for sam.queries.usage_cache module.
 
-    These tests operate outside a Flask request context so _get_config()
+    These tests operate outside a Flask request context so the config read
     falls back to env vars (default TTL=3600, SIZE=200 → cache *enabled*).
     The module-level _reset_usage_cache_globals autouse fixture ensures a
     clean (None, False) state before each test.
@@ -781,7 +781,7 @@ class TestUsageCacheModule:
 
     def test_info_disabled_when_flag_set(self):
         import sam.queries.usage_cache as uc
-        uc._disabled = True
+        uc._CACHE.reset_for_tests(disabled=True)
         info = uc.usage_cache_info()
         assert info['enabled'] is False
 
@@ -795,17 +795,21 @@ class TestUsageCacheModule:
     # --- get_cache_adapter() disabled path ---
 
     def test_get_cache_returns_none_when_ttl_zero(self):
+        import sam.caching.buckets as buckets
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        with patch.object(uc, '_get_config', side_effect=lambda k, d: 0):
+        with patch.object(buckets, '_config_int', side_effect=lambda k, d: 0):
             cache = uc.get_cache_adapter()
         assert cache is None
-        assert uc._disabled is True
+        # A stored None means "initialised but disabled" — so the zero-config
+        # read happens once, not on every call.
+        assert uc._CACHE._adapters['default'] is None
 
     def test_get_cache_returns_none_when_size_zero(self):
+        import sam.caching.buckets as buckets
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        with patch.object(uc, '_get_config', side_effect=lambda k, d: 0):
+        with patch.object(buckets, '_config_int', side_effect=lambda k, d: 0):
             cache = uc.get_cache_adapter()
         assert cache is None
 
@@ -813,7 +817,7 @@ class TestUsageCacheModule:
 
     def test_purge_disabled_cache_returns_zero(self):
         import sam.queries.usage_cache as uc
-        uc._disabled = True
+        uc._CACHE.reset_for_tests(disabled=True)
         n = uc.purge_usage_cache()
         assert n == 0
 
@@ -831,7 +835,7 @@ class TestUsageCacheModule:
             uc.cached_allocation_usage(session=session, resource_name='Casper')
         n = uc.purge_usage_cache()
         assert n == 2
-        assert len(uc._adapter._cache) == 0
+        assert uc.get_cache_adapter().info()['currsize'] == 0
 
     # --- cached_allocation_usage() cache hit/miss ---
 
@@ -870,7 +874,7 @@ class TestUsageCacheModule:
     def test_disabled_cache_calls_db_every_time(self, session):
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        uc._disabled = True
+        uc._CACHE.reset_for_tests(disabled=True)
         with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
             mock_fn.return_value = []
             uc.cached_allocation_usage(session=session, resource_name='Derecho')
@@ -905,7 +909,7 @@ class TestUsageCacheModule:
     def test_force_refresh_on_disabled_cache_still_calls_db(self, session):
         import sam.queries.usage_cache as uc
         from unittest.mock import patch
-        uc._disabled = True
+        uc._CACHE.reset_for_tests(disabled=True)
         with patch('sam.queries.usage_cache.get_allocation_summary_with_usage') as mock_fn:
             mock_fn.return_value = []
             uc.cached_allocation_usage(session=session, resource_name='Derecho', force_refresh=True)

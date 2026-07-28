@@ -13,6 +13,11 @@ import types
 from datetime import date, timedelta
 from unittest.mock import MagicMock
 
+from webapp.jobs.scope import (
+    MachineJobScope,
+    ProjectJobScope,
+    UserJobScope)
+
 import pytest
 
 
@@ -31,9 +36,10 @@ def _reset_jobs_cache(monkeypatch):
     """
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
     from webapp.jobs import cache as _c
-    _c._adapters = {b: None for b in _c._BUCKETS}
+    _c._CACHE.reset_for_tests()
     yield
-    _c._adapters = {}   # clear → buckets re-init on next use
+    # disabled=False → drop the memo so buckets re-init on next use
+    _c._CACHE.reset_for_tests(disabled=False)
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +173,7 @@ def test_jobs_cache_defaults_cap_staleness_at_thirty_minutes():
     they can never serve a stale panel on their own."""
     from webapp.jobs import cache as c
 
-    ttls = {b: spec['ttl'][1] for b, spec in c._BUCKETS.items()}
+    ttls = {b: spec.ttl_default for b, spec in c._BUCKETS.items()}
     assert ttls['historical'] == 1800
     assert ttls['recent'] == 900
     assert max(ttls.values()) <= 1800
@@ -179,7 +185,7 @@ def test_jobs_cache_sizes_fit_the_explorer_fan_out():
     cards-era 128 held about six of them."""
     from webapp.jobs import cache as c
 
-    sizes = {b: spec['size'][1] for b, spec in c._BUCKETS.items()}
+    sizes = {b: spec.size_default for b, spec in c._BUCKETS.items()}
     assert min(sizes.values()) >= 512
 
 
@@ -237,8 +243,7 @@ def _install_agg_plugin(app, monkeypatch):
     fake_mod = types.SimpleNamespace(
         get_engine=lambda machine, pool_kwargs=None: MagicMock(),
         get_session=lambda machine, engine=None: MagicMock(name='jh_session'),
-        JobQueries=FakeJobQueries,
-    )
+        JobQueries=FakeJobQueries)
     monkeypatch.setitem(app.extensions, 'hpc_usage_queries', {
         'module': fake_mod,
         'engines': {'derecho': MagicMock(), 'casper': MagicMock()},
@@ -256,8 +261,8 @@ def test_service_jobs_histogram_caches_closed_window(app, monkeypatch):
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_histogram('derecho', 'wait', account_projcodes=['SCSG0001'], **win)
-        service.jobs_histogram('derecho', 'wait', account_projcodes=['SCSG0001'], **win)
+        service.jobs_histogram('derecho', 'wait', ProjectJobScope(account_projcodes=['SCSG0001']), **win)
+        service.jobs_histogram('derecho', 'wait', ProjectJobScope(account_projcodes=['SCSG0001']), **win)
 
     assert len(captured['histogram']) == 1
     dimension, kwargs = captured['histogram'][0]
@@ -265,18 +270,24 @@ def test_service_jobs_histogram_caches_closed_window(app, monkeypatch):
     assert kwargs['account'] == ['SCSG0001']
 
 
-def test_service_jobs_histogram_username_pin_overwrites_user_filter(app, monkeypatch):
-    """user-mode pin always wins over a client-supplied user filter."""
+def test_service_jobs_histogram_rejects_user_filter_beside_pin(app, monkeypatch):
+    """A client-supplied user filter beside a user pin raises.
+
+    This used to silently overwrite — the aggregations treated the pin as
+    "always wins" while search/count and usage_by_project raised on the same
+    input. One concept, two rules. The scope owns it now, and the strict
+    rule won: a route that forwards a client ?user= into user mode is a bug,
+    and overwriting hides it. The routes drop the key instead
+    (``_parse_job_filters(include_user=username is None)``), so a crafted
+    ?user= is still ignored rather than surfacing an error."""
     from webapp.jobs import service
 
-    captured = _install_agg_plugin(app, monkeypatch)
+    _install_agg_plugin(app, monkeypatch)
 
     with app.app_context():
-        service.jobs_histogram('derecho', 'duration',
-                               username='benkirk', user='mallory')
-
-    _, kwargs = captured['histogram'][0]
-    assert kwargs['user'] == 'benkirk'
+        with pytest.raises(ValueError, match='pin the user server-side'):
+            service.jobs_histogram(
+                'derecho', 'duration', UserJobScope('benkirk'), user='mallory')
 
 
 def test_service_jobs_histogram_machine_wide_has_no_account(app, monkeypatch):
@@ -286,7 +297,7 @@ def test_service_jobs_histogram_machine_wide_has_no_account(app, monkeypatch):
     captured = _install_agg_plugin(app, monkeypatch)
 
     with app.app_context():
-        service.jobs_histogram('derecho', 'nodes')
+        service.jobs_histogram('derecho', 'nodes', MachineJobScope())
 
     _, kwargs = captured['histogram'][0]
     assert 'account' not in kwargs
@@ -299,8 +310,7 @@ def test_service_jobs_usage_by_user_forwards_limit_and_account(app, monkeypatch)
 
     with app.app_context():
         out = service.jobs_usage_by_user(
-            'derecho', limit=7, account_projcodes=['SCSG0001', 'SCSG0002'],
-        )
+            'derecho', ProjectJobScope(account_projcodes=['SCSG0001', 'SCSG0002']), limit=7)
 
     dimension, kwargs = captured['usage_by'][0]
     assert dimension == 'user'
@@ -320,9 +330,9 @@ def test_service_jobs_histogram_owners_limit_in_key_and_forwarded(app, monkeypat
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_histogram('derecho', 'wait', **win)
-        service.jobs_histogram('derecho', 'wait', owners_limit=10, **win)
-        service.jobs_histogram('derecho', 'wait', owners_limit=10, **win)
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), **win)
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), owners_limit=10, **win)
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), owners_limit=10, **win)
 
     assert len(captured['histogram']) == 2      # 3rd call served from cache
     _, plain_kwargs = captured['histogram'][0]
@@ -341,11 +351,11 @@ def test_service_jobs_histogram_owners_sort_in_key_and_forwarded(app, monkeypatc
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), owners_limit=10,
                                owners_sort_by='job_count', **win)
-        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), owners_limit=10,
                                owners_sort_by='gpu_hours', **win)
-        service.jobs_histogram('derecho', 'wait', owners_limit=10,
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), owners_limit=10,
                                owners_sort_by='gpu_hours', **win)
 
     assert len(captured['histogram']) == 2
@@ -366,10 +376,10 @@ def test_service_jobs_histogram_owners_by_in_key_and_forwarded(app, monkeypatch)
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_histogram('derecho', 'wait', **win)
-        service.jobs_histogram('derecho', 'wait', owners_by='user', **win)
-        service.jobs_histogram('derecho', 'wait', owners_by='account', **win)
-        service.jobs_histogram('derecho', 'wait', owners_by='account', **win)
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), **win)
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), owners_by='user', **win)
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), owners_by='account', **win)
+        service.jobs_histogram('derecho', 'wait', MachineJobScope(), owners_by='account', **win)
 
     # call 2 aliases call 1 (explicit default == omitted); call 4 hits 3.
     assert len(captured['histogram']) == 2
@@ -389,9 +399,9 @@ def test_service_jobs_usage_by_sort_in_key_and_forwarded(app, monkeypatch):
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_usage_by_user('derecho', **win)
-        service.jobs_usage_by_user('derecho', sort_by='gpu_hours', **win)
-        service.jobs_usage_by_user('derecho', sort_by='gpu_hours', **win)
+        service.jobs_usage_by_user('derecho', MachineJobScope(), **win)
+        service.jobs_usage_by_user('derecho', MachineJobScope(), sort_by='gpu_hours', **win)
+        service.jobs_usage_by_user('derecho', MachineJobScope(), sort_by='gpu_hours', **win)
 
     assert len(captured['usage_by']) == 2
     _, default_kwargs = captured['usage_by'][0]
@@ -407,8 +417,7 @@ def test_service_jobs_usage_by_project_forwards_sort(app, monkeypatch):
 
     with app.app_context():
         service.jobs_usage_by_project(
-            'derecho', username='benkirk', sort_by='job_count',
-        )
+            'derecho', UserJobScope('benkirk'), sort_by='job_count')
 
     dimension, kwargs = captured['usage_by'][0]
     assert dimension == 'account'
@@ -417,8 +426,7 @@ def test_service_jobs_usage_by_project_forwards_sort(app, monkeypatch):
 
 
 def test_service_jobs_usage_by_project_scopes_in_key_and_forwarded(
-    app, monkeypatch,
-):
+    app, monkeypatch):
     """The non-user-mode scopes: account_projcodes reaches the plugin as
     ``account`` and discriminates the cache key; the unpinned machine-mode
     call sends neither ``user`` nor ``account``. Different scopes must
@@ -430,10 +438,10 @@ def test_service_jobs_usage_by_project_scopes_in_key_and_forwarded(
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_usage_by_project('derecho', **win)                 # machine
-        service.jobs_usage_by_project('derecho', **win)                 # cached
+        service.jobs_usage_by_project('derecho', MachineJobScope(), **win)                 # machine
+        service.jobs_usage_by_project('derecho', MachineJobScope(), **win)                 # cached
         service.jobs_usage_by_project(
-            'derecho', account_projcodes=['SCSG0001', 'SCSG0002'], **win)  # tree
+            'derecho', ProjectJobScope(account_projcodes=['SCSG0001', 'SCSG0002']), **win)  # tree
 
     assert len(captured['usage_by']) == 2
     _, machine_kwargs = captured['usage_by'][0]
@@ -453,9 +461,9 @@ def test_service_jobs_facets_caches_closed_window(app, monkeypatch):
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_facets('derecho', account_projcodes=['SCSG0001'], **win)
-        service.jobs_facets('derecho', account_projcodes=['SCSG0001'], **win)
-        service.jobs_facets('derecho', account_projcodes=['SCSG0001'],
+        service.jobs_facets('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), **win)
+        service.jobs_facets('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), **win)
+        service.jobs_facets('derecho', ProjectJobScope(account_projcodes=['SCSG0001']),
                             limit=3, **win)
 
     assert len(captured['facets']) == 2
@@ -465,17 +473,16 @@ def test_service_jobs_facets_caches_closed_window(app, monkeypatch):
     assert kwargs['account'] == ['SCSG0001']
 
 
-def test_service_jobs_facets_username_pin_overwrites_user_filter(
-    app, monkeypatch,
-):
+def test_service_jobs_facets_rejects_user_filter_beside_pin(
+    app, monkeypatch):
+    """Same unified rule as the histogram — see the note there."""
     from webapp.jobs import service
 
-    captured = _install_agg_plugin(app, monkeypatch)
+    _install_agg_plugin(app, monkeypatch)
 
     with app.app_context():
-        service.jobs_facets('derecho', username='benkirk', user='mallory')
-
-    assert captured['facets'][0]['user'] == 'benkirk'
+        with pytest.raises(ValueError, match='pin the user server-side'):
+            service.jobs_facets('derecho', UserJobScope('benkirk'), user='mallory')
 
 
 def test_service_jobs_usage_by_user_caches(app, monkeypatch):
@@ -486,18 +493,16 @@ def test_service_jobs_usage_by_user_caches(app, monkeypatch):
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_usage_by_user('derecho', account_projcodes=['SCSG0001'], **win)
-        service.jobs_usage_by_user('derecho', account_projcodes=['SCSG0001'], **win)
+        service.jobs_usage_by_user('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), **win)
+        service.jobs_usage_by_user('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), **win)
         # A different limit is a different result → recompute.
-        service.jobs_usage_by_user('derecho', limit=3,
-                                   account_projcodes=['SCSG0001'], **win)
+        service.jobs_usage_by_user('derecho', ProjectJobScope(account_projcodes=['SCSG0001']), limit=3, **win)
 
     assert len(captured['usage_by']) == 2
 
 
 def test_service_jobs_usage_by_project_caches_under_own_query_type(
-    app, monkeypatch,
-):
+    app, monkeypatch):
     """usage_by_account is its own cache key family — a by-project call
     never satisfies (or is satisfied by) a by-user call with the same
     filter set."""
@@ -508,10 +513,10 @@ def test_service_jobs_usage_by_project_caches_under_own_query_type(
     win = {'start': date(2026, 6, 1), 'end': date(2026, 6, 30)}
 
     with app.app_context():
-        service.jobs_usage_by_project('derecho', username='benkirk', **win)
-        service.jobs_usage_by_project('derecho', username='benkirk', **win)
+        service.jobs_usage_by_project('derecho', UserJobScope('benkirk'), **win)
+        service.jobs_usage_by_project('derecho', UserJobScope('benkirk'), **win)
         # Same window as a by-user call → still a fresh plugin query.
-        service.jobs_usage_by_user('derecho', user='benkirk', limit=25, **win)
+        service.jobs_usage_by_user('derecho', MachineJobScope(), user='benkirk', limit=25, **win)
 
     assert len(captured['usage_by']) == 2
     dim, kwargs = captured['usage_by'][0]

@@ -1,35 +1,26 @@
 {#
-  Shared banners + badges for the Job History fragments. Mirrors the
-  disabled / error / empty shape of _disk_scans_macros.html so the jobs
-  tabs degrade identically to the filesystem-scan ones.
-#}
+  Job History fragment banners + badges.
 
-{# Plugin not loaded / no warmed engine — graceful "unavailable" notice
-   (the card may hx-get fragments unconditionally), never a 404. #}
+  The three degraded states delegate to the shared
+  `dashboards/fragments/plugin_state.html` macros, so the jobs and fs-scans
+  tabs can't drift apart in markup; only the wording lives here. Call sites
+  keep the names they already use.
+#}
+{% import 'dashboards/fragments/plugin_state.html' as _state %}
+
+{# Plugin not loaded / no warmed engine. #}
 {% macro jobs_disabled() %}
-  <div class="alert alert-secondary py-2 mb-0" role="status">
-    <small>
-      Per-job data is unavailable: the
-      <code>hpc-usage-queries</code> plugin is not loaded.
-      <a href="/dashboards/admin/configuration"
-         target="_blank" rel="noopener">
-        Check the Database card on the Admin → Configuration page
-      </a>
-      for plugin/DB health.
-    </small>
-  </div>
+  {{ _state.plugin_disabled('Per-job data', 'hpc-usage-queries') }}
 {% endmacro %}
 
 {# A jobs query raised (transient plugin/DB issue) — warn inline. #}
 {% macro jobs_error(error) %}
-  <div class="alert alert-warning py-2 mb-0" role="alert">
-    <small>Could not load job-history data: {{ error }}</small>
-  </div>
+  {{ _state.plugin_error('job-history data', error) }}
 {% endmacro %}
 
 {# Query succeeded but matched nothing. #}
 {% macro jobs_empty(message) %}
-  <p class="text-muted small mb-0">{{ message }}</p>
+  {{ _state.plugin_empty(message) }}
 {% endmacro %}
 
 {# Scope badge for the explorer header: which slice of the machine's jobs

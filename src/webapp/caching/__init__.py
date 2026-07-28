@@ -29,15 +29,27 @@ Inspecting all caches (used by the admin Configuration card)::
     caching.clear('chart')     # category in {'flask','chart','usage','scans','jobs',None}
 """
 
+import importlib
 import logging
 import os
 from typing import Callable, List, Optional
 
-from sam.caching import CacheBase
+from sam.caching import BucketedTTLCache, CacheBase, registered_caches
 from webapp.caching.chart import ChartCache, chart_cached as _chart_decorator
 from webapp.caching.flask_adapter import FlaskCacheAdapter
 
 logger = logging.getLogger(__name__)
+
+#: Modules that construct a :class:`BucketedTTLCache` at import time. Order is
+#: the registry order, hence the admin card's display order and the order of
+#: :meth:`Caching.adapters`. Imported lazily inside
+#: :meth:`Caching.bucketed_caches` — importing them at module scope would
+#: cycle (both webapp packages import this facade).
+_BUCKETED_CACHE_MODULES = (
+    'sam.queries.usage_cache',
+    'webapp.disk_scans.cache',
+    'webapp.jobs.cache',
+)
 
 
 class Caching:
@@ -112,63 +124,76 @@ class Caching:
         self._chart_caches.append(cache)
         return _chart_decorator(cache, key_fn=key_fn)
 
+    # ── Bucketed TTL caches (registry-driven) ───────────────────────────
+
+    @staticmethod
+    def bucketed_caches() -> List[BucketedTTLCache]:
+        """Every :class:`BucketedTTLCache` in the app, in a deterministic order.
+
+        The caches self-register at import, so the import here is what makes
+        the registry complete — and importing by name (rather than at module
+        scope) keeps ``webapp.caching`` free of an import cycle with
+        ``webapp.jobs`` / ``webapp.disk_scans``, which import the facade back.
+
+        A module that fails to import (plugin extra not installed, say) is
+        skipped: the admin card degrades to the caches that did load rather
+        than 500ing.
+
+        Adding a bucketed cache means adding it to ``_BUCKETED_CACHE_MODULES``
+        and nothing else — :meth:`adapters`, :meth:`stats`, :meth:`clear`,
+        :attr:`categories` and the flask adapter's foreign-keyspace skip list
+        all derive from here.
+        """
+        for module in _BUCKETED_CACHE_MODULES:
+            try:
+                importlib.import_module(module)
+            except Exception as exc:
+                logger.warning("Caching: %s did not import (%s); "
+                               "its cache will be absent from the admin card.",
+                               module, exc)
+        return registered_caches()
+
+    @property
+    def categories(self) -> tuple:
+        """Valid ``clear(category)`` values, in admin-card order."""
+        return ('flask', 'chart', *(c.category for c in self.bucketed_caches()))
+
     # ── Introspection ───────────────────────────────────────────────────
 
     def adapters(self) -> List[CacheBase]:
         """All adapters known to the facade, including the proxied usage cache.
 
-        Order: flask first, then chart caches in registration order, then
-        the usage cache (if enabled), then the two fs-scans buckets (default,
-        filtered), then the two jobs buckets (historical, recent). Stable
-        across processes since registration order is deterministic.
+        Order: flask first, then chart caches in registration order, then each
+        bucketed cache's enabled buckets in declaration order (usage, then the
+        two fs-scans buckets, then the two jobs buckets). Stable across
+        processes since registration order is deterministic.
         """
         out: List[CacheBase] = [self._flask_adapter, *self._chart_caches]
-        try:
-            from sam.queries.usage_cache import get_cache_adapter
-            usage = get_cache_adapter()
-        except Exception:
-            usage = None
-        if usage:
-            out.append(usage)
-        try:
-            from webapp.disk_scans.cache import (
-                _BUCKETS, get_cache_adapter as get_scans_adapter,
-            )
-            for bucket in _BUCKETS:
-                scans = get_scans_adapter(bucket)
-                if scans:
-                    out.append(scans)
-        except Exception:
-            pass
-        try:
-            from webapp.jobs.cache import (
-                _BUCKETS as _JOBS_BUCKETS,
-                get_cache_adapter as get_jobs_adapter,
-            )
-            for bucket in _JOBS_BUCKETS:
-                jobs = get_jobs_adapter(bucket)
-                if jobs:
-                    out.append(jobs)
-        except Exception:
-            pass
+        for cache in self.bucketed_caches():
+            out.extend(cache.live_adapters())
         return out
 
     def stats(self) -> dict:
-        """Single dict for the admin card. Stable shape, group-by-category."""
+        """Single dict for the admin card. Stable shape, group-by-category.
+
+        ``usage`` is a single info dict (one bucket, rendered as one row);
+        ``scans`` and ``jobs`` are per-bucket lists the template loops over.
+        """
         from flask import current_app
         from sam.queries.usage_cache import usage_cache_info
-        from webapp.disk_scans.cache import fs_scans_cache_info
-        from webapp.jobs.cache import jobs_cache_info
 
-        return {
+        out = {
             'backend':         current_app.config.get('CACHE_TYPE'),
             'default_timeout': current_app.config.get('CACHE_DEFAULT_TIMEOUT'),
             'flask':           self._flask_adapter.info(),
             'chart':           [c.info() for c in self._chart_caches],
-            'usage':           usage_cache_info(),
-            'scans':           fs_scans_cache_info(),
-            'jobs':            jobs_cache_info(),
         }
+        for cache in self.bucketed_caches():
+            out[cache.category] = cache.info()
+        # The usage cache predates the per-bucket list shape and the card
+        # renders it as a single row; keep that contract.
+        out['usage'] = usage_cache_info()
+        return out
 
     def clear(self, category: Optional[str] = None) -> dict:
         """Invalidate caches by category. Returns {category: count_cleared}."""
@@ -177,15 +202,9 @@ class Caching:
             result['flask'] = self._flask_adapter.clear()
         if category in (None, 'chart'):
             result['chart'] = sum(c.clear() for c in self._chart_caches)
-        if category in (None, 'usage'):
-            from sam.queries.usage_cache import purge_usage_cache
-            result['usage'] = purge_usage_cache()
-        if category in (None, 'scans'):
-            from webapp.disk_scans.cache import purge_fs_scans_cache
-            result['scans'] = purge_fs_scans_cache()
-        if category in (None, 'jobs'):
-            from webapp.jobs.cache import purge_jobs_cache
-            result['jobs'] = purge_jobs_cache()
+        for cache in self.bucketed_caches():
+            if category in (None, cache.category):
+                result[cache.category] = cache.purge()
         return result
 
 

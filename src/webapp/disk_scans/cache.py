@@ -12,10 +12,13 @@ collection (e.g. ``/ncar/USGS_Water``) takes the on-the-fly path, which is
 in ``facade.py``). Whole-collection-root projects hit the pre-computed
 tables and are sub-second — caching them is cheap insurance, not the win.
 
-Mirrors ``sam.queries.usage_cache``: a lazily-initialised, Redis-backed
-adapter shared across gunicorn workers when ``CACHE_REDIS_URL`` is set,
-falling back to a per-worker in-process TTL cache otherwise. Registered
-with the ``webapp.caching`` facade so it appears in Admin → Configuration.
+Backend, lazy init and the get/compute/store dance all come from
+:class:`sam.caching.BucketedTTLCache` (shared with ``jobs/cache.py`` and
+``sam.queries.usage_cache``): a Redis-backed adapter shared across gunicorn
+workers when ``CACHE_REDIS_URL`` is set, falling back to a per-worker
+in-process TTL cache otherwise. Registered with the ``webapp.caching``
+facade so it appears in Admin → Configuration. All that is left here is the
+cache key — which is the interesting part, see below.
 
 Two buckets share this mechanism, differing only in name / size / TTL:
 
@@ -42,7 +45,7 @@ Config (Flask app.config or env; 0 disables the corresponding bucket):
   FS_SCANS_FILTERED_CACHE_SIZE  — filtered max LRU entries (default 128)
 
 Key shape (hashable tuple):
-  (query_type, collections, path_prefixes, opts, scan_date_signature)
+  (query_type, database, collections, path_prefixes, opts, scan_date_signature)
 ``opts`` carries every query parameter NOT already captured by the resolved
 scope — sort_by/limit/owner_uid today, and any Phase-3 filter kwargs
 (owner, leaves-only, accessed-before, …) automatically as they're added to
@@ -53,98 +56,39 @@ one mechanism caches both the default and any filter selection.
 from __future__ import annotations
 
 import logging
-import os
-import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from sam.caching import CacheBase, RedisTTLAdapter, TTLCacheAdapter, make_redis_client
-from sam.caching.ttl import disabled_info
+from sam.caching import BucketedTTLCache, BucketSpec, CacheBase, norm
 
 logger = logging.getLogger(__name__)
 
 
-def _get_config(key: str, default: int) -> int:
-    """Read config from Flask app context if available, else env, else default."""
-    try:
-        from flask import current_app
-        return int(current_app.config.get(key, default))
-    except RuntimeError:
-        return int(os.environ.get(key, default))
+#: Bucket specs: the Redis prefix / Admin-card label plus the config knobs.
+#: Both buckets use the same backend, differing only here. Declaration order
+#: is the Admin card's display order — default first.
+_CACHE = BucketedTTLCache('fs_scans', 'scans', {
+    'default': BucketSpec(
+        name='fs_scans',
+        ttl_key='FS_SCANS_CACHE_TTL', ttl_default=691200,           # 8 days
+        size_key='FS_SCANS_CACHE_SIZE', size_default=256,
+    ),
+    'filtered': BucketSpec(
+        name='fs_scans_filtered',
+        ttl_key='FS_SCANS_FILTERED_CACHE_TTL', ttl_default=1800,    # 30 minutes
+        size_key='FS_SCANS_FILTERED_CACHE_SIZE', size_default=128,
+    ),
+})
 
-
-def _norm(value: Any):
-    """Make list values hashable for use as a key component."""
-    if isinstance(value, list):
-        return tuple(sorted(str(v) for v in value))
-    return value
-
-
-# ---------------------------------------------------------------------------
-# Lazy-initialised adapters (Redis shared / in-process fallback), one per bucket
-# ---------------------------------------------------------------------------
-
-# Bucket specs: name shown in the Admin card + the (config_key, default) pairs
-# for TTL and size. Both buckets use the same backend, differing only here.
-_BUCKETS: Dict[str, Dict[str, Any]] = {
-    'default': {
-        'name': 'fs_scans',
-        'ttl':  ('FS_SCANS_CACHE_TTL', 691200),   # 8 days
-        'size': ('FS_SCANS_CACHE_SIZE', 256),
-    },
-    'filtered': {
-        'name': 'fs_scans_filtered',
-        'ttl':  ('FS_SCANS_FILTERED_CACHE_TTL', 1800),   # 30 minutes
-        'size': ('FS_SCANS_FILTERED_CACHE_SIZE', 128),
-    },
-}
-
-# bucket -> adapter once initialised; a stored ``None`` means "initialised but
-# disabled by config" (so we don't re-probe on every call).
-_adapters: Dict[str, Optional[CacheBase]] = {}
-_init_lock = threading.RLock()
+#: Test seams. ``_BUCKETS`` enumerates the bucket keys; ``_adapters`` IS the
+#: cache's memo dict (same object), so a test that clears it re-initialises
+#: this cache — the pre-existing idiom, preserved through the extraction.
+_BUCKETS = _CACHE.buckets
+_adapters = _CACHE._adapters
 
 
 def get_cache_adapter(bucket: str = 'default') -> Optional[CacheBase]:
-    """Return the shared CacheBase adapter for *bucket*, init on first call.
-
-    Returns ``None`` when that bucket is disabled by config (TTL or SIZE == 0).
-    Backend mirrors ``usage_cache``: ``RedisTTLAdapter`` when ``CACHE_REDIS_URL``
-    is reachable (all workers share one cache), else a per-worker
-    ``TTLCacheAdapter``.
-    """
-    spec = _BUCKETS[bucket]
-
-    with _init_lock:
-        if bucket in _adapters:
-            return _adapters[bucket]
-
-        ttl  = _get_config(*spec['ttl'])
-        size = _get_config(*spec['size'])
-        if ttl <= 0 or size <= 0:
-            _adapters[bucket] = None
-            return None
-
-        name = spec['name']
-        redis_url = os.environ.get('CACHE_REDIS_URL')
-        if redis_url:
-            try:
-                client = make_redis_client(redis_url)
-                if client is not None:
-                    adapter = RedisTTLAdapter(
-                        name=name, client=client, ttl=ttl, maxsize=size,
-                    )
-                    _adapters[bucket] = adapter
-                    return adapter
-            except Exception as exc:
-                logger.warning(
-                    "fs_scans cache: CACHE_REDIS_URL=%s set but unreachable (%s); "
-                    "falling back to per-worker TTLCacheAdapter.",
-                    redis_url, exc,
-                )
-
-        adapter = TTLCacheAdapter(name=name, maxsize=size, ttl=ttl)
-        _adapters[bucket] = adapter
-        return adapter
+    """Return the shared CacheBase adapter for *bucket* (``None`` if disabled)."""
+    return _CACHE.adapter(bucket)
 
 
 def _scan_date_signature(q, collections) -> Optional[Tuple]:
@@ -187,8 +131,7 @@ def cached_scan(
     the key so collection-name collisions across databases (e.g. a schema named
     the same in ``campaign`` and ``desc1``) never share a cache entry.
     """
-    adapter = get_cache_adapter(bucket)
-    if adapter is None:
+    if _CACHE.adapter(bucket) is None:
         return compute()
 
     sig = _scan_date_signature(q, collections)
@@ -200,24 +143,10 @@ def cached_scan(
         database,
         tuple(sorted(collections)),
         tuple(sorted(path_prefixes)),
-        tuple(sorted((k, _norm(v)) for k, v in opts.items())),
+        tuple(sorted((k, norm(v)) for k, v in opts.items())),
         sig,
     )
-
-    with adapter.lock:
-        if key in adapter:
-            return adapter[key]
-        adapter.pop(key, None)
-
-    result = compute()
-
-    with adapter.lock:
-        try:
-            adapter[key] = result
-        except ValueError:
-            # Cache full and no expired entries to evict — skip the store.
-            pass
-    return result
+    return _CACHE.get_or_compute(bucket, key, compute)
 
 
 # ---------------------------------------------------------------------------
@@ -226,12 +155,7 @@ def cached_scan(
 
 def purge_fs_scans_cache() -> int:
     """Clear every scan-cache bucket. Returns the total entries cleared."""
-    total = 0
-    for bucket in _BUCKETS:
-        adapter = get_cache_adapter(bucket)
-        if adapter is not None:
-            total += adapter.clear()
-    return total
+    return _CACHE.purge()
 
 
 def fs_scans_cache_info() -> List[Dict]:
@@ -241,13 +165,4 @@ def fs_scans_cache_info() -> List[Dict]:
     and surface each bucket's TTL — making the 30-min explorer TTL visible
     alongside the 8-day default.
     """
-    infos: List[Dict] = []
-    for bucket, spec in _BUCKETS.items():
-        adapter = get_cache_adapter(bucket)
-        if adapter is None:
-            ttl  = _get_config(*spec['ttl'])
-            size = _get_config(*spec['size'])
-            infos.append(disabled_info(spec['name'], maxsize=size, ttl=ttl))
-        else:
-            infos.append(adapter.info())
-    return infos
+    return _CACHE.info()

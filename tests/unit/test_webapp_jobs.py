@@ -30,6 +30,12 @@ from unittest.mock import MagicMock
 import pytest
 from flask import Flask
 
+from webapp.jobs.scope import (
+    MachineJobScope,
+    ProjectJobScope,
+    UserJobScope,
+)
+
 
 @pytest.fixture(autouse=True)
 def _disable_jobs_cache():
@@ -42,9 +48,10 @@ def _disable_jobs_cache():
     affected by the process-wide adapter singleton.
     """
     from webapp.jobs import cache as _c
-    _c._adapters = {b: None for b in _c._BUCKETS}
+    _c._CACHE.reset_for_tests()
     yield
-    _c._adapters = {}   # clear → buckets re-init on next use
+    # disabled=False → drop the memo so buckets re-init on next use
+    _c._CACHE.reset_for_tests(disabled=False)
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +282,7 @@ def test_search_jobs_pins_account_to_projcode(app, active_project, monkeypatch):
     with app.app_context():
         service.search_jobs(
             'derecho',
-            project=active_project,
+            ProjectJobScope(active_project),
             user='someone',
             queue='main',
             limit=50,
@@ -303,8 +310,7 @@ def test_search_jobs_account_projcodes_overrides_single(
     with app.app_context():
         service.search_jobs(
             'derecho',
-            project=active_project,
-            account_projcodes=['PARENT0001', 'PARENT0001_a', 'PARENT0001_b'],
+            ProjectJobScope(active_project, ['PARENT0001', 'PARENT0001_a', 'PARENT0001_b']),
             limit=50,
         )
 
@@ -312,10 +318,13 @@ def test_search_jobs_account_projcodes_overrides_single(
     assert kw['account'] == ['PARENT0001', 'PARENT0001_a', 'PARENT0001_b']
 
 
-def test_search_jobs_requires_project():
-    from webapp.jobs import service
+def test_project_scope_requires_a_project():
+    """The unpinned-project-scope shape is rejected at construction — before
+    any query can be built, rather than inside each service function."""
     with pytest.raises(ValueError):
-        service.search_jobs('derecho', project=None)
+        ProjectJobScope(None)
+    with pytest.raises(ValueError):
+        ProjectJobScope(None, account_projcodes=[])
 
 
 def test_search_jobs_normalizes_legacy_queue_name(
@@ -334,7 +343,7 @@ def test_search_jobs_normalizes_legacy_queue_name(
     with app.app_context():
         service.search_jobs(
             'derecho',
-            project=active_project,
+            ProjectJobScope(active_project),
             queue='cpu-special',
             limit=50,
         )
@@ -363,7 +372,7 @@ def test_count_jobs_sam_summary_keeps_legacy_queue_name(
     with app.app_context():
         # No exit_status / GPU bounds → goes through the SAM summary fast path.
         total = service.count_jobs(
-            'derecho', project=active_project, queue='cpu-special',
+            'derecho', ProjectJobScope(active_project), queue='cpu-special',
         )
 
     assert total == 5
@@ -383,7 +392,7 @@ def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
 
     with app.app_context():
         service.count_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-economy',
             exit_status='1',  # forces plugin path
         )
@@ -407,7 +416,7 @@ def test_search_jobs_promotes_legacy_queue_suffix_to_qos(
 
     with app.app_context():
         service.search_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-special',
             valid_qos_names=['premium', 'regular', 'special'],
         )
@@ -428,7 +437,7 @@ def test_search_jobs_explicit_qos_wins_over_inferred(
 
     with app.app_context():
         service.search_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-special',
             qos='regular',  # explicit
             valid_qos_names=['premium', 'regular', 'special'],
@@ -451,7 +460,7 @@ def test_search_jobs_unknown_suffix_falls_back_to_strip_only(
 
     with app.app_context():
         service.search_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-bogus',
             valid_qos_names=['premium', 'regular', 'special'],
         )
@@ -481,7 +490,7 @@ def test_count_jobs_sam_summary_ignores_inferred_qos(
 
     with app.app_context():
         total = service.count_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-special',
             valid_qos_names=['premium', 'regular', 'special'],
         )
@@ -504,7 +513,7 @@ def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
 
     with app.app_context():
         service.count_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-special',
             exit_status='1',  # forces plugin path
             valid_qos_names=['premium', 'regular', 'special'],
@@ -1292,14 +1301,13 @@ def test_view_all_job_data_grants():
     assert p not in USER_FACILITY_PERMISSIONS['sureshm']['WNA']
 
 
-def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
-    """The connect listener issues SET application_name + statement_timeout.
+def _capture_connect_listener(monkeypatch, **kwargs):
+    """Register the connect listener against a stub engine and return it.
 
-    ``event.listens_for`` needs a real Engine, so capture the registered
-    listener via a fake decorator and drive it with a stub DBAPI
-    connection — asserting on the exact SQL the listener issues.
+    ``event.listens_for`` needs a real Engine, so swap in a fake decorator
+    that just hands back the function being registered.
     """
-    from webapp.jobs import session as jobs_session
+    from webapp.plugins import base as plugin_base
 
     registered = {}
 
@@ -1309,12 +1317,23 @@ def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
             return fn
         return _decorator
 
-    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
+    monkeypatch.setattr(plugin_base.event, 'listens_for', _fake_listens_for)
+    plugin_base.PluginExtension.apply_connection_settings(
+        MagicMock(name='engine'), **kwargs)
+    return registered['fn']
 
-    jobs_session._apply_connection_settings(
-        MagicMock(name='engine'), 'sam-webapp:pod:job_history:derecho',
+
+def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
+    """The connect listener issues SET application_name + statement_timeout.
+
+    Covers the shared PluginExtension implementation, which both the jobs and
+    the fs-scans loaders warm their engines through.
+    """
+    registered = {'fn': _capture_connect_listener(
+        monkeypatch,
+        app_name='sam-webapp:pod:job_history:derecho',
         statement_timeout_ms=60000,
-    )
+    )}
 
     executed = []
 
@@ -1341,21 +1360,8 @@ def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
 
 def test_apply_connection_settings_zero_timeout_skips_set(monkeypatch):
     """statement_timeout_ms=0 (disabled) issues only the app-name SET."""
-    from webapp.jobs import session as jobs_session
-
-    registered = {}
-
-    def _fake_listens_for(target, name):
-        def _decorator(fn):
-            registered['fn'] = fn
-            return fn
-        return _decorator
-
-    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
-
-    jobs_session._apply_connection_settings(
-        MagicMock(name='engine'), 'tag', statement_timeout_ms=0,
-    )
+    registered = {'fn': _capture_connect_listener(
+        monkeypatch, app_name='tag', statement_timeout_ms=0)}
 
     executed = []
 
@@ -1406,7 +1412,7 @@ def test_search_jobs_machine_forwards_no_account(app, monkeypatch):
     captured = _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        service.search_jobs_machine('derecho', user='alice', limit=10)
+        service.search_jobs('derecho', MachineJobScope(), user='alice', limit=10)
 
     kw = captured['last_jobs_search_kwargs']
     assert 'account' not in kw
@@ -1421,7 +1427,7 @@ def test_count_jobs_machine_uses_plugin_count(app, monkeypatch):
     captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=9)
 
     with app.app_context():
-        total = service.count_jobs_machine('derecho', queue='main')
+        total = service.count_jobs('derecho', MachineJobScope(), queue='main')
 
     assert total == 9
     ckw = captured['last_jobs_count_kwargs']
@@ -1435,7 +1441,7 @@ def test_search_jobs_user_pins_username(app, monkeypatch):
     captured = _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        service.search_jobs_user('derecho', 'benkirk', queue='main')
+        service.search_jobs('derecho', UserJobScope('benkirk'), queue='main')
 
     kw = captured['last_jobs_search_kwargs']
     assert kw['user'] == 'benkirk'
@@ -1448,18 +1454,14 @@ def test_search_jobs_user_rejects_user_filter(app, monkeypatch):
     _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        with pytest.raises(ValueError, match='pins user'):
-            service.search_jobs_user('derecho', 'benkirk', user='mallory')
+        with pytest.raises(ValueError, match='pin the user server-side'):
+            service.search_jobs('derecho', UserJobScope('benkirk'), user='mallory')
 
 
-def test_search_jobs_user_requires_username(app, monkeypatch):
-    from webapp.jobs import service
-
-    _install_mock_plugin(app, monkeypatch)
-
-    with app.app_context():
-        with pytest.raises(ValueError, match='username'):
-            service.search_jobs_user('derecho', '')
+def test_user_scope_requires_a_username():
+    """An empty pin would silently widen to every user's jobs."""
+    with pytest.raises(ValueError, match='username'):
+        UserJobScope('')
 
 
 def test_count_jobs_user_pins_username(app, monkeypatch):
@@ -1468,7 +1470,7 @@ def test_count_jobs_user_pins_username(app, monkeypatch):
     captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=4)
 
     with app.app_context():
-        total = service.count_jobs_user('derecho', 'benkirk')
+        total = service.count_jobs('derecho', UserJobScope('benkirk'))
 
     assert total == 4
     assert captured['last_jobs_count_kwargs']['user'] == 'benkirk'
@@ -1483,7 +1485,7 @@ def test_count_jobs_zero_bound_forces_plugin_path(app, active_project, monkeypat
 
     with app.app_context():
         total = service.count_jobs(
-            'derecho', project=active_project, max_gpus=0,
+            'derecho', ProjectJobScope(active_project), max_gpus=0,
         )
 
     assert total == 2
@@ -1507,7 +1509,7 @@ def test_count_jobs_ignore_case_alone_keeps_fast_path(
 
     with app.app_context():
         total = service.count_jobs(
-            'derecho', project=active_project, ignore_case=False,
+            'derecho', ProjectJobScope(active_project), ignore_case=False,
         )
 
     assert total == 13
@@ -1523,7 +1525,7 @@ def test_count_jobs_name_filter_forces_plugin_path(
 
     with app.app_context():
         service.count_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             name='wrf*', ignore_case=True,
         )
 
@@ -1544,7 +1546,7 @@ def test_count_jobs_memory_bound_forces_plugin_path(
 
     with app.app_context():
         total = service.count_jobs(
-            'derecho', project=active_project, max_memory_wasted=-1,
+            'derecho', ProjectJobScope(active_project), max_memory_wasted=-1,
         )
 
     assert total == 3
@@ -1562,7 +1564,7 @@ def test_search_jobs_forwards_memory_filters(app, active_project, monkeypatch):
 
     with app.app_context():
         service.search_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             min_memory_used=2 * 1024 ** 3, max_memory_used=64 * 1024 ** 3,
             min_memory_wasted=-(4 * 1024 ** 3), max_memory_wasted=0,
         )
@@ -1584,7 +1586,7 @@ def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
     with app.app_context():
         with pytest.raises(TypeError):
             service.search_jobs(
-                'derecho', project=active_project, min_gups=1,  # typo
+                'derecho', ProjectJobScope(active_project), min_gups=1,  # typo
             )
 
 
@@ -2988,23 +2990,17 @@ def test_my_jobs_card_offers_by_project_tab(app, auth_client, monkeypatch):
     assert 'By User' not in body
 
 
-def test_service_jobs_usage_by_project_requires_username(app, monkeypatch):
-    from webapp.jobs import service
-
-    _install_mock_plugin(app, monkeypatch)
-    with app.app_context():
-        with pytest.raises(ValueError, match='username'):
-            service.jobs_usage_by_project('derecho', username='')
-
-
 def test_service_jobs_usage_by_project_rejects_user_filter(app, monkeypatch):
+    """The pin owns the user dimension — a client value beside it raises
+    rather than being silently overwritten. (The empty-username case is
+    rejected at scope construction; see test_user_scope_requires_a_username.)"""
     from webapp.jobs import service
 
     _install_mock_plugin(app, monkeypatch)
     with app.app_context():
-        with pytest.raises(ValueError, match='user'):
+        with pytest.raises(ValueError, match='pin the user server-side'):
             service.jobs_usage_by_project(
-                'derecho', username='benkirk', user='mallory',
+                'derecho', UserJobScope('benkirk'), user='mallory',
             )
 
 

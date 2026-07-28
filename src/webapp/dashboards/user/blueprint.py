@@ -61,6 +61,7 @@ from ..charts import (
     generate_usage_timeseries_stacked_by_user,
     generate_disk_usage_stacked_area,
 )
+from webapp.utils.scope import resolve_scope_project, resolve_scope_projcodes
 from webapp.disk_scans import is_enabled as is_fs_scans_enabled
 from webapp.disk_scans import service as disk_scans_service
 from webapp.jobs import service as jobs_service
@@ -503,24 +504,12 @@ def resource_details(project):
 
     # Scope: which tree node's subtree the analysis cards aggregate.
     # Defaults to the root projcode (show everything); clicking tree nodes sets scope=<child>.
-    scope = request.args.get('scope', projcode)
-
-    # Validate scope belongs to this project's tree; fall back to root if not
-    if scope != projcode:
-        scope_project = Project.get_by_projcode(db.session, scope)
-        if not scope_project or scope_project.tree_root != project.tree_root:
-            scope = projcode
-            scope_project = project
-    else:
-        scope_project = project
-
+    scope_project = resolve_scope_project(project)
+    scope = scope_project.projcode
     scope_has_children = bool(scope_project.has_children)
 
     # All projcodes covered by the selected scope (for user/daily breakdown queries)
-    if scope_has_children:
-        all_projcodes = [p.projcode for p in scope_project.get_descendants(include_self=True)]
-    else:
-        all_projcodes = [scope]
+    all_projcodes = resolve_scope_projcodes(project, scope)
 
     # Fetch resource detail data; scope controls which subtree the daily trend uses
     detail_data = get_resource_detail_data(
@@ -681,7 +670,7 @@ def resource_details(project):
         # agree. The card carries no user/account filter of its own.
         jobs_panels=jobs_panel_relevance(
             mode='project',
-            account_projcodes=_resolve_scope_projcodes(project, scope),
+            account_projcodes=resolve_scope_projcodes(project, scope),
         ),
         tree_data=tree_data,
         alloc_start_date=alloc_start_date,
@@ -691,23 +680,6 @@ def resource_details(project):
     )
 
 
-def _resolve_scope_projcodes(project, scope_projcode):
-    """Expand a tree-scope projcode into the list of projcodes to query.
-
-    Mirrors the logic in :func:`resource_details` so the subtree partial
-    routes pull the same row set the main page does. An invalid scope
-    silently falls back to the page's root projcode.
-    """
-    if scope_projcode == project.projcode:
-        scope_project = project
-    else:
-        scope_project = Project.get_by_projcode(db.session, scope_projcode)
-        if not scope_project or scope_project.tree_root != project.tree_root:
-            scope_project = project
-
-    if scope_project.has_children:
-        return [p.projcode for p in scope_project.get_descendants(include_self=True)]
-    return [scope_project.projcode]
 
 
 def _parse_subtree_dates(start_raw, end_raw):
@@ -756,7 +728,7 @@ def resource_details_user_subtree(project):
         abort(400, err)
 
     scope = (request.args.get('scope') or '').strip() or project.projcode
-    all_projcodes = _resolve_scope_projcodes(project, scope)
+    all_projcodes = resolve_scope_projcodes(project, scope)
 
     # One user's full queue/date breakdown — same shape the main page
     # used to fetch in bulk, but now scoped to one user.
@@ -796,7 +768,7 @@ def resource_details_day_subtree(project):
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
     scope = (request.args.get('scope') or '').strip() or project.projcode
-    all_projcodes = _resolve_scope_projcodes(project, scope)
+    all_projcodes = resolve_scope_projcodes(project, scope)
 
     # Single day; passing start=end=day scopes the breakdown to that
     # date without a new query function.
@@ -853,12 +825,7 @@ def resource_details_usage_chart(project):
     except ValueError:
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
-    scope = (request.args.get('scope') or '').strip() or project.projcode
-    # Validate scope belongs to this project's tree; fall back to root if not
-    if scope != project.projcode:
-        scope_project = Project.get_by_projcode(db.session, scope)
-        if not scope_project or scope_project.tree_root != project.tree_root:
-            scope = project.projcode
+    scope = resolve_scope_project(project).projcode
 
     detail_data = get_resource_detail_data(
         db.session,
@@ -884,7 +851,7 @@ def resource_details_usage_chart(project):
     # (a 1-colour stack is pointless and the Usage by User card is hidden
     # there too) or for non-compute resources, where comp_charge_summary
     # yields no per-user rows.
-    scope_projcodes = _resolve_scope_projcodes(project, scope)
+    scope_projcodes = resolve_scope_projcodes(project, scope)
     stacked = get_daily_user_usage_for_project(
         db.session, scope_projcodes, resource_name, start_date, end_date,
         metric=metric,
@@ -952,11 +919,7 @@ def resource_details_disk_usage_chart(project):
     except ValueError:
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
-    scope = (request.args.get('scope') or '').strip() or project.projcode
-    if scope != project.projcode:
-        scope_project = Project.get_by_projcode(db.session, scope)
-        if not scope_project or scope_project.tree_root != project.tree_root:
-            scope = project.projcode
+    scope = resolve_scope_project(project).projcode
     fileset = request.args.get('fileset') or None
 
     # Rebuild the subtree to resolve the scoped accounts / valid filesets
@@ -1062,14 +1025,8 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     HPC view.
     """
     resource_name = resource.resource_name
-    scope = request.args.get('scope', project.projcode)
+    scope = resolve_scope_project(project).projcode
     fileset = request.args.get('fileset') or None
-
-    # Validate scope belongs to this project's tree; fall back to root.
-    if scope != project.projcode:
-        candidate = Project.get_by_projcode(db.session, scope)
-        if candidate is None or candidate.tree_root != project.tree_root:
-            scope = project.projcode
 
     # Always build the full tree from the user's root project so the
     # tree-navigation card shows everything; chart + table re-scope by

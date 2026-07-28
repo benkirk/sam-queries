@@ -45,27 +45,33 @@
     };
 
     var BAR_DAY_PREFIX = '#day-bar-';
-    var BAR_AH_PREFIX = '#ah-bar-';
-    // Disk-scans entity pie (By User / By Group tab): a wedge/legend click
-    // expands the matching entity's table row, found by data-owner-uid /
-    // data-group-gid (see disk_scans_entities.html).
-    var ENT_OWNER_PREFIX = '#disk-ent-owner-';
-    var ENT_GROUP_PREFIX = '#disk-ent-group-';
     // Stacked-by-user Usage Trend chart (compute resource-details): a legend
     // username click expands that user's row in the Usage by User card.
     var USAGE_USER_PREFIX = '#usage-user-';
-    // Job-history By User pie: a wedge/legend click expands the matching
-    // user's row, found by data-job-user (see jobs_by_user.html). Same
-    // interaction as the disk-scans entity pie.
-    var JOB_USER_PREFIX = '#job-user-';
-    // Job-history By Project pie (My Jobs): same interaction, keyed by
-    // data-job-project (see jobs_by_project.html).
-    var JOB_PROJ_PREFIX = '#job-proj-';
-    // Job-history histogram (Wait Times / Job Sizes / Durations): a bar
-    // click expands the matching band's row in the bucket table
-    // (data-jh-bucket, see jobs_histogram.html), which drills into that
-    // band (per-user tier or per-job fragment).
-    var BAR_JH_PREFIX = '#jh-bar-';
+
+    // Sentinel prefix → the row attribute that identifies the row to expand.
+    // Every entry behaves identically (slice the id off the href, expand the
+    // matching row within the clicked chart's tab pane), so they are a table
+    // rather than six copies of the same branch. The two above are NOT here:
+    // they have bespoke openers (month-then-day nesting; username lookup in a
+    // client-sortable table).
+    //
+    //   ah-bar / jh-bucket — histogram bands, INDEX-keyed, so the JS never
+    //     parses band labels and a trimmed axis stays consistent with the
+    //     table (see _trim_empty_edge_bands).
+    //   the rest — pie wedge + legend entities.
+    var ROW_SENTINELS = {
+        // fs-scans distribution histogram (Access history / File sizes)
+        '#ah-bar-':           'data-ah-bucket',
+        // fs-scans entity pie (By User / By Group) — disk_scans_entities.html
+        '#disk-ent-owner-':   'data-owner-uid',
+        '#disk-ent-group-':   'data-group-gid',
+        // job-history histogram (Wait Times / Job Sizes / Durations)
+        '#jh-bar-':           'data-jh-bucket',
+        // job-history usage pies — jobs_by_user.html / jobs_by_project.html
+        '#job-user-':         'data-job-user',
+        '#job-proj-':         'data-job-project',
+    };
 
     // Chart sentinel → expand a table row. The row carries the collapse
     // target in data-bs-target (same attribute the row/chevron toggles),
@@ -169,57 +175,14 @@
             return;
         }
 
-        // Bar → distribution bucket per-user detail row (scoped to this pane)
-        if (href.indexOf(BAR_AH_PREFIX) === 0) {
-            var idx = href.slice(BAR_AH_PREFIX.length);
-            if (idx === '') return;
+        // Histogram bar or pie wedge/legend → expand the matching table row,
+        // scoped to the clicked chart's tab pane.
+        for (var sentinel in ROW_SENTINELS) {
+            if (href.indexOf(sentinel) !== 0) continue;
+            var rowId = href.slice(sentinel.length);
+            if (rowId === '') return;
             e.preventDefault();
-            openEntityRow('data-ah-bucket', idx, a.closest('.tab-pane'));
-            return;
-        }
-
-        // Pie wedge/legend → expand the owner row
-        if (href.indexOf(ENT_OWNER_PREFIX) === 0) {
-            var uid = href.slice(ENT_OWNER_PREFIX.length);
-            if (uid === '') return;
-            e.preventDefault();
-            openEntityRow('data-owner-uid', uid, a.closest('.tab-pane'));
-            return;
-        }
-
-        // Pie wedge/legend → expand the group row
-        if (href.indexOf(ENT_GROUP_PREFIX) === 0) {
-            var gid = href.slice(ENT_GROUP_PREFIX.length);
-            if (gid === '') return;
-            e.preventDefault();
-            openEntityRow('data-group-gid', gid, a.closest('.tab-pane'));
-            return;
-        }
-
-        // Jobs-histogram bar → expand the band's bucket row (scoped pane)
-        if (href.indexOf(BAR_JH_PREFIX) === 0) {
-            var jhIdx = href.slice(BAR_JH_PREFIX.length);
-            if (jhIdx === '') return;
-            e.preventDefault();
-            openEntityRow('data-jh-bucket', jhIdx, a.closest('.tab-pane'));
-            return;
-        }
-
-        // Jobs pie wedge/legend → expand the user's jobs row (scoped pane)
-        if (href.indexOf(JOB_USER_PREFIX) === 0) {
-            var juser = href.slice(JOB_USER_PREFIX.length);
-            if (juser === '') return;
-            e.preventDefault();
-            openEntityRow('data-job-user', juser, a.closest('.tab-pane'));
-            return;
-        }
-
-        // Jobs pie wedge/legend → expand the project's jobs row (My Jobs)
-        if (href.indexOf(JOB_PROJ_PREFIX) === 0) {
-            var jproj = href.slice(JOB_PROJ_PREFIX.length);
-            if (jproj === '') return;
-            e.preventDefault();
-            openEntityRow('data-job-project', jproj, a.closest('.tab-pane'));
+            openEntityRow(ROW_SENTINELS[sentinel], rowId, a.closest('.tab-pane'));
             return;
         }
 

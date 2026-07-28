@@ -4,6 +4,13 @@ In-memory TTL cache for get_allocation_summary_with_usage() results.
 Sits transparently behind the query function. Works in both webapp and CLI.
 Bypass with force_refresh=True; purge programmatically with purge_usage_cache().
 
+Backend, lazy init and the get/compute/store dance come from
+:class:`sam.caching.BucketedTTLCache` (shared with ``webapp.disk_scans.cache``
+and ``webapp.jobs.cache``) — a Redis-backed adapter shared across gunicorn
+workers when ``CACHE_REDIS_URL`` is reachable, a per-worker in-process TTL
+cache otherwise. This one has a single bucket; all that lives here is the
+cache key.
+
 Configuration is read from Flask app.config when available, falling back to
 environment variables so the module works outside a Flask context (CLI, tests).
 
@@ -11,94 +18,34 @@ environment variables so the module works outside a Flask context (CLI, tests).
   ALLOCATION_USAGE_CACHE_SIZE — max LRU entries  (0 = disabled, default 200)
 """
 
-import os
-import threading
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import logging
 
-from sam.caching import CacheBase, RedisTTLAdapter, TTLCacheAdapter, make_redis_client
-from sam.caching.ttl import disabled_info
+from sam.caching import BucketedTTLCache, BucketSpec, CacheBase, norm
 from sam.queries.allocations import get_allocation_summary_with_usage
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _get_config(key: str, default: int) -> int:
-    """Read config from Flask app context if available, else env var, else default."""
-    try:
-        from flask import current_app
-        return int(current_app.config.get(key, default))
-    except RuntimeError:
-        return int(os.environ.get(key, default))
-
-
-def _normalize(value: Any):
-    """Make list/string/None values hashable for use as cache key components."""
-    if isinstance(value, list):
-        return tuple(sorted(str(v) for v in value))
-    return value
-
-
-# ---------------------------------------------------------------------------
-# Lazy-initialized adapter
-# ---------------------------------------------------------------------------
-
-_adapter: Optional[CacheBase] = None
-_init_lock = threading.RLock()
-_disabled = False   # set True when TTL or SIZE == 0
+#: One bucket — allocation usage has no second staleness population the way
+#: fs-scans (passive vs explorer) and jobs (closed vs open window) do.
+_CACHE = BucketedTTLCache('usage_cache', 'usage', {
+    'default': BucketSpec(
+        name='allocation_usage',
+        ttl_key='ALLOCATION_USAGE_CACHE_TTL', ttl_default=3600,
+        size_key='ALLOCATION_USAGE_CACHE_SIZE', size_default=200,
+    ),
+})
 
 
 def get_cache_adapter() -> Optional[CacheBase]:
     """Return the shared CacheBase adapter, initializing on first call.
 
     Returns None when caching is disabled by config (TTL or SIZE == 0).
-
-    Backend selection: if ``CACHE_REDIS_URL`` is set and reachable, a
-    `RedisTTLAdapter` is returned — all gunicorn workers / processes
-    share one cache. Otherwise, falls back to a per-worker
-    `TTLCacheAdapter`. Both expose the same dict-like API, so call
-    sites below are unchanged.
     """
-    global _adapter, _disabled
-
-    with _init_lock:
-        if _adapter is not None or _disabled:
-            return None if _disabled else _adapter
-
-        ttl  = _get_config('ALLOCATION_USAGE_CACHE_TTL',  3600)
-        size = _get_config('ALLOCATION_USAGE_CACHE_SIZE', 200)
-
-        if ttl <= 0 or size <= 0:
-            _disabled = True
-            return None
-
-        redis_url = os.environ.get('CACHE_REDIS_URL')
-        if redis_url:
-            try:
-                client = make_redis_client(redis_url)
-                if client is not None:
-                    _adapter = RedisTTLAdapter(
-                        name='allocation_usage',
-                        client=client,
-                        ttl=ttl,
-                        maxsize=size,
-                    )
-                    return _adapter
-            except Exception as exc:
-                logger.warning(
-                    "usage_cache: CACHE_REDIS_URL=%s set but unreachable (%s); "
-                    "falling back to per-worker TTLCacheAdapter.",
-                    redis_url, exc,
-                )
-
-        _adapter = TTLCacheAdapter(name='allocation_usage', maxsize=size, ttl=ttl)
-        return _adapter
+    return _CACHE.adapter('default')
 
 
 # ---------------------------------------------------------------------------
@@ -134,10 +81,7 @@ def cached_allocation_usage(
 
     All other args are forwarded unchanged to get_allocation_summary_with_usage().
     """
-    adapter = get_cache_adapter()
-
-    if adapter is None:
-        # Cache disabled — call through directly
+    def _compute():
         return get_allocation_summary_with_usage(
             session=session,
             resource_name=resource_name,
@@ -151,53 +95,25 @@ def cached_allocation_usage(
             _summary=_summary,
         )
 
+    # Day granularity on active_at: allocation usage doesn't move within a
+    # day, and keying on the raw timestamp would make every request a miss.
     key = (
-        _normalize(resource_name),
-        _normalize(facility_name),
-        _normalize(allocation_type),
-        _normalize(projcode),
+        norm(resource_name),
+        norm(facility_name),
+        norm(allocation_type),
+        norm(projcode),
         active_only,
         active_at.date() if isinstance(active_at, datetime) else active_at,
         include_adjustments,
         root_only,
     )
-
-    with adapter.lock:
-        if not force_refresh and key in adapter:
-            return adapter[key]
-        # Remove stale entry so we can re-insert after the query
-        adapter.pop(key, None)
-
-    result = get_allocation_summary_with_usage(
-        session=session,
-        resource_name=resource_name,
-        facility_name=facility_name,
-        allocation_type=allocation_type,
-        projcode=projcode,
-        active_only=active_only,
-        active_at=active_at,
-        include_adjustments=include_adjustments,
-        root_only=root_only,
-        _summary=_summary,
-    )
-
-    with adapter.lock:
-        try:
-            adapter[key] = result
-        except ValueError:
-            # Cache full and all entries are unexpired (TTLCache raises ValueError
-            # when maxsize is reached and no expired items are available to evict).
-            pass
-
-    return result
+    return _CACHE.get_or_compute('default', key, _compute,
+                                 force_refresh=force_refresh)
 
 
 def purge_usage_cache() -> int:
     """Clear all cached usage data. Returns number of entries cleared."""
-    adapter = get_cache_adapter()
-    if adapter is None:
-        return 0
-    return adapter.clear()
+    return _CACHE.purge()
 
 
 def usage_cache_info() -> Dict:
@@ -206,11 +122,8 @@ def usage_cache_info() -> Dict:
     Delegates to the adapter's `info()` (canonical CacheBase shape).
     Backwards-compatible: the legacy keys (`enabled`, `currsize`,
     `maxsize`, `ttl`) are still present; new fields (`hits`, `misses`,
-    `bytes_approx`, `name`, `extras`) are additive.
+    `bytes_approx`, `name`, `extras`) are additive. A dict rather than the
+    per-bucket list the multi-bucket caches return — this cache has exactly
+    one bucket and the Admin card renders it as a single row.
     """
-    adapter = get_cache_adapter()
-    if adapter is None:
-        ttl  = _get_config('ALLOCATION_USAGE_CACHE_TTL',  3600)
-        size = _get_config('ALLOCATION_USAGE_CACHE_SIZE', 200)
-        return disabled_info('allocation_usage', maxsize=size, ttl=ttl)
-    return adapter.info()
+    return _CACHE.info()[0]
