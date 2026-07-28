@@ -21,6 +21,16 @@
    In resource mode project/scope/fileset are absent; the fragment templates
    treat them as optional and suppress the per-user drill-downs (which need a
    projcode) — the whole-FS drill path is Large Directories → unscoped explorer.
+
+   Panels with selectors declare them on both ends (nav-view-persistence.js):
+   on the tab button, which requests the panel, so a stored choice is
+   injected; and on the container, the element htmx reports as settled, so
+   an in-panel click persists without a click handler. The families are
+   scan-specific — `metric:disk-scan` is data|files, which is neither the
+   disk *usage* chart's bytes|files nor any other metric pill's vocabulary,
+   and `kind:disk-scan` is a unix owner|group, deliberately NOT the
+   user|project `group_by` the job and queue charts share. Large
+   directories keeps its sort/recursive settings per visit.
 #}
 {% if mode == 'resource' %}
     {% set _dirs_url  = url_for('disk_scans.directories_resource_fragment',   resource=resource_name, target_id=cid ~ '-directories') %}
@@ -61,7 +71,8 @@
                 hx-get="{{ _ent_url }}"
                 hx-target="#{{ cid }}-entities"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once">
+                hx-trigger="shown.bs.tab once"
+                data-chart-persist-shared="kind:disk-scan">
             <i class="fas fa-users me-1"></i> User / group counts
         </button>
     </li>
@@ -73,7 +84,8 @@
                 hx-get="{{ _acc_url }}"
                 hx-target="#{{ cid }}-access"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once">
+                hx-trigger="shown.bs.tab once"
+                data-chart-persist-shared="metric:disk-scan log:disk-scan">
             <i class="fas fa-clock-rotate-left me-1"></i> Access history
         </button>
     </li>
@@ -84,7 +96,8 @@
                 hx-get="{{ _files_url }}"
                 hx-target="#{{ cid }}-files"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once">
+                hx-trigger="shown.bs.tab once"
+                data-chart-persist-shared="metric:disk-scan log:disk-scan">
             <i class="fas fa-ruler me-1"></i> File sizes
         </button>
     </li>
@@ -107,7 +120,7 @@
     </div>
     {% if mode != 'user' %}
     <div class="tab-pane fade" id="tab-{{ cid }}-ent" role="tabpanel">
-        <div id="{{ cid }}-entities">
+        <div id="{{ cid }}-entities" data-chart-persist-shared="kind:disk-scan">
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading…
             </p>
@@ -115,14 +128,14 @@
     </div>
     {% endif %}
     <div class="tab-pane fade" id="tab-{{ cid }}-acc" role="tabpanel">
-        <div id="{{ cid }}-access">
+        <div id="{{ cid }}-access" data-chart-persist-shared="metric:disk-scan log:disk-scan">
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading access history…
             </p>
         </div>
     </div>
     <div class="tab-pane fade" id="tab-{{ cid }}-files" role="tabpanel">
-        <div id="{{ cid }}-files">
+        <div id="{{ cid }}-files" data-chart-persist-shared="metric:disk-scan log:disk-scan">
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading file sizes…
             </p>
