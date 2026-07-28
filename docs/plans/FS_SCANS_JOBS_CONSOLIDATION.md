@@ -1,8 +1,9 @@
 # fs-scans ↔ job-history consolidation
 
-**Status (2026-07-28): IN PROGRESS on `fs_scans_job_hist_consolidation`.**
-Single PR vs `staging`, ordered commit series — see [Order](#order) for the
-per-commit gate. Update this line as tracks land.
+**Status (2026-07-28): COMPLETE on `fs_scans_job_hist_consolidation`.**
+All four tracks landed as an ordered 11-commit series; single PR vs
+`staging`. Full suite green at every commit; the route-map parity snapshot
+never moved. See [Outcome](#outcome) for what it actually cost and bought.
 
 The job-history navigator was deliberately modeled on the fs-scans navigator
 and shipped without touching fs-scans (`JOB_HISTORY_DASHBOARD.md` →
@@ -22,9 +23,11 @@ The duplication that actually costs maintenance is *plumbing* and *mode
 fan-out*, not rendering. The tempting move — one shared "Navigator framework"
 — is the trap; [Non-goals](#non-goals) says why.
 
-Target: **~1,200–1,500 lines** of `src/` removed, plus a structural change
-that makes "add a tab" a one-line table entry instead of a 3× copy. Test
-volume stays roughly flat (edits, not deletions).
+Target was **~1,200–1,500 lines** of `src/` removed. The actual figure is
+**−378** (−532 counting Python code only, excluding blanks, comments and
+docstrings) — see [Outcome](#outcome); the estimate was ~3× optimistic
+because it under-counted what the extracted abstractions cost in a codebase
+that documents every function.
 
 ---
 
@@ -330,3 +333,60 @@ shippable state.
 5. **Cache card** — Admin → Configuration shows all 6 buckets with today's TTLs
    (8 d / 30 min scans; 30 min / 15 min jobs; 1 h usage), and
    `sam-admin cache --refresh --category jobs|scans` still reports counts.
+
+---
+
+## Outcome
+
+**Line count.** −378 lines of `src/` (29 files: 2,641 insertions, 3,019
+deletions); −532 counting Python code only. Tests grew +361 (690/-329),
+almost all of it call sites moving onto the scope arguments.
+
+The estimate of −1,200–1,500 was wrong by roughly 3×. Gross deletion was in
+range (~1,530 lines), but the new shared modules cost ~1,150:
+
+| new module | lines |
+|---|---|
+| `sam/caching/buckets.py` | 291 |
+| `webapp/plugins/base.py` | 188 |
+| `webapp/utils/fragments.py` | 186 |
+| `webapp/disk_scans/scope.py` (additions) | 180 |
+| `webapp/jobs/scope.py` | 157 |
+| `webapp/utils/scope.py` | 95 |
+| `templates/…/plugin_state.html` | 39 |
+
+Much of that is prose. Extracting a duplicated invariant into a documented
+base class does not delete the prose — it *relocates* it from N copies to
+one, and then the one copy tends to grow, because it now has to explain the
+variation it absorbed. Worth knowing before estimating the next one.
+
+**What actually got better** — the numbers that motivated the work:
+
+| | before | after |
+|---|---|---|
+| implementations of the bucketed TTL cache | 3 | 1 |
+| plugin loader / connection-tagging copies | 2 | 1 |
+| `?scope=` validation copies | 7 | 1 |
+| plugin-state banner markup copies | 2 | 1 |
+| `svg-chart-links.js` sentinel branches | 6 | 1 table |
+| per-mode public service functions | 16 | 5 |
+| hand-written navigator routes | 37 | 6 |
+| usage-panel templates (By User / By Project) | 2 | 1 |
+| entity-table halves (owner / group) | 2 | 1 |
+
+Adding a tab is now one `PanelSpec` row rather than three route copies plus
+a per-mode helper. Adding a bucketed cache no longer requires remembering
+to extend `flask_adapter._FOREIGN_PREFIXES`. The per-mode pinning rules are
+subclass code with constructor-time invariants instead of prose repeated
+across sixteen docstrings.
+
+**One behaviour was unified** (commit 6): the jobs aggregations silently
+overwrote a client `?user=` beside a user pin, while search/count and
+`jobs_usage_by_project` raised on the same input. The strict rule won; the
+routes drop the key so the externally-visible behaviour is unchanged.
+
+**Deferred, deliberately.** `my_jobs_card.html` ≈
+`status/partials/job_history.html` and `my_data_scans.html` ≈
+`status/partials/filesystem_scans.html` — ~50-line host pages whose
+similarity is a machine-subtab loop plus one macro call. Folding them would
+trade two obvious files for one indirect one.
