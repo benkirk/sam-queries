@@ -42,9 +42,10 @@ def _disable_jobs_cache():
     affected by the process-wide adapter singleton.
     """
     from webapp.jobs import cache as _c
-    _c._adapters = {b: None for b in _c._BUCKETS}
+    _c._CACHE.reset_for_tests()
     yield
-    _c._adapters = {}   # clear → buckets re-init on next use
+    # disabled=False → drop the memo so buckets re-init on next use
+    _c._CACHE.reset_for_tests(disabled=False)
 
 
 # ---------------------------------------------------------------------------

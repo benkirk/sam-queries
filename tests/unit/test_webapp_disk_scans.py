@@ -58,9 +58,10 @@ def _disable_fs_scans_cache():
     """
     from webapp.disk_scans import cache as _c
     # A stored None per bucket means "initialised but disabled".
-    _c._adapters = {b: None for b in _c._BUCKETS}
+    _c._CACHE.reset_for_tests()
     yield
-    _c._adapters = {}   # clear → buckets re-init on next use
+    # disabled=False → drop the memo so buckets re-init on next use
+    _c._CACHE.reset_for_tests(disabled=False)
 
 
 # ---------------------------------------------------------------------------

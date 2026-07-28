@@ -4,9 +4,13 @@ skip list.
 
 The flask adapter SCANs the whole Redis DB and must exclude every keyspace
 owned by the other adapters (chart + the five RedisTTLAdapter constructions),
-else their entries miscount into the flask card's 'other' group. The
-cross-check test here is the guard that a future sixth cache cannot be added
-without extending ``_FOREIGN_PREFIXES``.
+else their entries miscount into the flask card's 'other' group.
+
+That skip list is DERIVED from the BucketedTTLCache registry, so a sixth
+bucketed cache cannot be added without its prefix appearing. The cross-check
+test here is the guard that the derivation actually covers every live
+adapter — i.e. that ``_foreign_prefixes()`` and ``caching.adapters()`` are
+reading the same registry.
 
 Uses fakeredis (no external dependencies); factory module state is
 saved/restored around each test so the shared CI Redis and other tests are
@@ -14,13 +18,14 @@ unaffected.
 """
 
 import pickle
+from contextlib import contextmanager
 
 import fakeredis
 import pytest
 
 from webapp.caching.flask_adapter import (
-    _FOREIGN_PREFIXES,
-    _FOREIGN_PREFIXES_B,
+    _CHART_PREFIX,
+    _foreign_prefixes,
     FlaskCacheAdapter,
 )
 
@@ -35,36 +40,49 @@ def _pickled(key):
     return pickle.dumps(key, protocol=4)
 
 
+@contextmanager
+def _fresh_bucketed_caches(*, disabled=False):
+    """Drop every bucketed cache's memoised adapters, restoring them after.
+
+    These caches are module-level singletons shared across the whole test
+    session, so a test that forces them to (re)initialise against fakeredis
+    has to hand back what it found or it poisons every later test.
+    """
+    from webapp.caching import caching
+    caches = caching.bucketed_caches()
+    saved = [dict(c._adapters) for c in caches]
+    for cache in caches:
+        cache.reset_for_tests(disabled=disabled)
+    try:
+        yield caches
+    finally:
+        # Restore IN PLACE — the cache modules expose `_adapters` as a
+        # module-level alias to this same dict, and rebinding would leave
+        # every later test in this worker poking a detached copy.
+        for cache, state in zip(caches, saved):
+            cache._adapters.clear()
+            cache._adapters.update(state)
+
+
 # ---------------------------------------------------------------------------
 # Cross-check: the skip list must cover every live non-flask adapter
 # ---------------------------------------------------------------------------
 
 class TestForeignPrefixCrossCheck:
 
-    def test_bytes_tuple_mirrors_str_tuple(self):
-        assert _FOREIGN_PREFIXES_B == tuple(p.encode() for p in _FOREIGN_PREFIXES)
-
     def test_every_ttl_adapter_prefix_is_listed(self, monkeypatch, redis_client):
         """Init all five TTL adapters via their real factories and assert each
-        prefix appears in _FOREIGN_PREFIXES — a sixth cache added to
-        ``caching.adapters()`` without extending the tuple fails here."""
+        prefix is skipped — a sixth bucketed cache whose keyspace escaped the
+        derivation would fail here."""
         monkeypatch.setenv('CACHE_REDIS_URL', 'redis://fake:6379/0')
 
-        import sam.caching.redis_client as rc
-        import sam.queries.usage_cache as uc
-        import webapp.disk_scans.cache as dc
-        import webapp.jobs.cache as jc
-        for mod in (rc, uc, dc, jc):
-            monkeypatch.setattr(mod, 'make_redis_client',
-                                lambda url=None, **kw: redis_client)
+        # One patch point: every bucketed cache builds its Redis client
+        # through sam.caching.buckets.
+        import sam.caching.buckets as buckets
+        monkeypatch.setattr(buckets, 'make_redis_client',
+                            lambda url=None, **kw: redis_client)
 
-        saved_usage = (uc._adapter, uc._disabled)
-        saved_scans = dict(dc._adapters)
-        saved_jobs = dict(jc._adapters)
-        uc._adapter, uc._disabled = None, False
-        dc._adapters.clear()
-        jc._adapters.clear()
-        try:
+        with _fresh_bucketed_caches():
             from webapp.caching import Caching
             facade = Caching()
             ttl_adapters = [a for a in facade.adapters()
@@ -75,18 +93,23 @@ class TestForeignPrefixCrossCheck:
                 'jobs', 'jobs_recent',
             ]
             # …and every one of their keyspaces must be in the skip list.
+            skipped = _foreign_prefixes()
             for adapter in ttl_adapters:
-                assert adapter._prefix in _FOREIGN_PREFIXES, (
+                assert adapter._prefix in skipped, (
                     f"adapter '{adapter.name}' prefix '{adapter._prefix}' "
-                    f"missing from flask_adapter._FOREIGN_PREFIXES — its keys "
+                    f"missing from flask_adapter._foreign_prefixes() — its keys "
                     f"would miscount into the flask card's 'other' group"
                 )
-        finally:
-            uc._adapter, uc._disabled = saved_usage
-            dc._adapters.clear()
-            dc._adapters.update(saved_scans)
-            jc._adapters.clear()
-            jc._adapters.update(saved_jobs)
+
+    def test_prefixes_are_config_independent(self, monkeypatch):
+        """A bucket disabled in THIS worker still owns its keyspace in a
+        shared Redis, so its prefix must stay in the skip list."""
+        monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+        with _fresh_bucketed_caches(disabled=True):
+            skipped = _foreign_prefixes()
+            for prefix in ('allocation_usage:', 'fs_scans:', 'fs_scans_filtered:',
+                           'jobs:', 'jobs_recent:'):
+                assert prefix in skipped
 
     def test_chart_prefix_listed(self, redis_client):
         """RedisChartCache keys (chart:<name>:, chart:hits/misses:<name>) are
@@ -97,7 +120,7 @@ class TestForeignPrefixCrossCheck:
         cache.get('k')      # bump the hit counter key too
         for raw_key in redis_client.scan_iter(match='*'):
             assert raw_key.startswith(b'chart:')
-        assert 'chart:' in _FOREIGN_PREFIXES
+        assert _CHART_PREFIX in _foreign_prefixes()
 
 
 # ---------------------------------------------------------------------------

@@ -32,8 +32,14 @@ from webapp.caching import caching
 bp = Blueprint('api_admin', __name__)
 register_error_handlers(bp)
 
-# Categories understood by caching.clear(); None (omitted) clears all.
-_VALID_CATEGORIES = {'flask', 'chart', 'usage', 'scans', 'jobs'}
+def _valid_categories() -> set:
+    """Categories ``caching.clear()`` understands; None (omitted) clears all.
+
+    Derived from the facade so a newly registered bucketed cache is
+    accepted here without a second edit. Resolved per request rather than at
+    import because the cache registry fills in as modules load.
+    """
+    return set(caching.categories)
 
 
 @bp.route('/cache/refresh', methods=['POST'])
@@ -47,14 +53,15 @@ def refresh_cache():
     Invalidate caches, optionally scoped to a single category.
 
     Query params:
-        category: one of ``flask|chart|usage|scans``. Omit to clear all.
+        category: one of ``flask|chart|usage|scans|jobs``. Omit to clear all.
 
     Returns:
         JSON ``{"status": "ok", "cleared": {category: count_cleared}}``.
         400 if ``category`` is present but not recognized.
     """
     category = request.args.get('category')
-    if category is not None and category not in _VALID_CATEGORIES:
+    valid = _valid_categories()
+    if category is not None and category not in valid:
         abort(400, f"Invalid category {category!r}; "
-                   f"must be one of {sorted(_VALID_CATEGORIES)}")
+                   f"must be one of {sorted(valid)}")
     return jsonify({'status': 'ok', 'cleared': caching.clear(category)})

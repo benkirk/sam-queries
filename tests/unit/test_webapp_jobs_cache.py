@@ -31,9 +31,10 @@ def _reset_jobs_cache(monkeypatch):
     """
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
     from webapp.jobs import cache as _c
-    _c._adapters = {b: None for b in _c._BUCKETS}
+    _c._CACHE.reset_for_tests()
     yield
-    _c._adapters = {}   # clear → buckets re-init on next use
+    # disabled=False → drop the memo so buckets re-init on next use
+    _c._CACHE.reset_for_tests(disabled=False)
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +168,7 @@ def test_jobs_cache_defaults_cap_staleness_at_thirty_minutes():
     they can never serve a stale panel on their own."""
     from webapp.jobs import cache as c
 
-    ttls = {b: spec['ttl'][1] for b, spec in c._BUCKETS.items()}
+    ttls = {b: spec.ttl_default for b, spec in c._BUCKETS.items()}
     assert ttls['historical'] == 1800
     assert ttls['recent'] == 900
     assert max(ttls.values()) <= 1800
@@ -179,7 +180,7 @@ def test_jobs_cache_sizes_fit_the_explorer_fan_out():
     cards-era 128 held about six of them."""
     from webapp.jobs import cache as c
 
-    sizes = {b: spec['size'][1] for b, spec in c._BUCKETS.items()}
+    sizes = {b: spec.size_default for b, spec in c._BUCKETS.items()}
     assert min(sizes.values()) >= 512
 
 
