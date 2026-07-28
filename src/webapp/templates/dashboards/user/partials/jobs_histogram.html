@@ -13,6 +13,7 @@
                  gpu_hours, null_count, total_count, unit)
     chart_svg  — rendered SVG (or an empty-state div)
     metric     — 'jobs' | 'cpu_hours' | 'gpu_hours'
+    log_on     — log y-axis (?log=); solid bars instead of the owner stack
     dimension  — 'wait' | 'nodes' | 'cpus' | 'gpus' | 'memory' |
                  'memory_used' | 'memory_wasted' | 'duration'
     dimension_toggle — True only on the Job Sizes tab
@@ -94,6 +95,27 @@
       {% endfor %}
     </div>
     {% endif %}
+    {# Log-scale switch — the filesystem-scan histograms' affordance, and for
+       the same reason: job distributions are long-tailed (most jobs wait
+       seconds, a handful wait days), so a linear axis flattens every band
+       past the first into nothing. It spells ?log= out explicitly, which
+       beats the round-trip form's copy (Werkzeug reads the first value);
+       the pills carry no ?log= of their own and inherit it from that form.
+       A log y-axis can't stack, so this trades the per-user gradient for
+       legible small bands (see charts.py::generate_jobs_histogram). #}
+    <div class="form-check form-switch form-check-inline mb-0 me-1"
+         title="Log y-axis — reveals small bands but flattens the per-owner breakdown">
+      <input class="form-check-input" type="checkbox" role="switch"
+             id="jobs-hist-log-{{ target_id }}"
+             {% if log_on %}checked{% endif %}
+             hx-get="{{ fragment_url }}?log={{ '0' if log_on else '1' }}&metric={{ metric }}{% if dimension_toggle %}&dimension={{ dimension }}{% endif %}"
+             hx-target="#{{ target_id }}"
+             hx-include="#jobs-hist-params-{{ target_id }}"
+             hx-swap="innerHTML">
+      <label class="form-check-label small text-muted" for="jobs-hist-log-{{ target_id }}">
+        Log scale
+      </label>
+    </div>
     <span class="ms-auto text-muted small">
       {{ hist.total_count | fmt_number }} job{{ '' if hist.total_count == 1 else 's' }}
     </span>

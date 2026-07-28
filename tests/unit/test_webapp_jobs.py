@@ -3612,13 +3612,110 @@ def test_job_sizes_bar_and_row_indices_stay_aligned_after_trim(
 
 
 # ---------------------------------------------------------------------------
+# Log y-axis switch — parity with the filesystem-scan distribution
+# histograms. Offered on every histogram tab (job distributions are all
+# long-tailed), rides the round-trip form so the other pills keep it, and
+# persists through the shared lens.
+# ---------------------------------------------------------------------------
+
+_HIST_TABS = ('wait-times', 'job-sizes', 'durations')
+
+
+@pytest.mark.parametrize('tab', _HIST_TABS)
+def test_histogram_tabs_offer_the_log_switch_off_by_default(
+    app, auth_client, active_project, monkeypatch, tab,
+):
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_histogram_return=_sample_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/{tab}?machine=derecho'
+    ).get_data(as_text=True)
+
+    assert 'Log scale' in body
+    assert 'id="jobs-hist-log-' in body
+    # Off by default, and the switch offers the ON direction.
+    assert 'log=1' in body
+    assert 'checked' not in body
+
+
+def test_log_on_renders_and_offers_the_way_back(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?log=1 → a chart still renders (solid bars), the switch reflects the
+    state, the band drill anchors survive, and clicking it turns log off."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_histogram_return=_sample_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&log=1'
+    ).get_data(as_text=True)
+
+    assert '<svg' in body
+    assert 'checked' in body
+    assert '#jh-bar-0' in body
+    assert 'log=0' in body
+
+
+def test_log_rides_the_roundtrip_form_so_the_other_pills_keep_it(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The metric / dimension / owner pills carry no ?log= of their own —
+    they inherit it from the hidden params form they hx-include. Absent when
+    off, so a stale `1` can never outlive the switch."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_histogram_return=_sample_hist())
+    url = (f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+           '?machine=derecho')
+
+    on = auth_client.get(url + '&log=1').get_data(as_text=True)
+    assert '<input type="hidden" name="log" value="1">' in on
+
+    off = auth_client.get(url).get_data(as_text=True)
+    assert 'name="log"' not in off
+
+
+def test_log_does_not_leak_into_the_band_drill_urls(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Drill URLs are built before the y-scale joins the params — the jobs
+    table has no log axis and should not be asked about one."""
+    _install_mock_plugin(app, monkeypatch,
+                         jobs_histogram_return=_sample_hist())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho&log=1'
+    ).get_data(as_text=True)
+
+    import re
+    drills = re.findall(r'hx-get="([^"]*min_eligible_secs[^"]*)"', body)
+    assert drills, 'no band drill URLs rendered'
+    assert not [d for d in drills if 'log=' in d]
+
+
+@pytest.mark.parametrize('query,expected', [
+    ('log=1', True),
+    ('log=true', True),
+    ('log=on', True),
+    ('log=0', False),
+    ('log=', False),
+    ('log=nonsense', False),
+    ('', False),
+])
+def test_parse_log(app, query, expected):
+    from webapp.jobs.routes import _parse_log
+    with app.test_request_context(f'/?{query}'):
+        assert _parse_log() is expected
+
+
+# ---------------------------------------------------------------------------
 # Shared view lens — the panels' metric / owner / dimension pills persist
 # through the app-wide bucket (nav-view-persistence.js `data-chart-persist-
 # shared`), so a selection survives a period-pill re-render, carries to the
 # sibling panels, and comes back on reload.
 # ---------------------------------------------------------------------------
 
-_LENS = 'data-chart-persist-shared="group_by metric:jobs dimension:jobs"'
+_LENS = ('data-chart-persist-shared='
+         '"group_by metric:jobs dimension:jobs log:jobs"')
 
 
 def _tag_for(body, needle):

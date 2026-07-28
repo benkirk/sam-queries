@@ -64,6 +64,7 @@ from webapp.dashboards.charts import (
 from webapp.extensions import db
 from webapp.jobs import service
 from webapp.jobs.session import is_enabled
+from webapp.utils.htmx import read_flag
 from webapp.utils.rbac import (
     Permission,
     has_permission_any_facility,
@@ -701,6 +702,17 @@ def _parse_metric(default: str) -> str:
     return metric if metric in _METRICS else default
 
 
+def _parse_log() -> bool:
+    """``?log=`` — the histograms' log y-axis switch.
+
+    Same predicate as the filesystem-scan distribution histogram's switch
+    (both go through ``utils.htmx.is_truthy``), so the two can't drift on
+    what counts as checked; unlike that one it is offered on every
+    histogram tab, since every job distribution is skewed enough to want it.
+    """
+    return read_flag(request.args, 'log')
+
+
 def _parse_group_by() -> str:
     """Owner dimension for the histograms' User|Project pill.
 
@@ -920,6 +932,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
 
     filters = _parse_job_filters()
     metric = _parse_metric(_DEFAULT_METRIC_HIST)
+    log_on = _parse_log()
 
     # User|Project owner-dimension pill — offered only where the context
     # spans more than one project (machine mode; a project tree > 1).
@@ -963,7 +976,8 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     # same one.
     hist = _trim_leading_empty_bands(hist)
 
-    chart_svg = generate_jobs_histogram(hist, metric=metric) if hist else None
+    chart_svg = (generate_jobs_histogram(hist, metric=metric, log_y=log_on)
+                 if hist else None)
     params = _roundtrip_params(machine, target_id)
 
     # One drill URL per band (None for empty bands) — computed here, not
@@ -977,11 +991,15 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             for b in hist.get('buckets') or []
         ]
 
-    # Round-trip the non-default owner dimension through the metric /
-    # dimension pills' hx-include form (AFTER the drill URLs — the jobs
-    # fragments don't take group_by).
+    # Round-trip the non-default owner dimension and y-scale through the
+    # metric / dimension pills' hx-include form (AFTER the drill URLs — the
+    # jobs fragments take neither). The switch itself spells ?log= out in
+    # its own URL, which wins over this stale copy: Werkzeug reads the
+    # first value and htmx appends included params after the hx-get query.
     if group_by != 'user':
         params = dict(params, group_by=group_by)
+    if log_on:
+        params = dict(params, log='1')
 
     # Same affordance gates as the By User / By Project tables — never
     # render an entity quick-view link that would 403.
@@ -996,7 +1014,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         enabled=True, error=error,
         mode=mode, machine=machine,
         hist=hist, chart_svg=chart_svg,
-        metric=metric,
+        metric=metric, log_on=log_on,
         dimension=dimension, dimension_toggle=dimension_toggle,
         size_dimensions=_SIZE_DIMENSIONS,
         group_by=group_by, owners_toggle=owners_toggle,
