@@ -25,6 +25,8 @@
 > - One test assertion pinned query-param *adjacency*
 >   (`?machine=derecho&start=…`); it now parses the panel URLs, since
 >   order is `url_for`'s business.
+> - **C6b**, added after Ben looked at the machine-wide strip: the chip
+>   layout became a grid and the chips stopped being `.btn`s. See C6.
 
 ## Context
 
@@ -303,6 +305,25 @@ previous filter set.
   changed them. Chip clicks keep working unchanged —
   `data-action="set-filter-submit"` (`static/js/actions.js`) writes into the
   panel form and calls `requestSubmit()`, which now re-renders the shell.
+
+**C6b (added after the first browser pass).** The strip inherited the
+table's one-flex-line layout, which does not survive a machine-wide
+scope: Casper offers eight queues, so `QoS:` and `Exit:` were pushed into
+the middle of a row and their overflow wrapped onto a line with no label
+on it at all. Every chip was also a `.btn`, and the Unity button
+treatment (uppercase, 700 weight, 3px navy border, 1.25rem type) is
+built for actions, not for two dozen read-mostly value tokens — it even
+misreported queue names, uppercasing `htc` to `HTC`.
+
+The strip is now a two-column grid (`.jobs-facets`, `dashboard.css`):
+one row per dimension, label column self-sizing to the widest label, so
+a label always opens its own line and its values wrap under themselves.
+Chips are a dedicated `.facet-chip` class — hairline border, 0.8125rem,
+subdued tabular count, filled NCAR blue when active — still `<button>`s
+for the keyboard and for `set-filter-submit`; only the styling opts out
+of `.btn`. A dimension with no filterable values contributes no row, and
+an empty strip renders no surface. Under 576px the label moves above its
+own chips.
 
 ### C7 — cache retune + Redis headroom
 

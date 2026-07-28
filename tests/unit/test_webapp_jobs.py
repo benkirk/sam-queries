@@ -2458,15 +2458,17 @@ def test_explore_page_renders_facet_chips_with_counts(
 
     assert 'data-action="set-filter-submit"' in body
     assert 'data-form-id="jobs-filters-panel-jobs-explore-jobs"' in body
-    # Active chip (queue=cpu) highlights and clears on click.
+    # Active chip (queue=cpu) fills in and clears on click.
     cpu_chip = re.search(
         r'<button[^>]*data-field="queue"[^>]*data-value=""[^>]*>', body)
-    assert cpu_chip is not None and 'btn-primary' in cpu_chip.group(0)
+    assert cpu_chip is not None and 'facet-chip is-active' in cpu_chip.group(0)
     # Inactive chip carries its value.
     assert 'data-value="gpu"' in body
     assert 'data-value="271"' in body
     # NULL-FK queue row renders no chip (nothing to filter by).
     assert 'data-value="None"' not in body
+    # One grid row per dimension: every label opens its own line.
+    assert body.count('class="jobs-facet-label"') == 3
     # Facets saw the same filter set as the panels.
     fkw = captured['last_jobs_facets_kwargs']
     assert fkw['queue'] == 'cpu'
@@ -2517,7 +2519,40 @@ def test_explore_chips_degrade_on_facets_error(
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'data-action="set-filter-submit"' not in body
+    assert 'class="jobs-facets"' not in body
     assert 'id="jobs-explore-card"' in body
+
+
+def test_explore_chips_omit_dimensions_with_nothing_to_offer(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A dimension with no filterable values contributes no grid row,
+    and a strip with no rows at all renders no surface — an empty
+    bordered band above the tabs would be worse than none."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_facets_return={'queue': [{'value': 'cpu', 'count': 3}],
+                            'qos': [],
+                            'exit_status': [{'value': None, 'count': 7}]},
+    )
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho'
+    ).get_data(as_text=True)
+
+    assert body.count('class="jobs-facet-label"') == 1
+    assert 'data-value="cpu"' in body
+
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_facets_return={'queue': [], 'qos': [], 'exit_status': []},
+    )
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho'
+    ).get_data(as_text=True)
+
+    assert 'class="jobs-facets"' not in body
 
 
 def test_explore_chips_project_scope_pins_account(

@@ -12,10 +12,17 @@
   previous filter set's counts. Sorting and paging no longer recompute
   it, either — neither can change a count.)
 
+  Layout is a two-column grid (.jobs-facets, dashboard.css): one row per
+  dimension, so a label always opens its own line and its values wrap
+  under themselves rather than trailing into the next dimension's chips.
+  With everything on one flex line, a long queue list pushed "QoS:" and
+  "Exit:" into the middle of a row and their overflow wrapped away from
+  any label at all.
+
   A chip click writes its value into the named field of the filter panel
   form and re-submits it (data-action "set-filter-submit" in
   static/js/actions.js — CSP-clean, no inline handlers). The active chip
-  is highlighted and clicking it clears the filter (empty data-value).
+  is filled and clicking it clears the filter (empty data-value).
 
   Args:
     facets   — {dim: [{'value', 'count'}, …]} from service.jobs_facets
@@ -24,28 +31,39 @@
 #}
 {% macro jobs_facet_chips(facets, filters, form_id) %}
 {% if facets %}
-<div class="d-flex flex-wrap align-items-center gap-1 mb-2 small">
-  {% for dim, label in [('queue', 'Queue'), ('qos', 'QoS'),
-                        ('exit_status', 'Exit')] %}
-    {% set rows = facets.get(dim) or [] %}
-    {% if rows %}
-      <span class="text-muted ms-2 me-1">{{ label }}:</span>
-      {# NULL-FK rows are counts, not filterable values — skip them. #}
-      {% for row in rows if row.value is not none %}
-        {% set active = ((filters.get(dim) or '') | string == row.value | string) %}
-        <button type="button"
-                class="btn btn-sm py-0 {{ 'btn-primary' if active else 'btn-outline-secondary' }}"
-                data-action="set-filter-submit"
-                data-form-id="{{ form_id }}"
-                data-field="{{ dim }}"
-                data-value="{{ '' if active else row.value }}"
-                title="{{ 'Clear this filter' if active else 'Filter by ' ~ label ~ ' ' ~ row.value }}">
-          {{ row.value }}
-          <span class="badge {{ 'text-bg-light' if active else 'text-bg-secondary' }} ms-1">{{ row.count | fmt_number }}</span>
-        </button>
-      {% endfor %}
-    {% endif %}
+{#- Collect first, render second: a dimension with no filterable values
+    contributes no grid row, and a strip with no rows at all must not
+    render its surface. .append() returns None, so the {% if %} body
+    stays empty — the list-building idiom for a template environment
+    without the jinja `do` extension. NULL-FK rows are counts, not
+    values you can filter by, so they never become chips. -#}
+{% set _groups = [] %}
+{% for dim, label in [('queue', 'Queue'), ('qos', 'QoS'),
+                      ('exit_status', 'Exit code')] %}
+  {%- set _rows = (facets.get(dim) or []) | rejectattr('value', 'none') | list -%}
+  {%- if _rows and _groups.append((dim, label, _rows)) -%}{%- endif -%}
+{% endfor %}
+{% if _groups %}
+<div class="jobs-facets">
+  {% for dim, label, rows in _groups %}
+  <div class="jobs-facet-label">{{ label }}</div>
+  <div class="jobs-facet-values">
+    {% for row in rows %}
+      {% set active = ((filters.get(dim) or '') | string == row.value | string) %}
+      <button type="button"
+              class="facet-chip{{ ' is-active' if active }}"
+              data-action="set-filter-submit"
+              data-form-id="{{ form_id }}"
+              data-field="{{ dim }}"
+              data-value="{{ '' if active else row.value }}"
+              title="{{ 'Clear this filter' if active else 'Filter by ' ~ label ~ ' ' ~ row.value }}">
+        <span class="facet-chip-value">{{ row.value }}</span>
+        <span class="facet-chip-count">{{ row.count | fmt_number }}</span>
+      </button>
+    {% endfor %}
+  </div>
   {% endfor %}
 </div>
+{% endif %}
 {% endif %}
 {% endmacro %}
