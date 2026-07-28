@@ -6,11 +6,17 @@ on, so this is a plain TTL cache. Two buckets share the mechanism,
 picked by whether the requested window can still change:
 
   * ``historical`` (``jobs``) — the window's ``end`` date is strictly
-    before today, so its aggregation is immutable (late ingest aside).
-    Long TTL, larger LRU.
+    before today, so its aggregation is *nearly* immutable. Not entirely:
+    job records keep arriving for windows already closed, which is why
+    this caps out at 30 minutes rather than hours.
   * ``recent`` (``jobs_recent``) — the window touches today (or has no
     end bound), so new jobs keep landing in it. Short TTL keeps the
     staleness window at ~15 minutes.
+
+Note the chart SVG caches (``webapp.caching.chart_cached``) are NOT the
+freshness lever they look like: their keys are content hashes of the data
+being plotted, so a stale entry can only be served for data that has not
+changed. These TTLs are the only thing that decides how fresh a panel is.
 
 Only the aggregations (histograms, usage-by rollups) go through here —
 they cost ~0.5-0.6 s warm per month-window against the plugin PG and
@@ -24,10 +30,17 @@ Registered with the ``webapp.caching`` facade (category ``jobs``) so it
 appears in Admin → Configuration and clears via the same surfaces.
 
 Config (Flask app.config or env; 0 disables the corresponding bucket):
-  JOBS_CACHE_TTL          — historical TTL seconds (default 21600 = 6 h)
-  JOBS_CACHE_SIZE         — historical max LRU entries (default 256)
+  JOBS_CACHE_TTL          — historical TTL seconds (default 1800 = 30 min)
+  JOBS_CACHE_SIZE         — historical max LRU entries (default 512)
   JOBS_RECENT_CACHE_TTL   — recent TTL seconds (default 900 = 15 min)
-  JOBS_RECENT_CACHE_SIZE  — recent max LRU entries (default 128)
+  JOBS_RECENT_CACHE_SIZE  — recent max LRU entries (default 512)
+
+The sizes are set for the explorer, which fans out far more distinct keys
+than the cards ever did: per filter combination, up to 8 histogram
+dimensions x 2 owner axes, plus 2 usage rollups x 3 sort orders — roughly
+22 entries. (Under Redis eviction is instance-global ``allkeys-lru`` and
+maxsize is advisory; the sizes are load-bearing for the in-process
+fallback used in local dev and any Redis-less deploy.)
 
 Key shape (hashable tuple):
   (query_type, machine, sorted(normalized opts))
@@ -77,13 +90,13 @@ def _norm(value: Any):
 _BUCKETS: Dict[str, Dict[str, Any]] = {
     'historical': {
         'name': 'jobs',
-        'ttl':  ('JOBS_CACHE_TTL', 21600),   # 6 hours
-        'size': ('JOBS_CACHE_SIZE', 256),
+        'ttl':  ('JOBS_CACHE_TTL', 1800),   # 30 minutes
+        'size': ('JOBS_CACHE_SIZE', 512),
     },
     'recent': {
         'name': 'jobs_recent',
         'ttl':  ('JOBS_RECENT_CACHE_TTL', 900),   # 15 minutes
-        'size': ('JOBS_RECENT_CACHE_SIZE', 128),
+        'size': ('JOBS_RECENT_CACHE_SIZE', 512),
     },
 }
 
@@ -208,7 +221,7 @@ def jobs_cache_info() -> List[Dict]:
 
     Returns a list (historical bucket first) so the Configuration card can
     loop and surface each bucket's TTL — making the 15-min recent TTL
-    visible alongside the 6-hour historical one.
+    visible alongside the 30-min historical one.
     """
     infos: List[Dict] = []
     for bucket, spec in _BUCKETS.items():
