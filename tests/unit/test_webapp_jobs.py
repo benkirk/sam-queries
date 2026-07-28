@@ -574,9 +574,8 @@ def test_jobs_fragment_renders_rows_when_enabled(
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert '12345.desched1' in body
-    # 'user' is not a default column on the per-job table (the drill-down
-    # row already pins user/queue), so benkirk appears in the verbose-row
-    # drawer instead of the main table.
+    # A single-page single-user result suppresses the User column, so
+    # benkirk surfaces via the `user:` header badge instead.
     assert 'benkirk' in body
     # Disabled banner must NOT be present on the enabled path.
     assert 'Per-job data is unavailable' not in body
@@ -2047,7 +2046,8 @@ def test_histogram_fragment_metric_pill_roundtrip(
 # Commit 6: machine-wide family (operator) + explorer pages + Status tab
 # ---------------------------------------------------------------------------
 
-_MACHINE_FRAGMENTS = ['', '/by-user', '/wait-times', '/job-sizes', '/durations']
+_MACHINE_FRAGMENTS = ['', '/by-user', '/by-project', '/wait-times',
+                      '/job-sizes', '/durations']
 
 
 @pytest.mark.parametrize('suffix', _MACHINE_FRAGMENTS + ['/explore'])
@@ -2095,6 +2095,47 @@ def test_machine_by_user_fragment_unscoped(app, auth_client, monkeypatch):
     assert 'data-job-user="alice"' in resp.get_data(as_text=True)
     _dim, kwargs = captured['last_jobs_usage_by']
     assert 'account' not in kwargs
+
+
+def test_machine_by_project_fragment_unscoped(app, auth_client, monkeypatch):
+    """Machine-wide By Project: dimension 'account', no user pin, no
+    account scoping; rows drill into the machine jobs fragment narrowed
+    by account=."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_usage_by_return=_PROJECT_USAGE)
+    resp = auth_client.get('/dashboards/user/jobs/machine/derecho/by-project')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    dim, kwargs = captured['last_jobs_usage_by']
+    assert dim == 'account'
+    assert kwargs.get('user') is None      # no pin (filter dict carries None)
+    assert 'account' not in kwargs
+    assert 'data-job-project="SCSG0001"' in body
+    assert ('/dashboards/user/jobs/machine/derecho'
+            '?machine=derecho&account=SCSG0001') in body
+
+
+def test_machine_by_project_threads_metric_sort(app, auth_client, monkeypatch):
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_usage_by_return=_PROJECT_USAGE)
+    auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/by-project?metric=gpu_hours')
+    _dim, kwargs = captured['last_jobs_usage_by']
+    assert kwargs['sort_by'] == 'gpu_hours'
+
+
+def test_machine_jobs_fragment_account_narrows(app, auth_client, monkeypatch):
+    """?account= narrows the machine-wide table (the By Project drill) —
+    rows and count both see it, and it surfaces as the project: badge."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()],
+                                    jobs_count_return=1)
+    resp = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho?account=SCSG0001')
+    assert resp.status_code == 200
+    assert captured['last_jobs_search_kwargs']['account'] == 'SCSG0001'
+    assert captured['last_jobs_count_kwargs']['account'] == 'SCSG0001'
+    assert 'project: SCSG0001' in resp.get_data(as_text=True)
 
 
 def test_machine_histogram_fragment_unscoped(app, auth_client, monkeypatch):
@@ -2562,6 +2603,116 @@ def test_project_fragment_ignores_client_account_param(
     assert 'EVIL0001' not in skw['account']
 
 
+def test_project_by_project_fragment_scoped_to_tree(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Project-mode By Project: dimension 'account' scoped by the
+    server-derived tree list, no user pin; rows drill into the
+    project-mode jobs fragment narrowed by account=."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_usage_by_return=_PROJECT_USAGE)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-project'
+        '?machine=derecho'
+    )
+    assert resp.status_code == 200
+    dim, kwargs = captured['last_jobs_usage_by']
+    assert dim == 'account'
+    assert kwargs.get('user') is None      # tree scoping, no user pin
+    assert active_project.projcode in kwargs['account']
+    assert (f'/dashboards/user/jobs/{active_project.projcode}'
+            '?machine=derecho&account=SCSG0001') in resp.get_data(as_text=True)
+
+
+def test_project_fragment_intree_account_narrows(
+    app, auth_client, active_project, monkeypatch,
+):
+    """An in-tree ?account= narrows the project table to that projcode
+    (the parent-project By Project drill) and surfaces as the badge —
+    the complement of test_project_fragment_ignores_client_account_param,
+    which pins that out-of-tree values stay ignored."""
+    captured = _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        f'?machine=derecho&account={active_project.projcode}'
+    )
+    assert resp.status_code == 200
+    skw = captured['last_jobs_search_kwargs']
+    assert skw['account'] == [active_project.projcode]
+    assert f'project: {active_project.projcode}' in resp.get_data(as_text=True)
+
+
+def test_status_job_history_card_offers_both_tabs(app, auth_client, monkeypatch):
+    """Machine mode renders BOTH By User and By Project tabs."""
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    body = auth_client.get('/status/job-history').get_data(as_text=True)
+    assert 'By User' in body
+    assert 'By Project' in body
+    assert '/dashboards/user/jobs/machine/derecho/by-project' in body
+
+
+def test_resource_details_modal_shells_and_by_project_gate(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The project-mode host page carries both entity-modal shells (it
+    extends dashboards/base.html, which includes neither), and the By
+    Project tab renders only when the account tree spans >1 projcode."""
+    _install_mock_plugin(app, monkeypatch)
+    resp = auth_client.get(
+        f'/user/resource-details/{active_project.projcode}?resource=Derecho')
+    if resp.status_code != 200:
+        return  # snapshot doesn't have this resource — nothing to check
+    body = resp.get_data(as_text=True)
+    assert 'id="userDetailsModal"' in body
+    assert 'id="projectDetailsModal"' in body
+    multi = len(active_project.get_descendants(include_self=True)) > 1
+    assert (f'/dashboards/user/jobs/{active_project.projcode}/by-project'
+            in body) == multi
+
+
+def test_by_user_username_links_open_user_modal(app, auth_client, monkeypatch):
+    """With VIEW_USERS, usernames become quick-view modal triggers."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_sample_usage())
+    body = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/by-user').get_data(as_text=True)
+    assert 'data-bs-target="#userDetailsModal"' in body
+    assert '/admin/user/alice' in body
+
+
+def test_by_user_no_modal_affordance_without_view_users(
+    app, client, session, multi_project_user, monkeypatch,
+):
+    """A project member without VIEW_USERS gets plain <code> usernames —
+    no affordance that would 403 at the user_card route."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_sample_usage())
+    with client.session_transaction() as sess_data:
+        sess_data['_user_id'] = str(multi_project_user.user_id)
+        sess_data['_fresh'] = True
+    resp = None
+    for proj in multi_project_user.projects:
+        resp = client.get(
+            f'/dashboards/user/jobs/{proj.projcode}/by-user?machine=derecho')
+        if resp.status_code == 200:
+            break
+    else:
+        pytest.skip('snapshot member user has no accessible project')
+    body = resp.get_data(as_text=True)
+    assert 'data-job-user="alice"' in body      # rows render fine
+    assert 'userDetailsModal' not in body       # affordance suppressed
+
+
+def test_by_project_projcode_links_open_project_modal(
+    app, auth_client, monkeypatch,
+):
+    """User mode always renders the project quick-view affordance — the
+    rows are the pinned user's own projects."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_PROJECT_USAGE)
+    body = auth_client.get(
+        '/dashboards/user/jobs/user/derecho/by-project').get_data(as_text=True)
+    assert 'data-bs-target="#projectDetailsModal"' in body
+    assert 'project-details-modal/SCSG0001' in body
+
+
 def test_my_jobs_card_offers_by_project_tab(app, auth_client, monkeypatch):
     """The user-mode card swaps By User for By Project."""
     _install_mock_plugin(app, monkeypatch)
@@ -2632,3 +2783,463 @@ def test_my_jobs_tab_visibility_follows_machines(app, auth_client, monkeypatch):
     _install_mock_plugin(app, monkeypatch, machines=('derecho',))
     resp = auth_client.get('/user/accounts')
     assert '/user/jobs' in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# UX round 3: owner-tier histogram drill, User column, metric-ranked usage
+# ---------------------------------------------------------------------------
+
+def _sample_hist_owners(dimension='wait'):
+    """_sample_hist plus per-bucket owners (plugin owners_limit envelope).
+
+    Bucket '<1m' (10 jobs): alice 6 jobs / 30 cpu-h, bob 3 jobs / 70 cpu-h
+    → ranked alice-first on the jobs metric, bob-first on cpu_hours; 1 job
+    unattributed (the "Other users" remainder row).
+    Bucket '1-5m' (4 jobs): carol owns everything → single-owner shortcut.
+    """
+    h = _sample_hist(dimension)
+    h['buckets'][0]['owners'] = {
+        'alice': {'job_count': 6, 'cpu_hours': 30.0, 'gpu_hours': 0.0},
+        'bob':   {'job_count': 3, 'cpu_hours': 70.0, 'gpu_hours': 0.0},
+    }
+    h['buckets'][1]['owners'] = {
+        'carol': {'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0},
+    }
+    return h
+
+
+def _get_hist_body(app, auth_client, active_project, monkeypatch, query=''):
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        f'?machine=derecho{query}'
+    )
+    assert resp.status_code == 200
+    return resp.get_data(as_text=True)
+
+
+def test_histogram_bucket_renders_owner_table(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Multi-owner band expands to a per-user tier ranked by the active
+    metric (jobs default → alice first; cpu_hours → bob first)."""
+    body = _get_hist_body(app, auth_client, active_project, monkeypatch)
+    assert 'alice' in body and 'bob' in body
+    assert '-b0-u1-row' in body and '-b0-u2-row' in body
+    assert body.index('alice') < body.index('bob')
+
+    body_cpu = _get_hist_body(app, auth_client, active_project, monkeypatch,
+                              query='&metric=cpu_hours')
+    assert body_cpu.index('bob') < body_cpu.index('alice')
+
+
+def test_histogram_owner_drill_appends_user(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Each owner row lazy-loads the band's jobs fragment with the band
+    bounds AND the username appended."""
+    import re
+    body = _get_hist_body(app, auth_client, active_project, monkeypatch)
+    m = re.search(r'id="[^"]*-b0-u1-content"\s+hx-get="([^"]+)"', body)
+    assert m, 'owner drill div missing'
+    url = m.group(1).replace('&amp;', '&')
+    assert 'min_eligible_secs=0' in url
+    assert 'max_eligible_secs=59' in url
+    assert 'user=alice' in url
+    assert 'machine=derecho' in url
+    assert 'target_id=' in url
+    # Owner drills bind to the Bootstrap collapse event, never click.
+    assert 'shown.bs.collapse' in body
+
+
+def test_histogram_owner_remainder_row(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Owners summing below the band totals → a muted, non-drillable
+    "Other users" row."""
+    body = _get_hist_body(app, auth_client, active_project, monkeypatch)
+    assert 'Other users' in body
+    assert 'beyond top 2' in body
+
+
+def test_histogram_single_owner_shortcut(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A band wholly owned by one user skips the per-user tier and drills
+    straight to their jobs."""
+    import re
+    body = _get_hist_body(app, auth_client, active_project, monkeypatch)
+    assert '-b1-u1-row' not in body
+    m = re.search(r'id="[^"]*-b1-content"\s+hx-get="([^"]+)"', body)
+    assert m, 'single-owner drill div missing'
+    assert 'user=carol' in m.group(1).replace('&amp;', '&')
+
+
+def test_histogram_no_details_wrapper(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The bucket table is always visible now — no <details> wrapper."""
+    body = _get_hist_body(app, auth_client, active_project, monkeypatch)
+    assert '<details' not in body
+    assert 'Bucket breakdown' in body
+
+
+def test_histogram_collapse_rows_no_persist(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Histogram collapse rows opt out of nav-view-persistence — a restored
+    auto-expand would re-fire the lazy drill fetches on every reload."""
+    body = _get_hist_body(app, auth_client, active_project, monkeypatch)
+    assert 'data-no-persist' in body
+
+
+def test_histogram_ownerless_fallback_keeps_single_level(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Owner-less envelope (older plugin / cached) renders the original
+    band → jobs drill with no per-user tier."""
+    import re
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        f'?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert re.search(r'id="[^"]*-b0-content"\s+hx-get="', body)
+    assert '-b0-u1-row' not in body
+
+
+def test_histogram_owners_limit_and_sort_forwarded(
+    app, auth_client, active_project, monkeypatch,
+):
+    """owners_limit rides every histogram call, and owners_sort_by follows
+    the metric pill — which top-N survives must match what's displayed."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        f'?machine=derecho'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['owners_limit'] == 10
+    assert kwargs['owners_sort_by'] == 'job_count'   # _DEFAULT_METRIC_HIST
+
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        f'?machine=derecho&metric=gpu_hours'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['owners_sort_by'] == 'gpu_hours'
+
+
+# --- Histogram User|Project owner pill (owners_by) --------------------------
+
+def _sample_hist_project_owners(dimension='wait'):
+    """Owner keys are projcodes — the plugin owners_by='account' envelope.
+    Same numeric shape as _sample_hist_owners."""
+    h = _sample_hist(dimension)
+    h['buckets'][0]['owners'] = {
+        'SCSG0001': {'job_count': 6, 'cpu_hours': 30.0, 'gpu_hours': 0.0},
+        'UABC0002': {'job_count': 3, 'cpu_hours': 70.0, 'gpu_hours': 0.0},
+    }
+    h['buckets'][1]['owners'] = {
+        'SCSG0001': {'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0},
+    }
+    return h
+
+
+def test_histogram_owner_pill_offered_in_machine_mode(
+    app, auth_client, monkeypatch,
+):
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    body = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times'
+    ).get_data(as_text=True)
+    assert 'aria-label="Owner dimension"' in body
+    assert 'owners_by=account' in body
+
+
+def test_histogram_owner_pill_hidden_in_user_mode_and_param_ignored(
+    app, auth_client, monkeypatch,
+):
+    """User mode never offers the pill, and a crafted ?owners_by=account
+    is ignored (not forwarded to the plugin)."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    body = auth_client.get(
+        '/dashboards/user/jobs/user/derecho/wait-times?owners_by=account'
+    ).get_data(as_text=True)
+    assert 'aria-label="Owner dimension"' not in body
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert 'owners_by' not in kwargs
+
+
+def test_histogram_owner_pill_follows_project_tree_size(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Project mode offers the pill iff the account tree spans >1
+    projcode — same gate as the By Project tab."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho'
+    ).get_data(as_text=True)
+    multi = len(active_project.get_descendants(include_self=True)) > 1
+    assert ('aria-label="Owner dimension"' in body) == multi
+
+
+def test_histogram_owners_by_forwarded_only_when_account(
+    app, auth_client, monkeypatch,
+):
+    """Soft degradation contract: the default never sends owners_by (an
+    older plugin keeps working); the Project pill sends 'account'."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_project_owners(),
+    )
+    auth_client.get('/dashboards/user/jobs/machine/derecho/wait-times')
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert 'owners_by' not in kwargs
+
+    auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times?owners_by=account')
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert kwargs['owners_by'] == 'account'
+
+
+def test_histogram_account_owner_tier_and_drill(
+    app, auth_client, monkeypatch,
+):
+    """The Project pill drives the whole drill: Project tier header,
+    project-modal triggers on owner cells, account= (not user=) on the
+    per-owner jobs drill, 'Other projects' remainder, and the owners_by
+    round-trip hidden input for the metric pills."""
+    import re
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_project_owners(),
+    )
+    body = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times?owners_by=account'
+    ).get_data(as_text=True)
+    assert '<th>Project</th>' in body
+    assert 'Other projects' in body
+    assert 'project-details-modal/SCSG0001' in body
+    assert 'name="owners_by" value="account"' in body
+    m = re.search(r'id="[^"]*-b0-u1-content"\s+hx-get="([^"]+)"', body)
+    assert m, 'owner drill div missing'
+    url = m.group(1).replace('&amp;', '&')
+    assert 'account=SCSG0001' in url
+    assert 'user=' not in url
+
+
+def test_histogram_user_owner_cells_offer_user_modal(
+    app, auth_client, monkeypatch,
+):
+    """Under the default User pill the owner tier's usernames carry the
+    same quick-view modal affordance as the By User table (VIEW_USERS
+    gate)."""
+    _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
+    )
+    body = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho/wait-times'
+    ).get_data(as_text=True)
+    assert 'data-bs-target="#userDetailsModal"' in body
+    assert '/admin/user/alice' in body
+
+
+# --- User column ------------------------------------------------------------
+
+def test_user_column_structure():
+    """`user` is a default (sortable) column and no longer a drawer extra."""
+    from webapp.jobs.routes import _DEFAULT_COLS, _VERBOSE_EXTRAS, \
+        _SORT_WHITELIST
+    assert 'user' in _DEFAULT_COLS
+    assert 'user' in _SORT_WHITELIST
+    assert 'user' not in _VERBOSE_EXTRAS
+
+
+def _two_user_rows():
+    return [
+        _make_row(job_id='600.desched1', user='alice'),
+        _make_row(job_id='601.desched1', user='zed'),
+    ]
+
+
+def test_user_column_visible_with_multiple_users(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(
+        app, monkeypatch, jobs_search_return=_two_user_rows(),
+    )
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'sort_by=user' in body           # sortable header rendered
+    assert 'alice' in body and 'zed' in body
+
+
+def test_user_column_hidden_with_user_filter(
+    app, auth_client, active_project, monkeypatch,
+):
+    rows = [_make_row(job_id='600.desched1', user='alice')]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        f'?machine=derecho&user=alice'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'sort_by=user' not in body
+    # The pin is already surfaced by the user: filter badge — no user_badge.
+    assert 'user: alice' in body
+
+
+def test_user_column_hidden_in_user_mode(app, auth_client, monkeypatch):
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_search_return=[_make_row(job_id='600.desched1', user='benkirk')],
+    )
+    resp = auth_client.get('/dashboards/user/jobs/user/derecho?machine=derecho')
+    body = resp.get_data(as_text=True)
+    assert 'sort_by=user' not in body
+
+
+def test_user_column_hidden_uniform_single_page_shows_badge(
+    app, auth_client, monkeypatch,
+):
+    """No pin, no filter, but the whole (single-page) result is one user →
+    column suppressed and the username surfaces as a header badge.
+
+    Machine mode: its count path always uses the mocked plugin
+    jobs_count. Project mode's unfiltered count takes the SAM-summary
+    fast path (a real comp_charge_summary query), so the single-page
+    premise couldn't be pinned there.
+    """
+    rows = [_make_row(job_id='600.desched1', user='solo'),
+            _make_row(job_id='601.desched1', user='solo')]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
+    resp = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'sort_by=user' not in body
+    assert 'user: solo' in body
+
+
+def test_user_column_kept_uniform_but_multipage(
+    app, auth_client, monkeypatch,
+):
+    """A uniform PAGE of a multi-page result proves nothing — the column
+    stays rather than paying a distinct-count query."""
+    rows = [_make_row(job_id='600.desched1', user='solo')]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows,
+                         jobs_count_return=500)
+    resp = auth_client.get(
+        '/dashboards/user/jobs/machine/derecho?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'sort_by=user' in body
+    assert 'user: solo' not in body
+
+
+def test_user_sort_forwarded(
+    app, auth_client, active_project, monkeypatch,
+):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_search_return=_two_user_rows(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        f'?machine=derecho&sort_by=user&sort_dir=asc'
+    )
+    kw = captured['last_jobs_search_kwargs']
+    assert kw['sort_by'] == 'user'
+    assert kw['sort_dir'] == 'asc'
+
+
+def test_name_column_truncates(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Long job names must not widen the column: ellipsis truncation with
+    the full name on the title tooltip."""
+    long_name = 'a_very_long_job_name_' + 'x' * 100
+    rows = [_make_row(job_id='600.desched1', user='alice', name=long_name),
+            _make_row(job_id='601.desched1', user='zed')]
+    _install_mock_plugin(app, monkeypatch, jobs_search_return=rows)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'max-width: 35ch' in body
+    assert 'text-truncate' in body
+    assert f'title="{long_name}"' in body
+
+
+# --- Metric-ranked By User / By Project -------------------------------------
+
+def test_by_user_fragment_threads_metric_sort(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The metric pill decides the plugin ranking (and thus which top-N
+    survives) — the Derecho GPU-Hours one-user bug."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_usage_by_return=_sample_usage(),
+    )
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho'
+    )
+    _dim, kwargs = captured['last_jobs_usage_by']
+    assert kwargs['sort_by'] == 'cpu_hours'     # _DEFAULT_METRIC_PIE
+
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=gpu_hours'
+    )
+    _dim, kwargs = captured['last_jobs_usage_by']
+    assert kwargs['sort_by'] == 'gpu_hours'
+
+    auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=jobs'
+    )
+    _dim, kwargs = captured['last_jobs_usage_by']
+    assert kwargs['sort_by'] == 'job_count'
+
+
+def test_by_project_fragment_threads_metric_sort(app, auth_client, monkeypatch):
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_usage_by_return=_sample_usage(),
+    )
+    auth_client.get(
+        '/dashboards/user/jobs/user/derecho/by-project'
+        '?machine=derecho&metric=gpu_hours'
+    )
+    _dim, kwargs = captured['last_jobs_usage_by']
+    assert _dim == 'account'
+    assert kwargs['sort_by'] == 'gpu_hours'
+
+
+def test_by_user_sort_indicator_follows_metric(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The initial client-sort indicator sits on the active metric column."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_sample_usage())
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=gpu_hours'
+    ).get_data(as_text=True)
+    import re
+    gpu_th = re.search(r'<th[^>]*sort-desc[^>]*>GPU-hours</th>', body)
+    assert gpu_th, 'sort-desc must sit on the GPU-hours header'
+    assert not re.search(r'<th[^>]*sort-desc[^>]*>CPU-hours</th>', body)

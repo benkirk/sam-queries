@@ -327,6 +327,7 @@ def _count_via_sam_summary(
 def search_jobs_machine(
     machine: str,
     *,
+    account: Optional[str] = None,
     columns: Optional[Sequence[str]] = None,
     limit: Optional[int] = None,
     offset: int = 0,
@@ -335,18 +336,22 @@ def search_jobs_machine(
     valid_qos_names: Sequence[str] = (),
     **filters,
 ) -> List[Dict[str, Any]]:
-    """Machine-wide per-job rows — NO account scoping.
+    """Machine-wide per-job rows — NO account scoping by default.
 
     SECURITY: this deliberately issues an unscoped query (every user's
     jobs, cross-project). The caller MUST sit behind
     ``@require_permission(Permission.VIEW_ALL_JOB_DATA)`` — there is no
     fallback pinning here, unlike :func:`search_jobs` (project) and
-    :func:`search_jobs_user` (session user).
+    :func:`search_jobs_user` (session user). ``account`` is an optional
+    NARROWING filter (the By Project drill) — it only restricts the
+    already-authorized machine-wide view, never widens it.
     """
     mod = get_module()
     JobQueries = mod.JobQueries
 
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if account:
+        kwargs['account'] = account
     kwargs.update({'columns': columns, 'limit': limit, 'offset': offset})
     if sort_by is not None:
         kwargs['sort_by']  = sort_by
@@ -359,10 +364,11 @@ def search_jobs_machine(
 def count_jobs_machine(
     machine: str,
     *,
+    account: Optional[str] = None,
     valid_qos_names: Sequence[str] = (),
     **filters,
 ) -> int:
-    """Machine-wide job count — NO account scoping (see search_jobs_machine).
+    """Machine-wide job count (see search_jobs_machine, incl. ``account``).
 
     Always the plugin's ``jobs_count``: the SAM-summary fast path is a
     per-project accounting table, and machine-wide requests are already
@@ -372,6 +378,8 @@ def count_jobs_machine(
     JobQueries = mod.JobQueries
 
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    if account:
+        kwargs['account'] = account
 
     with job_history_session(machine) as session:
         return JobQueries(session, machine=machine).jobs_count(**kwargs)
@@ -462,6 +470,9 @@ def jobs_histogram(
     machine: str,
     dimension: str,
     *,
+    owners_limit: Optional[int] = None,
+    owners_sort_by: Optional[str] = None,
+    owners_by: Optional[str] = None,
     account_projcodes: Optional[Sequence[str]] = None,
     username: Optional[str] = None,
     valid_qos_names: Sequence[str] = (),
@@ -474,6 +485,18 @@ def jobs_histogram(
     any client-supplied ``user`` filter — the pin always wins), both
     ``None`` is machine-wide (caller must be VIEW_ALL_JOB_DATA-gated).
 
+    ``owners_limit`` forwards to the plugin: each bucket gains a top-N
+    per-owner ``owners`` mapping (stacked chart segments + the per-band
+    owner tier). ``owners_sort_by`` picks WHICH top-N survives — it must
+    follow the displayed metric or a GPU-hours view gets owners ranked
+    by combined hours (top-5 measured to cover ~1% of band GPU-hours
+    machine-wide). ``owners_by='account'`` switches the owner dimension
+    from users to projects; it is forwarded ONLY when set and non-default
+    so a pre-`owners_by` plugin never sees the kwarg — the User pill path
+    keeps working against an older container, only the Project pill
+    degrades. All three join the cache ``opts`` so variants never alias
+    — which also naturally busts pre-upgrade cache entries.
+
     Results go through the jobs TTL cache: closed windows (``end`` before
     today) land in the long-lived ``historical`` bucket, open ones in
     ``recent``. The envelope is self-describing (``min_param`` /
@@ -485,6 +508,12 @@ def jobs_histogram(
         kwargs['user'] = username
     if account_projcodes is not None:
         kwargs['account'] = list(account_projcodes)
+    if owners_limit is not None:
+        kwargs['owners_limit'] = owners_limit
+    if owners_sort_by is not None:
+        kwargs['owners_sort_by'] = owners_sort_by
+    if owners_by is not None and owners_by != 'user':
+        kwargs['owners_by'] = owners_by
 
     def _compute():
         mod = get_module()
@@ -506,21 +535,27 @@ def jobs_usage_by_user(
     machine: str,
     *,
     limit: Optional[int] = 50,
+    sort_by: Optional[str] = None,
     account_projcodes: Optional[Sequence[str]] = None,
     valid_qos_names: Sequence[str] = (),
     **filters,
 ) -> Dict[str, Any]:
     """Cached per-user usage rollup (plugin ``jobs_usage_by('user')``).
 
-    Backs the By User pie: rows are hours-desc, ``totals`` is computed
-    upstream BEFORE the limit truncation, so the pie's "Other" slice is
-    ``totals − Σ rows``. No self-exclusion of any filter — ``account``
+    Backs the By User pie: rows are ranked by ``sort_by`` (the plugin's
+    combined-hours default when ``None``) BEFORE the limit truncation, so
+    the surviving top-N follows the viewed metric; ``totals`` is likewise
+    pre-truncation, so the pie's "Other" slice is ``totals − Σ rows``.
+    ``sort_by`` joins the cache ``opts`` — different rankings are
+    different result sets. No self-exclusion of any filter — ``account``
     scoping always applies (it's the security boundary). Same scope and
     caching rules as :func:`jobs_histogram`.
     """
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
     if account_projcodes is not None:
         kwargs['account'] = list(account_projcodes)
+    if sort_by is not None:
+        kwargs['sort_by'] = sort_by
 
     def _compute():
         mod = get_module()
@@ -541,34 +576,48 @@ def jobs_usage_by_user(
 def jobs_usage_by_project(
     machine: str,
     *,
-    username: str,
+    username: Optional[str] = None,
     limit: Optional[int] = 25,
+    sort_by: Optional[str] = None,
+    account_projcodes: Optional[Sequence[str]] = None,
     valid_qos_names: Sequence[str] = (),
     **filters,
 ) -> Dict[str, Any]:
-    """Cached per-project usage rollup for ONE user's jobs (plugin
-    ``jobs_usage_by('account', user=username)``).
+    """Cached per-project usage rollup (plugin ``jobs_usage_by('account')``).
 
-    Backs the My Jobs "By Project" pie: which projects the logged-in
-    user's jobs charged, hours-desc. User-mode-only by construction —
-    the username pin is mandatory and non-negotiable exactly like
-    :func:`search_jobs_user` (raises on empty username or a ``user``
-    filter), so this can never aggregate anyone else's jobs. Same
-    pre-truncation ``totals`` invariant and caching rules as
-    :func:`jobs_usage_by_user`; cached as query type
+    Backs every "By Project" pie, scoped by mode exactly like
+    :func:`jobs_usage_by_user` scopes By User:
+
+    - **user mode**: pass ``username`` — the pin is applied server-side
+      and a client ``user`` filter beside it raises (same rule as
+      :func:`search_jobs_user`), so it can never aggregate anyone
+      else's jobs.
+    - **project mode**: pass ``account_projcodes`` (the server-derived
+      account tree) — the security boundary, always applied.
+    - **machine mode**: neither — the caller's route is gated on
+      ``VIEW_ALL_JOB_DATA``.
+
+    Rows are ranked by ``sort_by`` (plugin combined-hours default when
+    ``None``) BEFORE the limit truncation; ``totals`` is pre-truncation,
+    so "Other" is ``totals − Σ rows``. Cached as query type
     ``'usage_by_account'``.
     """
-    if not username:
+    if username is not None and not username:
         raise ValueError(
-            'jobs_usage_by_project requires a username (user pin).')
-    if 'user' in filters:
+            'jobs_usage_by_project requires a non-empty username pin.')
+    if username is not None and 'user' in filters:
         raise ValueError(
             "jobs_usage_by_project pins user server-side; "
             "remove the 'user' filter from the call."
         )
 
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
-    kwargs['user'] = username
+    if username is not None:
+        kwargs['user'] = username
+    if account_projcodes is not None:
+        kwargs['account'] = list(account_projcodes)
+    if sort_by is not None:
+        kwargs['sort_by'] = sort_by
 
     def _compute():
         mod = get_module()

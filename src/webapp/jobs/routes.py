@@ -23,8 +23,8 @@ Query params (all optional unless noted):
                          (e.g. '0' = success, '1', '271')
   page                 — int ≥ 1; default 1
   per_page             — int in [10, 200]; default 50
-  sort_by              — one of {'start', 'elapsed', 'qos',
-                         'cpu_charges', 'gpu_charges'}; default None
+  sort_by              — any _DEFAULT_COLS key (e.g. 'user', 'start',
+                         'elapsed', 'qos', 'cpu_charges'); default None
                          (plugin orders by ``Job.end DESC``)
   sort_dir             — 'asc' | 'desc'; default 'desc'
 
@@ -55,7 +55,11 @@ from webapp.dashboards.charts import (
 from webapp.extensions import db
 from webapp.jobs import service
 from webapp.jobs.session import is_enabled
-from webapp.utils.rbac import Permission, require_permission
+from webapp.utils.rbac import (
+    Permission,
+    has_permission_any_facility,
+    require_permission,
+)
 
 bp = Blueprint('jobs', __name__)
 
@@ -64,19 +68,21 @@ bp = Blueprint('jobs', __name__)
 # route can reject bad input without touching the plugin.
 _VALID_MACHINES = {'derecho', 'casper'}
 
-# Default columns shown when drilled into a user+queue row. user/queue/
-# account are dropped because the row context already pins them.
+# Default columns in the jobs table. queue/account are left to the drawer
+# because the drill contexts pin them; `user` renders by default and is
+# suppressed contextually instead (see _user_col_suppressed).
 _DEFAULT_COLS = (
-    'job_id', 'name', 'qos', 'start', 'elapsed',
+    'job_id', 'user', 'name', 'qos', 'start', 'elapsed',
     'numnodes', 'numcpus', 'numgpus',
     'cpu_charges', 'gpu_charges',
 )
 
 # Every column rendered as a table header is sortable. The plugin maps
-# `job.*` / `charge.*` keys to their SQLAlchemy columns and the
-# computed `*_charges` keys to `hours × COALESCE(qos_factor, 1)`, so
-# every key in _DEFAULT_COLS resolves to a valid ORDER BY at the SQL
-# level. Built from _DEFAULT_COLS to stay in lockstep automatically.
+# `job.*` / `charge.*` keys to their SQLAlchemy columns, lookup-backed
+# keys (`user`) to a joined name column, and the computed `*_charges`
+# keys to `hours × COALESCE(qos_factor, 1)`, so every key in
+# _DEFAULT_COLS resolves to a valid ORDER BY at the SQL level. Built
+# from _DEFAULT_COLS to stay in lockstep automatically.
 _SORT_WHITELIST = set(_DEFAULT_COLS)
 
 # Extra columns revealed in the per-row "expand" drawer. Order is the
@@ -85,7 +91,7 @@ _SORT_WHITELIST = set(_DEFAULT_COLS)
 # at the top of the drawer rather than buried beside memory_charges.
 _VERBOSE_EXTRAS = (
     'exit_status', 'qos_factor',
-    'queue', 'user',
+    'queue',
     'submit', 'end', 'walltime',
     'mpiprocs', 'ompthreads',
     'reqmem', 'memory', 'vmemory',
@@ -157,6 +163,23 @@ def _visible_cols(default_cols, rows):
         if c not in _SUPPRESSIBLE
         or any((r.get(c) or 0) != 0 for r in rows)
     ]
+
+
+def _user_col_suppressed(*, pinned_user, filters, rows, total, per_page):
+    """True when the User column would be single-valued noise.
+
+    Three triggers: the mode pins a user (My Jobs), a ``user=`` filter is
+    active (the By User / per-band drills), or the whole filtered result
+    fits on one page and every row shares one username — the cheap exact
+    case; a multi-page uniform view keeps the column rather than paying a
+    distinct-count query to find out.
+    """
+    if pinned_user is not None or filters.get('user'):
+        return True
+    return bool(
+        rows and total is not None and total <= per_page
+        and len({r.get('user') for r in rows}) == 1
+    )
 
 
 def _scope_project(project) -> Project:
@@ -251,6 +274,14 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 p.projcode
                 for p in _scope_project(project).get_descendants(include_self=True)
             ]
+            # `account` narrows WITHIN the server-derived tree (the
+            # By Project drill on a parent project). An out-of-tree value
+            # is ignored — the tree stays the security boundary, so a
+            # client can never widen scope with this parameter.
+            requested = (request.args.get('account') or '').strip() or None
+            if requested and requested in account_projcodes:
+                user_account = requested
+                account_projcodes = [requested]
             rows = service.search_jobs(
                 machine, project=project,
                 account_projcodes=account_projcodes, **common, **filters,
@@ -263,8 +294,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         elif mode == 'user':
             # `account` narrows one's OWN jobs to a single projcode (the
             # By Project drill) — safe from the client in this mode only
-            # because the username pin still applies. Project mode keeps
-            # its account list server-derived.
+            # because the username pin still applies.
             user_account = (request.args.get('account') or '').strip() or None
             rows = service.search_jobs_user(
                 machine, pinned_user, account=user_account, **common, **filters,
@@ -274,11 +304,16 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 valid_qos_names=qos_options, **filters,
             )
         else:
+            # `account` narrows the machine-wide view to one projcode
+            # (the By Project drill) — only ever a restriction, and this
+            # route family is gated on VIEW_ALL_JOB_DATA.
+            user_account = (request.args.get('account') or '').strip() or None
             rows = service.search_jobs_machine(
-                machine, **common, **filters,
+                machine, account=user_account, **common, **filters,
             )
             total = service.count_jobs_machine(
-                machine, valid_qos_names=qos_options, **filters,
+                machine, account=user_account,
+                valid_qos_names=qos_options, **filters,
             )
     except Exception as exc:
         # Catch-all so a transient plugin/DB issue degrades to a banner
@@ -325,6 +360,20 @@ def _jobs_table_response(*, mode, machine, fragment_url,
                 'name': shared_qos,
                 'factor': next(iter(factors)) if len(factors) == 1 else None,
             }
+
+    # Same single-value treatment for the User column. Only the
+    # uniformity trigger needs the header badge: the pin/filter cases
+    # already surface the name via the fragment heading or the `user:`
+    # filter badge.
+    user_badge = None
+    if _user_col_suppressed(pinned_user=pinned_user, filters=filters,
+                            rows=rows, total=total,
+                            per_page=page['per_page']):
+        visible_cols = [c for c in visible_cols if c != 'user']
+        if pinned_user is None and not filters.get('user'):
+            (shared_user,) = {r.get('user') for r in rows}
+            if shared_user is not None:
+                user_badge = {'name': shared_user}
 
     column_specs = _load_column_specs()
 
@@ -377,6 +426,7 @@ def _jobs_table_response(*, mode, machine, fragment_url,
         sortable_columns=sorted(_SORT_WHITELIST),
         qos_options=template_qos_options,
         qos_badge=qos_badge,
+        user_badge=user_badge,
         fragment_url=fragment_url,
         target_id=target_id,
         roundtrip_params=_roundtrip_params(machine, target_id),
@@ -450,6 +500,19 @@ _SIZE_DIMENSIONS = ('nodes', 'cpus', 'gpus',
 
 # Rows shown in the By User table (the pie itself keeps at most 9 + Other).
 _BY_USER_LIMIT = 25
+
+# Metric pill → plugin jobs_usage_by sort_by key. Ranking must follow the
+# viewed metric or the top-N cut hides e.g. pure-GPU users behind CPU-heavy
+# ones (the Derecho GPU-Hours one-wedge bug).
+_USAGE_SORT_BY = {
+    'jobs': 'job_count',
+    'cpu_hours': 'cpu_hours',
+    'gpu_hours': 'gpu_hours',
+}
+
+# Top-N users carried per histogram bucket (chart stack segments + the
+# per-band user tier). Matches the fs_scans _AH_TOP_SEGMENTS cap.
+_HIST_OWNERS_LIMIT = 10
 
 # Filter query params round-tripped through pill/toggle re-fetches, and —
 # where the per-job fragment understands them — carried into row drill-downs.
@@ -633,6 +696,7 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
     try:
         usage = service.jobs_usage_by_user(
             machine, limit=_BY_USER_LIMIT,
+            sort_by=_USAGE_SORT_BY[metric],
             account_projcodes=account_projcodes, **filters,
         )
     except Exception as exc:
@@ -646,6 +710,12 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
         if usage else None
     other = _usage_other(usage) if usage else None
 
+    # Same gate as the admin_dashboard.user_card route the username cells
+    # link to — don't render click affordances that would 403.
+    from flask_login import current_user
+    can_view_users = has_permission_any_facility(
+        current_user, Permission.VIEW_USERS)
+
     return render_template(
         template,
         enabled=True, error=error,
@@ -655,31 +725,41 @@ def _render_by_user(*, mode, machine, fragment_url, jobs_fragment_url,
         fragment_url=fragment_url,
         jobs_fragment_url=jobs_fragment_url,
         target_id=target_id,
+        can_view_users=can_view_users,
         params=_roundtrip_params(machine, target_id),
     )
 
 
-def _render_by_project(*, machine, fragment_url, jobs_fragment_url,
-                       target_id, username=None):
-    """Renderer for the My Jobs "By Project" tab (user mode only)."""
+def _render_by_project(*, mode, machine, fragment_url, jobs_fragment_url,
+                       target_id, username=None, account_projcodes=None):
+    """Shared renderer for the By Project tab (all three modes).
+
+    Scoping mirrors the service: user mode pins ``username`` (and drops
+    any client ``user`` filter — the pin owns that dimension), project
+    mode passes the server-derived ``account_projcodes`` tree, machine
+    mode passes neither (route gated on VIEW_ALL_JOB_DATA).
+    """
     template = 'dashboards/user/partials/jobs_by_project.html'
     if not is_enabled():
         return render_template(template, enabled=False, error=None,
-                               mode='user', machine=None, target_id=target_id)
+                               mode=mode, machine=None, target_id=target_id)
 
-    filters = _parse_job_filters(include_user=False)
+    filters = _parse_job_filters(include_user=(username is None))
     metric = _parse_metric(_DEFAULT_METRIC_PIE)
 
     usage = None
     error = None
     try:
         usage = service.jobs_usage_by_project(
-            machine, username=username, limit=_BY_USER_LIMIT, **filters,
+            machine, username=username, limit=_BY_USER_LIMIT,
+            sort_by=_USAGE_SORT_BY[metric],
+            account_projcodes=account_projcodes, **filters,
         )
     except Exception as exc:
         from flask import current_app
         current_app.logger.exception(
-            'jobs by-project fragment failed: machine=%s', machine,
+            'jobs by-project fragment failed: mode=%s machine=%s',
+            mode, machine,
         )
         error = str(exc)
 
@@ -687,15 +767,24 @@ def _render_by_project(*, machine, fragment_url, jobs_fragment_url,
         usage, metric=metric, sentinel_prefix='job-proj') if usage else None
     other = _usage_other(usage) if usage else None
 
+    # Projcode cells link to user_dashboard.project_details_modal, gated by
+    # require_project_access. In user mode the rows are the pinned user's
+    # own projects (affiliation grants access), so the affordance always
+    # renders; elsewhere require VIEW_PROJECTS so the click can't 403.
+    from flask_login import current_user
+    can_view_projects = (mode == 'user') or has_permission_any_facility(
+        current_user, Permission.VIEW_PROJECTS)
+
     return render_template(
         template,
         enabled=True, error=error,
-        mode='user', machine=machine,
+        mode=mode, machine=machine,
         usage=usage, other=other,
         metric=metric, pie_svg=pie_svg,
         fragment_url=fragment_url,
         jobs_fragment_url=jobs_fragment_url,
         target_id=target_id,
+        can_view_projects=can_view_projects,
         params=_roundtrip_params(machine, target_id),
     )
 
@@ -741,11 +830,29 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     filters = _parse_job_filters()
     metric = _parse_metric(_DEFAULT_METRIC_HIST)
 
+    # User|Project owner-dimension pill — offered only where the context
+    # spans more than one project (machine mode; a project tree > 1).
+    # Elsewhere ?owners_by= is ignored, so a crafted URL can't flip a
+    # single-project pane into a redundant per-project breakdown.
+    owners_toggle = (mode == 'machine'
+                     or (mode == 'project'
+                         and account_projcodes is not None
+                         and len(account_projcodes) > 1))
+    owners_by = 'user'
+    if owners_toggle and (request.args.get('owners_by') or '').strip() == 'account':
+        owners_by = 'account'
+
     hist = None
     error = None
     try:
         hist = service.jobs_histogram(
             machine, dimension,
+            owners_limit=_HIST_OWNERS_LIMIT,
+            # Which top-N survives must follow the displayed metric —
+            # hours-ranked owners cover ~1% of band GPU-hours (plugin
+            # PR #100 review data), rendering a GPU stack as all-"Other".
+            owners_sort_by=_USAGE_SORT_BY[metric],
+            owners_by=owners_by,
             account_projcodes=account_projcodes, username=username,
             **filters,
         )
@@ -771,6 +878,20 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
             for b in hist.get('buckets') or []
         ]
 
+    # Round-trip the non-default owner dimension through the metric /
+    # dimension pills' hx-include form (AFTER the drill URLs — the jobs
+    # fragments don't take owners_by).
+    if owners_by != 'user':
+        params = dict(params, owners_by=owners_by)
+
+    # Same affordance gates as the By User / By Project tables — never
+    # render an entity quick-view link that would 403.
+    from flask_login import current_user
+    can_view_users = has_permission_any_facility(
+        current_user, Permission.VIEW_USERS)
+    can_view_projects = (mode == 'user') or has_permission_any_facility(
+        current_user, Permission.VIEW_PROJECTS)
+
     return render_template(
         template,
         enabled=True, error=error,
@@ -779,6 +900,9 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         metric=metric,
         dimension=dimension, dimension_toggle=dimension_toggle,
         size_dimensions=_SIZE_DIMENSIONS,
+        owners_by=owners_by, owners_toggle=owners_toggle,
+        can_view_users=can_view_users,
+        can_view_projects=can_view_projects,
         fragment_url=fragment_url,
         bucket_drills=bucket_drills,
         target_id=target_id,
@@ -802,6 +926,36 @@ def by_user_fragment(project):
         mode='project', machine=machine,
         fragment_url=url_for('jobs.by_user_fragment', projcode=project.projcode),
         jobs_fragment_url=url_for('jobs.jobs_fragment', projcode=project.projcode),
+        target_id=target_id,
+        account_projcodes=_tree_projcodes(project),
+    )
+
+
+@bp.route('/<projcode>/by-project')
+@login_required
+@require_project_access
+def by_project_fragment(project):
+    """HTMX fragment: per-projcode usage pie + rows across *project*'s tree.
+
+    Only meaningful for parent projects whose account tree spans more
+    than one projcode (the card gates the tab on that); the tree list is
+    server-derived — the same security boundary as every project-mode
+    fragment. Rows drill into the project jobs fragment narrowed by
+    ``account=<projcode>`` (validated against the tree there).
+    """
+    if not is_enabled():
+        return _render_by_project(mode='project', machine=None,
+                                  fragment_url=None,
+                                  jobs_fragment_url=None, target_id='')
+    machine = _get_machine_or_400()
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-byproj-{project.projcode}-{machine}'
+    return _render_by_project(
+        mode='project', machine=machine,
+        fragment_url=url_for('jobs.by_project_fragment',
+                             projcode=project.projcode),
+        jobs_fragment_url=url_for('jobs.jobs_fragment',
+                                  projcode=project.projcode),
         target_id=target_id,
         account_projcodes=_tree_projcodes(project),
     )
@@ -1038,6 +1192,32 @@ def by_user_machine_fragment(machine):
     )
 
 
+@bp.route('/machine/<machine>/by-project')
+@login_required
+@require_permission(Permission.VIEW_ALL_JOB_DATA)
+def by_project_machine_fragment(machine):
+    """HTMX fragment: machine-wide per-project usage pie + rows (operator).
+
+    The multi-project counterpart of By User; rows drill into the
+    machine jobs fragment narrowed by ``account=<projcode>``.
+    """
+    if not is_enabled():
+        return _render_by_project(mode='machine', machine=None,
+                                  fragment_url=None,
+                                  jobs_fragment_url=None, target_id='')
+    machine = _machine_or_404(machine)
+    target_id = (request.args.get('target_id') or '').strip() \
+        or f'jobs-byproj-machine-{machine}'
+    return _render_by_project(
+        mode='machine', machine=machine,
+        fragment_url=url_for('jobs.by_project_machine_fragment',
+                             machine=machine),
+        jobs_fragment_url=url_for('jobs.jobs_machine_fragment',
+                                  machine=machine),
+        target_id=target_id,
+    )
+
+
 def _machine_histogram(machine, *, dimension, dimension_toggle, endpoint):
     """Common body of the three machine-mode histogram routes."""
     if not is_enabled():
@@ -1152,13 +1332,14 @@ def by_project_user_fragment(machine):
     """
     from flask_login import current_user
     if not is_enabled():
-        return _render_by_project(machine=None, fragment_url=None,
+        return _render_by_project(mode='user', machine=None,
+                                  fragment_url=None,
                                   jobs_fragment_url=None, target_id='')
     machine = _machine_or_404(machine)
     target_id = (request.args.get('target_id') or '').strip() \
         or f'jobs-byproj-user-{machine}'
     return _render_by_project(
-        machine=machine,
+        mode='user', machine=machine,
         fragment_url=url_for('jobs.by_project_user_fragment', machine=machine),
         jobs_fragment_url=url_for('jobs.jobs_user_fragment', machine=machine),
         target_id=target_id,
