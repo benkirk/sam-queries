@@ -357,27 +357,26 @@
 </div>
 {% endif %}
 
-{% from 'dashboards/fragments/date_range_picker.html' import date_range_picker %}
-{{ date_range_picker(
-    action=url_for('user_dashboard.resource_details', projcode=projcode),
-    start_date=start_date,
-    end_date=end_date,
-    hidden_fields={'resource': resource_name, 'scope': scope},
-    epoch_date=alloc_start_date
-) }}
-
+{# The tree comes before the usage card, not after the date picker: it picks
+   the *scope* the card reports on, so it reads as an input to the card. The
+   window still applies to its badges — hence the header note. #}
 {% if has_children and tree_data %}
 {# Recursive macro — mimics the existing tree-list style from the project card #}
 {% macro render_tree_node(node) %}
 {% set is_selected = (node.projcode == scope) %}
 {% set is_clickable = node.subtree_charges > 0 %}
+{# usage_tab rides along so re-scoping doesn't dump the analyst back on
+   History; data-tab-param-link lets nav-view-persistence.js keep these hrefs
+   current when the tab changes without a reload. #}
 {% set node_url = url_for('user_dashboard.resource_details',
                            projcode=projcode, resource=resource_name,
                            scope=node.projcode,
-                           start_date=start_date, end_date=end_date) %}
+                           start_date=start_date, end_date=end_date,
+                           usage_tab=usage_tab) %}
 <li style="{{ 'background: #fff3cd; border-left-color: #ffc107; font-weight: bold;' if is_selected else '' }}">
     {% if is_clickable %}
-    <a href="{{ node_url }}" class="d-flex align-items-center gap-2 text-decoration-none text-body">
+    <a href="{{ node_url }}" data-tab-param-link
+       class="d-flex align-items-center gap-2 text-decoration-none text-body">
     {% else %}
     <span class="d-flex align-items-center gap-2 text-muted" style="cursor: default;" title="No {{ resource_name }} usage">
     {% endif %}
@@ -419,7 +418,7 @@
     <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseTree" aria-expanded="true">
         <h5 class="mb-0">
             <i class="fas fa-sitemap"></i> Project Hierarchy
-            <small class="text-muted fw-normal ms-2">Click a project to scope the charts below</small>
+            <small class="text-muted fw-normal ms-2">Click a project to scope the usage card below — badges show charges in the selected window</small>
             <i class="fas fa-chevron-down float-end transition-smooth"></i>
         </h5>
     </div>
@@ -433,86 +432,151 @@
 </div>
 {% endif %}
 
-<!-- Usage Trend Chart Card -->
+{# ── Usage card: History | By User ────────────────────────────────────────
+   One card for one question asked two ways — *when* the resource was used
+   and *by whom* — sharing a single time window.
+
+   The card header is the `.drp` root, so it can enclose both the tab strip
+   (which holds the date presets, right-aligned) and the custom-range row
+   below them. pickers.js scopes every picker button via closest('.drp').
+
+   `usage_tab` is server-side: only the open pane's chart carries
+   hx-trigger="load", so exactly one chart is fetched per page load. That is
+   also why this tablist is marked data-tab-url-param and opts out of the
+   tab:<id> localStorage channel — see nav-view-persistence.js, which keeps
+   the address bar, the .drp-hidden block and the tree links in step as the
+   analyst switches panes. #}
+{% from 'dashboards/fragments/date_range_picker.html' import drp_pills, drp_custom %}
+
+{% macro _tabcls(key) -%}
+nav-link{{ ' active' if key == usage_tab }}
+{%- endmacro %}
+{% macro _panecls(key) -%}
+tab-pane fade{{ ' show active' if key == usage_tab }}
+{%- endmacro %}
+{# Only the open pane fires on load, so a page view costs exactly one chart
+   request. Both panes also refetch on every `shown.bs.tab` — deliberately
+   NOT `once`: the metric pills write to a shared persistence family, so
+   picking Core-Hours here and switching panes must not leave the other one
+   still showing Charges with its own pill disagreeing. A warm refetch is
+   ~100ms (chart SVGs are content-hash cached), which is the right price for
+   two views that can never contradict each other. #}
+{% macro _trig(key) -%}
+{{ 'load, ' if key == usage_tab }}shown.bs.tab from:#usage-{{ key }}-tab
+{%- endmacro %}
+
 <div class="card mb-4">
-    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseUsage" aria-expanded="true">
-        <h5 class="mb-0">
-            <i class="fas fa-chart-area"></i> Usage Trend
-            {% if has_children and scope != projcode %}
-            <small class="text-muted fw-normal ms-2">{{ scope }}</small>
+    <div class="card-header p-0 drp"
+         data-action-url="{{ url_for('user_dashboard.resource_details', projcode=projcode) }}"
+         data-start="{{ start_date }}"
+         {%- if alloc_start_date %} data-epoch="{{ alloc_start_date }}"{% endif %}>
+        <script type="application/json" class="drp-hidden">{{
+            {'resource': resource_name, 'scope': scope, 'usage_tab': usage_tab} | tojson
+        }}</script>
+
+        <ul class="nav nav-tabs card-header-tabs mx-2 mt-2" id="usageCardTabs"
+            role="tablist" data-tab-url-param="usage_tab">
+            <li class="nav-item" role="presentation">
+                <button class="{{ _tabcls('history') }}" id="usage-history-tab"
+                        data-bs-toggle="tab" data-bs-target="#tab-usage-history"
+                        type="button" role="tab" data-tab-param-value="history">
+                    <i class="fas fa-chart-area me-1"></i> History
+                </button>
+            </li>
+            {% if show_by_user %}
+            <li class="nav-item" role="presentation">
+                <button class="{{ _tabcls('byuser') }}" id="usage-byuser-tab"
+                        data-bs-toggle="tab" data-bs-target="#tab-usage-byuser"
+                        type="button" role="tab" data-tab-param-value="byuser">
+                    <i class="fas fa-users me-1"></i> By User
+                </button>
+            </li>
             {% endif %}
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
-        </h5>
+            {% if has_children and scope != projcode %}
+            <li class="nav-item d-flex align-items-center ms-2">
+                <small class="text-muted">{{ scope }}</small>
+            </li>
+            {% endif %}
+            <li class="nav-item ms-auto d-flex align-items-center pb-1 gap-2">
+                {{ drp_pills(epoch_date=alloc_start_date) }}
+            </li>
+        </ul>
+
+        <div class="px-3 py-1 border-top">
+            {# align_end: drp_pills is ms-auto'd to the right of the tab strip
+               above, so the inputs open flush right, directly under the
+               Custom button rather than at the far opposite corner. #}
+            {{ drp_custom(
+                action=url_for('user_dashboard.resource_details', projcode=projcode),
+                start_date=start_date,
+                end_date=end_date,
+                hidden_fields={'resource': resource_name, 'scope': scope,
+                               'usage_tab': usage_tab},
+                align_end=True
+            ) }}
+        </div>
     </div>
-    <div id="collapseUsage" class="collapse show">
-        <div class="card-body">
-            {# Chart loads via HTMX so the metric pill selector (Charges
-               / Job Count / Core-Hours) can swap the SVG in place.
-               nav-view-persistence.js round-trips the `metric` URL param
-               through localStorage, so the analyst's choice survives page
-               reloads — and, being stored under the shared `metric:usage`
-               family key rather than a per-page id, follows them from one
-               project's resource page to the next. Family-scoped because
-               these values (charges|jobs|core_hours) are not the ones any
-               other chart's metric pill offers. A resource whose type
-               lacks the stored metric clamps back to charges server-side. #}
-            <div id="usage-chart-wrapper"
-                 hx-get="{{ url_for('user_dashboard.resource_details_usage_chart',
-                                    projcode=projcode,
-                                    resource=resource_name,
-                                    scope=scope,
-                                    start_date=start_date,
-                                    end_date=end_date,
-                                    metric='charges') }}"
-                 hx-trigger="load"
-                 hx-swap="innerHTML"
-                 data-chart-persist-shared="metric:usage">
-                <div class="text-center text-muted py-5">
-                    <i class="fas fa-spinner fa-spin"></i> Loading chart…
+
+    <div class="tab-content">
+        <div class="{{ _panecls('history') }}" id="tab-usage-history" role="tabpanel"
+             aria-labelledby="usage-history-tab">
+            <div class="card-body">
+                {# The metric choice (Charges / Job Count / Core-Hours) is
+                   stored under the shared `metric:usage` family key rather
+                   than a per-page id, so it follows the analyst from one
+                   project's resource page to the next — and, because the
+                   pie below joins the same family, across the two panes.
+                   Family-scoped because these values are not the ones any
+                   other chart's metric pill offers. A resource whose type
+                   lacks the stored metric clamps back to charges
+                   server-side. #}
+                <div id="usage-chart-wrapper"
+                     hx-get="{{ url_for('user_dashboard.resource_details_usage_chart',
+                                        projcode=projcode,
+                                        resource=resource_name,
+                                        scope=scope,
+                                        start_date=start_date,
+                                        end_date=end_date,
+                                        metric='charges') }}"
+                     hx-trigger="{{ _trig('history') }}"
+                     hx-swap="innerHTML"
+                     data-chart-persist-shared="metric:usage">
+                    <div class="text-center text-muted py-5">
+                        <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                    </div>
                 </div>
+                {{ daily_breakdown_table(daily_breakdown, 'charges-table', date_span_days) }}
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Historical Usage Card -->
-<div class="card mb-4">
-    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseCharges" aria-expanded="true">
-        <h5 class="mb-0">
-            <i class="fas fa-table"></i> Historical Usage
-            {% if has_children and scope != projcode %}
-            <small class="text-muted fw-normal ms-2">{{ scope }}</small>
-            {% endif %}
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
-        </h5>
-    </div>
-    <div id="collapseCharges" class="collapse show">
-        <div class="card-body">
-            {{ daily_breakdown_table(daily_breakdown, 'charges-table', date_span_days) }}
+        {# By User is suppressed for a single user (server-side `show_by_user`),
+           where a pie of one and a table restating the History totals say
+           nothing. #}
+        {% if show_by_user %}
+        <div class="{{ _panecls('byuser') }}" id="tab-usage-byuser" role="tabpanel"
+             aria-labelledby="usage-byuser-tab">
+            <div class="card-body">
+                <div id="user-pie-wrapper"
+                     hx-get="{{ url_for('user_dashboard.resource_details_user_pie',
+                                        projcode=projcode,
+                                        resource=resource_name,
+                                        scope=scope,
+                                        start_date=start_date,
+                                        end_date=end_date,
+                                        metric='charges') }}"
+                     hx-trigger="{{ _trig('byuser') }}"
+                     hx-swap="innerHTML"
+                     data-chart-persist-shared="metric:usage">
+                    <div class="text-center text-muted py-5">
+                        <i class="fas fa-spinner fa-spin"></i> Loading chart…
+                    </div>
+                </div>
+                {{ user_breakdown_table(user_breakdown, 'users-table') }}
+            </div>
         </div>
+        {% endif %}
     </div>
 </div>
-
-<!-- User Breakdown Card — suppressed for a single user, where it just
-     restates the Historical Usage totals. -->
-{% if user_breakdown | length > 1 %}
-<div class="card mb-4">
-    <div class="card-header cursor-pointer" data-bs-toggle="collapse" data-bs-target="#collapseUsers" aria-expanded="true">
-        <h5 class="mb-0">
-            <i class="fas fa-users"></i> Usage by User
-            {% if has_children and scope != projcode %}
-            <small class="text-muted fw-normal ms-2">{{ scope }}</small>
-            {% endif %}
-            <i class="fas fa-chevron-down float-end transition-smooth"></i>
-        </h5>
-    </div>
-    <div id="collapseUsers" class="collapse show">
-        <div class="card-body">
-            {{ user_breakdown_table(user_breakdown, 'users-table') }}
-        </div>
-    </div>
-</div>
-{% endif %}
 
 <!-- Job History Card — per-job drill + aggregation tabs from the
      hpc-usage-queries plugin. Only for resources that map onto a plugin

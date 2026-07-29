@@ -49,16 +49,23 @@ def default_jobs_window_start() -> str:
 
 
 def job_history_machines() -> List[str]:
-    """Machines with a warmed job-history engine, sorted.
+    """Machines with a warmed job-history engine, in ``JOB_HISTORY_MACHINES`` order.
 
     Analogue of ``disk_scans.service.scan_capable_resources()`` — the
     single source for "which machines can the jobs UI offer?". Returns
     ``[]`` when the plugin is disabled, so nav items / tabs / route
     validation all degrade together.
+
+    The order is the deployment's, not the alphabet's: ``_warm()`` inserts
+    engines while iterating ``JOB_HISTORY_MACHINES`` (default
+    ``derecho,casper``), and dicts keep insertion order, so config order
+    survives — a machine whose engine failed to open just drops out. This
+    is what puts Derecho first in every subtab strip; sorting here used to
+    throw that away and lead with Casper.
     """
     if not is_enabled():
         return []
-    return sorted(get_engines().keys())
+    return list(get_engines().keys())
 
 
 def _resolve_queue_and_qos(

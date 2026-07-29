@@ -1,40 +1,19 @@
-{# Usage Trend chart fragment — loaded by the resource-details page
-   and re-rendered when a metric pill (Charges / Job Count / Core-Hours)
-   is clicked. The pill group's hx-get points back at the same route
-   with a different `metric=` so the server re-renders pills + chart +
-   caption as one unit (active pill class follows the new metric).
+{# Usage Trend chart fragment — the History pane of the resource-details
+   usage card. Loaded when that pane is the open one (or on first show) and
+   re-rendered when a metric pill is clicked; see metric_pills for how the
+   selection persists across the two panes.
 
    The bar chart's `set_url('#day-bar-YYYY-MM-DD')` anchors are wired
-   regardless of metric; svg-chart-links.js handles the click and
-   expands the matching day row in Historical Usage. #}
+   regardless of metric; svg-chart-links.js handles the click and expands the
+   matching day row in the Historical Usage table below. The stacked variant
+   additionally links legend usernames to `#usage-user-<name>`, which lands in
+   the *other* pane — activateOwningTab switches to it first. #}
 
-{% set _LABELS = {
-    'charges':    'Charges',
-    'jobs':       'Job Count',
-    'core_hours': 'Core-Hours',
-} %}
+{% from 'dashboards/user/partials/_resource_details_macros.html' import metric_pills with context %}
 
-{% if available_metrics | length > 1 %}
-<div class="d-flex justify-content-center mb-2">
-    <div class="btn-group btn-group-sm" role="group" aria-label="Metric">
-        {% for opt in available_metrics %}
-        <button type="button"
-                class="btn btn-{% if metric == opt %}primary{% else %}outline-primary{% endif %}"
-                hx-get="{{ url_for('user_dashboard.resource_details_usage_chart',
-                                   projcode=projcode,
-                                   resource=resource_name,
-                                   scope=scope,
-                                   start_date=start_date,
-                                   end_date=end_date,
-                                   metric=opt) }}"
-                hx-target="#usage-chart-wrapper"
-                hx-swap="innerHTML">
-            {{ _LABELS[opt] }}
-        </button>
-        {% endfor %}
-    </div>
-</div>
-{% endif %}
+{{ metric_pills('user_dashboard.resource_details_usage_chart',
+                available_metrics, metric, '#usage-chart-wrapper',
+                projcode, resource_name, scope, start_date, end_date) }}
 
 <div class="chart-container">
     {{ chart_svg | safe }}
@@ -43,8 +22,8 @@
 {% if has_data %}
 <div class="text-muted small text-center mt-2">
     <i class="fas fa-hand-pointer me-1"></i>
-    Click a bar to expand that day in <em>Historical Usage</em> below.
-    {% if is_stacked %}Click a username in the legend to expand that user in <em>Usage by User</em>.{% endif %}
+    Click a bar to expand that day in the table below.
+    {% if is_stacked %}Click a username in the legend to open that user in the <em>By User</em> tab.{% endif %}
     Reload the page to reset all selections.
 </div>
 {% endif %}

@@ -13,6 +13,11 @@
  * The job-history period pills (5) reuse the chart-selector storage under
  * key "days", plus a card-level fan-out so per-machine subtabs agree.
  *
+ * One deliberate exception to (1): a tablist marked data-tab-url-param keeps
+ * its state in the query string instead, and this file's job for it is to
+ * keep the URL and every same-route link in step. See the tab ⇄ URL-param
+ * sync section for why the two channels must not both be live.
+ *
  * Tab / collapse handling works for both initial page load and after
  * HTMX swaps or Bootstrap modal close events.
  */
@@ -33,6 +38,9 @@
         var trigger = event.target;
         var tablist = trigger.closest('[role="tablist"]');
         if (!tablist || !tablist.id) return;
+        // URL-driven tablists own their state in the query string — see the
+        // tab ⇄ URL-param sync below for why the two channels can't coexist.
+        if (tablist.hasAttribute('data-tab-url-param')) return;
         var paneSelector = getPaneSelector(trigger);
         if (paneSelector && paneSelector.startsWith('#')) {
             try {
@@ -43,7 +51,7 @@
 
     /** Restore saved tab selections within a root element (document or swapped fragment). */
     function restoreTabs(root) {
-        root.querySelectorAll('[role="tablist"][id]').forEach(function (tablist) {
+        root.querySelectorAll('[role="tablist"][id]:not([data-tab-url-param])').forEach(function (tablist) {
             var saved = null;
             try { saved = localStorage.getItem(STORAGE_PREFIX + tablist.id); } catch (_) {}
             if (!saved) return;
@@ -76,6 +84,74 @@
     document.addEventListener('hidden.bs.modal', function (event) {
         restoreTabs(event.target);
     });
+
+    // ── Tab ⇄ URL-param sync ─────────────────────────────────────────────────
+    //
+    // Markup contract:
+    //   [role="tablist"][data-tab-url-param="usage_tab"]  the tablist
+    //   [data-tab-param-value="byuser"]                   on each tab button
+    //   [data-tab-param-link]                             same-route <a>s baked
+    //                                                     at render time
+    //
+    // A tablist marked data-tab-url-param is SERVER-driven: the route reads
+    // that query param to decide which pane renders active, and therefore
+    // which pane's lazy chart carries hx-trigger="load". Two consequences.
+    //
+    // 1. It opts out of the tab:<id> localStorage channel above. restoreTabs
+    //    runs on DOMContentLoaded — the same event htmx initializes on — so a
+    //    stored tab disagreeing with the server's would show one pane while
+    //    the other pane's chart had already fired: two fetches per load, one
+    //    of them invisible, in a load-order race. The URL is the stronger
+    //    channel anyway; it survives bookmarking and link-sharing, not just F5.
+    //
+    // 2. Clicking a tab has to update everything that will reload this route,
+    //    or the next pill click would bounce the analyst back to the server's
+    //    tab. Three writers, one source of truth (the pane just opened):
+    //      a. the address bar, so a plain reload reopens the same pane;
+    //      b. every .drp-hidden block — pickers.js reads it at CLICK time, so
+    //         patching it is enough for the date presets and Epoch;
+    //      c. [data-tab-param-link] hrefs (the project-tree nodes) and hidden
+    //         inputs of the same name (the custom-range form).
+
+    function syncTabParam(event) {
+        var trigger = event.target;
+        if (!trigger.closest) return;
+        var tablist = trigger.closest('[role="tablist"][data-tab-url-param]');
+        if (!tablist) return;
+        var name = tablist.dataset.tabUrlParam;
+        var value = trigger.dataset.tabParamValue;
+        if (!name || !value) return;
+
+        // (a) address bar — replaceState, so we don't grow the back stack.
+        // Safe beside the scroll-preserve keys, which use the pathname only.
+        try {
+            var here = new URL(window.location.href);
+            here.searchParams.set(name, value);
+            history.replaceState(history.state, '', here.toString());
+        } catch (_) {}
+
+        // (b) the JSON blocks pickers.js reads when a preset is clicked.
+        document.querySelectorAll('script.drp-hidden').forEach(function (block) {
+            var data;
+            try { data = JSON.parse(block.textContent); } catch (_) { return; }
+            if (!data || !(name in data)) return;   // not this picker's param
+            data[name] = value;
+            block.textContent = JSON.stringify(data);
+        });
+
+        // (c) render-time links back to this route, and the custom-range form.
+        document.querySelectorAll('[data-tab-param-link]').forEach(function (link) {
+            try {
+                var url = new URL(link.href, window.location.origin);
+                url.searchParams.set(name, value);
+                link.href = url.toString();
+            } catch (_) {}
+        });
+        document.querySelectorAll('input[type="hidden"][name="' + name + '"]')
+            .forEach(function (input) { input.value = value; });
+    }
+
+    document.addEventListener('shown.bs.tab', syncTabParam);
 
     // ── Collapse (expanded row) persistence ──────────────────────────────────
 
@@ -327,9 +403,10 @@
     function syncDaysCard(card, days) {
         if (!days) return;
         card.querySelectorAll('[data-days-value]').forEach(function (btn) {
-            var on = btn.dataset.daysValue === days;
-            btn.classList.toggle('btn-primary', on);
-            btn.classList.toggle('btn-outline-primary', !on);
+            // Base class is always btn-outline-secondary; `active` alone
+            // decides the paint (the theme inverts .btn-group so active
+            // reads white). Only the state class toggles here.
+            btn.classList.toggle('active', btn.dataset.daysValue === days);
         });
         // The link speaks ?days=, never a date, so this stays a parameter
         // swap — no re-deriving client-side a window the server owns.
