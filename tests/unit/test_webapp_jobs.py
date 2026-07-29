@@ -1380,17 +1380,28 @@ def test_apply_connection_settings_zero_timeout_skips_set(monkeypatch):
     assert executed == ["SET application_name = %s"]
 
 
-def test_job_history_machines_sorted_when_enabled(app, monkeypatch):
-    """Sorted engine keys when the plugin is up; [] when disabled."""
+@pytest.mark.parametrize('machines', [
+    ['derecho', 'casper'],
+    ['casper', 'derecho'],
+])
+def test_job_history_machines_follows_config_order(app, monkeypatch, machines):
+    """Engine keys come back in insertion (== JOB_HISTORY_MACHINES) order.
+
+    _warm() inserts one engine per configured machine in config order, so the
+    UI leads with whichever machine the deployment lists first (derecho by
+    default). Both orderings are exercised to pin that this tracks insertion
+    rather than any hardcoded list — the old implementation sorted, which
+    passed the first case by accident and led with Casper in production.
+    """
     from webapp.jobs import service
 
     monkeypatch.setitem(app.extensions, 'hpc_usage_queries', {
         'module':  types.SimpleNamespace(JobQueries=object),
-        'engines': {'derecho': MagicMock(), 'casper': MagicMock()},
+        'engines': {m: MagicMock() for m in machines},
         'enabled': True,
     })
     with app.app_context():
-        assert service.job_history_machines() == ['casper', 'derecho']
+        assert service.job_history_machines() == machines
 
 
 def test_job_history_machines_empty_when_disabled(app):
@@ -3683,10 +3694,17 @@ def test_card_fragment_marks_the_requested_pill_active(
     body = auth_client.get(
         _card_url(active_project.projcode, days=30)).get_data(as_text=True)
 
+    # The selected pill is the one carrying `active` — every pill keeps the
+    # same btn-outline-secondary base class (the theme inverts .btn-group so
+    # `active` paints white). Attribute order isn't guaranteed, so match the
+    # class list and the data attribute in either order.
     import re
-    assert re.search(r'btn btn-primary[^>]*data-days-value="30"', body) or \
-        re.search(r'data-days-value="30"[^>]*btn btn-primary', body)
+    assert re.search(r'btn-outline-secondary active[^>]*data-days-value="30"', body) or \
+        re.search(r'data-days-value="30"[^>]*btn-outline-secondary active', body)
     assert 'data-days-value="365"' in body      # the other pills still render
+    # ...and it's the only active one — this fragment renders a single card,
+    # so a second `active` would mean two windows look selected at once.
+    assert len(re.findall(r'btn-outline-secondary active', body)) == 1
 
 
 def test_card_fragment_unknown_days_falls_back_to_the_default(

@@ -60,13 +60,29 @@
 {% endmacro %}
 
 
-{% macro drp_custom(action, start_date, end_date, hidden_fields={}) %}
+{% macro drp_custom(action, start_date, end_date, hidden_fields={}, align_end=False) %}
 {#
   The GET form behind the Custom toggle. Also carries the hidden fields, so
   they travel with a custom-range submit the same way pickers.js sends them
   with a preset click. The current-range label lives here rather than in the
   strip: when a custom range is active no preset is highlighted, so this is
   the only readout of the window.
+
+  align_end decides which end of the row the inputs open at, and follows the
+  Custom button that summons them:
+
+    False (default) — the standalone card, where drp_pills sits inline and
+      Custom is mid-row. The inputs open immediately to its right, reading
+      as a continuation of the strip; the readout takes the far end.
+    True — a card header, where drp_pills is pushed right (ms-auto) in the
+      tab strip and drp_custom renders on its own row below. Left-aligned
+      inputs would open at the opposite corner from the button that opened
+      them, so the group is flushed right to land directly beneath it and
+      the readout swaps to the left.
+
+  order-first (rather than reordering the markup) keeps one DOM order for
+  both: the readout is last so it stays the form's final field, and only
+  the visual order flips.
 #}
 <form method="GET" action="{{ action }}"
       class="d-flex align-items-center gap-2 flex-grow-1 mb-0">
@@ -74,7 +90,7 @@
     <input type="hidden" name="{{ name }}" value="{{ value }}">
     {% endfor %}
 
-    <div class="drp-custom d-none d-flex align-items-center gap-2">
+    <div class="drp-custom d-none d-flex align-items-center gap-2{% if align_end %} ms-auto{% endif %}">
         <input type="date" name="start_date"
                value="{{ start_date }}"
                class="form-control form-control-sm" style="width:140px">
@@ -87,7 +103,7 @@
         </button>
     </div>
 
-    <small class="text-muted ms-auto">{{ start_date }} – {{ end_date }}</small>
+    <small class="text-muted {{ 'order-first me-auto' if align_end else 'ms-auto' }}">{{ start_date }} – {{ end_date }}</small>
 </form>
 {% endmacro %}
 

@@ -403,9 +403,10 @@
     function syncDaysCard(card, days) {
         if (!days) return;
         card.querySelectorAll('[data-days-value]').forEach(function (btn) {
-            var on = btn.dataset.daysValue === days;
-            btn.classList.toggle('btn-primary', on);
-            btn.classList.toggle('btn-outline-primary', !on);
+            // Base class is always btn-outline-secondary; `active` alone
+            // decides the paint (the theme inverts .btn-group so active
+            // reads white). Only the state class toggles here.
+            btn.classList.toggle('active', btn.dataset.daysValue === days);
         });
         // The link speaks ?days=, never a date, so this stays a parameter
         // swap — no re-deriving client-side a window the server owns.

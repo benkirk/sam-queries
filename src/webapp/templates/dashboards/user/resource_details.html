@@ -503,12 +503,16 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
         </ul>
 
         <div class="px-3 py-1 border-top">
+            {# align_end: drp_pills is ms-auto'd to the right of the tab strip
+               above, so the inputs open flush right, directly under the
+               Custom button rather than at the far opposite corner. #}
             {{ drp_custom(
                 action=url_for('user_dashboard.resource_details', projcode=projcode),
                 start_date=start_date,
                 end_date=end_date,
                 hidden_fields={'resource': resource_name, 'scope': scope,
-                               'usage_tab': usage_tab}
+                               'usage_tab': usage_tab},
+                align_end=True
             ) }}
         </div>
     </div>

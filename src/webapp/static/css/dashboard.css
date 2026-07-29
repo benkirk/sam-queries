@@ -1097,16 +1097,48 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    Mirrors Unity's cascade: base color set first, :not(.active) overrides inactive.
    ========================================================================= */
 
-/* Pills — recolor to NCAR blue without changing the visual treatment.
-   Used for sub-navigation inside accordions and chart-selection rows where the
-   bolder .nav-tabs invert pattern would be too aggressive. Bootstrap 5
-   implements .nav-pills via CSS custom properties, so the four overrides
-   below are sufficient — no per-state selectors needed. */
+/* Pills — same white-is-active convention as .nav-tabs below and the
+   .btn-group selector rows above, at the lighter rounded-pill weight.
+   Pills carry the machine / filesystem / chart-series choosers (jobs and
+   filesystem-scan subtabs, the allocations pie tabs, the allocation-tree
+   resource types); they used to run blue-is-active, which read backwards
+   next to every other selector on the same page.
+
+   Bootstrap 5 exposes custom properties for the ACTIVE pill only, so the
+   inactive treatment needs the explicit :not(.active) rules — mirroring
+   how .nav-tabs is written. */
 .nav-pills {
     --bs-nav-link-color: var(--ncar-blue);
     --bs-nav-link-hover-color: var(--ncar-navy);
-    --bs-nav-pills-link-active-color: #fff;
-    --bs-nav-pills-link-active-bg: var(--ncar-blue);
+    --bs-nav-pills-link-active-color: var(--ncar-blue);
+    --bs-nav-pills-link-active-bg: #fff;
+}
+
+.nav-pills .nav-link:not(.active) {
+    background-color: var(--ncar-blue);
+    color: #fff;
+}
+
+.nav-pills .nav-link:not(.active):hover {
+    background-color: var(--ncar-navy);
+    color: #fff;
+}
+
+/* Counter badges sit inside pills whose background flips with state, so they
+   have to flip too — a stock .bg-light badge vanishes on the white active
+   pill. Both declarations need !important: the background beats .badge.bg-X
+   (same as the tinted badge palette further down this file) and the color
+   beats the .text-dark / .text-* utilities, which Bootstrap ships as
+   !important. Callers therefore don't have to strip those utilities off
+   badges they drop into a pill. */
+.nav-pills .nav-link:not(.active) .badge {
+    background-color: #fff !important;
+    color: var(--ncar-blue) !important;
+}
+
+.nav-pills .nav-link.active .badge {
+    background-color: var(--ncar-blue) !important;
+    color: #fff !important;
 }
 
 .nav-tabs {
@@ -1133,6 +1165,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    Bootstrap utility specificity. */
 .nav-tabs:has(+ .tab-content) {
     margin-bottom: 0 !important;
+}
+
+/* Bootstrap's .card-header-tabs pulls the strip down over the header's cap
+   padding with a negative bottom margin — correct only when the tabs are the
+   header's LAST child. The usage card puts a custom date-range row after
+   them, and that negative margin dropped the tab bottoms ~16px into a ~30px
+   row, overlapping the range readout by half. Reset it whenever something
+   follows; the seamless-attach case above is unaffected because tab-content
+   is a sibling of the strip, not part of the header. */
+.card-header-tabs:not(:last-child) {
+    margin-bottom: 0;
 }
 
 .nav-tabs .nav-link {
