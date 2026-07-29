@@ -1167,6 +1167,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin-bottom: 0 !important;
 }
 
+/* Bootstrap's .card-header-tabs pulls the strip down over the header's cap
+   padding with a negative bottom margin — correct only when the tabs are the
+   header's LAST child. The usage card puts a custom date-range row after
+   them, and that negative margin dropped the tab bottoms ~16px into a ~30px
+   row, overlapping the range readout by half. Reset it whenever something
+   follows; the seamless-attach case above is unaffected because tab-content
+   is a sibling of the strip, not part of the header. */
+.card-header-tabs:not(:last-child) {
+    margin-bottom: 0;
+}
+
 .nav-tabs .nav-link {
     color: var(--ncar-blue);
     font-weight: var(--font-weight-semi-bold);
