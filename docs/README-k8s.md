@@ -192,7 +192,7 @@ The k8s deployment authenticates via Microsoft Entra (Azure AD) OIDC. Config:
 | Env var | Source | Purpose |
 |---|---|---|
 | `AUTH_PROVIDER=oidc` | `values.yaml` | Selects OIDC provider in the Flask app |
-| `OIDC_REDIRECT_URI` | `values.yaml` | Set to `https://samuel.k8s.ucar.edu/auth/oidc/callback` |
+| `OIDC_REDIRECT_URI` | *(deliberately unset)* | Leaving it unset makes the callback follow the request host, so each ingress alias returns to itself. **Do not set it** — see below |
 | `OIDC_USERNAME_CLAIM` | `values.yaml` | Default `preferred_username`; SAM resolves on the part before `@` |
 | `OIDC_SCOPES` | `values.yaml` | Default `openid email profile` |
 | `FLASK_CONFIG=production` | `values.yaml` | Required for HTTPS — sets `SESSION_COOKIE_SECURE=True` |
@@ -205,14 +205,30 @@ The Entra app's reply URLs must include `https://samuel.k8s.ucar.edu/auth/oidc/c
 The post-logout redirect URI `https://samuel.k8s.ucar.edu/` must also be allowlisted
 (see `infrastructure/README.md` "OIDC SSO Integration" for the IT handoff checklist).
 
-Because the deployment now serves a second hostname, the **same pair must be
-registered for `sam.hpc.ucar.edu`** — reply URL
-`https://sam.hpc.ucar.edu/auth/oidc/callback` and post-logout
-`https://sam.hpc.ucar.edu/` — keeping the `samuel.k8s.ucar.edu` entries in
-place. Once both are registered, drop the static `OIDC_REDIRECT_URI` from
-`values.yaml` so the callback is derived from whichever host the user is on
-(`url_for(..., _external=True)` + `ProxyFix`); until then, login only works via
-`samuel.k8s.ucar.edu`.
+Because the deployment serves a second hostname, the **same pair is registered
+for `sam.hpc.ucar.edu`** — reply URL `https://sam.hpc.ucar.edu/auth/oidc/callback`
+and post-logout `https://sam.hpc.ucar.edu/status/` — alongside the
+`samuel.k8s.ucar.edu` entries.
+
+#### The callback is derived per-host — do not pin it
+
+`OIDC_REDIRECT_URI` is **intentionally absent** from `values.yaml`.
+`webapp/auth/blueprint.py` treats it as an override
+(`config.get('OIDC_REDIRECT_URI') or url_for('auth.oidc_callback', _external=True)`),
+and `ProxyFix(x_host=1, x_proto=1)` in `webapp/run.py` resolves that from
+`X-Forwarded-*`. So a login started on `sam.hpc.ucar.edu` returns to
+`sam.hpc.ucar.edu`, and likewise for the platform alias.
+
+Setting it back would break login on every host but the one named: Authlib
+scopes the PKCE verifier / state cookie to the origin the login **started** on,
+so a cross-host return cannot see that cookie and fails with
+`MismatchingStateError`. Two guards exist — `helm/tests/test-oidc-render.sh`
+asserts the var does not render, and
+`tests/unit/test_oidc_auth.py::test_oidc_login_callback_follows_forwarded_host`
+pins the derivation for both hosts.
+
+Logout needs no equivalent setting: it already derives
+`post_logout_redirect_uri` from the request host.
 
 ### Per-environment matrix
 
@@ -251,13 +267,10 @@ in the `incommon-cert-samuel` k8s Secret. To add another alias, append it to
 `webapp.tls.extraHosts` and to `INGRESS_HOSTS` in
 `scripts/lib/cirrus_common.sh`; cert-manager reissues to cover it.
 
-> **Interim caveat.** Until the Entra app registration lists
-> `https://sam.hpc.ucar.edu/auth/oidc/callback` as a reply URL *and*
-> `OIDC_REDIRECT_URI` is dropped from `values.yaml` (so the callback is derived
-> per-host), **login via `sam.hpc.ucar.edu` will fail** — the static redirect
-> sends the callback to `samuel.k8s.ucar.edu`, where the PKCE/state cookie set
-> on `sam.hpc` doesn't exist. Anonymous pages work fine. Log in via
-> `samuel.k8s.ucar.edu` until then.
+> **Adding an alias is not just DNS + TLS.** A new host also needs its
+> `/auth/oidc/callback` registered as an Entra reply URL, or login from it fails
+> at the IdP with `AADSTS50011`. The callback itself needs no config change —
+> it is derived per-host (see § OIDC above).
 
 ### Upgrade / Redeploy
 

@@ -54,13 +54,22 @@ fi
 prod_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" -f "$CHART_DIR/values.yaml")
 
 assert_contains "$prod_out" "name: AUTH_PROVIDER"               "values.yaml: AUTH_PROVIDER env not rendered"
-assert_contains "$prod_out" "name: OIDC_REDIRECT_URI"           "values.yaml: OIDC_REDIRECT_URI env not rendered"
 assert_contains "$prod_out" "name: OIDC_USERNAME_CLAIM"         "values.yaml: OIDC_USERNAME_CLAIM env not rendered"
 assert_contains "$prod_out" "name: OIDC_SCOPES"                 "values.yaml: OIDC_SCOPES env not rendered"
 assert_contains "$prod_out" "name: FLASK_CONFIG"                "values.yaml: FLASK_CONFIG env not rendered"
 
-assert_contains "$prod_out" "samuel.k8s.ucar.edu/auth/oidc/callback" \
-  "values.yaml: OIDC_REDIRECT_URI value missing or wrong host"
+# The ingress serves samuel.k8s.ucar.edu AND sam.hpc.ucar.edu from one
+# multi-SAN cert, so the OIDC callback MUST be derived per-request-host rather
+# than pinned: the PKCE/state cookie is scoped to the origin the user started
+# on, and returning them to a different host fails with MismatchingStateError.
+# Unsetting OIDC_REDIRECT_URI is what activates that derivation
+# (webapp/auth/blueprint.py -> url_for(..., _external=True) + ProxyFix x_host).
+# Both assertions below guard the same regression: re-pinning the callback.
+assert_not_contains "$prod_out" "name: OIDC_REDIRECT_URI" \
+  "values.yaml: OIDC_REDIRECT_URI must stay unset so the callback follows the request host"
+
+assert_not_contains "$prod_out" "auth/oidc/callback" \
+  "values.yaml: a hard-coded OIDC callback URL would break login on every host but one"
 
 assert_contains "$prod_out" "name: OIDC_CLIENT_ID"      "values.yaml: OIDC_CLIENT_ID secretKeyRef not rendered"
 assert_contains "$prod_out" "name: OIDC_CLIENT_SECRET"  "values.yaml: OIDC_CLIENT_SECRET secretKeyRef not rendered"

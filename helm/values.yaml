@@ -200,7 +200,14 @@ webapp:
     # OIDC SSO via Microsoft Entra. Client ID/secret/issuer and FLASK_SECRET_KEY
     # are injected via secretKeyRef from the oidcCredentials ExternalSecret below.
     AUTH_PROVIDER: "oidc"
-    OIDC_REDIRECT_URI: "https://samuel.k8s.ucar.edu/auth/oidc/callback"
+    # NO OIDC_REDIRECT_URI here, deliberately. The ingress serves two hosts
+    # (see .fqdn / .extraHosts above), and the callback must return to
+    # whichever one the user started on: the PKCE/state cookie is scoped to
+    # that origin, so a cross-host return fails with MismatchingStateError.
+    # Leaving this unset makes webapp/auth/blueprint.py derive the callback
+    # from the request host via url_for(..., _external=True), which ProxyFix
+    # (x_host/x_proto, webapp/run.py) resolves from X-Forwarded-*. Setting it
+    # would re-pin every host to one origin and break login on the others.
     OIDC_USERNAME_CLAIM: "preferred_username"
     OIDC_SCOPES: "openid email profile"
     # API keys for HPC status collectors (bcrypt hashes — safe to store here).
