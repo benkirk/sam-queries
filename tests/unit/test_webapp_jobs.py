@@ -1605,15 +1605,22 @@ def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
 # Commit 5: aggregation fragments (By User / Wait Times / Job Sizes / Durations)
 # ---------------------------------------------------------------------------
 
+# Charge values below are deliberately NOT proportional to hours, and the
+# second bucket / second row is deliberately uncharged (real hours, 0.0
+# charges — the `uncharged` QoS carries a genuine 0.0 factor). A fixture
+# that omitted these keys would let every charges assertion pass through
+# charts._jobs_metric_value's `.get(k) or 0` fallback and prove nothing.
 def _sample_hist(dimension='wait', null_count=0):
     return {
         'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',
         'min_param': 'min_eligible_secs', 'max_param': 'max_eligible_secs',
         'buckets': [
             {'label': '<1m', 'lo': 0, 'hi': 59,
-             'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 0.0},
+             'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 0.0,
+             'cpu_charges': 50.0, 'gpu_charges': 0.0},
             {'label': '1-5m', 'lo': 60, 'hi': 299,
-             'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0},
+             'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0,
+             'cpu_charges': 0.0, 'gpu_charges': 0.0},
         ],
         'null_count': null_count,
         'total_count': 14 + null_count,
@@ -1624,10 +1631,14 @@ def _sample_usage(totals=None):
     return {
         'dimension': 'user',
         'rows': [
-            {'value': 'alice', 'job_count': 30, 'cpu_hours': 300.0, 'gpu_hours': 0.0},
-            {'value': 'bob',   'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 2.0},
+            {'value': 'alice', 'job_count': 30, 'cpu_hours': 300.0,
+             'gpu_hours': 0.0, 'cpu_charges': 150.0, 'gpu_charges': 0.0},
+            {'value': 'bob',   'job_count': 12, 'cpu_hours': 120.0,
+             'gpu_hours': 2.0, 'cpu_charges': 0.0, 'gpu_charges': 0.0},
         ],
-        'totals': totals or {'job_count': 42, 'cpu_hours': 420.0, 'gpu_hours': 2.0},
+        'totals': totals or {'job_count': 42, 'cpu_hours': 420.0,
+                             'gpu_hours': 2.0, 'cpu_charges': 150.0,
+                             'gpu_charges': 0.0},
     }
 
 
@@ -1666,6 +1677,89 @@ def test_by_user_fragment_other_row_from_pretruncation_totals(
     )
     body = resp.get_data(as_text=True)
     assert 'beyond top' in body
+
+
+def test_by_user_fragment_charges_metric_renders_its_own_column(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?metric=charges ranks the rows by charges, so the table must SHOW
+    charges. It shipped ranking by an invisible column (upstream C1)."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_sample_usage())
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=charges'
+    )
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert '>Charges</th>' in body
+    # The initial-sort indicator follows the active metric — on charges it
+    # used to land on no header at all.
+    assert 'sort-desc" data-sort="numeric">Charges' in body
+    # alice's 150.0 charges (cpu 150 + gpu 0), sortable on the raw value.
+    assert 'data-sort-value="150.0"' in body
+    # ...and the uncharged-QoS caption, since bob has hours but no charges.
+    assert 'Uncharged QoS' in body
+
+
+def test_by_user_fragment_charges_column_absent_indicator_on_other_metrics(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The column is always present; only its sort indicator is conditional."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_sample_usage())
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=cpu_hours'
+    )
+    body = resp.get_data(as_text=True)
+    assert '>Charges</th>' in body
+    assert 'sort-desc" data-sort="numeric">Charges' not in body
+    assert 'Uncharged QoS' not in body      # caption is charges-only
+
+
+def test_by_user_other_row_carries_a_charges_figure(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The Other row says 'beyond top N by charges' — so it must show them."""
+    usage = _sample_usage(totals={'job_count': 100, 'cpu_hours': 900.0,
+                                  'gpu_hours': 5.0, 'cpu_charges': 400.0,
+                                  'gpu_charges': 0.0})
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=usage)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=charges'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'beyond top' in body
+    # The "by <noun>" label wraps across a template line break, so match the
+    # noun on its own rather than the phrase.
+    assert 'charges)</span>' in body
+    # 400 total - 150 shown = 250 remaining, in charge units.
+    assert '<td class="text-end">250</td>' in body
+
+
+def test_usage_other_remainder_includes_charge_keys():
+    """_usage_other must carry the full metric vector, or a charges view has
+    no remainder figure in its own units."""
+    from webapp.jobs.routes import _usage_other
+    rem = _usage_other(_sample_usage(
+        totals={'job_count': 100, 'cpu_hours': 900.0, 'gpu_hours': 5.0,
+                'cpu_charges': 400.0, 'gpu_charges': 7.0}))
+    assert rem['cpu_charges'] == pytest.approx(250.0)
+    assert rem['gpu_charges'] == pytest.approx(7.0)
+
+
+def test_usage_other_visibility_ignores_charges_alone():
+    """An entirely uncharged tail is still a real tail — gating on charges
+    would hide it, and charges can never appear without hours anyway."""
+    from webapp.jobs.routes import _usage_other
+    # Tail exists in hours, contributes no charges.
+    rem = _usage_other(_sample_usage(
+        totals={'job_count': 100, 'cpu_hours': 900.0, 'gpu_hours': 5.0,
+                'cpu_charges': 150.0, 'gpu_charges': 0.0}))
+    assert rem is not None
+    assert rem['cpu_charges'] == pytest.approx(0.0)
+    # Rows exactly cover totals → no Other row at all.
+    assert _usage_other(_sample_usage()) is None
 
 
 def test_by_user_fragment_disabled_banner(auth_client, active_project):
@@ -4399,9 +4493,19 @@ def test_band_drill_url_is_none_for_an_empty_band():
 def test_charges_is_a_first_class_metric_everywhere():
     """Ben's call: one vocabulary across all six panels, so the shared
     `metric:jobs` persist family stays valid."""
-    from webapp.jobs.routes import _METRICS, _USAGE_SORT_BY
+    from webapp.dashboards.charts import _JOBS_METRIC_KEYS
+    from webapp.jobs.routes import (_METRICS, _USAGE_METRIC_KEYS,
+                                    _USAGE_SORT_BY)
     assert 'charges' in _METRICS
     # The top-N cut must be rankable by the displayed metric, or a charges
     # view shows owners chosen by hours.
     assert set(_METRICS) <= set(_USAGE_SORT_BY)
     assert _USAGE_SORT_BY['charges'] == 'charges'
+    # Every metric must be renderable, not just requestable — this is the
+    # membership check that C1 slipped through: 'charges' was in _METRICS
+    # and _USAGE_SORT_BY, so it could be asked for and ranked by, while the
+    # panel had no way to display it.
+    assert set(_METRICS) <= set(_JOBS_METRIC_KEYS)
+    # ...and the remainder row has to be computable in every one of them.
+    for metric in _METRICS:
+        assert set(_JOBS_METRIC_KEYS[metric]) <= set(_USAGE_METRIC_KEYS), metric

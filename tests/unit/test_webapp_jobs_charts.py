@@ -24,19 +24,30 @@ from webapp.dashboards.charts import (
 pytestmark = pytest.mark.unit
 
 
+# Charges default to HALF the hours rather than a copy of them, so a metric
+# that read `cpu_hours` where it meant `cpu_charges` renders differently
+# instead of identically. Both are overridable to model the uncharged-QoS
+# case (real hours, 0.0 charges).
 def _hist(counts=(10, 5, 0), cpu_hours=(100.0, 50.0, 0.0),
-          gpu_hours=(0.0, 2.0, 0.0), dimension='wait', null_count=0):
+          gpu_hours=(0.0, 2.0, 0.0), dimension='wait', null_count=0,
+          cpu_charges=None, gpu_charges=None):
     labels = ['<1m', '1-5m', '5-15m'][:len(counts)]
     los = [0, 60, 300]
     his = [59, 299, 899]
+    if cpu_charges is None:
+        cpu_charges = [h * 0.5 for h in cpu_hours]
+    if gpu_charges is None:
+        gpu_charges = [h * 0.5 for h in gpu_hours]
     return {
         'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',
         'min_param': 'min_eligible_secs', 'max_param': 'max_eligible_secs',
         'buckets': [
             {'label': lbl, 'lo': lo, 'hi': hi,
-             'job_count': c, 'cpu_hours': ch, 'gpu_hours': gh}
-            for lbl, lo, hi, c, ch, gh
-            in zip(labels, los, his, counts, cpu_hours, gpu_hours)
+             'job_count': c, 'cpu_hours': ch, 'gpu_hours': gh,
+             'cpu_charges': cc, 'gpu_charges': gc}
+            for lbl, lo, hi, c, ch, gh, cc, gc
+            in zip(labels, los, his, counts, cpu_hours, gpu_hours,
+                   cpu_charges, gpu_charges)
         ],
         'null_count': null_count,
         'total_count': sum(counts) + null_count,
@@ -46,11 +57,14 @@ def _hist(counts=(10, 5, 0), cpu_hours=(100.0, 50.0, 0.0),
 def _usage(rows=None, totals=None):
     if rows is None:
         rows = [
-            {'value': 'alice', 'job_count': 50, 'cpu_hours': 500.0, 'gpu_hours': 0.0},
-            {'value': 'bob',   'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 5.0},
+            {'value': 'alice', 'job_count': 50, 'cpu_hours': 500.0,
+             'gpu_hours': 0.0, 'cpu_charges': 250.0, 'gpu_charges': 0.0},
+            {'value': 'bob',   'job_count': 10, 'cpu_hours': 100.0,
+             'gpu_hours': 5.0, 'cpu_charges': 50.0, 'gpu_charges': 2.5},
         ]
     if totals is None:
-        totals = {'job_count': 60, 'cpu_hours': 600.0, 'gpu_hours': 5.0}
+        totals = {'job_count': 60, 'cpu_hours': 600.0, 'gpu_hours': 5.0,
+                  'cpu_charges': 300.0, 'gpu_charges': 2.5}
     return {'dimension': 'user', 'rows': rows, 'totals': totals}
 
 
@@ -59,9 +73,33 @@ def _usage(rows=None, totals=None):
 # ---------------------------------------------------------------------------
 
 def test_histogram_renders_svg_for_all_metrics():
-    for metric in ('jobs', 'cpu_hours', 'gpu_hours'):
+    for metric in ('jobs', 'cpu_hours', 'gpu_hours', 'charges'):
         out = generate_jobs_histogram(_hist(), metric=metric)
-        assert '<svg' in out
+        assert '<svg' in out, metric
+
+
+def test_histogram_charges_is_not_a_copy_of_cpu_hours():
+    """'charges' must read cpu_charges+gpu_charges, not the hour keys.
+
+    The fixture's charges are half its hours, so a metric that fell back to
+    hours — or to `.get(k) or 0` on a missing key — renders a different SVG
+    than the correct one.
+    """
+    h = _hist()
+    svg_charges = generate_jobs_histogram(h, metric='charges')
+    assert '<svg' in svg_charges
+    assert svg_charges != generate_jobs_histogram(h, metric='cpu_hours')
+    # And it is genuinely reading the charge keys, not defaulting to jobs.
+    assert svg_charges != generate_jobs_histogram(h, metric='jobs')
+
+
+def test_histogram_uncharged_buckets_render_the_placeholder():
+    """Real hours with a 0.0 QoS factor everywhere → nothing to plot in the
+    charges view, while the hours view still renders. Not a bug: the
+    'uncharged' QoS carries a genuine 0.0 factor."""
+    h = _hist(cpu_charges=(0.0, 0.0, 0.0), gpu_charges=(0.0, 0.0, 0.0))
+    assert 'No jobs in this range' in generate_jobs_histogram(h, metric='charges')
+    assert '<svg' in generate_jobs_histogram(h, metric='cpu_hours')
 
 
 def test_histogram_metrics_render_differently():
@@ -326,6 +364,41 @@ def test_pie_metric_selects_and_resorts():
     assert '#job-user-bob' in svg_jobs
 
 
+def test_pie_charges_resorts_and_keeps_its_remainder_in_charge_units():
+    """The pie must rank AND size by charges, and its Other slice is the
+    charge remainder — not the CPU-hour one.
+
+    alice out-earns bob on hours but is entirely `uncharged` QoS, so a
+    charges view must put bob first. The pre-truncation totals leave a
+    charge remainder that has to survive into the Other slice.
+    """
+    rows = [
+        {'value': 'alice', 'job_count': 5, 'cpu_hours': 500.0,
+         'gpu_hours': 0.0, 'cpu_charges': 0.0, 'gpu_charges': 0.0},
+        {'value': 'bob',   'job_count': 5, 'cpu_hours': 100.0,
+         'gpu_hours': 0.0, 'cpu_charges': 100.0, 'gpu_charges': 0.0},
+    ]
+    usage = _usage(rows=rows,
+                   totals={'job_count': 20, 'cpu_hours': 900.0,
+                           'gpu_hours': 0.0, 'cpu_charges': 400.0,
+                           'gpu_charges': 0.0})
+    svg = generate_jobs_user_pie_chart(usage, metric='charges')
+    assert '<svg' in svg
+    assert '#job-user-bob' in svg          # the only charged entity
+    assert 'Other' in svg                  # 400 - 100 of charges beyond rows
+    # An hours view of the same envelope is a different picture entirely.
+    assert svg != generate_jobs_user_pie_chart(usage, metric='cpu_hours')
+
+
+def test_pie_all_uncharged_returns_placeholder():
+    """Every row real but uncharged → no charge total to slice."""
+    usage = _usage(totals={'job_count': 60, 'cpu_hours': 600.0,
+                           'gpu_hours': 5.0, 'cpu_charges': 0.0,
+                           'gpu_charges': 0.0})
+    assert 'No usage data' in generate_jobs_user_pie_chart(
+        usage, metric='charges')
+
+
 def test_pie_empty_and_zero_total_return_placeholder():
     assert 'No usage data' in generate_jobs_user_pie_chart(
         {'rows': [], 'totals': {}})
@@ -407,7 +480,11 @@ def _ts(counts=(10, 0, 5), owners=None, period='day',
         'period': period, 'owners_by': 'user',
         'start': labels[0], 'end': labels[-1],
         'bands': bands,
-        'totals': {'job_count': sum(counts)},
+        'totals': {'job_count': sum(counts),
+                   'cpu_hours': sum(counts) * 100.0,
+                   'gpu_hours': sum(counts) * 2.0,
+                   'cpu_charges': sum(cpu_charges),
+                   'gpu_charges': sum(gpu_charges)},
         'null_count': 0, 'total_count': sum(counts),
     }
 

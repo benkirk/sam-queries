@@ -70,9 +70,27 @@ report.
 ## Measured cost (from the plugin PR)
 
 - Charges on existing aggregates: **+7.8 %** (interleaved A/B, min of 10).
-- `jobs_timeseries` vs one `jobs_histogram`: **2.06–2.10×** (it is two scans).
-- Band count: 7 → 180 bands costs **+54 %** on a fixed 4.28 M-row window.
-  ⇒ **auto-coarsening is load-bearing, not a nicety.**
+- `jobs_timeseries` vs one `jobs_histogram`: **2.06–2.10×** on the scan path
+  (it is two statements — rank, then series).
+- Band count: **~10 % at 180 bands**, ~65 % at 730, measured interleaved on
+  PG 18 / casper_jobs (21.0 M jobs).
+
+  > ⚠️ An earlier revision of this doc reported **+54 %** at 180 bands and
+  > concluded auto-coarsening was load-bearing on cost grounds. That number
+  > was retracted upstream: the periods were timed **sequentially**, so
+  > buffer-cache warming rode along with band count. Auto-coarsening stays,
+  > but the justification is **legibility** — 180 bars is already past what
+  > an 18in axis can render distinguishably. `_MAX_TIMELINE_BARS = 120` is a
+  > display budget, not a cost budget.
+
+- The plugin's own band cap is path-dependent: **400** on the `jobs`-scan
+  path, **1200** on the `daily_summary` fast path (no CASE ladder there).
+- Fast path: the plugin serves the series from `daily_summary` whenever the
+  filter set is expressible in `(date, user_id, account_id, queue_id)` —
+  measured **~15 ms vs ~7.4 s** for a 180 d daily series. That covers a
+  card's normal scope; `qos` / `exit_status` / `job_id` / `name` and any
+  `min_*`/`max_*` bound force the scan. Envelope is identical either way,
+  so neither we nor the cache can tell which path ran.
 
 ## SAM work
 

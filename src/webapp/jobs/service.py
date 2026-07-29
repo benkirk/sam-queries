@@ -444,9 +444,20 @@ def jobs_timeseries(
     Bands replay through ``start``/``end`` rather than
     ``min_param``/``max_param``: the window filters *are* this dimension.
 
-    Costs two plugin statements when *owners_limit* is set (rank, then
-    series) against one for a histogram, so it is the most expensive panel
-    on the card — which is why its host keeps it behind a collapse.
+    Cost is path-dependent upstream. The plugin serves this off its
+    pre-aggregated ``daily_summary`` whenever the filter set is expressible
+    in ``(date, user_id, account_id, queue_id)`` — i.e. dates plus
+    user/account/queue, which is exactly a dashboard card's scope — and
+    scans ``jobs`` otherwise. ``qos``, ``exit_status``, ``job_id``, ``name``
+    and every ``min_*``/``max_*`` bound force the scan, so this is cheap on
+    the cards and expensive under precisely the explorer filters that make
+    it interesting. On the scan path it costs two statements when
+    *owners_limit* is set (rank, then series) against one for a histogram.
+    The envelope is identical either way, so neither we nor the cache can
+    tell which ran.
+
+    Hosts differ deliberately: the cards keep it behind a collapse, the
+    explorer opens it (``timeline_open``) — see ``jobs_card.html``.
     """
     scope.check_filters(filters)
     kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)

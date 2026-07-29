@@ -491,10 +491,14 @@ _METRICS = ('jobs', 'cpu_hours', 'gpu_hours', 'charges')
 _DEFAULT_METRIC_HIST = 'jobs'
 _DEFAULT_METRIC_PIE = 'cpu_hours'
 
-# Timeline (Jobs tab) granularity. The plugin hard-caps its CASE ladder at
-# 400 bands and raises; we coarsen well before that because band width is a
-# real cost knob — 7 -> 180 bands measured +54% on a fixed 4.28M-row window
-# (plugin PR #102), and 180 bars is already past what an 18in axis can show.
+# Timeline (Jobs tab) granularity. We coarsen because 180 bars is already
+# past what an 18in axis can show — a legibility limit, NOT a cost one. An
+# earlier revision of this comment justified the cap with "+54% at 180 bands";
+# that measurement timed the periods sequentially, so cache warming rode along
+# with band count. Re-measured interleaved (plugin PR #102), 180 bands costs
+# ~10% and 730 costs ~65%: real, but it does not bite at anything we render.
+# The plugin's own cap is path-dependent — 400 bands on the jobs-scan path,
+# 1200 on the daily_summary fast path, which has no CASE ladder at all.
 _TIMELINE_PERIODS = ('day', 'week', 'month')
 _MAX_TIMELINE_BARS = 120
 # Days-per-band, used both to auto-select and to disable over-budget pills.
@@ -828,16 +832,31 @@ def panel_relevance(*, mode: str, user_filter=None, account_filter=None,
     }
 
 
+#: Plugin metric keys carried on every usage row / totals dict. The full
+#: vector, so the remainder below can be shown in whichever metric the panel
+#: is ranked by — a charges view whose "Other" row has no charges figure is
+#: the defect this replaced.
+_USAGE_METRIC_KEYS = ('job_count', 'cpu_hours', 'gpu_hours',
+                      'cpu_charges', 'gpu_charges')
+
+
 def _usage_other(usage) -> Optional[dict]:
     """The upstream limit's remainder: totals are pre-truncation, so any
-    positive difference is real usage by entities beyond the row cap."""
+    positive difference is real usage by entities beyond the row cap.
+
+    Visibility is gated on the count/hours keys only. Charges cannot be the
+    sole evidence of a truncated tail — an all-``uncharged``-QoS tail has
+    charges 0.0 with real hours, and no row can carry charges without hours —
+    so folding them into the test would only add float noise.
+    """
     totals = usage.get('totals') or {}
     rows = usage.get('rows') or []
     rem = {
         k: (totals.get(k) or 0) - sum((r.get(k) or 0) for r in rows)
-        for k in ('job_count', 'cpu_hours', 'gpu_hours')
+        for k in _USAGE_METRIC_KEYS
     }
-    return rem if any(v > 1e-9 for v in rem.values()) else None
+    visible = ('job_count', 'cpu_hours', 'gpu_hours')
+    return rem if any(rem[k] > 1e-9 for k in visible) else None
 
 
 #: The two usage rollups are the same panel over a different entity. Each
@@ -1066,9 +1085,12 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
                      account_projcodes=None, username=None):
     """Renderer for the Jobs tab's activity timeline.
 
-    The one panel with a time axis, and the most expensive on the card (two
-    plugin statements against a histogram's one), which is why its host
-    keeps it behind a collapse rather than firing it with the table.
+    The one panel with a time axis. Upstream cost swings ~500x on whether
+    the filter set lets the plugin serve it from ``daily_summary`` instead
+    of scanning ``jobs`` (see ``service.jobs_timeseries``), and the filters
+    that force the scan are the explorer's — so the cards keep it behind a
+    collapse rather than firing it with the table, while the explorer, whose
+    whole point is the filter panel, opens it.
     """
     template = 'dashboards/user/partials/jobs_timeline.html'
     if not is_enabled():
