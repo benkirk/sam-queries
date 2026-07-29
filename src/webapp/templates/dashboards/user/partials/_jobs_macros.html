@@ -8,6 +8,40 @@
 #}
 {% import 'dashboards/fragments/plugin_state.html' as _state %}
 
+{# ONE metric vocabulary for every jobs panel — mirrors routes._METRICS and
+   charts._JOBS_METRIC_LABELS. Kept here rather than repeated per template
+   because the panels share a persist family: a metric offered by one pane
+   and unknown to another's label map is a KeyError, not a graceful skip.
+
+   'charges' is the QoS-weighted counterpart of the hour metrics
+   (hours x qos_factor, summed by the plugin). It is NOT proportional to
+   hours — the 'uncharged' QoS carries a real 0.0 factor — so a charges view
+   can legitimately show nothing where an hours view shows work. #}
+{% set JOBS_METRICS = [('jobs', 'Jobs'), ('cpu_hours', 'CPU-hours'),
+                       ('gpu_hours', 'GPU-hours'), ('charges', 'Charges')] %}
+{% set JOBS_METRIC_NOUNS = {'jobs': 'jobs', 'cpu_hours': 'CPU-hours',
+                            'gpu_hours': 'GPU-hours',
+                            'charges': 'charges'} %}
+
+{# Metric pills. `extra_qs` carries any pane-specific params the pill must
+   preserve explicitly (an explicit value beats the round-trip form's stale
+   copy — Werkzeug reads the first). #}
+{% macro metric_pills(metric, fragment_url, target_id, include_sel,
+                      extra_qs='', aria='Chart metric') %}
+<div class="btn-group btn-group-sm me-1" role="group" aria-label="{{ aria }}">
+  {% for m, text in JOBS_METRICS %}
+  <button type="button"
+          class="btn btn-outline-secondary {% if metric == m %}active{% endif %}"
+          hx-get="{{ fragment_url }}?metric={{ m }}{{ extra_qs }}"
+          hx-target="#{{ target_id }}"
+          hx-include="{{ include_sel }}"
+          hx-swap="innerHTML">
+    {{ text }}
+  </button>
+  {% endfor %}
+</div>
+{% endmacro %}
+
 {# Plugin not loaded / no warmed engine. #}
 {% macro jobs_disabled() %}
   {{ _state.plugin_disabled('Per-job data', 'hpc-usage-queries') }}

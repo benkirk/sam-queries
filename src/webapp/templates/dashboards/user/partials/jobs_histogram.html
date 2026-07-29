@@ -1,5 +1,5 @@
 {% from 'dashboards/user/partials/_jobs_macros.html'
-   import jobs_disabled, jobs_error, jobs_empty %}
+   import jobs_disabled, jobs_error, jobs_empty, metric_pills %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {#
@@ -93,21 +93,11 @@
         {% endfor %}
       </div>
     {% endif %}
-    {# Metric pills — count vs charged hours per bucket. #}
-    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Bar metric">
-      {% for m, label in [('jobs', 'Jobs'),
-                          ('cpu_hours', 'CPU-hours'),
-                          ('gpu_hours', 'GPU-hours')] %}
-      <button type="button"
-              class="btn btn-outline-secondary {% if metric == m %}active{% endif %}"
-              hx-get="{{ fragment_url }}?metric={{ m }}{% if dimension_toggle %}&dimension={{ dimension }}{% endif %}"
-              hx-target="#{{ target_id }}"
-              hx-include="#jobs-hist-params-{{ target_id }}"
-              hx-swap="innerHTML">
-        {{ label }}
-      </button>
-      {% endfor %}
-    </div>
+    {# Metric pills — count, charged hours, or QoS-weighted charges. #}
+    {{ metric_pills(metric, fragment_url, target_id,
+                    '#jobs-hist-params-' ~ target_id,
+                    ('&dimension=' ~ dimension) if dimension_toggle else '',
+                    aria='Bar metric') }}
     {% if owners_toggle | default(false) %}
     {# Owner-dimension pills — whether users or projects own the stacked
        segments and the per-band tier. The explicit ?group_by= wins over
@@ -165,6 +155,18 @@
       large "wasted" values here are an artifact of node-exclusive
       scheduling, not over-requesting. Casper's shared nodes are where
       this distribution is actionable.
+    </p>
+  {% endif %}
+
+  {% if metric == 'charges' %}
+    {# Not a rounding artifact: qos_factor is a genuine 0.0 for the
+       'uncharged' QoS, so work can be real and its charges exactly zero.
+       Said here because an empty bar otherwise reads as missing data. #}
+    <p class="text-muted small mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      Charges are hours weighted by each job's QoS factor. Uncharged QoS
+      classes have a factor of 0, so a bucket can show jobs and CPU-hours
+      while contributing no charges.
     </p>
   {% endif %}
 

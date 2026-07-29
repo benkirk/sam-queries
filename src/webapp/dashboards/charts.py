@@ -1260,21 +1260,40 @@ def generate_user_usage_pie_chart(user_data: List[Dict], metric: str = 'charges'
 # vector, null_count), so these renderers never hardcode bucket tables.
 # ---------------------------------------------------------------------------
 
-# UI metric name → plugin bucket/row key. 'jobs' is the count metric; the
-# hours metrics come from the LEFT OUTER JOIN against job_charges upstream.
+# UI metric name → the plugin key(s) SUMMED to produce it. 'jobs' is the
+# count metric; the hours metrics come from the LEFT OUTER JOIN against
+# job_charges upstream. 'charges' is a pair because the plugin reports
+# cpu_charges and gpu_charges separately (they are separately meaningful and
+# separately rankable) while the pill means "total charged".
+#
+# Charges are NOT proportional to hours: qos_factor is a genuine 0.0 for the
+# 'uncharged' QoS, so a charges view can legitimately render an empty bar
+# where an hours view shows work.
 _JOBS_METRIC_KEYS = {
-    'jobs':      'job_count',
-    'cpu_hours': 'cpu_hours',
-    'gpu_hours': 'gpu_hours',
+    'jobs':      ('job_count',),
+    'cpu_hours': ('cpu_hours',),
+    'gpu_hours': ('gpu_hours',),
+    'charges':   ('cpu_charges', 'gpu_charges'),
 }
 _JOBS_METRIC_LABELS = {
     'jobs':      'Jobs',
     'cpu_hours': 'CPU-hours',
     'gpu_hours': 'GPU-hours',
+    'charges':   'Charges',
 }
 
 
-def _jobs_bucket_segments(bucket, key):
+def _jobs_metric_value(d, metric, default='jobs'):
+    """Value of *metric* from a plugin band / row / owner dict.
+
+    One accessor so a multi-key metric can never be read as a single key
+    somewhere and silently render as zero.
+    """
+    keys = _JOBS_METRIC_KEYS.get(metric) or _JOBS_METRIC_KEYS[default]
+    return sum(float((d or {}).get(k) or 0) for k in keys)
+
+
+def _jobs_bucket_segments(bucket, metric, default='jobs'):
     """Per-bucket stacked-bar segments (active-metric units), bottom → top.
 
     The plugin envelope carries pre-truncated top-N ``owners`` per bucket
@@ -1288,8 +1307,9 @@ def _jobs_bucket_segments(bucket, key):
     owners = bucket.get('owners') or {}
     if not owners:
         return []
-    vals = sorted(float((d or {}).get(key) or 0) for d in owners.values())
-    remainder = float(bucket.get(key) or 0) - sum(vals)
+    vals = sorted(_jobs_metric_value(d, metric, default)
+                  for d in owners.values())
+    remainder = _jobs_metric_value(bucket, metric, default) - sum(vals)
     if remainder > 1e-9:
         return [remainder] + vals
     return vals
@@ -1304,10 +1324,9 @@ def _jobs_histogram_cache_key(hist, *, metric='jobs', log_y=False):
     hours-metric SVG with matching hours but a different populated-band set
     must not be reused. Owner names stay out of the key: the SVG carries no
     owner labels, so only the segment values shape it."""
-    key = _JOBS_METRIC_KEYS.get(metric, 'job_count')
     buckets = (hist or {}).get('buckets') or []
-    payload = [(b.get('label'), float(b.get(key) or 0),
-                tuple(_jobs_bucket_segments(b, key))) for b in buckets]
+    payload = [(b.get('label'), _jobs_metric_value(b, metric),
+                tuple(_jobs_bucket_segments(b, metric))) for b in buckets]
     clickable = [int(bool(b.get('job_count'))) for b in buckets]
     return _content_hash([
         payload, clickable, str((hist or {}).get('dimension', '')),
@@ -1346,9 +1365,8 @@ def generate_jobs_histogram(hist, *, metric='jobs', log_y=False) -> str:
     if not buckets:
         return _empty_state('No jobs in this range')
 
-    key = _JOBS_METRIC_KEYS.get(metric, 'job_count')
     labels = [b.get('label', '') for b in buckets]
-    vals = [float(b.get(key) or 0) for b in buckets]
+    vals = [_jobs_metric_value(b, metric) for b in buckets]
     if not any(vals):
         return _empty_state('No jobs in this range')
 
@@ -1379,7 +1397,7 @@ def generate_jobs_histogram(hist, *, metric='jobs', log_y=False) -> str:
         # legible before clicking.
         colors = band_colors
         for i, b in enumerate(buckets):
-            segs = _jobs_bucket_segments(b, key)
+            segs = _jobs_bucket_segments(b, metric)
             url = f'#jh-bar-{i}' if b.get('job_count') else None
             if not segs:
                 bar = ax.bar(i, vals[i], color=colors[i],
@@ -1406,17 +1424,190 @@ def generate_jobs_histogram(hist, *, metric='jobs', log_y=False) -> str:
     return _fig_to_svg(fig)
 
 
+def _jobs_timeseries_series(ts, metric):
+    """``(labels, series)`` for the stacked timeline, bottom → top.
+
+    ``series`` is ``[(label, [value per band]), …]`` with ``'Others'``
+    first — the ``get_daily_user_usage_for_project`` convention the
+    resource-details Usage Trend already renders, so the two stacked charts
+    read the same way.
+
+    The plugin hands owners back in **global rank order, identical in every
+    band**, so a name keeps its colour and its position across the whole
+    axis. That is the property a stacked time series needs and the reason
+    ``jobs_timeseries`` ranks once over the window rather than per band.
+    Owners are reversed here so the largest lands on top of the stack, and
+    "Others" is ``band total − Σ owners`` — derivable, never synthesized.
+    """
+    bands = (ts or {}).get('bands') or []
+    labels = [b.get('label', '') for b in bands]
+    if not bands:
+        return labels, []
+
+    # Every band carries the same keys; take the order from the first.
+    owner_names = list((bands[0].get('owners') or {}).keys())
+
+    others = []
+    for band in bands:
+        owners = band.get('owners') or {}
+        total = _jobs_metric_value(band, metric)
+        named = sum(_jobs_metric_value(owners.get(n), metric)
+                    for n in owner_names)
+        others.append(max(0.0, total - named))
+
+    series = []
+    if any(v > 1e-9 for v in others) or not owner_names:
+        series.append(('Others', others))
+    for name in reversed(owner_names):
+        series.append((name, [
+            _jobs_metric_value((b.get('owners') or {}).get(name), metric)
+            for b in bands
+        ]))
+    return labels, series
+
+
+def _jobs_timeseries_cache_key(ts, *, metric='jobs', period='day',
+                               entity_kind='user',
+                               link_entities=True):
+    """Hash what the SVG depends on: band labels, the chosen metric's
+    per-series values, and the legend's link treatment. The job_count
+    positivity vector joins the key because it decides which bars carry
+    #jt-bar-<i> drill URLs — a charges SVG with matching charges but a
+    different populated-band set must not be reused."""
+    labels, series = _jobs_timeseries_series(ts, metric)
+    clickable = [int(bool(b.get('job_count')))
+                 for b in (ts or {}).get('bands') or []]
+    return _content_hash([
+        labels, [(n, v) for n, v in series], clickable,
+        str(metric), str(period), str(entity_kind), bool(link_entities),
+    ])
+
+
+@caching.chart_cached(name='jobs_timeseries', maxsize=128,
+                      key_fn=_jobs_timeseries_cache_key)
+def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
+                                     entity_kind='user',
+                                     link_entities=True) -> str:
+    """Stacked activity timeline over a ``jobs_timeseries`` envelope.
+
+    The time axis the job-history card otherwise lacks: one bar per calendar
+    band, segmented by the window's top-N owners over an aggregated
+    "Others" base, with a clickable right-side legend.
+
+    Args:
+        ts: plugin envelope — ``{'period', 'bands': [{'label','start','end',
+            'job_count','cpu_hours','gpu_hours','cpu_charges','gpu_charges',
+            'owners'}, …], 'totals', 'total_count', …}``.
+        metric: a ``_JOBS_METRIC_KEYS`` member. ``'charges'`` sums the
+            plugin's separate cpu/gpu charge keys.
+        period: ``'day'``/``'week'``/``'month'`` — labels the x-axis and
+            joins the cache key (same values under a different granularity
+            are a different chart).
+        entity_kind: ``'user'`` or ``'project'`` — which modal a legend
+            click opens, matching the owner axis.
+        link_entities: when False the legend renders unlinked. Gate this on
+            the viewer's permission, exactly as the By User / By Project
+            tables gate their own quick-view links.
+
+    Interactions (via svg-chart-links.js):
+        - every segment of a populated band links to ``#jt-bar-<index>`` →
+          expands that band's row in the period table below. Index-keyed,
+          so the JS never parses band labels.
+        - each named legend entry links to the entity's **modal route**
+          (``MODAL_ROUTES``), NOT a ``#job-user-`` row sentinel. Those
+          sentinels are scoped by ``openEntityRow`` to the *clicked* chart's
+          tab-pane, and this chart lives in the Jobs pane while the By User
+          / By Project rows live in their own — which are lazily loaded and
+          usually absent besides. A row sentinel here is a silent no-op
+          (verified in the browser); the modal works from any pane and
+          needs nothing pre-rendered. The stacked-area chart on the status
+          dashboard resolves the same problem the same way.
+          "Others" is never linked.
+
+    Returns a placeholder div when every band is empty.
+    """
+    labels, series = _jobs_timeseries_series(ts, metric)
+    if not labels or not series:
+        return _empty_state('No jobs in this range')
+    if not any(any(v > 0 for v in vals) for _n, vals in series):
+        return _empty_state('No jobs in this range')
+
+    bands = (ts or {}).get('bands') or []
+    # Others keeps the neutral grey and does NOT advance the palette cursor,
+    # so the named colours are stable whether or not a remainder exists.
+    colors, cycle = [], 0
+    for name, _vals in series:
+        if name == 'Others':
+            colors.append(UNITY_NCAR_GRAY_LIGHT)
+        else:
+            colors.append(UNITY_STACK_10[cycle % len(UNITY_STACK_10)])
+            cycle += 1
+
+    fig, ax = plt.subplots(figsize=(18, 5))
+    x = range(len(labels))
+    bottoms = [0.0] * len(labels)
+    for (name, vals), color in zip(series, colors):
+        bars = ax.bar(x, vals, width=1.0, bottom=bottoms, color=color,
+                      edgecolor=UNITY_NCAR_NAVY, linewidth=0.3)
+        for i, (value, rect) in enumerate(zip(vals, bars.patches)):
+            # A zero-height rect is an invisible click target, so it gets no
+            # link — and job_count gates it besides, so a band with no jobs
+            # is never clickable whatever the plotted metric says. Note the
+            # consequence on the charges view: an all-uncharged band draws
+            # at zero and loses its BAR link, but its row in the period
+            # table below still carries data-jt-period and still drills.
+            if value and bands[i].get('job_count'):
+                rect.set_url(f'#jt-bar-{i}')
+        bottoms = [b + v for b, v in zip(bottoms, vals)]
+
+    # Thin the tick labels rather than rotating 120 of them into a smear.
+    step = max(1, len(labels) // 12)
+    ticks = list(range(0, len(labels), step))
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([labels[i] for i in ticks], rotation=30, ha='right')
+    ax.set_xlim(-0.5, len(labels) - 0.5)
+    ax.set_ylabel(_JOBS_METRIC_LABELS.get(metric, 'Jobs'))
+    ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+    ax.grid(True, axis='y', alpha=0.3)
+
+    # Reversed so the legend reads top-to-bottom matching the visual stack.
+    # Built from proxy Patches (not the BarContainers) because that is what
+    # makes get_patches()/get_texts() positionally addressable for set_url.
+    import matplotlib.patches as mpatches
+    rev = list(reversed(series))
+    rev_colors = list(reversed(colors))
+    handles = [mpatches.Patch(color=c, label=n)
+               for (n, _v), c in zip(rev, rev_colors)]
+    leg = ax.legend(handles=handles, loc='center left',
+                    bbox_to_anchor=(1.01, 0.5), frameon=False,
+                    fontsize=11, labelspacing=0.7)
+    if link_entities:
+        modal_url = (_project_modal_url if entity_kind == 'project'
+                     else _user_modal_url)
+        for (name, _vals), patch, text in zip(
+                rev, leg.get_patches(), leg.get_texts()):
+            if name == 'Others':
+                continue
+            url = modal_url(name)
+            patch.set_url(url)
+            text.set_url(url)
+
+    return _fig_to_svg(fig)
+
+
 def _jobs_usage_pie_cache_key(entity_data, metric='cpu_hours', *,
                               sentinel_prefix='job-user',
                               unknown_label='(unknown)'):
     """sentinel_prefix joins the key: identical usage vectors rendered for
     different entity kinds carry different drill anchors."""
-    key = _JOBS_METRIC_KEYS.get(metric, 'cpu_hours')
     rows = (entity_data or {}).get('rows') or []
     totals = (entity_data or {}).get('totals') or {}
-    payload = [(r.get('value'), float(r.get(key) or 0)) for r in rows]
-    return _content_hash([payload, float(totals.get(key) or 0), str(metric),
-                          str(sentinel_prefix), str(unknown_label)])
+    payload = [(r.get('value'), _jobs_metric_value(r, metric, 'cpu_hours'))
+               for r in rows]
+    return _content_hash([payload,
+                          _jobs_metric_value(totals, metric, 'cpu_hours'),
+                          str(metric), str(sentinel_prefix),
+                          str(unknown_label)])
 
 
 @caching.chart_cached(name='jobs_usage_pie_chart', maxsize=64,
@@ -1448,16 +1639,17 @@ def generate_jobs_usage_pie_chart(entity_data, metric='cpu_hours', *,
     """
     rows = (entity_data or {}).get('rows') or []
     totals = (entity_data or {}).get('totals') or {}
-    key = _JOBS_METRIC_KEYS.get(metric, 'cpu_hours')
 
-    total = float(totals.get(key) or 0)
+    total = _jobs_metric_value(totals, metric, 'cpu_hours')
     if not rows or total <= 0:
         return _empty_state('No usage data available')
 
     # Upstream sorts by combined hours; re-sort by the *chosen* metric so
     # e.g. the Jobs view leads with the most job-count-heavy users.
-    data = sorted(rows, key=lambda r: float(r.get(key) or 0), reverse=True)
-    values_desc = [float(r.get(key) or 0) for r in data]
+    data = sorted(rows,
+                  key=lambda r: _jobs_metric_value(r, metric, 'cpu_hours'),
+                  reverse=True)
+    values_desc = [_jobs_metric_value(r, metric, 'cpu_hours') for r in data]
     keep = _pie_cumulative_keep(values_desc)
 
     names = [r.get('value') for r in data[:keep]]

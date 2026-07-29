@@ -1605,15 +1605,22 @@ def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
 # Commit 5: aggregation fragments (By User / Wait Times / Job Sizes / Durations)
 # ---------------------------------------------------------------------------
 
+# Charge values below are deliberately NOT proportional to hours, and the
+# second bucket / second row is deliberately uncharged (real hours, 0.0
+# charges — the `uncharged` QoS carries a genuine 0.0 factor). A fixture
+# that omitted these keys would let every charges assertion pass through
+# charts._jobs_metric_value's `.get(k) or 0` fallback and prove nothing.
 def _sample_hist(dimension='wait', null_count=0):
     return {
         'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',
         'min_param': 'min_eligible_secs', 'max_param': 'max_eligible_secs',
         'buckets': [
             {'label': '<1m', 'lo': 0, 'hi': 59,
-             'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 0.0},
+             'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 0.0,
+             'cpu_charges': 50.0, 'gpu_charges': 0.0},
             {'label': '1-5m', 'lo': 60, 'hi': 299,
-             'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0},
+             'job_count': 4, 'cpu_hours': 40.0, 'gpu_hours': 1.0,
+             'cpu_charges': 0.0, 'gpu_charges': 0.0},
         ],
         'null_count': null_count,
         'total_count': 14 + null_count,
@@ -1624,10 +1631,14 @@ def _sample_usage(totals=None):
     return {
         'dimension': 'user',
         'rows': [
-            {'value': 'alice', 'job_count': 30, 'cpu_hours': 300.0, 'gpu_hours': 0.0},
-            {'value': 'bob',   'job_count': 12, 'cpu_hours': 120.0, 'gpu_hours': 2.0},
+            {'value': 'alice', 'job_count': 30, 'cpu_hours': 300.0,
+             'gpu_hours': 0.0, 'cpu_charges': 150.0, 'gpu_charges': 0.0},
+            {'value': 'bob',   'job_count': 12, 'cpu_hours': 120.0,
+             'gpu_hours': 2.0, 'cpu_charges': 0.0, 'gpu_charges': 0.0},
         ],
-        'totals': totals or {'job_count': 42, 'cpu_hours': 420.0, 'gpu_hours': 2.0},
+        'totals': totals or {'job_count': 42, 'cpu_hours': 420.0,
+                             'gpu_hours': 2.0, 'cpu_charges': 150.0,
+                             'gpu_charges': 0.0},
     }
 
 
@@ -1666,6 +1677,89 @@ def test_by_user_fragment_other_row_from_pretruncation_totals(
     )
     body = resp.get_data(as_text=True)
     assert 'beyond top' in body
+
+
+def test_by_user_fragment_charges_metric_renders_its_own_column(
+    app, auth_client, active_project, monkeypatch,
+):
+    """?metric=charges ranks the rows by charges, so the table must SHOW
+    charges. It shipped ranking by an invisible column (upstream C1)."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_sample_usage())
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=charges'
+    )
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert '>Charges</th>' in body
+    # The initial-sort indicator follows the active metric — on charges it
+    # used to land on no header at all.
+    assert 'sort-desc" data-sort="numeric">Charges' in body
+    # alice's 150.0 charges (cpu 150 + gpu 0), sortable on the raw value.
+    assert 'data-sort-value="150.0"' in body
+    # ...and the uncharged-QoS caption, since bob has hours but no charges.
+    assert 'Uncharged QoS' in body
+
+
+def test_by_user_fragment_charges_column_absent_indicator_on_other_metrics(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The column is always present; only its sort indicator is conditional."""
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=_sample_usage())
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=cpu_hours'
+    )
+    body = resp.get_data(as_text=True)
+    assert '>Charges</th>' in body
+    assert 'sort-desc" data-sort="numeric">Charges' not in body
+    assert 'Uncharged QoS' not in body      # caption is charges-only
+
+
+def test_by_user_other_row_carries_a_charges_figure(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The Other row says 'beyond top N by charges' — so it must show them."""
+    usage = _sample_usage(totals={'job_count': 100, 'cpu_hours': 900.0,
+                                  'gpu_hours': 5.0, 'cpu_charges': 400.0,
+                                  'gpu_charges': 0.0})
+    _install_mock_plugin(app, monkeypatch, jobs_usage_by_return=usage)
+    resp = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/by-user'
+        f'?machine=derecho&metric=charges'
+    )
+    body = resp.get_data(as_text=True)
+    assert 'beyond top' in body
+    # The "by <noun>" label wraps across a template line break, so match the
+    # noun on its own rather than the phrase.
+    assert 'charges)</span>' in body
+    # 400 total - 150 shown = 250 remaining, in charge units.
+    assert '<td class="text-end">250</td>' in body
+
+
+def test_usage_other_remainder_includes_charge_keys():
+    """_usage_other must carry the full metric vector, or a charges view has
+    no remainder figure in its own units."""
+    from webapp.jobs.routes import _usage_other
+    rem = _usage_other(_sample_usage(
+        totals={'job_count': 100, 'cpu_hours': 900.0, 'gpu_hours': 5.0,
+                'cpu_charges': 400.0, 'gpu_charges': 7.0}))
+    assert rem['cpu_charges'] == pytest.approx(250.0)
+    assert rem['gpu_charges'] == pytest.approx(7.0)
+
+
+def test_usage_other_visibility_ignores_charges_alone():
+    """An entirely uncharged tail is still a real tail — gating on charges
+    would hide it, and charges can never appear without hours anyway."""
+    from webapp.jobs.routes import _usage_other
+    # Tail exists in hours, contributes no charges.
+    rem = _usage_other(_sample_usage(
+        totals={'job_count': 100, 'cpu_hours': 900.0, 'gpu_hours': 5.0,
+                'cpu_charges': 150.0, 'gpu_charges': 0.0}))
+    assert rem is not None
+    assert rem['cpu_charges'] == pytest.approx(0.0)
+    # Rows exactly cover totals → no Other row at all.
+    assert _usage_other(_sample_usage()) is None
 
 
 def test_by_user_fragment_disabled_banner(auth_client, active_project):
@@ -2696,6 +2790,58 @@ def test_status_job_history_empty_state_when_disabled(auth_client):
     resp = auth_client.get('/status/job-history')
     assert resp.status_code == 200
     assert 'No job-history data is currently available' in resp.get_data(as_text=True)
+
+
+def test_timeline_is_open_by_default_on_the_cards(
+    app, auth_client, monkeypatch,
+):
+    """The cards used to collapse the timeline because it cost a `jobs`
+    scan. It now serves a card's scope off the plugin's daily_summary
+    rollup (~65 ms for 180 bands), so it is open everywhere."""
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    body = auth_client.get('/status/job-history').get_data(as_text=True)
+    assert 'id="jobs-m1-timeline-wrap"' in body
+    # `show` is what Bootstrap reads; aria-expanded is what a screen reader
+    # reads. They must agree or the panel lies to one of them.
+    assert 'class="collapse show mt-2"' in body
+    assert 'aria-expanded="true"' in body
+
+
+def _hx_trigger_after(body, anchor):
+    """The hx-trigger of the element whose id attribute is *anchor*."""
+    import re
+    frag = body[body.index(f'id="{anchor}"'):][:600]
+    m = re.search(r'hx-trigger="([^"]*)"', frag)
+    assert m, f'no hx-trigger near {anchor}: {frag[:200]}'
+    return m.group(1)
+
+
+@pytest.mark.parametrize('machine_slot,should_fire_now', [('m1', True),
+                                                          ('m2', False)])
+def test_open_timeline_shares_the_jobs_pane_trigger(
+    app, auth_client, monkeypatch, machine_slot, should_fire_now,
+):
+    """Open must not mean eager.
+
+    The timeline is in the Jobs pane, so it takes that pane's trigger —
+    whatever the host chose. Hardcoding `load` would fetch it inside a
+    hidden pane (a second machine card, or a restored non-Jobs tab), paying
+    for a chart nobody asked for: exactly the cost the collapse used to
+    avoid, and the reason opening it by default is safe at all.
+
+    Pinned per machine slot because the two differ: the first card's pane is
+    visible at render, the second sits behind the machine tab and must wait.
+    """
+    _install_mock_plugin(app, monkeypatch, machines=('derecho', 'casper'))
+    body = auth_client.get('/status/job-history').get_data(as_text=True)
+
+    # The table's fetch is wired on its TAB BUTTON, the timeline's on the
+    # chart div; both resolve through the same `_trig('jobs')`.
+    timeline = _hx_trigger_after(body, f'jobs-{machine_slot}-timeline')
+    table = _hx_trigger_after(body, f'jobs-{machine_slot}-jobs-tab')
+    assert timeline == table, (
+        f'{machine_slot}: timeline {timeline!r} != table {table!r}')
+    assert ('load' in timeline) is should_fire_now, timeline
 
 
 def test_status_job_history_machine_pills_when_enabled(
@@ -4309,3 +4455,109 @@ def test_parse_group_by_prefers_the_canonical_spelling(app):
     from webapp.jobs.routes import _parse_group_by
     with app.test_request_context('/?group_by=user&owners_by=account'):
         assert _parse_group_by() == 'user'
+
+
+# ---------------------------------------------------------------------------
+# Activity timeline — granularity budget and band drills
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('span_days,expected', [
+    (1, 'day'), (30, 'day'), (120, 'day'),
+    (121, 'week'),                  # 121 daily bars is over budget
+    (365, 'week'), (840, 'week'),   # 840/7 = 120, still exactly in budget
+    (841, 'month'),
+    (10_000, 'month'),              # full history
+])
+def test_auto_period_picks_the_finest_granularity_in_budget(span_days, expected):
+    """Server-chosen because the explorer permits an unbounded window: a
+    fixed 'day' default would blow the bar budget or trip the plugin's
+    400-band ValueError, both of which read as a broken panel."""
+    from webapp.jobs.routes import _auto_period
+    assert _auto_period(span_days) == expected
+
+
+def test_parse_period_honours_an_explicit_choice_that_fits(app):
+    from webapp.jobs.routes import _parse_period
+    with app.test_request_context('/?period=month'):
+        assert _parse_period(30) == 'month'
+
+
+def test_parse_period_refuses_a_stale_choice_that_does_not_fit(app):
+    """A 'day' saved against last week's 30-day window must not be replayed
+    against a five-year one — it would be 1,800 bars."""
+    from webapp.jobs.routes import _parse_period
+    with app.test_request_context('/?period=day'):
+        assert _parse_period(1826) == 'month'
+
+
+@pytest.mark.parametrize('raw', ['quarter', 'year', 'fortnight', '', 'DAY'])
+def test_parse_period_ignores_unknown_values(app, raw):
+    """Lenient like _parse_metric: unknown means 'no override', never 400.
+    'quarter'/'year' are PeriodGrouper's vocabulary, deliberately not ours."""
+    from webapp.jobs.routes import _parse_period
+    with app.test_request_context(f'/?period={raw}'):
+        assert _parse_period(30) == 'day'
+
+
+def test_period_choices_disable_rather_than_hide_over_budget_options():
+    """A pill that vanishes reads as a bug; a disabled one with the bar
+    count is the explanation."""
+    from webapp.jobs.routes import _period_choices
+    choices = {c['key']: c for c in _period_choices(365)}
+    assert choices['day']['enabled'] is False
+    assert choices['day']['bars'] == 365
+    assert choices['week']['enabled'] is True
+    assert set(choices) == {'day', 'week', 'month'}
+
+
+def test_filter_span_days_reads_the_window(app):
+    from webapp.jobs.routes import _filter_span_days, _parse_job_filters
+    with app.test_request_context('/?start=2026-01-01&end=2026-01-30'):
+        assert _filter_span_days(_parse_job_filters()) == 30
+
+
+def test_filter_span_days_is_none_for_an_open_ended_window(app):
+    """Both date fields cleared on the explorer — the documented opt-in to
+    full history. The caller treats None as the widest possible window."""
+    from webapp.jobs.routes import _filter_span_days
+    with app.test_request_context('/'):
+        assert _filter_span_days({'start': '', 'end': ''}) is None
+
+
+def test_band_drill_url_overrides_the_panes_window():
+    """Unlike a histogram band (min_param/max_param), a time band replays
+    through start/end — the window filters ARE this dimension — so the
+    band's own dates must REPLACE the pane's, not narrow alongside them."""
+    from webapp.jobs.routes import _band_drill_url
+    url = _band_drill_url(
+        '/jobs', {'label': '2026-05-02', 'start': '2026-05-02',
+                  'end': '2026-05-02', 'job_count': 7},
+        {'machine': 'casper', 'start': '2026-05-01', 'end': '2026-05-31'})
+    assert 'start=2026-05-02' in url and 'end=2026-05-02' in url
+    assert 'start=2026-05-01' not in url
+
+
+def test_band_drill_url_is_none_for_an_empty_band():
+    from webapp.jobs.routes import _band_drill_url
+    assert _band_drill_url('/jobs', {'job_count': 0}, {}) is None
+
+
+def test_charges_is_a_first_class_metric_everywhere():
+    """Ben's call: one vocabulary across all six panels, so the shared
+    `metric:jobs` persist family stays valid."""
+    from webapp.dashboards.charts import _JOBS_METRIC_KEYS
+    from webapp.jobs.routes import (_METRICS, _USAGE_METRIC_KEYS,
+                                    _USAGE_SORT_BY)
+    assert 'charges' in _METRICS
+    # The top-N cut must be rankable by the displayed metric, or a charges
+    # view shows owners chosen by hours.
+    assert set(_METRICS) <= set(_USAGE_SORT_BY)
+    assert _USAGE_SORT_BY['charges'] == 'charges'
+    # Every metric must be renderable, not just requestable — this is the
+    # membership check that C1 slipped through: 'charges' was in _METRICS
+    # and _USAGE_SORT_BY, so it could be asked for and ranked by, while the
+    # panel had no way to display it.
+    assert set(_METRICS) <= set(_JOBS_METRIC_KEYS)
+    # ...and the remainder row has to be computable in every one of them.
+    for metric in _METRICS:
+        assert set(_JOBS_METRIC_KEYS[metric]) <= set(_USAGE_METRIC_KEYS), metric

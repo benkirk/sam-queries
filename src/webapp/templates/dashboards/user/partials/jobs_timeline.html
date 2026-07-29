@@ -1,0 +1,320 @@
+{% from 'dashboards/user/partials/_jobs_macros.html'
+   import jobs_disabled, jobs_error, jobs_empty, metric_pills %}
+{% from 'dashboards/fragments/help.html' import term with context %}
+{% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
+{#
+  Activity timeline — the Jobs tab's chart, and the only panel on the card
+  with a TIME axis (the other five are distributional or categorical).
+  Rendered inside the Jobs pane above the table, behind a collapse, as its
+  own fragment: a metric/period pill re-fetches only this, and a sort or
+  page click re-fetches only the table.
+
+  Context (set in webapp/jobs/routes.py::_render_timeline):
+    enabled, error, mode, machine,
+    ts        — plugin jobs_timeseries envelope: {period, owners_by,
+                start, end, bands[{label, start, end, job_count, cpu_hours,
+                gpu_hours, cpu_charges, gpu_charges, owners{}}], totals,
+                null_count, total_count}
+    bands     — ts.bands, hoisted
+    chart_svg — rendered SVG (or None when nothing is populated)
+    metric    — 'jobs' | 'cpu_hours' | 'gpu_hours' | 'charges'
+    period    — 'day' | 'week' | 'month' (server-chosen unless ?period=
+                fits the window)
+    period_choices — [{key,label,bars,enabled}] — over-budget granularities
+                render DISABLED with the bar count as the reason, never
+                hidden: a pill that vanishes reads as a bug.
+    max_bars  — the budget those choices are measured against
+    group_by  — 'user' | 'project': who owns the stacked segments
+    owners_toggle  — offer the User|Project pill
+    entity    — _USAGE_ENTITIES[group_by] (labels, sentinel, drill_param)
+    link_entities  — whether the legend links; False when panel_relevance
+                has suppressed the target pane, since a sentinel into a
+                pane that was never rendered is a silent no-op
+    band_drills    — per-band jobs-fragment URLs (None for empty bands)
+    fragment_url, target_id, params — re-fetch plumbing
+#}
+
+{% if not enabled %}
+  {{ jobs_disabled() }}
+{% elif error %}
+  {{ jobs_error(error) }}
+{% elif not ts or not bands %}
+  {{ jobs_empty('No jobs match these filters.') }}
+{% else %}
+  <form id="jobs-timeline-params-{{ target_id }}" class="d-none">
+    {% for k, v in params.items() %}
+    <input type="hidden" name="{{ k }}" value="{{ v }}">
+    {% endfor %}
+  </form>
+
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    {{ metric_pills(metric, fragment_url, target_id,
+                    '#jobs-timeline-params-' ~ target_id,
+                    '&period=' ~ period, aria='Timeline metric') }}
+
+    {# Granularity. Auto-selected from the window; an explicit choice is
+       honoured only while it fits the bar budget, so a stale 'day' from
+       localStorage can't be replayed against a five-year window. #}
+    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Granularity">
+      {% for p in period_choices %}
+      <button type="button"
+              class="btn btn-outline-secondary {% if period == p.key %}active{% endif %}"
+              {% if not p.enabled %}disabled
+              title="{{ p.bars | fmt_number }} bars — over the {{ max_bars }}-bar budget for this window"
+              {% else %}title="{{ p.bars | fmt_number }} bars"{% endif %}
+              hx-get="{{ fragment_url }}?period={{ p.key }}&metric={{ metric }}"
+              hx-target="#{{ target_id }}"
+              hx-include="#jobs-timeline-params-{{ target_id }}"
+              hx-swap="innerHTML">
+        {{ p.label }}
+      </button>
+      {% endfor %}
+    </div>
+
+    {% if owners_toggle | default(false) %}
+    {# Who owns the stack. Same vocabulary as the histograms and the status
+       queue-load chart, so the choice rides the shared preference bucket. #}
+    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Owner dimension">
+      {% for ob, label in [('user', 'User'), ('project', 'Project')] %}
+      <button type="button"
+              class="btn btn-outline-secondary {% if group_by == ob %}active{% endif %}"
+              hx-get="{{ fragment_url }}?group_by={{ ob }}&metric={{ metric }}&period={{ period }}"
+              hx-target="#{{ target_id }}"
+              hx-include="#jobs-timeline-params-{{ target_id }}"
+              hx-swap="innerHTML">
+        {{ label }}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <span class="ms-auto text-muted small">
+      {{ ts.total_count | fmt_number }} job{{ '' if ts.total_count == 1 else 's' }}
+      · {{ ts.start }} → {{ ts.end }}
+    </span>
+  </div>
+
+  {% if chart_svg %}
+  <div class="d-flex justify-content-center mb-2 jobs-timeline-chart">
+    {{ chart_svg | safe }}
+  </div>
+  {% else %}
+    {{ jobs_empty('No jobs match these filters.') }}
+  {% endif %}
+
+  {% if metric == 'charges' %}
+    {# Not a rounding artifact: qos_factor is a genuine 0.0 for the
+       'uncharged' QoS, so work can be real and its charges exactly zero.
+       Said here because an empty bar otherwise reads as missing data. #}
+    <p class="text-muted small mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      Charges are hours weighted by each job's QoS factor. Uncharged QoS
+      classes have a factor of 0, so bands can show jobs and CPU-hours while
+      contributing no charges.
+    </p>
+  {% endif %}
+
+  {% if ts.null_count %}
+    <p class="text-muted small mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      {{ ts.null_count | fmt_number }} job{{ '' if ts.null_count == 1 else 's' }}
+      have no recorded end time and belong to no period.
+    </p>
+  {% endif %}
+
+  {# Lazy per-owner jobs drill — bound to shown.bs.collapse (never click) so
+     a bar-click .show() and a chevron toggle both fire the fetch. The owner
+     rides the band drill URL as the entity's own filter param. #}
+  {% macro owner_jobs_drill(dt_id, owner, drill_url, band_label) %}
+  <div class="p-2 bg-light" id="{{ dt_id }}"
+       hx-get="{{ drill_url }}&{{ entity.drill_param }}={{ owner | urlencode }}&target_id={{ dt_id }}"
+       hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+       hx-swap="innerHTML">
+    <p class="text-muted small mb-0">
+      <i class="fas fa-spinner fa-spin me-1"></i>
+      Loading {{ owner }}'s jobs in {{ band_label }}…
+    </p>
+  </div>
+  {% endmacro %}
+
+  {# Period table under the SVG — the same zero-filled band vector the chart
+     draws, so counts are copy/paste-able. Populated bands expand (row click,
+     or bar click via the #jt-bar-<i> sentinel and svg-chart-links.js) into
+     the per-owner tier, each owner lazy-loading its jobs in that band.
+     data-no-persist: a restored auto-expand would re-fire the drills. #}
+  {% set _mkey = 'job_count' if metric == 'jobs' else metric %}
+  <div class="small text-muted mt-2 mb-1">Period breakdown</div>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Period</th>
+          <th class="text-end">Jobs</th>
+          <th class="text-end">{{ term('CPU-hours', g_cpu_hours()) }}</th>
+          <th class="text-end">GPU-hours</th>
+          <th class="text-end">Charges</th>
+        </tr>
+      </thead>
+      {% for b in bands %}
+        {% set drill_url = band_drills[loop.index0] if band_drills else none %}
+        {% set _rid = target_id ~ '-p' ~ loop.index0 %}
+        {% set owners = b.owners or {} %}
+        {% set _named = owners.values() | selectattr('job_count') | list %}
+        {% set _ojobs = owners.values() | map(attribute='job_count') | sum %}
+        {% set _rem_jobs = b.job_count - _ojobs %}
+        {% set _charges = (b.cpu_charges or 0) + (b.gpu_charges or 0) %}
+        {% set _expandable = drill_url and _named %}
+        <tbody>
+          {% if _expandable %}
+          <tr class="cursor-pointer"
+              data-jt-period="{{ loop.index0 }}"
+              data-bs-toggle="collapse" data-bs-target="#{{ _rid }}-row"
+              aria-expanded="false" aria-controls="{{ _rid }}-row"
+              title="Show top {{ entity.label | lower }}s in this period">
+            <td>
+              <i class="fas fa-chevron-right collapse-icon small me-1"></i>
+              <code>{{ b.label }}</code>
+            </td>
+            <td class="text-end">{{ b.job_count | fmt_number }}</td>
+            <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="text-end">{{ _charges | fmt_number }}</td>
+          </tr>
+          <tr class="collapse" id="{{ _rid }}-row" data-no-persist>
+            <td colspan="5" class="p-0 border-0">
+              <div class="p-2 bg-light">
+                <div class="table-responsive">
+                  <table class="table table-sm table-hover align-middle mb-0">
+                    <thead>
+                      <tr class="small text-muted">
+                        <th style="width:2rem;" class="text-end">#</th>
+                        <th>{{ entity.label }}</th>
+                        <th class="text-end">Jobs</th>
+                        <th class="text-end">CPU-hours</th>
+                        <th class="text-end">GPU-hours</th>
+                        <th class="text-end">% of period</th>
+                      </tr>
+                    </thead>
+                    {# Envelope order is the WINDOW-wide rank, identical in
+                       every band; re-sort by this band's active metric so
+                       the tier reads like the bar it came from. #}
+                    {% set ranked = owners.items()
+                       | selectattr('1.job_count')
+                       | sort(attribute='1.' ~ _mkey, reverse=true) %}
+                    {% for owner, stats in ranked %}
+                      {% set _urid = _rid ~ '-u' ~ loop.index %}
+                      <tbody>
+                        {# Toggle lives on the chevron and the stat cells,
+                           never the <tr>: Bootstrap's data-api binds in the
+                           capture phase, so a nested modal button could not
+                           stop a row-level toggle. #}
+                        <tr title="Show {{ owner }}'s jobs in {{ b.label }}">
+                          <td class="text-end text-muted cursor-pointer"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#{{ _urid }}-row"
+                              aria-controls="{{ _urid }}-row">{{ loop.index }}</td>
+                          <td>
+                            <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
+                                    type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#{{ _urid }}-row"
+                                    aria-expanded="false"
+                                    aria-controls="{{ _urid }}-row">
+                              <i class="fas fa-chevron-right collapse-icon small"></i>
+                            </button>
+                            <span class="font-monospace">{{ owner }}</span>
+                          </td>
+                          {% for cell in [stats.job_count, stats.cpu_hours,
+                                          stats.gpu_hours] %}
+                          <td class="text-end cursor-pointer"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#{{ _urid }}-row"
+                              aria-controls="{{ _urid }}-row">{{ cell | fmt_number }}</td>
+                          {% endfor %}
+                          <td class="text-end text-muted cursor-pointer"
+                              data-bs-toggle="collapse"
+                              data-bs-target="#{{ _urid }}-row"
+                              aria-controls="{{ _urid }}-row">
+                            {% if b[_mkey] %}
+                              {{ (100 * (stats[_mkey] or 0) / b[_mkey]) | fmt_pct }}
+                            {% else %}—{% endif %}
+                          </td>
+                        </tr>
+                        <tr class="collapse" id="{{ _urid }}-row" data-no-persist>
+                          <td colspan="6" class="p-0 border-0">
+                            {{ owner_jobs_drill(_urid ~ '-content',
+                                                owner, drill_url, b.label) }}
+                          </td>
+                        </tr>
+                      </tbody>
+                    {% endfor %}
+                    {% if _rem_jobs > 0 %}
+                    <tbody>
+                      <tr class="text-muted">
+                        <td></td>
+                        <td>
+                          Other {{ entity.label | lower }}s
+                          <span class="small">(beyond top {{ owners | length }})</span>
+                        </td>
+                        <td class="text-end">{{ _rem_jobs | fmt_number }}</td>
+                        <td class="text-end">
+                          {{ (b.cpu_hours - (owners.values() | map(attribute='cpu_hours') | sum)) | fmt_number }}
+                        </td>
+                        <td class="text-end">
+                          {{ (b.gpu_hours - (owners.values() | map(attribute='gpu_hours') | sum)) | fmt_number }}
+                        </td>
+                        <td class="text-end">
+                          {% if b[_mkey] %}
+                            {{ (100 * (b[_mkey] - (owners.values() | map(attribute=_mkey) | sum)) / b[_mkey]) | fmt_pct }}
+                          {% else %}—{% endif %}
+                        </td>
+                      </tr>
+                    </tbody>
+                    {% endif %}
+                  </table>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          {# Empty band, or a populated one with no resolvable owners: the
+             single-level period → jobs drill. #}
+          <tr {% if not b.job_count %}class="text-muted"
+              {% else %}data-jt-period="{{ loop.index0 }}"
+                        data-bs-target="#{{ _rid }}-row"{% endif %}>
+            <td>
+              {% if drill_url %}
+              <button class="btn btn-sm btn-link text-decoration-none p-0 me-1"
+                      type="button" data-bs-toggle="collapse"
+                      data-bs-target="#{{ _rid }}-row"
+                      aria-expanded="false" aria-controls="{{ _rid }}-row">
+                <i class="fas fa-chevron-right collapse-icon small"></i>
+              </button>
+              {% endif %}
+              <code>{{ b.label }}</code>
+            </td>
+            <td class="text-end">{{ b.job_count | fmt_number }}</td>
+            <td class="text-end">{{ b.cpu_hours | fmt_number }}</td>
+            <td class="text-end">{{ b.gpu_hours | fmt_number }}</td>
+            <td class="text-end">{{ _charges | fmt_number }}</td>
+          </tr>
+          {% if drill_url %}
+          <tr class="collapse" id="{{ _rid }}-row" data-no-persist>
+            <td colspan="5" class="p-0 border-0">
+              <div class="p-2 bg-light" id="{{ _rid }}-content"
+                   hx-get="{{ drill_url }}&target_id={{ _rid }}-content"
+                   hx-trigger="shown.bs.collapse from:closest tr.collapse once"
+                   hx-swap="innerHTML">
+                <p class="text-muted small mb-0">
+                  <i class="fas fa-spinner fa-spin me-1"></i>
+                  Loading jobs in {{ b.label }}…
+                </p>
+              </div>
+            </td>
+          </tr>
+          {% endif %}
+          {% endif %}
+        </tbody>
+      {% endfor %}
+    </table>
+  </div>
+{% endif %}

@@ -1,5 +1,6 @@
 {% from 'dashboards/user/partials/_jobs_macros.html'
-   import jobs_disabled, jobs_error, jobs_empty %}
+   import jobs_disabled, jobs_error, jobs_empty, metric_pills,
+          JOBS_METRIC_NOUNS %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {#
@@ -15,9 +16,10 @@
     enabled, error, mode, machine
     usage   — plugin jobs_usage_by(...) envelope {rows, totals}, scoped
               upstream per mode (user pin / server tree / unscoped)
-    other   — {'job_count','cpu_hours','gpu_hours'} remainder beyond the row
-              cap (totals are pre-truncation), or None
-    metric  — 'jobs' | 'cpu_hours' | 'gpu_hours' (drives the pie + ranking)
+    other   — webapp/jobs/routes.py::_USAGE_METRIC_KEYS remainder beyond the
+              row cap (totals are pre-truncation), or None
+    metric  — 'jobs' | 'cpu_hours' | 'gpu_hours' | 'charges'
+              (drives the pie + ranking)
     pie_svg — chart SVG (clickable #{{ entity.sentinel }}-<value> sentinels)
     fragment_url      — this fragment (metric pill re-fetch)
     jobs_fragment_url — the mode's per-job fragment (row drill target)
@@ -45,26 +47,29 @@
 
   <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
     {# Metric pills — re-fetch this same pane with ?metric=. #}
-    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Pie metric">
-      {% for m, label in [('jobs', 'Jobs'),
-                          ('cpu_hours', 'CPU-hours'),
-                          ('gpu_hours', 'GPU-hours')] %}
-      <button type="button"
-              class="btn btn-outline-secondary {% if metric == m %}active{% endif %}"
-              hx-get="{{ fragment_url }}?metric={{ m }}"
-              hx-target="#{{ target_id }}"
-              hx-include="#jobs-{{ entity.form_key }}-params-{{ target_id }}"
-              hx-swap="innerHTML">
-        {{ label }}
-      </button>
-      {% endfor %}
-    </div>
+    {{ metric_pills(metric, fragment_url, target_id,
+                    '#jobs-' ~ entity.form_key ~ '-params-' ~ target_id,
+                    aria='Pie metric') }}
     <span class="ms-auto text-muted small">
       {{ totals.get('job_count', 0) | fmt_number }} jobs ·
       {{ totals.get('cpu_hours', 0) | fmt_number }} CPU-h ·
-      {{ totals.get('gpu_hours', 0) | fmt_number }} GPU-h
+      {{ totals.get('gpu_hours', 0) | fmt_number }} GPU-h ·
+      {{ ((totals.get('cpu_charges') or 0)
+          + (totals.get('gpu_charges') or 0)) | fmt_number }} charges
     </span>
   </div>
+
+  {% if metric == 'charges' %}
+    {# Not a rounding artifact: qos_factor is a genuine 0.0 for the
+       'uncharged' QoS, so work can be real and its charges exactly zero.
+       Said here because an empty wedge otherwise reads as missing data. #}
+    <p class="text-muted small mb-2">
+      <i class="fas fa-circle-info me-1"></i>
+      Charges are hours weighted by each job's QoS factor. Uncharged QoS
+      classes have a factor of 0, so an entity can show jobs and CPU-hours
+      while contributing no charges.
+    </p>
+  {% endif %}
 
   {% if not rows %}
     {{ jobs_empty('No jobs match the current filters.') }}
@@ -90,6 +95,7 @@
             <th class="sortable-header text-end{% if metric == 'jobs' %} sort-desc{% endif %}" data-sort="numeric">Jobs</th>
             <th class="sortable-header text-end{% if metric == 'cpu_hours' %} sort-desc{% endif %}" data-sort="numeric">{{ term('CPU-hours', g_cpu_hours()) }}</th>
             <th class="sortable-header text-end{% if metric == 'gpu_hours' %} sort-desc{% endif %}" data-sort="numeric">GPU-hours</th>
+            <th class="sortable-header text-end{% if metric == 'charges' %} sort-desc{% endif %}" data-sort="numeric">Charges</th>
           </tr>
         </thead>
         {% for r in rows %}
@@ -132,10 +138,13 @@
               <td class="text-end" data-sort-value="{{ r.job_count }}">{{ r.job_count | fmt_number }}</td>
               <td class="text-end" data-sort-value="{{ r.cpu_hours }}">{{ r.cpu_hours | fmt_number }}</td>
               <td class="text-end" data-sort-value="{{ r.gpu_hours }}">{{ r.gpu_hours | fmt_number }}</td>
+              {# Charges = cpu + gpu, matching charts._JOBS_METRIC_KEYS. #}
+              {% set _rc = (r.cpu_charges or 0) + (r.gpu_charges or 0) %}
+              <td class="text-end" data-sort-value="{{ _rc }}">{{ _rc | fmt_number }}</td>
             </tr>
             {% if val %}
             <tr class="collapse" id="{{ _rid }}-row">
-              <td colspan="4" class="p-0 border-0">
+              <td colspan="5" class="p-0 border-0">
                 {# Lazy-load this row's job slice on first expand. The drill
                    param only ever NARROWS the mode's already-scoped fragment
                    (user pin / server tree / VIEW_ALL_JOB_DATA) — it is
@@ -161,11 +170,12 @@
         <tbody>
           <tr class="text-muted">
             <td>Other <span class="small">(beyond top {{ rows | length }} by
-              {{ {'jobs': 'jobs', 'cpu_hours': 'CPU-hours',
-                  'gpu_hours': 'GPU-hours'}[metric] }})</span></td>
+              {{ JOBS_METRIC_NOUNS[metric] }})</span></td>
             <td class="text-end">{{ other.job_count | fmt_number }}</td>
             <td class="text-end">{{ other.cpu_hours | fmt_number }}</td>
             <td class="text-end">{{ other.gpu_hours | fmt_number }}</td>
+            <td class="text-end">{{ ((other.cpu_charges or 0)
+                                     + (other.gpu_charges or 0)) | fmt_number }}</td>
           </tr>
         </tbody>
         {% endif %}

@@ -58,6 +58,7 @@ from sam.projects.projects import Project
 from webapp.api.access_control import require_project_access
 from webapp.dashboards.charts import (
     generate_jobs_histogram,
+    generate_jobs_timeseries_stacked,
     generate_jobs_usage_pie_chart,
     generate_jobs_user_pie_chart,
 )
@@ -479,10 +480,32 @@ def _load_column_specs():
 # Aggregation fragments (By User / Wait Times / Job Sizes / Durations)
 # ---------------------------------------------------------------------------
 
-# Chart metric pills shared by the aggregation tabs.
-_METRICS = ('jobs', 'cpu_hours', 'gpu_hours')
+# Chart metric pills shared by the aggregation tabs. 'charges' is the
+# QoS-weighted counterpart of the hour metrics (hours x qos_factor, summed
+# by the plugin) — one vocabulary across every panel, so the shared
+# `metric:jobs` persist family stays valid. NOTE for consumers: charges are
+# NOT proportional to hours. `qos_factor` is a genuine 0.0 for the
+# 'uncharged' QoS, so a charges view legitimately shows an empty bar where
+# an hours view shows work; templates carry a caption saying so.
+_METRICS = ('jobs', 'cpu_hours', 'gpu_hours', 'charges')
 _DEFAULT_METRIC_HIST = 'jobs'
 _DEFAULT_METRIC_PIE = 'cpu_hours'
+
+# Timeline (Jobs tab) granularity. We coarsen because 180 bars is already
+# past what an 18in axis can show — a legibility limit, NOT a cost one. An
+# earlier revision of this comment justified the cap with "+54% at 180 bands";
+# that measurement timed the periods sequentially, so cache warming rode along
+# with band count. Re-measured interleaved (plugin PR #102), 180 bands costs
+# ~10% and 730 costs ~65%: real, but it does not bite at anything we render.
+# The plugin's own cap is path-dependent — 400 bands on the jobs-scan path,
+# 1200 on the daily_summary fast path, which has no CASE ladder at all.
+_TIMELINE_PERIODS = ('day', 'week', 'month')
+_MAX_TIMELINE_BARS = 120
+# Days-per-band, used both to auto-select and to disable over-budget pills.
+_PERIOD_DAYS = {'day': 1, 'week': 7, 'month': 30}
+# Stack segments carried per band. Matches _HIST_OWNERS_LIMIT so the
+# timeline and the histograms agree on how deep "top N" goes.
+_TIMELINE_OWNERS_LIMIT = 10
 
 # Job Sizes tab dimension pills; Wait Times / Durations pin their dimension.
 # memory = REQUESTED (reqmem); memory_used = consumed (Job.memory);
@@ -500,6 +523,7 @@ _USAGE_SORT_BY = {
     'jobs': 'job_count',
     'cpu_hours': 'cpu_hours',
     'gpu_hours': 'gpu_hours',
+    'charges': 'charges',
 }
 
 # Top-N users carried per histogram bucket (chart stack segments + the
@@ -675,6 +699,60 @@ def _parse_log() -> bool:
     return read_flag(request.args, 'log')
 
 
+def _period_bar_count(period: str, span_days: int) -> int:
+    """Bars a *period* would produce over a *span_days* window."""
+    per = _PERIOD_DAYS[period]
+    return max(1, -(-span_days // per))   # ceil
+
+
+def _auto_period(span_days: int) -> str:
+    """Coarsest-to-finest: the finest granularity that stays in budget.
+
+    Picked server-side rather than defaulted to 'day' because the explorer
+    permits an unbounded window (clearing both date fields is a documented
+    opt-in to full history — ~1,500+ days on derecho). A fixed 'day'
+    default would either blow the bar budget or hit the plugin's 400-band
+    ValueError, both of which read as a broken panel.
+    """
+    for period in _TIMELINE_PERIODS:      # day, week, month
+        if _period_bar_count(period, span_days) <= _MAX_TIMELINE_BARS:
+            return period
+    return _TIMELINE_PERIODS[-1]
+
+
+def _parse_period(span_days: int) -> str:
+    """``?period=`` for the timeline, clamped to what the window affords.
+
+    An explicit choice wins **only while it fits**: a stale 'day' arriving
+    from localStorage against a 5-year window must not be honoured. Lenient
+    like ``_parse_metric`` — unknown values mean "no override", never a 400.
+    """
+    raw = (request.args.get('period') or '').strip()
+    if raw in _TIMELINE_PERIODS and \
+            _period_bar_count(raw, span_days) <= _MAX_TIMELINE_BARS:
+        return raw
+    return _auto_period(span_days)
+
+
+def _period_choices(span_days: int) -> list[dict]:
+    """Pill descriptors: which granularities this window can afford.
+
+    Over-budget choices are rendered **disabled with a reason** rather than
+    hidden — a pill that silently disappears reads as a bug, and the reason
+    ("1,827 bars") is the explanation an analyst needs.
+    """
+    out = []
+    for period in _TIMELINE_PERIODS:
+        bars = _period_bar_count(period, span_days)
+        out.append({
+            'key': period,
+            'label': period.capitalize(),
+            'bars': bars,
+            'enabled': bars <= _MAX_TIMELINE_BARS,
+        })
+    return out
+
+
 def _parse_group_by() -> str:
     """Owner dimension for the histograms' User|Project pill.
 
@@ -754,16 +832,31 @@ def panel_relevance(*, mode: str, user_filter=None, account_filter=None,
     }
 
 
+#: Plugin metric keys carried on every usage row / totals dict. The full
+#: vector, so the remainder below can be shown in whichever metric the panel
+#: is ranked by — a charges view whose "Other" row has no charges figure is
+#: the defect this replaced.
+_USAGE_METRIC_KEYS = ('job_count', 'cpu_hours', 'gpu_hours',
+                      'cpu_charges', 'gpu_charges')
+
+
 def _usage_other(usage) -> Optional[dict]:
     """The upstream limit's remainder: totals are pre-truncation, so any
-    positive difference is real usage by entities beyond the row cap."""
+    positive difference is real usage by entities beyond the row cap.
+
+    Visibility is gated on the count/hours keys only. Charges cannot be the
+    sole evidence of a truncated tail — an all-``uncharged``-QoS tail has
+    charges 0.0 with real hours, and no row can carry charges without hours —
+    so folding them into the test would only add float noise.
+    """
     totals = usage.get('totals') or {}
     rows = usage.get('rows') or []
     rem = {
         k: (totals.get(k) or 0) - sum((r.get(k) or 0) for r in rows)
-        for k in ('job_count', 'cpu_hours', 'gpu_hours')
+        for k in _USAGE_METRIC_KEYS
     }
-    return rem if any(v > 1e-9 for v in rem.values()) else None
+    visible = ('job_count', 'cpu_hours', 'gpu_hours')
+    return rem if any(rem[k] > 1e-9 for k in visible) else None
 
 
 #: The two usage rollups are the same panel over a different entity. Each
@@ -948,6 +1041,160 @@ def _trim_empty_edge_bands(hist):
     if not lead and tail == len(buckets):
         return hist
     return dict(hist, buckets=buckets[lead:tail])
+
+
+def _filter_span_days(filters) -> Optional[int]:
+    """Window width in days from the parsed filters, or None if open-ended.
+
+    None is the explorer's "both date fields cleared" case — a documented
+    opt-in to full history, which is ~1,500+ days on derecho. The caller
+    treats it as the widest possible window so the granularity starts
+    coarse; the real span is recovered from the envelope afterwards.
+    """
+    start, end = filters.get('start'), filters.get('end')
+    if not start:
+        return None
+    try:
+        start_d = date.fromisoformat(str(start)[:10])
+        end_d = date.fromisoformat(str(end)[:10]) if end else date.today()
+    except ValueError:
+        return None
+    return max(1, (end_d - start_d).days + 1)
+
+
+def _band_drill_url(jobs_fragment_url, band, roundtrip):
+    """Per-band URL for the mode's jobs fragment, or None for empty bands.
+
+    Unlike a histogram band — which replays through the envelope's
+    ``min_param``/``max_param`` — a time band replays through ``start`` and
+    ``end``, because the window filters ARE this dimension. The band's own
+    (window-clipped) dates therefore OVERRIDE the pane's, rather than
+    narrowing alongside them.
+    """
+    if not band.get('job_count'):
+        return None
+    from urllib.parse import urlencode
+    params = dict(roundtrip)
+    params['start'] = band['start']
+    params['end'] = band['end']
+    return f'{jobs_fragment_url}?{urlencode(params)}'
+
+
+def _render_timeline(*, mode, machine, fragment_url, target_id,
+                     jobs_fragment_url=None,
+                     account_projcodes=None, username=None):
+    """Renderer for the Jobs tab's activity timeline.
+
+    The one panel with a time axis. Upstream cost swings ~500x on whether
+    the filter set lets the plugin serve it from ``daily_summary`` instead
+    of scanning ``jobs`` (see ``service.jobs_timeseries``), and the filters
+    that force the scan are the explorer's — so the cards keep it behind a
+    collapse rather than firing it with the table, while the explorer, whose
+    whole point is the filter panel, opens it.
+    """
+    template = 'dashboards/user/partials/jobs_timeline.html'
+    if not is_enabled():
+        return render_template(template, enabled=False, error=None,
+                               mode=mode, machine=None, target_id=target_id)
+
+    filters = _parse_job_filters(include_user=(username is None))
+    metric = _parse_metric(_DEFAULT_METRIC_HIST)
+    # An open-ended window starts coarse; the true span comes back in the
+    # envelope and drives the pills below.
+    span_days = _filter_span_days(filters)
+    period = _parse_period(span_days if span_days is not None else 10 ** 6)
+
+    # Same relevance rule as the histograms, so the stack can never be keyed
+    # on an axis the scope has already pinned to a single value.
+    rel = panel_relevance(
+        mode=mode,
+        user_filter=username or filters.get('user'),
+        account_filter=(request.args.get('account') or '').strip() or None,
+        account_projcodes=account_projcodes,
+    )
+    owners_toggle = rel['owners_toggle']
+    group_by = _parse_group_by() if owners_toggle else rel['default_group_by']
+    owners_by = 'account' if group_by == 'project' else 'user'
+    entity = _USAGE_ENTITIES[group_by]
+
+    ts = None
+    error = None
+    try:
+        ts = service.jobs_timeseries(
+            machine, period,
+            _agg_scope(mode, username=username,
+                       account_projcodes=account_projcodes),
+            owners_limit=(_TIMELINE_OWNERS_LIMIT
+                          if rel['owners_enabled'] else None),
+            owners_sort_by=_USAGE_SORT_BY[metric],
+            owners_by=owners_by,
+            **filters,
+        )
+    except Exception as exc:
+        from flask import current_app
+        current_app.logger.exception(
+            'jobs timeline fragment failed: mode=%s machine=%s period=%s',
+            mode, machine, period,
+        )
+        error = str(exc)
+
+    bands = (ts or {}).get('bands') or []
+    has_bands = any(b.get('job_count') for b in bands)
+
+    # Recover the REAL span from the resolved window so the pills reflect
+    # what this window can actually afford, even when the caller supplied
+    # no dates at all.
+    if ts and ts.get('start') and ts.get('end'):
+        try:
+            span_days = (date.fromisoformat(ts['end'])
+                         - date.fromisoformat(ts['start'])).days + 1
+        except ValueError:
+            pass
+
+    # Legend entries open the entity's quick-view MODAL, not a row sentinel:
+    # this chart lives in the Jobs pane while the By User / By Project rows
+    # live in their own lazily-loaded panes, and openEntityRow scopes its
+    # lookup to the clicked chart's pane — so a row sentinel here is a
+    # silent no-op. Gate on the same affordance permission the By User /
+    # By Project tables use, so we never render a link that would 403.
+    from flask_login import current_user
+    if group_by == 'user':
+        link_entities = has_permission_any_facility(
+            current_user, Permission.VIEW_USERS)
+    else:
+        link_entities = (mode == 'user') or has_permission_any_facility(
+            current_user, Permission.VIEW_PROJECTS)
+    chart_svg = (generate_jobs_timeseries_stacked(
+        ts, metric=metric, period=period,
+        entity_kind=group_by,
+        link_entities=link_entities) if has_bands else None)
+
+    params = _roundtrip_params(machine, target_id)
+    band_drills = None
+    if has_bands and jobs_fragment_url:
+        band_drills = [_band_drill_url(jobs_fragment_url, b, params)
+                       for b in bands]
+
+    # After the drill URLs — the jobs fragment understands neither.
+    if group_by != 'user':
+        params = dict(params, group_by=group_by)
+    params = dict(params, period=period)
+
+    return render_template(
+        template,
+        enabled=True, error=error,
+        mode=mode, machine=machine,
+        ts=ts, bands=bands, chart_svg=chart_svg,
+        metric=metric, metrics=_METRICS,
+        period=period, period_choices=_period_choices(span_days or 1),
+        max_bars=_MAX_TIMELINE_BARS,
+        group_by=group_by, owners_toggle=owners_toggle,
+        entity=entity, link_entities=link_entities,
+        fragment_url=fragment_url,
+        band_drills=band_drills,
+        target_id=target_id,
+        params=params,
+    )
 
 
 def _render_histogram(*, mode, machine, dimension, dimension_toggle,
@@ -1276,6 +1523,10 @@ def _explorer_card_context(*, mode: str, machine: str, project=None,
         days_persist_id=None,
         show_pills=False,
         show_explore_link=False,
+        # Open on the explorer: this is the page whose whole point is the
+        # filter panel, so the chart that responds to it should be visible
+        # without a click. The cards keep it collapsed — see jobs_card.html.
+        timeline_open=True,
         load_trigger='load once',
     )
 
@@ -1623,6 +1874,21 @@ def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
     )
 
 
+def _panel_timeline(ctx, fragment_url, *, mode, scope_for, log_label,
+                    jobs_fragment_url=None, **_kw):
+    """HTMX fragment: the Jobs tab's activity timeline."""
+    if ctx['machine'] is None:
+        return _render_timeline(mode=mode, machine=None,
+                                fragment_url=None, target_id='')
+    return _render_timeline(
+        mode=mode, machine=ctx['machine'],
+        fragment_url=fragment_url, jobs_fragment_url=jobs_fragment_url,
+        target_id=_target_id(ctx, 'timeline'),
+        account_projcodes=ctx['account_projcodes'],
+        username=ctx['username'],
+    )
+
+
 def _panel_card(ctx, fragment_url, *, mode, scope_for, log_label, **_kw):
     """HTMX fragment: the card shell, re-rendered on a new window or filters.
 
@@ -1712,6 +1978,11 @@ _PANELS = declare_panels((
               siblings={'jobs_fragment_url': 'jobs'}),
     PanelSpec(key='durations', rule='/durations', render=_panel_histogram,
               kwargs={'dimension': 'duration', 'dimension_toggle': False},
+              siblings={'jobs_fragment_url': 'jobs'}),
+    # Not a tab: renders INSIDE the Jobs pane, above the table, behind a
+    # collapse. Its own fragment so a metric/period pill re-fetches only the
+    # chart and a sort/page click re-fetches only the table.
+    PanelSpec(key='timeline', rule='/timeline', render=_panel_timeline,
               siblings={'jobs_fragment_url': 'jobs'}),
     PanelSpec(key='jobs_card', rule='/card', render=_panel_card),
 ))
