@@ -2792,6 +2792,58 @@ def test_status_job_history_empty_state_when_disabled(auth_client):
     assert 'No job-history data is currently available' in resp.get_data(as_text=True)
 
 
+def test_timeline_is_open_by_default_on_the_cards(
+    app, auth_client, monkeypatch,
+):
+    """The cards used to collapse the timeline because it cost a `jobs`
+    scan. It now serves a card's scope off the plugin's daily_summary
+    rollup (~65 ms for 180 bands), so it is open everywhere."""
+    _install_mock_plugin(app, monkeypatch, machines=('derecho',))
+    body = auth_client.get('/status/job-history').get_data(as_text=True)
+    assert 'id="jobs-m1-timeline-wrap"' in body
+    # `show` is what Bootstrap reads; aria-expanded is what a screen reader
+    # reads. They must agree or the panel lies to one of them.
+    assert 'class="collapse show mt-2"' in body
+    assert 'aria-expanded="true"' in body
+
+
+def _hx_trigger_after(body, anchor):
+    """The hx-trigger of the element whose id attribute is *anchor*."""
+    import re
+    frag = body[body.index(f'id="{anchor}"'):][:600]
+    m = re.search(r'hx-trigger="([^"]*)"', frag)
+    assert m, f'no hx-trigger near {anchor}: {frag[:200]}'
+    return m.group(1)
+
+
+@pytest.mark.parametrize('machine_slot,should_fire_now', [('m1', True),
+                                                          ('m2', False)])
+def test_open_timeline_shares_the_jobs_pane_trigger(
+    app, auth_client, monkeypatch, machine_slot, should_fire_now,
+):
+    """Open must not mean eager.
+
+    The timeline is in the Jobs pane, so it takes that pane's trigger —
+    whatever the host chose. Hardcoding `load` would fetch it inside a
+    hidden pane (a second machine card, or a restored non-Jobs tab), paying
+    for a chart nobody asked for: exactly the cost the collapse used to
+    avoid, and the reason opening it by default is safe at all.
+
+    Pinned per machine slot because the two differ: the first card's pane is
+    visible at render, the second sits behind the machine tab and must wait.
+    """
+    _install_mock_plugin(app, monkeypatch, machines=('derecho', 'casper'))
+    body = auth_client.get('/status/job-history').get_data(as_text=True)
+
+    # The table's fetch is wired on its TAB BUTTON, the timeline's on the
+    # chart div; both resolve through the same `_trig('jobs')`.
+    timeline = _hx_trigger_after(body, f'jobs-{machine_slot}-timeline')
+    table = _hx_trigger_after(body, f'jobs-{machine_slot}-jobs-tab')
+    assert timeline == table, (
+        f'{machine_slot}: timeline {timeline!r} != table {table!r}')
+    assert ('load' in timeline) is should_fire_now, timeline
+
+
 def test_status_job_history_machine_pills_when_enabled(
     app, auth_client, monkeypatch,
 ):

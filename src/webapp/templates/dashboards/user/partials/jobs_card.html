@@ -121,7 +121,7 @@
                    show_pills=true, show_explore_link=true,
                    facet_chips=none, facet_filters={},
                    facet_form_id=none, active_tab='jobs',
-                   timeline_open=false) %}
+                   timeline_open=true) %}
 {# Only the OPEN panel fires on render; the rest wait to be shown. The
    host decides which is open (the explorer's filter form round-trips
    it) so an Apply can't also fetch a panel nobody is looking at. #}
@@ -324,16 +324,27 @@ tab-pane fade{{ ' show active' if key == active_tab }}
         </div>
         {% endif %}
         {# Activity timeline — the Jobs tab's chart, and the card's only
-           time axis. Collapsed by default on the cards and open on the
-           explorer (`timeline_open`), because Jobs is the DEFAULT tab on
-           four surfaces: an unconditional aggregation here would be paid
-           by every visit that only wanted the table, unlike the five chart
-           tabs which are opt-in by definition.
+           time axis. OPEN by default on every host (`timeline_open`).
+
+           It was collapsed originally because Jobs is the default tab on
+           four surfaces, so an unconditional aggregation would be paid by
+           every visit that only wanted the table. That reasoning was
+           costed on the plugin's `jobs` scan. It now serves this shape from
+           its `daily_summary` rollup — a card's scope is expressible in
+           the rollup key — which measured 65-68ms for a 180-band daily
+           series on both machines, so the panel no longer earns a click.
+
+           Still `timeline_open`-parameterised rather than hardcoded: a host
+           whose filters force the scan path (qos, exit_status, job_id,
+           name, any min_*/max_* bound) is back to seconds, and would want
+           to collapse it again.
 
            The fetch is bound to `shown.bs.collapse ON THE DIV`, never a
            click on the button — nav-view-persistence's restore-on-reload
            re-opens the collapse without firing click, and a click trigger
-           would leave a restored-open panel permanently empty. #}
+           would leave a restored-open panel permanently empty. Users who
+           collapse it keep that under `collapse:<id>`, so the default only
+           decides the first visit. #}
         {% if _tl_url %}
         <div class="mb-3">
             <button class="btn btn-sm btn-outline-secondary"
