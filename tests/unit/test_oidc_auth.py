@@ -12,6 +12,7 @@ Covers:
 """
 
 import os
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -267,11 +268,13 @@ class TestOIDCLoginRoute:
             app.extensions.pop('oauth', None)
 
     def test_oidc_login_uses_configured_redirect_uri(self, app):
-        """Configured OIDC_REDIRECT_URI is passed verbatim to authorize_redirect.
+        """A configured OIDC_REDIRECT_URI is passed verbatim to authorize_redirect.
 
-        Locks in the contract that the per-environment redirect URI from env
-        (e.g. https://samuel.k8s.ucar.edu/auth/oidc/callback) is what Authlib
-        sends to the IdP, regardless of any X-Forwarded-* header weirdness.
+        Covers the escape hatch, NOT the deployed configuration: the CIRRUS
+        chart deliberately leaves OIDC_REDIRECT_URI unset so the callback
+        follows the request host (see the fallback tests below). This branch
+        stays supported for a single-host deployment that wants to override
+        X-Forwarded-* derivation entirely.
         """
         mock_oauth = MagicMock()
         mock_redirect_resp = MagicMock()
@@ -289,6 +292,69 @@ class TestOIDCLoginRoute:
                 mock_oauth.entra.authorize_redirect.assert_called_once_with(configured_uri)
         finally:
             app.config['AUTH_PROVIDER'] = 'stub'
+            app.config['OIDC_REDIRECT_URI'] = original_redirect_uri
+            app.extensions.pop('oauth', None)
+
+    def test_oidc_login_falls_back_to_request_host(self, app):
+        """With OIDC_REDIRECT_URI unset, the callback is derived from the request.
+
+        This is the deployed configuration (helm/values.yaml carries no
+        OIDC_REDIRECT_URI), so this branch — not the configured one above — is
+        what production actually exercises.
+        """
+        with self._oidc_app(app) as mock_oauth:
+            with app.test_client() as c:
+                c.get('/auth/oidc/login')
+            mock_oauth.entra.authorize_redirect.assert_called_once_with(
+                'http://localhost/auth/oidc/callback'
+            )
+
+    @pytest.mark.parametrize(
+        'forwarded_host',
+        ['samuel.k8s.ucar.edu', 'sam.hpc.ucar.edu'],
+    )
+    def test_oidc_login_callback_follows_forwarded_host(self, app, forwarded_host):
+        """Each ingress host round-trips to ITSELF, not to a pinned origin.
+
+        The regression guard for the sam.hpc.ucar.edu CNAME rollout. Authlib
+        stores the PKCE verifier / state in a cookie scoped to the origin the
+        login STARTED on, so returning the user to a different host makes that
+        cookie invisible and the callback dies with MismatchingStateError.
+        Pinning OIDC_REDIRECT_URI to one host is exactly how that regressed.
+
+        ProxyFix(x_host=1, x_proto=1) in create_app() is what turns
+        X-Forwarded-* into the derived URL, so this drives the real mechanism
+        rather than asserting on url_for() in isolation.
+        """
+        with self._oidc_app(app) as mock_oauth:
+            with app.test_client() as c:
+                c.get(
+                    '/auth/oidc/login',
+                    headers={
+                        'X-Forwarded-Host': forwarded_host,
+                        'X-Forwarded-Proto': 'https',
+                    },
+                )
+            mock_oauth.entra.authorize_redirect.assert_called_once_with(
+                f'https://{forwarded_host}/auth/oidc/callback'
+            )
+
+    @staticmethod
+    @contextmanager
+    def _oidc_app(app):
+        """Enable OIDC with no configured redirect URI, then restore prior state."""
+        mock_oauth = MagicMock()
+        mock_oauth.entra.authorize_redirect.return_value = MagicMock(status_code=302)
+
+        app.extensions['oauth'] = mock_oauth
+        original_provider = app.config.get('AUTH_PROVIDER')
+        original_redirect_uri = app.config.get('OIDC_REDIRECT_URI', '')
+        app.config['AUTH_PROVIDER'] = 'oidc'
+        app.config['OIDC_REDIRECT_URI'] = ''
+        try:
+            yield mock_oauth
+        finally:
+            app.config['AUTH_PROVIDER'] = original_provider
             app.config['OIDC_REDIRECT_URI'] = original_redirect_uri
             app.extensions.pop('oauth', None)
 

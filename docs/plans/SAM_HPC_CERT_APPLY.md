@@ -1,169 +1,172 @@
-# `sam.hpc.ucar.edu` — cert-fix apply runbook
+# `sam.hpc.ucar.edu` — cert + per-host OIDC rollout
 
-## Context
+## Status
 
-Unit 1 of the `sam.hpc.ucar.edu` rollout (multi-host ingress + multi-host
-healthcheck, PR #367) is **deployed on CIRRUS-k8s**. The ingress serves both
-`samuel.k8s.ucar.edu` and `sam.hpc.ucar.edu` and requests a single multi-SAN
-cert (`incommon-cert-samuel`). But the InCommon/Sectigo **ACME account is
-suspended account-wide**, so the reissue cannot complete:
+| Unit | State |
+|---|---|
+| Unit 1 — multi-host ingress + healthcheck (PR #367) | **Deployed** |
+| Cert reissue (multi-SAN `incommon-cert-samuel`) | **Done** — see below |
+| Unit 2 — per-host OIDC callback | **In this branch**, pending deploy + smoke |
+| Step 4 — logout post-logout URI | **Untested** — needs a browser round-trip |
+| Step 5 — advertise the name | Blocked on the two above |
 
-- `Certificate incommon-cert-samuel`: `Ready=False` (`SecretMismatch`),
-  `Issuing=Failed`, `revision=1`, `failedIssuanceAttempts` climbing.
-- The Order errors with
-  `401 urn:ietf:params:acme:error:unauthorized: The account is currently suspended`.
-- **Wire truth today:** `samuel.k8s.ucar.edu` serves its real InCommon cert
-  (single SAN, `notAfter Oct 10 2026`) and is **unaffected**; `sam.hpc.ucar.edu`
-  serves the fake `Kubernetes Ingress Controller Fake Certificate`.
-
-This is the expected, contained interim state. `samuel.k8s.ucar.edu` keeps
-working throughout. This doc is the fast-path to finish the job **once Ben
-confirms the ACME account is unsuspended.**
-
-All commands run against namespace `sam-queries`. We cannot read ClusterIssuers
-or Capsule Tenants (Forbidden for our OIDC identity) — the suspension itself is
-an NRIT / InCommon CM concern, not something we fix from here.
+All commands run against namespace `sam-queries`.
 
 ---
 
-## Step 0 — trigger
+## Completed — the cert
 
-**Do nothing until Ben says the ACME account is unsuspended.** Waiting does not
-help: cert-manager's failed-issuance backoff (1h,2h,4h,8h,16h, cap 32h) means
-the next automatic retry could be up to ~32h out, and it will just fail again
-while suspended.
+The InCommon/Sectigo ACME account was suspended account-wide, which blocked the
+reissue. CIRRUS resolved it; cert-manager's own failed-issuance backoff then
+retried and succeeded with no manual intervention — Steps 1–2 of the original
+runbook never needed to be executed by hand.
 
----
+Verified 2026-07-29:
 
-## Step 1 — force an immediate retry (skip the backoff)
+- `Certificate incommon-cert-samuel`: `Ready=True`, `revision=2`,
+  `dnsNames=["samuel.k8s.ucar.edu","sam.hpc.ucar.edu"]`.
+- Newest Order `state=valid`.
+- **Wire truth:** both hosts serve a cert issued by
+  `InCommon Intermediate CA - DVG2C` whose SANs are
+  `sam.hpc.ucar.edu, samuel.k8s.ucar.edu`.
+- `notAfter=2027-02-13`, `renewalTime=2026-12-09`.
+- `scripts/cirrus_healthcheck.sh`: §6 (served-cert coverage) and §7 (edge
+  security headers) **green on both hosts**.
 
-Delete the failed CertificateRequest (this also clears the stale errored Order);
-the ingress-shim / cert-manager immediately creates a fresh request:
+> **The old "independent production concern" is RESOLVED.** The worry was that
+> the suspension would also block the routine `samuel.k8s.ucar.edu` renewal due
+> 2026-08-05. That renewal has happened; the next one is 2026-12-09. No NRIT /
+> InCommon CM ticket is outstanding.
 
-```bash
-kubectl -n sam-queries delete certificaterequest incommon-cert-samuel-2
-```
-
-Equivalent alternative if `cmctl` is available:
-
-```bash
-cmctl -n sam-queries renew incommon-cert-samuel
-```
-
-> The CertificateRequest name may have incremented past `-2` on a later
-> revision. Confirm the current one first:
-> `kubectl -n sam-queries get certificaterequest`.
-
----
-
-## Step 2 — verify the reissue succeeded
+Re-verify at any time with:
 
 ```bash
-# Certificate: Ready=True, revision>=2, BOTH dnsNames
 kubectl -n sam-queries get certificate incommon-cert-samuel \
   -o jsonpath='dnsNames:{.spec.dnsNames}{"\n"}revision:{.status.revision}{"\n"}{range .status.conditions[*]}{.type}={.status} {.reason}{"\n"}{end}'
 
-# Newest Order: state=valid
-kubectl -n sam-queries get order | tail -3
-
-# Ground truth on the wire — BOTH SANs present, chain verifies:
 for h in samuel.k8s.ucar.edu sam.hpc.ucar.edu; do
   echo "=== $h ==="
   echo | openssl s_client -connect ${h}:443 -servername ${h} 2>/dev/null \
     | openssl x509 -noout -subject -issuer -enddate -ext subjectAltName
 done
-```
 
-Success looks like: Certificate `Ready=True`, `revision` incremented, both
-dnsNames; newest Order `state=valid`; **both** hosts present a cert whose SANs
-include `samuel.k8s.ucar.edu` **and** `sam.hpc.ucar.edu`, issued by InCommon,
-chain verifies (no more fake cert on `sam.hpc`).
-
-Then run the full healthcheck — §6 (served-cert coverage) must now PASS on both
-hosts:
-
-```bash
 scripts/cirrus_healthcheck.sh -v
 ```
 
-The §6 check keys on the **served** SANs decoded from the Secret's `tls.crt`
-(not the requested `spec.dnsNames`), so a green §6 is real proof the browser
-sees the right cert.
-
-**If it still fails while the account is reportedly unsuspended:** capture the
-newest Order's `.status.reason`
-(`kubectl -n sam-queries get order -o wide` then describe it) and hand back to
-NRIT / InCommon CM — the block is upstream of us.
+§6 keys on the **served** SANs decoded from the Secret's `tls.crt`, not the
+requested `spec.dnsNames`, so a green §6 is real proof the browser sees the
+right cert.
 
 ---
 
-## Step 3 — Unit 2: per-host OIDC (MUST be reconstructed first)
+## Unit 2 — per-host OIDC callback
 
-Until this ships, **login from `sam.hpc.ucar.edu` fails** with Authlib
-`MismatchingStateError`: the static `OIDC_REDIRECT_URI` sends the callback to
-`samuel.k8s.ucar.edu`, a different origin where the `sam.hpc` PKCE/state cookie
-does not exist. Anonymous pages work; `samuel.k8s` is unaffected.
+**The bug it fixes.** `helm/values.yaml` pinned
+`OIDC_REDIRECT_URI=https://samuel.k8s.ucar.edu/auth/oidc/callback`, so a login
+started on `sam.hpc` was handed to Entra with a return address on the other
+host. Authlib scopes the PKCE verifier / state cookie to the origin the login
+started on, so the callback landed somewhere that cookie was invisible and died
+with `MismatchingStateError`. Anonymous pages were unaffected.
 
-⚠ **The Unit 2 branch `sam_hpc_oidc_perhost` no longer exists** (orphaned in a
-rebase, or never pushed). It has to be re-created. The change is small:
+**The change.** Delete the pin. `webapp/auth/blueprint.py` already treats it as
+an override — `config.get('OIDC_REDIRECT_URI') or url_for('auth.oidc_callback',
+_external=True)` — and `ProxyFix(x_host=1, x_proto=1)` (`webapp/run.py`)
+resolves that from `X-Forwarded-*`. No application code changed. Nothing else
+pins the external URL: there is no `SERVER_NAME`, `PREFERRED_URL_SCHEME`,
+`APPLICATION_ROOT`, or CORS allowlist anywhere in the repo.
 
-- **Remove** the static `OIDC_REDIRECT_URI` env var from `helm/values.yaml`.
-  `src/webapp/auth/blueprint.py:130` already falls back to
-  `url_for('auth.oidc_callback', _external=True)`, which `ProxyFix(x_host=1)`
-  (`src/webapp/run.py`) resolves to whichever host the user is on. Confirmed no
-  `SERVER_NAME` / `PREFERRED_URL_SCHEME` / CORS-origin pins the external URL.
-- **Tests:**
-  - `helm/tests/test-oidc-render.sh` — flip the `OIDC_REDIRECT_URI` /
-    `samuel.k8s.ucar.edu/auth/oidc/callback` assertions from `assert_contains`
-    to `assert_not_contains` (callback is derived per-host).
-  - `tests/unit/test_oidc_auth.py` — keep
-    `test_oidc_login_uses_configured_redirect_uri` (covers the config-present
-    branch); **add** `test_oidc_login_falls_back_to_request_host` asserting
-    `authorize_redirect` is called with `http://<request host>/auth/oidc/callback`
-    when `OIDC_REDIRECT_URI` is absent.
-- **Pre-req before deploying Unit 2:** cert is real (Steps 1–2 done) AND Entra
-  reply-URLs confirmed. Both login reply URLs are registered
-  (`https://sam.hpc.ucar.edu/auth/oidc/callback` + the existing samuel.k8s one).
+**Guards added,** because the failure mode is invisible to HTTP-level checks:
 
-Deploy Unit 2 via the CIRRUS `workflow_dispatch` once merged to `main`, then do
-a browser OIDC round-trip **from each host** — the URL bar must stay on the
-originating host through the callback.
+- `helm/tests/test-oidc-render.sh` — asserts `OIDC_REDIRECT_URI` and any
+  `auth/oidc/callback` literal do **not** render from `values.yaml`.
+- `tests/unit/test_oidc_auth.py::test_oidc_login_falls_back_to_request_host` —
+  the deployed branch (no config) derives the callback.
+- `…::test_oidc_login_callback_follows_forwarded_host` — parametrized over both
+  hosts, driving real `X-Forwarded-Host` through ProxyFix.
+- `…::test_oidc_login_uses_configured_redirect_uri` kept: the override branch
+  is still supported for a single-host deployment.
+
+`helm/values-local.yaml` still sets `OIDC_REDIRECT_URI: ""`. That is now a
+no-op, deliberately left in place inside its "override production OIDC envs
+back to stub" defense-in-depth block.
+
+**Pre-req, verified — no Entra change needed for login.** Replaying the live
+authorize URL with `redirect_uri` swapped to `sam.hpc` returns AADSTS**50058**
+(“needs sign-in”), identical in shape to the `samuel.k8s` response — *not*
+AADSTS**50011** (reply-URL mismatch). Entra validates reply URLs before
+rendering the sign-in page, so `https://sam.hpc.ucar.edu/auth/oidc/callback`
+is already registered.
+
+### Deploying it
+
+Two valid routes — the chart reaches CIRRUS either way:
+
+- **Any branch, on demand:** `workflow_dispatch` on
+  `build-images-cirrus-deploy.yaml` once the branch is pushed. This is the
+  fastest way to smoke Unit 2 against real Entra before merging.
+- **Automatic:** push to `main` triggers the same workflow. Either path builds
+  the webapp image, force-pushes the `cirrus` branch with the image pinned, and
+  ArgoCD reconciles.
+
+> ⚠ **The staging PR is not ceremonial.** `ci-staging.yaml` is the only place
+> `helm/tests/test-oidc-render.sh` runs, and it triggers on `pull_request` into
+> **`staging`** only — never on PRs into `main`. Merging straight to `main`
+> would never execute the render assertions above.
+
+### Verifying it
+
+```bash
+# each host must now name ITSELF as the callback
+for h in samuel.k8s.ucar.edu sam.hpc.ucar.edu; do
+  echo "=== $h ==="
+  curl -s -o /dev/null -D - "https://$h/auth/oidc/login" \
+    | grep -i '^location:' | tr '&' '\n' | grep -i redirect_uri
+done
+```
+
+Then, **in a browser from each host in turn**, a full OIDC login round-trip:
+the URL bar must stay on the originating host through the callback and land
+signed in. The unit tests mock Authlib, so only this proves the cookie
+actually survives the round-trip.
+
+**Rollback** is restoring one line in `values.yaml`. `samuel.k8s` login is
+unaffected throughout — the derivation produces the identical URL for that host.
 
 ---
 
 ## Step 4 — logout (test-first, before touching Entra)
 
-Entra allows only one post-logout redirect URI; it is currently the samuel.k8s
-value. Logout emits `post_logout_redirect_uri` derived per-host as
-`url_for('status_dashboard.index', _external=True)` →
-`https://<host>/status/` (`src/webapp/auth/blueprint.py:~209`, blueprint
-`url_prefix='/status'`).
+Entra allows only one post-logout redirect URI; it is currently the
+`samuel.k8s` value. **No code change is needed** — logout already derives
+`post_logout_redirect_uri` per-host as
+`url_for('status_dashboard.index', _external=True)` → `https://<host>/status/`
+(`src/webapp/auth/blueprint.py`, blueprint `url_prefix='/status'`).
 
 1. Log in **and** log out **from `sam.hpc.ucar.edu`**.
-2. If it redirects back cleanly → no Entra change needed (leading hypothesis:
-   Entra validates the post-logout URI by registered-reply-URL **origin**, and
-   `https://sam.hpc.ucar.edu/auth/oidc/callback` is already registered). Do not
-   assert this — the test is the proof.
-3. If it lands on MS's signed-out page instead → have Andrew Tamagni register
-   **`https://sam.hpc.ucar.edu/status/`** (exact emitted string, host-swapped —
-   NOT root `/`). Per Ben's accepted tradeoff: clean logout for `sam.hpc`,
-   degraded from `samuel.k8s`, is fine.
+2. If it redirects back cleanly → nothing to do. (Leading hypothesis: Entra
+   validates the post-logout URI by registered-reply-URL **origin**, and
+   `https://sam.hpc.ucar.edu/auth/oidc/callback` is already registered. Do not
+   assert this — the test is the proof.)
+3. If it strands on MS's signed-out page → have Andrew Tamagni register
+   **`https://sam.hpc.ucar.edu/status/`** — the exact emitted string,
+   host-swapped, **NOT** root `/`. Per Ben's accepted tradeoff, clean logout for
+   `sam.hpc` and degraded from `samuel.k8s` is fine.
 
 ---
 
 ## Step 5 — advertise
 
-Only after Steps 2–4 are all green: communicate `sam.hpc.ucar.edu` as SAM's
-user-facing hostname. `samuel.k8s.ucar.edu` stays as the platform / automation /
-healthcheck alias (parity tooling, `scripts/apis/*`, `src/cli/cmds/admin.py`
-remain on it deliberately — no 301 redirect).
+Only once Unit 2 and Step 4 are both green: communicate `sam.hpc.ucar.edu` as
+SAM's user-facing hostname. `samuel.k8s.ucar.edu` stays as the platform /
+automation / healthcheck alias — parity tooling, `scripts/apis/*`, and
+`src/cli/cmds/admin.py` remain on it deliberately, with no 301 redirect.
 
 ---
 
-## Independent production concern (do not lose track of)
+## Note for future aliases
 
-`incommon-cert-samuel` has `renewalTime=2026-08-05` and `notAfter=2026-10-10`.
-The account suspension is a live production risk **regardless of `sam.hpc`** — if
-it is not resolved before early August, the normal renewal of the
-`samuel.k8s.ucar.edu` cert also fails. This warrants a separate NRIT / InCommon
-CM ticket tracking the suspension itself.
+Adding a host is three things, not two: `webapp.tls.extraHosts` in
+`values.yaml`, `INGRESS_HOSTS` in `scripts/lib/cirrus_common.sh`, **and** an
+Entra reply-URL registration for its `/auth/oidc/callback`. The callback URL
+itself needs no config — it is derived. `src/webapp/utils/config_inspect.py`
+now reports `oidc_redirect_uri: None` in production; that is expected.
