@@ -13,26 +13,41 @@ from __future__ import annotations
 import pytest
 
 from webapp.dashboards.charts import (
+    _jobs_metric_value,
+    _jobs_timeseries_cache_key,
+    _jobs_timeseries_series,
     generate_jobs_histogram,
+    generate_jobs_timeseries_stacked,
     generate_jobs_user_pie_chart,
 )
 
 pytestmark = pytest.mark.unit
 
 
+# Charges default to HALF the hours rather than a copy of them, so a metric
+# that read `cpu_hours` where it meant `cpu_charges` renders differently
+# instead of identically. Both are overridable to model the uncharged-QoS
+# case (real hours, 0.0 charges).
 def _hist(counts=(10, 5, 0), cpu_hours=(100.0, 50.0, 0.0),
-          gpu_hours=(0.0, 2.0, 0.0), dimension='wait', null_count=0):
+          gpu_hours=(0.0, 2.0, 0.0), dimension='wait', null_count=0,
+          cpu_charges=None, gpu_charges=None):
     labels = ['<1m', '1-5m', '5-15m'][:len(counts)]
     los = [0, 60, 300]
     his = [59, 299, 899]
+    if cpu_charges is None:
+        cpu_charges = [h * 0.5 for h in cpu_hours]
+    if gpu_charges is None:
+        gpu_charges = [h * 0.5 for h in gpu_hours]
     return {
         'dimension': dimension, 'column': 'eligible_secs', 'unit': 'seconds',
         'min_param': 'min_eligible_secs', 'max_param': 'max_eligible_secs',
         'buckets': [
             {'label': lbl, 'lo': lo, 'hi': hi,
-             'job_count': c, 'cpu_hours': ch, 'gpu_hours': gh}
-            for lbl, lo, hi, c, ch, gh
-            in zip(labels, los, his, counts, cpu_hours, gpu_hours)
+             'job_count': c, 'cpu_hours': ch, 'gpu_hours': gh,
+             'cpu_charges': cc, 'gpu_charges': gc}
+            for lbl, lo, hi, c, ch, gh, cc, gc
+            in zip(labels, los, his, counts, cpu_hours, gpu_hours,
+                   cpu_charges, gpu_charges)
         ],
         'null_count': null_count,
         'total_count': sum(counts) + null_count,
@@ -42,11 +57,14 @@ def _hist(counts=(10, 5, 0), cpu_hours=(100.0, 50.0, 0.0),
 def _usage(rows=None, totals=None):
     if rows is None:
         rows = [
-            {'value': 'alice', 'job_count': 50, 'cpu_hours': 500.0, 'gpu_hours': 0.0},
-            {'value': 'bob',   'job_count': 10, 'cpu_hours': 100.0, 'gpu_hours': 5.0},
+            {'value': 'alice', 'job_count': 50, 'cpu_hours': 500.0,
+             'gpu_hours': 0.0, 'cpu_charges': 250.0, 'gpu_charges': 0.0},
+            {'value': 'bob',   'job_count': 10, 'cpu_hours': 100.0,
+             'gpu_hours': 5.0, 'cpu_charges': 50.0, 'gpu_charges': 2.5},
         ]
     if totals is None:
-        totals = {'job_count': 60, 'cpu_hours': 600.0, 'gpu_hours': 5.0}
+        totals = {'job_count': 60, 'cpu_hours': 600.0, 'gpu_hours': 5.0,
+                  'cpu_charges': 300.0, 'gpu_charges': 2.5}
     return {'dimension': 'user', 'rows': rows, 'totals': totals}
 
 
@@ -55,9 +73,33 @@ def _usage(rows=None, totals=None):
 # ---------------------------------------------------------------------------
 
 def test_histogram_renders_svg_for_all_metrics():
-    for metric in ('jobs', 'cpu_hours', 'gpu_hours'):
+    for metric in ('jobs', 'cpu_hours', 'gpu_hours', 'charges'):
         out = generate_jobs_histogram(_hist(), metric=metric)
-        assert '<svg' in out
+        assert '<svg' in out, metric
+
+
+def test_histogram_charges_is_not_a_copy_of_cpu_hours():
+    """'charges' must read cpu_charges+gpu_charges, not the hour keys.
+
+    The fixture's charges are half its hours, so a metric that fell back to
+    hours — or to `.get(k) or 0` on a missing key — renders a different SVG
+    than the correct one.
+    """
+    h = _hist()
+    svg_charges = generate_jobs_histogram(h, metric='charges')
+    assert '<svg' in svg_charges
+    assert svg_charges != generate_jobs_histogram(h, metric='cpu_hours')
+    # And it is genuinely reading the charge keys, not defaulting to jobs.
+    assert svg_charges != generate_jobs_histogram(h, metric='jobs')
+
+
+def test_histogram_uncharged_buckets_render_the_placeholder():
+    """Real hours with a 0.0 QoS factor everywhere → nothing to plot in the
+    charges view, while the hours view still renders. Not a bug: the
+    'uncharged' QoS carries a genuine 0.0 factor."""
+    h = _hist(cpu_charges=(0.0, 0.0, 0.0), gpu_charges=(0.0, 0.0, 0.0))
+    assert 'No jobs in this range' in generate_jobs_histogram(h, metric='charges')
+    assert '<svg' in generate_jobs_histogram(h, metric='cpu_hours')
 
 
 def test_histogram_metrics_render_differently():
@@ -322,6 +364,41 @@ def test_pie_metric_selects_and_resorts():
     assert '#job-user-bob' in svg_jobs
 
 
+def test_pie_charges_resorts_and_keeps_its_remainder_in_charge_units():
+    """The pie must rank AND size by charges, and its Other slice is the
+    charge remainder — not the CPU-hour one.
+
+    alice out-earns bob on hours but is entirely `uncharged` QoS, so a
+    charges view must put bob first. The pre-truncation totals leave a
+    charge remainder that has to survive into the Other slice.
+    """
+    rows = [
+        {'value': 'alice', 'job_count': 5, 'cpu_hours': 500.0,
+         'gpu_hours': 0.0, 'cpu_charges': 0.0, 'gpu_charges': 0.0},
+        {'value': 'bob',   'job_count': 5, 'cpu_hours': 100.0,
+         'gpu_hours': 0.0, 'cpu_charges': 100.0, 'gpu_charges': 0.0},
+    ]
+    usage = _usage(rows=rows,
+                   totals={'job_count': 20, 'cpu_hours': 900.0,
+                           'gpu_hours': 0.0, 'cpu_charges': 400.0,
+                           'gpu_charges': 0.0})
+    svg = generate_jobs_user_pie_chart(usage, metric='charges')
+    assert '<svg' in svg
+    assert '#job-user-bob' in svg          # the only charged entity
+    assert 'Other' in svg                  # 400 - 100 of charges beyond rows
+    # An hours view of the same envelope is a different picture entirely.
+    assert svg != generate_jobs_user_pie_chart(usage, metric='cpu_hours')
+
+
+def test_pie_all_uncharged_returns_placeholder():
+    """Every row real but uncharged → no charge total to slice."""
+    usage = _usage(totals={'job_count': 60, 'cpu_hours': 600.0,
+                           'gpu_hours': 5.0, 'cpu_charges': 0.0,
+                           'gpu_charges': 0.0})
+    assert 'No usage data' in generate_jobs_user_pie_chart(
+        usage, metric='charges')
+
+
 def test_pie_empty_and_zero_total_return_placeholder():
     assert 'No usage data' in generate_jobs_user_pie_chart(
         {'rows': [], 'totals': {}})
@@ -364,3 +441,174 @@ def test_pie_sentinel_prefix_in_cache_key():
     a = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-user')
     b = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-proj')
     assert a != b
+
+
+# ---------------------------------------------------------------------------
+# generate_jobs_timeseries_stacked — the Jobs tab's activity timeline
+# ---------------------------------------------------------------------------
+
+def _ts(counts=(10, 0, 5), owners=None, period='day',
+        cpu_charges=None, gpu_charges=None):
+    """A jobs_timeseries envelope. Band 1 is an interior zero by default.
+
+    ``owners`` is ``{name: [per-band job_count]}``; every band carries the
+    SAME keys (the plugin's contract), zero-filled where idle.
+    """
+    labels = ['2026-05-01', '2026-05-02', '2026-05-03'][:len(counts)]
+    if cpu_charges is None:
+        cpu_charges = [c * 10.0 for c in counts]
+    if gpu_charges is None:
+        gpu_charges = [0.0] * len(counts)
+    bands = []
+    for i, (lbl, c) in enumerate(zip(labels, counts)):
+        band = {
+            'label': lbl, 'start': lbl, 'end': lbl,
+            'job_count': c, 'cpu_hours': c * 100.0, 'gpu_hours': c * 2.0,
+            'cpu_charges': cpu_charges[i], 'gpu_charges': gpu_charges[i],
+        }
+        if owners is not None:
+            band['owners'] = {
+                name: {'job_count': vals[i],
+                       'cpu_hours': vals[i] * 100.0,
+                       'gpu_hours': vals[i] * 2.0,
+                       'cpu_charges': vals[i] * 10.0,
+                       'gpu_charges': 0.0}
+                for name, vals in owners.items()
+            }
+        bands.append(band)
+    return {
+        'period': period, 'owners_by': 'user',
+        'start': labels[0], 'end': labels[-1],
+        'bands': bands,
+        'totals': {'job_count': sum(counts),
+                   'cpu_hours': sum(counts) * 100.0,
+                   'gpu_hours': sum(counts) * 2.0,
+                   'cpu_charges': sum(cpu_charges),
+                   'gpu_charges': sum(gpu_charges)},
+        'null_count': 0, 'total_count': sum(counts),
+    }
+
+
+def test_timeline_renders_svg_for_all_metrics():
+    for metric in ('jobs', 'cpu_hours', 'gpu_hours', 'charges'):
+        out = generate_jobs_timeseries_stacked(_ts(), metric=metric)
+        assert '<svg' in out, metric
+
+
+def test_timeline_charges_sums_cpu_and_gpu_charges():
+    """'charges' is the one metric backed by TWO plugin keys; reading only
+    one would silently halve the chart."""
+    both = _ts(counts=(4,), cpu_charges=[10.0], gpu_charges=[90.0])
+    cpu_only = _ts(counts=(4,), cpu_charges=[10.0], gpu_charges=[0.0])
+    assert generate_jobs_timeseries_stacked(both, metric='charges') != \
+        generate_jobs_timeseries_stacked(cpu_only, metric='charges')
+    assert _jobs_metric_value(both['bands'][0], 'charges') == 100.0
+
+
+def test_timeline_empty_and_all_zero_return_placeholder():
+    assert '<svg' not in generate_jobs_timeseries_stacked(
+        {'bands': []}, metric='jobs')
+    assert '<svg' not in generate_jobs_timeseries_stacked(
+        _ts(counts=(0, 0, 0)), metric='jobs')
+
+
+def test_timeline_bars_carry_period_sentinels():
+    out = generate_jobs_timeseries_stacked(_ts(counts=(10, 0, 5)),
+                                           metric='jobs')
+    assert '#jt-bar-0' in out
+    assert '#jt-bar-2' in out
+    # The interior zero band is not clickable — nothing to drill into.
+    assert '#jt-bar-1' not in out
+
+
+def test_timeline_uncharged_band_keeps_jobs_but_loses_its_bar_link():
+    """qos_factor 0.0 is real: the band has jobs and hours but draws at zero
+    on the charges view, so its (invisible) bar carries no link. The period
+    table's row is the drill path there — see the template."""
+    ts = _ts(counts=(10, 5), cpu_charges=[100.0, 0.0], gpu_charges=[0.0, 0.0])
+    charges = generate_jobs_timeseries_stacked(ts, metric='charges')
+    jobs = generate_jobs_timeseries_stacked(ts, metric='jobs')
+    assert '#jt-bar-1' in jobs
+    assert '#jt-bar-1' not in charges
+
+
+def test_timeline_legend_identical_across_bands():
+    """The plugin ranks owners once over the window; the series builder must
+    preserve that, or colours would shift bar to bar."""
+    # A tail beyond the top-N, so an 'Others' band exists to sit at the base.
+    owners = {'alice': [6, 0, 3], 'bob': [2, 0, 1]}
+    labels, series = _jobs_timeseries_series(_ts(owners=owners), 'jobs')
+    names = [n for n, _v in series]
+    assert names[0] == 'Others'          # bottom of the stack
+    assert set(names[1:]) == {'alice', 'bob'}
+    assert all(len(vals) == len(labels) for _n, vals in series)
+
+
+def test_timeline_others_is_the_derivable_remainder():
+    """Others = band total - sum(owners), never synthesized."""
+    owners = {'alice': [6, 0, 4], 'bob': [2, 0, 1]}
+    _labels, series = _jobs_timeseries_series(_ts(counts=(10, 0, 5),
+                                                 owners=owners), 'jobs')
+    others = dict(series)['Others']
+    assert others == [2.0, 0.0, 0.0]     # 10-8, 0-0, 5-5
+
+
+def test_timeline_no_others_series_when_owners_cover_totals():
+    owners = {'alice': [8, 0, 4], 'bob': [2, 0, 1]}
+    _labels, series = _jobs_timeseries_series(_ts(counts=(10, 0, 5),
+                                                 owners=owners), 'jobs')
+    assert 'Others' not in dict(series)
+
+
+def test_timeline_legend_opens_the_entity_modal_not_a_row_sentinel(app):
+    """A #job-user- sentinel is resolved by openEntityRow() *within the
+    clicked chart's tab-pane*. This chart lives in the Jobs pane while those
+    rows live in their own lazily-loaded panes, so a row sentinel here
+    resolves to nothing — verified in the browser. The modal route works
+    from any pane and needs nothing pre-rendered."""
+    ts = _ts(owners={'alice': [8, 0, 4]})
+    with app.test_request_context('/'):
+        user = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                                entity_kind='user')
+        proj = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                                entity_kind='project')
+    assert '#job-user-alice' not in user
+    assert '/admin/user/alice' in user
+    assert 'project-details-modal/alice' in proj
+
+
+def test_timeline_legend_unlinked_without_permission(app):
+    """Gated on the same affordance permission the By User / By Project
+    tables use — never render a quick-view link that would 403."""
+    ts = _ts(owners={'alice': [8, 0, 4]})
+    with app.test_request_context('/'):
+        linked = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                                  link_entities=True)
+        plain = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                                 link_entities=False)
+    assert '/admin/user/alice' in linked
+    assert '/admin/user/alice' not in plain
+
+
+def test_timeline_period_and_link_flag_join_the_cache_key():
+    ts = _ts(owners={'alice': [8, 0, 4]})
+    base = _jobs_timeseries_cache_key(ts, metric='jobs', period='day')
+    assert base != _jobs_timeseries_cache_key(ts, metric='jobs', period='day',
+                                              entity_kind='project')
+    assert base != _jobs_timeseries_cache_key(ts, metric='jobs',
+                                              period='week')
+    assert base != _jobs_timeseries_cache_key(ts, metric='jobs', period='day',
+                                              link_entities=False)
+    assert base != _jobs_timeseries_cache_key(ts, metric='charges',
+                                              period='day')
+
+
+def test_timeline_count_vector_joins_the_cache_key():
+    """Two envelopes with identical plotted values but different populated
+    bands must not share an SVG — the bar sentinels differ."""
+    a = _ts(counts=(5, 0), cpu_charges=[50.0, 0.0])
+    b = _ts(counts=(0, 5), cpu_charges=[50.0, 0.0])
+    b['bands'][1]['cpu_charges'] = 0.0
+    b['bands'][0]['cpu_charges'] = 50.0
+    assert _jobs_timeseries_cache_key(a, metric='charges') != \
+        _jobs_timeseries_cache_key(b, metric='charges')

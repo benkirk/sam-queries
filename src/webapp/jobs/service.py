@@ -416,6 +416,72 @@ def jobs_histogram(
     )
 
 
+def jobs_timeseries(
+    machine: str,
+    period: str,
+    scope: JobScope,
+    *,
+    owners_limit: Optional[int] = None,
+    owners_sort_by: Optional[str] = None,
+    owners_by: Optional[str] = None,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, Any]:
+    """Cached per-period activity series (plugin envelope, verbatim).
+
+    The time axis none of the distribution panels offer, and the only
+    per-period plugin query that honours the filter set — ``usage_history``
+    / ``jobs_by_entity_period`` / ``daily_summary_report`` all take dates
+    only, so a chart on those would ignore queue / size / exit-status
+    filters while sitting above a table that respects them.
+
+    ``period`` is ``'day'``/``'week'``/``'month'`` and joins the cache
+    ``opts`` so granularities never alias. Unlike ``jobs_histogram``, the
+    owner top-N is ranked **once over the whole window** and every band
+    carries the same keys in the same order — a stacked chart assigns
+    colours once and trusts a series never to move or vanish mid-axis.
+
+    Bands replay through ``start``/``end`` rather than
+    ``min_param``/``max_param``: the window filters *are* this dimension.
+
+    Cost is path-dependent upstream. The plugin serves this off its
+    pre-aggregated ``daily_summary`` whenever the filter set is expressible
+    in ``(date, user_id, account_id, queue_id)`` — i.e. dates plus
+    user/account/queue, which is exactly a dashboard card's scope — and
+    scans ``jobs`` otherwise. ``qos``, ``exit_status``, ``job_id``, ``name``
+    and every ``min_*``/``max_*`` bound force the scan, so this is cheap on
+    the cards and expensive under precisely the explorer filters that make
+    it interesting. On the scan path it costs two statements when
+    *owners_limit* is set (rank, then series) against one for a histogram.
+    Measured on our own containers, a 180-band daily series over the card's
+    scope is **~65 ms** on either machine.
+
+    The envelope is identical on both paths, so the *response* cannot tell
+    you which ran — but the plugin logs the routing decision and the day
+    coverage at DEBUG. ``webapp/logging_config.py`` wires the ``job_history``
+    logger up deliberately so ``LOG_LEVEL=DEBUG`` surfaces it; without that
+    it inherits an unconfigured root and is silently dropped.
+
+    Hosts differ deliberately: the cards keep it behind a collapse, the
+    explorer opens it (``timeline_open``) — see ``jobs_card.html``.
+    """
+    scope.check_filters(filters)
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    scope.apply(kwargs)
+    if owners_limit is not None:
+        kwargs['owners_limit'] = owners_limit
+    if owners_sort_by is not None:
+        kwargs['owners_sort_by'] = owners_sort_by
+    if owners_by is not None and owners_by != 'user':
+        kwargs['owners_by'] = owners_by
+
+    return _cached_aggregation(
+        'timeseries', machine, kwargs,
+        lambda q: q.jobs_timeseries(period, **kwargs),
+        period=period,
+    )
+
+
 def jobs_usage_by_user(
     machine: str,
     scope: JobScope,
