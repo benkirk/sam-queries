@@ -85,12 +85,30 @@ report.
 
 - The plugin's own band cap is path-dependent: **400** on the `jobs`-scan
   path, **1200** on the `daily_summary` fast path (no CASE ladder there).
-- Fast path: the plugin serves the series from `daily_summary` whenever the
-  filter set is expressible in `(date, user_id, account_id, queue_id)` —
-  measured **~15 ms vs ~7.4 s** for a 180 d daily series. That covers a
-  card's normal scope; `qos` / `exit_status` / `job_id` / `name` and any
-  `min_*`/`max_*` bound force the scan. Envelope is identical either way,
-  so neither we nor the cache can tell which path ran.
+- Fast path: the plugin serves the series from `daily_summary` when two things
+  hold — the filter set is expressible in `(date, user_id, account_id,
+  queue_id)`, and every day of the window is either summarized or *verifiably
+  empty* for that filter set (scheduler-outage days leave permanent rollup
+  holes; the plugin probes them rather than falling back). A card's normal
+  scope qualifies; `qos` / `exit_status` / `job_id` / `name` and any
+  `min_*`/`max_*` bound force the scan.
+- Measured **on our own containers**, SAM's exact call shape (`start` only,
+  `end` derived), 180 bands at `period=day`: **derecho 67.8 ms, casper
+  65.1 ms**, both on the fast path. Against ~7.4 s for the same series when
+  filters force the scan.
+
+  > These numbers depend on a plugin fix worth knowing about: the window probe
+  > SAM triggers by pinning only `start` used to carry a `COUNT(*) FILTER`
+  > alongside its `MIN`/`MAX`, which defeats PostgreSQL's index-InitPlan
+  > rewrite. That one extra aggregate cost casper **17.2 s per dashboard
+  > load**, swamping the fast path it fed. Keep the probe's select list pure
+  > if this is ever touched.
+
+- The envelope is identical on both paths, so the *response* can't tell you
+  which ran. The plugin logs the decision and day coverage at DEBUG, and
+  `webapp/logging_config.py` wires the `job_history` logger explicitly so
+  `LOG_LEVEL=DEBUG` actually surfaces it — plugin loggers inherit an
+  unconfigured root otherwise and emit nothing.
 
 ## SAM work
 

@@ -52,6 +52,27 @@ def configure_logging(app):
         app.logger.addHandler(h)
     app.logger.propagate = False
 
+    # Optional plugin loggers (hpc-usage-queries). These are module-level
+    # `getLogger(__name__)` under their own package roots, so they inherit the
+    # ROOT logger — which this app never configures. Left alone they resolve to
+    # WARNING with no handlers and emit NOTHING, silently swallowing the
+    # plugin's own diagnostics: most usefully `jobs_timeseries`'s DEBUG line
+    # naming which path served a request (`daily_summary` rollup vs a full
+    # `jobs` scan, ~100x apart) and how many days of the window were covered.
+    # Without this, that decision is unobservable from inside SAM.
+    #
+    # Cheap to wire: the webapp-side plugin modules log 6 DEBUG lines and one
+    # ERROR in total, so at the default INFO this adds no output at all — it
+    # only makes LOG_LEVEL=DEBUG mean what it says. Named explicitly rather
+    # than configuring root, which would also unmute every other library.
+    for plugin_pkg in ('job_history', 'fs_scans'):
+        plog = logging.getLogger(plugin_pkg)
+        plog.handlers = []
+        plog.setLevel(level)
+        for h in handlers:
+            plog.addHandler(h)
+        plog.propagate = False
+
     # Suppress noisy third-party loggers
     for noisy in ('werkzeug', 'sqlalchemy.engine', 'sqlalchemy.pool'):
         logging.getLogger(noisy).setLevel(logging.WARNING)

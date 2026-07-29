@@ -453,8 +453,14 @@ def jobs_timeseries(
     the cards and expensive under precisely the explorer filters that make
     it interesting. On the scan path it costs two statements when
     *owners_limit* is set (rank, then series) against one for a histogram.
-    The envelope is identical either way, so neither we nor the cache can
-    tell which ran.
+    Measured on our own containers, a 180-band daily series over the card's
+    scope is **~65 ms** on either machine.
+
+    The envelope is identical on both paths, so the *response* cannot tell
+    you which ran — but the plugin logs the routing decision and the day
+    coverage at DEBUG. ``webapp/logging_config.py`` wires the ``job_history``
+    logger up deliberately so ``LOG_LEVEL=DEBUG`` surfaces it; without that
+    it inherits an unconfigured root and is silently dropped.
 
     Hosts differ deliberately: the cards keep it behind a collapse, the
     explorer opens it (``timeline_open``) — see ``jobs_card.html``.
