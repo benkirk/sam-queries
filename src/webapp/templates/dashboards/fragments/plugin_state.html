@@ -1,0 +1,39 @@
+{#
+  Degraded-state banners for fragments backed by an optional SAM plugin
+  (fs-scans, job-history).
+
+  Both navigators degrade the same three ways — plugin absent, query raised,
+  query returned nothing — and had transcribed the same markup with different
+  nouns. These are the shared shapes; each feature's macro file wraps them
+  with its own wording so call sites are unchanged.
+
+  A missing plugin is NEVER a 404: the card may hx-get its panels
+  unconditionally, so the fragment has to render something explanatory.
+#}
+
+{# Plugin not loaded / nothing reachable. #}
+{% macro plugin_disabled(feature, package, note='') %}
+  <div class="alert alert-secondary py-2 mb-0" role="status">
+    <small>
+      {{ feature }} is unavailable: the
+      <code>{{ package }}</code> plugin is not loaded{{ note }}.
+      <a href="/dashboards/admin/configuration"
+         target="_blank" rel="noopener">
+        Check the Database card on the Admin → Configuration page
+      </a>
+      for plugin/DB health.
+    </small>
+  </div>
+{% endmacro %}
+
+{# A query raised (transient plugin/DB issue) — warn inline, don't 500. #}
+{% macro plugin_error(feature, error) %}
+  <div class="alert alert-warning py-2 mb-0" role="alert">
+    <small>Could not load {{ feature }}: {{ error }}</small>
+  </div>
+{% endmacro %}
+
+{# Query succeeded but matched nothing. #}
+{% macro plugin_empty(message) %}
+  <p class="text-muted small mb-0">{{ message }}</p>
+{% endmacro %}

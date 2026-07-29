@@ -14,6 +14,7 @@
    AND the viewer holds VIEW_ALL_JOB_DATA (gated at the route + tab), so
    it never needs its own empty/disabled state.
 #}
+{% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
 <ul class="nav nav-pills mb-3" id="jobHistSubtabs" role="tablist">
     {% for m in job_history_machines %}
     <li class="nav-item" role="presentation">
@@ -34,16 +35,16 @@
         {% else %}
             {% set _trigger = 'shown.bs.tab once from:#job-hist-subtab-' ~ loop.index %}
         {% endif %}
-        {% with mode='machine',
-                cid='jobs-m' ~ loop.index,
-                tablist_id='jobHistCardTabs' ~ loop.index,
-                machine=m,
-                start=jobs_window_start,
-                days=jobs_window_days,
-                days_persist_id='jobs-days-status',
-                load_trigger=_trigger %}
-            {% include 'dashboards/user/partials/jobs_card.html' %}
-        {% endwith %}
+        {{ jobs_card(mode='machine',
+                     cid='jobs-m' ~ loop.index,
+                     tablist_id='jobHistCardTabs' ~ loop.index,
+                     machine=m,
+                     show_by_user=jobs_panels.show_by_user,
+                     show_by_project=jobs_panels.show_by_project,
+                     panel_params={'start': jobs_window_start},
+                     days=jobs_window_days,
+                     days_persist_id='jobs-days-status',
+                     load_trigger=_trigger) }}
     </div>
     {% endfor %}
 </div>

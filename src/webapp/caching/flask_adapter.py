@@ -24,19 +24,33 @@ _KEY_GROUPS = (
 
 # Keyspaces owned by the OTHER cache adapters sharing this Redis DB —
 # excluded from flask-cache introspection so their entries don't miscount
-# into the 'other' group. Must list every live non-flask adapter prefix:
-# 'chart:' covers RedisChartCache (chart:<name>:, chart:hits/misses:<name>),
-# the rest are the name-derived RedisTTLAdapter prefixes. A unit test
-# cross-checks this tuple against webapp.caching.adapters().
-_FOREIGN_PREFIXES = (
-    'chart:',
-    'allocation_usage:',
-    'fs_scans:',
-    'fs_scans_filtered:',
-    'jobs:',
-    'jobs_recent:',
-)
-_FOREIGN_PREFIXES_B = tuple(p.encode() for p in _FOREIGN_PREFIXES)
+# into the 'other' group.
+#
+# 'chart:' covers RedisChartCache (chart:<name>:, chart:hits/misses:<name>)
+# and is hardcoded because chart caches are constructed per decorated
+# function at import of dashboards/charts.py, all under the one prefix.
+#
+# The bucketed TTL caches (allocation_usage, fs_scans, fs_scans_filtered,
+# jobs, jobs_recent) are DERIVED from the cache registry rather than listed:
+# their prefixes come from the same BucketSpec names the adapters are built
+# from, so adding a bucket can no longer silently break this introspection.
+# Config-independent — a bucket disabled in this worker still owns its
+# keyspace in a shared Redis. A unit test cross-checks the result against
+# webapp.caching.adapters().
+_CHART_PREFIX = 'chart:'
+
+
+def _foreign_prefixes() -> tuple:
+    """Non-flask Redis keyspaces to skip, newly derived on each call.
+
+    Not memoised: the registry fills in as modules import, and info() is an
+    admin-card path called a handful of times per process.
+    """
+    from webapp.caching import caching
+    out = [_CHART_PREFIX]
+    for cache in caching.bucketed_caches():
+        out.extend(cache.prefixes)
+    return tuple(out)
 
 
 class FlaskCacheAdapter(CacheBase):
@@ -90,7 +104,10 @@ class FlaskCacheAdapter(CacheBase):
             return None
         try:
             # Flask-Caching prefixes keys; we scan everything not owned
-            # by the chart/TTL adapters (_FOREIGN_PREFIXES).
+            # by the chart/TTL adapters. Resolved once per call, not per
+            # key — the registry can't change mid-scan.
+            foreign = _foreign_prefixes()
+            foreign_b = tuple(p.encode() for p in foreign)
             groups: dict[str, dict] = {
                 g: {'entries': 0, 'bytes_approx': 0}
                 for g in (*_KEY_GROUPS, 'other')
@@ -104,11 +121,11 @@ class FlaskCacheAdapter(CacheBase):
                 # valid UTF-8, so checking on raw bytes avoids a
                 # UnicodeDecodeError on the next line.
                 if isinstance(raw_key, bytes):
-                    if raw_key.startswith(_FOREIGN_PREFIXES_B):
+                    if raw_key.startswith(foreign_b):
                         continue
                     key = raw_key.decode('utf-8', errors='replace')
                 else:
-                    if raw_key.startswith(_FOREIGN_PREFIXES):
+                    if raw_key.startswith(foreign):
                         continue
                     key = raw_key
                 total_entries += 1

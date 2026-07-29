@@ -1,36 +1,28 @@
 {#
-  Shared banners for the Filesystem Scans fragments. Mirrors the
-  disabled / error / empty shape of jobs_fragment.html so all three
-  scan tabs degrade identically.
-#}
+  Filesystem Scans fragment banners + badges.
 
-{# Plugin not loaded / no reachable collection — graceful "unavailable"
-   notice (the page may hx-get this unconditionally), never a 404. #}
+  The three degraded states delegate to the shared
+  `dashboards/fragments/plugin_state.html` macros, so the fs-scans and jobs
+  tabs can't drift apart in markup; only the wording lives here. Call sites
+  keep the names they already use.
+#}
+{% import 'dashboards/fragments/plugin_state.html' as _state %}
+
+{# Plugin not loaded / no reachable collection for this resource. #}
 {% macro scans_disabled() %}
-  <div class="alert alert-secondary py-2 mb-0" role="status">
-    <small>
-      Filesystem-scan data is unavailable: the
-      <code>fs-scans</code> plugin is not loaded or has no reachable
-      collection for this resource.
-      <a href="/dashboards/admin/configuration"
-         target="_blank" rel="noopener">
-        Check the Database card on the Admin → Configuration page
-      </a>
-      for plugin/DB health.
-    </small>
-  </div>
+  {{ _state.plugin_disabled(
+       'Filesystem-scan data', 'fs-scans',
+       ' or has no reachable collection for this resource') }}
 {% endmacro %}
 
 {# A scan query raised (transient plugin/DB issue) — warn inline. #}
 {% macro scans_error(error) %}
-  <div class="alert alert-warning py-2 mb-0" role="alert">
-    <small>Could not load filesystem-scan data: {{ error }}</small>
-  </div>
+  {{ _state.plugin_error('filesystem-scan data', error) }}
 {% endmacro %}
 
 {# Scope resolved but the scan returned nothing. #}
 {% macro scans_empty(message) %}
-  <p class="text-muted small mb-0">{{ message }}</p>
+  {{ _state.plugin_empty(message) }}
 {% endmacro %}
 
 {# A small "scoped to <fileset>" note shown when drilled into one fileset

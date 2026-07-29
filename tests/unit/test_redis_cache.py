@@ -139,8 +139,10 @@ class TestDerivedPrefixes:
 
     def test_fs_scans_bucket_prefixes(self, monkeypatch, redis_client):
         monkeypatch.setenv('CACHE_REDIS_URL', 'redis://fake:6379/0')
+        import sam.caching.buckets as buckets
         import webapp.disk_scans.cache as dc
-        monkeypatch.setattr(dc, 'make_redis_client', lambda url=None, **kw: redis_client)
+        monkeypatch.setattr(buckets, 'make_redis_client',
+                            lambda url=None, **kw: redis_client)
         saved = dict(dc._adapters)
         dc._adapters.clear()
         try:
@@ -155,8 +157,10 @@ class TestDerivedPrefixes:
 
     def test_jobs_bucket_prefixes(self, monkeypatch, redis_client):
         monkeypatch.setenv('CACHE_REDIS_URL', 'redis://fake:6379/0')
+        import sam.caching.buckets as buckets
         import webapp.jobs.cache as jc
-        monkeypatch.setattr(jc, 'make_redis_client', lambda url=None, **kw: redis_client)
+        monkeypatch.setattr(buckets, 'make_redis_client',
+                            lambda url=None, **kw: redis_client)
         saved = dict(jc._adapters)
         jc._adapters.clear()
         try:
@@ -256,21 +260,18 @@ class TestUsageCacheBackendSwitch:
     def test_no_env_uses_inprocess_adapter(self, monkeypatch):
         monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
         import sam.queries.usage_cache as uc
-        uc._adapter = None
-        uc._disabled = False
+        uc._CACHE.reset_for_tests(disabled=False)
         try:
             adapter = uc.get_cache_adapter()
             from sam.caching import TTLCacheAdapter
             assert isinstance(adapter, TTLCacheAdapter)
         finally:
-            uc._adapter = None
-            uc._disabled = False
+            uc._CACHE.reset_for_tests(disabled=False)
 
     def test_unreachable_redis_falls_back_silently(self, monkeypatch, caplog):
         monkeypatch.setenv('CACHE_REDIS_URL', 'redis://127.0.0.1:1/0')  # port 1 = nothing listens
         import sam.queries.usage_cache as uc
-        uc._adapter = None
-        uc._disabled = False
+        uc._CACHE.reset_for_tests(disabled=False)
         try:
             with caplog.at_level('WARNING'):
                 adapter = uc.get_cache_adapter()
@@ -278,8 +279,7 @@ class TestUsageCacheBackendSwitch:
             assert isinstance(adapter, TTLCacheAdapter)
             assert any('unreachable' in r.message for r in caplog.records)
         finally:
-            uc._adapter = None
-            uc._disabled = False
+            uc._CACHE.reset_for_tests(disabled=False)
 
     def test_reachable_redis_returns_redis_adapter(self, monkeypatch):
         # Patch make_redis_client to return a fakeredis client so the
@@ -289,13 +289,14 @@ class TestUsageCacheBackendSwitch:
 
         import sam.caching.redis_client as rc
         monkeypatch.setattr(rc, 'make_redis_client', lambda url=None, **kw: client)
-        # The usage_cache module imports the symbol directly, so patch it
-        # there as well.
+        # Every bucketed cache builds its client through sam.caching.buckets,
+        # which imports the symbol directly — so patch it there too.
+        import sam.caching.buckets as buckets
         import sam.queries.usage_cache as uc
-        monkeypatch.setattr(uc, 'make_redis_client', lambda url=None, **kw: client)
+        monkeypatch.setattr(buckets, 'make_redis_client',
+                            lambda url=None, **kw: client)
 
-        uc._adapter = None
-        uc._disabled = False
+        uc._CACHE.reset_for_tests(disabled=False)
         try:
             adapter = uc.get_cache_adapter()
             assert isinstance(adapter, RedisTTLAdapter)
@@ -305,5 +306,4 @@ class TestUsageCacheBackendSwitch:
             assert client.exists(
                 b'allocation_usage:' + __import__('pickle').dumps(('k',), protocol=4))
         finally:
-            uc._adapter = None
-            uc._disabled = False
+            uc._CACHE.reset_for_tests(disabled=False)

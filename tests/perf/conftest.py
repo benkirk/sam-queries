@@ -98,11 +98,11 @@ def _reset_usage_cache():
     as ``test_allocations_performance.py::_reset_usage_cache_globals``.
     """
     import sam.queries.usage_cache as uc
-    uc._cache = None
-    uc._disabled = False
+    # disabled=False drops the memoised adapter so the next call re-reads
+    # config, rather than pinning the bucket off.
+    uc._CACHE.reset_for_tests(disabled=False)
     yield
-    uc._cache = None
-    uc._disabled = False
+    uc._CACHE.reset_for_tests(disabled=False)
 
 
 # ---- Perf-specific data fixtures -------------------------------------------

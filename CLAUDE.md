@@ -517,7 +517,7 @@ sam-admin project SCSG0001 --validate ; sam-admin project SCSG0001 --reconcile
 sam-admin accounting --disk --dry-run                   # summary rebuild/reconcile ops
 # Cache refresh — HTTP client for POST /api/v1/admin/cache/refresh (caches live
 # in the running webapp + Redis, NOT the DB). Needs SAM_API_USER / SAM_API_PASS.
-sam-admin cache --refresh [--category flask|chart|usage|scans]
+sam-admin cache --refresh [--category flask|chart|usage|scans|jobs]
 ```
 
 ---

@@ -1,8 +1,17 @@
 {# ── Job History card (shared, mode-parameterized) ──────────────────────
-   The Jobs / By User / Wait Times / Job Sizes / Durations tab strip, each
-   lazy-loading its jobs.* fragment via hx-get. Shared by the compute
-   resource-details page (mode='project'), the Status dashboard's Job
-   History subtabs (mode='machine'), and the My Jobs page (mode='user').
+   The Jobs / By User / By Project / Wait Times / Job Sizes / Durations tab
+   strip, each lazy-loading its jobs.* fragment via hx-get. Shared by the
+   compute resource-details page (mode='project'), the Status dashboard's
+   Job History subtabs (mode='machine'), and the My Jobs page (mode='user').
+
+   Import it, don't include it — the parameter surface is explicit:
+
+     {% from 'dashboards/user/partials/jobs_card.html' import jobs_card %}
+     {{ jobs_card(mode='project', cid='jobs-hist', …) }}
+
+   A context-free import is fine: the only globals the body needs
+   (url_for, jobs_window_pills) are true Jinja globals, not context
+   processors.
 
    Params:
      mode        'project' | 'machine' | 'user'
@@ -11,24 +20,60 @@
      tablist_id  id for the <ul class="nav-tabs"> (drives nav-view-persistence's
                  tab:<id> key; keep stable per card).
      machine     plugin machine key ('derecho' | 'casper')
-     load_trigger  hx-trigger for the first (Jobs) tab — the only bit of
-                   lazy-load wiring that differs by host: project mode fires
-                   on card-open (collapse) + tab show; machine/user modes fire
+     load_trigger  hx-trigger for the OPEN tab — the only bit of lazy-load
+                   wiring that differs by host: project mode fires on
+                   card-open (collapse) + tab show; machine/user modes fire
                    when their pane is shown. See feedback_persisted_collapse_htmx.
-     projcode, scope  project mode only.
-     jobs_multi_project  project mode only: True when the project's account
-                  tree spans >1 projcode — gates the By Project tab (a
-                  single-project pie would be a pie of one).
-     start, end   optional YYYY-MM-DD window carried into every tab (project
-                  mode passes the page's date range so aggregations stay
-                  bounded; url_for drops None values).
-     days        optional lookback (one of jobs_window_pills) — paints the
-                 matching period pill active. The pills re-render this whole
-                 shell via jobs.jobs_card*_fragment, which is the only way
-                 the six tabs can pick up a new window: each bakes its own
-                 into its hx-get at render time. `none` leaves no pill
-                 active, which is how project mode says "showing the page's
-                 own date range, not a lookback".
+                   Every other tab waits for `shown.bs.tab once`.
+     active_tab   which tab is open: 'jobs' (default) | 'byuser' |
+                  'byproj' | 'wait' | 'sizes' | 'durations'. It has to be
+                  a server-side input, not something the client restores
+                  afterwards: the explorer re-renders this whole card on
+                  every Apply, and if the answer were always 'jobs' an
+                  Apply from a chart tab would fetch that chart AND a
+                  per-job table nobody asked for (16 s+ on a machine-wide
+                  Casper window). The filter form round-trips it, kept in
+                  sync by nav-view-persistence.js.
+     projcode     project mode only.
+     show_by_user / show_by_project  whether those tabs can say anything
+                  in this scope. Both come from jobs/routes.py's
+                  panel_relevance(), the one rule that also decides which
+                  axis the histograms stack by — so the tab strip and the
+                  panel internals can't disagree. A tab is dropped when
+                  its axis is pinned to a single value: user mode (or a
+                  ?user= filter) makes By User a pie of one; a
+                  single-projcode tree or an ?account= drill does the same
+                  to By Project.
+     panel_params  dict merged into EVERY panel's hx-get. The cards pass
+                  their window (`start`/`end`, plus `scope` in project
+                  mode); the explorer passes its whole filter set, in the
+                  display units _parse_job_filters reads. It must not
+                  carry `machine`, `projcode` or `target_id` — the macro
+                  supplies those and url_for would raise on a duplicate.
+                  url_for drops None values, so absent filters cost
+                  nothing.
+     jobs_params  same, for the Jobs tab alone, when the table needs
+                  params the aggregations don't (`per_page`). Defaults to
+                  panel_params.
+     show_pills   render the period-pill group. False on the explorer,
+                  where the filter panel's own date fields own the window
+                  and a second control would fight them.
+     show_explore_link  render "Open full view ↗". False on the explorer,
+                  which is that view.
+     facet_chips / facet_filters / facet_form_id  explorer only: the
+                  jobs_facets envelope, the filter dict that marks the
+                  active chips, and the panel form a chip click writes
+                  into. The strip lives in the shell rather than beside
+                  the table because the table is one tab of six — a
+                  viewer filtering while looking at a chart would
+                  otherwise keep the previous filter set's counts.
+     days         optional lookback (one of jobs_window_pills) — paints the
+                  matching period pill active. The pills re-render this whole
+                  shell via jobs.jobs_card*_fragment, which is the only way
+                  the six tabs can pick up a new window: each bakes its own
+                  into its hx-get at render time. `none` leaves no pill
+                  active, which is how project mode says "showing the page's
+                  own date range, not a lookback".
      days_persist_id  optional localStorage key (via the shared
                  data-chart-persist-* contract) for the chosen window.
                  Set it and the selection follows the viewer across machine
@@ -38,17 +83,8 @@
 
    In machine mode there is no account scoping (routes are gated behind
    VIEW_ALL_JOB_DATA) and both By User and By Project render; in user mode
-   the username is pinned server-side and the By User tab is omitted (it
-   would be a pie of one) — By Project takes its slot.
+   the username is pinned server-side, so By Project takes By User's slot.
 #}
-{# Optional params default to none so url_for drops them (an undefined
-   name would reach url_for as Jinja Undefined and break URL building). #}
-{% set start = start | default(none) %}
-{% set end = end | default(none) %}
-{% set scope = scope | default(none) %}
-{% set days = days | default(none) %}
-{% set days_persist_id = days_persist_id | default(none) %}
-{% set jobs_multi_project = jobs_multi_project | default(false) %}
 {# Persisted-window markers, repeated on every tab button: the
    configRequest handler in nav-view-persistence.js only injects into
    elements that carry them THEMSELVES, so each tab has to opt in for its
@@ -76,41 +112,80 @@
 {% macro _lens() -%}
  data-chart-persist-shared="group_by metric:jobs dimension:jobs log:jobs"
 {%- endmacro %}
+
+{% macro jobs_card(mode, cid, tablist_id, machine, load_trigger,
+                   projcode=none,
+                   show_by_user=true, show_by_project=true,
+                   panel_params={}, jobs_params=none,
+                   days=none, days_persist_id=none,
+                   show_pills=true, show_explore_link=true,
+                   facet_chips=none, facet_filters={},
+                   facet_form_id=none, active_tab='jobs') %}
+{# Only the OPEN panel fires on render; the rest wait to be shown. The
+   host decides which is open (the explorer's filter form round-trips
+   it) so an Apply can't also fetch a panel nobody is looking at. #}
+{% macro _trig(key) -%}
+{{ load_trigger if key == active_tab else 'shown.bs.tab once' }}
+{%- endmacro %}
+{% macro _tabcls(key) -%}
+nav-link{{ ' active' if key == active_tab }}
+{%- endmacro %}
+{% macro _panecls(key) -%}
+tab-pane fade{{ ' show active' if key == active_tab }}
+{%- endmacro %}
+{# The Jobs tab takes the same filters as the aggregations unless the
+   caller separates them (the explorer adds per_page). #}
+{% set _jp = jobs_params if jobs_params is not none else panel_params %}
+{# `scope` lives in panel_params — that's what routes it into the
+   aggregations, whose _tree_projcodes → _scope_project reads it from
+   request.args. Before it did, a re-rooted subtree silently widened the
+   pies back to the whole tree. The two page-level URLs below need it
+   too, hence the lookup. #}
+{% set _scope = panel_params.get('scope') %}
 {# The explorer link speaks ?days= rather than a computed date so the
    cold-start sync in JS never has to re-derive a window client-side. #}
-{% set _x_start = none if days else start %}
-{% set _x_end = none if days else end %}
+{% set _x_start = none if days else panel_params.get('start') %}
+{% set _x_end = none if days else panel_params.get('end') %}
+{% set _user_url = none %}
 {% set _proj_url = none %}
 {% if mode == 'machine' %}
-    {% set _jobs_url  = url_for('jobs.jobs_machine_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
-    {% set _user_url  = url_for('jobs.by_user_machine_fragment',    machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
-    {% set _proj_url  = url_for('jobs.by_project_machine_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
-    {% set _wait_url  = url_for('jobs.wait_times_machine_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
-    {% set _sizes_url = url_for('jobs.job_sizes_machine_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
-    {% set _dur_url   = url_for('jobs.durations_machine_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
+    {% set _jobs_url  = url_for('jobs.jobs_machine_fragment',       machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% if show_by_user %}
+    {% set _user_url  = url_for('jobs.by_user_machine_fragment',    machine=machine, target_id=cid ~ '-byuser', **panel_params) %}
+    {% endif %}
+    {% if show_by_project %}
+    {% set _proj_url  = url_for('jobs.by_project_machine_fragment', machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
+    {% endif %}
+    {% set _wait_url  = url_for('jobs.wait_times_machine_fragment', machine=machine, target_id=cid ~ '-wait', **panel_params) %}
+    {% set _sizes_url = url_for('jobs.job_sizes_machine_fragment',  machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
+    {% set _dur_url   = url_for('jobs.durations_machine_fragment',  machine=machine, target_id=cid ~ '-durations', **panel_params) %}
     {% set _full_url  = url_for('jobs.explore_machine_page',        machine=machine, start=_x_start, end=_x_end, days=days) %}
     {% set _card_url  = url_for('jobs.jobs_card_machine_fragment',  machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id) %}
 {% elif mode == 'user' %}
-    {% set _jobs_url  = url_for('jobs.jobs_user_fragment',       machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
-    {% set _proj_url  = url_for('jobs.by_project_user_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
-    {% set _wait_url  = url_for('jobs.wait_times_user_fragment', machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
-    {% set _sizes_url = url_for('jobs.job_sizes_user_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
-    {% set _dur_url   = url_for('jobs.durations_user_fragment',  machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
+    {% set _jobs_url  = url_for('jobs.jobs_user_fragment',       machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% if show_by_project %}
+    {% set _proj_url  = url_for('jobs.by_project_user_fragment', machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
+    {% endif %}
+    {% set _wait_url  = url_for('jobs.wait_times_user_fragment', machine=machine, target_id=cid ~ '-wait', **panel_params) %}
+    {% set _sizes_url = url_for('jobs.job_sizes_user_fragment',  machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
+    {% set _dur_url   = url_for('jobs.durations_user_fragment',  machine=machine, target_id=cid ~ '-durations', **panel_params) %}
     {% set _full_url  = url_for('jobs.explore_user_page',        machine=machine, start=_x_start, end=_x_end, days=days) %}
     {% set _card_url  = url_for('jobs.jobs_card_user_fragment',  machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id) %}
     {# no _user_url — the By User tab is hidden in user mode (a pie of
        one); By Project takes its slot: which projects MY jobs charged. #}
 {% else %}
-    {% set _jobs_url  = url_for('jobs.jobs_fragment',       projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-jobs') %}
-    {% set _user_url  = url_for('jobs.by_user_fragment',    projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-byuser') %}
-    {% if jobs_multi_project %}
-        {% set _proj_url = url_for('jobs.by_project_fragment', projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-byproj') %}
+    {% set _jobs_url  = url_for('jobs.jobs_fragment',       projcode=projcode, machine=machine, target_id=cid ~ '-jobs', **_jp) %}
+    {% if show_by_user %}
+    {% set _user_url  = url_for('jobs.by_user_fragment',    projcode=projcode, machine=machine, target_id=cid ~ '-byuser', **panel_params) %}
     {% endif %}
-    {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-wait') %}
-    {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-sizes') %}
-    {% set _dur_url   = url_for('jobs.durations_fragment',  projcode=projcode, machine=machine, start=start, end=end, target_id=cid ~ '-durations') %}
-    {% set _full_url  = url_for('jobs.explore_page',        projcode=projcode, machine=machine, start=_x_start, end=_x_end, days=days, scope=scope) %}
-    {% set _card_url  = url_for('jobs.jobs_card_fragment',  projcode=projcode, machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id, scope=scope) %}
+    {% if show_by_project %}
+    {% set _proj_url = url_for('jobs.by_project_fragment', projcode=projcode, machine=machine, target_id=cid ~ '-byproj', **panel_params) %}
+    {% endif %}
+    {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, target_id=cid ~ '-wait', **panel_params) %}
+    {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
+    {% set _dur_url   = url_for('jobs.durations_fragment',  projcode=projcode, machine=machine, target_id=cid ~ '-durations', **panel_params) %}
+    {% set _full_url  = url_for('jobs.explore_page',        projcode=projcode, machine=machine, start=_x_start, end=_x_end, days=days, scope=_scope) %}
+    {% set _card_url  = url_for('jobs.jobs_card_fragment',  projcode=projcode, machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id, scope=_scope) %}
 {% endif %}
 {# url_for always emits at least ?cid=, but don't rely on it for the pills. #}
 {% set _card_q = _card_url ~ ('&' if '?' in _card_url else '?') %}
@@ -129,96 +204,113 @@
      data-chart-persist-id="{{ days_persist_id }}"
      data-chart-persist-keys="days"
      {%- endif %}>
+{% if facet_chips %}
+{% from 'dashboards/user/partials/_jobs_facet_chips.html' import jobs_facet_chips %}
+{{ jobs_facet_chips(facet_chips, facet_filters, facet_form_id) }}
+{% endif %}
 <ul class="nav nav-tabs mb-0" id="{{ tablist_id }}" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="{{ cid }}-jobs-tab"
+        <button class="{{ _tabcls('jobs') }}" id="{{ cid }}-jobs-tab"
+                data-jobs-tab="jobs"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-jobs"
                 type="button" role="tab"
                 hx-get="{{ _jobs_url }}"
                 hx-target="#{{ cid }}-jobs"
                 hx-swap="innerHTML"
-                hx-trigger="{{ load_trigger }}"{{ _persist(days_persist_id) }}>
+                hx-trigger="{{ _trig('jobs') }}"{{ _persist(days_persist_id) }}>
             <i class="fas fa-list me-1"></i> Jobs
         </button>
     </li>
-    {% if mode != 'user' %}
+    {% if _user_url %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-byuser-tab"
+        <button class="{{ _tabcls('byuser') }}" id="{{ cid }}-byuser-tab"
+                data-jobs-tab="byuser"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-byuser"
                 type="button" role="tab"
                 hx-get="{{ _user_url }}"
                 hx-target="#{{ cid }}-byuser"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('byuser') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-users me-1"></i> By User
         </button>
     </li>
     {% endif %}
     {% if _proj_url %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-byproj-tab"
+        <button class="{{ _tabcls('byproj') }}" id="{{ cid }}-byproj-tab"
+                data-jobs-tab="byproj"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-byproj"
                 type="button" role="tab"
                 hx-get="{{ _proj_url }}"
                 hx-target="#{{ cid }}-byproj"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('byproj') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-diagram-project me-1"></i> By Project
         </button>
     </li>
     {% endif %}
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-wait-tab"
+        <button class="{{ _tabcls('wait') }}" id="{{ cid }}-wait-tab"
+                data-jobs-tab="wait"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-wait"
                 type="button" role="tab"
                 hx-get="{{ _wait_url }}"
                 hx-target="#{{ cid }}-wait"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('wait') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-hourglass-half me-1"></i> Wait Times
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-sizes-tab"
+        <button class="{{ _tabcls('sizes') }}" id="{{ cid }}-sizes-tab"
+                data-jobs-tab="sizes"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-sizes"
                 type="button" role="tab"
                 hx-get="{{ _sizes_url }}"
                 hx-target="#{{ cid }}-sizes"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('sizes') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-layer-group me-1"></i> Job Sizes
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="{{ cid }}-durations-tab"
+        <button class="{{ _tabcls('durations') }}" id="{{ cid }}-durations-tab"
+                data-jobs-tab="durations"
                 data-bs-toggle="tab" data-bs-target="#tab-{{ cid }}-durations"
                 type="button" role="tab"
                 hx-get="{{ _dur_url }}"
                 hx-target="#{{ cid }}-durations"
                 hx-swap="innerHTML"
-                hx-trigger="shown.bs.tab once"{{ _persist(days_persist_id) }}{{ _lens() }}>
+                hx-trigger="{{ _trig('durations') }}"{{ _persist(days_persist_id) }}{{ _lens() }}>
             <i class="fas fa-stopwatch me-1"></i> Durations
         </button>
     </li>
     {# Period pills ride the tab strip (ms-auto right-aligns them) so the
        window on screen is legible from the same line as the panel names. #}
+    {% if show_pills %}
     <li class="nav-item ms-auto d-flex align-items-center pb-1">
         <div class="btn-group btn-group-sm" role="group" aria-label="Time window"
              {%- if days_persist_id %} data-jobs-days-pills{% endif %}>
             {% for _d, _label in jobs_window_pills %}
+            {# btn-outline-secondary + `active` — the selector convention used
+               by the metric pills, the date presets and the machine subtabs.
+               The old btn-primary/btn-outline-primary pair rendered
+               blue-is-active, backwards against every other selector on the
+               page (same bug 19ab6c0 fixed for the metric pills). #}
             <button type="button" data-days-value="{{ _d }}"
-                    class="btn {% if days == _d %}btn-primary{% else %}btn-outline-primary{% endif %}"
+                    class="btn btn-outline-secondary{% if days == _d %} active{% endif %}"
                     hx-get="{{ _card_q }}days={{ _d }}"
                     hx-target="#{{ cid }}-card"
                     hx-swap="outerHTML">{{ _label }}</button>
             {% endfor %}
         </div>
     </li>
+    {% endif %}
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom p-3"
      id="{{ tablist_id }}Content">
-    <div class="tab-pane fade show active" id="tab-{{ cid }}-jobs" role="tabpanel">
-        {% if _full_url %}
+    <div class="{{ _panecls('jobs') }}" id="tab-{{ cid }}-jobs" role="tabpanel">
+        {% if show_explore_link and _full_url %}
         <div class="d-flex justify-content-end mb-2">
             <a class="btn btn-sm btn-outline-primary"
                href="{{ _full_url }}" data-jobs-explore-link
@@ -233,8 +325,8 @@
             </p>
         </div>
     </div>
-    {% if mode != 'user' %}
-    <div class="tab-pane fade" id="tab-{{ cid }}-byuser" role="tabpanel">
+    {% if _user_url %}
+    <div class="{{ _panecls('byuser') }}" id="tab-{{ cid }}-byuser" role="tabpanel">
         <div id="{{ cid }}-byuser"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading…
@@ -243,7 +335,7 @@
     </div>
     {% endif %}
     {% if _proj_url %}
-    <div class="tab-pane fade" id="tab-{{ cid }}-byproj" role="tabpanel">
+    <div class="{{ _panecls('byproj') }}" id="tab-{{ cid }}-byproj" role="tabpanel">
         <div id="{{ cid }}-byproj"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading…
@@ -251,21 +343,21 @@
         </div>
     </div>
     {% endif %}
-    <div class="tab-pane fade" id="tab-{{ cid }}-wait" role="tabpanel">
+    <div class="{{ _panecls('wait') }}" id="tab-{{ cid }}-wait" role="tabpanel">
         <div id="{{ cid }}-wait"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading wait times…
             </p>
         </div>
     </div>
-    <div class="tab-pane fade" id="tab-{{ cid }}-sizes" role="tabpanel">
+    <div class="{{ _panecls('sizes') }}" id="tab-{{ cid }}-sizes" role="tabpanel">
         <div id="{{ cid }}-sizes"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading job sizes…
             </p>
         </div>
     </div>
-    <div class="tab-pane fade" id="tab-{{ cid }}-durations" role="tabpanel">
+    <div class="{{ _panecls('durations') }}" id="tab-{{ cid }}-durations" role="tabpanel">
         <div id="{{ cid }}-durations"{{ _lens() }}>
             <p class="text-muted small mb-0">
                 <i class="fas fa-spinner fa-spin me-1"></i> Loading durations…
@@ -274,3 +366,4 @@
     </div>
 </div>
 </div>{# /{{ cid }}-card #}
+{% endmacro %}

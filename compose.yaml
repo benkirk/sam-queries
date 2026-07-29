@@ -200,7 +200,7 @@ services:
   cache:
     container_name: samuel-cache
     image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    command: ["redis-server", "--save", "", "--maxmemory", "192mb", "--maxmemory-policy", "allkeys-lru"]
     networks:
       - sam-network
     healthcheck:

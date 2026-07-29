@@ -5,16 +5,12 @@ machine — a *different* database from the SAM MySQL one Flask-SQLAlchemy
 binds at startup. We can't fold it under ``SQLALCHEMY_BINDS`` because
 ``job_history`` models are not part of SAM's ``db.Model`` registry.
 
-Instead, on app startup we:
-
-1. Load the plugin once via ``sam.plugins.require_plugin``.
-2. Call ``get_engine(machine, pool_kwargs=…)`` per configured machine so
-   Engines are warmed before the first request. The plugin memoizes
-   engines internally; we just hold a reference for introspection
-   (e.g. the Admin → Configuration DB card).
-3. Stash both the plugin module and the engine dict on ``app.extensions``
-   so routes/services can reach them via :func:`get_module` and
-   :func:`get_engines`.
+The load / warm / tag / stash / accessor machinery is
+:class:`webapp.plugins.PluginExtension`, shared with the fs-scans loader.
+What's specific here is one engine per configured machine, plus the
+per-request :func:`job_history_session` context manager — unlike fs-scans,
+whose facade owns its own sessions, ``job_history`` hands out a Session on
+an engine we hold.
 
 The plugin is optional. If it can't be imported (developer skipped the
 ``[hpc]`` install extra), we log a warning, mark the feature disabled,
@@ -23,163 +19,92 @@ and let the rest of the webapp boot — same posture as ``sam-admin``.
 
 from __future__ import annotations
 
-import logging
-import os
-import socket
 from contextlib import contextmanager
 from typing import Any, Dict, Iterator, Optional
 
 from flask import Flask, current_app
-from sqlalchemy import event
 
-logger = logging.getLogger(__name__)
+from sam.plugins import HPC_USAGE_QUERIES
+from webapp.plugins import PluginExtension
 
 # app.extensions key under which we stash plugin state.
 _EXT_KEY = 'hpc_usage_queries'
 
 
-def init_job_history(app: Flask) -> None:
-    """Load the hpc-usage-queries plugin and open per-machine engines.
+class JobHistoryExtension(PluginExtension):
+    """Warms one ``job_history`` engine per configured machine."""
 
-    Called once from ``create_app`` after Flask-SQLAlchemy is bound.
-    Reads these config values:
+    ext_key = _EXT_KEY
+    plugin = HPC_USAGE_QUERIES
+    log_label = 'job_history'
 
-    - ``JOB_HISTORY_MACHINES`` (list[str]): machines to pre-warm engines
-      for. Default ``['derecho', 'casper']``. Set to ``[]`` to disable
-      (tests do this via TestingConfig).
-    - ``JOB_HISTORY_POOL_KWARGS`` (dict): forwarded to
-      ``job_history.get_engine(pool_kwargs=…)``. Only honored on the
-      PostgreSQL backend; SQLite ignores most pool args.
+    def _init_state(self, state: Dict[str, Any]) -> None:
+        state['engines'] = {}   # machine -> Engine
 
-    On any failure (plugin import error, engine init error, missing env
-    config for the postgres backend) the offending machine is skipped
-    and a warning is logged. The webapp continues to boot.
-    """
-    machines = app.config.get('JOB_HISTORY_MACHINES', ['derecho', 'casper'])
-    pool_kwargs = app.config.get('JOB_HISTORY_POOL_KWARGS', {}) or {}
-    statement_timeout_ms = int(
-        app.config.get('JOB_HISTORY_STATEMENT_TIMEOUT_MS', 0) or 0
-    )
+    def _should_load(self, app: Flask) -> bool:
+        """Skip entirely when no machines are configured (TestingConfig does)."""
+        if not app.config.get('JOB_HISTORY_MACHINES', ['derecho', 'casper']):
+            self.logger.info(
+                'hpc-usage-queries: no machines configured, plugin not loaded')
+            return False
+        return True
 
-    state: Dict[str, Any] = {
-        'module':  None,
-        'engines': {},  # machine -> Engine
-        'enabled': False,
-    }
-    app.extensions[_EXT_KEY] = state
+    def _warm(self, app: Flask, mod, state: Dict[str, Any]) -> None:
+        """Open one Engine per machine.
 
-    if not machines:
-        logger.info('hpc-usage-queries: no machines configured, plugin not loaded')
-        return
+        Reads:
 
-    # Plugin loading mirrors the CLI pattern in src/cli/accounting/commands.py.
-    try:
-        from sam.plugins import HPC_USAGE_QUERIES
-        mod = HPC_USAGE_QUERIES.load()
-    except Exception as exc:
-        logger.warning(
-            'hpc-usage-queries plugin not available — per-job features disabled: %s',
-            exc,
+        - ``JOB_HISTORY_MACHINES`` (list[str]): machines to pre-warm engines
+          for. Default ``['derecho', 'casper']``.
+        - ``JOB_HISTORY_POOL_KWARGS`` (dict): forwarded to
+          ``job_history.get_engine(pool_kwargs=…)``. Only honored on the
+          PostgreSQL backend; SQLite ignores most pool args.
+        - ``JOB_HISTORY_STATEMENT_TIMEOUT_MS`` (int): 0 disables.
+
+        A failure is logged per-machine; other machines still come up.
+        """
+        machines = app.config.get('JOB_HISTORY_MACHINES', ['derecho', 'casper'])
+        pool_kwargs = app.config.get('JOB_HISTORY_POOL_KWARGS', {}) or {}
+        statement_timeout_ms = int(
+            app.config.get('JOB_HISTORY_STATEMENT_TIMEOUT_MS', 0) or 0
         )
-        return
 
-    state['module'] = mod
-
-    # `application_name` tags each connection with pod + engine so postgres
-    # `pg_stat_activity` can attribute load without IP archaeology.
-    # We can't inject this via `pool_kwargs` because the plugin's
-    # ``get_engine`` (peer repo: hpc-usage-queries) sets ``connect_args``
-    # itself when calling ``create_engine``, so passing our own
-    # ``connect_args`` through ``pool_kwargs`` would collide. Instead we
-    # attach a ``connect`` event listener after engine creation that issues
-    # ``SET application_name`` once per fresh DBAPI connection. libpq
-    # truncates to 63 chars; the format below (~54 chars on typical k8s
-    # pod names) stays comfortably under the limit.
-    pod_id = os.environ.get('HOSTNAME') or socket.gethostname()
-
-    # Eagerly create one Engine per machine. A failure here is logged
-    # per-machine; other machines can still come up.
-    for machine in machines:
-        try:
-            engine = mod.get_engine(machine, pool_kwargs=pool_kwargs)
-            state['engines'][machine] = engine
-            if engine.url.drivername.startswith('postgresql'):
-                _apply_connection_settings(
-                    engine,
-                    f'sam-webapp:{pod_id}:job_history:{machine}',
-                    statement_timeout_ms=statement_timeout_ms,
-                )
-            logger.info(
-                'hpc-usage-queries engine ready: machine=%s url=%s',
-                machine,
-                _safe_url(engine),
-            )
-        except Exception as exc:
-            logger.warning(
-                'hpc-usage-queries engine init failed for machine=%s: %s',
-                machine, exc,
-            )
-
-    state['enabled'] = bool(state['engines'])
-
-
-def _apply_connection_settings(
-    engine, app_name: str, *, statement_timeout_ms: int = 0
-) -> None:
-    """Apply per-connection postgres settings on every new DBAPI connection.
-
-    Sets ``application_name`` (for ``pg_stat_activity`` attribution) and,
-    when ``statement_timeout_ms`` > 0, a server-side ``statement_timeout``
-    so a runaway job-history query fails cleanly instead of holding a PG
-    connection (and a gthread thread) until the gunicorn worker timeout.
-
-    The ``connect`` event fires once per fresh postgres connection (not on
-    pool checkout), so this is the cheap, correct hook to tag connections
-    when the engine's ``connect_args`` are owned by the plugin and can't
-    be amended in-place. Mirrors ``webapp/disk_scans/session.py``.
-
-    Toggles autocommit around the ``SET``s because postgres documents
-    that ``application_name`` changes made via ``SET`` "will not appear
-    in pg_stat_activity until after a commit or rollback" — and
-    psycopg2's default is ``autocommit=False``, so a bare ``SET``
-    inside the implicit transaction would never become visible.
-    """
-    @event.listens_for(engine, 'connect')
-    def _on_connect(dbapi_conn, _conn_record):
-        saved = dbapi_conn.autocommit
-        dbapi_conn.autocommit = True
-        try:
-            cur = dbapi_conn.cursor()
+        for machine in machines:
             try:
-                cur.execute("SET application_name = %s", (app_name,))
-                if statement_timeout_ms and statement_timeout_ms > 0:
-                    # statement_timeout accepts an integer number of ms.
-                    cur.execute(
-                        "SET statement_timeout = %s",
-                        (str(int(statement_timeout_ms)),),
+                engine = mod.get_engine(machine, pool_kwargs=pool_kwargs)
+                state['engines'][machine] = engine
+                # We can't inject application_name via `pool_kwargs` because
+                # the plugin's ``get_engine`` sets ``connect_args`` itself when
+                # calling ``create_engine``, so passing our own through
+                # ``pool_kwargs`` would collide — hence the post-creation
+                # ``connect`` listener.
+                if engine.url.drivername.startswith('postgresql'):
+                    self.apply_connection_settings(
+                        engine,
+                        self.connection_tag(machine),
+                        statement_timeout_ms=statement_timeout_ms,
                     )
-            finally:
-                cur.close()
-        finally:
-            dbapi_conn.autocommit = saved
+                self.logger.info(
+                    'hpc-usage-queries engine ready: machine=%s url=%s',
+                    machine, self.safe_url(engine),
+                )
+            except Exception as exc:
+                self.logger.warning(
+                    'hpc-usage-queries engine init failed for machine=%s: %s',
+                    machine, exc,
+                )
+
+        state['enabled'] = bool(state['engines'])
 
 
-def is_enabled(app: Optional[Flask] = None) -> bool:
-    """True iff the plugin loaded and at least one engine is ready."""
-    state = (app or current_app).extensions.get(_EXT_KEY) or {}
-    return bool(state.get('enabled'))
+#: Module-level singleton. The functions below are its bound methods under the
+#: names every caller already imports.
+extension = JobHistoryExtension()
 
-
-def get_module(app: Optional[Flask] = None):
-    """Return the loaded ``job_history`` module, or ``None`` if disabled."""
-    state = (app or current_app).extensions.get(_EXT_KEY) or {}
-    return state.get('module')
-
-
-def get_engines(app: Optional[Flask] = None) -> Dict[str, Any]:
-    """Return ``{machine: Engine}`` (possibly empty)."""
-    state = (app or current_app).extensions.get(_EXT_KEY) or {}
-    return state.get('engines') or {}
+init_job_history = extension.init_app
+is_enabled = extension.is_enabled
+get_module = extension.get_module
+get_engines = extension.get_engines
 
 
 @contextmanager
@@ -212,21 +137,3 @@ def job_history_session(machine: str) -> Iterator[Any]:
         yield session
     finally:
         session.close()
-
-
-def _safe_url(engine) -> str:
-    """Best-effort password-stripped URL for log lines.
-
-    Mirrors webapp.utils.config_inspect.format_db_url_safe but inlined
-    to avoid an import cycle with the config-inspect module (Part C
-    will pull engines back the other way).
-    """
-    try:
-        u = engine.url
-        user = f"{u.username}@" if u.username else ''
-        host = u.host or ''
-        port = f":{u.port}" if u.port else ''
-        database = f"/{u.database}" if u.database else ''
-        return f"{u.drivername}://{user}{host}{port}{database}"
-    except Exception:
-        return '<unknown>'

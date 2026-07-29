@@ -30,6 +30,12 @@ from unittest.mock import MagicMock
 import pytest
 from flask import Flask
 
+from webapp.jobs.scope import (
+    MachineJobScope,
+    ProjectJobScope,
+    UserJobScope,
+)
+
 
 @pytest.fixture(autouse=True)
 def _disable_jobs_cache():
@@ -42,9 +48,10 @@ def _disable_jobs_cache():
     affected by the process-wide adapter singleton.
     """
     from webapp.jobs import cache as _c
-    _c._adapters = {b: None for b in _c._BUCKETS}
+    _c._CACHE.reset_for_tests()
     yield
-    _c._adapters = {}   # clear → buckets re-init on next use
+    # disabled=False → drop the memo so buckets re-init on next use
+    _c._CACHE.reset_for_tests(disabled=False)
 
 
 # ---------------------------------------------------------------------------
@@ -275,7 +282,7 @@ def test_search_jobs_pins_account_to_projcode(app, active_project, monkeypatch):
     with app.app_context():
         service.search_jobs(
             'derecho',
-            project=active_project,
+            ProjectJobScope(active_project),
             user='someone',
             queue='main',
             limit=50,
@@ -303,8 +310,7 @@ def test_search_jobs_account_projcodes_overrides_single(
     with app.app_context():
         service.search_jobs(
             'derecho',
-            project=active_project,
-            account_projcodes=['PARENT0001', 'PARENT0001_a', 'PARENT0001_b'],
+            ProjectJobScope(active_project, ['PARENT0001', 'PARENT0001_a', 'PARENT0001_b']),
             limit=50,
         )
 
@@ -312,10 +318,13 @@ def test_search_jobs_account_projcodes_overrides_single(
     assert kw['account'] == ['PARENT0001', 'PARENT0001_a', 'PARENT0001_b']
 
 
-def test_search_jobs_requires_project():
-    from webapp.jobs import service
+def test_project_scope_requires_a_project():
+    """The unpinned-project-scope shape is rejected at construction — before
+    any query can be built, rather than inside each service function."""
     with pytest.raises(ValueError):
-        service.search_jobs('derecho', project=None)
+        ProjectJobScope(None)
+    with pytest.raises(ValueError):
+        ProjectJobScope(None, account_projcodes=[])
 
 
 def test_search_jobs_normalizes_legacy_queue_name(
@@ -334,7 +343,7 @@ def test_search_jobs_normalizes_legacy_queue_name(
     with app.app_context():
         service.search_jobs(
             'derecho',
-            project=active_project,
+            ProjectJobScope(active_project),
             queue='cpu-special',
             limit=50,
         )
@@ -363,7 +372,7 @@ def test_count_jobs_sam_summary_keeps_legacy_queue_name(
     with app.app_context():
         # No exit_status / GPU bounds → goes through the SAM summary fast path.
         total = service.count_jobs(
-            'derecho', project=active_project, queue='cpu-special',
+            'derecho', ProjectJobScope(active_project), queue='cpu-special',
         )
 
     assert total == 5
@@ -383,7 +392,7 @@ def test_count_jobs_plugin_fallback_normalizes_legacy_queue_name(
 
     with app.app_context():
         service.count_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-economy',
             exit_status='1',  # forces plugin path
         )
@@ -407,7 +416,7 @@ def test_search_jobs_promotes_legacy_queue_suffix_to_qos(
 
     with app.app_context():
         service.search_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-special',
             valid_qos_names=['premium', 'regular', 'special'],
         )
@@ -428,7 +437,7 @@ def test_search_jobs_explicit_qos_wins_over_inferred(
 
     with app.app_context():
         service.search_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-special',
             qos='regular',  # explicit
             valid_qos_names=['premium', 'regular', 'special'],
@@ -451,7 +460,7 @@ def test_search_jobs_unknown_suffix_falls_back_to_strip_only(
 
     with app.app_context():
         service.search_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-bogus',
             valid_qos_names=['premium', 'regular', 'special'],
         )
@@ -481,7 +490,7 @@ def test_count_jobs_sam_summary_ignores_inferred_qos(
 
     with app.app_context():
         total = service.count_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-special',
             valid_qos_names=['premium', 'regular', 'special'],
         )
@@ -504,7 +513,7 @@ def test_count_jobs_plugin_fallback_promotes_legacy_queue_suffix_to_qos(
 
     with app.app_context():
         service.count_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             queue='cpu-special',
             exit_status='1',  # forces plugin path
             valid_qos_names=['premium', 'regular', 'special'],
@@ -1292,14 +1301,13 @@ def test_view_all_job_data_grants():
     assert p not in USER_FACILITY_PERMISSIONS['sureshm']['WNA']
 
 
-def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
-    """The connect listener issues SET application_name + statement_timeout.
+def _capture_connect_listener(monkeypatch, **kwargs):
+    """Register the connect listener against a stub engine and return it.
 
-    ``event.listens_for`` needs a real Engine, so capture the registered
-    listener via a fake decorator and drive it with a stub DBAPI
-    connection — asserting on the exact SQL the listener issues.
+    ``event.listens_for`` needs a real Engine, so swap in a fake decorator
+    that just hands back the function being registered.
     """
-    from webapp.jobs import session as jobs_session
+    from webapp.plugins import base as plugin_base
 
     registered = {}
 
@@ -1309,12 +1317,23 @@ def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
             return fn
         return _decorator
 
-    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
+    monkeypatch.setattr(plugin_base.event, 'listens_for', _fake_listens_for)
+    plugin_base.PluginExtension.apply_connection_settings(
+        MagicMock(name='engine'), **kwargs)
+    return registered['fn']
 
-    jobs_session._apply_connection_settings(
-        MagicMock(name='engine'), 'sam-webapp:pod:job_history:derecho',
+
+def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
+    """The connect listener issues SET application_name + statement_timeout.
+
+    Covers the shared PluginExtension implementation, which both the jobs and
+    the fs-scans loaders warm their engines through.
+    """
+    registered = {'fn': _capture_connect_listener(
+        monkeypatch,
+        app_name='sam-webapp:pod:job_history:derecho',
         statement_timeout_ms=60000,
-    )
+    )}
 
     executed = []
 
@@ -1341,21 +1360,8 @@ def test_apply_connection_settings_sets_name_and_timeout(monkeypatch):
 
 def test_apply_connection_settings_zero_timeout_skips_set(monkeypatch):
     """statement_timeout_ms=0 (disabled) issues only the app-name SET."""
-    from webapp.jobs import session as jobs_session
-
-    registered = {}
-
-    def _fake_listens_for(target, name):
-        def _decorator(fn):
-            registered['fn'] = fn
-            return fn
-        return _decorator
-
-    monkeypatch.setattr(jobs_session.event, 'listens_for', _fake_listens_for)
-
-    jobs_session._apply_connection_settings(
-        MagicMock(name='engine'), 'tag', statement_timeout_ms=0,
-    )
+    registered = {'fn': _capture_connect_listener(
+        monkeypatch, app_name='tag', statement_timeout_ms=0)}
 
     executed = []
 
@@ -1374,17 +1380,28 @@ def test_apply_connection_settings_zero_timeout_skips_set(monkeypatch):
     assert executed == ["SET application_name = %s"]
 
 
-def test_job_history_machines_sorted_when_enabled(app, monkeypatch):
-    """Sorted engine keys when the plugin is up; [] when disabled."""
+@pytest.mark.parametrize('machines', [
+    ['derecho', 'casper'],
+    ['casper', 'derecho'],
+])
+def test_job_history_machines_follows_config_order(app, monkeypatch, machines):
+    """Engine keys come back in insertion (== JOB_HISTORY_MACHINES) order.
+
+    _warm() inserts one engine per configured machine in config order, so the
+    UI leads with whichever machine the deployment lists first (derecho by
+    default). Both orderings are exercised to pin that this tracks insertion
+    rather than any hardcoded list — the old implementation sorted, which
+    passed the first case by accident and led with Casper in production.
+    """
     from webapp.jobs import service
 
     monkeypatch.setitem(app.extensions, 'hpc_usage_queries', {
         'module':  types.SimpleNamespace(JobQueries=object),
-        'engines': {'derecho': MagicMock(), 'casper': MagicMock()},
+        'engines': {m: MagicMock() for m in machines},
         'enabled': True,
     })
     with app.app_context():
-        assert service.job_history_machines() == ['casper', 'derecho']
+        assert service.job_history_machines() == machines
 
 
 def test_job_history_machines_empty_when_disabled(app):
@@ -1406,7 +1423,7 @@ def test_search_jobs_machine_forwards_no_account(app, monkeypatch):
     captured = _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        service.search_jobs_machine('derecho', user='alice', limit=10)
+        service.search_jobs('derecho', MachineJobScope(), user='alice', limit=10)
 
     kw = captured['last_jobs_search_kwargs']
     assert 'account' not in kw
@@ -1421,7 +1438,7 @@ def test_count_jobs_machine_uses_plugin_count(app, monkeypatch):
     captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=9)
 
     with app.app_context():
-        total = service.count_jobs_machine('derecho', queue='main')
+        total = service.count_jobs('derecho', MachineJobScope(), queue='main')
 
     assert total == 9
     ckw = captured['last_jobs_count_kwargs']
@@ -1435,7 +1452,7 @@ def test_search_jobs_user_pins_username(app, monkeypatch):
     captured = _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        service.search_jobs_user('derecho', 'benkirk', queue='main')
+        service.search_jobs('derecho', UserJobScope('benkirk'), queue='main')
 
     kw = captured['last_jobs_search_kwargs']
     assert kw['user'] == 'benkirk'
@@ -1448,18 +1465,14 @@ def test_search_jobs_user_rejects_user_filter(app, monkeypatch):
     _install_mock_plugin(app, monkeypatch)
 
     with app.app_context():
-        with pytest.raises(ValueError, match='pins user'):
-            service.search_jobs_user('derecho', 'benkirk', user='mallory')
+        with pytest.raises(ValueError, match='pin the user server-side'):
+            service.search_jobs('derecho', UserJobScope('benkirk'), user='mallory')
 
 
-def test_search_jobs_user_requires_username(app, monkeypatch):
-    from webapp.jobs import service
-
-    _install_mock_plugin(app, monkeypatch)
-
-    with app.app_context():
-        with pytest.raises(ValueError, match='username'):
-            service.search_jobs_user('derecho', '')
+def test_user_scope_requires_a_username():
+    """An empty pin would silently widen to every user's jobs."""
+    with pytest.raises(ValueError, match='username'):
+        UserJobScope('')
 
 
 def test_count_jobs_user_pins_username(app, monkeypatch):
@@ -1468,7 +1481,7 @@ def test_count_jobs_user_pins_username(app, monkeypatch):
     captured = _install_mock_plugin(app, monkeypatch, jobs_count_return=4)
 
     with app.app_context():
-        total = service.count_jobs_user('derecho', 'benkirk')
+        total = service.count_jobs('derecho', UserJobScope('benkirk'))
 
     assert total == 4
     assert captured['last_jobs_count_kwargs']['user'] == 'benkirk'
@@ -1483,7 +1496,7 @@ def test_count_jobs_zero_bound_forces_plugin_path(app, active_project, monkeypat
 
     with app.app_context():
         total = service.count_jobs(
-            'derecho', project=active_project, max_gpus=0,
+            'derecho', ProjectJobScope(active_project), max_gpus=0,
         )
 
     assert total == 2
@@ -1507,7 +1520,7 @@ def test_count_jobs_ignore_case_alone_keeps_fast_path(
 
     with app.app_context():
         total = service.count_jobs(
-            'derecho', project=active_project, ignore_case=False,
+            'derecho', ProjectJobScope(active_project), ignore_case=False,
         )
 
     assert total == 13
@@ -1523,7 +1536,7 @@ def test_count_jobs_name_filter_forces_plugin_path(
 
     with app.app_context():
         service.count_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             name='wrf*', ignore_case=True,
         )
 
@@ -1544,7 +1557,7 @@ def test_count_jobs_memory_bound_forces_plugin_path(
 
     with app.app_context():
         total = service.count_jobs(
-            'derecho', project=active_project, max_memory_wasted=-1,
+            'derecho', ProjectJobScope(active_project), max_memory_wasted=-1,
         )
 
     assert total == 3
@@ -1562,7 +1575,7 @@ def test_search_jobs_forwards_memory_filters(app, active_project, monkeypatch):
 
     with app.app_context():
         service.search_jobs(
-            'derecho', project=active_project,
+            'derecho', ProjectJobScope(active_project),
             min_memory_used=2 * 1024 ** 3, max_memory_used=64 * 1024 ** 3,
             min_memory_wasted=-(4 * 1024 ** 3), max_memory_wasted=0,
         )
@@ -1584,7 +1597,7 @@ def test_search_jobs_rejects_unknown_filter(app, active_project, monkeypatch):
     with app.app_context():
         with pytest.raises(TypeError):
             service.search_jobs(
-                'derecho', project=active_project, min_gups=1,  # typo
+                'derecho', ProjectJobScope(active_project), min_gups=1,  # typo
             )
 
 
@@ -2227,6 +2240,237 @@ def test_fragment_converts_elapsed_hours_and_reqmem_gb(
     assert skw['max_reqmem'] == 128 * 1024 ** 3
 
 
+_EXPLORE_URLS = (
+    ('project', '/dashboards/user/jobs/{projcode}/explore?machine=derecho'),
+    ('machine', '/dashboards/user/jobs/machine/derecho/explore'),
+    ('user', '/dashboards/user/jobs/user/derecho/explore'),
+)
+
+
+@pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
+def test_explore_page_renders_the_jobs_card(
+    app, auth_client, active_project, monkeypatch, mode, url,
+):
+    """The charts live on the full view too — same card, driven by the
+    filter panel instead of a baked window."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        url.format(projcode=active_project.projcode)).get_data(as_text=True)
+
+    assert 'id="jobs-explore-card"' in body
+    assert 'id="jobsExploreTabs"' in body
+    for tab in ('Wait Times', 'Job Sizes', 'Durations'):
+        assert tab in body, tab
+    # By User follows the relevance rule, not the surface.
+    assert ('By User' in body) is (mode != 'user')
+
+
+@pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
+def test_explore_page_ships_the_entity_modal_shells(
+    app, auth_client, active_project, monkeypatch, mode, url,
+):
+    """By User, By Project and the histograms' owner tier all open
+    quick-view modals whose shells live on the host page. This one
+    extends dashboards/base.html (which includes neither), so without
+    the includes every one of those links is a silent no-op — exactly
+    once each, since duplicate ids break Bootstrap's lookup.
+
+    Pinned per mode: the suppressed panel still leaves the other panels'
+    links, and the histogram owner tier can name either entity.
+    """
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        url.format(projcode=active_project.projcode)).get_data(as_text=True)
+
+    assert body.count('id="userDetailsModal"') == 1
+    assert body.count('id="projectDetailsModal"') == 1
+    # The project shell pulls this in for the per-allocation pencils
+    # inside it — see tests/unit/test_modal_shell_pairing.py.
+    assert body.count('id="editAllocationModal"') == 1
+
+
+@pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
+def test_explore_page_suppresses_pills_and_the_explore_link(
+    app, auth_client, active_project, monkeypatch, mode, url,
+):
+    """The panel's date fields own the window here, and this IS the full
+    view — a period pill group and an "Open full view" link would both be
+    second controls for something already on screen."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        url.format(projcode=active_project.projcode)).get_data(as_text=True)
+
+    assert 'aria-label="Time window"' not in body
+    assert 'data-jobs-explore-link' not in body
+
+
+@pytest.mark.parametrize('mode,url', _EXPLORE_URLS)
+def test_explore_page_filter_form_re_renders_the_card(
+    app, auth_client, active_project, monkeypatch, mode, url,
+):
+    """Apply swaps the whole card: that is the only way six panels whose
+    URLs are baked at render time pick up a new filter set."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        url.format(projcode=active_project.projcode)).get_data(as_text=True)
+
+    form = re.search(r'<form id="jobs-filters-panel-jobs-explore-jobs"(.*?)>',
+                     body, re.S)
+    assert form, 'filter form missing'
+    attrs = form.group(1)
+    assert 'hx-target="#jobs-explore-card"' in attrs
+    assert 'hx-swap="outerHTML"' in attrs
+    assert '/card?' in attrs and 'surface=explorer' in attrs.replace('&amp;', '&')
+
+
+def test_explore_card_opens_the_tab_the_form_reports(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Apply re-renders the whole card, so the server has to be told which
+    tab is open. Otherwise it always comes back on Jobs and an Apply from
+    a chart fetches that chart AND a per-job table nobody asked for."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&active_tab=sizes'
+    ).get_data(as_text=True)
+
+    sizes_btn = re.search(r'<button[^>]*data-jobs-tab="sizes".*?>', body, re.S)
+    assert sizes_btn and 'active' in sizes_btn.group(0)
+    # …and it is the one that fires on render; the rest wait to be shown.
+    assert 'hx-trigger="load once"' in sizes_btn.group(0)
+    jobs_btn = re.search(r'<button[^>]*data-jobs-tab="jobs".*?>', body, re.S)
+    assert jobs_btn and 'active' not in jobs_btn.group(0)
+    assert 'hx-trigger="shown.bs.tab once"' in jobs_btn.group(0)
+    # The pane follows the button.
+    assert re.search(r'class="tab-pane fade show active" id="tab-jobs-explore-sizes"',
+                     body)
+
+
+def test_explore_card_rejects_an_unknown_active_tab(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The value picks which panel fires a query, so it is whitelisted."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&active_tab=../evil'
+    ).get_data(as_text=True)
+
+    jobs_btn = re.search(r'<button[^>]*data-jobs-tab="jobs".*?>', body, re.S)
+    assert jobs_btn and 'active' in jobs_btn.group(0)
+
+
+def test_explore_page_round_trips_the_active_tab_through_the_form(
+    app, auth_client, active_project, monkeypatch,
+):
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&active_tab=wait'
+    ).get_data(as_text=True)
+
+    assert ('<input type="hidden" name="active_tab" value="wait"'
+            in body)
+    assert 'data-jobs-active-tab-input' in body
+
+
+def test_cards_still_open_on_jobs_by_default(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Nothing changes for the embedded cards: Jobs is open and owns the
+    host's load_trigger, every other tab waits to be shown."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=90)).get_data(as_text=True)
+
+    jobs_btn = re.search(r'<button[^>]*data-jobs-tab="jobs".*?>', body, re.S)
+    assert jobs_btn and 'active' in jobs_btn.group(0)
+    assert 'hx-trigger="intersect once"' in jobs_btn.group(0)
+    assert body.count('hx-trigger="shown.bs.tab once"') >= 4
+
+
+def test_explore_page_bakes_filters_into_every_panel_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Every panel — not just the table — answers the current filters."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&queue=main&min_nodes=4&min_wait_hours=1.5'
+    ).get_data(as_text=True)
+
+    panel_urls = [u.replace('&amp;', '&')
+                  for u in re.findall(r'hx-get="([^"]+)"', body)]
+    for suffix in ('/by-user', '/wait-times', '/job-sizes', '/durations'):
+        matches = [u for u in panel_urls
+                   if f'/{active_project.projcode}{suffix}?' in u]
+        assert matches, suffix
+        assert all('queue=main' in u and 'min_nodes=4' in u
+                   and 'min_wait_hours=1.5' in u for u in matches), suffix
+
+
+def test_explore_card_route_rebuilds_from_the_filter_panel(
+    app, auth_client, active_project, monkeypatch,
+):
+    """An Apply lands on the mode's /card route with surface=explorer and
+    reproduces the same panel URLs a deep link would."""
+    import re
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&queue=main&min_nodes=4'
+    ).get_data(as_text=True)
+
+    assert 'id="jobs-explore-card"' in body
+    assert 'aria-label="Time window"' not in body      # still no pills
+    panel_urls = [u.replace('&amp;', '&')
+                  for u in re.findall(r'hx-get="([^"]+)"', body)]
+    waits = [u for u in panel_urls if '/wait-times?' in u]
+    assert waits and all('queue=main' in u and 'min_nodes=4' in u
+                         for u in waits)
+
+
+def test_explore_card_route_without_the_surface_flag_is_still_a_pill(
+    app, auth_client, active_project, monkeypatch,
+):
+    """The period pills share these routes; surface= is what tells them
+    apart, so a pill click must keep its pills and its lookback."""
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&days=30'
+    ).get_data(as_text=True)
+
+    assert 'aria-label="Time window"' in body
+    assert f'start={_days_ago(30).isoformat()}' in body
+
+
+def test_explore_page_user_mode_still_ignores_a_crafted_user(
+    app, auth_client, monkeypatch,
+):
+    """The username is pinned server-side on every fragment; the panel
+    omits the picker so the card can't be re-aimed at someone else."""
+    captured = _install_mock_plugin(app, monkeypatch,
+                                    jobs_search_return=[_make_row()])
+    body = auth_client.get(
+        '/dashboards/user/jobs/user/derecho/explore?user=someone_else'
+    ).get_data(as_text=True)
+    assert 'name="user_id"' not in body
+    # Nor is it baked into the panel URLs, where it would look like a
+    # filter that works while the server quietly overrode it.
+    assert 'user=someone_else' not in body
+
+    auth_client.get(
+        '/dashboards/user/jobs/user/derecho?user=someone_else&machine=derecho')
+    assert captured['last_jobs_search_kwargs']['user'] == 'benkirk'
+
+
 _SAMPLE_FACETS = {
     'queue': [{'value': 'cpu', 'count': 120}, {'value': 'gpu', 'count': 30},
               {'value': None, 'count': 2}],
@@ -2235,110 +2479,143 @@ _SAMPLE_FACETS = {
 }
 
 
-def test_explore_page_initial_url_requests_chips(
+def test_explore_page_renders_facet_chips_with_counts(
     app, auth_client, active_project, monkeypatch,
 ):
-    """The explorer's lazy-load URL asks the fragment for the OOB chip
-    strip, and the page renders the placeholder it swaps into."""
-    _install_mock_plugin(app, monkeypatch)
-    resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}/explore?machine=derecho'
-    )
-    body = resp.get_data(as_text=True)
-    assert 'chips=1' in body
-    assert 'id="jobs-facet-chips-jobs-explore"' in body
-    assert 'name="chips"' in body          # panel form round-trips it
-
-
-def test_fragment_chips_render_oob_with_counts(
-    app, auth_client, active_project, monkeypatch,
-):
-    """?chips=1 → the fragment appends an hx-swap-oob strip: value chips
-    with live counts, NULL-FK rows skipped, wired to the panel form."""
+    """The strip rides inside the card: value chips with live counts,
+    NULL-FK rows skipped, wired to the filter panel form."""
+    import re
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
     )
-    resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&chips=1&queue=cpu'
-    )
-    body = resp.get_data(as_text=True)
-    assert 'hx-swap-oob' in body
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho&queue=cpu'
+    ).get_data(as_text=True)
+
     assert 'data-action="set-filter-submit"' in body
-    assert 'data-form-id="jobs-filters-panel-jobs-' in body
-    # Active chip (queue=cpu) highlights and clears on click.
-    import re
+    assert 'data-form-id="jobs-filters-panel-jobs-explore-jobs"' in body
+    # Active chip (queue=cpu) fills in and clears on click.
     cpu_chip = re.search(
         r'<button[^>]*data-field="queue"[^>]*data-value=""[^>]*>', body)
-    assert cpu_chip is not None and 'btn-primary' in cpu_chip.group(0)
+    assert cpu_chip is not None and 'facet-chip is-active' in cpu_chip.group(0)
     # Inactive chip carries its value.
     assert 'data-value="gpu"' in body
     assert 'data-value="271"' in body
     # NULL-FK queue row renders no chip (nothing to filter by).
     assert 'data-value="None"' not in body
-    # The facets call saw the same filter set as the table.
+    # One grid row per dimension: every label opens its own line.
+    assert body.count('class="jobs-facet-label"') == 3
+    # Facets saw the same filter set as the panels.
     fkw = captured['last_jobs_facets_kwargs']
     assert fkw['queue'] == 'cpu'
     assert fkw['limit'] == 8
 
 
-def test_fragment_no_chips_without_param(
+def test_explore_card_route_refreshes_the_chips(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Card/drill embeds never send chips=1 → no facets query, no OOB."""
+    """Counts refresh with the panels, not with the table — otherwise a
+    viewer who filters while looking at a chart keeps the old counts."""
+    _install_mock_plugin(app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/card'
+        '?machine=derecho&surface=explorer&queue=cpu'
+    ).get_data(as_text=True)
+
+    assert 'data-action="set-filter-submit"' in body
+    assert 'data-value="gpu"' in body
+
+
+def test_jobs_table_fragment_never_queries_facets(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Sorting or paging cannot change a facet count, so the table no
+    longer pays for one — the strip belongs to the shell."""
     captured = _install_mock_plugin(app, monkeypatch)
-    resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}?machine=derecho'
-    )
-    body = resp.get_data(as_text=True)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}'
+        '?machine=derecho&chips=1'
+    ).get_data(as_text=True)
+
     assert 'hx-swap-oob' not in body
+    assert 'data-action="set-filter-submit"' not in body
     assert captured['last_jobs_facets_kwargs'] is None
 
 
-def test_fragment_chips_degrade_on_facets_error(
+def test_explore_chips_degrade_on_facets_error(
     app, auth_client, active_project, monkeypatch,
 ):
-    """A facets failure must not take the table down — the fragment
-    renders normally with no chip strip."""
-    _install_mock_plugin(
-        app, monkeypatch, jobs_facets_raises=True,
-    )
+    """A facets failure must not take the page down — the card renders
+    normally with no chip strip."""
+    _install_mock_plugin(app, monkeypatch, jobs_facets_raises=True)
     resp = auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&chips=1'
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho'
     )
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert 'hx-swap-oob' not in body
-    assert 'Could not load per-job data' not in body
+    assert 'data-action="set-filter-submit"' not in body
+    assert 'class="jobs-facets"' not in body
+    assert 'id="jobs-explore-card"' in body
 
 
-def test_fragment_chips_project_scope_pins_account(
+def test_explore_chips_omit_dimensions_with_nothing_to_offer(
     app, auth_client, active_project, monkeypatch,
 ):
-    """Facets are scoped exactly like the table — the project tree's
+    """A dimension with no filterable values contributes no grid row,
+    and a strip with no rows at all renders no surface — an empty
+    bordered band above the tabs would be worse than none."""
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_facets_return={'queue': [{'value': 'cpu', 'count': 3}],
+                            'qos': [],
+                            'exit_status': [{'value': None, 'count': 7}]},
+    )
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho'
+    ).get_data(as_text=True)
+
+    assert body.count('class="jobs-facet-label"') == 1
+    assert 'data-value="cpu"' in body
+
+    _install_mock_plugin(
+        app, monkeypatch,
+        jobs_facets_return={'queue': [], 'qos': [], 'exit_status': []},
+    )
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho'
+    ).get_data(as_text=True)
+
+    assert 'class="jobs-facets"' not in body
+
+
+def test_explore_chips_project_scope_pins_account(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Facets are scoped exactly like the panels — the project tree's
     projcodes pin the account filter."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
     )
     auth_client.get(
-        f'/dashboards/user/jobs/{active_project.projcode}'
-        '?machine=derecho&chips=1'
+        f'/dashboards/user/jobs/{active_project.projcode}/explore'
+        '?machine=derecho'
     )
     fkw = captured['last_jobs_facets_kwargs']
     assert active_project.projcode in fkw['account']
 
 
-def test_user_fragment_chips_pin_username(app, auth_client, monkeypatch):
+def test_explore_user_chips_pin_username(app, auth_client, monkeypatch):
     """User-mode chips describe the pinned user's jobs only — the session
     username rides into the facets call, client ?user= notwithstanding."""
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_facets_return=_SAMPLE_FACETS,
     )
     auth_client.get(
-        '/dashboards/user/jobs/user/derecho'
-        '?machine=derecho&chips=1&user=mallory'
-    )
+        '/dashboards/user/jobs/user/derecho/explore?user=mallory')
     fkw = captured['last_jobs_facets_kwargs']
     assert fkw['user'] == 'benkirk'
 
@@ -2724,23 +3001,17 @@ def test_my_jobs_card_offers_by_project_tab(app, auth_client, monkeypatch):
     assert 'By User' not in body
 
 
-def test_service_jobs_usage_by_project_requires_username(app, monkeypatch):
-    from webapp.jobs import service
-
-    _install_mock_plugin(app, monkeypatch)
-    with app.app_context():
-        with pytest.raises(ValueError, match='username'):
-            service.jobs_usage_by_project('derecho', username='')
-
-
 def test_service_jobs_usage_by_project_rejects_user_filter(app, monkeypatch):
+    """The pin owns the user dimension — a client value beside it raises
+    rather than being silently overwritten. (The empty-username case is
+    rejected at scope construction; see test_user_scope_requires_a_username.)"""
     from webapp.jobs import service
 
     _install_mock_plugin(app, monkeypatch)
     with app.app_context():
-        with pytest.raises(ValueError, match='user'):
+        with pytest.raises(ValueError, match='pin the user server-side'):
             service.jobs_usage_by_project(
-                'derecho', username='benkirk', user='mallory',
+                'derecho', UserJobScope('benkirk'), user='mallory',
             )
 
 
@@ -2966,20 +3237,40 @@ def test_histogram_owner_pill_offered_in_machine_mode(
     assert 'group_by=project' in body
 
 
-def test_histogram_owner_pill_hidden_in_user_mode_and_param_ignored(
-    app, auth_client, monkeypatch,
+@pytest.mark.parametrize('crafted', ['', '?group_by=user', '?group_by=project'])
+def test_histogram_in_user_mode_stacks_by_project_whatever_the_client_asks(
+    app, auth_client, monkeypatch, crafted,
 ):
-    """User mode never offers the pill, and a crafted ?group_by=project
-    is ignored (not forwarded to the plugin)."""
+    """User mode pins the username, so a per-USER stack is a stack of one.
+
+    The axis that can still vary is the project, so that's what the
+    segments and the per-band tier use — server-decided, with the pill
+    hidden and any crafted ?group_by ignored in both directions.
+    """
     captured = _install_mock_plugin(
         app, monkeypatch, jobs_histogram_return=_sample_hist_owners(),
     )
     body = auth_client.get(
-        '/dashboards/user/jobs/user/derecho/wait-times?group_by=project'
+        f'/dashboards/user/jobs/user/derecho/wait-times{crafted}'
     ).get_data(as_text=True)
     assert 'aria-label="Owner dimension"' not in body
     _dim, kwargs = captured['last_jobs_histogram']
-    assert 'owners_by' not in kwargs
+    assert kwargs.get('owners_by') == 'account'
+
+
+def test_histogram_drops_owner_grouping_when_both_axes_are_pinned(
+    app, auth_client, monkeypatch,
+):
+    """My own jobs on ONE project: every band has exactly one owner, so
+    skip the grouping entirely — flat bars, band drills straight to jobs."""
+    captured = _install_mock_plugin(
+        app, monkeypatch, jobs_histogram_return=_sample_hist(),
+    )
+    auth_client.get(
+        '/dashboards/user/jobs/user/derecho/wait-times?account=SCSG0001'
+    )
+    _dim, kwargs = captured['last_jobs_histogram']
+    assert 'owners_limit' not in kwargs
 
 
 def test_histogram_owner_pill_follows_project_tree_size(
@@ -3355,12 +3646,45 @@ def test_card_fragment_bakes_the_window_into_every_panel_url(
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
 
+    import re
     start = _days_ago(365).isoformat()
+    panel_urls = [u.replace('&amp;', '&')
+                  for u in re.findall(r'hx-get="([^"]+)"', body)]
     for suffix in ('', '/wait-times', '/job-sizes', '/durations'):
-        assert (f'/dashboards/user/jobs/{active_project.projcode}{suffix}'
-                f'?machine=derecho&amp;start={start}') in body, suffix
+        path = f'/dashboards/user/jobs/{active_project.projcode}{suffix}?'
+        matches = [u for u in panel_urls if u.startswith(path)]
+        assert matches, suffix
+        # Param order is url_for's business; what matters is that every
+        # panel carries the machine and the pill's window.
+        assert all('machine=derecho' in u and f'start={start}' in u
+                   for u in matches), suffix
     # A pill is a lookback from today, so the page's own end date is gone.
     assert 'end=' not in body
+
+
+def test_card_fragment_carries_scope_into_every_panel_url(
+    app, auth_client, active_project, monkeypatch,
+):
+    """A re-rooted subtree has to narrow the aggregations, not just the link.
+
+    The panels resolve ``?scope=`` through ``_tree_projcodes`` ->
+    ``_scope_project``; until it rode ``panel_params`` only the page-level
+    explore link carried it, so a scoped card would have widened its pies
+    back to the whole tree.
+    """
+    _install_mock_plugin(app, monkeypatch)
+    body = auth_client.get(
+        _card_url(active_project.projcode, days=90, scope='CHILD0001')
+    ).get_data(as_text=True)
+
+    import re
+    panel_urls = [u.replace('&amp;', '&')
+                  for u in re.findall(r'hx-get="([^"]+)"', body)]
+    for suffix in ('', '/by-user', '/wait-times', '/job-sizes', '/durations'):
+        path = f'/dashboards/user/jobs/{active_project.projcode}{suffix}?'
+        matches = [u for u in panel_urls if u.startswith(path)]
+        assert matches, suffix
+        assert all('scope=CHILD0001' in u for u in matches), suffix
 
 
 def test_card_fragment_marks_the_requested_pill_active(
@@ -3370,10 +3694,17 @@ def test_card_fragment_marks_the_requested_pill_active(
     body = auth_client.get(
         _card_url(active_project.projcode, days=30)).get_data(as_text=True)
 
+    # The selected pill is the one carrying `active` — every pill keeps the
+    # same btn-outline-secondary base class (the theme inverts .btn-group so
+    # `active` paints white). Attribute order isn't guaranteed, so match the
+    # class list and the data attribute in either order.
     import re
-    assert re.search(r'btn btn-primary[^>]*data-days-value="30"', body) or \
-        re.search(r'data-days-value="30"[^>]*btn btn-primary', body)
+    assert re.search(r'btn-outline-secondary active[^>]*data-days-value="30"', body) or \
+        re.search(r'data-days-value="30"[^>]*btn-outline-secondary active', body)
     assert 'data-days-value="365"' in body      # the other pills still render
+    # ...and it's the only active one — this fragment renders a single card,
+    # so a second `active` would mean two windows look selected at once.
+    assert len(re.findall(r'btn-outline-secondary active', body)) == 1
 
 
 def test_card_fragment_unknown_days_falls_back_to_the_default(
@@ -3519,7 +3850,72 @@ def test_card_shell_panels_stay_lazy_after_a_refetch(
 
 
 # ---------------------------------------------------------------------------
-# Job Sizes: leading empty band suppression
+# panel_relevance — one rule for "can this scope vary along that axis?",
+# feeding both the tab strip and the histograms' owner axis.
+# ---------------------------------------------------------------------------
+
+def _rel(**kwargs):
+    from webapp.jobs.routes import panel_relevance
+    kwargs.setdefault('mode', 'machine')
+    return panel_relevance(**kwargs)
+
+
+def test_relevance_machine_mode_varies_along_both_axes():
+    r = _rel()
+    assert r['show_by_user'] and r['show_by_project']
+    assert r['owners_toggle'] and r['owners_enabled']
+    assert r['default_group_by'] == 'user'
+
+
+def test_relevance_user_mode_pins_the_user_axis():
+    """By User would be a pie of one; the project axis takes the stack."""
+    r = _rel(mode='user')
+    assert not r['show_by_user']
+    assert r['show_by_project']
+    assert not r['owners_toggle']
+    assert r['default_group_by'] == 'project'
+    assert r['owners_enabled']
+
+
+def test_relevance_user_filter_pins_the_user_axis_in_any_mode():
+    r = _rel(mode='machine', user_filter='alice')
+    assert not r['show_by_user']
+    assert r['default_group_by'] == 'project'
+
+
+def test_relevance_account_filter_pins_the_project_axis():
+    r = _rel(mode='machine', account_filter='SCSG0001')
+    assert r['show_by_user']
+    assert not r['show_by_project']
+    assert not r['owners_toggle']
+    assert r['default_group_by'] == 'user'
+
+
+def test_relevance_single_projcode_tree_pins_the_project_axis():
+    assert not _rel(mode='project',
+                    account_projcodes=['SCSG0001'])['show_by_project']
+    assert _rel(mode='project',
+                account_projcodes=['SCSG0001', 'SCSG0002'])['show_by_project']
+
+
+def test_relevance_drops_owner_grouping_when_both_axes_are_pinned():
+    r = _rel(mode='user', account_filter='SCSG0001')
+    assert not r['show_by_user'] and not r['show_by_project']
+    assert not r['owners_enabled']
+
+
+def test_relevance_needs_no_request_context():
+    """Purity is the point: relevance follows what reaches the PANELS, not
+    request.args. A ?user= on a host *page* URL must not hide a tab whose
+    panels were never filtered by it — so the rule can't read the request.
+    Touching ``request`` here would raise outside a request context."""
+    from flask import has_request_context
+    assert not has_request_context()
+    assert _rel(mode='machine')['show_by_user'] is True
+
+
+# ---------------------------------------------------------------------------
+# Job Sizes: empty edge-band suppression
 # ---------------------------------------------------------------------------
 
 def _sizes_hist(first_jobs=0):
@@ -3539,43 +3935,106 @@ def _sizes_hist(first_jobs=0):
     }
 
 
+def _banded_hist(counts):
+    """A nodes-style envelope with one band per entry of *counts*."""
+    return {
+        'dimension': 'nodes', 'column': 'numnodes', 'unit': 'nodes',
+        'min_param': 'min_nodes', 'max_param': 'max_nodes',
+        'buckets': [
+            {'label': str(i), 'lo': i, 'hi': i,
+             'job_count': n, 'cpu_hours': float(n), 'gpu_hours': 0.0}
+            for i, n in enumerate(counts)
+        ],
+        'null_count': 0, 'total_count': sum(counts),
+    }
+
+
+def _labels(hist):
+    return [b['label'] for b in hist['buckets']]
+
+
 def test_trim_drops_a_leading_empty_band():
     """Every job uses ≥1 node, so that 0 band can never fill."""
-    from webapp.jobs.routes import _trim_leading_empty_bands
+    from webapp.jobs.routes import _trim_empty_edge_bands
 
     hist = _sizes_hist()
-    trimmed = _trim_leading_empty_bands(hist)
+    trimmed = _trim_empty_edge_bands(hist)
 
-    assert [b['label'] for b in trimmed['buckets']] == ['1', '2-4']
+    assert _labels(trimmed) == ['1', '2-4']
     # The envelope is a shared cache entry — trimming must copy, not mutate.
-    assert [b['label'] for b in hist['buckets']] == ['0', '1', '2-4']
+    assert _labels(hist) == ['0', '1', '2-4']
 
 
 def test_trim_keeps_a_populated_leading_band():
     """The GPU 0 band holds the CPU-only jobs and stays."""
-    from webapp.jobs.routes import _trim_leading_empty_bands
+    from webapp.jobs.routes import _trim_empty_edge_bands
 
-    trimmed = _trim_leading_empty_bands(_sizes_hist(first_jobs=9))
-    assert [b['label'] for b in trimmed['buckets']] == ['0', '1', '2-4']
+    assert _labels(_trim_empty_edge_bands(_sizes_hist(first_jobs=9))) == \
+        ['0', '1', '2-4']
 
 
-def test_trim_leaves_an_entirely_empty_range_alone():
-    """All-zero → the chart's own placeholder, not a bandless envelope."""
-    from webapp.jobs.routes import _trim_leading_empty_bands
+def test_trim_drops_trailing_empty_bands():
+    """The bucket tables are sized for the biggest machine the plugin
+    serves, so a smaller one's top bands can never fill."""
+    from webapp.jobs.routes import _trim_empty_edge_bands
 
-    hist = _sizes_hist()
-    hist['buckets'] = [dict(b, job_count=0) for b in hist['buckets']]
-    assert _trim_leading_empty_bands(hist)['buckets'] == hist['buckets']
+    hist = _banded_hist([3, 7, 2, 0, 0, 0])
+    trimmed = _trim_empty_edge_bands(hist)
+
+    assert _labels(trimmed) == ['0', '1', '2']
+    assert _labels(hist) == ['0', '1', '2', '3', '4', '5']   # not mutated
+
+
+def test_trim_drops_both_edges_at_once():
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    assert _labels(_trim_empty_edge_bands(
+        _banded_hist([0, 0, 4, 9, 0]))) == ['2', '3']
+
+
+def test_trim_keeps_interior_empty_bands():
+    """A gap inside the distribution is a finding, not noise."""
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    assert _labels(_trim_empty_edge_bands(
+        _banded_hist([0, 5, 0, 0, 8, 0]))) == ['1', '2', '3', '4']
+
+
+def test_trim_keeps_a_single_populated_band():
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    assert _labels(_trim_empty_edge_bands(
+        _banded_hist([0, 0, 6, 0, 0]))) == ['2']
+
+
+def test_trim_empties_an_entirely_empty_range():
+    """All-zero → no bands at all, so the caller renders an empty state
+    instead of a bar-less axis over a table of zeros."""
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    hist = _banded_hist([0, 0, 0])
+    trimmed = _trim_empty_edge_bands(hist)
+
+    assert trimmed['buckets'] == []
+    assert len(hist['buckets']) == 3                         # not mutated
+
+
+def test_trim_tolerates_an_envelope_with_no_bands():
+    from webapp.jobs.routes import _trim_empty_edge_bands
+
+    hist = _banded_hist([])
+    assert _trim_empty_edge_bands(hist) is hist
+    assert _trim_empty_edge_bands(None) is None
 
 
 def test_trim_ignores_the_displayed_metric():
     """A band of real jobs charging no GPU-hours must not shift the axis."""
-    from webapp.jobs.routes import _trim_leading_empty_bands
+    from webapp.jobs.routes import _trim_empty_edge_bands
 
     hist = _sizes_hist(first_jobs=4)
     hist['buckets'][0]['cpu_hours'] = 0.0
     hist['buckets'][0]['gpu_hours'] = 0.0
-    assert _trim_leading_empty_bands(hist)['buckets'][0]['label'] == '0'
+    assert _trim_empty_edge_bands(hist)['buckets'][0]['label'] == '0'
 
 
 def test_job_sizes_fragment_hides_the_empty_zero_band(
@@ -3609,6 +4068,64 @@ def test_job_sizes_bar_and_row_indices_stay_aligned_after_trim(
     row = re.search(r'data-jh-bucket="0".*?</tr>', body, re.S)
     assert row, 'no bucket-0 row rendered'
     assert '<code>1</code>' in row.group(0)
+
+
+def _job_sizes_body(app, auth_client, project, monkeypatch, hist):
+    _install_mock_plugin(app, monkeypatch, jobs_histogram_return=hist)
+    return auth_client.get(
+        f'/dashboards/user/jobs/{project.projcode}/job-sizes'
+        '?machine=derecho&dimension=nodes'
+    ).get_data(as_text=True)
+
+
+def test_job_sizes_fragment_hides_trailing_empty_bands(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Casper can't fill the top of an axis sized for the biggest machine."""
+    import re
+    body = _job_sizes_body(app, auth_client, active_project, monkeypatch,
+                           _banded_hist([0, 4, 9, 0, 0, 0]))
+    labels = re.findall(r'<code>([^<]+)</code>', body)
+    assert labels == ['1', '2']
+
+
+def test_job_sizes_fragment_keeps_interior_empty_bands(
+    app, auth_client, active_project, monkeypatch,
+):
+    import re
+    body = _job_sizes_body(app, auth_client, active_project, monkeypatch,
+                           _banded_hist([0, 5, 0, 8, 0]))
+    labels = re.findall(r'<code>([^<]+)</code>', body)
+    assert labels == ['1', '2', '3']
+
+
+def test_histogram_with_no_matching_jobs_renders_one_empty_state(
+    app, auth_client, active_project, monkeypatch,
+):
+    """All-zero: one sentence, not a bar-less axis over a table of zeros."""
+    body = _job_sizes_body(app, auth_client, active_project, monkeypatch,
+                           _banded_hist([0, 0, 0]))
+
+    assert 'No jobs match these filters.' in body
+    assert 'Bucket breakdown' not in body
+    assert 'data-jh-bucket' not in body
+
+
+def test_histogram_all_unmeasured_says_so_instead_of_no_jobs(
+    app, auth_client, active_project, monkeypatch,
+):
+    """Matching jobs that carry no value on this dimension are a different
+    story from no matching jobs — Derecho waits before 2025 are the case."""
+    hist = _banded_hist([0, 0, 0])
+    hist.update(dimension='wait', null_count=42, total_count=42)
+    _install_mock_plugin(app, monkeypatch, jobs_histogram_return=hist)
+    body = auth_client.get(
+        f'/dashboards/user/jobs/{active_project.projcode}/wait-times'
+        '?machine=derecho'
+    ).get_data(as_text=True)
+
+    assert 'no wait measurement' in body
+    assert 'No jobs match these filters.' not in body
 
 
 # ---------------------------------------------------------------------------

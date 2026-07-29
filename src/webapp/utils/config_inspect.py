@@ -380,13 +380,19 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     # Lazy-import to avoid circulars
     from webapp.api.v1.health import _ping_engine
 
-    for name, engine in engines.items():
+    def _health_row(name: str, engine, **extra) -> dict:
+        """One Database-card row: ping + pool stats + safe URL.
+
+        The single row shape for SAM's own binds and for every plugin engine,
+        so a new plugin surfaces on the card by calling this rather than
+        re-deriving 'healthy' if ok else 'unhealthy' for the fourth time.
+        """
         ok, latency_ms, err = _ping_engine(engine)
         try:
             stats = pool_stats(engine.pool)
         except Exception:
             stats = None
-        databases.append({
+        return {
             'name':         name,
             'url':          format_db_url_safe(engine),
             'status':       'healthy' if ok else 'unhealthy',
@@ -394,7 +400,11 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'error':        err,
             'error_detail': classify_connection_error(err),
             'pool':         stats,
-        })
+            **extra,
+        }
+
+    for name, engine in engines.items():
+        databases.append(_health_row(name, engine))
 
     # hpc-usage-queries plugin (one engine per configured machine).
     # Registered on app.extensions by webapp.jobs.init_job_history at
@@ -402,20 +412,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     # installed, in which case no rows are added.
     jh_state = app.extensions.get('hpc_usage_queries') or {}
     for machine, engine in (jh_state.get('engines') or {}).items():
-        ok, latency_ms, err = _ping_engine(engine)
-        try:
-            stats = pool_stats(engine.pool)
-        except Exception:
-            stats = None
-        databases.append({
-            'name':         f'job_history ({machine})',
-            'url':          format_db_url_safe(engine),
-            'status':       'healthy' if ok else 'unhealthy',
-            'latency_ms':   latency_ms,
-            'error':        err,
-            'error_detail': classify_connection_error(err),
-            'pool':         stats,
-        })
+        databases.append(_health_row(f'job_history ({machine})', engine))
 
     # fs-scans plugin. Collections are *schemas* within one CNPG database per
     # disk resource (campaign → Campaign_Store today; desc1 → Destor later),
@@ -437,11 +434,6 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             display_db = dbname or 'fs_scans'
             # Health from one representative engine — all share host + db.
             rep_engine = items[0][1]
-            ok, latency_ms, err = _ping_engine(rep_engine)
-            try:
-                stats = pool_stats(rep_engine.pool)
-            except Exception:
-                stats = None
             # Per-collection scan-date freshness (best-effort; one tiny
             # scan_metadata read each, pinned to THIS database). A failing
             # collection reports None rather than sinking the whole card.
@@ -458,21 +450,15 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
                     scan_date = None
                 collections.append({'name': collection, 'scan_date': scan_date})
             present = [c['scan_date'] for c in collections if c['scan_date']]
-            databases.append({
-                'name':         f'fs_scans ({display_db})',
-                'url':          format_db_url_safe(rep_engine),
-                'status':       'healthy' if ok else 'unhealthy',
-                'latency_ms':   latency_ms,
-                'error':        err,
-                'error_detail': classify_connection_error(err),
-                'pool':         stats,
-                'scans': {
+            databases.append(_health_row(
+                f'fs_scans ({display_db})', rep_engine,
+                scans={
                     'collection_count': len(collections),
                     'collections':      collections,
                     'oldest_scan':      min(present) if present else None,
                     'newest_scan':      max(present) if present else None,
                 },
-            })
+            ))
 
     # --- Authentication
     auth = {

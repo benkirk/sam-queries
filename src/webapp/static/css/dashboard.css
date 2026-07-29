@@ -1097,16 +1097,48 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    Mirrors Unity's cascade: base color set first, :not(.active) overrides inactive.
    ========================================================================= */
 
-/* Pills — recolor to NCAR blue without changing the visual treatment.
-   Used for sub-navigation inside accordions and chart-selection rows where the
-   bolder .nav-tabs invert pattern would be too aggressive. Bootstrap 5
-   implements .nav-pills via CSS custom properties, so the four overrides
-   below are sufficient — no per-state selectors needed. */
+/* Pills — same white-is-active convention as .nav-tabs below and the
+   .btn-group selector rows above, at the lighter rounded-pill weight.
+   Pills carry the machine / filesystem / chart-series choosers (jobs and
+   filesystem-scan subtabs, the allocations pie tabs, the allocation-tree
+   resource types); they used to run blue-is-active, which read backwards
+   next to every other selector on the same page.
+
+   Bootstrap 5 exposes custom properties for the ACTIVE pill only, so the
+   inactive treatment needs the explicit :not(.active) rules — mirroring
+   how .nav-tabs is written. */
 .nav-pills {
     --bs-nav-link-color: var(--ncar-blue);
     --bs-nav-link-hover-color: var(--ncar-navy);
-    --bs-nav-pills-link-active-color: #fff;
-    --bs-nav-pills-link-active-bg: var(--ncar-blue);
+    --bs-nav-pills-link-active-color: var(--ncar-blue);
+    --bs-nav-pills-link-active-bg: #fff;
+}
+
+.nav-pills .nav-link:not(.active) {
+    background-color: var(--ncar-blue);
+    color: #fff;
+}
+
+.nav-pills .nav-link:not(.active):hover {
+    background-color: var(--ncar-navy);
+    color: #fff;
+}
+
+/* Counter badges sit inside pills whose background flips with state, so they
+   have to flip too — a stock .bg-light badge vanishes on the white active
+   pill. Both declarations need !important: the background beats .badge.bg-X
+   (same as the tinted badge palette further down this file) and the color
+   beats the .text-dark / .text-* utilities, which Bootstrap ships as
+   !important. Callers therefore don't have to strip those utilities off
+   badges they drop into a pill. */
+.nav-pills .nav-link:not(.active) .badge {
+    background-color: #fff !important;
+    color: var(--ncar-blue) !important;
+}
+
+.nav-pills .nav-link.active .badge {
+    background-color: var(--ncar-blue) !important;
+    color: #fff !important;
 }
 
 .nav-tabs {
@@ -1133,6 +1165,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    Bootstrap utility specificity. */
 .nav-tabs:has(+ .tab-content) {
     margin-bottom: 0 !important;
+}
+
+/* Bootstrap's .card-header-tabs pulls the strip down over the header's cap
+   padding with a negative bottom margin — correct only when the tabs are the
+   header's LAST child. The usage card puts a custom date-range row after
+   them, and that negative margin dropped the tab bottoms ~16px into a ~30px
+   row, overlapping the range readout by half. Reset it whenever something
+   follows; the seamless-attach case above is unaffected because tab-content
+   is a sibling of the strip, not part of the header. */
+.card-header-tabs:not(:last-child) {
+    margin-bottom: 0;
 }
 
 .nav-tabs .nav-link {
@@ -1167,6 +1210,116 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .tab-content {
     background-color: #fff;
     padding: 1.25rem;
+}
+
+/* ============================================================================
+   JOB FACET CHIPS — the live value-count strip between the jobs explorer's
+   filter panel and its tab strip (_jobs_facet_chips.html).
+
+   One grid row per dimension: the label column self-sizes to the widest
+   label and the values wrap inside their own cell, so "Exit code" can
+   never end up mid-line with its chips orphaned under "QoS". White
+   surface with the bottom edge open, so the strip reads as the top of the
+   card the .nav-tabs below continue.
+   ========================================================================= */
+
+.jobs-facets {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 0.75rem;
+    row-gap: 0.375rem;
+    align-items: baseline;
+    padding: 0.625rem 0.875rem;
+    background-color: #fff;
+    border: 1px solid var(--border-color);
+    border-bottom: 0;
+}
+
+.jobs-facet-label {
+    justify-self: end;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    font-weight: var(--font-weight-semi-bold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ncar-gray);
+}
+
+.jobs-facet-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+/* Deliberately not a .btn. The Unity button treatment above (uppercase,
+   700 weight, 3px border, 1.25rem type) is right for an action and far
+   too loud for two dozen read-mostly value tokens — and its uppercasing
+   would misreport identifiers, the same reason .btn code carves itself
+   out. These stay <button>s for the keyboard and for the shared
+   set-filter-submit action; only the styling opts out. */
+.facet-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    background-color: var(--bg-gray-light);
+    border: 1px solid var(--border-color);
+    color: var(--text-dark);
+    /* Both inherited from .btn until now: a bare <button> takes the
+       system UI font and the default arrow cursor. */
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    transition: background-color var(--transition-fast),
+                border-color var(--transition-fast),
+                color var(--transition-fast);
+}
+
+.facet-chip:hover {
+    background-color: #fff;
+    border-color: var(--ncar-blue);
+    color: var(--ncar-blue);
+}
+
+.facet-chip:focus-visible {
+    outline: 2px solid var(--ncar-blue);
+    outline-offset: 1px;
+}
+
+/* Counts are a secondary reading — subdued, and tabular so a column of
+   chips doesn't jitter as the digits change. */
+.facet-chip-count {
+    font-size: 0.75rem;
+    color: var(--ncar-gray);
+    font-variant-numeric: tabular-nums;
+}
+
+.facet-chip.is-active {
+    background-color: var(--ncar-blue);
+    border-color: var(--ncar-blue);
+    color: #fff;
+}
+
+.facet-chip.is-active .facet-chip-count {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+/* Phones: the label column costs more than it aligns — give each
+   dimension its own line above its values. */
+@media (max-width: 575.98px) {
+    .jobs-facets {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 0.125rem;
+    }
+
+    .jobs-facet-label {
+        justify-self: start;
+    }
+
+    .jobs-facet-label:not(:first-child) {
+        margin-top: 0.375rem;
+    }
 }
 
 /* ============================================================================

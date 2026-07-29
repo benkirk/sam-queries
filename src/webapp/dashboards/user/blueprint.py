@@ -10,6 +10,8 @@ JavaScript API calls for improved performance and simplicity.
 from flask import Blueprint, abort, render_template, request, flash, redirect, url_for, session, jsonify, make_response, current_app
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
+from typing import NamedTuple
+
 from marshmallow import ValidationError
 
 from sam.schemas.forms.user import (
@@ -59,11 +61,14 @@ from webapp.api.access_control import (
 from ..charts import (
     generate_usage_timeseries_matplotlib,
     generate_usage_timeseries_stacked_by_user,
+    generate_user_usage_pie_chart,
     generate_disk_usage_stacked_area,
 )
+from webapp.utils.scope import resolve_scope_project, resolve_scope_projcodes
 from webapp.disk_scans import is_enabled as is_fs_scans_enabled
 from webapp.disk_scans import service as disk_scans_service
 from webapp.jobs import service as jobs_service
+from webapp.jobs.routes import panel_relevance as jobs_panel_relevance
 
 
 bp = Blueprint('user_dashboard', __name__, url_prefix='/user')
@@ -190,6 +195,10 @@ def my_jobs():
         'dashboards/user/my_jobs.html',
         jobs_window_start=default_jobs_window_start(),
         jobs_window_days=DEFAULT_JOBS_WINDOW_DAYS,
+        # User mode pins the username, so By User would be a pie of one;
+        # By Project takes its slot. Derived, not hardcoded in the
+        # template, so it follows the same rule as every other surface.
+        jobs_panels=jobs_panel_relevance(mode='user'),
         **ctx,
     )
 
@@ -498,24 +507,12 @@ def resource_details(project):
 
     # Scope: which tree node's subtree the analysis cards aggregate.
     # Defaults to the root projcode (show everything); clicking tree nodes sets scope=<child>.
-    scope = request.args.get('scope', projcode)
-
-    # Validate scope belongs to this project's tree; fall back to root if not
-    if scope != projcode:
-        scope_project = Project.get_by_projcode(db.session, scope)
-        if not scope_project or scope_project.tree_root != project.tree_root:
-            scope = projcode
-            scope_project = project
-    else:
-        scope_project = project
-
+    scope_project = resolve_scope_project(project)
+    scope = scope_project.projcode
     scope_has_children = bool(scope_project.has_children)
 
     # All projcodes covered by the selected scope (for user/daily breakdown queries)
-    if scope_has_children:
-        all_projcodes = [p.projcode for p in scope_project.get_descendants(include_self=True)]
-    else:
-        all_projcodes = [scope]
+    all_projcodes = resolve_scope_projcodes(project, scope)
 
     # Fetch resource detail data; scope controls which subtree the daily trend uses
     detail_data = get_resource_detail_data(
@@ -584,19 +581,19 @@ def resource_details(project):
 
         tree_data = _build_node(tree_root)
 
-    # Note: the Usage Trend chart is now loaded via HTMX
-    # (resource_details_usage_chart route below) so the metric pill
-    # selector — Charges / Job Count / Core-Hours — can swap the SVG
-    # in place. The parent template just renders a loader div.
-
-    # Which metric pills are available depends on resource type.
-    # Disk/Archive summaries don't carry num_jobs / core_hours, so
-    # those metric variants are suppressed for non-compute resources.
-    usage_chart_metrics = ['charges']
-    if detail_data.get('daily_jobs') is not None:
-        usage_chart_metrics.append('jobs')
-    if detail_data.get('daily_core_hours') is not None:
-        usage_chart_metrics.append('core_hours')
+    # Note: both usage-card charts load via HTMX (the
+    # resource_details_usage_chart / resource_details_user_pie routes below)
+    # so the metric pill selector — Charges / Job Count / Core-Hours — can
+    # swap the SVG in place. The parent template just renders loader divs,
+    # and only the open pane's fires on load.
+    #
+    # The By User pane is suppressed for a single user, where a pie of one
+    # and a table restating the Historical Usage totals say nothing. Decided
+    # here rather than in the template so the tab strip and the server's
+    # choice of open pane cannot disagree — the same discipline
+    # jobs.routes.panel_relevance() applies to the jobs card.
+    show_by_user = len(user_breakdown) > 1
+    usage_tab = _parse_usage_tab(show_by_user)
 
     # Extract allocation start date for the "Epoch" date picker preset
     alloc_start = detail_data['resource_summary'].get('start_date')
@@ -662,7 +659,8 @@ def resource_details(project):
         daily_breakdown=daily_breakdown,
         monthly_user_counts=monthly_user_counts,
         date_span_days=(end_date - start_date).days,
-        usage_chart_metrics=usage_chart_metrics,
+        show_by_user=show_by_user,
+        usage_tab=usage_tab,
         rolling_30=rolling_30,
         rolling_90=rolling_90,
         rolling_is_inheriting=rolling_is_inheriting,
@@ -670,10 +668,14 @@ def resource_details(project):
         can_edit_threshold=can_edit_threshold,
         has_children=has_children,
         scope=scope,
-        # By Project jobs tab only makes sense when the (scoped) account
-        # tree spans more than one projcode — same expansion the jobs
-        # routes use, so tab visibility and row scoping always agree.
-        jobs_multi_project=len(_resolve_scope_projcodes(project, scope)) > 1,
+        # Which job-history tabs can say anything about this scope — the
+        # same rule the jobs panels apply internally, fed the same
+        # (scoped) account tree, so tab visibility and row scoping always
+        # agree. The card carries no user/account filter of its own.
+        jobs_panels=jobs_panel_relevance(
+            mode='project',
+            account_projcodes=resolve_scope_projcodes(project, scope),
+        ),
         tree_data=tree_data,
         alloc_start_date=alloc_start_date,
         account_adjustments=account_adjustments,
@@ -682,23 +684,6 @@ def resource_details(project):
     )
 
 
-def _resolve_scope_projcodes(project, scope_projcode):
-    """Expand a tree-scope projcode into the list of projcodes to query.
-
-    Mirrors the logic in :func:`resource_details` so the subtree partial
-    routes pull the same row set the main page does. An invalid scope
-    silently falls back to the page's root projcode.
-    """
-    if scope_projcode == project.projcode:
-        scope_project = project
-    else:
-        scope_project = Project.get_by_projcode(db.session, scope_projcode)
-        if not scope_project or scope_project.tree_root != project.tree_root:
-            scope_project = project
-
-    if scope_project.has_children:
-        return [p.projcode for p in scope_project.get_descendants(include_self=True)]
-    return [scope_project.projcode]
 
 
 def _parse_subtree_dates(start_raw, end_raw):
@@ -747,7 +732,7 @@ def resource_details_user_subtree(project):
         abort(400, err)
 
     scope = (request.args.get('scope') or '').strip() or project.projcode
-    all_projcodes = _resolve_scope_projcodes(project, scope)
+    all_projcodes = resolve_scope_projcodes(project, scope)
 
     # One user's full queue/date breakdown — same shape the main page
     # used to fetch in bulk, but now scoped to one user.
@@ -787,7 +772,7 @@ def resource_details_day_subtree(project):
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
     scope = (request.args.get('scope') or '').strip() or project.projcode
-    all_projcodes = _resolve_scope_projcodes(project, scope)
+    all_projcodes = resolve_scope_projcodes(project, scope)
 
     # Single day; passing start=end=day scopes the breakdown to that
     # date without a new query function.
@@ -805,7 +790,6 @@ def resource_details_day_subtree(project):
     )
 
 
-_VALID_USAGE_CHART_METRIC = {'charges', 'jobs', 'core_hours'}
 _USAGE_CHART_DATA_KEY = {
     'charges':    'daily_charges',
     'jobs':       'daily_jobs',
@@ -814,25 +798,75 @@ _USAGE_CHART_DATA_KEY = {
 
 _VALID_DISK_USAGE_CHART_METRIC = {'bytes', 'files'}
 
+# Which pane of the usage card is open. Server-side input rather than
+# something the client restores after load: only the active pane's chart
+# carries hx-trigger="load", so a wrong default would fetch a chart nobody is
+# looking at (and, with a client-side restore racing it, fetch both). Named
+# `usage_tab` and not `active_tab` because the jobs blueprint already owns
+# ?active_tab= and this page hosts a jobs card.
+_USAGE_TABS = ('history', 'byuser')
 
-@bp.route('/resource-details/usage-chart/<projcode>')
-@login_required
-@require_project_access(include_ancestors=True)
-def resource_details_usage_chart(project):
-    """HTMX fragment: Usage Trend chart for the selected metric.
 
-    Loaded by the resource-details page on initial render and re-fetched
-    when the analyst toggles a metric pill (Charges / Job Count /
-    Core-Hours). Each metric variant has its own ``chart_cached`` entry
-    keyed on the daily series hash + metric tag.
+def _parse_usage_tab(show_by_user: bool = True) -> str:
+    """``?usage_tab=`` — 'history' | 'byuser'. Unknown values fall back.
+
+    Also clamps to 'history' when the By User pane isn't rendered, so a stale
+    link into a project that has since dropped to one user can't select a tab
+    that has no button.
+    """
+    tab = (request.args.get('usage_tab') or '').strip()
+    if tab not in _USAGE_TABS:
+        return 'history'
+    if tab == 'byuser' and not show_by_user:
+        return 'history'
+    return tab
+
+
+def _available_usage_metrics(detail_data) -> list:
+    """Metric pills this resource type can offer.
+
+    Disk/archive summaries carry no num_jobs / core_hours, so those variants
+    are suppressed rather than rendering empty charts.
+    """
+    available = ['charges']
+    if detail_data and detail_data.get('daily_jobs') is not None:
+        available.append('jobs')
+    if detail_data and detail_data.get('daily_core_hours') is not None:
+        available.append('core_hours')
+    return available
+
+
+class _UsageFragmentCtx(NamedTuple):
+    """Resolved query string shared by the two usage-card chart fragments."""
+    resource_name: str
+    metric: str
+    start_date: datetime
+    end_date: datetime
+    scope: str
+    detail_data: dict
+    available: list
+
+    def template_context(self) -> dict:
+        """The keys both chart partials render (pills + baked fragment URLs)."""
+        return {
+            'metric': self.metric,
+            'available_metrics': self.available,
+            'resource_name': self.resource_name,
+            'scope': self.scope,
+            'start_date': self.start_date.strftime('%Y-%m-%d'),
+            'end_date': self.end_date.strftime('%Y-%m-%d'),
+        }
+
+
+def _usage_fragment_ctx(project) -> _UsageFragmentCtx:
+    """Shared prologue for the Usage Trend and By User chart fragments.
+
+    Both are re-fetched by the same metric pills over the same window and
+    scope, so they parse and validate their query string identically.
     """
     resource_name = (request.args.get('resource') or '').strip()
     if not resource_name:
         abort(400, 'resource is required')
-
-    metric = request.args.get('metric', 'charges')
-    if metric not in _VALID_USAGE_CHART_METRIC:
-        metric = 'charges'
 
     try:
         start_date = (parse_input_start_date(request.args['start_date'])
@@ -844,12 +878,7 @@ def resource_details_usage_chart(project):
     except ValueError:
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
-    scope = (request.args.get('scope') or '').strip() or project.projcode
-    # Validate scope belongs to this project's tree; fall back to root if not
-    if scope != project.projcode:
-        scope_project = Project.get_by_projcode(db.session, scope)
-        if not scope_project or scope_project.tree_root != project.tree_root:
-            scope = project.projcode
+    scope = resolve_scope_project(project).projcode
 
     detail_data = get_resource_detail_data(
         db.session,
@@ -860,38 +889,60 @@ def resource_details_usage_chart(project):
         scope_projcode=scope,
     )
 
-    # Available metrics depend on resource type — disk/archive lack jobs / core_hours.
-    available = ['charges']
-    if detail_data and detail_data.get('daily_jobs') is not None:
-        available.append('jobs')
-    if detail_data and detail_data.get('daily_core_hours') is not None:
-        available.append('core_hours')
+    # Available metrics depend on resource type; an unsupported request (a
+    # stale persisted `metric`, say) clamps to charges rather than 400ing.
+    available = _available_usage_metrics(detail_data)
+    metric = request.args.get('metric', 'charges')
     if metric not in available:
         metric = 'charges'
+
+    return _UsageFragmentCtx(
+        resource_name=resource_name,
+        metric=metric,
+        start_date=start_date,
+        end_date=end_date,
+        scope=scope,
+        detail_data=detail_data,
+        available=available,
+    )
+
+
+@bp.route('/resource-details/usage-chart/<projcode>')
+@login_required
+@require_project_access(include_ancestors=True)
+def resource_details_usage_chart(project):
+    """HTMX fragment: Usage Trend chart for the selected metric.
+
+    Loaded by the resource-details page's History pane and re-fetched when
+    the analyst toggles a metric pill (Charges / Job Count / Core-Hours).
+    Each metric variant has its own ``chart_cached`` entry keyed on the daily
+    series hash + metric tag.
+    """
+    ctx = _usage_fragment_ctx(project)
 
     # Stacked-by-user variant: each daily bar is segmented by the top-10
     # users over the whole window + "Others", ranked by the displayed metric.
     # Falls back to the flat single-series bars when the period has <= 1 user
-    # (a 1-colour stack is pointless and the Usage by User card is hidden
-    # there too) or for non-compute resources, where comp_charge_summary
-    # yields no per-user rows.
-    scope_projcodes = _resolve_scope_projcodes(project, scope)
+    # (a 1-colour stack is pointless and the By User pane is hidden there
+    # too) or for non-compute resources, where comp_charge_summary yields no
+    # per-user rows.
+    scope_projcodes = resolve_scope_projcodes(project, ctx.scope)
     stacked = get_daily_user_usage_for_project(
-        db.session, scope_projcodes, resource_name, start_date, end_date,
-        metric=metric,
+        db.session, scope_projcodes, ctx.resource_name,
+        ctx.start_date, ctx.end_date, metric=ctx.metric,
     )
     named_series = [s for s in stacked['series'] if s['label'] != 'Others']
 
     if len(named_series) > 1:
-        svg = generate_usage_timeseries_stacked_by_user(stacked, metric=metric)
+        svg = generate_usage_timeseries_stacked_by_user(stacked, metric=ctx.metric)
         has_data = True
         is_stacked = True
     else:
-        series = (detail_data or {}).get(_USAGE_CHART_DATA_KEY[metric])
+        series = (ctx.detail_data or {}).get(_USAGE_CHART_DATA_KEY[ctx.metric])
         svg = generate_usage_timeseries_matplotlib(
             series or {'dates': [], 'values': []},
             link_to_day_rows=True,
-            metric=metric,
+            metric=ctx.metric,
         )
         has_data = bool(series and series.get('values'))
         is_stacked = False
@@ -899,15 +950,41 @@ def resource_details_usage_chart(project):
     return render_template(
         'dashboards/user/partials/usage_chart.html',
         chart_svg=svg,
-        metric=metric,
-        available_metrics=available,
         projcode=project.projcode,
-        resource_name=resource_name,
-        scope=scope,
-        start_date=start_date.strftime('%Y-%m-%d'),
-        end_date=end_date.strftime('%Y-%m-%d'),
         has_data=has_data,
         is_stacked=is_stacked,
+        **ctx.template_context(),
+    )
+
+
+@bp.route('/resource-details/user-pie/<projcode>')
+@login_required
+@require_project_access(include_ancestors=True)
+def resource_details_user_pie(project):
+    """HTMX fragment: By User pie for the selected metric.
+
+    Sibling of the Usage Trend fragment above — same window, same scope, same
+    metric pills. Wedge and legend clicks emit ``#usage-user-<username>``,
+    which svg-chart-links.js already routes to the Usage by User row in the
+    same pane.
+    """
+    ctx = _usage_fragment_ctx(project)
+
+    user_breakdown = get_user_summary_for_project(
+        db.session,
+        resolve_scope_projcodes(project, ctx.scope),
+        ctx.resource_name,
+        ctx.start_date,
+        ctx.end_date,
+    )
+    svg = generate_user_usage_pie_chart(user_breakdown, metric=ctx.metric)
+
+    return render_template(
+        'dashboards/user/partials/user_pie_chart.html',
+        chart_svg=svg,
+        projcode=project.projcode,
+        has_data=any(float(u.get(ctx.metric) or 0) > 0 for u in user_breakdown),
+        **ctx.template_context(),
     )
 
 
@@ -943,11 +1020,7 @@ def resource_details_disk_usage_chart(project):
     except ValueError:
         abort(400, 'Invalid date format. Please use YYYY-MM-DD.')
 
-    scope = (request.args.get('scope') or '').strip() or project.projcode
-    if scope != project.projcode:
-        scope_project = Project.get_by_projcode(db.session, scope)
-        if not scope_project or scope_project.tree_root != project.tree_root:
-            scope = project.projcode
+    scope = resolve_scope_project(project).projcode
     fileset = request.args.get('fileset') or None
 
     # Rebuild the subtree to resolve the scoped accounts / valid filesets
@@ -1053,14 +1126,8 @@ def _render_disk_resource_details(*, project, resource, start_date, end_date):
     HPC view.
     """
     resource_name = resource.resource_name
-    scope = request.args.get('scope', project.projcode)
+    scope = resolve_scope_project(project).projcode
     fileset = request.args.get('fileset') or None
-
-    # Validate scope belongs to this project's tree; fall back to root.
-    if scope != project.projcode:
-        candidate = Project.get_by_projcode(db.session, scope)
-        if candidate is None or candidate.tree_root != project.tree_root:
-            scope = project.projcode
 
     # Always build the full tree from the user's root project so the
     # tree-navigation card shows everything; chart + table re-scope by

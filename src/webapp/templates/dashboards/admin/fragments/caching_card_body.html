@@ -59,10 +59,10 @@
 {% if cache_state.jobs %}
 <hr class="my-3">
 <div class="text-muted small mb-2"><strong>Job-history cache</strong></div>
-{# Two buckets: closed windows (end < today) are immutable → long TTL;
-   windows touching today keep collecting jobs → short TTL. Looping
-   surfaces each bucket's TTL so the 15-min recent TTL is visible next
-   to the 6-hour historical one. #}
+{# Two buckets: closed windows (end < today) settle → longer TTL, though
+   late-arriving job records keep it to 30 minutes; windows touching today
+   keep collecting jobs → shorter TTL. Looping surfaces each bucket's TTL
+   so the 15-min recent one is visible next to the 30-min historical one. #}
 {% for _b in cache_state.jobs %}
   <div class="text-muted small mb-1">
     {{ 'Recent (open windows)' if _b.name == 'jobs_recent'

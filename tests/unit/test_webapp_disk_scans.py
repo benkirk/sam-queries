@@ -26,6 +26,12 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from webapp.disk_scans.scope import (
+    ProjectScanScope,
+    ResourceScanScope,
+    UserScanScope,
+)
+
 
 # Mirror the plugin's normalize_path / collection_for_path lexical helpers so the
 # fake module behaves like the real one for scope matching (see
@@ -58,9 +64,10 @@ def _disable_fs_scans_cache():
     """
     from webapp.disk_scans import cache as _c
     # A stored None per bucket means "initialised but disabled".
-    _c._adapters = {b: None for b in _c._BUCKETS}
+    _c._CACHE.reset_for_tests()
     yield
-    _c._adapters = {}   # clear → buckets re-init on next use
+    # disabled=False → drop the memo so buckets re-init on next use
+    _c._CACHE.reset_for_tests(disabled=False)
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +79,7 @@ def _wire_service(monkeypatch, *, prefixes, collections, warmed,
     """Patch the service module's scope/module/collection helpers + a fake
     FsScanQueries that captures the kwargs it's called with."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
 
     class _FakeQueries:
         def __init__(self, filesystems, database=None):
@@ -96,14 +104,17 @@ def _wire_service(monkeypatch, *, prefixes, collections, warmed,
         collection_for_path=lambda p: collection_map.get(p) or _fake_collection_for_path(p),
         normalize_path=_fake_normalize,
     )
-    monkeypatch.setattr(service, 'get_module', lambda: mod)
-    # _scoped intersects reachability against the resource's database, so stub
-    # the database-aware seam (not get_collections) with the warmed set.
-    monkeypatch.setattr(service, 'collections_for_resource',
+    # The plugin + collection seams live on the scope module now: it is
+    # ScanScope.resolve() that reaches for them, not the service.
+    from webapp.disk_scans import scope as scope_mod
+    monkeypatch.setattr(scope_mod, 'get_module', lambda: mod)
+    # resolve() intersects reachability against the resource's database, so
+    # stub the database-aware seam (not get_collections) with the warmed set.
+    monkeypatch.setattr(scope_mod, 'collections_for_resource',
                         lambda r, app=None: list(warmed))
-    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
+    monkeypatch.setattr(scope_mod, 'database_for_resource', lambda r, app=None: None)
     monkeypatch.setattr(
-        service, 'resolve_scan_scope',
+        scope_mod, 'resolve_scan_scope',
         lambda session, project, resource_name: (list(prefixes), list(collections)),
     )
     return service
@@ -122,7 +133,7 @@ def test_scoped_no_subpath_keeps_all_prefixes(monkeypatch):
         },
         capture=cap,
     )
-    rows = svc.scan_directories(None, object(), 'Campaign_Store')
+    rows = svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store'))
     assert cap['filesystems'] == ['cisl']
     assert sorted(cap['list_kwargs']['path_prefixes']) == [
         '/glade/campaign/cisl/csg', '/glade/campaign/cisl/other',
@@ -143,8 +154,7 @@ def test_scoped_subpath_narrows_to_fileset(monkeypatch):
         },
         capture=cap,
     )
-    svc.scan_directories(None, object(), 'Campaign_Store',
-                         subpath='/glade/campaign/cisl/csg')
+    svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store', '/glade/campaign/cisl/csg'))
     assert cap['list_kwargs']['path_prefixes'] == ['/glade/campaign/cisl/csg']
 
 
@@ -158,8 +168,7 @@ def test_scoped_unknown_subpath_yields_no_query(monkeypatch):
         collection_map={'/glade/campaign/cisl/csg': 'cisl'},
         capture=cap,
     )
-    rows = svc.scan_directories(None, object(), 'Campaign_Store',
-                                subpath='/glade/campaign/other/elsewhere')
+    rows = svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store', '/glade/campaign/other/elsewhere'))
     assert rows == []
     # Facade must not have been constructed/queried for an unscoped path.
     assert 'list_kwargs' not in cap
@@ -175,16 +184,17 @@ def test_scoped_drops_unwarmed_collections(monkeypatch):
         collection_map={'/glade/campaign/aiml/proj': 'aiml'},
         capture=cap,
     )
-    assert svc.scan_directories(None, object(), 'Campaign_Store') == []
+    assert svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store')) == []
     assert 'list_kwargs' not in cap
 
 
 def test_scoped_returns_empty_when_module_missing(monkeypatch):
     from webapp.disk_scans import service
-    monkeypatch.setattr(service, 'get_module', lambda: None)
-    assert service.scan_directories(None, object(), 'Campaign_Store') == []
-    assert service.scan_access_history(None, object(), 'Campaign_Store') is None
-    assert service.scan_file_sizes(None, object(), 'Campaign_Store') is None
+    from webapp.disk_scans import scope as scope_mod
+    monkeypatch.setattr(scope_mod, 'get_module', lambda: None)
+    assert service.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store')) == []
+    assert service.scan_distribution(ProjectScanScope(None, object(), 'Campaign_Store'), 'access_history') is None
+    assert service.scan_distribution(ProjectScanScope(None, object(), 'Campaign_Store'), 'file_sizes') is None
 
 
 # ---------------------------------------------------------------------------
@@ -277,10 +287,15 @@ def test_directories_404_on_unknown_projcode(auth_client):
 
 def test_directories_renders_rows(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     captured = {}
 
-    def fake_scan(session, project, resource_name, **kw):
+    captured_scope = None
+
+    def fake_scan(scope, **kw):
+        nonlocal captured_scope
+        captured_scope = scope
         captured.update(kw)
         return [{
             'path': '/glade/campaign/cisl/csg', 'depth': 4,
@@ -299,15 +314,16 @@ def test_directories_renders_rows(app, auth_client, active_project, monkeypatch)
     assert 'TiB' in body                       # 2 TiB rendered via fmt_size
     assert 'Filesystem-scan data is unavailable' not in body
     assert captured['sort_by'] == 'size'       # default
-    assert captured['subpath'] is None         # no fileset
+    assert captured_scope.subpath is None      # no fileset
 
 
 def test_directories_sort_by_whitelisted(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     captured = {}
     monkeypatch.setattr(service, 'scan_directories',
-                        lambda s, p, r, **kw: captured.update(kw) or [])
+                        lambda scope, *a, **kw: captured.update(kw) or [])
 
     auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
@@ -324,25 +340,27 @@ def test_directories_sort_by_whitelisted(app, auth_client, active_project, monke
 
 def test_directories_fileset_becomes_subpath(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    captured = {}
+    seen = {}
     monkeypatch.setattr(service, 'scan_directories',
-                        lambda s, p, r, **kw: captured.update(kw) or [])
+                        lambda scope, *a, **kw: seen.update(scope=scope) or [])
 
     auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
         f'?resource={_RES}&fileset=/glade/campaign/cisl/csg'
     )
-    assert captured['subpath'] == '/glade/campaign/cisl/csg'
+    assert seen['scope'].subpath == '/glade/campaign/cisl/csg'
 
 
 def test_directories_recursive_flag(app, auth_client, active_project, monkeypatch):
     """?recursive defaults True; recursive=0 + outermost=1 reach the service."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     captured = {}
     monkeypatch.setattr(service, 'scan_directories',
-                        lambda s, p, r, **kw: captured.update(kw) or [])
+                        lambda scope, *a, **kw: captured.update(kw) or [])
 
     base = (f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
             f'?resource={_RES}')
@@ -358,6 +376,7 @@ def test_directories_recursive_flag(app, auth_client, active_project, monkeypatc
 
 def test_directories_error_banner_on_exception(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
 
     def boom(*a, **k):
@@ -377,8 +396,9 @@ def test_directories_error_banner_on_exception(app, auth_client, active_project,
 
 def test_entities_owner_renders(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_owner_summary', lambda s, p, r, **kw: [{
+    monkeypatch.setattr(service, 'scan_entity_summary', lambda scope, *a, **kw: [{
         'owner_uid': 1001, 'total_size': 1024 ** 4, 'total_files': 500,
         'directory_count': 10, 'filesystem': 'cisl', 'username': 'benkirk',
     }])
@@ -394,16 +414,17 @@ def test_entities_owner_renders(app, auth_client, active_project, monkeypatch):
 
 def test_entities_group_renders(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     captured = {}
 
-    def fake_group(s, p, r, **kw):
+    def fake_group(scope, kind, **kw):
         captured.update(kw)
         return [{
             'owner_gid': 2001, 'total_size': 1024 ** 4, 'total_files': 500,
             'directory_count': 10, 'filesystem': 'cisl', 'groupname': 'csgteam',
         }]
-    monkeypatch.setattr(service, 'scan_group_summary', fake_group)
+    monkeypatch.setattr(service, 'scan_entity_summary', fake_group)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/entities'
@@ -416,8 +437,9 @@ def test_entities_group_renders(app, auth_client, active_project, monkeypatch):
 def test_entities_group_drilldown_and_pie(app, auth_client, active_project, monkeypatch):
     """By-group rows are now expandable (GID drill-down) and a clickable pie renders."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_group_summary', lambda s, p, r, **kw: [{
+    monkeypatch.setattr(service, 'scan_entity_summary', lambda scope, *a, **kw: [{
         'owner_gid': 2001, 'total_size': 1024 ** 4, 'total_files': 500,
         'directory_count': 10, 'filesystem': 'cisl', 'groupname': 'csgteam',
     }])
@@ -436,12 +458,14 @@ def test_entities_group_drilldown_and_pie(app, auth_client, active_project, monk
 def test_entities_kind_whitelisted(app, auth_client, active_project, monkeypatch):
     """A bogus kind falls back to owner (scan_owner_summary is used)."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     called = {'owner': False, 'group': False}
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_owner_summary',
+    monkeypatch.setattr(service, 'scan_entity_summary',
                         lambda *a, **k: called.update(owner=True) or [])
-    monkeypatch.setattr(service, 'scan_group_summary',
-                        lambda *a, **k: called.update(group=True) or [])
+    monkeypatch.setattr(
+        service, 'scan_entity_summary',
+        lambda scope, kind, **k: called.update({kind: True}) or [])
 
     auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/entities'
@@ -455,6 +479,7 @@ def test_entities_kind_whitelisted(app, auth_client, active_project, monkeypatch
 
 def test_access_history_renders_svg(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     hist = {
         'bucket_labels': ['< 1 Month', '1-3 Months', '7+ Years'],
@@ -471,7 +496,7 @@ def test_access_history_renders_svg(app, auth_client, active_project, monkeypatc
         'reference_scan_date': datetime(2026, 6, 1),
         'username_map': {1001: 'alice', 1002: 'bob'},
     }
-    monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: hist)
+    monkeypatch.setattr(service, 'scan_distribution', lambda scope, *a, **kw: hist)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
@@ -496,6 +521,7 @@ def test_access_history_user_drilldown_rows(app, auth_client, active_project, mo
     collapse lazy-loads that user's directories scoped to the band (owner_uid
     + date window + recursive=0 by default)."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     hist = {
         'bucket_labels': ['1-2 Years'],
@@ -512,7 +538,7 @@ def test_access_history_user_drilldown_rows(app, auth_client, active_project, mo
         'reference_scan_date': datetime(2026, 6, 1),
         'username_map': {1001: 'alice'},
     }
-    monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: hist)
+    monkeypatch.setattr(service, 'scan_distribution', lambda scope, *a, **kw: hist)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
@@ -536,6 +562,7 @@ def test_access_history_no_drilldown_without_bounds(app, auth_client, active_pro
     """A band with no date window (e.g. the file-size histogram shape) does not
     sprout a per-user drill-down — there's no range to scope directories by."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     hist = {
         'bucket_labels': ['1-2 Years'],
@@ -545,7 +572,7 @@ def test_access_history_no_drilldown_without_bounds(app, auth_client, active_pro
         'reference_scan_date': datetime(2026, 6, 1),
         'username_map': {1001: 'alice'},
     }
-    monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: hist)
+    monkeypatch.setattr(service, 'scan_distribution', lambda scope, *a, **kw: hist)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
@@ -560,6 +587,7 @@ def test_file_sizes_user_drilldown_rows(app, auth_client, active_project, monkey
     rows whose collapse lazy-loads that user's directories filtered by average
     own-file size (owner_uid + min/max_avg_size + recursive=0)."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     hist = {
         'bucket_labels': ['1 MiB - 10 MiB'],
@@ -575,7 +603,7 @@ def test_file_sizes_user_drilldown_rows(app, auth_client, active_project, monkey
         'reference_scan_date': datetime(2026, 6, 1),
         'username_map': {1001: 'alice'},
     }
-    monkeypatch.setattr(service, 'scan_file_sizes', lambda s, p, r, **kw: hist)
+    monkeypatch.setattr(service, 'scan_distribution', lambda scope, *a, **kw: hist)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/file-sizes?resource={_RES}'
@@ -595,10 +623,11 @@ def test_file_sizes_user_drilldown_rows(app, auth_client, active_project, monkey
 def test_directories_avg_size_flag(app, auth_client, active_project, monkeypatch):
     """?min_avg_size/max_avg_size reach the service as ints for the size drill."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     captured = {}
     monkeypatch.setattr(service, 'scan_directories',
-                        lambda s, p, r, **kw: captured.update(kw) or [])
+                        lambda scope, *a, **kw: captured.update(kw) or [])
 
     auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
@@ -610,8 +639,9 @@ def test_directories_avg_size_flag(app, auth_client, active_project, monkeypatch
 
 def test_access_history_empty_when_none(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_access_history', lambda s, p, r, **kw: None)
+    monkeypatch.setattr(service, 'scan_distribution', lambda scope, *a, **kw: None)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/access-history?resource={_RES}'
@@ -624,6 +654,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     """File-size tab is the access-history tab's twin: same shape, same
     template/chart, different service query (scan_file_sizes)."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     hist = {
         'bucket_labels': ['0 - 1 KiB', '1 KiB - 10 KiB', '100 GiB+'],
@@ -640,7 +671,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
         'reference_scan_date': datetime(2026, 6, 1),
         'username_map': {1001: 'fasullo', 1002: 'schwartz'},
     }
-    monkeypatch.setattr(service, 'scan_file_sizes', lambda s, p, r, **kw: hist)
+    monkeypatch.setattr(service, 'scan_distribution', lambda scope, *a, **kw: hist)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/file-sizes?resource={_RES}'
@@ -686,6 +717,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
 def test_fragment_missing_resource_is_graceful(app, auth_client, active_project, monkeypatch):
     """No ?resource= → treated like disabled (no unscoped query)."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     called = {'hit': False}
     monkeypatch.setattr(service, 'scan_directories',
@@ -793,8 +825,7 @@ def test_scan_directories_forwards_filters(monkeypatch):
         collection_map={'/glade/campaign/cisl/csg': 'cisl'},
         capture=cap,
     )
-    svc.scan_directories(
-        None, object(), 'Campaign_Store',
+    svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store'),
         owner_uid=4242, leaves_only=True,
         accessed_before=datetime(2026, 1, 1), accessed_after=datetime(2025, 1, 1),
     )
@@ -815,7 +846,7 @@ def test_scan_directories_forwards_group_id(monkeypatch):
         collection_map={'/glade/campaign/cisl/csg': 'cisl'},
         capture=cap,
     )
-    svc.scan_directories(None, object(), 'Campaign_Store', owner_gid=2001)
+    svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store'), owner_gid=2001)
     kw = cap['list_kwargs']
     assert kw['group_id'] == 2001            # facade param is group_id
     assert kw['owner_id'] is None            # mutually exclusive with owner
@@ -831,9 +862,9 @@ def test_scan_directories_forwards_atime_recursive(monkeypatch):
         collection_map={'/glade/campaign/cisl/csg': 'cisl'},
         capture=cap,
     )
-    svc.scan_directories(None, object(), 'Campaign_Store')          # default
+    svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store'))          # default
     assert cap['list_kwargs']['atime_recursive'] is True
-    svc.scan_directories(None, object(), 'Campaign_Store', atime_recursive=False)
+    svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store'), atime_recursive=False)
     assert cap['list_kwargs']['atime_recursive'] is False
 
 
@@ -844,6 +875,7 @@ def test_scan_directories_outermost_drops_nested(monkeypatch):
     the removable tree, not every directory inside it.
     """
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
 
     rows = [
         {'path': '/glade/campaign/cisl/csg'},
@@ -851,18 +883,21 @@ def test_scan_directories_outermost_drops_nested(monkeypatch):
         {'path': '/glade/campaign/cisl/csg/sub/deep'}, # nested deeper
         {'path': '/glade/campaign/cisl/other'},        # sibling — kept
     ]
-    monkeypatch.setattr(service, '_scan_directories', lambda *a, **k: list(rows))
+    # Stub the scope resolution + the cache-wrapped facade call; the flag
+    # under test is applied after both.
     monkeypatch.setattr(
-        service, '_scoped',
-        lambda s, p, r, subpath=None: (object(), ['/glade/campaign/cisl'], ['cisl']),
+        ProjectScanScope, 'resolve',
+        lambda self: (types.SimpleNamespace(FsScanQueries=lambda **kw: object()),
+                      ['/glade/campaign/cisl'], ['cisl']),
     )
-    kept = service.scan_directories(None, object(), 'Campaign_Store',
+    monkeypatch.setattr(service, 'cached_scan', lambda *a, **k: list(rows))
+    kept = service.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store'),
                                     outermost_only=True)
     assert [r['path'] for r in kept] == [
         '/glade/campaign/cisl/csg', '/glade/campaign/cisl/other',
     ]
     # Without the flag, every directory is returned untouched.
-    allrows = service.scan_directories(None, object(), 'Campaign_Store')
+    allrows = service.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store'))
     assert len(allrows) == 4
 
 
@@ -892,6 +927,7 @@ def test_scan_access_history_tags_band_bounds(monkeypatch):
     """scan_access_history stamps each band with its date window so the
     drill-down can scope directories to the clicked band."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
 
     hist = {
         'bucket_labels': ['< 1 Month', '7+ Years'],
@@ -912,17 +948,17 @@ def test_scan_access_history_tags_band_bounds(monkeypatch):
     mod = types.SimpleNamespace(FsScanQueries=_Q,
                                 collection_for_path=lambda p: 'cisl',
                                 normalize_path=lambda p: p)
-    monkeypatch.setattr(service, 'get_module', lambda: mod)
-    monkeypatch.setattr(service, 'collections_for_resource', lambda r, app=None: ['cisl'])
-    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
-    monkeypatch.setattr(service, 'resolve_scan_scope',
+    monkeypatch.setattr(scope_mod, 'get_module', lambda: mod)
+    monkeypatch.setattr(scope_mod, 'collections_for_resource', lambda r, app=None: ['cisl'])
+    monkeypatch.setattr(scope_mod, 'database_for_resource', lambda r, app=None: None)
+    monkeypatch.setattr(scope_mod, 'resolve_scan_scope',
                         lambda s, p, r: (['/glade/campaign/cisl/csg'], ['cisl']))
     monkeypatch.setattr(
         service, 'cached_scan',
         lambda qt, q, colls, pfx, opts, compute, bucket='default', database=None: compute(),
     )
 
-    out = service.scan_access_history(None, object(), 'Campaign_Store')
+    out = service.scan_distribution(ProjectScanScope(None, object(), 'Campaign_Store'), 'access_history')
     assert out['buckets']['< 1 Month']['accessed_before'] == '2026-06-01'
     assert out['buckets']['< 1 Month']['accessed_after'] == '2026-05-02'
     assert out['buckets']['7+ Years']['accessed_after'] is None
@@ -949,7 +985,7 @@ def test_scan_directories_forwards_avg_size(monkeypatch):
         collection_map={'/glade/campaign/cisl/csg': 'cisl'},
         capture=cap,
     )
-    svc.scan_directories(None, object(), 'Campaign_Store',
+    svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store'),
                          min_avg_size=1024, max_avg_size=10240)
     kw = cap['list_kwargs']
     assert kw['min_avg_size'] == 1024
@@ -960,6 +996,7 @@ def test_scan_file_sizes_tags_band_bounds(monkeypatch):
     """scan_file_sizes stamps each band with its avg-file-size window so the
     drill-down can scope directories to the clicked size band."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
 
     hist = {
         'bucket_labels': ['0 - 1 KiB', '100 GiB+'],
@@ -979,17 +1016,17 @@ def test_scan_file_sizes_tags_band_bounds(monkeypatch):
     mod = types.SimpleNamespace(FsScanQueries=_Q,
                                 collection_for_path=lambda p: 'cisl',
                                 normalize_path=lambda p: p)
-    monkeypatch.setattr(service, 'get_module', lambda: mod)
-    monkeypatch.setattr(service, 'collections_for_resource', lambda r, app=None: ['cisl'])
-    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
-    monkeypatch.setattr(service, 'resolve_scan_scope',
+    monkeypatch.setattr(scope_mod, 'get_module', lambda: mod)
+    monkeypatch.setattr(scope_mod, 'collections_for_resource', lambda r, app=None: ['cisl'])
+    monkeypatch.setattr(scope_mod, 'database_for_resource', lambda r, app=None: None)
+    monkeypatch.setattr(scope_mod, 'resolve_scan_scope',
                         lambda s, p, r: (['/glade/campaign/cisl/csg'], ['cisl']))
     monkeypatch.setattr(
         service, 'cached_scan',
         lambda qt, q, colls, pfx, opts, compute, bucket='default', database=None: compute(),
     )
 
-    out = service.scan_file_sizes(None, object(), 'Campaign_Store')
+    out = service.scan_distribution(ProjectScanScope(None, object(), 'Campaign_Store'), 'file_sizes')
     assert out['buckets']['0 - 1 KiB']['size_min'] == 0
     assert out['buckets']['0 - 1 KiB']['size_max'] == 1024
     assert out['buckets']['100 GiB+']['size_max'] is None
@@ -998,6 +1035,7 @@ def test_scan_file_sizes_tags_band_bounds(monkeypatch):
 def test_directories_bucket_selection(monkeypatch):
     """Any filter routes to the 'filtered' bucket; the bare query to 'default'."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _wire_service(
         monkeypatch, prefixes=['/p'], collections=['c'], warmed=['c'],
         collection_map={'/p': 'c'}, capture={},
@@ -1009,11 +1047,11 @@ def test_directories_bucket_selection(monkeypatch):
         return compute()
 
     monkeypatch.setattr(service, 'cached_scan', fake_cached)
-    service.scan_directories(None, object(), 'R')                     # default
-    service.scan_directories(None, object(), 'R', owner_uid=5)        # filtered
-    service.scan_directories(None, object(), 'R', owner_gid=7)        # filtered
-    service.scan_directories(None, object(), 'R', leaves_only=True)   # filtered
-    service.scan_directories(None, object(), 'R',
+    service.scan_directories(ProjectScanScope(None, object(), 'R'))                     # default
+    service.scan_directories(ProjectScanScope(None, object(), 'R'), owner_uid=5)        # filtered
+    service.scan_directories(ProjectScanScope(None, object(), 'R'), owner_gid=7)        # filtered
+    service.scan_directories(ProjectScanScope(None, object(), 'R'), leaves_only=True)   # filtered
+    service.scan_directories(ProjectScanScope(None, object(), 'R'),
                              accessed_before=datetime(2026, 1, 1))    # filtered
     assert seen == ['default', 'filtered', 'filtered', 'filtered', 'filtered']
 
@@ -1041,6 +1079,7 @@ def test_fs_scans_cache_info_lists_both_buckets(monkeypatch):
 def _wire_resource_service(monkeypatch, *, collections, capture):
     """Patch the service for resource mode: a fake module + collection map."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
 
     class _FakeQueries:
         def __init__(self, filesystems, database=None):
@@ -1052,10 +1091,10 @@ def _wire_resource_service(monkeypatch, *, collections, capture):
             return [{'path': 'X'}]
 
     mod = types.SimpleNamespace(FsScanQueries=_FakeQueries)
-    monkeypatch.setattr(service, 'get_module', lambda: mod)
-    monkeypatch.setattr(service, 'collections_for_resource',
+    monkeypatch.setattr(scope_mod, 'get_module', lambda: mod)
+    monkeypatch.setattr(scope_mod, 'collections_for_resource',
                         lambda r, app=None: list(collections))
-    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
+    monkeypatch.setattr(scope_mod, 'database_for_resource', lambda r, app=None: None)
     return service
 
 
@@ -1063,7 +1102,7 @@ def test_scan_directories_resource_unscoped(monkeypatch):
     """Resource mode queries the whole collection (path_prefixes=None)."""
     cap = {}
     svc = _wire_resource_service(monkeypatch, collections=['campaign'], capture=cap)
-    rows = svc.scan_directories_resource('Campaign_Store')
+    rows = svc.scan_directories(ResourceScanScope('Campaign_Store'))
     assert cap['filesystems'] == ['campaign']
     assert cap['list_kwargs']['path_prefixes'] is None   # whole-collection fast path
     assert rows == [{'path': 'X'}]
@@ -1073,7 +1112,7 @@ def test_scan_directories_resource_subpath(monkeypatch):
     """A fileset narrows resource mode to that single sub-path."""
     cap = {}
     svc = _wire_resource_service(monkeypatch, collections=['campaign'], capture=cap)
-    svc.scan_directories_resource('Campaign_Store', subpath='/glade/campaign/cisl')
+    svc.scan_directories(ResourceScanScope('Campaign_Store', '/glade/campaign/cisl'))
     assert cap['list_kwargs']['path_prefixes'] == ['/glade/campaign/cisl']
 
 
@@ -1082,8 +1121,9 @@ def test_scan_directories_resource_forwards_full_filters(monkeypatch):
     per-user/group + histogram-band drill-downs filter identically."""
     cap = {}
     svc = _wire_resource_service(monkeypatch, collections=['campaign'], capture=cap)
-    svc.scan_directories_resource(
-        'Campaign_Store', owner_gid=2001, atime_recursive=False,
+    svc.scan_directories(
+        ResourceScanScope('Campaign_Store'),
+        owner_gid=2001, atime_recursive=False,
         min_avg_size=10, max_avg_size=20, sort_by='size_nr')
     kw = cap['list_kwargs']
     assert kw['group_id'] == 2001
@@ -1095,28 +1135,32 @@ def test_scan_directories_resource_forwards_full_filters(monkeypatch):
 
 def test_scan_directories_resource_empty_when_plugin_off(monkeypatch):
     from webapp.disk_scans import service
-    monkeypatch.setattr(service, 'get_module', lambda: None)
-    assert service.scan_directories_resource('Campaign_Store') == []
+    from webapp.disk_scans import scope as scope_mod
+    monkeypatch.setattr(scope_mod, 'get_module', lambda: None)
+    assert service.scan_directories(ResourceScanScope('Campaign_Store')) == []
 
 
 def test_collections_for_resource_maps_via_database(monkeypatch):
     """The seam resolves the resource's database, then returns THAT database's
     warmed collections — so Campaign_Store and Destor see disjoint sets."""
     from webapp.disk_scans import session as sess
+    # Patch the extension instance: the module-level names are its bound
+    # methods, and the seam calls its siblings through self.
+    ext = sess.extension
     monkeypatch.setattr(
-        sess, 'database_for_resource',
+        ext, 'database_for_resource',
         lambda r, app=None: {'Campaign_Store': 'campaign', 'Destor': 'destor'}.get(r))
-    monkeypatch.setattr(sess, 'get_databases', lambda app=None: {
+    monkeypatch.setattr(ext, 'get_databases', lambda app=None: {
         'campaign': {'collections': ['cisl', 'mmm'], 'engines': {}},
         'destor':    {'collections': ['gdex'], 'engines': {}},
     })
-    assert sess.collections_for_resource('Campaign_Store') == ['cisl', 'mmm']
-    assert sess.collections_for_resource('Destor') == ['gdex']
+    assert ext.collections_for_resource('Campaign_Store') == ['cisl', 'mmm']
+    assert ext.collections_for_resource('Destor') == ['gdex']
     # Unmapped resource → no database → no collections (never unscoped).
-    assert sess.collections_for_resource('Nope') == []
+    assert ext.collections_for_resource('Nope') == []
     # Mapped but unwarmed database → [].
-    monkeypatch.setattr(sess, 'get_databases', lambda app=None: {})
-    assert sess.collections_for_resource('Campaign_Store') == []
+    monkeypatch.setattr(ext, 'get_databases', lambda app=None: {})
+    assert ext.collections_for_resource('Campaign_Store') == []
 
 
 def test_database_for_resource_reads_config_map(app, monkeypatch):
@@ -1148,9 +1192,10 @@ def test_scan_directories_threads_resource_database(monkeypatch):
         collection_map={'/lustre/desc1/gdex/proj': 'gdex'},
         capture=cap,
     )
-    monkeypatch.setattr(svc, 'database_for_resource',
+    from webapp.disk_scans import scope as _sm
+    monkeypatch.setattr(_sm, 'database_for_resource',
                         lambda r, app=None: 'destor' if r == 'Destor' else None)
-    svc.scan_directories(None, object(), 'Destor')
+    svc.scan_directories(ProjectScanScope(None, object(), 'Destor'))
     assert cap['filesystems'] == ['gdex']
     assert cap['database'] == 'destor'        # threaded to the facade
 
@@ -1159,8 +1204,9 @@ def test_scan_directories_resource_threads_database(monkeypatch):
     """Resource mode threads the resource's database to the facade too."""
     cap = {}
     svc = _wire_resource_service(monkeypatch, collections=['gdex'], capture=cap)
-    monkeypatch.setattr(svc, 'database_for_resource', lambda r, app=None: 'destor')
-    svc.scan_directories_resource('Destor')
+    from webapp.disk_scans import scope as scope_mod
+    monkeypatch.setattr(scope_mod, 'database_for_resource', lambda r, app=None: 'destor')
+    svc.scan_directories(ResourceScanScope('Destor'))
     assert cap['database'] == 'destor'
 
 
@@ -1296,6 +1342,7 @@ def _wire_resource_entities(monkeypatch, *, collections, capture):
     resolves names so the enrichment paths run.
     """
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
 
     class _FakeQueries:
         def __init__(self, filesystems, database=None):
@@ -1327,10 +1374,10 @@ def _wire_resource_entities(monkeypatch, *, collections, capture):
             return {g: f'grp{g}' for g in gids}
 
     mod = types.SimpleNamespace(FsScanQueries=_FakeQueries)
-    monkeypatch.setattr(service, 'get_module', lambda: mod)
-    monkeypatch.setattr(service, 'collections_for_resource',
+    monkeypatch.setattr(scope_mod, 'get_module', lambda: mod)
+    monkeypatch.setattr(scope_mod, 'collections_for_resource',
                         lambda r, app=None: list(collections))
-    monkeypatch.setattr(service, 'database_for_resource', lambda r, app=None: None)
+    monkeypatch.setattr(scope_mod, 'database_for_resource', lambda r, app=None: None)
     return service
 
 
@@ -1338,7 +1385,8 @@ def test_scan_owner_summary_resource_unscoped(monkeypatch):
     """Resource mode queries the whole collection (path_prefixes=None)."""
     cap = {}
     svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
-    rows = svc.scan_owner_summary_resource('Campaign_Store', limit=10)
+    rows = svc.scan_entity_summary(
+        ResourceScanScope('Campaign_Store'), 'owner', limit=10)
     assert cap['filesystems'] == ['campaign']
     assert cap['owner_kwargs']['path_prefixes'] is None   # whole-collection fast path
     assert cap['owner_kwargs']['limit'] == 10
@@ -1349,8 +1397,8 @@ def test_scan_group_summary_resource_subpath(monkeypatch):
     """A fileset narrows resource mode to that single sub-path."""
     cap = {}
     svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
-    rows = svc.scan_group_summary_resource('Campaign_Store',
-                                           subpath='/glade/campaign/cisl')
+    rows = svc.scan_entity_summary(
+        ResourceScanScope('Campaign_Store', '/glade/campaign/cisl'), 'group')
     assert cap['group_kwargs']['path_prefixes'] == ['/glade/campaign/cisl']
     assert rows[0]['groupname'] == 'grp2001'
 
@@ -1358,7 +1406,7 @@ def test_scan_group_summary_resource_subpath(monkeypatch):
 def test_scan_access_history_resource_unscoped(monkeypatch):
     cap = {}
     svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
-    hist = svc.scan_access_history_resource('Campaign_Store')
+    hist = svc.scan_distribution(ResourceScanScope('Campaign_Store'), 'access_history')
     assert cap['access_kwargs']['path_prefixes'] is None
     assert cap['access_kwargs']['owner_uid'] is None
     assert hist == {'bucket_labels': [], 'buckets': {}}
@@ -1367,26 +1415,28 @@ def test_scan_access_history_resource_unscoped(monkeypatch):
 def test_scan_file_sizes_resource_owner_uid(monkeypatch):
     cap = {}
     svc = _wire_resource_entities(monkeypatch, collections=['campaign'], capture=cap)
-    svc.scan_file_sizes_resource('Campaign_Store', owner_uid=4242)
+    svc.scan_distribution(
+        ResourceScanScope('Campaign_Store'), 'file_sizes', owner_uid=4242)
     assert cap['files_kwargs']['path_prefixes'] is None   # whole-collection fast path
     assert cap['files_kwargs']['owner_uid'] == 4242
 
 
 def test_resource_entity_fns_empty_when_plugin_off(monkeypatch):
     from webapp.disk_scans import service
-    monkeypatch.setattr(service, 'get_module', lambda: None)
-    assert service.scan_owner_summary_resource('Campaign_Store') == []
-    assert service.scan_group_summary_resource('Campaign_Store') == []
-    assert service.scan_access_history_resource('Campaign_Store') is None
-    assert service.scan_file_sizes_resource('Campaign_Store') is None
+    from webapp.disk_scans import scope as scope_mod
+    monkeypatch.setattr(scope_mod, 'get_module', lambda: None)
+    assert service.scan_entity_summary(ResourceScanScope('Campaign_Store'), 'owner') == []
+    assert service.scan_entity_summary(ResourceScanScope('Campaign_Store'), 'group') == []
+    assert service.scan_distribution(ResourceScanScope('Campaign_Store'), 'access_history') is None
+    assert service.scan_distribution(ResourceScanScope('Campaign_Store'), 'file_sizes') is None
 
 
 def test_resource_entity_fns_empty_when_no_collections(monkeypatch):
     """An off-map / unwarmed resource yields no results (never unscoped)."""
     cap = {}
     svc = _wire_resource_entities(monkeypatch, collections=[], capture=cap)
-    assert svc.scan_owner_summary_resource('Campaign_Store') == []
-    assert svc.scan_access_history_resource('Campaign_Store') is None
+    assert svc.scan_entity_summary(ResourceScanScope('Campaign_Store'), 'owner') == []
+    assert svc.scan_distribution(ResourceScanScope('Campaign_Store'), 'access_history') is None
 
 
 # -- scan_capable_resources (Status tab gating) ------------------------------
@@ -1394,6 +1444,7 @@ def test_resource_entity_fns_empty_when_no_collections(monkeypatch):
 def test_scan_capable_resources_filters_unwarmed(app, monkeypatch):
     """Keeps only configured resources that currently have warmed collections."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     monkeypatch.setattr(service, 'is_enabled', lambda a=None: True)
     monkeypatch.setattr(
         service, 'collections_for_resource',
@@ -1405,6 +1456,7 @@ def test_scan_capable_resources_filters_unwarmed(app, monkeypatch):
 
 def test_scan_capable_resources_empty_when_disabled(app, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     monkeypatch.setattr(service, 'is_enabled', lambda a=None: False)
     monkeypatch.setitem(app.config, 'FS_SCAN_RESOURCES', ['Campaign_Store'])
     with app.app_context():
@@ -1415,10 +1467,15 @@ def test_scan_capable_resources_empty_when_disabled(app, monkeypatch):
 
 def test_directories_owner_filter_and_form(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     captured = {}
 
-    def fake_scan(session, project, resource_name, **kw):
+    captured_scope = None
+
+    def fake_scan(scope, **kw):
+        nonlocal captured_scope
+        captured_scope = scope
         captured.update(kw)
         return [{
             'path': '/glade/campaign/cisl/csg', 'depth': 4,
@@ -1447,8 +1504,9 @@ def test_directories_subdirs_column_hidden_under_leaves_only(
         app, auth_client, active_project, monkeypatch):
     """Recursive subdir count is 0 for leaves — hide the Dirs column + its pill."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [{
         'path': '/glade/campaign/cisl/csg/leaf', 'depth': 5,
         'total_size_r': 1024 ** 4, 'file_count_r': 3, 'dir_count_r': 7,
         'max_atime_r': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
@@ -1470,8 +1528,9 @@ def test_directories_dirs_column_hidden_when_uniformly_zero(
         app, auth_client, active_project, monkeypatch):
     """All rows have dir_count_r == 0 (common in nr drill-downs) — fold the column."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [{
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [{
         'path': '/glade/campaign/cisl/csg/a', 'depth': 5,
         'total_size_nr': 1024 ** 3, 'file_count_nr': 9, 'dir_count_r': 0,
         'max_atime_nr': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
@@ -1502,8 +1561,9 @@ def test_directories_page_renders(auth_client, active_project):
 def test_entities_owner_drilldown_markup(app, auth_client, active_project, monkeypatch):
     """Owner rows are sortable-group tbodies with a lazy directory drill-down."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_owner_summary', lambda s, p, r, **kw: [{
+    monkeypatch.setattr(service, 'scan_entity_summary', lambda scope, *a, **kw: [{
         'owner_uid': 4242, 'total_size': 1024 ** 4, 'total_files': 5,
         'directory_count': 2, 'filesystem': 'cisl', 'username': 'alice',
     }])
@@ -1560,8 +1620,9 @@ def test_resource_entities_drilldown_targets_resource_fragment(app, auth_client,
     """Whole-FS owner rows drill into the *resource* directories fragment
     (regression: the drill must not be suppressed in resource mode)."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_owner_summary_resource', lambda r, **kw: [{
+    monkeypatch.setattr(service, 'scan_entity_summary', lambda scope, *a, **kw: [{
         'owner_uid': 4242, 'total_size': 1024 ** 4, 'total_files': 5,
         'directory_count': 2, 'filesystem': 'cisl', 'username': 'alice',
     }])
@@ -1618,7 +1679,7 @@ def test_scoped_normalized_subpath_selects_fileset(monkeypatch):
                         '/glade/campaign/cisl/other': 'cisl'},
         capture=cap,
     )
-    svc.scan_directories(None, object(), 'Campaign_Store', subpath='/cisl/csg')
+    svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store', '/cisl/csg'))
     assert cap['list_kwargs']['path_prefixes'] == ['/glade/campaign/cisl/csg']
 
 
@@ -1632,7 +1693,7 @@ def test_scoped_descent_into_subdir(monkeypatch):
         collection_map={'/glade/campaign/cisl/csg': 'cisl'},
         capture=cap,
     )
-    svc.scan_directories(None, object(), 'Campaign_Store', subpath='/cisl/csg/sub')
+    svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store', '/cisl/csg/sub'))
     assert cap['list_kwargs']['path_prefixes'] == ['/cisl/csg/sub']
 
 
@@ -1646,8 +1707,7 @@ def test_scoped_out_of_scope_subpath_empty(monkeypatch):
         collection_map={'/glade/campaign/cisl/csg': 'cisl'},
         capture=cap,
     )
-    assert svc.scan_directories(None, object(), 'Campaign_Store',
-                                subpath='/mmm/foo') == []
+    assert svc.scan_directories(ProjectScanScope(None, object(), 'Campaign_Store', '/mmm/foo')) == []
     assert 'list_kwargs' not in cap
 
 
@@ -1661,8 +1721,9 @@ _DRILL_MARKER = 'fa-folder me-1'   # unique to a drillable row's link
 
 def test_directories_browse_rows_drillable(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [_DRILL_ROW])
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [_DRILL_ROW])
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
@@ -1680,8 +1741,9 @@ def test_directories_browse_rows_drillable(app, auth_client, active_project, mon
 def test_directories_card_tab_rows_not_drillable(app, auth_client, active_project, monkeypatch):
     """Without browse (the resource-details card tab) rows stay plain text."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [_DRILL_ROW])
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [_DRILL_ROW])
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
@@ -1693,8 +1755,9 @@ def test_directories_card_tab_rows_not_drillable(app, auth_client, active_projec
 
 def test_directories_leaves_only_not_drillable(app, auth_client, active_project, monkeypatch):
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [_DRILL_ROW])
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [_DRILL_ROW])
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/directories'
@@ -1708,7 +1771,7 @@ def test_resource_browse_breadcrumb_and_pill_fileset(app, auth_client, monkeypat
     carries the active fileset."""
     from webapp.disk_scans import routes, service
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_directories_resource', lambda r, **kw: [])
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [])
     monkeypatch.setattr(routes, 'get_module',
                         lambda: types.SimpleNamespace(normalize_path=lambda p: p))
 
@@ -1730,7 +1793,7 @@ def test_project_breadcrumb_bounded_at_scan_root(app, auth_client, active_projec
     All / csg / sub — NOT All / cisl / csg / sub."""
     from webapp.disk_scans import routes, service
     _enable_fs_scans(app, monkeypatch)
-    monkeypatch.setattr(service, 'scan_directories', lambda s, p, r, **kw: [])
+    monkeypatch.setattr(service, 'scan_directories', lambda scope, *a, **kw: [])
     monkeypatch.setattr(routes, 'get_module',
                         lambda: types.SimpleNamespace(normalize_path=lambda p: p))
     monkeypatch.setattr(routes, 'resolve_scan_scope',
@@ -1831,15 +1894,16 @@ def test_user_directories_pins_owner_ignoring_query(
     """SECURITY: ?owner_uid / ?owner_user_id are ignored; the directory scan is
     pinned to the logged-in user's unix_uid, never the client-supplied value."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     uid = _benkirk_uid(session)
     captured = {}
 
-    def fake(resource_name, **kw):
+    def fake(scope, **kw):
         captured.update(kw)
-        captured['resource_name'] = resource_name
+        captured['resource_name'] = scope.resource_name
         return []
-    monkeypatch.setattr(service, 'scan_directories_resource', fake)
+    monkeypatch.setattr(service, 'scan_directories', fake)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/user/{_RES}/directories'
@@ -1851,22 +1915,20 @@ def test_user_directories_pins_owner_ignoring_query(
     assert captured['owner_uid'] != 999999       # NOT the tampered value
 
 
-@pytest.mark.parametrize('endpoint,fn', [
-    ('access-history', 'scan_access_history_resource'),
-    ('file-sizes', 'scan_file_sizes_resource'),
-])
+@pytest.mark.parametrize('endpoint', ['access-history', 'file-sizes'])
 def test_user_distribution_pins_owner_ignoring_query(
-        app, auth_client, session, monkeypatch, endpoint, fn):
+        app, auth_client, session, monkeypatch, endpoint):
     """SECURITY: the histogram scans are pinned to the logged-in user too."""
     from webapp.disk_scans import service
+    from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
     uid = _benkirk_uid(session)
     captured = {}
 
-    def fake(resource_name, **kw):
+    def fake(scope, kind, **kw):
         captured.update(kw)
         return None      # falsy → no chart generation; the call is what we check
-    monkeypatch.setattr(service, fn, fake)
+    monkeypatch.setattr(service, 'scan_distribution', fake)
 
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/user/{_RES}/{endpoint}?owner_uid=999999'
@@ -1898,7 +1960,7 @@ def test_user_directories_no_identity_empty_state(app, auth_client, monkeypatch)
     def fake(*a, **k):
         calls['n'] += 1
         return []
-    monkeypatch.setattr(service, 'scan_directories_resource', fake)
+    monkeypatch.setattr(service, 'scan_directories', fake)
     # _user_ctx reads the owner via routes' module-level current_user.
     monkeypatch.setattr(routes, 'current_user', SimpleNamespace(unix_uid=None))
 
