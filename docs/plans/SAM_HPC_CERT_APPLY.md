@@ -177,6 +177,15 @@ for the longer `/status/` form. Per Ben's accepted tradeoff, clean logout on
 `sam.hpc` with `samuel.k8s` degraded to the MS signed-out page is fine — and
 that degradation is now a known, measured consequence rather than a surprise.
 
+**Requested 2026-07-29** — Ben asked Entra to swap the single post-logout URI
+from `https://samuel.k8s.ucar.edu/` to `https://sam.hpc.ucar.edu/`. When it
+lands, re-run BOTH legs of the table above and expect them to invert:
+`sam.hpc` returns cleanly, `samuel.k8s` strands. Anything else — e.g. both
+stranding — means the registration did not take, not that this change
+regressed. Logins must continue to work on both hosts throughout; if one
+starts failing with AADSTS50011, a *reply* URL was edited by mistake instead
+of the post-logout URI.
+
 Login is unaffected either way: reply URLs are a separate Entra list and both
 hosts are already registered there (proven by a successful interactive login on
 each host).
