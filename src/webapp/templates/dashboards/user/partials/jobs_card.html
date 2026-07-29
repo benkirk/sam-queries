@@ -120,7 +120,8 @@
                    days=none, days_persist_id=none,
                    show_pills=true, show_explore_link=true,
                    facet_chips=none, facet_filters={},
-                   facet_form_id=none, active_tab='jobs') %}
+                   facet_form_id=none, active_tab='jobs',
+                   timeline_open=false) %}
 {# Only the OPEN panel fires on render; the rest wait to be shown. The
    host decides which is open (the explorer's filter form round-trips
    it) so an Apply can't also fetch a panel nobody is looking at. #}
@@ -159,6 +160,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
     {% set _wait_url  = url_for('jobs.wait_times_machine_fragment', machine=machine, target_id=cid ~ '-wait', **panel_params) %}
     {% set _sizes_url = url_for('jobs.job_sizes_machine_fragment',  machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
     {% set _dur_url   = url_for('jobs.durations_machine_fragment',  machine=machine, target_id=cid ~ '-durations', **panel_params) %}
+    {% set _tl_url    = url_for('jobs.timeline_machine_fragment',   machine=machine, target_id=cid ~ '-timeline', **panel_params) %}
     {% set _full_url  = url_for('jobs.explore_machine_page',        machine=machine, start=_x_start, end=_x_end, days=days) %}
     {% set _card_url  = url_for('jobs.jobs_card_machine_fragment',  machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id) %}
 {% elif mode == 'user' %}
@@ -169,6 +171,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
     {% set _wait_url  = url_for('jobs.wait_times_user_fragment', machine=machine, target_id=cid ~ '-wait', **panel_params) %}
     {% set _sizes_url = url_for('jobs.job_sizes_user_fragment',  machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
     {% set _dur_url   = url_for('jobs.durations_user_fragment',  machine=machine, target_id=cid ~ '-durations', **panel_params) %}
+    {% set _tl_url    = url_for('jobs.timeline_user_fragment',   machine=machine, target_id=cid ~ '-timeline', **panel_params) %}
     {% set _full_url  = url_for('jobs.explore_user_page',        machine=machine, start=_x_start, end=_x_end, days=days) %}
     {% set _card_url  = url_for('jobs.jobs_card_user_fragment',  machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id) %}
     {# no _user_url — the By User tab is hidden in user mode (a pie of
@@ -184,6 +187,7 @@ tab-pane fade{{ ' show active' if key == active_tab }}
     {% set _wait_url  = url_for('jobs.wait_times_fragment', projcode=projcode, machine=machine, target_id=cid ~ '-wait', **panel_params) %}
     {% set _sizes_url = url_for('jobs.job_sizes_fragment',  projcode=projcode, machine=machine, target_id=cid ~ '-sizes', **panel_params) %}
     {% set _dur_url   = url_for('jobs.durations_fragment',  projcode=projcode, machine=machine, target_id=cid ~ '-durations', **panel_params) %}
+    {% set _tl_url    = url_for('jobs.timeline_fragment',   projcode=projcode, machine=machine, target_id=cid ~ '-timeline', **panel_params) %}
     {% set _full_url  = url_for('jobs.explore_page',        projcode=projcode, machine=machine, start=_x_start, end=_x_end, days=days, scope=_scope) %}
     {% set _card_url  = url_for('jobs.jobs_card_fragment',  projcode=projcode, machine=machine, cid=cid, tablist_id=tablist_id, days_persist_id=days_persist_id, scope=_scope) %}
 {% endif %}
@@ -317,6 +321,42 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                target="_blank" rel="noopener">
                 Open full view <i class="fas fa-up-right-from-square ms-1"></i>
             </a>
+        </div>
+        {% endif %}
+        {# Activity timeline — the Jobs tab's chart, and the card's only
+           time axis. Collapsed by default on the cards and open on the
+           explorer (`timeline_open`), because Jobs is the DEFAULT tab on
+           four surfaces: an unconditional aggregation here would be paid
+           by every visit that only wanted the table, unlike the five chart
+           tabs which are opt-in by definition.
+
+           The fetch is bound to `shown.bs.collapse ON THE DIV`, never a
+           click on the button — nav-view-persistence's restore-on-reload
+           re-opens the collapse without firing click, and a click trigger
+           would leave a restored-open panel permanently empty. #}
+        {% if _tl_url %}
+        <div class="mb-3">
+            <button class="btn btn-sm btn-outline-secondary"
+                    type="button" data-bs-toggle="collapse"
+                    data-bs-target="#{{ cid }}-timeline-wrap"
+                    aria-expanded="{{ 'true' if timeline_open else 'false' }}"
+                    aria-controls="{{ cid }}-timeline-wrap">
+                <i class="fas fa-chart-column me-1"></i> Activity over time
+            </button>
+            {# `.collapse[id]` is persisted automatically under
+               "collapse:<id>" by nav-view-persistence — no per-chart
+               persist attributes needed here. #}
+            <div class="collapse{{ ' show' if timeline_open }} mt-2"
+                 id="{{ cid }}-timeline-wrap">
+                <div id="{{ cid }}-timeline"{{ _lens() }}
+                     hx-get="{{ _tl_url }}"
+                     hx-trigger="{{ 'load once' if timeline_open else 'shown.bs.collapse from:closest .collapse once' }}"
+                     hx-swap="innerHTML">
+                    <p class="text-muted small mb-0">
+                        <i class="fas fa-spinner fa-spin me-1"></i> Loading timeline…
+                    </p>
+                </div>
+            </div>
         </div>
         {% endif %}
         <div id="{{ cid }}-jobs">

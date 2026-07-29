@@ -416,6 +416,55 @@ def jobs_histogram(
     )
 
 
+def jobs_timeseries(
+    machine: str,
+    period: str,
+    scope: JobScope,
+    *,
+    owners_limit: Optional[int] = None,
+    owners_sort_by: Optional[str] = None,
+    owners_by: Optional[str] = None,
+    valid_qos_names: Sequence[str] = (),
+    **filters,
+) -> Dict[str, Any]:
+    """Cached per-period activity series (plugin envelope, verbatim).
+
+    The time axis none of the distribution panels offer, and the only
+    per-period plugin query that honours the filter set — ``usage_history``
+    / ``jobs_by_entity_period`` / ``daily_summary_report`` all take dates
+    only, so a chart on those would ignore queue / size / exit-status
+    filters while sitting above a table that respects them.
+
+    ``period`` is ``'day'``/``'week'``/``'month'`` and joins the cache
+    ``opts`` so granularities never alias. Unlike ``jobs_histogram``, the
+    owner top-N is ranked **once over the whole window** and every band
+    carries the same keys in the same order — a stacked chart assigns
+    colours once and trusts a series never to move or vanish mid-axis.
+
+    Bands replay through ``start``/``end`` rather than
+    ``min_param``/``max_param``: the window filters *are* this dimension.
+
+    Costs two plugin statements when *owners_limit* is set (rank, then
+    series) against one for a histogram, so it is the most expensive panel
+    on the card — which is why its host keeps it behind a collapse.
+    """
+    scope.check_filters(filters)
+    kwargs = _plugin_filter_kwargs(valid_qos_names=valid_qos_names, **filters)
+    scope.apply(kwargs)
+    if owners_limit is not None:
+        kwargs['owners_limit'] = owners_limit
+    if owners_sort_by is not None:
+        kwargs['owners_sort_by'] = owners_sort_by
+    if owners_by is not None and owners_by != 'user':
+        kwargs['owners_by'] = owners_by
+
+    return _cached_aggregation(
+        'timeseries', machine, kwargs,
+        lambda q: q.jobs_timeseries(period, **kwargs),
+        period=period,
+    )
+
+
 def jobs_usage_by_user(
     machine: str,
     scope: JobScope,

@@ -1603,6 +1603,27 @@
     ]
   ],
   [
+    "jobs.timeline_fragment",
+    "/dashboards/user/jobs/<projcode>/timeline",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "jobs.timeline_machine_fragment",
+    "/dashboards/user/jobs/machine/<machine>/timeline",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "jobs.timeline_user_fragment",
+    "/dashboards/user/jobs/user/<machine>/timeline",
+    [
+      "GET"
+    ]
+  ],
+  [
     "jobs.wait_times_fragment",
     "/dashboards/user/jobs/<projcode>/wait-times",
     [

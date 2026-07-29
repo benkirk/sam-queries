@@ -1,5 +1,6 @@
 {% from 'dashboards/user/partials/_jobs_macros.html'
-   import jobs_disabled, jobs_error, jobs_empty %}
+   import jobs_disabled, jobs_error, jobs_empty, metric_pills,
+          JOBS_METRIC_NOUNS %}
 {% from 'dashboards/fragments/help.html' import term with context %}
 {% from 'dashboards/fragments/glossary.html' import g_cpu_hours with context %}
 {#
@@ -45,20 +46,9 @@
 
   <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
     {# Metric pills — re-fetch this same pane with ?metric=. #}
-    <div class="btn-group btn-group-sm me-1" role="group" aria-label="Pie metric">
-      {% for m, label in [('jobs', 'Jobs'),
-                          ('cpu_hours', 'CPU-hours'),
-                          ('gpu_hours', 'GPU-hours')] %}
-      <button type="button"
-              class="btn btn-outline-secondary {% if metric == m %}active{% endif %}"
-              hx-get="{{ fragment_url }}?metric={{ m }}"
-              hx-target="#{{ target_id }}"
-              hx-include="#jobs-{{ entity.form_key }}-params-{{ target_id }}"
-              hx-swap="innerHTML">
-        {{ label }}
-      </button>
-      {% endfor %}
-    </div>
+    {{ metric_pills(metric, fragment_url, target_id,
+                    '#jobs-' ~ entity.form_key ~ '-params-' ~ target_id,
+                    aria='Pie metric') }}
     <span class="ms-auto text-muted small">
       {{ totals.get('job_count', 0) | fmt_number }} jobs ·
       {{ totals.get('cpu_hours', 0) | fmt_number }} CPU-h ·
@@ -161,8 +151,7 @@
         <tbody>
           <tr class="text-muted">
             <td>Other <span class="small">(beyond top {{ rows | length }} by
-              {{ {'jobs': 'jobs', 'cpu_hours': 'CPU-hours',
-                  'gpu_hours': 'GPU-hours'}[metric] }})</span></td>
+              {{ JOBS_METRIC_NOUNS[metric] }})</span></td>
             <td class="text-end">{{ other.job_count | fmt_number }}</td>
             <td class="text-end">{{ other.cpu_hours | fmt_number }}</td>
             <td class="text-end">{{ other.gpu_hours | fmt_number }}</td>

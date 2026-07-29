@@ -4309,3 +4309,99 @@ def test_parse_group_by_prefers_the_canonical_spelling(app):
     from webapp.jobs.routes import _parse_group_by
     with app.test_request_context('/?group_by=user&owners_by=account'):
         assert _parse_group_by() == 'user'
+
+
+# ---------------------------------------------------------------------------
+# Activity timeline — granularity budget and band drills
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('span_days,expected', [
+    (1, 'day'), (30, 'day'), (120, 'day'),
+    (121, 'week'),                  # 121 daily bars is over budget
+    (365, 'week'), (840, 'week'),   # 840/7 = 120, still exactly in budget
+    (841, 'month'),
+    (10_000, 'month'),              # full history
+])
+def test_auto_period_picks_the_finest_granularity_in_budget(span_days, expected):
+    """Server-chosen because the explorer permits an unbounded window: a
+    fixed 'day' default would blow the bar budget or trip the plugin's
+    400-band ValueError, both of which read as a broken panel."""
+    from webapp.jobs.routes import _auto_period
+    assert _auto_period(span_days) == expected
+
+
+def test_parse_period_honours_an_explicit_choice_that_fits(app):
+    from webapp.jobs.routes import _parse_period
+    with app.test_request_context('/?period=month'):
+        assert _parse_period(30) == 'month'
+
+
+def test_parse_period_refuses_a_stale_choice_that_does_not_fit(app):
+    """A 'day' saved against last week's 30-day window must not be replayed
+    against a five-year one — it would be 1,800 bars."""
+    from webapp.jobs.routes import _parse_period
+    with app.test_request_context('/?period=day'):
+        assert _parse_period(1826) == 'month'
+
+
+@pytest.mark.parametrize('raw', ['quarter', 'year', 'fortnight', '', 'DAY'])
+def test_parse_period_ignores_unknown_values(app, raw):
+    """Lenient like _parse_metric: unknown means 'no override', never 400.
+    'quarter'/'year' are PeriodGrouper's vocabulary, deliberately not ours."""
+    from webapp.jobs.routes import _parse_period
+    with app.test_request_context(f'/?period={raw}'):
+        assert _parse_period(30) == 'day'
+
+
+def test_period_choices_disable_rather_than_hide_over_budget_options():
+    """A pill that vanishes reads as a bug; a disabled one with the bar
+    count is the explanation."""
+    from webapp.jobs.routes import _period_choices
+    choices = {c['key']: c for c in _period_choices(365)}
+    assert choices['day']['enabled'] is False
+    assert choices['day']['bars'] == 365
+    assert choices['week']['enabled'] is True
+    assert set(choices) == {'day', 'week', 'month'}
+
+
+def test_filter_span_days_reads_the_window(app):
+    from webapp.jobs.routes import _filter_span_days, _parse_job_filters
+    with app.test_request_context('/?start=2026-01-01&end=2026-01-30'):
+        assert _filter_span_days(_parse_job_filters()) == 30
+
+
+def test_filter_span_days_is_none_for_an_open_ended_window(app):
+    """Both date fields cleared on the explorer — the documented opt-in to
+    full history. The caller treats None as the widest possible window."""
+    from webapp.jobs.routes import _filter_span_days
+    with app.test_request_context('/'):
+        assert _filter_span_days({'start': '', 'end': ''}) is None
+
+
+def test_band_drill_url_overrides_the_panes_window():
+    """Unlike a histogram band (min_param/max_param), a time band replays
+    through start/end — the window filters ARE this dimension — so the
+    band's own dates must REPLACE the pane's, not narrow alongside them."""
+    from webapp.jobs.routes import _band_drill_url
+    url = _band_drill_url(
+        '/jobs', {'label': '2026-05-02', 'start': '2026-05-02',
+                  'end': '2026-05-02', 'job_count': 7},
+        {'machine': 'casper', 'start': '2026-05-01', 'end': '2026-05-31'})
+    assert 'start=2026-05-02' in url and 'end=2026-05-02' in url
+    assert 'start=2026-05-01' not in url
+
+
+def test_band_drill_url_is_none_for_an_empty_band():
+    from webapp.jobs.routes import _band_drill_url
+    assert _band_drill_url('/jobs', {'job_count': 0}, {}) is None
+
+
+def test_charges_is_a_first_class_metric_everywhere():
+    """Ben's call: one vocabulary across all six panels, so the shared
+    `metric:jobs` persist family stays valid."""
+    from webapp.jobs.routes import _METRICS, _USAGE_SORT_BY
+    assert 'charges' in _METRICS
+    # The top-N cut must be rankable by the displayed metric, or a charges
+    # view shows owners chosen by hours.
+    assert set(_METRICS) <= set(_USAGE_SORT_BY)
+    assert _USAGE_SORT_BY['charges'] == 'charges'

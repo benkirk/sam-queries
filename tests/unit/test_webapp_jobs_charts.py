@@ -13,7 +13,11 @@ from __future__ import annotations
 import pytest
 
 from webapp.dashboards.charts import (
+    _jobs_metric_value,
+    _jobs_timeseries_cache_key,
+    _jobs_timeseries_series,
     generate_jobs_histogram,
+    generate_jobs_timeseries_stacked,
     generate_jobs_user_pie_chart,
 )
 
@@ -364,3 +368,161 @@ def test_pie_sentinel_prefix_in_cache_key():
     a = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-user')
     b = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-proj')
     assert a != b
+
+
+# ---------------------------------------------------------------------------
+# generate_jobs_timeseries_stacked — the Jobs tab's activity timeline
+# ---------------------------------------------------------------------------
+
+def _ts(counts=(10, 0, 5), owners=None, period='day',
+        cpu_charges=None, gpu_charges=None):
+    """A jobs_timeseries envelope. Band 1 is an interior zero by default.
+
+    ``owners`` is ``{name: [per-band job_count]}``; every band carries the
+    SAME keys (the plugin's contract), zero-filled where idle.
+    """
+    labels = ['2026-05-01', '2026-05-02', '2026-05-03'][:len(counts)]
+    if cpu_charges is None:
+        cpu_charges = [c * 10.0 for c in counts]
+    if gpu_charges is None:
+        gpu_charges = [0.0] * len(counts)
+    bands = []
+    for i, (lbl, c) in enumerate(zip(labels, counts)):
+        band = {
+            'label': lbl, 'start': lbl, 'end': lbl,
+            'job_count': c, 'cpu_hours': c * 100.0, 'gpu_hours': c * 2.0,
+            'cpu_charges': cpu_charges[i], 'gpu_charges': gpu_charges[i],
+        }
+        if owners is not None:
+            band['owners'] = {
+                name: {'job_count': vals[i],
+                       'cpu_hours': vals[i] * 100.0,
+                       'gpu_hours': vals[i] * 2.0,
+                       'cpu_charges': vals[i] * 10.0,
+                       'gpu_charges': 0.0}
+                for name, vals in owners.items()
+            }
+        bands.append(band)
+    return {
+        'period': period, 'owners_by': 'user',
+        'start': labels[0], 'end': labels[-1],
+        'bands': bands,
+        'totals': {'job_count': sum(counts)},
+        'null_count': 0, 'total_count': sum(counts),
+    }
+
+
+def test_timeline_renders_svg_for_all_metrics():
+    for metric in ('jobs', 'cpu_hours', 'gpu_hours', 'charges'):
+        out = generate_jobs_timeseries_stacked(_ts(), metric=metric)
+        assert '<svg' in out, metric
+
+
+def test_timeline_charges_sums_cpu_and_gpu_charges():
+    """'charges' is the one metric backed by TWO plugin keys; reading only
+    one would silently halve the chart."""
+    both = _ts(counts=(4,), cpu_charges=[10.0], gpu_charges=[90.0])
+    cpu_only = _ts(counts=(4,), cpu_charges=[10.0], gpu_charges=[0.0])
+    assert generate_jobs_timeseries_stacked(both, metric='charges') != \
+        generate_jobs_timeseries_stacked(cpu_only, metric='charges')
+    assert _jobs_metric_value(both['bands'][0], 'charges') == 100.0
+
+
+def test_timeline_empty_and_all_zero_return_placeholder():
+    assert '<svg' not in generate_jobs_timeseries_stacked(
+        {'bands': []}, metric='jobs')
+    assert '<svg' not in generate_jobs_timeseries_stacked(
+        _ts(counts=(0, 0, 0)), metric='jobs')
+
+
+def test_timeline_bars_carry_period_sentinels():
+    out = generate_jobs_timeseries_stacked(_ts(counts=(10, 0, 5)),
+                                           metric='jobs')
+    assert '#jt-bar-0' in out
+    assert '#jt-bar-2' in out
+    # The interior zero band is not clickable — nothing to drill into.
+    assert '#jt-bar-1' not in out
+
+
+def test_timeline_uncharged_band_keeps_jobs_but_loses_its_bar_link():
+    """qos_factor 0.0 is real: the band has jobs and hours but draws at zero
+    on the charges view, so its (invisible) bar carries no link. The period
+    table's row is the drill path there — see the template."""
+    ts = _ts(counts=(10, 5), cpu_charges=[100.0, 0.0], gpu_charges=[0.0, 0.0])
+    charges = generate_jobs_timeseries_stacked(ts, metric='charges')
+    jobs = generate_jobs_timeseries_stacked(ts, metric='jobs')
+    assert '#jt-bar-1' in jobs
+    assert '#jt-bar-1' not in charges
+
+
+def test_timeline_legend_identical_across_bands():
+    """The plugin ranks owners once over the window; the series builder must
+    preserve that, or colours would shift bar to bar."""
+    # A tail beyond the top-N, so an 'Others' band exists to sit at the base.
+    owners = {'alice': [6, 0, 3], 'bob': [2, 0, 1]}
+    labels, series = _jobs_timeseries_series(_ts(owners=owners), 'jobs')
+    names = [n for n, _v in series]
+    assert names[0] == 'Others'          # bottom of the stack
+    assert set(names[1:]) == {'alice', 'bob'}
+    assert all(len(vals) == len(labels) for _n, vals in series)
+
+
+def test_timeline_others_is_the_derivable_remainder():
+    """Others = band total - sum(owners), never synthesized."""
+    owners = {'alice': [6, 0, 4], 'bob': [2, 0, 1]}
+    _labels, series = _jobs_timeseries_series(_ts(counts=(10, 0, 5),
+                                                 owners=owners), 'jobs')
+    others = dict(series)['Others']
+    assert others == [2.0, 0.0, 0.0]     # 10-8, 0-0, 5-5
+
+
+def test_timeline_no_others_series_when_owners_cover_totals():
+    owners = {'alice': [8, 0, 4], 'bob': [2, 0, 1]}
+    _labels, series = _jobs_timeseries_series(_ts(counts=(10, 0, 5),
+                                                 owners=owners), 'jobs')
+    assert 'Others' not in dict(series)
+
+
+def test_timeline_legend_links_follow_sentinel_prefix():
+    owners = {'alice': [8, 0, 4]}
+    ts = _ts(owners=owners)
+    user = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                            sentinel_prefix='job-user')
+    proj = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                            sentinel_prefix='job-proj')
+    assert '#job-user-alice' in user
+    assert '#job-proj-alice' in proj
+
+
+def test_timeline_legend_unlinked_when_target_pane_suppressed():
+    """panel_relevance can hide By User / By Project; a sentinel into a pane
+    that was never rendered is a silent no-op, so the legend must not link."""
+    ts = _ts(owners={'alice': [8, 0, 4]})
+    linked = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                              link_entities=True)
+    plain = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                             link_entities=False)
+    assert '#job-user-alice' in linked
+    assert '#job-user-alice' not in plain
+
+
+def test_timeline_period_and_link_flag_join_the_cache_key():
+    ts = _ts(owners={'alice': [8, 0, 4]})
+    base = _jobs_timeseries_cache_key(ts, metric='jobs', period='day')
+    assert base != _jobs_timeseries_cache_key(ts, metric='jobs',
+                                              period='week')
+    assert base != _jobs_timeseries_cache_key(ts, metric='jobs', period='day',
+                                              link_entities=False)
+    assert base != _jobs_timeseries_cache_key(ts, metric='charges',
+                                              period='day')
+
+
+def test_timeline_count_vector_joins_the_cache_key():
+    """Two envelopes with identical plotted values but different populated
+    bands must not share an SVG — the bar sentinels differ."""
+    a = _ts(counts=(5, 0), cpu_charges=[50.0, 0.0])
+    b = _ts(counts=(0, 5), cpu_charges=[50.0, 0.0])
+    b['bands'][1]['cpu_charges'] = 0.0
+    b['bands'][0]['cpu_charges'] = 50.0
+    assert _jobs_timeseries_cache_key(a, metric='charges') != \
+        _jobs_timeseries_cache_key(b, metric='charges')
