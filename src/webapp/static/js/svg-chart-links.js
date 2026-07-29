@@ -28,9 +28,12 @@
  *     which lazy-loads the band's per-job table.
  *   - Bar href starts with #jt-bar-<index> (job-history activity timeline
  *     on the Jobs tab) → expand that period's row in the Period breakdown
- *     table, which lazy-loads its per-owner tier. Its LEGEND reuses the
- *     #job-user- / #job-proj- prefixes below, so a name click lands on the
- *     By User / By Project pane via activateOwningTab().
+ *     table, which lazy-loads its per-owner tier. Its LEGEND deliberately
+ *     uses MODAL_ROUTES, not the #job-user- / #job-proj- row sentinels:
+ *     ROW_SENTINELS entries are resolved by openEntityRow() *within the
+ *     clicked chart's tab-pane*, and this chart sits in the Jobs pane while
+ *     those rows live in their own lazily-loaded panes — so a row sentinel
+ *     there resolves to nothing at all.
  *
  * Safe on pages where the target containers aren't included — each
  * branch checks for its targets and silently no-ops.

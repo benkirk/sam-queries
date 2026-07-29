@@ -1129,13 +1129,22 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
         except ValueError:
             pass
 
-    # Only link the legend where the target pane actually exists — a
-    # sentinel into a suppressed pane is a silent no-op.
-    link_entities = (rel['show_by_user'] if group_by == 'user'
-                     else rel['show_by_project'])
+    # Legend entries open the entity's quick-view MODAL, not a row sentinel:
+    # this chart lives in the Jobs pane while the By User / By Project rows
+    # live in their own lazily-loaded panes, and openEntityRow scopes its
+    # lookup to the clicked chart's pane — so a row sentinel here is a
+    # silent no-op. Gate on the same affordance permission the By User /
+    # By Project tables use, so we never render a link that would 403.
+    from flask_login import current_user
+    if group_by == 'user':
+        link_entities = has_permission_any_facility(
+            current_user, Permission.VIEW_USERS)
+    else:
+        link_entities = (mode == 'user') or has_permission_any_facility(
+            current_user, Permission.VIEW_PROJECTS)
     chart_svg = (generate_jobs_timeseries_stacked(
         ts, metric=metric, period=period,
-        sentinel_prefix=entity['sentinel'],
+        entity_kind=group_by,
         link_entities=link_entities) if has_bands else None)
 
     params = _roundtrip_params(machine, target_id)

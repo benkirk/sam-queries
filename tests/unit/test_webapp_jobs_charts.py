@@ -483,32 +483,41 @@ def test_timeline_no_others_series_when_owners_cover_totals():
     assert 'Others' not in dict(series)
 
 
-def test_timeline_legend_links_follow_sentinel_prefix():
-    owners = {'alice': [8, 0, 4]}
-    ts = _ts(owners=owners)
-    user = generate_jobs_timeseries_stacked(ts, metric='jobs',
-                                            sentinel_prefix='job-user')
-    proj = generate_jobs_timeseries_stacked(ts, metric='jobs',
-                                            sentinel_prefix='job-proj')
-    assert '#job-user-alice' in user
-    assert '#job-proj-alice' in proj
-
-
-def test_timeline_legend_unlinked_when_target_pane_suppressed():
-    """panel_relevance can hide By User / By Project; a sentinel into a pane
-    that was never rendered is a silent no-op, so the legend must not link."""
+def test_timeline_legend_opens_the_entity_modal_not_a_row_sentinel(app):
+    """A #job-user- sentinel is resolved by openEntityRow() *within the
+    clicked chart's tab-pane*. This chart lives in the Jobs pane while those
+    rows live in their own lazily-loaded panes, so a row sentinel here
+    resolves to nothing — verified in the browser. The modal route works
+    from any pane and needs nothing pre-rendered."""
     ts = _ts(owners={'alice': [8, 0, 4]})
-    linked = generate_jobs_timeseries_stacked(ts, metric='jobs',
-                                              link_entities=True)
-    plain = generate_jobs_timeseries_stacked(ts, metric='jobs',
-                                             link_entities=False)
-    assert '#job-user-alice' in linked
-    assert '#job-user-alice' not in plain
+    with app.test_request_context('/'):
+        user = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                                entity_kind='user')
+        proj = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                                entity_kind='project')
+    assert '#job-user-alice' not in user
+    assert '/admin/user/alice' in user
+    assert 'project-details-modal/alice' in proj
+
+
+def test_timeline_legend_unlinked_without_permission(app):
+    """Gated on the same affordance permission the By User / By Project
+    tables use — never render a quick-view link that would 403."""
+    ts = _ts(owners={'alice': [8, 0, 4]})
+    with app.test_request_context('/'):
+        linked = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                                  link_entities=True)
+        plain = generate_jobs_timeseries_stacked(ts, metric='jobs',
+                                                 link_entities=False)
+    assert '/admin/user/alice' in linked
+    assert '/admin/user/alice' not in plain
 
 
 def test_timeline_period_and_link_flag_join_the_cache_key():
     ts = _ts(owners={'alice': [8, 0, 4]})
     base = _jobs_timeseries_cache_key(ts, metric='jobs', period='day')
+    assert base != _jobs_timeseries_cache_key(ts, metric='jobs', period='day',
+                                              entity_kind='project')
     assert base != _jobs_timeseries_cache_key(ts, metric='jobs',
                                               period='week')
     assert base != _jobs_timeseries_cache_key(ts, metric='jobs', period='day',

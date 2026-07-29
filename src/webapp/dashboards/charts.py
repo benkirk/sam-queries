@@ -1467,7 +1467,7 @@ def _jobs_timeseries_series(ts, metric):
 
 
 def _jobs_timeseries_cache_key(ts, *, metric='jobs', period='day',
-                               sentinel_prefix='job-user',
+                               entity_kind='user',
                                link_entities=True):
     """Hash what the SVG depends on: band labels, the chosen metric's
     per-series values, and the legend's link treatment. The job_count
@@ -1479,14 +1479,14 @@ def _jobs_timeseries_cache_key(ts, *, metric='jobs', period='day',
                  for b in (ts or {}).get('bands') or []]
     return _content_hash([
         labels, [(n, v) for n, v in series], clickable,
-        str(metric), str(period), str(sentinel_prefix), bool(link_entities),
+        str(metric), str(period), str(entity_kind), bool(link_entities),
     ])
 
 
 @caching.chart_cached(name='jobs_timeseries', maxsize=128,
                       key_fn=_jobs_timeseries_cache_key)
 def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
-                                     sentinel_prefix='job-user',
+                                     entity_kind='user',
                                      link_entities=True) -> str:
     """Stacked activity timeline over a ``jobs_timeseries`` envelope.
 
@@ -1503,19 +1503,25 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
         period: ``'day'``/``'week'``/``'month'`` — labels the x-axis and
             joins the cache key (same values under a different granularity
             are a different chart).
-        sentinel_prefix: ``'job-user'`` or ``'job-proj'``, matching the
-            owner axis, so a legend click lands on the right table.
-        link_entities: when False the legend renders unlinked. Set this
-            wherever the target pane is suppressed by ``panel_relevance`` —
-            a sentinel into a pane that was never rendered is a silent
-            no-op, the trap ``jobs_explore_page`` hit with its modals.
+        entity_kind: ``'user'`` or ``'project'`` — which modal a legend
+            click opens, matching the owner axis.
+        link_entities: when False the legend renders unlinked. Gate this on
+            the viewer's permission, exactly as the By User / By Project
+            tables gate their own quick-view links.
 
     Interactions (via svg-chart-links.js):
         - every segment of a populated band links to ``#jt-bar-<index>`` →
           expands that band's row in the period table below. Index-keyed,
           so the JS never parses band labels.
-        - each named legend entry links to
-          ``#<sentinel_prefix>-<name>`` → the By User / By Project row.
+        - each named legend entry links to the entity's **modal route**
+          (``MODAL_ROUTES``), NOT a ``#job-user-`` row sentinel. Those
+          sentinels are scoped by ``openEntityRow`` to the *clicked* chart's
+          tab-pane, and this chart lives in the Jobs pane while the By User
+          / By Project rows live in their own — which are lazily loaded and
+          usually absent besides. A row sentinel here is a silent no-op
+          (verified in the browser); the modal works from any pane and
+          needs nothing pre-rendered. The stacked-area chart on the status
+          dashboard resolves the same problem the same way.
           "Others" is never linked.
 
     Returns a placeholder div when every band is empty.
@@ -1576,11 +1582,13 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
                     bbox_to_anchor=(1.01, 0.5), frameon=False,
                     fontsize=11, labelspacing=0.7)
     if link_entities:
+        modal_url = (_project_modal_url if entity_kind == 'project'
+                     else _user_modal_url)
         for (name, _vals), patch, text in zip(
                 rev, leg.get_patches(), leg.get_texts()):
             if name == 'Others':
                 continue
-            url = f'#{sentinel_prefix}-{name}'
+            url = modal_url(name)
             patch.set_url(url)
             text.set_url(url)
 

@@ -348,9 +348,15 @@ tab-pane fade{{ ' show active' if key == active_tab }}
                persist attributes needed here. #}
             <div class="collapse{{ ' show' if timeline_open }} mt-2"
                  id="{{ cid }}-timeline-wrap">
+                {# When open by default, inherit the JOBS PANE's own trigger
+                   rather than a bare `load once`: the client may restore a
+                   different tab, and this is the card's most expensive
+                   panel (two aggregate scans) — eager-loading it inside a
+                   hidden pane is exactly the cost the collapse exists to
+                   avoid. #}
                 <div id="{{ cid }}-timeline"{{ _lens() }}
                      hx-get="{{ _tl_url }}"
-                     hx-trigger="{{ 'load once' if timeline_open else 'shown.bs.collapse from:closest .collapse once' }}"
+                     hx-trigger="{{ _trig('jobs') if timeline_open else 'shown.bs.collapse from:closest .collapse once' }}"
                      hx-swap="innerHTML">
                     <p class="text-muted small mb-0">
                         <i class="fas fa-spinner fa-spin me-1"></i> Loading timeline…
