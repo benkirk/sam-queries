@@ -6,9 +6,9 @@
 |---|---|
 | Unit 1 — multi-host ingress + healthcheck (PR #367) | **Deployed** |
 | Cert reissue (multi-SAN `incommon-cert-samuel`) | **Done** — see below |
-| Unit 2 — per-host OIDC callback | **In this branch**, pending deploy + smoke |
-| Step 4 — logout post-logout URI | **Untested** — needs a browser round-trip |
-| Step 5 — advertise the name | Blocked on the two above |
+| Unit 2 — per-host OIDC callback | **Deployed to CIRRUS + browser-smoked** on `cname_final` (`sha-831f083`); pending merge |
+| Step 4 — logout post-logout URI | **Tested** — needs one Entra swap, see below |
+| Step 5 — advertise the name | Blocked on the merge + the Entra swap |
 
 All commands run against namespace `sam-queries`.
 
@@ -129,28 +129,57 @@ the URL bar must stay on the originating host through the callback and land
 signed in. The unit tests mock Authlib, so only this proves the cookie
 actually survives the round-trip.
 
+**Result on `sha-831f083` (2026-07-29):**
+
+- `redirect_uri` before → both hosts emitted `https://samuel.k8s.ucar.edu/…`;
+  after → each host emits its own. `samuel.k8s` unchanged, so no regression.
+- Interactive login from **`sam.hpc`**: Entra accepted the reply URL (sign-in
+  page, not AADSTS50011), PKCE present (`code_challenge_method=S256`), callback
+  landed on `sam.hpc`, **no `MismatchingStateError`**, identity resolved with
+  admin RBAC, 0 console errors.
+- Interactive login from **`samuel.k8s`**: succeeded via Entra SSO, stayed on
+  `samuel.k8s`.
+- The landing page after login is RBAC-dependent (admins → `/admin/projects`,
+  unprivileged → their user dashboard), so assert on the **host**, not the path.
+- `scripts/cirrus_healthcheck.sh`: 35 PASS / 1 WARN / 0 FAIL (the WARN is the
+  pre-existing "no helm release object" — ArgoCD reconciles the chart).
+
 **Rollback** is restoring one line in `values.yaml`. `samuel.k8s` login is
 unaffected throughout — the derivation produces the identical URL for that host.
 
 ---
 
-## Step 4 — logout (test-first, before touching Entra)
+## Step 4 — logout — TESTED, one Entra change outstanding
 
-Entra allows only one post-logout redirect URI; it is currently the
-`samuel.k8s` value. **No code change is needed** — logout already derives
-`post_logout_redirect_uri` per-host as
+Entra allows only one post-logout redirect URI; it is currently
+`https://samuel.k8s.ucar.edu/`. **No code change is needed** — logout already
+derives `post_logout_redirect_uri` per-host as
 `url_for('status_dashboard.index', _external=True)` → `https://<host>/status/`
 (`src/webapp/auth/blueprint.py`, blueprint `url_prefix='/status'`).
 
-1. Log in **and** log out **from `sam.hpc.ucar.edu`**.
-2. If it redirects back cleanly → nothing to do. (Leading hypothesis: Entra
-   validates the post-logout URI by registered-reply-URL **origin**, and
-   `https://sam.hpc.ucar.edu/auth/oidc/callback` is already registered. Do not
-   assert this — the test is the proof.)
-3. If it strands on MS's signed-out page → have Andrew Tamagni register
-   **`https://sam.hpc.ucar.edu/status/`** — the exact emitted string,
-   host-swapped, **NOT** root `/`. Per Ben's accepted tradeoff, clean logout for
-   `sam.hpc` and degraded from `samuel.k8s` is fine.
+**Measured 2026-07-29** on the deployed branch, both legs in one browser
+session:
+
+| Logout from | Registered origin? | Emitted URI | Result |
+|---|---|---|---|
+| `samuel.k8s.ucar.edu` | yes (root `/`) | `https://samuel.k8s.ucar.edu/status/` | returned cleanly to `/status/derecho` |
+| `sam.hpc.ucar.edu` | no | `https://sam.hpc.ucar.edu/status/` | stranded on MS "You signed out of your account" |
+
+> **Entra matches the post-logout URI by ORIGIN, not exact string.** The
+> `samuel.k8s` leg proves it: a registration of root `/` accepted an emission
+> of `/status/`. An earlier reading of Microsoft's "must match exactly" docs
+> predicted the opposite and was wrong — do not re-derive this from the docs,
+> the experiment above is the evidence.
+
+**Therefore: accept the swap exactly as Entra offered it.** Registering
+**`https://sam.hpc.ucar.edu/`** (root) is sufficient; there is no need to ask
+for the longer `/status/` form. Per Ben's accepted tradeoff, clean logout on
+`sam.hpc` with `samuel.k8s` degraded to the MS signed-out page is fine — and
+that degradation is now a known, measured consequence rather than a surprise.
+
+Login is unaffected either way: reply URLs are a separate Entra list and both
+hosts are already registered there (proven by a successful interactive login on
+each host).
 
 ---
 
