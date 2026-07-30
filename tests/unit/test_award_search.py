@@ -89,15 +89,29 @@ USA_SEARCH_PAYLOAD = {
 
 
 @pytest.fixture(autouse=True)
-def _clear_award_cache():
-    """Search results are memoised; a shared cache would leak between tests.
+def _reset_award_cache(monkeypatch):
+    """Start each test with the awards cache disabled; reset it after.
 
-    ``_adapters`` IS the cache's memo dict (the fs-scans / jobs idiom), so
-    clearing it re-initialises every bucket.
+    Mirrors ``test_webapp_jobs_cache.py`` / ``test_webapp_disk_scans.py``. Both
+    halves are load-bearing, and clearing ``_adapters`` alone is **not** enough:
+
+    * ``reset_for_tests()`` pins every bucket off, so a test sees a real compute
+      rather than a neighbour's cached value. Every ``TestSearchAwards`` case
+      searches the same term, so they all share the key
+      ``('NSF Awards API', 'q', 10)``.
+    * ``CACHE_REDIS_URL`` is dropped because CI runs pytest *inside* the compose
+      ``webapp`` container, where it is force-set. With Redis the adapter is a
+      ``RedisTTLAdapter``, so dropping the in-process memo leaves the keyspace
+      intact and values leak across tests — and worse, xdist workers share one
+      Redis, so no amount of per-test cleanup is race-free.
+
+    The two cache-behaviour tests below re-enable explicitly by clearing
+    ``_adapters``.
     """
-    award_cache._adapters.clear()
+    monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
+    award_cache._CACHE.reset_for_tests()
     yield
-    award_cache._adapters.clear()
+    award_cache._CACHE.reset_for_tests(disabled=False)
 
 
 class TestBaseDefault:
@@ -342,6 +356,10 @@ class TestSearchAwards:
         pool[1].search.assert_not_called()
 
     def test_results_are_cached_per_provider_term_and_limit(self):
+        # Re-enable: the autouse fixture pins every bucket off, and this is one
+        # of the two tests that is actually about the caching.
+        award_cache._adapters.clear()
+
         a = AwardRecord(provenance='NSF Awards API', contract_number='AGS-1')
         pool = self._pool([a], [])
 
@@ -354,6 +372,10 @@ class TestSearchAwards:
         assert pool[0].search.call_count == 2
 
     def test_an_outage_is_never_memoised(self):
+        # Re-enable — with the cache off this would pass vacuously, since
+        # nothing is memoised either way.
+        award_cache._adapters.clear()
+
         pool = self._pool(nsf_exc=AwardSourceUnavailable('down'))
         registry.search_awards('q', providers=pool)
         registry.search_awards('q', providers=pool)
