@@ -106,6 +106,10 @@ class EditContractForm(HtmxFormSchema):
     url = f.Str(load_default=None)
     start_date = f.Date('%Y-%m-%d', required=True)
     end_date = f.Str(load_default=None)   # 23:59:59 convention applied in post_load
+    # Nullable FKs: an empty submission is _strip_empty_strings'd away and
+    # falls back to None, which Contract.update() reads as "clear it".
+    contract_monitor_user_id = f.Int(load_default=None)
+    nsf_program_id = f.Int(load_default=None)
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
@@ -122,6 +126,14 @@ class CreateContractForm(HtmxFormSchema):
     end_date = f.Str(load_default=None)   # 23:59:59 convention applied in post_load
     contract_source_id = f.Int(required=True)
     principal_investigator_user_id = f.Int(required=True)
+    contract_monitor_user_id = f.Int(load_default=None)
+    nsf_program_id = f.Int(load_default=None)
+    # Which tab the operator submitted from. Purely presentational — the
+    # award lookup is a prefill step that runs before submit, so both modes
+    # post the same fields and converge on one Contract.create(). Carried
+    # through validation so an error re-render lands on the same tab.
+    contract_mode = f.Str(load_default='manual',
+                          validate=v.OneOf(['manual', 'lookup']))
 
     @post_load
     def coerce_and_validate_dates(self, data, **kwargs):
