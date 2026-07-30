@@ -74,6 +74,17 @@
 {% endfor %}
 {% endif %}
 
+{% if cache_state.awards %}
+<hr class="my-3">
+<div class="text-muted small mb-2"><strong>Award-lookup cache</strong></div>
+{# One bucket. Award records (NSF / USAspending) are near-immutable, so the
+   TTL is long — its job is to make repeated fetches during one contract
+   entry cheap, not to bound staleness. #}
+{% for _b in cache_state.awards %}
+  {{ cache_row(_b) }}
+{% endfor %}
+{% endif %}
+
 {% if cache_state.flask %}
 <hr class="my-3">
 <div class="text-muted small mb-2"><strong>Flask-Cache (HTTP-level)</strong></div>

@@ -113,6 +113,37 @@
         applyProjcodeMode(radio.value);
     });
 
+    /* ── Create Contract form: entry-mode toggle ──
+     * Unlike projcode_mode, the two contract modes share every real input;
+     * the only difference is whether the award-lookup affordance is shown.
+     * Nothing to sync, so this just toggles visibility. */
+
+    function applyContractMode(mode) {
+        var lookupRow = document.getElementById('contractLookupRow');
+        if (lookupRow) { lookupRow.style.display = (mode === 'lookup') ? '' : 'none'; }
+    }
+
+    registerAction('contract-mode', function (radio) {
+        applyContractMode(radio.value);
+    });
+
+    function initCreateContractForm() {
+        /* re-apply mode after a prefill swap or an error re-render */
+        var current = document.querySelector('[name="contract_mode"]:checked');
+        if (current) { applyContractMode(current.value); }
+    }
+
+    /* "search for them" on an unresolved award-source PI/monitor: seed the
+     * picker's search box and let its own hx-trigger fire. A suggestion,
+     * never a selection — the operator still has to click a result. */
+    registerAction('search-suggested-person', function (btn) {
+        var input = document.getElementById(btn.dataset.searchInput);
+        if (!input) { return; }
+        input.value = btn.dataset.searchTerm || '';
+        input.focus();
+        htmx.trigger(input, 'input');
+    });
+
     /* ── Create Project form: lead-hint apply buttons ── */
 
     /* "use <CODE>" — select the suggested mnemonic and refresh the
@@ -383,6 +414,7 @@
 
     htmx.onLoad(function (root) {
         if (has(root, '#projcodeHidden')) { initCreateProjectForm(); }
+        if (has(root, '#contractLookupRow')) { initCreateContractForm(); }
         if (has(root, '#exchangeFromProject')) { initExchangeForm(root); }
         initMnemonicPrefill(root);
 

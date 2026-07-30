@@ -7,20 +7,27 @@ AOI Groups, Contract Sources, Contracts, NSF Programs.
 The CRUD quintets (edit-form/edit/create-form/create/delete) are generated
 from `_ORG_CRUD_SPECS` at the bottom of this module via `register_crud` —
 only the card/table fragments and the routes that genuinely deviate from
-the pattern (mnemonic-code create with DB-uniqueness checks, contract
-delete which retires by end_date) remain hand-written.
+the pattern remain hand-written: mnemonic-code create (DB-uniqueness
+checks), contract create (award-source prefill, FK-existence and
+uniqueness checks), and contract delete (retires by end_date).
 """
+
+import logging
 
 from flask import render_template, request
 from flask_login import login_required
 from datetime import datetime
 from functools import partial
+from sqlalchemy import func
 
+from webapp.utils.form_handler import FormError, HtmxFormHandler
+from webapp.utils.fk_validation import validate_fk_existence
 from webapp.utils.htmx import (
     htmx_not_found,
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    register_typeahead,
 )
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.rbac import (
@@ -28,6 +35,7 @@ from webapp.utils.rbac import (
 )
 from sam.manage import management_transaction
 from sam.core.organizations import Institution, InstitutionType, Organization
+from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
 from sam.projects.contracts import Contract, ContractSource, NSFProgram
 from sam.queries.admin import (
@@ -55,6 +63,8 @@ from sam.schemas.forms.orgs import (
 from .blueprint import bp
 from .crud import CrudSpec, register_crud
 
+
+logger = logging.getLogger(__name__)
 
 _ORG_TRIGGERS = modal_triggers('reloadOrganizationsCard')
 
@@ -95,6 +105,32 @@ def _active_contract_sources():
         .order_by(ContractSource.contract_source)
         .all()
     )
+
+
+def _search_nsf_programs_fk(q, active_only):
+    """Typeahead search behind the contract forms' NSF Program picker.
+
+    Active-only, per the FK-picker convention: the search offers programs
+    you may *assign*. A contract already pointing at a deactivated program
+    still shows it, because the picker's badge comes from the contract row
+    rather than from this search.
+    """
+    query = db.session.query(NSFProgram).filter(
+        NSFProgram.nsf_program_name.ilike(f'%{q}%'))
+    if active_only:
+        query = query.filter(NSFProgram.is_active)
+    return query.order_by(NSFProgram.nsf_program_name).limit(15).all()
+
+
+register_typeahead(
+    bp, rule='/htmx/search/nsf-programs', endpoint='htmx_search_nsf_programs',
+    permission=Permission.VIEW_ORG_METADATA,
+    search=_search_nsf_programs_fk,
+    template='dashboards/admin/fragments/nsf_program_search_results_fk_htmx.html',
+    ctx_key='nsf_programs',
+    # No checkbox behind this picker, so the param never arrives — see §10.
+    active_only_default=True,
+)
 
 
 # ── Organization Card ──────────────────────────────────────────────────────
@@ -379,6 +415,284 @@ def htmx_mnemonic_code_create():
     return htmx_success_message(_ORG_TRIGGERS, 'Saved successfully.')
 
 
+# ── Contract Create (bespoke: award prefill + FK/uniqueness checks) ───────
+#
+# The generated CrudSpec create closure calls Model.create() directly with no
+# hook, so it can express neither the FK-existence checks the monitor/program
+# columns need nor a contract_number uniqueness pre-check (the column carries
+# a unique index, and an IntegrityError surfaces as an unreadable 500-ish
+# error string). Both halves are therefore hand-written here, keeping the
+# endpoint names and URL rules the spec would have generated so the card's
+# url_for() calls and tests/unit/test_admin_orgs_crud.py are untouched.
+#
+# The form has two modes. They are *presentational*: "look up" adds a Fetch
+# button that prefills the field block via htmx, and Create then submits
+# exactly what the operator sees. No award lookup happens in the POST path —
+# a slow agency API must never sit inside a write transaction, and the
+# operator's edits must always win over a possibly-stale prefill.
+
+CREATE_CONTRACT_TEMPLATE = 'dashboards/admin/fragments/create_contract_form_htmx.html'
+CREATE_CONTRACT_FIELDS_TEMPLATE = 'dashboards/admin/fragments/create_contract_fields_htmx.html'
+
+#: AwardRecord.unavailable_fields -> what the operator sees in the form.
+_UNAVAILABLE_LABELS = {'pi': 'the PI', 'monitor': 'the Monitor'}
+
+
+def _user_label(user):
+    return f'{user.display_name} ({user.username})' if user else ''
+
+
+#: FK-picker field -> (model, label callable). ``fk_search_field`` renders its
+#: badge from ``form.get(name ~ '_display')``, but nothing in the DOM posts
+#: that key — so every re-render (validation error, prefill, program create)
+#: would otherwise show a selected row as a blank badge.
+_PICKER_LABELS = (
+    ('principal_investigator_user_id', User, _user_label),
+    ('contract_monitor_user_id', User, _user_label),
+    ('nsf_program_id', NSFProgram, lambda p: p.nsf_program_name if p else ''),
+)
+
+
+def _clear_picker(form, field):
+    """Empty an FK picker, badge label included."""
+    form[field] = ''
+    form[f'{field}_display'] = ''
+
+
+def _with_picker_labels(form):
+    """Copy *form*, adding the ``<field>_display`` keys the FK pickers need."""
+    data = dict(form or {})
+    for field, model, label in _PICKER_LABELS:
+        raw = str(data.get(field) or '').strip()
+        if not raw.isdigit():
+            continue
+        data.setdefault(f'{field}_display', label(db.session.get(model, int(raw))))
+    return data
+
+
+def _contract_create_context(form=None, **extra):
+    """Render context shared by initial render, prefill, and error re-render."""
+    ctx = {
+        'contract_sources': _active_contract_sources(),
+        'today': datetime.now().strftime('%Y-%m-%d'),
+        'form': _with_picker_labels(form),
+    }
+    ctx.update(extra)
+    return ctx
+
+
+@bp.route('/htmx/contract-create-form')
+@login_required
+@require_permission(Permission.CREATE_ORG_METADATA)
+def htmx_contract_create_form():
+    """Render the Create Contract form."""
+    return render_template(CREATE_CONTRACT_TEMPLATE, **_contract_create_context())
+
+
+@bp.route('/htmx/contract-award-lookup')
+@login_required
+@require_permission(Permission.CREATE_ORG_METADATA)
+def htmx_contract_award_lookup():
+    """Prefill the contract field block from the funding source's API.
+
+    Seeded via ``hx-include`` from everything already typed, so a miss
+    re-renders the operator's own input rather than wiping it. Returns 204
+    (htmx: no swap) only when there is nothing to look up at all.
+
+    Suggest, don't impose: a PI or monitor that resolves to a SAM user
+    pre-selects the picker; one that does not is rendered as a read-only
+    hint carrying the agency's raw name and email, with an explicit
+    apply-or-search affordance. Same for a program name absent from
+    ``nsf_program``. We never invent a user.
+    """
+    from sam.integration.awards import (
+        AwardSourceUnavailable, resolve_award, resolve_person,
+    )
+
+    form = dict(request.args)
+    form.pop('q', None)          # the FK pickers' search boxes; not form data
+    number = (form.get('contract_number') or '').strip()
+    if not number:
+        return '', 204
+
+    source = db.session.get(ContractSource, int(form['contract_source_id'])) \
+        if str(form.get('contract_source_id') or '').isdigit() else None
+    source_name = source.contract_source if source else None
+
+    def _render(**extra):
+        return render_template(CREATE_CONTRACT_FIELDS_TEMPLATE,
+                               **_contract_create_context(form, **extra))
+
+    try:
+        record = resolve_award(source_name, number)
+    except AwardSourceUnavailable as exc:
+        logger.warning('award lookup for %r failed: %s', number, exc)
+        return _render(lookup_error=(
+            f'{source_name or "The award source"} could not be reached. '
+            f'Enter the details manually, or try again shortly.'))
+
+    if record is None:
+        return _render(lookup_error=(
+            f'No award matching "{number}" was found'
+            + (f' at {source_name}.' if source_name else '.')))
+
+    extra = {'provenance': record.provenance,
+             'unavailable_labels': [_UNAVAILABLE_LABELS.get(f, f)
+                                    for f in sorted(record.unavailable_fields)]}
+
+    if record.contract_number:
+        form['contract_number'] = record.contract_number
+    for field, value in (('title', record.title),
+                         ('url', record.url)):
+        if value:
+            form[field] = value
+    if record.start_date:
+        form['start_date'] = record.start_date.isoformat()
+    if record.end_date:
+        form['end_date'] = record.end_date.isoformat()
+
+    # When the source names someone we cannot map, CLEAR the field rather
+    # than leave it. "Never destroy input" governs a *failed* lookup; here
+    # the record has an opinion we simply could not resolve, and keeping a
+    # previous award's pick next to "no matching SAM user" would be wrong.
+    # A source with no opinion at all (USAspending has no people) falls
+    # through untouched — the operator has to fill those in by hand anyway.
+    for field, person, hint_key in (
+            ('principal_investigator_user_id', record.pi, 'pi_hint'),
+            ('contract_monitor_user_id', record.monitor, 'monitor_hint')):
+        if not person:
+            continue
+        user = resolve_person(db.session, person)
+        if user is not None:
+            form[field] = str(user.user_id)
+            form[f'{field}_display'] = _user_label(user)
+        else:
+            extra[hint_key] = person
+            _clear_picker(form, field)
+
+    if record.program_name:
+        program = (
+            db.session.query(NSFProgram)
+            .filter(func.lower(NSFProgram.nsf_program_name)
+                    == record.program_name.lower())
+            .first()
+        )
+        if program is not None:
+            form['nsf_program_id'] = str(program.nsf_program_id)
+        else:
+            extra['program_hint'] = record.program_name
+            _clear_picker(form, 'nsf_program_id')
+
+    return _render(**extra)
+
+
+@bp.route('/htmx/contract-program-create', methods=['POST'])
+@login_required
+@require_permission(Permission.CREATE_ORG_METADATA)
+def htmx_contract_program_create():
+    """Create an NSF program from the create-contract form and select it.
+
+    The opt-in half of the "unknown program" hint: the lookup only ever
+    *offers* the agency's program name, and this is what happens when the
+    operator accepts it. Re-renders just the select so the rest of the form
+    is untouched.
+    """
+    name = (request.form.get('nsf_program_name') or '').strip()
+    selected = (request.form.get('nsf_program_id') or '').strip()
+    error = None
+
+    if not name:
+        error = 'No program name to create.'
+    else:
+        existing = (
+            db.session.query(NSFProgram)
+            .filter(func.lower(NSFProgram.nsf_program_name) == name.lower())
+            .first()
+        )
+        if existing is not None:
+            selected = str(existing.nsf_program_id)
+        else:
+            try:
+                with management_transaction(db.session):
+                    program = NSFProgram.create(db.session, nsf_program_name=name)
+                selected = str(program.nsf_program_id)
+            except Exception as exc:      # noqa: BLE001 — surface to the user
+                error = f'Could not create NSF program: {exc}'
+
+    return render_template(
+        'dashboards/admin/fragments/contract_nsf_program_field_htmx.html',
+        form=_with_picker_labels({'nsf_program_id': selected}),
+        program_hint=name if error else None,
+        program_error=error,
+    )
+
+
+class _ContractCreateHandler(HtmxFormHandler):
+    """Create Contract.
+
+    Beyond the generated quintet: FK-existence checks (§9), a
+    ``contract_number`` uniqueness pre-check, and stripping the
+    presentational ``contract_mode`` before the ORM call.
+    """
+
+    schema_cls = CreateContractForm
+    template = CREATE_CONTRACT_TEMPLATE
+    error_prefix = 'Error creating contract'
+    success_message = 'Contract created successfully.'
+
+    def clean(self, data):
+        validate_fk_existence(
+            db.session,
+            (ContractSource, data.get('contract_source_id'), 'contract source'),
+            (User, data.get('principal_investigator_user_id'),
+             'principal investigator'),
+            (User, data.get('contract_monitor_user_id'), 'contract monitor'),
+            (NSFProgram, data.get('nsf_program_id'), 'NSF program'),
+        )
+
+        # contract_number carries a unique index; catching it here gives the
+        # operator the conflicting contract instead of an IntegrityError.
+        number = (data.get('contract_number') or '').strip()
+        clash = (db.session.query(Contract)
+                 .filter(Contract.contract_number == number).first())
+        if clash is not None:
+            raise FormError(
+                f'Contract number "{number}" already exists '
+                f'({clash.title[:60]}).')
+        return data
+
+    def perform(self, data):
+        kwargs = {k: v for k, v in data.items() if k != 'contract_mode'}
+        kwargs['start_date'] = datetime.combine(kwargs['start_date'],
+                                                datetime.min.time())
+        return Contract.create(db.session, **kwargs)
+
+    def context(self):
+        return _contract_create_context(request.form)
+
+    def render_errors(self, errors, field_errors=None):
+        # context() already supplies the augmented `form`, so do not let the
+        # base class overwrite it with the raw request.form (which carries no
+        # `_display` keys and would blank the picker badges).
+        return render_template(self.template, errors=errors,
+                               field_errors=field_errors or {},
+                               **self.context())
+
+    def triggers(self, result):
+        return _ORG_TRIGGERS
+
+    def detail(self, result):
+        return f'{result.contract_number} — {result.title[:60]}'
+
+
+@bp.route('/htmx/contract-create', methods=['POST'])
+@login_required
+@require_permission(Permission.CREATE_ORG_METADATA)
+def htmx_contract_create():
+    """Create a new contract."""
+    return _ContractCreateHandler().handle()
+
+
 # ── Contract Delete (bespoke: retires by end_date, not active flag) ────────
 
 
@@ -469,26 +783,21 @@ _ORG_CRUD_SPECS = (
         slug='contract', name='Contract',
         model=Contract, id_param='contract_id', context_key='contract',
         edit_schema=EditContractForm, create_schema=CreateContractForm,
+        # NB: the kwargs lambdas enumerate keys explicitly, so a new schema
+        # field is silently dropped unless it is added here too.
         edit_kwargs=lambda data: dict(
             title=data['title'],
             url=data['url'],
             start_date=datetime.combine(data['start_date'], datetime.min.time()),
             end_date=data['end_date'],
+            contract_monitor_user_id=data['contract_monitor_user_id'],
+            nsf_program_id=data['nsf_program_id'],
         ),
-        create_kwargs=lambda data: dict(
-            contract_number=data['contract_number'],
-            title=data['title'],
-            url=data['url'],
-            start_date=datetime.combine(data['start_date'], datetime.min.time()),
-            end_date=data['end_date'],
-            contract_source_id=data['contract_source_id'],
-            principal_investigator_user_id=data['principal_investigator_user_id'],
-        ),
-        create_context=lambda: {
-            'contract_sources': _active_contract_sources(),
-            'today': datetime.now().strftime('%Y-%m-%d'),
-        },
-        actions=('edit', 'create'),   # delete is bespoke (htmx_contract_delete)
+        # create is bespoke (htmx_contract_create_form / htmx_contract_create):
+        # it needs FK-existence checks and a contract_number uniqueness
+        # pre-check, neither of which the generated closure can express.
+        # delete is bespoke too (htmx_contract_delete — retires by end_date).
+        actions=('edit',),
     ),
     _org_spec(
         slug='nsf-program', name='NSF program', noun='NSF program',

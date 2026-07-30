@@ -378,6 +378,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_contract_award_lookup",
+    "/admin/htmx/contract-award-lookup",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_contract_create",
     "/admin/htmx/contract-create",
     [
@@ -410,6 +417,13 @@
     "/admin/htmx/contract-edit-form/<int:contract_id>",
     [
       "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_contract_program_create",
+    "/admin/htmx/contract-program-create",
+    [
+      "POST"
     ]
   ],
   [
@@ -1101,6 +1115,13 @@
   [
     "admin_dashboard.htmx_search_groups",
     "/admin/htmx/search/groups",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_search_nsf_programs",
+    "/admin/htmx/search/nsf-programs",
     [
       "GET"
     ]

@@ -71,8 +71,8 @@ def _fresh_bucketed_caches(*, disabled=False):
 class TestForeignPrefixCrossCheck:
 
     def test_every_ttl_adapter_prefix_is_listed(self, monkeypatch, redis_client):
-        """Init all five TTL adapters via their real factories and assert each
-        prefix is skipped — a sixth bucketed cache whose keyspace escaped the
+        """Init every TTL adapter via its real factory and assert each prefix
+        is skipped — a new bucketed cache whose keyspace escaped the
         derivation would fail here."""
         monkeypatch.setenv('CACHE_REDIS_URL', 'redis://fake:6379/0')
 
@@ -87,9 +87,9 @@ class TestForeignPrefixCrossCheck:
             facade = Caching()
             ttl_adapters = [a for a in facade.adapters()
                             if getattr(a, '_prefix', None) is not None]
-            # All five constructions must be live under fakeredis…
+            # Every construction must be live under fakeredis…
             assert sorted(a.name for a in ttl_adapters) == [
-                'allocation_usage', 'fs_scans', 'fs_scans_filtered',
+                'allocation_usage', 'awards', 'fs_scans', 'fs_scans_filtered',
                 'jobs', 'jobs_recent',
             ]
             # …and every one of their keyspaces must be in the skip list.

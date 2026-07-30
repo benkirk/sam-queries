@@ -4,6 +4,21 @@ from ..base import *
 #-------------------------------------------------------------------------eh-
 
 
+class _Unchanged:
+    """Sentinel distinguishing "leave this column alone" from "set it NULL".
+
+    Needed only for nullable FK columns whose edit-form control submits an
+    empty value when cleared — ``None`` there is a real instruction, so it
+    cannot double as the "argument omitted" default.
+    """
+
+    def __repr__(self):
+        return 'UNCHANGED'
+
+
+UNCHANGED = _Unchanged()
+
+
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
 class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
@@ -50,12 +65,14 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         url: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        contract_monitor_user_id=UNCHANGED,
+        nsf_program_id=UNCHANGED,
     ) -> 'Contract':
         """
         Update this Contract record.
 
-        Only title, url, start_date, and end_date may be changed.
-        PI, contract monitor, source, and number are read-only via this method.
+        Title, url, start_date, end_date, contract monitor, and NSF program
+        may be changed. PI, source, and number are read-only via this method.
 
         NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
 
@@ -64,6 +81,13 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
             url: New URL (nullable — pass empty string to clear)
             start_date: New start date (NOT NULL)
             end_date: New end date — must be after start_date if both known
+            contract_monitor_user_id: New monitor; pass ``None`` to clear.
+                Omit (``UNCHANGED``) to leave alone — the two are distinct
+                here, unlike the other fields, because these columns are
+                nullable FKs and the edit form's pickers submit an empty
+                value for "cleared". Callers that only touch other fields
+                (e.g. the expire-contract route) must not wipe them.
+            nsf_program_id: New NSF program; same ``None``/``UNCHANGED`` rule
 
         Returns:
             self
@@ -88,6 +112,12 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
                 raise ValueError("end_date must be after start_date")
             self.end_date = end_date
 
+        if contract_monitor_user_id is not UNCHANGED:
+            self.contract_monitor_user_id = contract_monitor_user_id
+
+        if nsf_program_id is not UNCHANGED:
+            self.nsf_program_id = nsf_program_id
+
         self.session.flush()
         return self
 
@@ -103,9 +133,16 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         principal_investigator_user_id: int,
         url: Optional[str] = None,
         end_date: Optional[datetime] = None,
+        contract_monitor_user_id: Optional[int] = None,
+        nsf_program_id: Optional[int] = None,
     ) -> 'Contract':
         """
         Create a new Contract.
+
+        ``contract_monitor_user_id`` (the funding source's program manager)
+        and ``nsf_program_id`` are optional: 98% and 99% of existing rows
+        respectively carry one, but neither column is NOT NULL and non-NSF
+        sources have no program.
 
         NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
         """
@@ -124,6 +161,8 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
             url=url.strip() if url and url.strip() else None,
             contract_source_id=contract_source_id,
             principal_investigator_user_id=principal_investigator_user_id,
+            contract_monitor_user_id=contract_monitor_user_id,
+            nsf_program_id=nsf_program_id,
         )
         session.add(obj)
         session.flush()

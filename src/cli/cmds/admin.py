@@ -516,7 +516,9 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
 @cli.command()
 @click.option('--refresh', is_flag=True,
               help='Invalidate the running webapp\'s caches')
-@click.option('--category', type=click.Choice(['flask', 'chart', 'usage', 'scans', 'jobs']),
+@click.option('--category',
+              type=click.Choice(['flask', 'chart', 'usage', 'scans', 'jobs',
+                                 'awards']),
               default=None,
               help='Scope the refresh to one cache category (default: all)')
 @click.option('--base', 'base_url', type=str, default=None,
