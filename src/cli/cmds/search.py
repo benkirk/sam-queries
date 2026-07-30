@@ -27,6 +27,7 @@ from cli.contracts.commands import (
     ContractPatternSearchCommand,
     ContractSearchCommand,
 )
+from cli.awards.commands import AwardPatternSearchCommand, AwardSearchCommand
 from cli.allocations.commands import AllocationSearchCommand
 from cli.accounting.commands import AccountingSearchCommand, AccountingJobsCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
@@ -443,6 +444,53 @@ def contracts(ctx: Context, contract_number, search, search_all, source, pi,
         program=program,
         limit=limit,
     ))
+
+
+# ========================================================================
+# Award Commands
+# ========================================================================
+
+@cli.command()
+@click.argument('contract_number', required=False)
+@click.option('--search', metavar='QUERY',
+              help='Free-text search across the award providers')
+@click.option('--source', metavar='NAME',
+              help='Scope to one funding source, e.g. NSF or DOE. '
+                   'NSF searches NSF\'s own API; anything else searches '
+                   'USAspending.')
+@click.option('--limit', type=int, default=10,
+              help='Maximum results per provider (default: 10)')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@pass_context
+def awards(ctx: Context, contract_number, search, source, limit, verbose):
+    """
+    Search public award APIs (NSF, USAspending).
+
+    You must provide either an award/contract number or --search QUERY.
+
+    Asks the funding agency, not SAM — use `sam-search contracts` for what
+    SAM already holds. A number lookup also cross-references SAM and reports
+    any divergence.
+
+    Exit codes: 0 found, 1 no such award, 2 the source could not be reached.
+    """
+    inputs = [bool(contract_number), bool(search)]
+    if sum(inputs) != 1:
+        ctx.console.print(
+            "Error: Please provide exactly one of: award number or --search",
+            style="bold red")
+        click.echo(click.get_current_context().get_help())
+        sys.exit(1)
+
+    if verbose:
+        ctx.verbose = True
+
+    if contract_number:
+        command = AwardSearchCommand(ctx)
+        sys.exit(command.execute(contract_number, source=source))
+
+    command = AwardPatternSearchCommand(ctx)
+    sys.exit(command.execute(search, source=source, limit=limit))
 
 
 if __name__ == '__main__':
