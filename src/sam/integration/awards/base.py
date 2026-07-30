@@ -29,7 +29,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import date
-from typing import FrozenSet, Optional
+from typing import FrozenSet, List, Optional
 
 
 class AwardSourceUnavailable(Exception):
@@ -110,3 +110,26 @@ class AwardProvider(ABC):
         Raises:
             AwardSourceUnavailable: the source could not be reached.
         """
+
+    def search(self, query: str, limit: int = 10) -> List[AwardRecord]:
+        """Free-text search. Providers that cannot search return ``[]``.
+
+        Concrete with an empty default rather than abstract: ``fetch`` is the
+        provider contract, search is an optional capability, and a default
+        keeps a future provider from having to fake one.
+
+        Unlike :meth:`fetch`, there is no number to scope on, so
+        :meth:`supports` plays no part here — the registry decides which
+        providers a search fans out to.
+
+        Returns:
+            Zero or more records, newest-API-order, capped at *limit*.
+            Search records are **summaries**: a provider may leave fields set
+            on a fetched record blank here (USAspending's ``program_name``
+            comes from a detail-only endpoint), which is why a hit is chained
+            into ``fetch`` rather than used directly.
+
+        Raises:
+            AwardSourceUnavailable: the source could not be reached.
+        """
+        return []
