@@ -84,5 +84,9 @@
     "resource_details_disk_route": {
         "queries": 50,
         "notes": "measured 34 (test snapshot, smallest disk-root subtree) post bulk_current_disk_usage refactor. Flat regardless of subtree size \u2014 was 83 on prod (NMMM0003, 21-node subtree) and scaled with node_count_with_account before the fix. ~50% headroom for snapshot variance."
+    },
+    "project_detail_api_route": {
+        "queries": 45,
+        "notes": "measured 33 \u2014 full GET /api/v1/projects/<projcode> for the most-contract-bearing project (7 contracts). ProjectSchema.contracts serializes via ContractSummarySchema, which flattens 4 relationships per contract; _warm_contract_graph() preloads them. Discarding that helper's return value re-breaks it (weak-ref identity map) and measures 93 \u2014 this baseline is what catches that."
     }
 }
