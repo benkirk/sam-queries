@@ -233,6 +233,41 @@ class TestTableLinking:
         assert 'id="contractDetailsModal"' in body
         assert 'id="nsfProgramContractsModal"' in body
 
+    def test_project_card_link_needs_view_org_metadata(self, auth_client,
+                                                       session, monkeypatch):
+        """The project card renders on the user dashboard, where a normal
+        user has no VIEW_ORG_METADATA and contract_card would 403. With the
+        permission the number is a link; without it, plain text.
+
+        Every admin-ish Quick Login user happens to hold VIEW_ORG_METADATA,
+        so the negative branch is only reachable by stubbing it.
+        """
+        from sam.projects.contracts import ProjectContract
+        pc = (session.query(ProjectContract)
+              .order_by(ProjectContract.project_contract_id).first())
+        if pc is None:
+            pytest.skip('snapshot has no project-contract link')
+        url = f'/user/project-details-modal/{pc.project.projcode}'
+
+        granted = auth_client.get(url)
+        if granted.status_code != 200:
+            pytest.skip('test user cannot view that project')
+        assert 'data-modal-id="contractDetailsModal"' in granted.get_data(as_text=True)
+
+        import webapp.utils.rbac as rbac
+        real = rbac.has_permission_any_facility
+
+        def _deny(user, permission, *a, **kw):
+            if permission == rbac.Permission.VIEW_ORG_METADATA:
+                return False
+            return real(user, permission, *a, **kw)
+
+        monkeypatch.setattr(rbac, 'has_permission_any_facility', _deny)
+        body = auth_client.get(url).get_data(as_text=True)
+        assert 'data-modal-id="contractDetailsModal"' not in body
+        # …and the number is still shown, just not clickable.
+        assert pc.contract.contract_number in body
+
     def test_shells_reach_pages_that_never_mention_contracts(self, auth_client):
         """/admin/users-groups has no contract content of its own, but it
         renders project cards, so it must carry the shell."""
