@@ -1,9 +1,13 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, readonly_display with context %}
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, readonly_display, select_field, fk_search_field with context %}
 {#
   htmx: Edit Contract Form (loaded into #editContractFormContainer)
   Read-only: contract_number, source, PI.
-  Editable: title, url, start_date, end_date.
+  Editable: title, url, start_date, end_date, contract monitor, NSF program.
+
+  Clearing the Monitor picker or selecting the blank NSF Program option
+  submits an empty value, which the schema drops to None and
+  Contract.update() reads as "set NULL" — see its UNCHANGED sentinel.
 #}
 
 {% call htmx_form(
@@ -50,4 +54,20 @@
                               id='editContractEnd') }}
             </div>
         </div>
+
+        {{ fk_search_field('contract_monitor_user_id', 'Contract Monitor',
+                           search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                           optional_text='(optional — the program manager at the funding source)',
+                           placeholder='Search by name or username…',
+                           badge_class='bg-secondary py-1 px-2',
+                           selected_id=contract.contract_monitor_user_id or '',
+                           selected_label=(contract.contract_monitor.display_name
+                                           if contract.contract_monitor else ''),
+                           id_prefix='editContractMonitor') }}
+
+        {{ select_field('nsf_program_id', 'NSF Program',
+                        options=nsf_program_options,
+                        placeholder='— None —',
+                        default=contract.nsf_program_id or '',
+                        id='editContractNsfProgram') }}
 {% endcall %}
