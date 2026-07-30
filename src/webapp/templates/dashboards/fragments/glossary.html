@@ -187,6 +187,25 @@ charging (e.g. a refund or a usage reclassification). "On shared account from
 another project.
 {%- endmacro %}
 
+{# ── Former institution / organization affiliations on the user card ── #}
+{% macro g_former_affiliations() -%}
+Affiliations whose date range has closed &mdash; the person was linked to this
+institution or organization, but that link has <strong>ended</strong>.
+<br>The current blocks above show only affiliations in effect today; these are
+kept for history, newest first.
+{%- endmacro %}
+
+{# ── Contract currency on the project card (popover) ── #}
+{% macro g_contract_status() -%}
+Every contract ever linked to this project is listed, current ones first &mdash;
+an expired grant is still the project's funding provenance.
+<br>&bull; <span class="badge bg-secondary">expired</span> &mdash; the contract's
+<strong>end date has passed</strong>. Note this is also how a contract is
+deactivated: unlinking the last project sets its end date to that moment.
+<br>&bull; <span class="badge bg-light text-secondary border">starts</span> &mdash;
+the contract is <strong>future-dated</strong> and not yet in effect.
+{%- endmacro %}
+
 {# ── Former project associations on the user card (popover) ── #}
 {% macro g_former_projects() -%}
 Projects this user is linked to but that no longer count as active:

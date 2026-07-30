@@ -272,7 +272,15 @@ def user_card(username):
     Returns:
         HTML user card fragment
     """
-    sam_user = db.session.query(User).filter_by(username=username).first()
+    # Eager-load both affiliation graphs: the card renders each of them twice
+    # (current + former blocks), which would otherwise lazy-load per row.
+    from sqlalchemy.orm import selectinload, joinedload
+    from sam.core.organizations import UserInstitution, UserOrganization
+
+    sam_user = db.session.query(User).options(
+        selectinload(User.institutions).joinedload(UserInstitution.institution),
+        selectinload(User.organizations).joinedload(UserOrganization.organization),
+    ).filter_by(username=username).first()
 
     if not sam_user:
         return '<div class="alert alert-warning">User not found</div>'

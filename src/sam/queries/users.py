@@ -27,7 +27,9 @@ from sqlalchemy import or_, func, desc, select, exists
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from sam.core.users import User, EmailAddress
-from sam.core.organizations import Organization, Institution
+from sam.core.organizations import (
+    Organization, Institution, UserInstitution, UserOrganization,
+)
 from sam.projects.projects import Project
 from sam.accounting.accounts import Account, AccountUser
 
@@ -248,8 +250,8 @@ def get_user_with_details(session: Session, username: str) -> Optional[User]:
     return session.query(User)\
         .options(
             joinedload(User.email_addresses),
-            joinedload(User.institutions).joinedload(Institution),
-            joinedload(User.organizations).joinedload(Organization),
+            joinedload(User.institutions).joinedload(UserInstitution.institution),
+            joinedload(User.organizations).joinedload(UserOrganization.organization),
             joinedload(User.academic_status),
             joinedload(User.accounts).joinedload(AccountUser.account)
         )\

@@ -213,6 +213,9 @@ GROUP_PERMISSIONS['csg'] = GROUP_PERMISSIONS['nusd']
 USER_PERMISSION_OVERRIDES: Dict[str, Set[Permission]] = {
     # 'someuser': {Permission.EXPORT_DATA, Permission.VIEW_REPORTS},
     'benkirk' : [p for p in Permission],  # admin-equivalent: full access
+    'mcjones' : ALL_VIEW | {
+        Permission.ACCESS_ADMIN_DASHBOARD,
+    },
 }
 
 # full permissions for some other app/dev/investigators:

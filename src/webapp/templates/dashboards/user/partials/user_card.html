@@ -1,16 +1,21 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
-{% from 'dashboards/fragments/glossary.html' import g_former_projects with context %}
+{% from 'dashboards/fragments/glossary.html' import g_former_projects, g_former_affiliations with context %}
 {% macro render_user_card(sam_user, is_admin=False, user_groups=None, primary_group_name=None,
                           current_shell=None, allowable_shells=None, can_edit_shell=False,
-                          available_groups=None, can_edit_primary_gid=False) %}
+                          available_groups=None, can_edit_primary_gid=False,
+                          is_self=False) %}
 {# user_groups: optional dict[branch_name] -> list of {'group_name', 'unix_gid'}
    primary_group_name: optional str — name of the adhoc group matching
                        sam_user.primary_gid, when one exists
    current_shell / allowable_shells / can_edit_shell: see fragments under
    dashboards/user/fragments/shell_*.html
    available_groups / can_edit_primary_gid: see fragments under
-   dashboards/user/fragments/primary_gid_*.html #}
+   dashboards/user/fragments/primary_gid_*.html
+   is_self: True when this card renders the session user's OWN record (i.e.
+            /user/info). Affiliation history is not privileged data about
+            yourself, so the Former Institution/Organization blocks show on
+            the self view as well as to operators. #}
 <div class="card mb-3">
     <div class="card-header">
         <h5 class="mb-0">
@@ -90,33 +95,94 @@
             </div>
             {% endif %}
 
-            {% if sam_user.institutions %}
+            {# Affiliations are date-ranged (UserInstitution / UserOrganization are
+               DateRangeMixin), so the default view is scoped to currently-effective
+               rows. Lapsed ones move to the Former blocks below, which operators see
+               and which you can always see on your own record. #}
+            {% set show_history = is_self or (is_admin and has_permission_any_facility(Permission.VIEW_ORG_METADATA)) %}
+
+            {% set active_insts = sam_user.active_institutions() %}
+            {% if active_insts or (show_history and sam_user.institutions) %}
             <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Institution(s):</span>
+                {# Count-based plural, but the empty block takes "(s)" — "Institutions:
+                   No current affiliation" would be asserting a plural that isn't there. #}
+                <span class="stat-label d-block mb-1">Institution{{ '(s)' if active_insts|length == 0 else ('' if active_insts|length == 1 else 's') }}:</span>
                 <div class="stat-value text-dark text-detail">
-                    {% for ui in sam_user.institutions %}
+                    {% for ui in active_insts %}
                     <div class="mb-1">
                         <span class="badge bg-light text-dark border">{{ ui.institution.acronym or '—' }}</span>
                         <span class="text-muted">{{ ui.institution.name }}</span>
                     </div>
+                    {% else %}
+                    <span class="text-muted fst-italic">No current affiliation</span>
                     {% endfor %}
                 </div>
             </div>
             {% endif %}
 
-            {% set unique_orgs = sam_user.organizations | map(attribute='organization') | unique(attribute='organization_id') | list %}
-            {% if unique_orgs %}
+            {% if show_history %}
+            {% set former_insts = sam_user.former_institutions() %}
+            {% if former_insts %}
             <div class="stat-item stat-item-block mt-2">
-                <span class="stat-label d-block mb-1">Organization{{ 's' if unique_orgs|length != 1 else '' }}:</span>
+                <span class="stat-label d-block mb-1">
+                    Former Institution{{ 's' if former_insts|length != 1 else '' }}:
+                    {{ help_icon(g_former_affiliations(), rich=True) }}
+                </span>
                 <div class="stat-value text-dark text-detail">
-                    {% for org in unique_orgs %}
+                    {% for ui in former_insts %}
                     <div class="mb-1">
-                        <span class="badge bg-light text-dark border">{{ org.acronym }}</span>
-                        <span class="text-muted">{{ org.name }}</span>
+                        <span class="badge bg-light text-secondary border">{{ ui.institution.acronym or '—' }}</span>
+                        <span class="text-muted">{{ ui.institution.name }}</span>
+                        <span class="text-muted small">
+                            {%- if ui.is_future %} — starts {{ ui.start_date | fmt_date }}
+                            {%- else %} — ended {{ ui.end_date | fmt_date }}{% endif %}
+                        </span>
                     </div>
                     {% endfor %}
                 </div>
             </div>
+            {% endif %}
+            {% endif %}
+
+            {% set active_orgs = sam_user.active_organizations() %}
+            {% if active_orgs or (show_history and sam_user.organizations) %}
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">Organization{{ '(s)' if active_orgs|length == 0 else ('' if active_orgs|length == 1 else 's') }}:</span>
+                <div class="stat-value text-dark text-detail">
+                    {% for uo in active_orgs %}
+                    <div class="mb-1">
+                        <span class="badge bg-light text-dark border">{{ uo.organization.acronym }}</span>
+                        <span class="text-muted">{{ uo.organization.name }}</span>
+                    </div>
+                    {% else %}
+                    <span class="text-muted fst-italic">No current affiliation</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if show_history %}
+            {% set former_orgs = sam_user.former_organizations() %}
+            {% if former_orgs %}
+            <div class="stat-item stat-item-block mt-2">
+                <span class="stat-label d-block mb-1">
+                    Former Organization{{ 's' if former_orgs|length != 1 else '' }}:
+                    {{ help_icon(g_former_affiliations(), rich=True) }}
+                </span>
+                <div class="stat-value text-dark text-detail">
+                    {% for uo in former_orgs %}
+                    <div class="mb-1">
+                        <span class="badge bg-light text-secondary border">{{ uo.organization.acronym }}</span>
+                        <span class="text-muted">{{ uo.organization.name }}</span>
+                        <span class="text-muted small">
+                            {%- if uo.is_future %} — starts {{ uo.start_date | fmt_date }}
+                            {%- else %} — ended {{ uo.end_date | fmt_date }}{% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
             {% endif %}
 
         </div>

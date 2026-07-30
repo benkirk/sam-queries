@@ -160,6 +160,10 @@
           <tr>
             <th style="width:12em;">Contract #</th>
             <th>Title</th>
+            {# "Linked" is the date this project was attached to the contract —
+               it says nothing about whether the contract is still in effect,
+               so "Period" carries the contract's own window. #}
+            <th style="width:14em;">Period</th>
             <th style="width:9em;">Linked</th>
             <th style="width:3em;"></th>
           </tr>
@@ -172,6 +176,18 @@
             </td>
             <td class="small">
               {{ pc.contract.title[:80] }}{% if pc.contract.title | length > 80 %}…{% endif %}
+            </td>
+            <td class="small">
+              <span class="text-muted">
+                {{ pc.contract.start_date | fmt_date }} – {{ pc.contract.end_date | fmt_date }}
+              </span>
+              {%- if not pc.contract.is_active %}
+                {%- if pc.contract.is_future %}
+                <span class="badge bg-light text-secondary border fw-normal ms-1">not started</span>
+                {%- else %}
+                <span class="badge bg-secondary fw-normal ms-1">expired</span>
+                {%- endif %}
+              {%- endif %}
             </td>
             <td class="text-muted small">{{ pc.creation_time | fmt_date }}</td>
             <td class="text-end">

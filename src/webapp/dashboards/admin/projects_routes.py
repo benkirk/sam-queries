@@ -2239,7 +2239,10 @@ def _linked_elements_context(project):
         project=project,
         allows_org_links=(facility_name in _ORG_LINK_FACILITIES),
         active_organizations=[po for po in project.organizations if po.is_active],
-        contracts=project.contracts,
+        # Contracts are not filtered — an expired grant stays visible as
+        # funding provenance — but current ones sort first and the table
+        # badges the lapsed rows.
+        contracts=project.contracts_current_first(),
         active_directories=[pd for pd in project.directories if pd.is_active],
         disk_roots=_disk_roots_for_picker(),
         can_edit_governance=can_edit_project_governance(current_user, project),
