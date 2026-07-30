@@ -49,6 +49,7 @@ _BUCKETED_CACHE_MODULES = (
     'sam.queries.usage_cache',
     'webapp.disk_scans.cache',
     'webapp.jobs.cache',
+    'sam.integration.awards.cache',
 )
 
 

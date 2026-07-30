@@ -37,10 +37,11 @@ class TestAdminCacheRefreshBehavior:
     def test_clear_all_covers_every_category(self, auth_client):
         data = auth_client.post('/api/v1/admin/cache/refresh').get_json()
         assert set(data['cleared'].keys()) == {'flask', 'chart', 'usage',
-                                               'scans', 'jobs'}
+                                               'scans', 'jobs', 'awards'}
 
     @pytest.mark.parametrize('category',
-                             ['flask', 'chart', 'usage', 'scans', 'jobs'])
+                             ['flask', 'chart', 'usage', 'scans', 'jobs',
+                              'awards'])
     def test_single_category_scopes_the_clear(self, auth_client, category):
         data = auth_client.post(
             f'/api/v1/admin/cache/refresh?category={category}'
