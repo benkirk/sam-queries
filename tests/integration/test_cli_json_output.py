@@ -239,6 +239,23 @@ class TestAdminJSON:
         assert data['kind'] == 'user'
         assert data['username'] == multi_project_user.username
 
+    def test_admin_contracts_envelope_is_pure_json(self, runner, mock_admin_session):
+        """The deliberate contrast with `user --validate` above.
+
+        `contracts --validate` routes *all* of its output through one
+        `output_json()` call, so the entire stream parses — `_parse_json`,
+        not `raw_decode` from the first brace. Exit 0 (clean) and 2 (findings
+        exist) are both valid; the snapshot decides which.
+        """
+        result = runner.invoke(
+            admin_cli, ['--format', 'json', 'contracts', '--validate']
+        )
+        assert result.exit_code in (0, 2), result.output
+        data = _parse_json(result.output)
+        assert data['kind'] == 'contract_audit'
+        assert data['scope'] == 'open'
+        assert isinstance(data['checks'], list) and data['checks']
+
     def test_admin_project_json_with_notify_rejected(self, runner, mock_admin_session):
         result = runner.invoke(
             admin_cli,
