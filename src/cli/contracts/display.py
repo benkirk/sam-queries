@@ -19,6 +19,84 @@ _DETAIL_COLUMN = {
 }
 
 
+def display_contract(ctx: Context, data: dict, list_projects: bool = False):
+    """Render one contract's detail.
+
+    ``data`` is a ``build_contract()`` envelope.
+    """
+    ctx.console.print(
+        f"\n[bold]{data['contract_number']}[/bold] — {data['title']}")
+
+    table = Table(box=box.SIMPLE, show_header=False)
+    table.add_column("Field", style="dim", no_wrap=True)
+    table.add_column("Value", overflow="fold")
+
+    rows = [
+        ("Source",   _as_text(data.get('contract_source'))),
+        ("Status",   "active" if data.get('is_active') else "expired"),
+        ("Period",   f"{_date(data.get('start_date'))} → "
+                     f"{_date(data.get('end_date'))}"),
+        ("PI",       _as_text(data.get('pi_username'))),
+        ("Monitor",  _as_text(data.get('monitor_username'))),
+        ("Program",  _as_text(data.get('nsf_program'))),
+        ("URL",      _as_text(data.get('url'))),
+    ]
+    for label, value in rows:
+        table.add_row(label, value)
+    ctx.console.print(table)
+
+    projects = data.get('projects') or []
+    if not list_projects:
+        if projects:
+            ctx.console.print(
+                f"[dim]{len(projects)} linked project(s) — "
+                f"use --list-projects to show them[/dim]")
+        return
+
+    if not projects:
+        ctx.console.print("[dim]No linked projects[/dim]")
+        return
+
+    ptable = Table(box=box.SIMPLE, title=f"Linked projects ({len(projects)})")
+    ptable.add_column("Project", no_wrap=True)
+    ptable.add_column("Title", no_wrap=True, overflow="ellipsis")
+    ptable.add_column("Active", no_wrap=True)
+    for project in projects:
+        ptable.add_row(project['projcode'], _truncate(project['title'], 54),
+                       "yes" if project['is_active'] else "no")
+    ctx.console.print(ptable)
+
+
+def display_contract_search(ctx: Context, data: dict):
+    """Render contract search results.
+
+    ``data`` is a ``build_contract_search()`` envelope.
+    """
+    if not data['count']:
+        ctx.console.print("No contracts found", style="yellow")
+        return
+
+    table = Table(box=box.SIMPLE,
+                  title=f"{data['count']} contract(s) — {data['scope']}")
+    table.add_column("Number", no_wrap=True)
+    table.add_column("Source", no_wrap=True)
+    table.add_column("Title", no_wrap=True, overflow="ellipsis")
+    table.add_column("PI", no_wrap=True)
+    table.add_column("Start", no_wrap=True)
+    table.add_column("End", no_wrap=True)
+
+    for contract in data['contracts']:
+        table.add_row(
+            contract['contract_number'],
+            _as_text(contract.get('contract_source')),
+            _truncate(contract.get('title'), 46),
+            _as_text(contract.get('pi_username')),
+            _date(contract.get('start_date')),
+            _date(contract.get('end_date')),
+        )
+    ctx.console.print(table)
+
+
 def display_contract_audit(ctx: Context, data: dict):
     """Render the contract data-hygiene audit.
 

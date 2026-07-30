@@ -65,6 +65,19 @@ class BaseProjectCommand(BaseCommand):
         return Project.get_by_projcode(self.session, projcode)
 
 
+class BaseContractCommand(BaseCommand):
+    """Base for single-contract commands.
+
+    ``ContractsAuditCommand`` deliberately stays on ``BaseCommand``: it is
+    scope-wide and has no single contract to resolve.
+    """
+
+    def get_contract(self, contract_number: str):
+        """Get contract by its exact number."""
+        from sam.projects.contracts import Contract
+        return Contract.get_by_number(self.session, contract_number)
+
+
 class BaseAllocationCommand(BaseCommand):
     """Base for allocation commands."""
     pass

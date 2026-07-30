@@ -23,6 +23,10 @@ from cli.project.commands import (
     ProjectPatternSearchCommand,
     ProjectExpirationCommand
 )
+from cli.contracts.commands import (
+    ContractPatternSearchCommand,
+    ContractSearchCommand,
+)
 from cli.allocations.commands import AllocationSearchCommand
 from cli.accounting.commands import AccountingSearchCommand, AccountingJobsCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
@@ -367,6 +371,77 @@ def accounting(ctx: Context, user, project, resource, queue, machine,
         resource=resource,
         queue=queue,
         machine=machine,
+    ))
+
+
+# ========================================================================
+# Contract Commands
+# ========================================================================
+
+@cli.command()
+@click.argument('contract_number', required=False)
+@click.option('--search', metavar='PATTERN',
+              help='Search number and title. Treated as a LIKE pattern when '
+                   'it contains %% or _, otherwise as a substring '
+                   '(so "climate" == "%%climate%%", while "AGS-%%" anchors). '
+                   'Matching is case-insensitive.')
+@click.option('--all', 'search_all', is_flag=True,
+              help='Include expired and not-yet-started contracts '
+                   '(default: open only)')
+@click.option('--source', metavar='NAME',
+              help='Filter by funding source name, e.g. NSF or DOE')
+@click.option('--pi', metavar='USERNAME',
+              help='Filter by principal investigator username')
+@click.option('--monitor', metavar='USERNAME',
+              help='Filter by contract monitor username')
+@click.option('--program', metavar='PATTERN',
+              help='Filter by NSF program name (same pattern rules as --search)')
+@click.option('--list-projects', is_flag=True,
+              help='List the projects linked to the contract')
+@click.option('--limit', type=int, default=50,
+              help='Maximum number of results for pattern search (default: 50)')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@pass_context
+def contracts(ctx: Context, contract_number, search, search_all, source, pi,
+              monitor, program, list_projects, limit, verbose):
+    """
+    Search for contracts in SAM.
+
+    You must provide either a contract number or --search PATTERN. Filters
+    (--source/--pi/--monitor/--program) apply to --search.
+
+    To ask the funding agency instead of SAM, use `sam-search awards`.
+    """
+    inputs = [bool(contract_number), bool(search)]
+    filters_only = any([source, pi, monitor, program]) and sum(inputs) == 0
+
+    # Filters alone are a legitimate query ("every open NSF contract"), so
+    # they stand in for --search rather than requiring an empty one.
+    if sum(inputs) != 1 and not filters_only:
+        ctx.console.print(
+            "Error: Please provide exactly one of: contract number, --search, "
+            "or at least one filter (--source/--pi/--monitor/--program)",
+            style="bold red")
+        click.echo(click.get_current_context().get_help())
+        sys.exit(1)
+
+    if verbose:
+        ctx.verbose = True
+
+    if contract_number:
+        command = ContractSearchCommand(ctx)
+        sys.exit(command.execute(contract_number,
+                                 list_projects=list_projects))
+
+    command = ContractPatternSearchCommand(ctx)
+    sys.exit(command.execute(
+        pattern=search,
+        active_only=not search_all,
+        source=source,
+        pi=pi,
+        monitor=monitor,
+        program=program,
+        limit=limit,
     ))
 
 
