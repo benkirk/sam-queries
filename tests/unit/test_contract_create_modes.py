@@ -192,6 +192,7 @@ class TestContractUpdate:
 CREATE_FORM_URL = '/admin/htmx/contract-create-form'
 CREATE_URL = '/admin/htmx/contract-create'
 LOOKUP_URL = '/admin/htmx/contract-award-lookup'
+SEARCH_URL = '/admin/htmx/contract-award-search'
 PROGRAM_CREATE_URL = '/admin/htmx/contract-program-create'
 PROGRAM_SEARCH_URL = '/admin/htmx/search/nsf-programs'
 
@@ -241,6 +242,7 @@ class TestCreateRouteAuth:
         (CREATE_FORM_URL, 'get'),
         (CREATE_URL, 'post'),
         (LOOKUP_URL, 'get'),
+        (SEARCH_URL, 'get'),
         (PROGRAM_CREATE_URL, 'post'),
     ])
     def test_unauthenticated_rejected(self, client, url, method):
@@ -253,6 +255,7 @@ class TestCreateRouteAuth:
         (CREATE_FORM_URL, 'get'),
         (CREATE_URL, 'post'),
         (LOOKUP_URL, 'get'),
+        (SEARCH_URL, 'get'),
         (PROGRAM_CREATE_URL, 'post'),
     ])
     def test_non_admin_forbidden(self, non_admin_client, url, method):
@@ -456,3 +459,151 @@ class TestAwardLookup:
         body = resp.get_data(as_text=True)
         assert 'fk-picker-badge' in body
         assert 'someone' in body
+
+
+class TestAwardSearch:
+    """Free-text search above the Fetch button. Read-only, never 500s.
+
+    `search_awards` is stubbed at the package object because the route
+    imports it inside the function body — a module-scope `from ... import`
+    would bind the real callable and ignore the patch. No network.
+    """
+
+    def test_short_query_returns_nothing(self, auth_client):
+        """Below min_len we must not bother two public APIs."""
+        with patch('sam.integration.awards.search_awards') as search:
+            resp = auth_client.get(SEARCH_URL, query_string={'q': 'ab'})
+        assert resp.get_data(as_text=True) == ''
+        search.assert_not_called()
+
+    def test_renders_results(self, auth_client):
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([_award()], [])):
+            resp = auth_client.get(SEARCH_URL,
+                                   query_string={'q': 'turbulence'})
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert 'The Management and Operation of NCAR' in body
+        assert 'AGS-1852977' in body
+        assert 'NSF' in body                       # provenance badge
+
+    def test_rows_carry_the_use_award_action(self, auth_client):
+        """The template/JS contract: `use-award` writes the two parent-form
+        inputs and fires #contractFetchAward."""
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([_award()], [])):
+            body = auth_client.get(
+                SEARCH_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert 'data-action="use-award"' in body
+        assert 'data-award-number="AGS-1852977"' in body
+
+    def test_no_match_renders_an_empty_state(self, auth_client):
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([], [])):
+            body = auth_client.get(
+                SEARCH_URL, query_string={'q': 'zzz-no-such-award'}
+            ).get_data(as_text=True)
+        assert 'No awards found' in body
+
+    def test_source_unavailable_is_an_inline_note_not_a_500(self, auth_client):
+        """register_typeahead would have made this a 500; that is exactly
+        why this route is hand-written."""
+        errors = [{'provenance': 'NSF Awards API', 'reason': 'unreachable'}]
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([], errors)):
+            resp = auth_client.get(SEARCH_URL, query_string={'q': 'turbulence'})
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert 'could not be reached' in body
+        assert 'No awards found' not in body       # not the same answer
+
+    def test_partial_outage_still_shows_hits_and_warns(self, auth_client):
+        errors = [{'provenance': 'NSF Awards API', 'reason': 'unreachable'}]
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([_award()], errors)):
+            body = auth_client.get(
+                SEARCH_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert 'AGS-1852977' in body
+        assert 'partial' in body
+
+    def test_already_in_sam_rows_are_flagged_and_not_reusable(
+            self, auth_client, session, any_contract):
+        """Duplicate protection surfaced one round-trip before
+        _ContractCreateHandler.clean would have caught it."""
+        record = _award(contract_number=any_contract.contract_number)
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([record], [])):
+            body = auth_client.get(
+                SEARCH_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert 'already in SAM' in body
+        # A row SAM already has must not offer to seed the form.
+        assert 'data-action="use-award"' not in body
+
+    def test_usaspending_states_its_structural_gap(self, auth_client):
+        record = _award(provenance='USAspending', pi=None, monitor=None,
+                        program_name=None,
+                        unavailable_fields=frozenset({'pi', 'monitor'}))
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([record], [])):
+            body = auth_client.get(
+                SEARCH_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert 'no PI/Monitor from this source' in body
+
+    def test_source_scopes_the_search(self, auth_client, any_contract_source):
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([], [])) as search:
+            auth_client.get(SEARCH_URL, query_string={
+                'q': 'turbulence',
+                'contract_source_id': str(any_contract_source.contract_source_id)})
+        assert search.call_args.kwargs['sources'] == [
+            any_contract_source.contract_source]
+
+    def test_nsf_source_id_is_resolved_by_name_not_hardcoded(self, auth_client,
+                                                             session):
+        """Lookup-table PKs differ between environments."""
+        from sam.projects.contracts import ContractSource
+        nsf = (session.query(ContractSource)
+               .filter(ContractSource.contract_source == 'NSF').first())
+        if nsf is None:
+            pytest.skip('no NSF contract source in this snapshot')
+
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([_award(contract_number='AGS-0000001')], [])):
+            body = auth_client.get(
+                SEARCH_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert f'data-source-id="{nsf.contract_source_id}"' in body
+
+
+class TestAwardSearchFormSeam:
+    """The search input lives inside the form; it must not reach the ORM."""
+
+    def test_the_search_box_is_named_q(self, auth_client):
+        """`q` is what htmx_contract_award_lookup already pops, which is what
+        keeps it out of the prefill dict and the POST."""
+        body = auth_client.get(CREATE_FORM_URL).get_data(as_text=True)
+        assert 'id="createContractAwardSearch"' in body
+        assert 'name="q"' in body
+
+    def test_the_fetch_button_has_the_id_the_action_triggers(self, auth_client):
+        body = auth_client.get(CREATE_FORM_URL).get_data(as_text=True)
+        assert 'id="contractFetchAward"' in body
+
+    def test_a_stray_q_is_dropped_by_the_create_schema(self):
+        """unknown=EXCLUDE is the safety net behind
+        `kwargs = {k: v for k, v in data.items() if k != 'contract_mode'}` —
+        verify rather than assume."""
+        data = CreateContractForm().load({
+            'contract_number': 'AGS-1852977',
+            'title': 'A contract',
+            'start_date': '2018-10-01',
+            'contract_source_id': '1',
+            'principal_investigator_user_id': '1',
+            'contract_mode': 'lookup',
+            'q': 'turbulence',
+        })
+        assert 'q' not in data

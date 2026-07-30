@@ -589,6 +589,114 @@ def htmx_contract_create_form():
     return render_template(CREATE_CONTRACT_TEMPLATE, **_contract_create_context())
 
 
+#: Minimum query length before the award search bothers the public APIs.
+AWARD_SEARCH_MIN_LEN = 3
+
+#: Per provider, so the composite can return more. Ten each is one screenful.
+AWARD_SEARCH_LIMIT = 10
+
+CONTRACT_AWARD_SEARCH_TEMPLATE = (
+    'dashboards/admin/fragments/contract_award_search_results_htmx.html')
+
+
+@bp.route('/htmx/contract-award-search')
+@login_required
+@require_permission(Permission.CREATE_ORG_METADATA)
+def htmx_contract_award_search():
+    """Free-text search across the award providers, above the Fetch button.
+
+    Hand-written rather than :func:`register_typeahead`, whose own docstring
+    blesses the exception ("endpoints whose branching is the feature stay
+    hand-written"). It *fits* that signature — the search callable never
+    touches the session — but it would turn an
+    :class:`AwardSourceUnavailable` into a 500, and its template contract is
+    only ``{q, <ctx_key>}``, with nowhere to put a per-provider error note.
+
+    Results are **summaries**: USAspending's program name comes from a
+    detail-only endpoint. Picking a row therefore seeds the number and fires
+    the existing lookup rather than prefilling directly — that chain is what
+    recovers the program name, and for NSF it is free.
+
+    Rows whose number SAM already has are annotated, which is the same
+    protection ``_ContractCreateHandler.clean`` gives on submit, one
+    round-trip earlier.
+    """
+    from sam.integration.awards import AwardSourceUnavailable, search_awards
+
+    query = (request.args.get('q') or '').strip()
+    if len(query) < AWARD_SEARCH_MIN_LEN:
+        return ''
+
+    source = db.session.get(ContractSource, int(request.args['contract_source_id'])) \
+        if str(request.args.get('contract_source_id') or '').isdigit() else None
+    source_name = source.contract_source if source else None
+
+    try:
+        records, errors = search_awards(
+            query, limit=AWARD_SEARCH_LIMIT,
+            sources=[source_name] if source_name else None)
+    except Exception as exc:                      # pragma: no cover - defensive
+        # search_awards already downgrades per-provider failures into
+        # `errors`; anything escaping it is a bug, but an inline note still
+        # beats a 500 inside the form.
+        logger.warning('award search for %r failed: %s', query, exc)
+        return render_template(
+            CONTRACT_AWARD_SEARCH_TEMPLATE, q=query, results=[],
+            search_error='The award search could not be completed. '
+                         'Enter the details manually, or try again shortly.')
+
+    if errors and not records:
+        # Every provider down reads as "no such award" unless we say so.
+        return render_template(
+            CONTRACT_AWARD_SEARCH_TEMPLATE, q=query, results=[],
+            search_error=' '.join(
+                f'{e["provenance"]} could not be reached.' for e in errors)
+            + ' Enter the details manually, or try again shortly.')
+
+    return render_template(
+        CONTRACT_AWARD_SEARCH_TEMPLATE, q=query,
+        results=_annotate_known(records),
+        nsf_source_id=_nsf_source_id(),
+        partial_errors=errors)
+
+
+def _annotate_known(records):
+    """Pair each record with the SAM contract of the same number, if any.
+
+    One query for the whole result set, not one per row.
+    """
+    from sam.projects.contracts import Contract
+
+    numbers = {(r.contract_number or '').strip()
+               for r in records if r.contract_number}
+    known = {}
+    if numbers:
+        known = {c.contract_number: c for c in
+                 db.session.query(Contract)
+                 .filter(Contract.contract_number.in_(sorted(numbers))).all()}
+
+    return [{'record': r, 'in_sam': known.get((r.contract_number or '').strip())}
+            for r in records]
+
+
+def _nsf_source_id():
+    """The ``contract_source`` row named NSF, resolved by name at runtime.
+
+    Never a hardcoded id — lookup-table PKs differ between environments.
+    Returns ``None`` if NSF is absent or inactive, in which case the Use
+    button simply leaves Source for the operator.
+
+    NSF only: USAspending spans many agencies and its ``Awarding Agency``
+    string ("Department of Defense") does not match our source names ("DOD"),
+    so guessing there would be worse than not guessing.
+    """
+    source = (db.session.query(ContractSource)
+              .filter(ContractSource.contract_source == 'NSF',
+                      ContractSource.is_active)
+              .first())
+    return source.contract_source_id if source else None
+
+
 @bp.route('/htmx/contract-award-lookup')
 @login_required
 @require_permission(Permission.CREATE_ORG_METADATA)

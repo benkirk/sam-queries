@@ -399,6 +399,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_contract_award_search",
+    "/admin/htmx/contract-award-search",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_contract_create",
     "/admin/htmx/contract-create",
     [

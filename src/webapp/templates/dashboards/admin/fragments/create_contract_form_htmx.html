@@ -62,7 +62,43 @@
             {# #contractLookupRow is also the htmx.onLoad marker that
                form-helpers.js gates the mode re-init on. #}
             <div id="contractLookupRow" style="display:none;">
-                <button type="button" class="btn btn-sm btn-outline-primary"
+                {# ── Find an award ──
+                   Free-text search, for the common case where the operator
+                   does not yet know the number. Its input is named `q`, which
+                   htmx_contract_award_lookup already pops out of the form
+                   dict, so it cannot leak into the prefill or the POST.
+
+                   Not a keystroke typeahead: a search is ~3 requests to two
+                   public APIs at ~1.5 s, so it is button-triggered and
+                   spinner-backed. `hx-trigger` also fires on Enter so the
+                   keyboard path works without reaching for the mouse. #}
+                <div class="input-group input-group-sm mb-2">
+                    <span class="input-group-text">
+                        <i class="fas fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" class="form-control" name="q"
+                           id="createContractAwardSearch"
+                           placeholder="Find an award by title or keyword…"
+                           autocomplete="off"
+                           hx-get="{{ url_for('admin_dashboard.htmx_contract_award_search') }}"
+                           hx-target="#createContractAwardResults"
+                           hx-swap="innerHTML"
+                           hx-include="#createContractSource"
+                           hx-trigger="keyup[key=='Enter'], search-award from:body"
+                           hx-indicator="#createContractSearchSpinner">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-action="search-award">
+                        Search
+                    </button>
+                </div>
+                <span id="createContractSearchSpinner"
+                      class="htmx-indicator text-muted small d-block mb-2">
+                    <i class="fas fa-spinner fa-spin me-1"></i>Searching NSF and USAspending…
+                </span>
+                <div id="createContractAwardResults" class="list-group mb-2"></div>
+
+                <button type="button" id="contractFetchAward"
+                        class="btn btn-sm btn-outline-primary"
                         hx-get="{{ url_for('admin_dashboard.htmx_contract_award_lookup') }}"
                         hx-target="#createContractFields"
                         hx-swap="innerHTML"
@@ -75,9 +111,11 @@
                     <i class="fas fa-spinner fa-spin me-1"></i>Contacting the funding source…
                 </span>
                 <div class="form-text">
-                    NSF awards fill in every field, including the Program Manager.
-                    Other federal sources are looked up via USAspending, which
-                    carries dates and the award URL but no people.
+                    Search above if you do not know the number, or type it into
+                    Contract Number and fetch directly. NSF awards fill in every
+                    field, including the Program Manager. Other federal sources
+                    are looked up via USAspending, which carries dates and the
+                    award URL but no people.
                 </div>
             </div>
         </div>
