@@ -1,5 +1,7 @@
 {# Import content macros from user dashboard #}
-{% from 'dashboards/user/partials/project_card.html' import render_project_info, render_project_resources, render_project_members %}
+{# `with context` is required: render_project_info reaches the help_icon /
+   glossary macros, which resolve app globals (tooltip config, filters). #}
+{% from 'dashboards/user/partials/project_card.html' import render_project_info, render_project_resources, render_project_members with context %}
 
 {# Render project details using reusable macros #}
 <div class="project-details-modal-content">

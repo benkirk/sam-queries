@@ -17,14 +17,16 @@ from typing import Optional
 from sam.accounting.accounts import Account
 from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
 from sam.accounting.allocations import Allocation, AllocationTransaction
+from sam.core.organizations import ProjectOrganization
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
+from sam.projects.contracts import Contract, ContractSource, ProjectContract
 from sam.projects.projects import Project
 from sam.resources.facilities import Facility
 from sam.resources.resources import Resource
 
 from ._seq import next_seq
-from .core import make_user
+from .core import make_organization, make_user
 from .resources import make_resource
 
 
@@ -124,6 +126,109 @@ def make_project(
     session.flush()
     project._ns_place_in_tree(session, parent=parent)
     return project
+
+
+def make_contract_source(session, *, name: str = "NSF") -> ContractSource:
+    """Fetch (or create) a ContractSource by name.
+
+    Resolved by name at runtime rather than by hardcoded ID — `contract_source`
+    is a lookup table whose PKs differ between the snapshot and a fresh DB.
+    """
+    src = session.query(ContractSource).filter_by(contract_source=name).first()
+    if src is None:
+        src = ContractSource(contract_source=name, active=True)
+        session.add(src)
+        session.flush()
+    return src
+
+
+def make_contract(
+    session,
+    *,
+    contract_number: Optional[str] = None,
+    title: Optional[str] = None,
+    pi: Optional[User] = None,
+    source: Optional[ContractSource] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> Contract:
+    """Build and flush a fresh Contract row.
+
+    Defaults to a currently-effective window (started a year ago, open-ended).
+    Pass an `end_date` in the past for an expired contract, or a `start_date`
+    in the future for one that has not begun.
+    """
+    if pi is None:
+        pi = make_user(session)
+    if source is None:
+        source = make_contract_source(session)
+    if contract_number is None:
+        contract_number = next_seq("CTR")
+    if title is None:
+        title = f"Test contract {contract_number}"
+    if start_date is None:
+        start_date = datetime.now() - timedelta(days=365)
+
+    contract = Contract(
+        contract_source_id=source.contract_source_id,
+        contract_number=contract_number,
+        title=title,
+        principal_investigator_user_id=pi.user_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    session.add(contract)
+    session.flush()
+    return contract
+
+
+def make_project_contract(
+    session,
+    *,
+    project: Optional[Project] = None,
+    contract: Optional[Contract] = None,
+    **contract_kwargs,
+) -> ProjectContract:
+    """Link a project to a contract. Extra kwargs go to `make_contract`."""
+    if project is None:
+        project = make_project(session)
+    if contract is None:
+        contract = make_contract(session, **contract_kwargs)
+
+    pc = ProjectContract(project_id=project.project_id, contract_id=contract.contract_id)
+    session.add(pc)
+    session.flush()
+    return pc
+
+
+def make_project_organization(
+    session,
+    *,
+    project: Optional[Project] = None,
+    organization=None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> ProjectOrganization:
+    """Link a project to an organization over a date window.
+
+    `end_date` of None means the link is still in effect.
+    """
+    if project is None:
+        project = make_project(session)
+    if organization is None:
+        organization = make_organization(session)
+    if start_date is None:
+        start_date = datetime.now() - timedelta(days=365)
+
+    po = ProjectOrganization(
+        project_id=project.project_id,
+        organization_id=organization.organization_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    session.add(po)
+    session.flush()
+    return po
 
 
 def make_account(

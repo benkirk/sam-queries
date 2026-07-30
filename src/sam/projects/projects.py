@@ -444,6 +444,37 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
                     dirs.append(f"{d.directory_name}")
         return dirs
 
+    @staticmethod
+    def _current_first(associations, window_of, as_of=None):
+        """Order date-ranged links current-first, then most recently ended.
+
+        Unlike the affiliation accessors on User, nothing is filtered out:
+        an expired contract or a closed organization link is still meaningful
+        provenance for a project, so the card shows every row and badges the
+        lapsed ones. ``window_of`` maps an association to the object carrying
+        the date window (the contract itself, or the link row).
+        """
+        def sort_key(assoc):
+            window = window_of(assoc)
+            current = window.is_active_at(as_of)
+            # Within each group: most recent first. A row with no end_date is
+            # either open-ended (current) or future-dated (not current).
+            return (current, window.end_date or window.start_date)
+
+        return sorted(associations, key=sort_key, reverse=True)
+
+    def contracts_current_first(self, as_of: Optional[datetime] = None) -> List['ProjectContract']:
+        """All contract links, current ones first, then most recently expired.
+
+        ProjectContract carries no dates of its own — a link's currency is the
+        contract's date window.
+        """
+        return self._current_first(self.contracts, lambda pc: pc.contract, as_of)
+
+    def organizations_current_first(self, as_of: Optional[datetime] = None) -> List['ProjectOrganization']:
+        """All organization links, current ones first, then most recently ended."""
+        return self._current_first(self.organizations, lambda po: po, as_of)
+
     def get_all_allocations_by_resource(self) -> Dict[str, Optional['Allocation']]:
         """
         Get the most recent active allocation for each resource.

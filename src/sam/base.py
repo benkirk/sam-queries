@@ -193,6 +193,23 @@ class DateRangeMixin:
         """Check if this record is currently active (SQL side). Alias for is_currently_active."""
         return cls.is_currently_active
 
+    @hybrid_property
+    def is_future(self) -> bool:
+        """True when this record's window has not opened yet (Python side).
+
+        Distinguishes the two ways ``is_active`` can be False: not started
+        yet, versus already ended. Display code needs the difference — an
+        end_date alone is not the discriminator, since a not-yet-started row
+        usually carries one too (and a handful of rows have a mistyped
+        start_date later than their end_date).
+        """
+        return self.start_date > datetime.now()
+
+    @is_future.expression
+    def is_future(cls):
+        """True when this record's window has not opened yet (SQL side)."""
+        return cls.start_date > func.now()
+
 class SessionMixin:
     @property
     def session(self) -> Session:

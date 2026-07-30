@@ -6,8 +6,15 @@ from ..base import *
 
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Contract(Base, TimestampMixin, SessionMixin):
-    """Funding contracts."""
+class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
+    """Funding contracts.
+
+    ``start_date`` / ``end_date`` and the ``is_active`` hybrid come from
+    ``DateRangeMixin``. Note that an expired contract does not only mean the
+    grant period lapsed: unlinking the last project sets
+    ``end_date = now()`` (see ``htmx_remove_project_contract``), so expiry is
+    also how a contract is deactivated.
+    """
     __tablename__ = 'contract'
 
     __table_args__ = (
@@ -25,13 +32,6 @@ class Contract(Base, TimestampMixin, SessionMixin):
     title = Column(String(255), nullable=False)
     url = Column(String(1000))
 
-    start_date = Column(DateTime, nullable=False)
-    end_date = Column(DateTime)
-
-    @validates('end_date')
-    def _validate_end_date(self, key, value):
-        return normalize_end_date(value)
-
     principal_investigator_user_id = Column(Integer, ForeignKey('users.user_id'),
                                            nullable=False)
     contract_monitor_user_id = Column(Integer, ForeignKey('users.user_id'))
@@ -42,33 +42,6 @@ class Contract(Base, TimestampMixin, SessionMixin):
     nsf_program = relationship('NSFProgram', back_populates='contracts')
     principal_investigator = relationship('User', foreign_keys=[principal_investigator_user_id], back_populates='pi_contracts')
     projects = relationship('ProjectContract', back_populates='contract')
-
-    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
-        """Check if contract is active at a given date."""
-        if check_date is None:
-            check_date = datetime.now()
-
-        if self.start_date > check_date:
-            return False
-
-        if self.end_date is not None and self.end_date < check_date:
-            return False
-
-        return True
-
-    @hybrid_property
-    def is_active(self) -> bool:
-        """Check if contract is currently active (Python side)."""
-        return self.is_active_at()
-
-    @is_active.expression
-    def is_active(cls):
-        """Check if contract is currently active (SQL side)."""
-        now = func.now()
-        return and_(
-            cls.start_date <= now,
-            or_(cls.end_date.is_(None), cls.end_date >= now)
-        )
 
     def update(
         self,

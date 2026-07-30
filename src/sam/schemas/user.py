@@ -142,7 +142,11 @@ class UserSchema(BaseSchema):
         """
         Serialize user institutions.
 
-        Returns list of institutions with name and acronym.
+        Returns every affiliation (current and lapsed) with the name, acronym,
+        and the affiliation window. ``is_active`` says whether the affiliation
+        is in effect today — callers that want only current affiliations should
+        filter on it rather than assuming every row is live.
+
         Handles cases where institution relationship may be None.
         """
         institutions = []
@@ -150,7 +154,10 @@ class UserSchema(BaseSchema):
             if ui.institution:
                 institutions.append({
                     'institution_name': ui.institution.name,
-                    'institution_acronym': ui.institution.acronym
+                    'institution_acronym': ui.institution.acronym,
+                    'start_date': ui.start_date.isoformat() if ui.start_date else None,
+                    'end_date': ui.end_date.isoformat() if ui.end_date else None,
+                    'is_active': ui.is_active,
                 })
         return institutions
 
@@ -158,7 +165,9 @@ class UserSchema(BaseSchema):
         """
         Serialize user organizations.
 
-        Returns list of organizations with acronym and name.
+        Returns every affiliation (current and lapsed) with the acronym, name,
+        and the affiliation window — see ``get_institutions`` on ``is_active``.
+
         Handles cases where organization relationship may be None.
         """
         organizations = []
@@ -166,7 +175,10 @@ class UserSchema(BaseSchema):
             if uo.organization:
                 organizations.append({
                     'organization_acronym': uo.organization.acronym,
-                    'organization_name': uo.organization.name
+                    'organization_name': uo.organization.name,
+                    'start_date': uo.start_date.isoformat() if uo.start_date else None,
+                    'end_date': uo.end_date.isoformat() if uo.end_date else None,
+                    'is_active': uo.is_active,
                 })
         return organizations
 

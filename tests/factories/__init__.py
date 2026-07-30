@@ -12,9 +12,12 @@ from ._seq import next_date, next_int, next_seq, reset_seq
 from .core import (
     make_adhoc_group,
     make_gid_allocation,
+    make_institution,
     make_mnemonic_code,
     make_organization,
     make_user,
+    make_user_institution,
+    make_user_organization,
 )
 from .operational import make_wallclock_exemption
 from .projects import (
@@ -24,8 +27,12 @@ from .projects import (
     make_aoi,
     make_aoi_group,
     make_charge_adjustment,
+    make_contract,
+    make_contract_source,
     make_facility,
     make_project,
+    make_project_contract,
+    make_project_organization,
 )
 from .resources import (
     make_disk_resource_root_directory,
@@ -44,9 +51,12 @@ __all__ = [
     "reset_seq",
     "make_adhoc_group",
     "make_gid_allocation",
+    "make_institution",
     "make_mnemonic_code",
     "make_organization",
     "make_user",
+    "make_user_institution",
+    "make_user_organization",
     "make_resource_type",
     "make_resource",
     "make_disk_resource_root_directory",
@@ -58,6 +68,10 @@ __all__ = [
     "make_aoi_group",
     "make_aoi",
     "make_project",
+    "make_contract_source",
+    "make_contract",
+    "make_project_contract",
+    "make_project_organization",
     "make_account",
     "make_allocation",
     "make_allocation_transaction",
