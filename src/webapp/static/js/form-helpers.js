@@ -144,6 +144,14 @@
         if (input) { htmx.trigger(document.body, 'search-award'); }
     });
 
+    /* Same shape for "Find Candidate Contracts" on /admin/contracts: the
+     * input owns the hx-get (it carries `q`), so the button dispatches the
+     * event the input listens for rather than issuing its own request. */
+    registerAction('find-candidates', function () {
+        var input = document.getElementById('candidateSearchInput');
+        if (input) { htmx.trigger(document.body, 'find-candidates'); }
+    });
+
     /* "Use" on an award search result.
      *
      * Writes the two parent-form lookup inputs, then fires the existing Fetch

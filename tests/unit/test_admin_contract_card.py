@@ -23,6 +23,8 @@ SEARCH_URL = '/admin/htmx/search/contracts'
 PAGE_URL = '/admin/contracts'
 PROGRAM_CONTRACTS_URL = '/admin/nsf-program/{}/contracts'
 ORG_CARD_URL = '/admin/htmx/organizations-card'
+CONTRACTS_TABLE_URL = '/admin/htmx/contracts-table'
+CANDIDATES_URL = '/admin/htmx/contract-award-candidates'
 
 MISSING_ID = 99999999
 
@@ -209,16 +211,29 @@ class TestTableLinking:
     """A modal opener is five attributes that must agree with a shell in a
     different file; getting one wrong fails silently at runtime."""
 
-    def test_org_card_links_contract_numbers(self, auth_client):
-        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
-        assert 'data-modal-id="contractDetailsModal"' in body
-        assert 'contractDetailsModalBody' in body
+    def test_contracts_table_links_contract_numbers_to_the_page_card(
+            self, auth_client):
+        """The table moved off the org card onto /admin/contracts, and with it
+        the target changed: that page owns a card region, so a number swaps
+        #contractCardContainer rather than opening the shared modal — the same
+        target the search box above it already uses."""
+        body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        assert 'hx-target="#contractCardContainer"' in body
+        assert '/admin/contract/' in body
 
-    def test_org_card_links_pi_and_monitor_to_the_user_modal(self, auth_client):
+    def test_contracts_table_links_pi_and_monitor_to_the_user_modal(
+            self, auth_client):
         """These were the one place in the app a username was not clickable."""
-        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
+        body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
         assert 'data-action="show-user-details"' in body
         assert 'userDetailsModalBody' in body
+
+    def test_org_card_no_longer_carries_contracts(self, auth_client):
+        """The move must actually remove it, not duplicate it — two tables
+        would drift, and the org card's copy was the expensive one."""
+        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
+        assert 'contracts-pane' not in body
+        assert 'contract-source-' not in body
 
     def test_org_card_links_nsf_programs_and_their_counts(self, auth_client):
         body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)

@@ -71,6 +71,12 @@ logger = logging.getLogger(__name__)
 
 _ORG_TRIGGERS = modal_triggers('reloadOrganizationsCard')
 
+#: Contracts and contract sources render on /admin/contracts, not on the
+#: Organizations card, so their mutations must reload a different section.
+#: `_reloadAdminCard` starts with `if (!section) return;`, so firing the
+#: wrong event here fails *silently* — the modal closes and nothing refreshes.
+_CONTRACT_TRIGGERS = modal_triggers('reloadContractsCard')
+
 
 # ─── shared dropdown loaders ────────────────────────────────────────────────
 
@@ -170,10 +176,14 @@ register_typeahead(
 @cache.cached(make_cache_key=user_aware_cache_key)
 def htmx_organizations_card():
     """
-    Return the Organization card body fragment with seven tabs:
-    Organizations, Institutions, AOI Groups, Areas of Interest,
-    Contract Sources, Contracts, NSF Programs.
+    Return the Organization card body fragment with four tabs:
+    Organizations, Institutions, Areas of Interest, NSF Programs.
     Lazy-loaded when the Organization collapsible section is first expanded.
+
+    Contracts and contract sources used to be a fifth tab here; they now live
+    on /admin/contracts (:func:`htmx_contracts_table`), which is where an
+    operator looks for them. That also takes ~2,200 eagerly-loaded contract
+    rows out of this one cached call.
     """
     from sam.core.organizations import MnemonicCode
 
@@ -203,12 +213,6 @@ def htmx_organizations_card():
     aoi_groups = get_aoi_groups_with_areas(db.session, active_only=active_only)
     aois = get_areas_of_interest_with_projects(db.session, active_only=active_only)
 
-    cs_q = db.session.query(ContractSource).order_by(ContractSource.contract_source)
-    if active_only:
-        cs_q = cs_q.filter(ContractSource.is_active)
-    contract_sources = cs_q.all()
-
-    contracts = get_contracts_with_pi(db.session, active_only=active_only)
     nsf_programs = get_nsf_programs_with_contracts(db.session, active_only=active_only)
 
     _mc_lookup = MnemonicCode.build_lookup(db.session)
@@ -223,8 +227,6 @@ def htmx_organizations_card():
         org_tree=org_tree,
         aoi_groups=aoi_groups,
         aois=aois,
-        contract_sources=contract_sources,
-        contracts=contracts,
         nsf_programs=nsf_programs,
         org_to_mnemonic=org_to_mnemonic,
         is_admin=True,
@@ -581,12 +583,71 @@ def _contract_create_context(form=None, **extra):
     return ctx
 
 
+@bp.route('/htmx/contracts-table')
+@login_required
+@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+@cache.cached(make_cache_key=user_aware_cache_key)
+def htmx_contracts_table():
+    """The All Contracts table on /admin/contracts, grouped by funding source.
+
+    Moved out of ``htmx_organizations_card``'s Contracts tab. Same query and
+    same grouping; it simply lives where an operator looks for it.
+
+    ``active_only`` defaults **on** here, unlike the search box above it on
+    the same page: that one is a query you have already narrowed by typing,
+    whereas this is a browse table over 2,225 rows.
+    """
+    active_only = read_active_only(request.args, default=True)
+
+    cs_q = db.session.query(ContractSource).order_by(ContractSource.contract_source)
+    if active_only:
+        cs_q = cs_q.filter(ContractSource.is_active)
+
+    return render_template(
+        'dashboards/admin/fragments/contracts_table_htmx.html',
+        contract_sources=cs_q.all(),
+        contracts=get_contracts_with_pi(db.session, active_only=active_only),
+        active_only=active_only,
+        # Gate the PI/Monitor links on the user_card route's own permission
+        # so a click can never 403. Safe under @cache.cached because the key
+        # is user-aware.
+        can_view_users=has_permission_any_facility(
+            current_user, Permission.VIEW_USERS),
+    )
+
+
 @bp.route('/htmx/contract-create-form')
 @login_required
 @require_permission(Permission.CREATE_ORG_METADATA)
 def htmx_contract_create_form():
-    """Render the Create Contract form."""
-    return render_template(CREATE_CONTRACT_TEMPLATE, **_contract_create_context())
+    """Render the Create Contract form, optionally seeded from an award.
+
+    "Create contract from this award" on /admin/contracts passes
+    ``contract_number`` (and, for NSF, ``contract_source_id``). Seeding
+    happens **server-side**, through the ``form`` dict the template already
+    consumes, rather than by having JS fill inputs after the swap: the form
+    does not exist yet when the button is clicked, so a JS approach would
+    have to sequence itself against the htmx response.
+
+    A seeded form opens in lookup mode and auto-fires the existing award
+    lookup (``seeded=True`` → ``hx-trigger="load"`` on the Fetch button), so
+    one click yields a full prefill **including Monitor and program**, which
+    the search result itself structurally cannot carry.
+    """
+    number = (request.args.get('contract_number') or '').strip()
+    source_id = (request.args.get('contract_source_id') or '').strip()
+
+    if not number:
+        return render_template(CREATE_CONTRACT_TEMPLATE,
+                               **_contract_create_context())
+
+    form = {'contract_number': number, 'contract_mode': 'lookup'}
+    if source_id.isdigit():
+        form['contract_source_id'] = source_id
+
+    return render_template(
+        CREATE_CONTRACT_TEMPLATE,
+        **_contract_create_context(form, seeded=True))
 
 
 #: Minimum query length before the award search bothers the public APIs.
@@ -597,6 +658,55 @@ AWARD_SEARCH_LIMIT = 10
 
 CONTRACT_AWARD_SEARCH_TEMPLATE = (
     'dashboards/admin/fragments/contract_award_search_results_htmx.html')
+
+CONTRACT_AWARD_CANDIDATES_TEMPLATE = (
+    'dashboards/admin/fragments/contract_award_candidates_htmx.html')
+
+
+def _award_search_context(query, source_id):
+    """Search the award providers and annotate hits SAM already has.
+
+    Shared by the two renderers below — the compact rows inside the create
+    modal and the cards on /admin/contracts. One place makes the provider
+    call and does the in-SAM annotation; each route picks a template.
+
+    Returns a context dict ready to splat into ``render_template``. Errors are
+    never raised: an unreachable source becomes ``search_error`` (nothing
+    usable came back) or ``partial_errors`` (some did), because a 500 inside
+    an htmx fragment is a blank hole in the page.
+    """
+    from sam.integration.awards import search_awards
+
+    source = db.session.get(ContractSource, int(source_id)) \
+        if str(source_id or '').isdigit() else None
+    source_name = source.contract_source if source else None
+
+    try:
+        records, errors = search_awards(
+            query, limit=AWARD_SEARCH_LIMIT,
+            sources=[source_name] if source_name else None)
+    except Exception as exc:                      # pragma: no cover - defensive
+        # search_awards already downgrades per-provider failures into
+        # `errors`; anything escaping it is a bug, but an inline note still
+        # beats a 500 inside the form.
+        logger.warning('award search for %r failed: %s', query, exc)
+        return {'q': query, 'results': [],
+                'search_error': 'The award search could not be completed. '
+                                'Enter the details manually, or try again '
+                                'shortly.'}
+
+    if errors and not records:
+        # Every provider down reads as "no such award" unless we say so.
+        return {'q': query, 'results': [],
+                'search_error': ' '.join(
+                    f'{e["provenance"]} could not be reached.'
+                    for e in errors)
+                + ' Enter the details manually, or try again shortly.'}
+
+    return {'q': query,
+            'results': _annotate_known(records),
+            'nsf_source_id': _nsf_source_id(),
+            'partial_errors': errors}
 
 
 @bp.route('/htmx/contract-award-search')
@@ -621,43 +731,37 @@ def htmx_contract_award_search():
     protection ``_ContractCreateHandler.clean`` gives on submit, one
     round-trip earlier.
     """
-    from sam.integration.awards import AwardSourceUnavailable, search_awards
-
     query = (request.args.get('q') or '').strip()
     if len(query) < AWARD_SEARCH_MIN_LEN:
         return ''
 
-    source = db.session.get(ContractSource, int(request.args['contract_source_id'])) \
-        if str(request.args.get('contract_source_id') or '').isdigit() else None
-    source_name = source.contract_source if source else None
+    return render_template(
+        CONTRACT_AWARD_SEARCH_TEMPLATE,
+        **_award_search_context(query, request.args.get('contract_source_id')))
 
-    try:
-        records, errors = search_awards(
-            query, limit=AWARD_SEARCH_LIMIT,
-            sources=[source_name] if source_name else None)
-    except Exception as exc:                      # pragma: no cover - defensive
-        # search_awards already downgrades per-provider failures into
-        # `errors`; anything escaping it is a bug, but an inline note still
-        # beats a 500 inside the form.
-        logger.warning('award search for %r failed: %s', query, exc)
-        return render_template(
-            CONTRACT_AWARD_SEARCH_TEMPLATE, q=query, results=[],
-            search_error='The award search could not be completed. '
-                         'Enter the details manually, or try again shortly.')
 
-    if errors and not records:
-        # Every provider down reads as "no such award" unless we say so.
-        return render_template(
-            CONTRACT_AWARD_SEARCH_TEMPLATE, q=query, results=[],
-            search_error=' '.join(
-                f'{e["provenance"]} could not be reached.' for e in errors)
-            + ' Enter the details manually, or try again shortly.')
+@bp.route('/htmx/contract-award-candidates')
+@login_required
+@require_permission(Permission.CREATE_ORG_METADATA)
+def htmx_contract_award_candidates():
+    """"Find Candidate Contracts" on /admin/contracts — the same search, as cards.
+
+    The page-level sibling of :func:`htmx_contract_award_search`. Gated on
+    ``CREATE_ORG_METADATA`` rather than the page's own ``VIEW_ORG_METADATA``
+    because every row here leads to creating a contract, and because it
+    spends two public APIs' quota per press.
+
+    A card whose number SAM already has offers "View contract" instead of a
+    create button: the existing contract is one click away on this very page,
+    which is strictly more useful than the create modal's disabled state.
+    """
+    query = (request.args.get('q') or '').strip()
+    if len(query) < AWARD_SEARCH_MIN_LEN:
+        return ''
 
     return render_template(
-        CONTRACT_AWARD_SEARCH_TEMPLATE, q=query,
-        results=_annotate_known(records),
-        nsf_source_id=_nsf_source_id(),
-        partial_errors=errors)
+        CONTRACT_AWARD_CANDIDATES_TEMPLATE,
+        **_award_search_context(query, request.args.get('contract_source_id')))
 
 
 def _annotate_known(records):
@@ -886,7 +990,7 @@ class _ContractCreateHandler(HtmxFormHandler):
                                **self.context())
 
     def triggers(self, result):
-        return _ORG_TRIGGERS
+        return _CONTRACT_TRIGGERS
 
     def detail(self, result):
         return f'{result.contract_number} — {result.title[:60]}'
@@ -982,12 +1086,15 @@ _ORG_CRUD_SPECS = (
     _org_spec(
         slug='contract-source', name='Contract source',
         model=ContractSource, id_param='source_id', context_key='source',
+        # Reloads the contracts table, not the org card — see _CONTRACT_TRIGGERS.
+        triggers=_CONTRACT_TRIGGERS,
         edit_schema=EditContractSourceForm, create_schema=CreateContractSourceForm,
         edit_fields=('contract_source', 'active'),
         create_fields=('contract_source',),
     ),
     _org_spec(
         slug='contract', name='Contract',
+        triggers=_CONTRACT_TRIGGERS,
         model=Contract, id_param='contract_id', context_key='contract',
         edit_schema=EditContractForm, create_schema=CreateContractForm,
         # NB: the kwargs lambdas enumerate keys explicitly, so a new schema

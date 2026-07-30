@@ -141,8 +141,16 @@ def organizations():
 @login_required
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def contracts():
-    """Admin Contracts page — search contracts, card display area."""
-    return render_template('dashboards/admin/contracts.html', user=current_user)
+    """Admin Contracts page — two searches, card display area, and the table.
+
+    ``contract_sources`` is passed eagerly because the candidate-search
+    Source filter is part of the initial render; everything else on the page
+    (results, contract card, the table) arrives via htmx.
+    """
+    from webapp.dashboards.admin.orgs_routes import _active_contract_sources
+    return render_template('dashboards/admin/contracts.html',
+                           user=current_user,
+                           contract_sources=_active_contract_sources())
 
 
 @bp.route('/facilities')

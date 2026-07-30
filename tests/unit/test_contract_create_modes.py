@@ -193,6 +193,7 @@ CREATE_FORM_URL = '/admin/htmx/contract-create-form'
 CREATE_URL = '/admin/htmx/contract-create'
 LOOKUP_URL = '/admin/htmx/contract-award-lookup'
 SEARCH_URL = '/admin/htmx/contract-award-search'
+CANDIDATES_URL = '/admin/htmx/contract-award-candidates'
 PROGRAM_CREATE_URL = '/admin/htmx/contract-program-create'
 PROGRAM_SEARCH_URL = '/admin/htmx/search/nsf-programs'
 
@@ -243,6 +244,7 @@ class TestCreateRouteAuth:
         (CREATE_URL, 'post'),
         (LOOKUP_URL, 'get'),
         (SEARCH_URL, 'get'),
+        (CANDIDATES_URL, 'get'),
         (PROGRAM_CREATE_URL, 'post'),
     ])
     def test_unauthenticated_rejected(self, client, url, method):
@@ -256,6 +258,7 @@ class TestCreateRouteAuth:
         (CREATE_URL, 'post'),
         (LOOKUP_URL, 'get'),
         (SEARCH_URL, 'get'),
+        (CANDIDATES_URL, 'get'),
         (PROGRAM_CREATE_URL, 'post'),
     ])
     def test_non_admin_forbidden(self, non_admin_client, url, method):
@@ -607,3 +610,128 @@ class TestAwardSearchFormSeam:
             'q': 'turbulence',
         })
         assert 'q' not in data
+
+
+class TestAwardCandidates:
+    """"Find Candidate Contracts" on /admin/contracts — the same search as
+    the create-modal one, rendered as cards with a different affordance.
+
+    `search_awards` is stubbed at the package object (the route imports it
+    inside `_award_search_context`). No network.
+    """
+
+    def test_short_query_returns_nothing(self, auth_client):
+        with patch('sam.integration.awards.search_awards') as search:
+            resp = auth_client.get(CANDIDATES_URL, query_string={'q': 'ab'})
+        assert resp.get_data(as_text=True) == ''
+        search.assert_not_called()
+
+    def test_renders_cards(self, auth_client):
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([_award()], [])):
+            body = auth_client.get(
+                CANDIDATES_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert 'The Management and Operation of NCAR' in body
+        assert 'AGS-1852977' in body
+        assert 'Carrie E. Black' in body        # NSF supplies a program manager
+
+    def test_create_button_seeds_the_form_via_the_url(self, auth_client):
+        """Server-side seeding, not JS: the form does not exist yet when the
+        button is clicked, so the number rides on the create-form URL."""
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([_award()], [])):
+            body = auth_client.get(
+                CANDIDATES_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert 'contract_number=AGS-1852977' in body
+        assert 'createContractModal' in body
+
+    def test_already_in_sam_offers_the_contract_instead_of_creation(
+            self, auth_client, any_contract):
+        """Better than the modal's disabled state: the existing contract is
+        one click away on this very page."""
+        record = _award(contract_number=any_contract.contract_number)
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([record], [])):
+            body = auth_client.get(
+                CANDIDATES_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert 'already in SAM' in body
+        assert 'View contract' in body
+        assert 'contract_number=' not in body   # no create affordance
+
+    def test_total_outage_is_an_inline_note_not_a_500(self, auth_client):
+        errors = [{'provenance': 'NSF Awards API', 'reason': 'unreachable'}]
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([], errors)):
+            resp = auth_client.get(CANDIDATES_URL,
+                                   query_string={'q': 'turbulence'})
+        assert resp.status_code == 200
+        body = resp.get_data(as_text=True)
+        assert 'could not be reached' in body
+        assert 'No awards found' not in body
+
+    def test_partial_outage_shows_hits_and_warns(self, auth_client):
+        errors = [{'provenance': 'NSF Awards API', 'reason': 'unreachable'}]
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([_award()], errors)):
+            body = auth_client.get(
+                CANDIDATES_URL, query_string={'q': 'turbulence'}
+            ).get_data(as_text=True)
+        assert 'AGS-1852977' in body
+        assert 'partial' in body
+
+    def test_no_match_renders_an_empty_state(self, auth_client):
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([], [])):
+            body = auth_client.get(
+                CANDIDATES_URL, query_string={'q': 'zzz-nothing'}
+            ).get_data(as_text=True)
+        assert 'No awards found' in body
+
+    def test_source_scopes_the_search(self, auth_client, any_contract_source):
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([], [])) as search:
+            auth_client.get(CANDIDATES_URL, query_string={
+                'q': 'turbulence',
+                'contract_source_id': str(any_contract_source.contract_source_id)})
+        assert search.call_args.kwargs['sources'] == [
+            any_contract_source.contract_source]
+
+
+class TestSeededCreateForm:
+    """?contract_number=… opens the form pre-filled and auto-fetches."""
+
+    def test_unseeded_form_is_unchanged(self, auth_client):
+        body = auth_client.get(CREATE_FORM_URL).get_data(as_text=True)
+        assert 'id="contractFetchAward"' in body
+        # No auto-fetch: a bare New Contract must not call an agency.
+        assert 'hx-trigger="load, click"' not in body
+
+    def test_seeded_form_prefills_both_lookup_inputs(self, auth_client,
+                                                     any_contract_source):
+        body = auth_client.get(CREATE_FORM_URL, query_string={
+            'contract_number': 'AGS-1852977',
+            'contract_source_id': str(any_contract_source.contract_source_id),
+        }).get_data(as_text=True)
+        assert 'value="AGS-1852977"' in body
+        assert 'contractModeLookup' in body
+
+    def test_seeded_form_auto_fires_the_lookup(self, auth_client):
+        """The chain's whole point: the lookup is what supplies Monitor and
+        program, which a search result structurally cannot carry."""
+        body = auth_client.get(CREATE_FORM_URL, query_string={
+            'contract_number': 'AGS-1852977'}).get_data(as_text=True)
+        assert 'hx-trigger="load, click"' in body
+
+    def test_seeded_form_opens_in_lookup_mode(self, auth_client):
+        body = auth_client.get(CREATE_FORM_URL, query_string={
+            'contract_number': 'AGS-1852977'}).get_data(as_text=True)
+        lookup_radio = body.split('id="contractModeLookup"')[1][:200]
+        assert 'checked' in lookup_radio
+
+    def test_a_bad_source_id_is_ignored_not_fatal(self, auth_client):
+        resp = auth_client.get(CREATE_FORM_URL, query_string={
+            'contract_number': 'AGS-1852977', 'contract_source_id': 'nope'})
+        assert resp.status_code == 200

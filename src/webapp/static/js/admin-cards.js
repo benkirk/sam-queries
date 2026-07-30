@@ -183,8 +183,13 @@
 
         if (has(root, '#organizationsTabsContent')) {
             document.querySelectorAll('#organizationsTabsContent table').forEach(attachSorting);
-            SamCollapseChevron.attach('#areas-pane',     '.collapse-icon');
-            SamCollapseChevron.attach('#contracts-pane', '.contract-collapse-icon');
+            SamCollapseChevron.attach('#areas-pane', '.collapse-icon');
+        }
+
+        // The contracts table moved out of the Organizations card onto
+        // /admin/contracts, so its chevrons are wired off their own marker.
+        if (has(root, '#contractsTable')) {
+            SamCollapseChevron.attach('#contractsTable', '.contract-collapse-icon');
         }
 
         if (has(root, '.inst-type-collapse-icon') || has(root, '.inst-expand-trigger')) {

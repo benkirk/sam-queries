@@ -1,0 +1,121 @@
+{#
+  htmx: Award candidate cards — "Find Candidate Contracts" on /admin/contracts.
+
+  The page-level sibling of contract_award_search_results_htmx.html. Same
+  search, same in-SAM annotation (both come from `_award_search_context`),
+  different affordance:
+
+  * In the create modal, a row seeds the form that is already open.
+  * Here there is no form yet, so the button opens the create modal with
+    ?contract_number=… — the seeding happens server-side in
+    htmx_contract_create_form, and the seeded form auto-fires the lookup.
+    No JS sequencing against the swap.
+
+  A card SAM already has offers "View contract" instead, targeting the
+  page's own #contractCardContainer. That is strictly more useful than the
+  modal's disabled state: the contract is one click away on this page.
+#}
+{% if search_error %}
+<div class="alert alert-warning mb-0">
+    <i class="fas fa-triangle-exclamation me-1"></i>{{ search_error }}
+</div>
+{% elif results %}
+
+{% if partial_errors %}
+<div class="alert alert-warning py-2">
+    <i class="fas fa-triangle-exclamation me-1"></i>
+    {% for error in partial_errors %}{{ error.provenance }} could not be reached.
+    {% endfor %}These results are partial.
+</div>
+{% endif %}
+
+<div class="row row-cols-1 row-cols-xl-2 g-3">
+{% for row in results %}
+{% set award = row.record %}
+    <div class="col">
+        <div class="card h-100 {% if row.in_sam %}border-secondary{% endif %}">
+            <div class="card-body pb-2">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                    <div class="min-w-0">
+                        <span class="badge bg-light text-dark border">
+                            {{ 'NSF' if award.provenance.startswith('NSF') else award.provenance }}
+                        </span>
+                        {% if award.contract_number %}
+                        <span class="font-monospace fw-semibold ms-1">{{ award.contract_number }}</span>
+                        {% endif %}
+                    </div>
+                    {% if row.in_sam %}
+                    <span class="badge bg-secondary flex-shrink-0">
+                        <i class="fas fa-check me-1"></i>already in SAM
+                    </span>
+                    {% endif %}
+                </div>
+
+                <div class="fw-medium">{{ award.title or '—' }}</div>
+
+                <dl class="row small text-muted mb-0 mt-2 gy-1">
+                    <dt class="col-4 fw-normal">Period</dt>
+                    <dd class="col-8 mb-0">
+                        {{ award.start_date | fmt_date }} → {{ award.end_date | fmt_date }}
+                    </dd>
+                    {% if award.pi and award.pi.name %}
+                    <dt class="col-4 fw-normal">PI</dt>
+                    <dd class="col-8 mb-0">{{ award.pi.name }}</dd>
+                    {% endif %}
+                    {% if award.monitor and award.monitor.name %}
+                    <dt class="col-4 fw-normal">Program Manager</dt>
+                    <dd class="col-8 mb-0">{{ award.monitor.name }}</dd>
+                    {% endif %}
+                    {% if award.program_name %}
+                    <dt class="col-4 fw-normal">Program</dt>
+                    <dd class="col-8 mb-0">{{ award.program_name }}</dd>
+                    {% endif %}
+                </dl>
+
+                {% if award.unavailable_fields %}
+                {# State the structural gap positively — this source has no
+                   PI/Monitor concept at all, which is not the same as this
+                   award happening to have none. #}
+                <div class="small fst-italic text-muted mt-2">
+                    {{ award.provenance }} carries no PI or Program Manager;
+                    enter them manually.
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="card-footer bg-transparent d-flex justify-content-between align-items-center">
+                {% if award.url %}
+                <a href="{{ award.url }}" target="_blank" rel="noopener noreferrer"
+                   class="small">
+                    View award <i class="fas fa-arrow-up-right-from-square ms-1"></i>
+                </a>
+                {% else %}<span></span>{% endif %}
+
+                {% if row.in_sam %}
+                <button type="button" class="btn btn-sm btn-outline-secondary"
+                        hx-get="{{ url_for('admin_dashboard.contract_card',
+                                           contract_id=row.in_sam.contract_id) }}"
+                        hx-target="#contractCardContainer"
+                        hx-swap="innerHTML">
+                    View contract
+                </button>
+                {% elif has_permission(Permission.CREATE_ORG_METADATA) %}
+                <button type="button" class="btn btn-sm btn-primary"
+                        data-bs-toggle="modal" data-bs-target="#createContractModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_contract_create_form',
+                                           contract_number=award.contract_number or '',
+                                           contract_source_id=(nsf_source_id if nsf_source_id and award.provenance.startswith('NSF') else '')) }}"
+                        hx-target="#createContractFormContainer"
+                        hx-swap="innerHTML"
+                        hx-trigger="click">
+                    <i class="fas fa-plus me-1"></i> Create contract
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endfor %}
+</div>
+{% else %}
+<div class="text-muted small">No awards found</div>
+{% endif %}

@@ -97,12 +97,19 @@
                 </span>
                 <div id="createContractAwardResults" class="list-group mb-2"></div>
 
+                {# seeded: opened from "Create contract from this award" on
+                   /admin/contracts, so the number and Source are already
+                   filled. Fire the lookup immediately — it is the step that
+                   supplies Monitor and program, which a search result cannot.
+                   `load` fires once per element, and the swap replaces
+                   #createContractFields only, leaving this button alone. #}
                 <button type="button" id="contractFetchAward"
                         class="btn btn-sm btn-outline-primary"
                         hx-get="{{ url_for('admin_dashboard.htmx_contract_award_lookup') }}"
                         hx-target="#createContractFields"
                         hx-swap="innerHTML"
                         hx-include="closest form"
+                        {% if seeded %}hx-trigger="load, click"{% endif %}
                         hx-indicator="#createContractLookupSpinner">
                     <i class="fas fa-cloud-arrow-down me-1"></i> Fetch award
                 </button>

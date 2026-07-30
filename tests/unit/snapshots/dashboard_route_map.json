@@ -392,6 +392,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_contract_award_candidates",
+    "/admin/htmx/contract-award-candidates",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_contract_award_lookup",
     "/admin/htmx/contract-award-lookup",
     [
@@ -485,6 +492,13 @@
   [
     "admin_dashboard.htmx_contract_source_edit_form",
     "/admin/htmx/contract-source-edit-form/<int:source_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.htmx_contracts_table",
+    "/admin/htmx/contracts-table",
     [
       "GET"
     ]
