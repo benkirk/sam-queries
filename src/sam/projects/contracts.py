@@ -168,6 +168,114 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         session.flush()
         return obj
 
+    # ── queries ─────────────────────────────────────────────────────────
+
+    @classmethod
+    def get_by_number(cls, session, contract_number: str) -> Optional['Contract']:
+        """The contract with this exact number, or ``None``.
+
+        ``contract_number`` carries a unique index
+        (``contract_contract_number_uk``), so this is a scalar getter rather
+        than a "first match".
+
+        Exact means exact. The column is free text and holds things like
+        ``'OCE- 1419584'`` and ``'USDA Prime Award No. 2013-67003-20652'``, so
+        a caller working from operator input probably wants
+        :meth:`search_by_pattern` instead.
+        """
+        number = (contract_number or '').strip()
+        if not number:
+            return None
+        return (session.query(cls)
+                .filter(cls.contract_number == number)
+                .one_or_none())
+
+    @classmethod
+    def search_by_pattern(cls, session, pattern: Optional[str] = None, *,
+                          active_only: bool = True,
+                          source: Optional[str] = None,
+                          pi: Optional[str] = None,
+                          monitor: Optional[str] = None,
+                          program: Optional[str] = None,
+                          limit: int = 50,
+                          with_details: bool = False) -> List['Contract']:
+        """Search contracts by number/title text and optional filters.
+
+        **Wildcard semantics.** *pattern* is treated as a LIKE pattern iff it
+        contains ``%`` or ``_``; otherwise it is substring-matched. So
+        ``'climate'`` and ``'%climate%'`` agree, while ``'AGS-%'`` anchors.
+
+        This is a deliberate divergence from two neighbours, and neither is a
+        mis-port:
+
+        * ``_apply_filter`` in ``sam/queries/charges.py`` is the same shape but
+          falls back to **exact equality**, not substring, and uses ``like``
+          rather than ``ilike``. Substring is the right default for a search
+          box; exact is the right default for a report filter.
+        * ``sam-search user --search`` advertises wildcard support and then
+          strips ``%`` and ``_`` before querying, so its documented semantics
+          are not its real ones. Do not propagate that.
+
+        Args:
+            pattern:      matched against ``contract_number`` OR ``title``;
+                          ``None`` returns everything the filters allow.
+            active_only:  restrict to contracts inside their date range.
+            source:       ``contract_source`` name, e.g. ``'NSF'`` (exact).
+            pi:           principal investigator username (exact).
+            monitor:      contract monitor username (exact).
+            program:      ``nsf_program_name`` — pattern-matched like
+                          *pattern*, since program names are long.
+            limit:        row cap.
+            with_details: eager-load ``contract_source`` and
+                          ``principal_investigator``. Off by default so FK
+                          pickers, which read neither, do not pay for them.
+        """
+        # Neither is in sam.base's star import; User is a cross-domain import
+        # kept local to avoid a core<->projects cycle at module load.
+        from sqlalchemy.orm import aliased, selectinload
+
+        from sam.core.users import User
+
+        def _text_filter(column, value):
+            """LIKE iff the term carries a wildcard, else substring."""
+            return (column.ilike(value) if ('%' in value or '_' in value)
+                    else column.ilike(f'%{value}%'))
+
+        query = session.query(cls)
+
+        if with_details:
+            query = query.options(
+                selectinload(cls.contract_source),
+                selectinload(cls.principal_investigator),
+            )
+
+        if pattern and pattern.strip():
+            term = pattern.strip()
+            query = query.filter(or_(_text_filter(cls.contract_number, term),
+                                     _text_filter(cls.title, term)))
+
+        if active_only:
+            query = query.filter(cls.is_active)
+
+        if source:
+            query = (query.join(ContractSource)
+                     .filter(ContractSource.contract_source == source.strip()))
+
+        if program:
+            term = program.strip()
+            query = (query.join(NSFProgram)
+                     .filter(_text_filter(NSFProgram.nsf_program_name, term)))
+
+        # Two user FKs on one table, so each needs its own alias.
+        for username, fk in ((pi, cls.principal_investigator_user_id),
+                             (monitor, cls.contract_monitor_user_id)):
+            if username:
+                person = aliased(User)
+                query = (query.join(person, fk == person.user_id)
+                         .filter(person.username == username.strip()))
+
+        return query.order_by(cls.contract_number).limit(limit).all()
+
     def __str__(self):
         return f"{self.contract_number}: {self.title[:50]}..."
 

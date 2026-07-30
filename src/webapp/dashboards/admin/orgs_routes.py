@@ -19,7 +19,6 @@ from flask_login import current_user, login_required
 from datetime import datetime
 from functools import partial
 from sqlalchemy import func
-from sqlalchemy.orm import selectinload
 
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.fk_validation import validate_fk_existence
@@ -134,16 +133,12 @@ def _search_contracts(q, active_only):
     The checkbox defaults off: only 368 of 2,225 contracts are currently
     active, so an active-only default would hide 83% of the data behind a
     control most operators would not think to clear.
+
+    ``with_details`` is what keeps the eager loads this page's result rows
+    need (source badge, PI line); the FK picker asks for neither.
     """
-    query = db.session.query(Contract).options(
-        selectinload(Contract.contract_source),
-        selectinload(Contract.principal_investigator),
-    ).filter(
-        Contract.contract_number.ilike(f'%{q}%') | Contract.title.ilike(f'%{q}%')
-    )
-    if active_only:
-        query = query.filter(Contract.is_active)
-    return query.order_by(Contract.contract_number).limit(20).all()
+    return Contract.search_by_pattern(
+        db.session, q, active_only=active_only, limit=20, with_details=True)
 
 
 register_typeahead(
@@ -758,8 +753,7 @@ class _ContractCreateHandler(HtmxFormHandler):
         # contract_number carries a unique index; catching it here gives the
         # operator the conflicting contract instead of an IntegrityError.
         number = (data.get('contract_number') or '').strip()
-        clash = (db.session.query(Contract)
-                 .filter(Contract.contract_number == number).first())
+        clash = Contract.get_by_number(db.session, number)
         if clash is not None:
             raise FormError(
                 f'Contract number "{number}" already exists '
