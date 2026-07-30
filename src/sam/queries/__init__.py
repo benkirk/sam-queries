@@ -167,7 +167,9 @@ from .admin import (
     get_institutions_with_members,
     get_aoi_groups_with_areas,
     get_areas_of_interest_with_projects,
+    get_contract_detail,
     get_contracts_with_pi,
+    get_nsf_program_contracts,
     get_nsf_programs_with_contracts,
 )
 
@@ -268,6 +270,8 @@ __all__ = [
     'get_institutions_with_members',
     'get_aoi_groups_with_areas',
     'get_areas_of_interest_with_projects',
+    'get_contract_detail',
     'get_contracts_with_pi',
+    'get_nsf_program_contracts',
     'get_nsf_programs_with_contracts',
 ]

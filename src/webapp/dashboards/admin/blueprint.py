@@ -137,6 +137,14 @@ def organizations():
     return render_template('dashboards/admin/organizations.html', user=current_user)
 
 
+@bp.route('/contracts')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def contracts():
+    """Admin Contracts page — search contracts, card display area."""
+    return render_template('dashboards/admin/contracts.html', user=current_user)
+
+
 @bp.route('/facilities')
 @login_required
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)

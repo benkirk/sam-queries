@@ -174,6 +174,8 @@ NAV_SECTIONS = (
              'icon': 'fas fa-server'},
             {'endpoint': 'admin_dashboard.organizations', 'label': 'Organizations',
              'icon': 'fas fa-sitemap'},
+            {'endpoint': 'admin_dashboard.contracts', 'label': 'Contracts',
+             'icon': 'fas fa-file-signature'},
             {'endpoint': 'admin_dashboard.facilities', 'label': 'Facilities & Allocation Types',
              'icon': 'fas fa-building'},
             {'endpoint': 'admin_dashboard.configuration', 'label': 'Configuration',

@@ -104,6 +104,30 @@
         }
     });
 
+    /* Generalisation of the above for every other detail modal: the target
+     * shell is named by data-modal-id, content still comes from the
+     * element's own hx-get. Needed for the same reason — a link inside an
+     * already-open modal (a contract on a project card shown in
+     * #projectDetailsModal, a contract row in the NSF-program modal) must
+     * stack rather than have Bootstrap's toggle close its host. Works
+     * unchanged outside a modal, where closest('.modal.show') is null.
+     *
+     * 'show-user-details' predates this and keeps its own registration
+     * because its callers pass no data-modal-id; it could fold in later. */
+    window.registerAction('show-detail-modal', function (el, evt) {
+        evt.preventDefault();
+        var id = el.dataset.modalId;
+        if (!id) { return; }
+        var host = el.closest('.modal.show');
+        if (host && host.id !== id) {
+            bootstrap.Modal.getOrCreateInstance(host).hide();
+        }
+        var target = document.getElementById(id);
+        if (target) {
+            bootstrap.Modal.getOrCreateInstance(target).show();
+        }
+    });
+
     /* Filter-bar "Reset" buttons: reset the form, then re-submit it so
      * the htmx fragment reloads with defaults. */
     window.registerAction('form-reset-submit', function (el) {

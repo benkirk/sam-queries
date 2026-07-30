@@ -1,0 +1,73 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{#
+  htmx: the contracts under one NSF program, rendered into
+  #nsfProgramContractsModalBody.
+
+  The program carries only a name and an active flag, so it gets no card of
+  its own — this list is the one question the data actually answers, and it
+  replaces a dead "# Contracts" count that was previously unclickable.
+
+  Context: program (NSFProgram), contracts (list, number-ordered, with
+  source and PI eager-loaded), can_view_users.
+
+  The largest program has 401 contracts, so the shell is
+  modal-dialog-scrollable and the table stays flat and unpaginated.
+#}
+{# Title set out-of-band so one shell serves every program — the idiom
+   adjustment_details_modal.html uses for the shared audit modal. #}
+<h5 id="nsfProgramContractsModalTitle" class="modal-title" hx-swap-oob="true">
+    {{ program.nsf_program_name }}
+    {% if not program.is_active %}{{ status_badge('inactive', extra='ms-1') }}{% endif %}
+    <span class="badge bg-secondary ms-1">{{ contracts | length }}</span>
+</h5>
+
+{% if contracts %}
+<div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+            <tr>
+                <th style="width:12em;">Contract #</th>
+                <th>Title</th>
+                <th style="width:10em;">PI</th>
+                <th style="width:13em;">Period</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in contracts %}
+            <tr{% if not c.is_active %} class="text-muted"{% endif %}>
+                <td class="text-nowrap">
+                    {# Stacks over this modal rather than closing it. #}
+                    <a href="#" class="text-decoration-none font-monospace"
+                       title="View contract details"
+                       data-action="show-detail-modal"
+                       data-modal-id="contractDetailsModal"
+                       hx-get="{{ url_for('admin_dashboard.contract_card', contract_id=c.contract_id) }}"
+                       hx-target="#contractDetailsModalBody" hx-swap="innerHTML">
+                        <strong>{{ c.contract_number }}</strong>
+                    </a>
+                    {% if c.contract_source %}
+                    <span class="badge bg-light text-dark border ms-1">{{ c.contract_source.contract_source }}</span>
+                    {% endif %}
+                </td>
+                <td class="small">{{ c.title }}</td>
+                <td class="small text-nowrap">
+                    {{ c.principal_investigator.username if c.principal_investigator else '—' }}
+                </td>
+                <td class="small text-nowrap">
+                    {{ c.start_date | fmt_date }} – {{ c.end_date | fmt_date }}
+                    {%- if not c.is_active %}
+                      {%- if c.is_future %}
+                      <span class="badge bg-light text-secondary border fw-normal ms-1">not started</span>
+                      {%- else %}
+                      <span class="badge bg-secondary fw-normal ms-1">expired</span>
+                      {%- endif %}
+                    {%- endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted mb-0"><small>No contracts reference this program.</small></p>
+{% endif %}

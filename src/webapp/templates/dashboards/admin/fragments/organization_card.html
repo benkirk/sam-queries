@@ -296,20 +296,61 @@
                     <tbody class="collapse" id="contract-source-{{ cs.contract_source_id }}">
                         {% for c in contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list | sort(attribute='contract_number') %}
                         <tr class="table-secondary{% if not c.is_active %} opacity-50{% endif %}">
-                            <td class="ps-4 fw-semibold text-nowrap">{{ c.contract_number }}</td>
+                            {# These child rows are not themselves collapse
+                               triggers (only the source row above is), so
+                               the links need no data-stop-propagation. #}
+                            <td class="ps-4 fw-semibold text-nowrap">
+                                <a href="#" class="text-decoration-none text-reset"
+                                   title="View contract details"
+                                   data-action="show-detail-modal"
+                                   data-modal-id="contractDetailsModal"
+                                   hx-get="{{ url_for('admin_dashboard.contract_card', contract_id=c.contract_id) }}"
+                                   hx-target="#contractDetailsModalBody" hx-swap="innerHTML">
+                                    {{ c.contract_number }}
+                                </a>
+                            </td>
                             <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                                 title="{{ c.title }}">{{ c.title }}</td>
                             <td class="text-muted small text-nowrap">
-                                {{ c.principal_investigator.username if c.principal_investigator else '—' }}
+                                {% if c.principal_investigator %}
+                                    {% if can_view_users %}
+                                    <a href="#" class="text-decoration-none text-reset"
+                                       title="View user details"
+                                       data-action="show-user-details"
+                                       hx-get="{{ url_for('admin_dashboard.user_card', username=c.principal_investigator.username) }}"
+                                       hx-target="#userDetailsModalBody" hx-swap="innerHTML">
+                                        {{ c.principal_investigator.username }}
+                                    </a>
+                                    {% else %}{{ c.principal_investigator.username }}{% endif %}
+                                {% else %}—{% endif %}
                             </td>
                             <td class="text-muted small text-nowrap"
                                 title="{{ c.contract_monitor.display_name if c.contract_monitor else '' }}">
-                                {{ c.contract_monitor.username if c.contract_monitor else '—' }}
+                                {% if c.contract_monitor %}
+                                    {% if can_view_users %}
+                                    <a href="#" class="text-decoration-none text-reset"
+                                       title="View user details"
+                                       data-action="show-user-details"
+                                       hx-get="{{ url_for('admin_dashboard.user_card', username=c.contract_monitor.username) }}"
+                                       hx-target="#userDetailsModalBody" hx-swap="innerHTML">
+                                        {{ c.contract_monitor.username }}
+                                    </a>
+                                    {% else %}{{ c.contract_monitor.username }}{% endif %}
+                                {% else %}—{% endif %}
                             </td>
                             <td class="text-muted small"
                                 style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                                 title="{{ c.nsf_program.nsf_program_name if c.nsf_program else '' }}">
-                                {{ c.nsf_program.nsf_program_name if c.nsf_program else '—' }}
+                                {% if c.nsf_program %}
+                                <a href="#" class="text-decoration-none text-reset"
+                                   title="Contracts under this program"
+                                   data-action="show-detail-modal"
+                                   data-modal-id="nsfProgramContractsModal"
+                                   hx-get="{{ url_for('admin_dashboard.nsf_program_contracts', nsf_program_id=c.nsf_program.nsf_program_id) }}"
+                                   hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML">
+                                    {{ c.nsf_program.nsf_program_name }}
+                                </a>
+                                {% else %}—{% endif %}
                             </td>
                             <td class="text-muted small text-nowrap">
                                 {{ c.start_date | fmt_date }}
@@ -387,8 +428,30 @@
                     <tbody id="nsf-programs-tbody">
                         {% for p in nsf_programs %}
                         <tr{% if not p.active %} class="opacity-50"{% endif %}>
-                            <td data-sort-value="{{ p.nsf_program_name }}">{{ p.nsf_program_name }}</td>
-                            <td data-sort-value="{{ p.contracts|length }}">{{ p.contracts|length }}</td>
+                            {# Both cells open the same drill-down: the count
+                               was a dead number with nowhere to go, and the
+                               program itself has no other detail to show. #}
+                            {% set _pc_url = url_for('admin_dashboard.nsf_program_contracts', nsf_program_id=p.nsf_program_id) %}
+                            <td data-sort-value="{{ p.nsf_program_name }}">
+                                <a href="#" class="text-decoration-none text-reset"
+                                   title="Contracts under this program"
+                                   data-action="show-detail-modal"
+                                   data-modal-id="nsfProgramContractsModal"
+                                   hx-get="{{ _pc_url }}"
+                                   hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML">
+                                    {{ p.nsf_program_name }}
+                                </a>
+                            </td>
+                            <td data-sort-value="{{ p.contracts|length }}">
+                                <a href="#" class="text-decoration-none"
+                                   title="Contracts under this program"
+                                   data-action="show-detail-modal"
+                                   data-modal-id="nsfProgramContractsModal"
+                                   hx-get="{{ _pc_url }}"
+                                   hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML">
+                                    {{ p.contracts|length }}
+                                </a>
+                            </td>
                             <td class="text-end">
                                 {{ edit_modal_button(
                                     url_for('admin_dashboard.htmx_nsf_program_edit_form', nsf_program_id=p.nsf_program_id),
