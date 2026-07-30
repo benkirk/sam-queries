@@ -164,13 +164,21 @@ def get_areas_of_interest_with_projects(session, active_only=False):
     return q.all()
 
 
-def get_contracts_with_pi(session, active_only=False):
+def get_contracts_with_pi(session, active_only=False, with_source=False):
     """Load all contracts with the people and program the card displays.
 
     The monitor and NSF program are eager-loaded for the same reason the PI
     is: the Organizations card renders ~2,200 contract rows, so a lazy load
     per row is 2,200 extra queries. The ``lazyload`` guards keep the user
     loads from dragging in accounts and email addresses the card never shows.
+
+    Args:
+        active_only: restrict to contracts inside their date window.
+        with_source: also eager-load ``contract_source``. Off by default
+            because the Organizations card does not show it; the contract
+            audit (``sam.queries.contract_audit``) needs it, since several
+            of its checks only apply to ``contract_source = 'NSF'``. One
+            extra ``selectin`` query against a 21-row lookup table.
 
     Returns:
         list of Contract ordered by contract_number
@@ -189,6 +197,8 @@ def get_contracts_with_pi(session, active_only=False):
             .lazyload(User.email_addresses),
         selectinload(Contract.nsf_program),
     ).order_by(Contract.contract_number)
+    if with_source:
+        q = q.options(selectinload(Contract.contract_source))
     if active_only:
         q = q.filter(Contract.is_active)
     return q.all()

@@ -37,6 +37,7 @@ class BaseSchema(SQLAlchemyAutoSchema):
 
 # Import and export all schemas
 from .user import UserSchema, UserListSchema, UserSummarySchema
+from .contract import ContractSummarySchema
 from .project import ProjectSchema, ProjectListSchema, ProjectSummarySchema
 from .resource import ResourceSchema, ResourceSummarySchema, ResourceTypeSchema
 from .allocation import (
@@ -69,6 +70,8 @@ __all__ = [
     'ProjectSchema',
     'ProjectListSchema',
     'ProjectSummarySchema',
+    # Contract schemas
+    'ContractSummarySchema',
     # Resource schemas
     'ResourceSchema',
     'ResourceSummarySchema',
