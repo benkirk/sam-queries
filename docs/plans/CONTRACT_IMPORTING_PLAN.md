@@ -139,6 +139,26 @@ source if missed:
 3. **Suffixed variants** — `NA18NWS4620043` misses on exact match but `keywords` finds
    `NA18NWS4620043B`. Fall back to a keyword prefix search.
 
+Verified request shapes (these were pinned down empirically; the single-group rule and the
+two-step lookup are both easy to get wrong):
+
+```jsonc
+// 1. resolve number -> generated_internal_id. Run TWICE: once with the
+//    assistance codes below, once with ["A","B","C","D"]. Mixing groups errors.
+POST https://api.usaspending.gov/api/v2/search/spending_by_award/
+{"filters": {"award_ids": ["DE-FC02-97ER62402", "DEFC0297ER62402"],   // candidate set
+             "award_type_codes": ["02","03","04","05"]},
+ "fields": ["Award ID","Recipient Name","Start Date","End Date",
+            "Awarding Agency","generated_internal_id"], "limit": 5}
+
+// 2. detail
+GET https://api.usaspending.gov/api/v2/awards/{generated_internal_id}/
+//    -> description, period_of_performance.{start_date,end_date},
+//       recipient.recipient_name, awarding_agency.office_agency_name, cfda_info[]
+//    -> NO pi, NO program officer (executive_details.officers is FFATA
+//       recipient-executive compensation, not agency staff)
+```
+
 Verified agency coverage — **NASA needs no normalization at all**: `80NSSC19K0855`
 (UCAR, 2019-04-16 → 2024-04-15), `80NSSC21K1522` (UCLA), `80NSSC23K1055` (UCAR) all
 resolve unchanged, which covers 8 of our 9 recent NASA contracts. DOE/AFOSR/NOAA need the
