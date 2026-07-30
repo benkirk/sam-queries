@@ -235,6 +235,11 @@ def htmx_organizations_card():
         is_admin=True,
         now=now,
         active_only=active_only,
+        # Gate the PI/Monitor links on the user_card route's own permission
+        # so a click can never 403. Safe under @cache.cached because the key
+        # is user-aware.
+        can_view_users=has_permission_any_facility(
+            current_user, Permission.VIEW_USERS),
     )
 
 

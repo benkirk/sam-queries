@@ -7,6 +7,20 @@
     ]
   ],
   [
+    "admin_dashboard.contract_card",
+    "/admin/contract/<int:contract_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.contracts",
+    "/admin/contracts",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.deactivate_expired",
     "/admin/expirations/deactivate-expired",
     [
@@ -1113,6 +1127,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_search_contracts",
+    "/admin/htmx/search/contracts",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_search_groups",
     "/admin/htmx/search/groups",
     [
@@ -1171,6 +1192,13 @@
   [
     "admin_dashboard.index",
     "/admin/",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.nsf_program_contracts",
+    "/admin/nsf-program/<int:nsf_program_id>/contracts",
     [
       "GET"
     ]

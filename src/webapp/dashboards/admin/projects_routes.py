@@ -18,7 +18,7 @@ from webapp.extensions import db
 from flask import abort, current_app
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility,
-    has_permission, has_permission_for_facility,
+    has_permission, has_permission_any_facility, has_permission_for_facility,
     Permission, user_facility_scope,
 )
 from webapp.api.access_control import (
@@ -726,7 +726,6 @@ def edit_project_page(project):
 
     can_edit_governance = can_edit_project_governance(current_user, project)
     can_modify_allocs = can_modify_allocations(current_user, project)
-    from webapp.utils.rbac import has_permission_any_facility
     can_access_admin = has_permission_any_facility(current_user, Permission.ACCESS_ADMIN_DASHBOARD)
 
     # Initial value for the Allocations tab "Active at" date picker (today).
@@ -2246,6 +2245,10 @@ def _linked_elements_context(project):
         active_directories=[pd for pd in project.directories if pd.is_active],
         disk_roots=_disk_roots_for_picker(),
         can_edit_governance=can_edit_project_governance(current_user, project),
+        # Gated on the contract_card route's own permission so the link
+        # can never 403 for a project lead without org-metadata access.
+        can_view_contracts=has_permission_any_facility(
+            current_user, Permission.VIEW_ORG_METADATA),
         errors=[],
     )
 

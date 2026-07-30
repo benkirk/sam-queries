@@ -172,7 +172,18 @@
           {% for pc in contracts %}
           <tr>
             <td>
+              {% if can_view_contracts %}
+              <a href="#" class="font-monospace small text-decoration-none text-reset"
+                 title="View contract details"
+                 data-action="show-detail-modal"
+                 data-modal-id="contractDetailsModal"
+                 hx-get="{{ url_for('admin_dashboard.contract_card', contract_id=pc.contract.contract_id) }}"
+                 hx-target="#contractDetailsModalBody" hx-swap="innerHTML">
+                {{ pc.contract.contract_number }}
+              </a>
+              {% else %}
               <span class="font-monospace small">{{ pc.contract.contract_number }}</span>
+              {% endif %}
             </td>
             <td class="small">
               {{ pc.contract.title[:80] }}{% if pc.contract.title | length > 80 %}…{% endif %}

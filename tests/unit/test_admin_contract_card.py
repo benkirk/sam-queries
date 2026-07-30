@@ -205,6 +205,41 @@ class TestContractsPage:
         assert 'checked' not in toggle
 
 
+class TestTableLinking:
+    """A modal opener is five attributes that must agree with a shell in a
+    different file; getting one wrong fails silently at runtime."""
+
+    def test_org_card_links_contract_numbers(self, auth_client):
+        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
+        assert 'data-modal-id="contractDetailsModal"' in body
+        assert 'contractDetailsModalBody' in body
+
+    def test_org_card_links_pi_and_monitor_to_the_user_modal(self, auth_client):
+        """These were the one place in the app a username was not clickable."""
+        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
+        assert 'data-action="show-user-details"' in body
+        assert 'userDetailsModalBody' in body
+
+    def test_org_card_links_nsf_programs_and_their_counts(self, auth_client):
+        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
+        assert 'data-modal-id="nsfProgramContractsModal"' in body
+        assert 'nsfProgramContractsModalBody' in body
+
+    def test_contract_shell_rides_along_with_the_project_shell(self, auth_client):
+        """One include covers base_admin / base_user / base_allocations /
+        base_status and the one-off pages — the same trick
+        project_details_modal.html already uses for allocation_modals."""
+        body = auth_client.get(PAGE_URL).get_data(as_text=True)
+        assert 'id="contractDetailsModal"' in body
+        assert 'id="nsfProgramContractsModal"' in body
+
+    def test_shells_reach_pages_that_never_mention_contracts(self, auth_client):
+        """/admin/users-groups has no contract content of its own, but it
+        renders project cards, so it must carry the shell."""
+        body = auth_client.get('/admin/users-groups').get_data(as_text=True)
+        assert 'id="contractDetailsModal"' in body
+
+
 class TestNsfProgramContracts:
 
     def _program_with_contracts(self, session):
