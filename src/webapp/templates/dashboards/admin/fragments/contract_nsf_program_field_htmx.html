@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/form_fields.html' import select_field with context %}
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field with context %}
 {#
   htmx: NSF Program field for the Create Contract form.
 
@@ -6,20 +6,25 @@
   block back after creating a program from the award-lookup hint — leaving
   every other field the operator has touched alone.
 
+  A picker rather than a select: there are ~240 programs, and the list is
+  the kind of thing you search, not scroll. The search is active-only (FK
+  convention), but a contract already pointing at a deactivated program
+  still shows it, because the badge comes from `form` and not the search.
+
   Context:
-    nsf_programs   — selectable NSFProgram rows
-    form           — pseudo-form dict; form.nsf_program_id drives the selection
+    form           — pseudo-form dict; nsf_program_id + nsf_program_id_display
     program_hint   — (optional) a program name the award source reported that
                      is absent from nsf_program; renders the opt-in create
                      button. Never auto-created.
     program_error  — (optional) message from a failed create attempt
 #}
-{{ select_field('nsf_program_id', 'NSF Program',
-                items=nsf_programs,
-                value_attr='nsf_program_id',
-                label_attr='nsf_program_name',
-                placeholder='— None —',
-                id='createContractNsfProgram') }}
+{{ fk_search_field('nsf_program_id', 'NSF Program',
+                   search_url=url_for('admin_dashboard.htmx_search_nsf_programs'),
+                   optional_text='(optional)',
+                   placeholder='Search programs…',
+                   badge_class='bg-info py-1 px-2',
+                   wrapper_class='',
+                   id_prefix='createContractNsfProgram') }}
 
 {% if program_error %}
 <div class="form-text text-danger mt-1">

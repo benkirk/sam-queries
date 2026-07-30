@@ -1,0 +1,13 @@
+{# htmx: NSF program search results for FK picker fields (create/edit contract) #}
+{% if nsf_programs %}
+{% for program in nsf_programs %}
+<div class="list-group-item list-group-item-action p-2 fk-search-result"
+     style="cursor:pointer;"
+     data-fk-id="{{ program.nsf_program_id }}"
+     data-fk-label="{{ program.nsf_program_name }}">
+    <span class="small">{{ program.nsf_program_name }}</span>
+</div>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted small py-2">No NSF programs found</div>
+{% endif %}

@@ -27,6 +27,7 @@ from webapp.utils.htmx import (
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    register_typeahead,
 )
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.rbac import (
@@ -106,34 +107,30 @@ def _active_contract_sources():
     )
 
 
-def _active_nsf_programs():
-    """Selectable NSF programs for the create form."""
-    return (
-        db.session.query(NSFProgram)
-        .filter(NSFProgram.is_active)
-        .order_by(NSFProgram.nsf_program_name)
-        .all()
-    )
+def _search_nsf_programs_fk(q, active_only):
+    """Typeahead search behind the contract forms' NSF Program picker.
 
-
-def _nsf_program_edit_options():
-    """(id, label) pairs for the edit form — **including inactive programs**.
-
-    An active-only list would silently clear a contract already pointing at
-    a deactivated program: the select would fall back to the placeholder,
-    post an empty value, and the schema would read that as "cleared". So
-    the edit list is complete, with inactive entries marked.
+    Active-only, per the FK-picker convention: the search offers programs
+    you may *assign*. A contract already pointing at a deactivated program
+    still shows it, because the picker's badge comes from the contract row
+    rather than from this search.
     """
-    programs = (
-        db.session.query(NSFProgram)
-        .order_by(NSFProgram.nsf_program_name)
-        .all()
-    )
-    return [
-        (p.nsf_program_id,
-         p.nsf_program_name if p.is_active else f'{p.nsf_program_name} (inactive)')
-        for p in programs
-    ]
+    query = db.session.query(NSFProgram).filter(
+        NSFProgram.nsf_program_name.ilike(f'%{q}%'))
+    if active_only:
+        query = query.filter(NSFProgram.is_active)
+    return query.order_by(NSFProgram.nsf_program_name).limit(15).all()
+
+
+register_typeahead(
+    bp, rule='/htmx/search/nsf-programs', endpoint='htmx_search_nsf_programs',
+    permission=Permission.VIEW_ORG_METADATA,
+    search=_search_nsf_programs_fk,
+    template='dashboards/admin/fragments/nsf_program_search_results_fk_htmx.html',
+    ctx_key='nsf_programs',
+    # No checkbox behind this picker, so the param never arrives — see §10.
+    active_only_default=True,
+)
 
 
 # ── Organization Card ──────────────────────────────────────────────────────
@@ -445,20 +442,31 @@ def _user_label(user):
     return f'{user.display_name} ({user.username})' if user else ''
 
 
-def _with_picker_labels(form):
-    """Copy *form*, adding the ``<field>_display`` keys the FK pickers need.
+#: FK-picker field -> (model, label callable). ``fk_search_field`` renders its
+#: badge from ``form.get(name ~ '_display')``, but nothing in the DOM posts
+#: that key — so every re-render (validation error, prefill, program create)
+#: would otherwise show a selected row as a blank badge.
+_PICKER_LABELS = (
+    ('principal_investigator_user_id', User, _user_label),
+    ('contract_monitor_user_id', User, _user_label),
+    ('nsf_program_id', NSFProgram, lambda p: p.nsf_program_name if p else ''),
+)
 
-    ``fk_search_field`` renders its badge from ``form.get(name ~ '_display')``,
-    but nothing in the DOM posts that key — so without this, every re-render
-    (validation error or prefill) would show a selected user as a blank badge.
-    """
+
+def _clear_picker(form, field):
+    """Empty an FK picker, badge label included."""
+    form[field] = ''
+    form[f'{field}_display'] = ''
+
+
+def _with_picker_labels(form):
+    """Copy *form*, adding the ``<field>_display`` keys the FK pickers need."""
     data = dict(form or {})
-    for field in ('principal_investigator_user_id', 'contract_monitor_user_id'):
+    for field, model, label in _PICKER_LABELS:
         raw = str(data.get(field) or '').strip()
         if not raw.isdigit():
             continue
-        data.setdefault(f'{field}_display',
-                        _user_label(db.session.get(User, int(raw))))
+        data.setdefault(f'{field}_display', label(db.session.get(model, int(raw))))
     return data
 
 
@@ -466,7 +474,6 @@ def _contract_create_context(form=None, **extra):
     """Render context shared by initial render, prefill, and error re-render."""
     ctx = {
         'contract_sources': _active_contract_sources(),
-        'nsf_programs': _active_nsf_programs(),
         'today': datetime.now().strftime('%Y-%m-%d'),
         'form': _with_picker_labels(form),
     }
@@ -544,6 +551,12 @@ def htmx_contract_award_lookup():
     if record.end_date:
         form['end_date'] = record.end_date.isoformat()
 
+    # When the source names someone we cannot map, CLEAR the field rather
+    # than leave it. "Never destroy input" governs a *failed* lookup; here
+    # the record has an opinion we simply could not resolve, and keeping a
+    # previous award's pick next to "no matching SAM user" would be wrong.
+    # A source with no opinion at all (USAspending has no people) falls
+    # through untouched — the operator has to fill those in by hand anyway.
     for field, person, hint_key in (
             ('principal_investigator_user_id', record.pi, 'pi_hint'),
             ('contract_monitor_user_id', record.monitor, 'monitor_hint')):
@@ -555,6 +568,7 @@ def htmx_contract_award_lookup():
             form[f'{field}_display'] = _user_label(user)
         else:
             extra[hint_key] = person
+            _clear_picker(form, field)
 
     if record.program_name:
         program = (
@@ -567,6 +581,7 @@ def htmx_contract_award_lookup():
             form['nsf_program_id'] = str(program.nsf_program_id)
         else:
             extra['program_hint'] = record.program_name
+            _clear_picker(form, 'nsf_program_id')
 
     return _render(**extra)
 
@@ -606,8 +621,7 @@ def htmx_contract_program_create():
 
     return render_template(
         'dashboards/admin/fragments/contract_nsf_program_field_htmx.html',
-        nsf_programs=_active_nsf_programs(),
-        form={'nsf_program_id': selected},
+        form=_with_picker_labels({'nsf_program_id': selected}),
         program_hint=name if error else None,
         program_error=error,
     )
@@ -779,7 +793,6 @@ _ORG_CRUD_SPECS = (
             contract_monitor_user_id=data['contract_monitor_user_id'],
             nsf_program_id=data['nsf_program_id'],
         ),
-        edit_context=lambda: {'nsf_program_options': _nsf_program_edit_options()},
         # create is bespoke (htmx_contract_create_form / htmx_contract_create):
         # it needs FK-existence checks and a contract_number uniqueness
         # pre-check, neither of which the generated closure can express.

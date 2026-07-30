@@ -1120,6 +1120,13 @@
     ]
   ],
   [
+    "admin_dashboard.htmx_search_nsf_programs",
+    "/admin/htmx/search/nsf-programs",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.htmx_search_organizations",
     "/admin/htmx/search-organizations",
     [

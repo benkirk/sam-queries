@@ -193,6 +193,45 @@ CREATE_FORM_URL = '/admin/htmx/contract-create-form'
 CREATE_URL = '/admin/htmx/contract-create'
 LOOKUP_URL = '/admin/htmx/contract-award-lookup'
 PROGRAM_CREATE_URL = '/admin/htmx/contract-program-create'
+PROGRAM_SEARCH_URL = '/admin/htmx/search/nsf-programs'
+
+
+class TestNsfProgramTypeahead:
+    """~240 programs is a list you search, not one you scroll."""
+
+    def test_short_query_returns_nothing(self, auth_client):
+        resp = auth_client.get(PROGRAM_SEARCH_URL, query_string={'q': 'a'})
+        assert resp.get_data(as_text=True) == ''
+
+    def test_matches_are_fk_picker_rows(self, auth_client, any_nsf_program):
+        resp = auth_client.get(PROGRAM_SEARCH_URL, query_string={
+            'q': any_nsf_program.nsf_program_name[:6]})
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        # fk-picker.js bails out unless both data attributes are present.
+        assert 'data-fk-id=' in body and 'data-fk-label=' in body
+
+    def test_no_match_renders_an_empty_state(self, auth_client):
+        resp = auth_client.get(PROGRAM_SEARCH_URL,
+                               query_string={'q': 'zzzz-no-such-program'})
+        assert 'No NSF programs found' in resp.get_data(as_text=True)
+
+    def test_search_is_active_only(self, auth_client, session):
+        """No checkbox behind this picker, so the param never arrives (§10)."""
+        inactive = NSFProgram.create(session,
+                                     nsf_program_name='ZZ INACTIVE PROBE')
+        inactive.update(active=False)
+        session.commit()
+        try:
+            resp = auth_client.get(PROGRAM_SEARCH_URL,
+                                   query_string={'q': 'ZZ INACTIVE PROBE'})
+            assert 'ZZ INACTIVE PROBE' not in resp.get_data(as_text=True)
+        finally:
+            session.delete(inactive)
+            session.commit()
+
+    def test_non_admin_forbidden(self, non_admin_client):
+        assert non_admin_client.get(PROGRAM_SEARCH_URL).status_code == 403
 
 
 class TestCreateRouteAuth:
@@ -328,6 +367,36 @@ class TestAwardLookup:
         assert 'no matching SAM user' in body
         assert 'search-suggested-person' in body
 
+    def test_unresolved_person_clears_a_stale_pick(self, auth_client):
+        """Refetching a different award must not keep the previous PI.
+
+        "Never destroy input" governs a *failed* lookup. Here the record
+        named someone we could not map, so leaving an earlier award's pick
+        sitting next to "no matching SAM user" would be actively wrong.
+        """
+        record = _award(pi=PersonRef(name='Nobody Atall',
+                                     email='nobody@example.test'),
+                        monitor=None)
+        with patch('sam.integration.awards.resolve_award', return_value=record):
+            resp = auth_client.get(LOOKUP_URL, query_string=self._args(
+                principal_investigator_user_id='4242'))
+        body = resp.get_data(as_text=True)
+        assert 'value="4242"' not in body
+        assert 'no matching SAM user' in body
+
+    def test_provider_without_an_opinion_leaves_the_field_alone(
+            self, auth_client, any_nsf_program):
+        """USAspending has no people at all — that must not clear a pick."""
+        record = _award(provenance='USAspending', pi=None, monitor=None,
+                        contract_number=None, program_name=None,
+                        unavailable_fields=frozenset({'pi', 'monitor'}))
+        with patch('sam.integration.awards.resolve_award', return_value=record):
+            resp = auth_client.get(LOOKUP_URL, query_string=self._args(
+                contract_source_id='2',
+                nsf_program_id=str(any_nsf_program.nsf_program_id)))
+        body = resp.get_data(as_text=True)
+        assert f'value="{any_nsf_program.nsf_program_id}"' in body
+
     def test_unknown_program_offers_create_and_select(self, auth_client):
         record = _award(program_name='A PROGRAM THAT IS NOT IN SAM AT ALL')
         with patch('sam.integration.awards.resolve_award', return_value=record):
@@ -337,12 +406,14 @@ class TestAwardLookup:
         assert 'create and select it' in body
 
     def test_known_program_is_preselected(self, auth_client, any_nsf_program):
+        """Matched case-insensitively, and the picker gets its badge label."""
         record = _award(program_name=any_nsf_program.nsf_program_name.lower())
         with patch('sam.integration.awards.resolve_award', return_value=record):
             resp = auth_client.get(LOOKUP_URL, query_string=self._args())
         body = resp.get_data(as_text=True)
         assert 'create and select it' not in body
-        assert f'value="{any_nsf_program.nsf_program_id}" selected' in body
+        assert f'value="{any_nsf_program.nsf_program_id}"' in body
+        assert any_nsf_program.nsf_program_name in body
 
     def test_unavailable_fields_are_stated_not_left_blank(self, auth_client):
         record = _award(provenance='USAspending', pi=None, monitor=None,
@@ -354,6 +425,22 @@ class TestAwardLookup:
         body = resp.get_data(as_text=True)
         assert 'cannot supply' in body
         assert 'the PI' in body and 'the Monitor' in body
+
+    def test_program_create_and_select_returns_a_populated_picker(
+            self, auth_client, any_nsf_program):
+        """Accepting the hint must leave the picker showing the program.
+
+        The button posts an existing name here, so this exercises the
+        already-exists branch without writing a row.
+        """
+        resp = auth_client.post(PROGRAM_CREATE_URL, data={
+            'nsf_program_name': any_nsf_program.nsf_program_name.lower(),
+        })
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert f'value="{any_nsf_program.nsf_program_id}"' in body
+        assert any_nsf_program.nsf_program_name in body   # badge label
+        assert 'create and select it' not in body         # hint is resolved
 
     def test_resolved_person_keeps_its_badge_label(self, auth_client):
         """fk_search_field renders the badge from <field>_display, which

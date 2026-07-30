@@ -14,7 +14,6 @@
 
   Context:
     form               — pseudo-form dict (always present)
-    nsf_programs       — selectable NSFProgram rows
     today              — default start date on first render
     provenance         — (optional) provider name, when values were prefilled
     unavailable_labels — (optional) human labels for what this provider
@@ -108,6 +107,6 @@
                    id_prefix='createContractMonitor') }}
 {{ person_hint('createContractMonitor', monitor_hint) }}
 
-<div id="createContractProgramField">
+<div id="createContractProgramField" class="mb-3">
     {% include 'dashboards/admin/fragments/contract_nsf_program_field_htmx.html' %}
 </div>
