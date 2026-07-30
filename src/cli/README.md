@@ -33,6 +33,7 @@ cli/
 ├── project/                  # Project commands (same builders/commands/display split)
 ├── allocations/              # Allocation commands
 ├── accounting/               # Charge rollups, per-job queries, summary ingest
+├── contracts/                # Contract data-hygiene audit (sam-admin only)
 ├── notifications/            # Expiration email delivery (email.py)
 ├── templates/                # Expiration email templates
 └── cmds/                     # Entry points

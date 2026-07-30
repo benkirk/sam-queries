@@ -186,7 +186,7 @@ bugs identified by profiling scripts in `utils/profiling/`:
 function, counts SQL queries via SQLAlchemy engine events, and asserts
 the count stays at or below a baseline from `baselines.json`.
 
-**`test_route_query_counts.py`** — 5 route-level tests. Hit actual
+**`test_route_query_counts.py`** — 7 route-level tests. Hit actual
 Flask routes via `auth_client.get(...)` and count ALL queries through
 the full stack (data fetch + template render + JSON serialization).
 These catch lazy-load regressions invisible to function-level tests.
@@ -197,7 +197,10 @@ These catch lazy-load regressions invisible to function-level tests.
 | `GET /allocations/` | 13 | 20 | Summary pipeline |
 | `GET /allocations/?show_usage=true` | 54 | 80 | The 52K-query N+1 scenario |
 | `GET /admin/htmx/organizations-card` | 311 | 450 | Template cascade explosion |
+| `GET /admin/htmx/institutions-fragment` | 13 | 25 | Institution list load |
+| `GET /admin/htmx/institutions-fragment?show_users_projects=1` | 130 | 200 | Selectinload chunking fanout |
 | `GET /api/v1/fstree_access/` | 44 | 65 | Serialization lazy loads |
+| `GET /api/v1/projects/<projcode>` | 33 | 45 | Contract-graph N+1 during `jsonify()` |
 
 **`test_dashboard_latency.py`** — 3 `pytest-benchmark` smoke tests for
 wall-time order-of-magnitude regressions.
