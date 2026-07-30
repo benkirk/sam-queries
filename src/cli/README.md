@@ -33,7 +33,8 @@ cli/
 ├── project/                  # Project commands (same builders/commands/display split)
 ├── allocations/              # Allocation commands
 ├── accounting/               # Charge rollups, per-job queries, summary ingest
-├── contracts/                # Contract data-hygiene audit (sam-admin only)
+├── contracts/                # Contract search (sam-search) + data-hygiene audit (sam-admin)
+├── awards/                   # Public award APIs (NSF, USAspending) — sam-search
 ├── notifications/            # Expiration email delivery (email.py)
 ├── templates/                # Expiration email templates
 └── cmds/                     # Entry points
@@ -83,6 +84,7 @@ stdout stays parseable.
 BaseCommand(ABC)
 ├── BaseUserCommand
 ├── BaseProjectCommand
+├── BaseContractCommand
 └── BaseAllocationCommand
 
 # User commands (user/commands.py)
@@ -100,6 +102,15 @@ BaseProjectCommand
 ├── ProjectExpirationCommand
 └── ProjectAdminCommand (extends ProjectSearchCommand)
 
+# Contract commands (contracts/commands.py, awards/commands.py)
+BaseContractCommand
+├── ContractSearchCommand          # SAM's own contract table
+├── ContractPatternSearchCommand
+├── AwardSearchCommand             # the funding agency's API
+└── AwardPatternSearchCommand
+# ContractsAuditCommand extends BaseCommand directly — it is scope-wide and
+# has no single contract to resolve.
+
 # Allocation commands follow the same pattern; the accounting commands
 # (AccountingSearchCommand, AccountingJobsCommand, AccountingAdminCommand)
 # extend BaseCommand directly.
@@ -113,6 +124,15 @@ in `core/base.py`; daily-rollup queries work without it.
 
 `EXIT_SUCCESS=0` / `EXIT_NOT_FOUND=1` / `EXIT_ERROR=2` /
 `EXIT_KEYBOARD_INTERRUPT=130` — shared verbatim with the `jobhist` CLI.
+
+Two conventions coexist deliberately, and `cli/contracts/` holds one of each:
+
+- **Lookups** (every `sam-search` subcommand) use all three codes literally.
+  `sam-search awards` is the sharpest case: 1 means "the agency has no such
+  award", 2 means "the agency could not be reached". Conflating them would
+  report an outage as a missing record.
+- **Audits** (`sam-admin contracts --validate`, `ProjectTreeAuditCommand`)
+  overload `EXIT_ERROR` to mean "findings exist", so CI can gate on them.
 
 ## Adding New Commands
 

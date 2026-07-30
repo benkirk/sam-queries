@@ -1,11 +1,9 @@
 # Award search — composite NSF/USAspending search across the CLI and the New Contract form
 
-**Status:** not started. **Restart cold from this file.**
-
-**Branch:** cut a new one off `origin/staging`. The predecessor PR #403 was
-squash-merged as `dce9a43` and `origin/contracts_validate` is deleted; a local
-branch of that name may still hold the five pre-squash commits and is
-redundant — do not build on it.
+**Status: implemented.** Branch `award_search`, six commits off `dce9a43`.
+See § *Deviations* at the foot of this file for what changed against the plan
+as written — the plan's §3 measurements all held, but eight implementation
+details did not.
 
 **Required reading first:** `docs/plans/implemented/SAM_ADMIN_CONTRACTS.md`
 (what #403 built, and the four noise rules in `compare_contract` that this plan
@@ -527,3 +525,83 @@ happen, the wiring is wrong.
 - **F2** — moving external contacts out of `users` (414 users exist purely as
   contract contacts). A schema conversation:
   `docs/plans/implemented/CONTRACT_IMPORTING_PLAN.md` § F2.
+
+---
+
+## 11. Deviations from the plan as written
+
+Everything in §3 was re-verified against the live APIs and the dev DB on
+2026-07-30 before implementation and **all of it held** — NSF 0.58 s,
+USAspending 0.47 s, `Description` inline, 2,225/368/1,261/2,209 contracts,
+busiest PI 13, `--pi poulsen` 13, `contract_number` uniquely indexed with zero
+duplicates. Two measurements came out *better* than claimed:
+
+- **NSF search and fetch return identical 62-key sets** — diffed both ways,
+  empty in both directions. Reusing `_to_record` is therefore lossless, not
+  merely sufficient.
+- The composite search is **~1.1–1.5 s**, not ~1.6 s.
+
+Eight implementation details in §§4–6 were wrong or underspecified:
+
+1. **`setValue` does not exist** in `static/js/form-helpers.js`. The §6
+   snippet was aspirational; `use-award` assigns `.value` directly.
+2. **The class is `NSFProgram`**, not `NsfProgram` (§6).
+3. **`AwardHttpClient` had no injection seam.** §5 says the CLI should "pass a
+   longer `timeout=` to the constructor", but providers are module-level
+   singletons built at import with default clients. Added
+   `registry.build_providers(client=None)` and a `providers=` parameter on
+   `search_awards`.
+4. **`supports()` cannot scope a search** — it requires a contract number.
+   §4's `sources=` needed its own rule, added as `registry.search_providers()`:
+   naming a provider's source narrows to it, anything else falls back to the
+   generics, mirroring `UsaSpendingProvider.supports()` returning False for NSF.
+5. **`_apply_filter` (`sam/queries/charges.py`) is not the idiom §5
+   describes.** Its else-branch is exact equality, not substring, and it uses
+   `like` not `ilike`. The shipped rule is a deliberate divergence on both
+   axes, documented as such in `search_by_pattern`'s docstring.
+6. **`title` and `contract_number` are `utf8mb3_bin`, i.e. case-sensitive.**
+   §9's manual-test expectation of "18 open / 107 with `--all`" for `climate`
+   was measured with a plain `LIKE`. The real figures under `ilike` — which
+   the webapp already used — are **78 open / 512 all**. `ilike` here is
+   load-bearing, not cosmetic.
+7. **`contract_source_id` is a `<select>`**, not a hidden input, so
+   `use-award` guards on the option existing before assigning.
+8. **`selectinload`/`joinedload` are not exported** by `sam/base.py`'s star
+   import (`or_` and `and_` are), and `aliased` and `User` are not either —
+   `search_by_pattern` imports them locally.
+
+Also worth recording:
+
+- **`_search_contracts_for_project` ignored its `active_only` argument.** The
+  delegation preserves that behaviour explicitly (`active_only=False`) with a
+  docstring saying why, rather than silently acquiring the classmethod's
+  `True` default and hiding 83% of the picker's rows.
+- **`tests/unit/test_flask_cache_adapter.py` enumerates adapter names**, so
+  the new `awards_search` bucket had to be added there. Not mentioned in §9,
+  and the same class of gate as the route-map snapshot.
+- **`_contract_dict` was promoted to `contract_dict`** so `cli/awards/` can
+  reuse it without a cross-package private import.
+- **Source inference for the CLI.** §6 covers it for the form, but
+  `sam-search awards <number>` needed its own: with no `--source`,
+  `providers_for` never reaches NSF, so a bare lookup of an NSF number
+  reported "not found". The source is now taken from SAM's contract when
+  there is one, and NSF is retried when the number parses as an award id.
+
+**Pre-existing issue, deliberately not fixed** (agreed with Ben before
+starting): running a *small subset* of test files under the default `-n auto`
+reproducibly hits `pymysql.err.OperationalError: (1213, 'Deadlock found')`
+during factory INSERTs — 3/3 runs on clean `staging`, while the same files
+pass serially. The full suite is unaffected (3,872 passed). Use `-n 0` for
+targeted runs.
+
+## 12. Verification results
+
+- Full suite: **3,872 passed, 30 skipped, 1 xfailed** in 92 s (was 3,745 at
+  #403). `make perf`: 21 passed, no new N+1 — no new expensive route was
+  added, since the search route's cost is network, not queries.
+- Route-map snapshot regenerated: exactly one route added.
+- Live-checked against `webdev` with the real APIs: the search endpoint
+  returned 20 rows in 1.5 s, and the already-in-SAM annotation correctly
+  matched award `2535750` to its existing contract.
+- `sam-search awards 014421 --source DOD` reproduces the documented
+  `suspect_match` on the 2009 award titled **"MEALS"**.
