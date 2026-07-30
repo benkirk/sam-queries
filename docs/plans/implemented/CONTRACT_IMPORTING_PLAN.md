@@ -268,7 +268,10 @@ Programs tab shows only name + count. Keep that structure — widening columns i
 
 ## Follow-ons — flagged, NOT in this branch
 
-### F1. `sam-admin contracts --validate` (data-hygiene pass)
+### F1. `sam-admin contracts --validate` (data-hygiene pass) — **DONE**
+
+**Shipped.** See `docs/plans/implemented/SAM_ADMIN_CONTRACTS.md` for what was
+built and how the checks were scoped; the sketch below is the original note.
 
 Separate PR after the above. Read-only reporting over open contracts
 (`Contract.is_active`), no writes, exit codes 0/1/2/130. New `src/cli/contracts/` package
