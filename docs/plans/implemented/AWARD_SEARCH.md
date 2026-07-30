@@ -605,3 +605,85 @@ targeted runs.
   matched award `2535750` to its existing contract.
 - `sam-search awards 014421 --source DOD` reproduces the documented
   `suspect_match` on the 2009 award titled **"MEALS"**.
+
+---
+
+## 13. Round 2 — `/admin/contracts` (same PR)
+
+Added after the first round landed, once the award search had proved itself
+inside the create modal.
+
+### 13.1 The CI failure the first round shipped
+
+The first round's `tests/unit/test_award_search.py` was **Redis-blind** and CI
+caught it: 3 failed / 3,869 passed. Worth recording because the class of bug
+recurs.
+
+`ci-staging.yaml`'s `Test Suite` job runs pytest *inside the compose `webapp`
+container*, where `compose.yaml` force-sets `CACHE_REDIS_URL`. So the awards
+cache resolved to `RedisTTLAdapter`, and the fixture's `_adapters.clear()`
+dropped only the in-process adapter reference — the Redis keyspace survived.
+Every `TestSearchAwards` case searches the same term, so they shared the key
+`('NSF Awards API', 'q', 10)` and read each other's records. A dev machine has
+no `CACHE_REDIS_URL`, gets a `TTLCacheAdapter`, and clearing the memo really
+does yield a fresh cache — hence green locally, red in CI.
+
+The fix is the idiom `test_webapp_jobs_cache.py` and `test_webapp_disk_scans.py`
+already used, whose docstring names the trap verbatim: `reset_for_tests()` to
+pin buckets off, plus `monkeypatch.delenv('CACHE_REDIS_URL')` — the latter also
+covering the quieter problem that **xdist workers share one Redis**, so no
+per-test cleanup is race-free.
+
+> **Rule going forward:** any test asserting on cache behaviour must be run
+> `CACHE_REDIS_URL=… pytest …` at least once. It is the only way to catch this
+> locally, and CI runs that way by default.
+
+### 13.2 What round 2 built
+
+- **"Find Candidate Contracts"** on `/admin/contracts`, alongside a renamed
+  **"Search Existing Contracts"**. Both cards collapse, open by default, via
+  the `.collapse-toggle` header idiom (pure CSS chevron, no JS).
+- `_award_search_context()` factors the provider call and in-SAM annotation out
+  of `htmx_contract_award_search`; the modal rows and the page cards are two
+  templates over one implementation.
+- **Create-from-award seeds the form server-side.** `htmx_contract_create_form`
+  gained optional `contract_number` / `contract_source_id`; a seeded form opens
+  in lookup mode with `hx-trigger="load, click"` on the Fetch button, so the
+  existing lookup fires immediately. Chosen over JS because the form does not
+  exist when the button is clicked, so JS would have to sequence itself against
+  the htmx swap. A bare New Contract still never calls an agency (asserted).
+- **The contracts table moved** off the Organizations card onto
+  `/admin/contracts`. NSF Programs deliberately stayed — it is not contract
+  data in the same sense, and moving it would have been a larger diff for no
+  operator benefit.
+
+### 13.3 The move was a large, unplanned perf win
+
+`admin_orgs_card_route` went from a **measured 311 queries to 20**. Rendering
+2,225 contracts was almost the entire cost of that card; the plan had expected
+"strictly fewer queries" and a stale baseline, not a 15× drop. Both baselines
+were reset, and `admin_contracts_table_route` (measured 25) got its own —
+`make perf` only catches routes that have one.
+
+### 13.4 Silent-failure hazards handled
+
+Each of these fails *quietly* — no error, just nothing happening:
+
+1. Contract and contract-source CRUD shared `_ORG_TRIGGERS`, and
+   `_reloadAdminCard` opens with `if (!section) return;`. On `/admin/contracts`
+   that event matches nothing, so mutations would have refreshed nothing.
+   Added `reloadContractsCard` + listener; both specs point at it.
+2. `admin-cards.js` gated the collapse-chevron wiring on
+   `#organizationsTabsContent`; re-gated on the fragment's own `#contractsTable`.
+3. A stray `q` from the in-form search box reaching `Contract.create(**kwargs)`
+   — covered by a schema test rather than assumed from `unknown=EXCLUDE`.
+
+### 13.5 Round 2 verification
+
+- Full suite **3,888 passed** / 30 skipped / 1 xfailed, run **both with and
+  without `CACHE_REDIS_URL`**. `make perf` 22 passed.
+- Route-map snapshot: exactly two routes added.
+- Live against `webdev` with the real APIs: 20 candidate cards in 1.3 s with
+  one already-in-SAM hit rendering *View contract* instead of a create button;
+  the seeded form pre-filled and auto-fetching; the moved table showing 368
+  active contracts; the organizations card down to four tabs.
