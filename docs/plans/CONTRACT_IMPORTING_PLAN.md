@@ -78,6 +78,8 @@ So the framework is a **2-provider world**, and Monitor stays manual outside NSF
 | Scope | Create form + expose Monitor & NSF Program on edit/list; CLI hygiene pass as a follow-on PR |
 | Unknown NSF program | Preselect if matched, else an explicit "create and select" |
 | NSF client location | New package under `src/sam/integration/`; `sql/queries/nsf_awards.py` untouched |
+| **Lookup timing** | **Prefill only.** A *Fetch award* button re-renders the field block; Create submits exactly what the operator sees. **No network call in the POST path** — a slow agency API must never hold a write transaction open, and operator edits must win over a possibly-stale prefill. |
+| **Stored NSF URL** | `https://www.nsf.gov/awardsearch/show-award?AWD_ID=<id>` — the modern form, matching the last ~72 hand-entered rows. The 1,895 legacy bulk-loaded rows use a scheme-less `showAward?…&HistoricalAwards=false`; we do not reproduce that. |
 
 ### Explicitly rejected
 
@@ -164,8 +166,11 @@ Verified agency coverage — **NASA needs no normalization at all**: `80NSSC19K0
 resolve unchanged, which covers 8 of our 9 recent NASA contracts. DOE/AFOSR/NOAA need the
 candidate set above.
 
-Also: coverage is **FY2008+** — the legacy NASA form `NNG04EA00C` (2004) returns no hit,
-confirmed. Report those as "not found" rather than an error. And there is no title
+Also: coverage is **FY2008+** for *assistance* awards, so pre-2008 grants report "not
+found" rather than an error. (Correction found during implementation: the legacy NASA
+form `NNG04EA00C` does in fact resolve — as `CONT_AWD_NNG04EA00C_8000_…`, via the
+**contract** code group. The earlier "no hit, confirmed" measurement had only queried
+the assistance group, which is exactly the trap the two-group search fixes.) There is no title
 field — `description` is ALL-CAPS FPDS text, sometimes a whole abstract, against our
 `title varchar(255) NOT NULL`. Treat it as a *suggestion only*, truncated, never
 auto-committed. `url` ← `https://www.usaspending.gov/award/<generated_internal_id>/`.

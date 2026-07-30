@@ -248,6 +248,8 @@
                             <th>Name / Number</th>
                             <th>Title / Count</th>
                             <th>PI</th>
+                            <th>Monitor</th>
+                            <th>NSF Program</th>
                             <th>Start Date</th>
                             <th>End Date</th>
                             <th class="text-end">Actions</th>
@@ -268,6 +270,8 @@
                             </td>
                             {% set cs_contracts = contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list %}
                             <td class="text-muted small">{{ cs_contracts|length }} contract{{ 's' if cs_contracts|length != 1 else '' }}</td>
+                            <td></td>
+                            <td></td>
                             <td></td>
                             <td></td>
                             <td></td>
@@ -298,6 +302,15 @@
                             <td class="text-muted small text-nowrap">
                                 {{ c.principal_investigator.username if c.principal_investigator else '—' }}
                             </td>
+                            <td class="text-muted small text-nowrap"
+                                title="{{ c.contract_monitor.display_name if c.contract_monitor else '' }}">
+                                {{ c.contract_monitor.username if c.contract_monitor else '—' }}
+                            </td>
+                            <td class="text-muted small"
+                                style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                                title="{{ c.nsf_program.nsf_program_name if c.nsf_program else '' }}">
+                                {{ c.nsf_program.nsf_program_name if c.nsf_program else '—' }}
+                            </td>
                             <td class="text-muted small text-nowrap">
                                 {{ c.start_date | fmt_date }}
                             </td>
@@ -320,14 +333,14 @@
                         </tr>
                         {% else %}
                         <tr class="table-secondary">
-                            <td colspan="6" class="ps-4 text-muted fst-italic">No contracts for this source.</td>
+                            <td colspan="8" class="ps-4 text-muted fst-italic">No contracts for this source.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     {% endfor %}
                     {% else %}
                     <tbody>
-                        <tr><td colspan="6" class="text-center text-muted py-3">No contract sources found.</td></tr>
+                        <tr><td colspan="8" class="text-center text-muted py-3">No contract sources found.</td></tr>
                     </tbody>
                     {% endif %}
                 </table>
