@@ -1,0 +1,225 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
+{#
+  Admin: Contract detail card.
+
+  Served by admin_dashboard.contract_card and consumed by two hosts that
+  swap the same HTML: the #contractCardContainer region on /admin/contracts,
+  and #contractDetailsModalBody wherever a contract number is clickable.
+
+  A plain template rather than a render_*_card macro: the user/project/group
+  cards need that indirection because their bodies are shared with the user
+  dashboard's own templates. Contracts are admin-only metadata with one
+  renderer, so a wrapper would be indirection with nothing on the far side.
+
+  Context:
+    contract        — Contract, eager-loaded by queries.admin.get_contract_detail
+    linked_projects — ProjectContract rows, active-first (see the route)
+    can_view_users     / can_view_projects — gate the cross-entity modal links
+                       on the *target* routes' permissions so a click can't 403
+#}
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-file-signature"></i>
+            <span class="font-monospace">{{ contract.contract_number }}</span>
+            {% if contract.contract_source %}
+            <span class="badge bg-light text-dark border ms-2">{{ contract.contract_source.contract_source }}</span>
+            {% endif %}
+            {# An inactive contract is either not started yet or already over —
+               the two mean different things to an operator, so badge them
+               apart rather than collapsing to "inactive". #}
+            {% if contract.is_active %}
+            {{ status_badge('active', extra='ms-1') }}
+            {% elif contract.is_future %}
+            {{ status_badge('inactive', extra='ms-1', label='Not started') }}
+            {% else %}
+            {{ status_badge('expired', extra='ms-1') }}
+            {% endif %}
+        </h5>
+    </div>
+
+    <div class="card-body">
+        <div class="row g-3">
+
+            {# ── Left: the award itself ────────────────────────────── #}
+            <div class="col-lg-6">
+                <div class="project-stats-box mb-0"
+                     style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
+                    <h6><i class="fas fa-info-circle"></i> Contract Information</h6>
+
+                    <div class="stat-item stat-item-block">
+                        <span class="stat-label d-block mb-1">Title:</span>
+                        <span class="stat-value text-dark text-detail">{{ contract.title }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Source:</span>
+                        <span class="stat-value">
+                            {{ contract.contract_source.contract_source if contract.contract_source else '—' }}
+                        </span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Start:</span>
+                        <span class="stat-value">{{ contract.start_date | fmt_date }}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">End:</span>
+                        <span class="stat-value">{{ contract.end_date | fmt_date }}</span>
+                    </div>
+                    <div class="stat-item stat-item-block">
+                        <span class="stat-label d-block mb-1">Award page:</span>
+                        <span class="stat-value text-detail">
+                            {% if contract.url %}
+                            <a href="{{ contract.url }}" target="_blank" rel="noopener noreferrer">
+                                {{ contract.url }} <i class="fas fa-external-link-alt fa-xs"></i>
+                            </a>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {# ── Right: the people and the program ─────────────────── #}
+            <div class="col-lg-6">
+                <div class="project-stats-box mb-0"
+                     style="grid-template-columns: auto minmax(0, 1fr); align-content: start;">
+                    <h6><i class="fas fa-user-tie"></i> People &amp; Program</h6>
+
+                    <div class="stat-item">
+                        <span class="stat-label">PI:</span>
+                        <span class="stat-value">
+                            {% if contract.principal_investigator %}
+                                {% if can_view_users %}
+                                <a href="#" class="text-decoration-none"
+                                   title="View user details"
+                                   data-action="show-user-details"
+                                   hx-get="{{ url_for('admin_dashboard.user_card', username=contract.principal_investigator.username) }}"
+                                   hx-target="#userDetailsModalBody" hx-swap="innerHTML">
+                                    {{ contract.principal_investigator.display_name }}
+                                    <small class="text-muted">({{ contract.principal_investigator.username }})</small>
+                                </a>
+                                {% else %}
+                                {{ contract.principal_investigator.display_name }}
+                                {% endif %}
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </span>
+                    </div>
+
+                    <div class="stat-item">
+                        <span class="stat-label">Monitor:</span>
+                        <span class="stat-value">
+                            {% if contract.contract_monitor %}
+                                {% if can_view_users %}
+                                <a href="#" class="text-decoration-none"
+                                   title="View user details"
+                                   data-action="show-user-details"
+                                   hx-get="{{ url_for('admin_dashboard.user_card', username=contract.contract_monitor.username) }}"
+                                   hx-target="#userDetailsModalBody" hx-swap="innerHTML">
+                                    {{ contract.contract_monitor.display_name }}
+                                    <small class="text-muted">({{ contract.contract_monitor.username }})</small>
+                                </a>
+                                {% else %}
+                                {{ contract.contract_monitor.display_name }}
+                                {% endif %}
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </span>
+                    </div>
+
+                    <div class="stat-item stat-item-block">
+                        <span class="stat-label d-block mb-1">NSF Program:</span>
+                        <span class="stat-value text-dark text-detail">
+                            {% if contract.nsf_program %}
+                            <a href="#" class="text-decoration-none"
+                               title="Contracts under this program"
+                               data-action="show-detail-modal"
+                               data-modal-id="nsfProgramContractsModal"
+                               hx-get="{{ url_for('admin_dashboard.nsf_program_contracts', nsf_program_id=contract.nsf_program.nsf_program_id) }}"
+                               hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML">
+                                {{ contract.nsf_program.nsf_program_name }}
+                            </a>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+        </div>{# /.row #}
+    </div>
+
+    {# ── Linked projects ───────────────────────────────────────────
+         85% of contracts fund exactly one project and the maximum is 17,
+         so this is a plain table with no pagination. ProjectContract has
+         no date window of its own — a link's currency is the contract's —
+         so "Linked" is the join row's creation_time and nothing more. #}
+    <div class="card-body border-top">
+        <h6 class="mb-2">
+            <i class="fas fa-folder-open"></i> Linked Projects
+            <span class="badge bg-secondary ms-1">{{ linked_projects | length }}</span>
+        </h6>
+        {% if linked_projects %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width:10em;">Project</th>
+                        <th>Title</th>
+                        <th style="width:14em;">Lead</th>
+                        <th style="width:9em;">Linked</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pc in linked_projects %}
+                    <tr{% if not pc.project.active %} class="text-muted"{% endif %}>
+                        <td>
+                            {% if can_view_projects %}
+                            <a href="#" class="text-decoration-none font-monospace"
+                               title="View project details"
+                               data-action="show-detail-modal"
+                               data-modal-id="projectDetailsModal"
+                               hx-get="{{ url_for('admin_dashboard.project_card', projcode=pc.project.projcode) }}"
+                               hx-target="#projectDetailsModalBody" hx-swap="innerHTML">
+                                <strong>{{ pc.project.projcode }}</strong>
+                            </a>
+                            {% else %}
+                            <span class="font-monospace">{{ pc.project.projcode }}</span>
+                            {% endif %}
+                            {% if not pc.project.active %}
+                            {{ status_badge('inactive', extra='ms-1', small=True) }}
+                            {% endif %}
+                        </td>
+                        <td class="small">{{ pc.project.title }}</td>
+                        <td class="small">{{ pc.project.lead.display_name if pc.project.lead else '—' }}</td>
+                        <td class="text-muted small">{{ pc.creation_time | fmt_date }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0"><small>No projects are linked to this contract.</small></p>
+        {% endif %}
+    </div>
+
+    {# Edit only. `delete_row_button` swaps `closest tr` with the endpoint's
+       empty response — correct for a table row, but here it would find no
+       row and, in the modal host, would leave an empty dialog behind.
+       Expiring stays on the Organizations table where that swap means
+       something. The edit modal is page-level via base_admin.html ->
+       organization_modals.html; the button self-gates on its permission. #}
+    <div class="card-footer d-flex justify-content-end">
+        {{ edit_modal_button(
+            url_for('admin_dashboard.htmx_contract_edit_form', contract_id=contract.contract_id),
+            modal_id='editContractModal',
+            target_id='editContractFormContainer',
+            title='Edit contract',
+            permission=Permission.EDIT_ORG_METADATA) }}
+    </div>
+</div>

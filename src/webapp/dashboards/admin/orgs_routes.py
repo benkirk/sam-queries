@@ -15,7 +15,7 @@ uniqueness checks), and contract delete (retires by end_date).
 import logging
 
 from flask import render_template, request
-from flask_login import login_required
+from flask_login import current_user, login_required
 from datetime import datetime
 from functools import partial
 from sqlalchemy import func
@@ -31,6 +31,7 @@ from webapp.utils.htmx import (
 )
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.rbac import (
+    has_permission_any_facility,
     require_permission, require_permission_any_facility, Permission,
 )
 from sam.manage import management_transaction
@@ -45,7 +46,9 @@ from sam.queries.admin import (
     get_countries_with_institutions,
     get_aoi_groups_with_areas,
     get_areas_of_interest_with_projects,
+    get_contract_detail,
     get_contracts_with_pi,
+    get_nsf_program_contracts,
     get_nsf_programs_with_contracts,
 )
 from sam.schemas.forms.orgs import (
@@ -413,6 +416,73 @@ def htmx_mnemonic_code_create():
         return _reload_form([f'Error creating mnemonic code: {e}'])
 
     return htmx_success_message(_ORG_TRIGGERS, 'Saved successfully.')
+
+
+# ── Contract detail card ──────────────────────────────────────────────────
+#
+# Same shape as user_card / project_card / group_card in blueprint.py, but it
+# lives here with the rest of the contract surface. Two hosts swap the same
+# HTML: the #contractCardContainer region on /admin/contracts, and
+# #contractDetailsModalBody wherever a contract number is clickable.
+
+
+@bp.route('/contract/<int:contract_id>')
+@login_required
+@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+def contract_card(contract_id):
+    """HTML fragment for a single contract's detail card.
+
+    Keyed by id, not number: contract numbers are free text (``USDA Prime
+    Award No. 2013-67003-20652``, ``OCE- 1419584``) and cannot key a URL
+    path the way ``username`` and ``projcode`` do.
+    """
+    contract = get_contract_detail(db.session, contract_id)
+    if not contract:
+        # Warning div at 200, matching the other *_card routes: htmx swaps
+        # it into the card region or modal body rather than erroring.
+        return '<div class="alert alert-warning">Contract not found</div>'
+
+    # Active projects first, then by code. ProjectContract carries no date
+    # window of its own, so there is nothing else meaningful to sort on.
+    linked_projects = sorted(
+        contract.projects,
+        key=lambda pc: (not pc.project.active, pc.project.projcode),
+    )
+
+    return render_template(
+        'dashboards/admin/fragments/contract_card.html',
+        contract=contract,
+        linked_projects=linked_projects,
+        # Gate the cross-entity links on the *target* routes' permissions so
+        # a click can never 403 (the rule jobs_usage_panel.html states).
+        can_view_users=has_permission_any_facility(
+            current_user, Permission.VIEW_USERS),
+        can_view_projects=has_permission_any_facility(
+            current_user, Permission.VIEW_PROJECTS),
+    )
+
+
+@bp.route('/nsf-program/<int:nsf_program_id>/contracts')
+@login_required
+@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+def nsf_program_contracts(nsf_program_id):
+    """The contracts under one NSF program, for the drill-down modal.
+
+    NSFProgram carries only a name and an active flag, so it gets no detail
+    card of its own — this list is the one question the data supports, and
+    it gives the previously-dead "# Contracts" count somewhere to go.
+    """
+    program, contracts = get_nsf_program_contracts(db.session, nsf_program_id)
+    if program is None:
+        return '<div class="alert alert-warning">NSF program not found</div>'
+
+    return render_template(
+        'dashboards/admin/fragments/nsf_program_contracts_htmx.html',
+        program=program,
+        contracts=contracts,
+        can_view_users=has_permission_any_facility(
+            current_user, Permission.VIEW_USERS),
+    )
 
 
 # ── Contract Create (bespoke: award prefill + FK/uniqueness checks) ───────
