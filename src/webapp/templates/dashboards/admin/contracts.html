@@ -1,0 +1,56 @@
+{% extends 'dashboards/admin/base_admin.html' %}
+{% from 'dashboards/fragments/search_box.html' import active_toggle_search %}
+
+{% block title %}Admin: Contracts - SAM{% endblock %}
+
+{% block admin_content %}
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card inner-card">
+            <div class="card-header d-flex justify-content-between align-items-center mb-4">
+                <h5><i class="fas fa-file-signature"></i> Search Contracts</h5>
+                {% if has_permission(Permission.CREATE_ORG_METADATA) %}
+                {# The create modal is page-level via base_admin ->
+                   organization_modals.html, so this needs no extra plumbing. #}
+                <button type="button" class="btn btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#createContractModal"
+                        hx-get="{{ url_for('admin_dashboard.htmx_contract_create_form') }}"
+                        hx-target="#createContractFormContainer"
+                        hx-trigger="click">
+                    <i class="fas fa-plus"></i> Create Contract
+                </button>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {# toggle_checked=False: only 368 of 2,225 contracts are
+                   currently active, so an active-only default would hide
+                   most of the data behind a control you had to know to
+                   clear. Expired grants stay searchable as provenance. #}
+                {{ active_toggle_search(
+                    search_url=url_for('admin_dashboard.htmx_search_contracts'),
+                    input_id='contractSearchInput',
+                    results_id='contractSearchResults',
+                    label='Search by contract number or title',
+                    placeholder='Start typing a contract number or title...',
+                    toggle_id='activeContractsOnly',
+                    toggle_label='Active contracts only',
+                    toggle_checked=False) }}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Contract Card Display Area -->
+<div class="row">
+    <div class="col-12">
+        {# The reload-url idiom concatenates an id onto a base URL. The other
+           pages get an empty base from username='' / projcode='', but an
+           <int:> converter rejects '', so build it from a placeholder. #}
+        <div id="contractCardContainer"
+             data-reload-url="{{ url_for('admin_dashboard.contract_card', contract_id=0) | replace('/0', '/') }}"></div>
+    </div>
+</div>
+
+{% endblock %}

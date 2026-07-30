@@ -120,6 +120,91 @@ class TestContractCard:
         assert 'projectDetailsModalBody' in body
 
 
+class TestContractSearch:
+
+    def test_non_admin_forbidden(self, non_admin_client):
+        assert non_admin_client.get(SEARCH_URL).status_code == 403
+
+    def test_short_query_returns_nothing(self, auth_client):
+        assert auth_client.get(SEARCH_URL,
+                               query_string={'q': 'a'}).get_data(as_text=True) == ''
+
+    def test_match_links_to_the_card(self, auth_client, any_contract):
+        resp = auth_client.get(SEARCH_URL,
+                               query_string={'q': any_contract.contract_number})
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert any_contract.contract_number in body
+        assert CARD_URL.format(any_contract.contract_id) in body
+        assert 'contractCardContainer' in body
+        # form-helpers.js clears the box and scrolls the card into view.
+        assert 'data-clear-results="contractSearchResults"' in body
+
+    def test_title_is_searchable(self, auth_client, session):
+        contract = session.query(Contract).filter(
+            Contract.title.isnot(None)).order_by(Contract.contract_id).first()
+        token = contract.title.split()[0]
+        if len(token) < 2:
+            pytest.skip('first title token too short to search')
+        body = auth_client.get(SEARCH_URL,
+                               query_string={'q': token}).get_data(as_text=True)
+        assert 'No contracts found' not in body
+
+    def test_active_only_filters_and_its_absence_does_not(self, auth_client,
+                                                          session):
+        """Absent means OFF (§10) — expired grants stay searchable."""
+        expired = (
+            session.query(Contract)
+            .filter(~Contract.is_active)
+            .order_by(Contract.contract_id)
+            .first()
+        )
+        if expired is None:
+            pytest.skip('snapshot has no inactive contract')
+
+        q = {'q': expired.contract_number}
+        assert expired.contract_number in auth_client.get(
+            SEARCH_URL, query_string=q).get_data(as_text=True)
+        assert expired.contract_number not in auth_client.get(
+            SEARCH_URL, query_string=dict(q, active_only='1')).get_data(as_text=True)
+
+    def test_no_match_renders_empty_state(self, auth_client):
+        body = auth_client.get(
+            SEARCH_URL, query_string={'q': 'zzzz-no-such-contract'}
+        ).get_data(as_text=True)
+        assert 'No contracts found' in body
+
+
+class TestContractsPage:
+
+    def test_unauthenticated_rejected(self, client):
+        if os.getenv('DISABLE_AUTH') == '1':
+            pytest.skip('Auth disabled in dev environment')
+        assert client.get(PAGE_URL).status_code in (302, 401)
+
+    def test_renders_search_box_and_card_region(self, auth_client):
+        body = auth_client.get(PAGE_URL).get_data(as_text=True)
+        assert 'contractSearchInput' in body
+        assert 'contractCardContainer' in body
+
+    def test_reload_url_has_no_placeholder_id(self, auth_client):
+        """The idiom concatenates an id onto the base; an <int:> converter
+        rejects the empty string the other pages use, so it is stripped."""
+        body = auth_client.get(PAGE_URL).get_data(as_text=True)
+        assert 'data-reload-url="/admin/contract/"' in body
+
+    def test_tab_and_nav_both_list_it(self, auth_client):
+        """Two registries — page_tabs and NAV_SECTIONS. Missing either
+        leaves the page reachable only by typing the URL."""
+        body = auth_client.get(PAGE_URL).get_data(as_text=True)
+        assert body.count('href="/admin/contracts"') >= 2
+
+    def test_active_only_toggle_defaults_off(self, auth_client):
+        body = auth_client.get(PAGE_URL).get_data(as_text=True)
+        toggle = body.split('id="activeContractsOnly"')[1][:200]
+        assert 'checked' not in toggle
+
+
 class TestNsfProgramContracts:
 
     def _program_with_contracts(self, session):

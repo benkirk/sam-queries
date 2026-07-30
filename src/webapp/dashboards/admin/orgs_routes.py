@@ -19,6 +19,7 @@ from flask_login import current_user, login_required
 from datetime import datetime
 from functools import partial
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.fk_validation import validate_fk_existence
@@ -123,6 +124,35 @@ def _search_nsf_programs_fk(q, active_only):
     if active_only:
         query = query.filter(NSFProgram.is_active)
     return query.order_by(NSFProgram.nsf_program_name).limit(15).all()
+
+
+def _search_contracts(q, active_only):
+    """Search box behind /admin/contracts.
+
+    Unlike the FK-picker sibling ``_search_contracts_for_project``, this one
+    **honours** ``active_only`` — that one has no checkbox, this one does.
+    The checkbox defaults off: only 368 of 2,225 contracts are currently
+    active, so an active-only default would hide 83% of the data behind a
+    control most operators would not think to clear.
+    """
+    query = db.session.query(Contract).options(
+        selectinload(Contract.contract_source),
+        selectinload(Contract.principal_investigator),
+    ).filter(
+        Contract.contract_number.ilike(f'%{q}%') | Contract.title.ilike(f'%{q}%')
+    )
+    if active_only:
+        query = query.filter(Contract.is_active)
+    return query.order_by(Contract.contract_number).limit(20).all()
+
+
+register_typeahead(
+    bp, rule='/htmx/search/contracts', endpoint='htmx_search_contracts',
+    permission=Permission.VIEW_ORG_METADATA, any_facility=True,
+    search=_search_contracts,
+    template='dashboards/admin/fragments/contract_search_results_htmx.html',
+    ctx_key='contracts',
+)
 
 
 register_typeahead(
