@@ -1,4 +1,4 @@
-{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_status_badge with context %}
 {#
   htmx: Contract search results — clicking a contract loads its card into
   #contractCardContainer.
@@ -20,13 +20,7 @@
         {% if contract.contract_source %}
         <span class="badge bg-light text-dark border ms-1">{{ contract.contract_source.contract_source }}</span>
         {% endif %}
-        {% if not contract.is_active %}
-            {% if contract.is_future %}
-            {{ status_badge('inactive', extra='ms-1', label='Not started') }}
-            {% else %}
-            {{ status_badge('expired', extra='ms-1') }}
-            {% endif %}
-        {% endif %}
+        {{ contract_status_badge(contract) }}
     </div>
     <small class="text-muted">{{ contract.title[:110] }}{% if contract.title | length > 110 %}…{% endif %}</small>
     {% if contract.principal_investigator %}

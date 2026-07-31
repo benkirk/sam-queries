@@ -239,7 +239,7 @@ def test_project_detail_api_route(app, auth_client, route_count_queries):
 
 
 # ---------------------------------------------------------------------------
-# 8. Admin contracts table — GET /admin/htmx/contracts-table
+# 9. Admin contracts table — GET /admin/htmx/contracts-table
 # ---------------------------------------------------------------------------
 
 def test_admin_contracts_table_route(auth_client, route_count_queries):

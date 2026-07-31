@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link, nsf_program_link, contract_status_badge with context %}
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {#
   Admin: Contract detail card.
@@ -28,14 +29,9 @@
             {% endif %}
             {# An inactive contract is either not started yet or already over —
                the two mean different things to an operator, so badge them
-               apart rather than collapsing to "inactive". #}
-            {% if contract.is_active %}
-            {{ status_badge('active', extra='ms-1') }}
-            {% elif contract.is_future %}
-            {{ status_badge('inactive', extra='ms-1', label='Not started') }}
-            {% else %}
-            {{ status_badge('expired', extra='ms-1') }}
-            {% endif %}
+               apart rather than collapsing to "inactive". A card states the
+               active case outright; the list views badge only exceptions. #}
+            {{ contract_status_badge(contract, show_active=True) }}
         </h5>
     </div>
 
@@ -90,62 +86,21 @@
                     <div class="stat-item">
                         <span class="stat-label">PI:</span>
                         <span class="stat-value">
-                            {% if contract.principal_investigator %}
-                                {% if can_view_users %}
-                                <a href="#" class="text-decoration-none"
-                                   title="View user details"
-                                   data-action="show-user-details"
-                                   hx-get="{{ url_for('admin_dashboard.user_card', username=contract.principal_investigator.username) }}"
-                                   hx-target="#userDetailsModalBody" hx-swap="innerHTML">
-                                    {{ contract.principal_investigator.display_name }}
-                                    <small class="text-muted">({{ contract.principal_investigator.username }})</small>
-                                </a>
-                                {% else %}
-                                {{ contract.principal_investigator.display_name }}
-                                {% endif %}
-                            {% else %}
-                            <span class="text-muted">—</span>
-                            {% endif %}
+                            {{ contract_user_link(contract.principal_investigator, can_view_users) }}
                         </span>
                     </div>
 
                     <div class="stat-item">
                         <span class="stat-label">Monitor:</span>
                         <span class="stat-value">
-                            {% if contract.contract_monitor %}
-                                {% if can_view_users %}
-                                <a href="#" class="text-decoration-none"
-                                   title="View user details"
-                                   data-action="show-user-details"
-                                   hx-get="{{ url_for('admin_dashboard.user_card', username=contract.contract_monitor.username) }}"
-                                   hx-target="#userDetailsModalBody" hx-swap="innerHTML">
-                                    {{ contract.contract_monitor.display_name }}
-                                    <small class="text-muted">({{ contract.contract_monitor.username }})</small>
-                                </a>
-                                {% else %}
-                                {{ contract.contract_monitor.display_name }}
-                                {% endif %}
-                            {% else %}
-                            <span class="text-muted">—</span>
-                            {% endif %}
+                            {{ contract_user_link(contract.contract_monitor, can_view_users) }}
                         </span>
                     </div>
 
                     <div class="stat-item stat-item-block">
                         <span class="stat-label d-block mb-1">NSF Program:</span>
                         <span class="stat-value text-dark text-detail">
-                            {% if contract.nsf_program %}
-                            <a href="#" class="text-decoration-none"
-                               title="Contracts under this program"
-                               data-action="show-detail-modal"
-                               data-modal-id="nsfProgramContractsModal"
-                               hx-get="{{ url_for('admin_dashboard.nsf_program_contracts', nsf_program_id=contract.nsf_program.nsf_program_id) }}"
-                               hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML">
-                                {{ contract.nsf_program.nsf_program_name }}
-                            </a>
-                            {% else %}
-                            <span class="text-muted">—</span>
-                            {% endif %}
+                            {{ nsf_program_link(contract.nsf_program) }}
                         </span>
                     </div>
                 </div>

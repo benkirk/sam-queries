@@ -86,6 +86,44 @@ class TestGetByNumber:
             session, contracts['expired'].contract_number)
         assert found is not None
 
+    def test_internal_whitespace_around_the_hyphen_still_matches(
+            self, session, token):
+        """`'OCE-1419584'` must find the row stored as `'OCE- 1419584'`.
+
+        Operators have entered all three spellings; the exact lookup runs
+        first, and only its miss reaches the squashed comparison.
+        """
+        stored = make_contract(session, contract_number=f'OCE- {token}',
+                               title=f'Spacing study of {token}')
+        for spelling in (f'OCE-{token}', f'OCE - {token}', f'oce-{token}'):
+            found = Contract.get_by_number(session, spelling)
+            assert found is not None, spelling
+            assert found.contract_id == stored.contract_id
+
+
+class TestExistingByNumber:
+    """Shared by the award-search annotation in the CLI and the webapp."""
+
+    def test_maps_known_numbers_by_normalised_key(self, session, contracts):
+        numbers = [c.contract_number for c in contracts.values()]
+        known = Contract.existing_by_number(session, numbers)
+        assert {c.contract_id for c in known.values()} == \
+            {c.contract_id for c in contracts.values()}
+
+    def test_matches_across_whitespace_spellings(self, session, token):
+        stored = make_contract(session, contract_number=f'AGS- {token}',
+                               title=f'Spacing study of {token}')
+        known = Contract.existing_by_number(session, [f'AGS-{token}'])
+        assert [c.contract_id for c in known.values()] == [stored.contract_id]
+
+    def test_unknown_numbers_are_absent(self, session):
+        assert Contract.existing_by_number(
+            session, ['NO-SUCH-CONTRACT-9999']) == {}
+
+    def test_empty_input_does_not_query(self, session):
+        assert Contract.existing_by_number(session, []) == {}
+        assert Contract.existing_by_number(session, [None, '', '  ']) == {}
+
 
 class TestActiveOnly:
 

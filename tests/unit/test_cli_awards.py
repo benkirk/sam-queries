@@ -196,6 +196,33 @@ class TestCrossReference:
         assert 'In SAM' in result.output
         assert 'SAM agrees with the source' in result.output
 
+    def test_divergences_are_not_reported_as_agreement(
+            self, runner, mock_db_session, session):
+        """`status='ok'` means the comparison ran, not that SAM matches.
+
+        The note used to print unconditionally, so a contract with a stale
+        field read "SAM agrees with the source" directly above the table of
+        the ways it does not.
+        """
+        number = f'AGS-{next_seq("AWARDCLI")}'
+        contract = make_contract(
+            session, contract_number=number, title='SAM title',
+            source=make_contract_source(session, name='NSF'),
+            start_date=datetime(2019, 9, 1), end_date=datetime(2023, 8, 31))
+
+        record = _award(contract_number=number, title='A different title',
+                        start_date=date(2019, 9, 1), end_date=date(2023, 8, 31),
+                        program_name=None, pi=None, monitor=None)
+        with patch('sam.integration.awards.resolve_award',
+                   return_value=record):
+            result = runner.invoke(cli, ['awards', number])
+
+        assert result.exit_code == 0, result.output
+        assert 'SAM agrees with the source' not in result.output
+        assert 'SAM differs from' in result.output
+        assert 'Divergences' in result.output
+        assert contract.title == 'SAM title'
+
     def test_suspect_match_is_surfaced_as_a_warning_not_as_data(
             self, runner, mock_db_session, session):
         """#403's guard: SAM's `014421` resolves to a 2009 award titled

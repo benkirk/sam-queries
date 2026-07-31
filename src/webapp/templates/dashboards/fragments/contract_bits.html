@@ -1,0 +1,74 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{#
+  Shared renderers for the three things every contract surface shows: the PI /
+  Monitor link, the NSF Program drill-down link, and the date-range status
+  badge.
+
+  These were hand-repeated across contract_card.html, contracts_table_htmx.html,
+  nsf_program_contracts_htmx.html and organization_card.html, and had already
+  drifted: the NSF-program drill-down rendered its badge as "Not started" via
+  the macro in one file and "not started" as raw markup in another, and the
+  program list rendered PI as plain text — the one place in the app a username
+  was not clickable.
+
+  `compact` picks the table treatment (username only, `text-reset` so the link
+  inherits the muted cell colour, bare em-dash) over the card treatment
+  (display name plus username, its own colour, a muted-span em-dash).
+
+  The permission gate is the load-bearing part: an affordance must never be
+  rendered for a route the viewer cannot reach, or the click 403s. Callers pass
+  `can_view_users` down from the route — never look it up in the template.
+#}
+
+{% macro contract_user_link(user, can_view_users, compact=False) -%}
+{%- if user -%}
+{%- if can_view_users -%}
+<a href="#" class="text-decoration-none{% if compact %} text-reset{% endif %}"
+   title="View user details"
+   data-action="show-user-details"
+   hx-get="{{ url_for('admin_dashboard.user_card', username=user.username) }}"
+   hx-target="#userDetailsModalBody" hx-swap="innerHTML"
+>{% if compact %}{{ user.username }}{% else %}{{ user.display_name }} <small class="text-muted">({{ user.username }})</small>{% endif %}</a>
+{%- else -%}
+{% if compact %}{{ user.username }}{% else %}{{ user.display_name }}{% endif %}
+{%- endif -%}
+{%- else -%}
+{% if compact %}—{% else %}<span class="text-muted">—</span>{% endif %}
+{%- endif -%}
+{%- endmacro %}
+
+
+{#
+  `label` overrides the link text — the Organizations card's NSF Programs tab
+  points its "# Contracts" cell at the same drill-down as the name cell, since
+  the count was previously a dead number with nowhere to go.
+#}
+{% macro nsf_program_link(program, compact=False, label=None) -%}
+{%- if program -%}
+<a href="#" class="text-decoration-none{% if compact %} text-reset{% endif %}"
+   title="Contracts under this program"
+   data-action="show-detail-modal"
+   data-modal-id="nsfProgramContractsModal"
+   hx-get="{{ url_for('admin_dashboard.nsf_program_contracts', nsf_program_id=program.nsf_program_id) }}"
+   hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML"
+>{{ label if label is not none else program.nsf_program_name }}</a>
+{%- else -%}
+{% if compact %}—{% else %}<span class="text-muted">—</span>{% endif %}
+{%- endif -%}
+{%- endmacro %}
+
+
+{#
+  Contract activity, from DateRangeMixin. `show_active` is off by default: a
+  list where most rows are open reads better when only the exceptions are
+  badged, while a detail card wants the state stated outright.
+#}
+{% macro contract_status_badge(contract, extra='ms-1', show_active=False) -%}
+{%- if contract.is_active -%}
+{% if show_active %}{{ status_badge('active', extra=extra) }}{% endif %}
+{%- elif contract.is_future -%}
+{{ status_badge('inactive', extra=extra, label='Not started') }}
+{%- else -%}
+{{ status_badge('expired', extra=extra) }}
+{%- endif -%}
+{%- endmacro %}

@@ -4,15 +4,33 @@ Contract schemas for API serialization.
 Provides one level today:
 - ContractSummarySchema: Minimal fields for nested references
 
-Only the Summary tier exists because only nested references need one: there is
-no ``/api/v1/contracts/`` endpoint, and the webapp's contract card renders from
+Only the Summary tier exists because nothing yet needs more: there is no
+``/api/v1/contracts/`` endpoint, and the webapp's contract card renders from
 ORM objects via ``get_contract_detail``. Add List/Full tiers when an endpoint
 actually needs them rather than speculatively.
 
-``ProjectSchema.get_contracts`` (schemas/project.py) is the obvious consumer —
-it currently emits hand-padded f-strings — but repointing it changes the
-``GET /api/v1/projects/<projcode>`` response shape for existing consumers, so
-that is a deliberate follow-up, not a side effect of adding this.
+**This schema changed a public API response shape.**
+``ProjectSchema.get_contracts`` used to emit hand-padded f-strings and now
+returns these structured objects, so ``GET /api/v1/projects/<projcode>``
+went from a list of ``f"{source} {number:<20} {title}"`` strings::
+
+    "contracts": ["NSF AGS-1852977          The Management and Operation of …"]
+
+to a list of objects carrying the fields below (``contract_id``,
+``contract_number``, ``title``, ``contract_source``, ``start_date``,
+``end_date``, ``is_active``, ``url``, ``pi_username``, ``monitor_username``,
+``nsf_program``)::
+
+    "contracts": [{"contract_number": "AGS-1852977", "contract_source": "NSF",
+                   "title": "…", "is_active": true, …}]
+
+Shipped together in #403. (An earlier draft of this docstring called the
+repoint a deferred follow-up; it was not deferred, and saying so misled
+readers into believing the response shape was unchanged.)
+
+Beyond the API, this is also the CLI's primary serializer — ``sam-search
+contracts``, ``sam-search awards`` and ``sam-admin contracts --validate`` all
+build their JSON envelopes from it via ``cli.contracts.builders``.
 
 Usage:
     from sam.schemas import ContractSummarySchema

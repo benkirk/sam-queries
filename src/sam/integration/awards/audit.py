@@ -37,6 +37,7 @@ import re
 from typing import Dict, List, Optional
 
 from sam.integration import awards
+from sam.projects.contracts import normalize_contract_number
 
 # Reached through the module object rather than ``from ... import resolve_award``
 # so that ``patch('sam.integration.awards.resolve_award')`` takes effect here —
@@ -51,14 +52,6 @@ SCALAR_FIELDS = ('contract_number', 'title', 'start_date', 'end_date',
 
 #: Fields compared only where the provider supplies people.
 PERSON_FIELDS = ('pi', 'monitor')
-
-
-def _normalize_number(value: Optional[str]) -> Optional[str]:
-    """Fold the whitespace noise manual entry leaves around the hyphen."""
-    if not value:
-        return None
-    text = re.sub(r'\s*-\s*', '-', str(value).strip())
-    return re.sub(r'\s+', ' ', text).upper()
 
 
 def _normalize_text(value: Optional[str]) -> Optional[str]:
@@ -89,14 +82,14 @@ def _compare_scalars(contract, record) -> List[Dict]:
     program = (contract.nsf_program.nsf_program_name
                if contract.nsf_program else None)
     sam_source = {
-        'contract_number': _normalize_number(contract.contract_number),
+        'contract_number': normalize_contract_number(contract.contract_number),
         'title':           _normalize_text(contract.title),
         'start_date':      _as_date(contract.start_date),
         'end_date':        _as_date(contract.end_date),
         'nsf_program':     _normalize_text(program),
     }
     provider = {
-        'contract_number': _normalize_number(record.contract_number),
+        'contract_number': normalize_contract_number(record.contract_number),
         'title':           _normalize_text(record.title),
         'start_date':      _as_date(record.start_date),
         'end_date':        _as_date(record.end_date),

@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link, contract_status_badge with context %}
 {#
   htmx: the contracts under one NSF program, rendered into
   #nsfProgramContractsModalBody.
@@ -51,17 +52,11 @@
                 </td>
                 <td class="small">{{ c.title }}</td>
                 <td class="small text-nowrap">
-                    {{ c.principal_investigator.username if c.principal_investigator else '—' }}
+                    {{ contract_user_link(c.principal_investigator, can_view_users, compact=True) }}
                 </td>
                 <td class="small text-nowrap">
                     {{ c.start_date | fmt_date }} – {{ c.end_date | fmt_date }}
-                    {%- if not c.is_active %}
-                      {%- if c.is_future %}
-                      <span class="badge bg-light text-secondary border fw-normal ms-1">not started</span>
-                      {%- else %}
-                      <span class="badge bg-secondary fw-normal ms-1">expired</span>
-                      {%- endif %}
-                    {%- endif %}
+                    {{ contract_status_badge(c) }}
                 </td>
             </tr>
             {% endfor %}

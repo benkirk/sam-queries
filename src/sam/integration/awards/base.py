@@ -80,6 +80,14 @@ class AwardRecord:
     unavailable_fields: FrozenSet[str] = field(default_factory=frozenset)
 
 
+#: Human labels for :attr:`AwardRecord.unavailable_fields`, so the CLI and the
+#: create form phrase the same structural gap the same way. Both render
+#: "<provenance> cannot supply <labels> — enter manually"; they had grown two
+#: label maps that disagreed ('PI' vs 'the PI'). A field with no entry here
+#: falls back to its own key.
+UNAVAILABLE_FIELD_LABELS = {'pi': 'PI', 'monitor': 'Monitor'}
+
+
 class AwardProvider(ABC):
     """One public award API.
 

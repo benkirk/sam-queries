@@ -17,10 +17,11 @@ between a useful answer and a misleading one:
 """
 
 from cli.contracts.builders import contract_dict
+from sam.integration.awards import UNAVAILABLE_FIELD_LABELS as _UNAVAILABLE_LABELS
 
-#: ``AwardRecord.unavailable_fields`` -> what the operator reads. Ordered as
-#: a person would say it ("PI and Monitor"), not alphabetically.
-_UNAVAILABLE_LABELS = {'pi': 'PI', 'monitor': 'Monitor'}
+# Declaration order in the shared map is the order a person would say it
+# ("PI and Monitor"), which is why `build_award` iterates it rather than
+# sorting `unavailable_fields`.
 
 
 def _person(person) -> dict:
@@ -93,6 +94,7 @@ def build_in_sam(contract, comparison) -> dict:
     return {
         'contract':       contract_dict(contract),
         'status':         comparison['status'],
+        'provenance':     comparison.get('provenance'),
         'divergences':    comparison['divergences'],
         'hints':          comparison['hints'],
         'source_summary': comparison.get('source_summary'),
@@ -111,14 +113,17 @@ def build_award_search(records, errors, *, query, limit,
         query:   the search term, echoed back.
         limit:   the per-provider cap that was applied.
         sources: the ``--source`` scoping, if any.
-        known:   ``{contract_number: Contract}`` for hits SAM already has.
+        known:   ``{normalised contract_number: Contract}`` for hits SAM
+            already has, as returned by ``Contract.existing_by_number``.
     """
+    from sam.projects.contracts import normalize_contract_number
+
     known = known or {}
 
     results = []
     for record in records:
         row = award_dict(record)
-        existing = known.get((record.contract_number or '').strip())
+        existing = known.get(normalize_contract_number(record.contract_number))
         row['in_sam'] = contract_dict(existing) if existing else None
         results.append(row)
 
