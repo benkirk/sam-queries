@@ -453,7 +453,9 @@ class TestAwardLookup:
                 contract_source_id='2'))
         body = resp.get_data(as_text=True)
         assert 'cannot supply' in body
-        assert 'the PI' in body and 'the Monitor' in body
+        # Labels come from the shared UNAVAILABLE_FIELD_LABELS map, so this
+        # sentence and `sam-search awards`' matching one cannot drift apart.
+        assert 'PI' in body and 'Monitor' in body
 
     def test_program_create_and_select_returns_a_populated_picker(
             self, auth_client, any_nsf_program):

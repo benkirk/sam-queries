@@ -36,6 +36,10 @@ from webapp.utils.rbac import (
 )
 from sam.manage import management_transaction
 from sam.core.organizations import Institution, InstitutionType, Organization
+#: AwardRecord.unavailable_fields -> what the operator sees in the form.
+#: Shared with `sam-search awards`, which renders the same sentence — the two
+#: had drifted to 'the PI' here and 'PI' there.
+from sam.integration.awards import UNAVAILABLE_FIELD_LABELS as _UNAVAILABLE_LABELS
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
 from sam.projects.contracts import Contract, ContractSource, NSFProgram
@@ -535,9 +539,6 @@ def nsf_program_contracts(nsf_program_id):
 
 CREATE_CONTRACT_TEMPLATE = 'dashboards/admin/fragments/create_contract_form_htmx.html'
 CREATE_CONTRACT_FIELDS_TEMPLATE = 'dashboards/admin/fragments/create_contract_fields_htmx.html'
-
-#: AwardRecord.unavailable_fields -> what the operator sees in the form.
-_UNAVAILABLE_LABELS = {'pi': 'the PI', 'monitor': 'the Monitor'}
 
 
 def _user_label(user):

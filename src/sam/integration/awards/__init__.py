@@ -17,6 +17,7 @@ from sam.integration.awards.base import (
     AwardRecord,
     AwardSourceUnavailable,
     PersonRef,
+    UNAVAILABLE_FIELD_LABELS,
 )
 from sam.integration.awards.client import AwardHttpClient
 from sam.integration.awards.nsf import NsfAwardProvider, nsf_award_id
@@ -41,6 +42,7 @@ __all__ = [
     'AwardSourceUnavailable',
     'NsfAwardProvider',
     'PersonRef',
+    'UNAVAILABLE_FIELD_LABELS',
     'UsaSpendingProvider',
     'award_id_candidates',
     'build_providers',

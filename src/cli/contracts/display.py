@@ -1,9 +1,8 @@
 """Display functions for contract commands. Operate on plain dicts produced
 by `cli.contracts.builders`; never touch ORM objects directly."""
 
-from datetime import datetime
-
 from cli.core.context import Context
+from cli.core.display_utils import date_cell, text, truncate
 from sam import fmt
 from rich.table import Table
 from rich import box
@@ -32,14 +31,14 @@ def display_contract(ctx: Context, data: dict, list_projects: bool = False):
     table.add_column("Value", overflow="fold")
 
     rows = [
-        ("Source",   _as_text(data.get('contract_source'))),
+        ("Source",   text(data.get('contract_source'))),
         ("Status",   "active" if data.get('is_active') else "expired"),
-        ("Period",   f"{_date(data.get('start_date'))} → "
-                     f"{_date(data.get('end_date'))}"),
-        ("PI",       _as_text(data.get('pi_username'))),
-        ("Monitor",  _as_text(data.get('monitor_username'))),
-        ("Program",  _as_text(data.get('nsf_program'))),
-        ("URL",      _as_text(data.get('url'))),
+        ("Period",   f"{date_cell(data.get('start_date'))} → "
+                     f"{date_cell(data.get('end_date'))}"),
+        ("PI",       text(data.get('pi_username'))),
+        ("Monitor",  text(data.get('monitor_username'))),
+        ("Program",  text(data.get('nsf_program'))),
+        ("URL",      text(data.get('url'))),
     ]
     for label, value in rows:
         table.add_row(label, value)
@@ -62,7 +61,7 @@ def display_contract(ctx: Context, data: dict, list_projects: bool = False):
     ptable.add_column("Title", no_wrap=True, overflow="ellipsis")
     ptable.add_column("Active", no_wrap=True)
     for project in projects:
-        ptable.add_row(project['projcode'], _truncate(project['title'], 54),
+        ptable.add_row(project['projcode'], truncate(project['title'], 54),
                        "yes" if project['is_active'] else "no")
     ctx.console.print(ptable)
 
@@ -88,11 +87,11 @@ def display_contract_search(ctx: Context, data: dict):
     for contract in data['contracts']:
         table.add_row(
             contract['contract_number'],
-            _as_text(contract.get('contract_source')),
-            _truncate(contract.get('title'), 46),
-            _as_text(contract.get('pi_username')),
-            _date(contract.get('start_date')),
-            _date(contract.get('end_date')),
+            text(contract.get('contract_source')),
+            truncate(contract.get('title'), 46),
+            text(contract.get('pi_username')),
+            date_cell(contract.get('start_date')),
+            date_cell(contract.get('end_date')),
         )
     ctx.console.print(table)
 
@@ -142,12 +141,12 @@ def _display_check(ctx: Context, check: dict, audited: int):
         contract = finding['contract']
         row = [
             contract['contract_number'],
-            _truncate(contract['contract_source'], 16),
-            _truncate(contract['title'], 44),
-            _date(contract['end_date']),
+            truncate(contract['contract_source'], 16),
+            truncate(contract['title'], 44),
+            date_cell(contract['end_date']),
         ]
         if detail_column:
-            row.append(_truncate(finding['detail'].get(detail_column[1]), 28))
+            row.append(truncate(finding['detail'].get(detail_column[1]), 28))
         table.add_row(*row)
     ctx.console.print(table)
 
@@ -220,8 +219,8 @@ def _display_source_check(ctx: Context, source_check: dict):
                 table.add_row(
                     entry['contract']['contract_number'] if i == 0 else "",
                     divergence['field'],
-                    _truncate(_as_text(divergence['sam']), 40),
-                    _truncate(_as_text(divergence['source']), 40),
+                    truncate(text(divergence['sam']), 40),
+                    truncate(text(divergence['source']), 40),
                 )
         ctx.console.print(table)
     else:
@@ -243,24 +242,6 @@ def _display_source_check(ctx: Context, source_check: dict):
                 for h in entry['hints']
             ) + "[/dim]"
         )
-
-
-def _date(value) -> str:
-    """Format a date that arrived as an ISO string.
-
-    ``ContractSummarySchema`` serialises datetimes to ISO — correct for the
-    JSON payload, but ``fmt.date_str`` wants an object.  Parse, then hand off,
-    so date formatting still goes through ``sam.fmt`` rather than a local
-    ``strftime`` or a string slice.
-    """
-    if not value:
-        return '—'
-    if isinstance(value, str):
-        try:
-            value = datetime.fromisoformat(value)
-        except ValueError:
-            return value
-    return fmt.date_str(value)
 
 
 def _display_suspect_matches(ctx: Context, entries: list):
@@ -287,21 +268,10 @@ def _display_suspect_matches(ctx: Context, entries: list):
         summary = entry['source_summary'] or {}
         table.add_row(
             entry['contract']['contract_number'],
-            _truncate(entry['contract']['title'], 34),
-            _truncate(entry['provenance'], 14),
-            _truncate(summary.get('title'), 34),
+            truncate(entry['contract']['title'], 34),
+            truncate(entry['provenance'], 14),
+            truncate(summary.get('title'), 34),
         )
     ctx.console.print(table)
 
 
-def _as_text(value) -> str:
-    """Render a comparison value, including ``None``, for a table cell."""
-    return '—' if value is None else str(value)
-
-
-def _truncate(text, width: int = 48) -> str:
-    """Keep titles from wrapping the table into unreadability."""
-    if not text:
-        return '—'
-    text = str(text)
-    return text if len(text) <= width else text[:width - 1] + '…'

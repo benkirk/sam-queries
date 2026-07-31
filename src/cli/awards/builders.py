@@ -17,10 +17,11 @@ between a useful answer and a misleading one:
 """
 
 from cli.contracts.builders import contract_dict
+from sam.integration.awards import UNAVAILABLE_FIELD_LABELS as _UNAVAILABLE_LABELS
 
-#: ``AwardRecord.unavailable_fields`` -> what the operator reads. Ordered as
-#: a person would say it ("PI and Monitor"), not alphabetically.
-_UNAVAILABLE_LABELS = {'pi': 'PI', 'monitor': 'Monitor'}
+# Declaration order in the shared map is the order a person would say it
+# ("PI and Monitor"), which is why `build_award` iterates it rather than
+# sorting `unavailable_fields`.
 
 
 def _person(person) -> dict:
