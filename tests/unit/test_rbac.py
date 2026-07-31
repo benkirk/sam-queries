@@ -206,6 +206,34 @@ class TestPermissionEnumSurface:
 
 
 # ---------------------------------------------------------------------------
+# Org-metadata grants per bundle
+# ---------------------------------------------------------------------------
+
+class TestOrgMetadataGrants:
+    """The contract surface (/admin/contracts — award search, contract
+    create, NSF-program create) carries no permission of its own; it is
+    gated entirely on the ``*_ORG_METADATA`` family. These pin who may
+    create org metadata, so an ``ALL_*`` refactor can't silently revert
+    or over-grant it."""
+
+    def test_nusd_can_create_org_metadata(self):
+        assert Permission.CREATE_ORG_METADATA in GROUP_PERMISSIONS['nusd']
+
+    def test_csg_can_create_org_metadata(self):
+        # csg aliases the nusd bundle (same set object).
+        assert Permission.CREATE_ORG_METADATA in GROUP_PERMISSIONS['csg']
+
+    def test_nusd_cannot_delete_org_metadata(self):
+        # Delete stays admin-only: nusd retires a contract by editing its
+        # end_date, which EDIT_ORG_METADATA already allows.
+        assert Permission.DELETE_ORG_METADATA not in GROUP_PERMISSIONS['nusd']
+
+    def test_ssg_cannot_create_org_metadata(self):
+        # ssg is read-only apart from resources / system status.
+        assert Permission.CREATE_ORG_METADATA not in GROUP_PERMISSIONS['ssg']
+
+
+# ---------------------------------------------------------------------------
 # Template context processor — can_act_on_project closure
 # ---------------------------------------------------------------------------
 
