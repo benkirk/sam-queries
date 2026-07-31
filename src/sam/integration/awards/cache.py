@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any, Callable, Optional
 
 from sam.caching import BucketedTTLCache, BucketSpec
+from sam.projects.contracts import normalize_contract_number
 
 _CACHE = BucketedTTLCache('awards', 'awards', {
     'default': BucketSpec(
@@ -36,9 +37,8 @@ _CACHE = BucketedTTLCache('awards', 'awards', {
     ),
 })
 
-#: Test seams, matching the fs-scans / jobs idiom: ``_adapters`` IS the
+#: Test seam, matching the fs-scans / jobs idiom: ``_adapters`` IS the
 #: cache's memo dict, so clearing it re-initialises the cache.
-_BUCKETS = _CACHE.buckets
 _adapters = _CACHE._adapters
 
 
@@ -49,9 +49,16 @@ def cached_lookup(provider_name: str, contract_number: str,
     Only successful answers are cached, including a definite "no such
     award" (``None``) — an ``AwardSourceUnavailable`` propagates out of
     *compute* before the store, so a transient outage is never remembered.
+
+    The number is normalised into the key for the same reason
+    :func:`cached_search` casefolds its term: ``'ags-1852977'`` and
+    ``'AGS-1852977'`` are one award, and without this they would occupy two
+    entries in an 8-day bucket.
     """
     return _CACHE.get_or_compute(
-        'default', (provider_name, contract_number), compute)
+        'default',
+        (provider_name, normalize_contract_number(contract_number)),
+        compute)
 
 
 def cached_search(provider_name: str, query: str, limit: int,
@@ -66,8 +73,3 @@ def cached_search(provider_name: str, query: str, limit: int,
     """
     return _CACHE.get_or_compute(
         'search', (provider_name, query.strip().casefold(), limit), compute)
-
-
-def purge() -> int:
-    """Drop every cached award record. Returns the number of entries cleared."""
-    return _CACHE.purge()
