@@ -7,7 +7,8 @@ project search, and allocation expirations tracking.
 Domain-specific routes are split into sub-modules imported at the bottom:
   resources_routes.py  — Resources, Resource Types, Machines, Queues
   facilities_routes.py — Facilities, Panels, Panel Sessions, Allocation Types
-  orgs_routes.py       — Organizations, Institutions, AOIs, Contracts, NSF Programs
+  orgs_routes.py       — Organizations, Institutions, AOIs
+  contracts_routes.py  — Contracts, Contract Sources, NSF Programs
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
@@ -147,10 +148,10 @@ def contracts():
     Source filter is part of the initial render; everything else on the page
     (results, contract card, the table) arrives via htmx.
     """
-    from webapp.dashboards.admin.orgs_routes import _active_contract_sources
+    from webapp.dashboards.admin.contracts_routes import active_contract_sources
     return render_template('dashboards/admin/contracts.html',
                            user=current_user,
-                           contract_sources=_active_contract_sources())
+                           contract_sources=active_contract_sources())
 
 
 @bp.route('/facilities')
@@ -1087,4 +1088,4 @@ def htmx_queues_for_resource():
 # Domain route modules — must be imported AFTER bp is defined
 # ============================================================================
 
-from . import resources_routes, facilities_routes, orgs_routes, projects_routes, configuration_routes, rate_limits_routes  # noqa: E402, F401
+from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes  # noqa: E402, F401
