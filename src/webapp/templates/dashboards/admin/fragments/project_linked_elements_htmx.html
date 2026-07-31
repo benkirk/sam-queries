@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/contract_bits.html' import contract_status_badge with context %}
 {#
   Linked Elements section — rendered below the main edit-project tabs.
   Context: project, allows_org_links, active_organizations, contracts,
@@ -192,13 +193,7 @@
               <span class="text-muted">
                 {{ pc.contract.start_date | fmt_date }} – {{ pc.contract.end_date | fmt_date }}
               </span>
-              {%- if not pc.contract.is_active %}
-                {%- if pc.contract.is_future %}
-                <span class="badge bg-light text-secondary border fw-normal ms-1">not started</span>
-                {%- else %}
-                <span class="badge bg-secondary fw-normal ms-1">expired</span>
-                {%- endif %}
-              {%- endif %}
+              {{ contract_status_badge(pc.contract) }}
             </td>
             <td class="text-muted small">{{ pc.creation_time | fmt_date }}</td>
             <td class="text-end">

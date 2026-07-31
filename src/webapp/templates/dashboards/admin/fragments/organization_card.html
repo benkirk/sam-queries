@@ -1,8 +1,13 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
+{% from 'dashboards/fragments/contract_bits.html' import nsf_program_link with context %}
 {#
   Admin: Organization Card Body (lazy-loaded into the Organization collapsible section)
-  Contains five tabs: Organizations, Institutions (types+institutions combined),
-  Areas (groups+AOIs combined), Contracts (sources+contracts combined), NSF Programs
+  Contains four tabs: Organizations, Institutions (types+institutions combined),
+  Areas (groups+AOIs combined), NSF Programs.
+
+  The Contracts tab moved to /admin/contracts (#404 round 2) — contracts are
+  their own entity now, not org metadata. NSF Programs deliberately stayed:
+  it is a lookup table, not contract data in the same sense.
 #}
 <div class="card-body p-0">
     <!-- Tab navigation -->
@@ -250,26 +255,11 @@
                             {# Both cells open the same drill-down: the count
                                was a dead number with nowhere to go, and the
                                program itself has no other detail to show. #}
-                            {% set _pc_url = url_for('admin_dashboard.nsf_program_contracts', nsf_program_id=p.nsf_program_id) %}
                             <td data-sort-value="{{ p.nsf_program_name }}">
-                                <a href="#" class="text-decoration-none text-reset"
-                                   title="Contracts under this program"
-                                   data-action="show-detail-modal"
-                                   data-modal-id="nsfProgramContractsModal"
-                                   hx-get="{{ _pc_url }}"
-                                   hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML">
-                                    {{ p.nsf_program_name }}
-                                </a>
+                                {{ nsf_program_link(p, compact=True) }}
                             </td>
                             <td data-sort-value="{{ p.contracts|length }}">
-                                <a href="#" class="text-decoration-none"
-                                   title="Contracts under this program"
-                                   data-action="show-detail-modal"
-                                   data-modal-id="nsfProgramContractsModal"
-                                   hx-get="{{ _pc_url }}"
-                                   hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML">
-                                    {{ p.contracts|length }}
-                                </a>
+                                {{ nsf_program_link(p, label=p.contracts|length) }}
                             </td>
                             <td class="text-end">
                                 {{ edit_modal_button(

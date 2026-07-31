@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button, delete_row_button with context %}
+{% from 'dashboards/fragments/contract_bits.html' import contract_user_link, nsf_program_link with context %}
 {#
   htmx: All Contracts table — grouped by funding source.
 
@@ -132,45 +133,16 @@
                         <td class="text-truncate" style="max-width:0"
                             title="{{ c.title }}">{{ c.title }}</td>
                         <td class="text-muted small text-nowrap">
-                            {% if c.principal_investigator %}
-                                {% if can_view_users %}
-                                <a href="#" class="text-decoration-none text-reset"
-                                   title="View user details"
-                                   data-action="show-user-details"
-                                   hx-get="{{ url_for('admin_dashboard.user_card', username=c.principal_investigator.username) }}"
-                                   hx-target="#userDetailsModalBody" hx-swap="innerHTML">
-                                    {{ c.principal_investigator.username }}
-                                </a>
-                                {% else %}{{ c.principal_investigator.username }}{% endif %}
-                            {% else %}—{% endif %}
+                            {{ contract_user_link(c.principal_investigator, can_view_users, compact=True) }}
                         </td>
                         <td class="text-muted small text-nowrap"
                             title="{{ c.contract_monitor.display_name if c.contract_monitor else '' }}">
-                            {% if c.contract_monitor %}
-                                {% if can_view_users %}
-                                <a href="#" class="text-decoration-none text-reset"
-                                   title="View user details"
-                                   data-action="show-user-details"
-                                   hx-get="{{ url_for('admin_dashboard.user_card', username=c.contract_monitor.username) }}"
-                                   hx-target="#userDetailsModalBody" hx-swap="innerHTML">
-                                    {{ c.contract_monitor.username }}
-                                </a>
-                                {% else %}{{ c.contract_monitor.username }}{% endif %}
-                            {% else %}—{% endif %}
+                            {{ contract_user_link(c.contract_monitor, can_view_users, compact=True) }}
                         </td>
                         <td class="text-muted small"
                             style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
                             title="{{ c.nsf_program.nsf_program_name if c.nsf_program else '' }}">
-                            {% if c.nsf_program %}
-                            <a href="#" class="text-decoration-none text-reset"
-                               title="Contracts under this program"
-                               data-action="show-detail-modal"
-                               data-modal-id="nsfProgramContractsModal"
-                               hx-get="{{ url_for('admin_dashboard.nsf_program_contracts', nsf_program_id=c.nsf_program.nsf_program_id) }}"
-                               hx-target="#nsfProgramContractsModalBody" hx-swap="innerHTML">
-                                {{ c.nsf_program.nsf_program_name }}
-                            </a>
-                            {% else %}—{% endif %}
+                            {{ nsf_program_link(c.nsf_program, compact=True) }}
                         </td>
                         <td class="text-muted small text-nowrap">
                             {{ c.start_date | fmt_date }}
