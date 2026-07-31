@@ -1,7 +1,45 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
+import re
+
 from ..base import *
 #-------------------------------------------------------------------------eh-
+
+
+def normalize_contract_number(value: Optional[str]) -> Optional[str]:
+    """Fold the whitespace noise manual entry leaves around the hyphen.
+
+    ``contract_number`` is free text, and operators have entered the same
+    award as ``'OCE-1419584'``, ``'OCE- 1419584'`` and ``'OCE - 1419584'``.
+    This is the canonical spelling-cleanup for that column: anything
+    comparing two contract numbers, or comparing SAM's number to an award
+    source's, goes through here.
+
+    Deliberately NOT the same function as the two provider query builders:
+
+    * ``awards.nsf.nsf_award_id`` extracts the bare NSF award id (the digits
+      after the last hyphen) because that is what NSF's API takes as a
+      parameter.
+    * ``awards.usaspending`` strips punctuation entirely for the same reason.
+
+    Both of those build *provider request parameters* and are lossy on
+    purpose. This one preserves the number, only tidying it.
+    """
+    if not value:
+        return None
+    text = re.sub(r'\s*-\s*', '-', str(value).strip())
+    return re.sub(r'\s+', ' ', text).upper()
+
+
+def _squashed_number(value: str) -> str:
+    """All whitespace removed and upper-cased — the SQL-comparable form.
+
+    A superset of :func:`normalize_contract_number`'s folding that can be
+    expressed as a MySQL ``UPPER(REPLACE(col, ' ', ''))``, so a stored value
+    carrying stray spaces can still be matched. Only spaces are handled; a
+    tab inside a contract number would defeat it, which has never been seen.
+    """
+    return re.sub(r'\s+', '', str(value)).upper()
 
 
 class _Unchanged:
@@ -178,17 +216,34 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
         (``contract_contract_number_uk``), so this is a scalar getter rather
         than a "first match".
 
-        Exact means exact. The column is free text and holds things like
-        ``'OCE- 1419584'`` and ``'USDA Prime Award No. 2013-67003-20652'``, so
-        a caller working from operator input probably wants
-        :meth:`search_by_pattern` instead.
+        The column is free text and holds things like ``'OCE- 1419584'`` and
+        ``'USDA Prime Award No. 2013-67003-20652'``. An exact match is tried
+        first — that is the indexed path and the common case — and **only on
+        a miss** does a whitespace-insensitive comparison run, so that
+        ``'OCE-1419584'`` finds the row stored as ``'OCE- 1419584'``. The
+        fallback is a scan, but it costs nothing when the exact lookup hits.
+
+        A caller doing free-text search still wants :meth:`search_by_pattern`;
+        this remains a scalar getter.
         """
         number = (contract_number or '').strip()
         if not number:
             return None
+
+        hit = (session.query(cls)
+               .filter(cls.contract_number == number)
+               .one_or_none())
+        if hit is not None:
+            return hit
+
+        # `contract_number` is uniquely indexed, so two rows can only collapse
+        # to one squashed form if an operator entered the same award twice
+        # with different spacing. Order for determinism rather than raising.
         return (session.query(cls)
-                .filter(cls.contract_number == number)
-                .one_or_none())
+                .filter(func.upper(func.replace(cls.contract_number, ' ', ''))
+                        == _squashed_number(number))
+                .order_by(cls.contract_id)
+                .first())
 
     @classmethod
     def search_by_pattern(cls, session, pattern: Optional[str] = None, *,
