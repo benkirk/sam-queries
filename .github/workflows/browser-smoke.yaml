@@ -1,0 +1,108 @@
+name: Browser Smoke
+
+# Front-end regression net: boots the compose stack and drives a real Chromium
+# over every dashboard page, failing on console errors, uncaught exceptions and
+# dangling htmx targets. See docs/plans/FRONTEND_TEST_NET.md.
+#
+# Why its own workflow rather than a step bolted onto an existing one:
+# `test-install.yaml` exists to prove the piped-install path is healthy and
+# `sam-ci-conda_make.yaml` to prove the conda/pip install path works — both say
+# so in their own comments, and both deliberately do not run the test suite. A
+# front-end regression turning either of them red would point reviewers at the
+# installer or the environment. This way a red run means what its name says.
+#
+# Structurally modeled on sam-ci-conda_make.yaml (runner-side Python -> live
+# stack -> smoke steps -> teardown), but with actions/setup-python instead of
+# conda: nothing under e2e/ imports sam/webapp/system_status, so there is no
+# environment to build. Seconds instead of minutes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, staging]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: Browser console sweep
+    # Skip on [skip ci] / [ci skip] / [no ci] in commit message or PR title
+    if: >-
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.head_commit.message, '[ci skip]')
+      && !contains(github.event.head_commit.message, '[no ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[ci skip]')
+      && !contains(github.event.pull_request.title, '[no ci]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          lfs: true          # the compose DB restore reads an LFS-backed dump
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
+      - name: Install latest Docker
+        uses: docker/setup-docker-action@v5
+        with:
+          docker-ce-version: latest
+
+      - name: Prepare .env
+        run: |
+          cp .env.example .env
+          # The sweep is a single rate-limit actor: _key_func() in
+          # webapp/limiter/__init__.py resolves to `user:<username>`, and
+          # webapp/config.py installs a GLOBAL default limit of
+          # RATELIMIT_AUTHED (200/min, Redis-backed and shared across gunicorn
+          # workers). ~22 fragment-heavy dashboards plus the declared flows sit
+          # inside that ceiling, and a 429 would arrive as an htmx error —
+          # indistinguishable from a real regression. Raise the ceiling rather
+          # than setting RATELIMIT_ENABLED=0, so the limiter still runs.
+          echo "RATELIMIT_AUTHED=10000 per minute" >> .env
+
+      # Before `make docker-up` so a dependency failure fails fast rather than
+      # after a full stack start.
+      - name: Install browser test deps
+        run: |
+          pip install -e ".[e2e]"
+          playwright install --with-deps chromium
+
+      - name: Start the stack (gates on every healthcheck via --wait)
+        run: make docker-up
+
+      - name: Show container status
+        if: always()
+        run: docker compose ps
+
+      - name: Browser console sweep (port 7050; gunicorn / prod target)
+        run: make e2e
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-smoke-artifacts
+          path: |
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Show container logs (on failure)
+        if: failure()
+        run: docker compose logs --tail=400 || true
+
+      - name: Cleanup
+        if: always()
+        run: make docker-down
