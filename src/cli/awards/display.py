@@ -67,8 +67,18 @@ def _display_in_sam(ctx: Context, in_sam):
         f"\n[bold]In SAM:[/bold] contract {contract['contract_id']} — "
         f"{text(contract['title'])}")
 
-    note, style = _STATUS_NOTE.get(in_sam['status'], (in_sam['status'], 'dim'))
-    ctx.console.print(f"  {note}", style=style)
+    # `status='ok'` only means the comparison ran — `compare_contract`'s
+    # docstring is explicit that agreement is *ok plus no divergences*.
+    # Printing the 'ok' note unconditionally put "SAM agrees with the source"
+    # directly above a table of the ways it does not.
+    if in_sam['status'] == 'ok' and in_sam['divergences']:
+        ctx.console.print(
+            f"  SAM differs from {text(in_sam.get('provenance'))} in "
+            f"{len(in_sam['divergences'])} field(s)", style='yellow')
+    else:
+        note, style = _STATUS_NOTE.get(in_sam['status'],
+                                       (in_sam['status'], 'dim'))
+        ctx.console.print(f"  {note}", style=style)
 
     if in_sam['status'] == 'suspect_match':
         summary = in_sam.get('source_summary') or {}
