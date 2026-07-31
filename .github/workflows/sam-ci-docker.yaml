@@ -33,14 +33,14 @@ jobs:
           sudo apt-get install -y mysql-client
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           lfs: true
 
       # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
       # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
       - name: Install latest Docker
-        uses: docker/setup-docker-action@v4
+        uses: docker/setup-docker-action@v5
         with:
           docker-ce-version: latest   # or pin a version like "29.0.3"
 
@@ -162,7 +162,7 @@ jobs:
           docker compose cp webapp:/code/htmlcov ./htmlcov || echo "No coverage report generated"
 
       - name: Upload coverage HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-report-html
