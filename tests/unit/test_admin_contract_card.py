@@ -345,3 +345,38 @@ class TestNsfProgramContracts:
         resp = auth_client.get(PROGRAM_CONTRACTS_URL.format(MISSING_ID))
         assert resp.status_code == 200
         assert 'NSF program not found' in resp.get_data(as_text=True)
+
+
+class TestContractsTableToggle:
+    """The Active-only switch on the moved table.
+
+    Absent means OFF (CLAUDE.md § 10): htmx omits an unchecked checkbox
+    entirely, so the route must NOT pass `default=True` — doing so made the
+    toggle a silent no-op, which Playwright caught and no unit test did.
+    The default-on behaviour lives in the template instead: the checkbox
+    ships `checked` and the section's initial hx-get carries active_only=1.
+    """
+
+    def test_explicit_active_only_narrows(self, auth_client):
+        body = auth_client.get(
+            CONTRACTS_TABLE_URL, query_string={'active_only': '1'}
+        ).get_data(as_text=True)
+        assert 'Showing' in body
+        active = int(body.split('Showing ')[1].split(' contract')[0])
+
+        wide = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        allrows = int(wide.split('Showing ')[1].split(' contract')[0])
+
+        # The whole point: absent must mean "include inactive", so the
+        # unfiltered count has to be strictly larger.
+        assert allrows > active, (
+            f'active_only absent returned {allrows}, same as active-only '
+            f'{active} — the toggle is a no-op')
+
+    def test_page_ships_the_toggle_checked_and_seeds_the_param(self,
+                                                               auth_client):
+        """Default-on is expressed in the template, not the route."""
+        body = auth_client.get(PAGE_URL).get_data(as_text=True)
+        toggle = body.split('id="contractsTableActiveOnly"')[1][:200]
+        assert 'checked' in toggle
+        assert 'contracts-table' in body and 'active_only=1' in body

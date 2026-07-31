@@ -76,15 +76,24 @@
                     <span class="input-group-text">
                         <i class="fas fa-magnifying-glass"></i>
                     </span>
+                    {# Enter is bound in form-helpers.js, not with an htmx
+                       `keyup[key=='Enter']` filter: htmx compiles filters with
+                       Function(), which `script-src 'self'` forbids, and then
+                       fails *open* — every keystroke would fire a search
+                       against two public APIs. The JS handler also swallows
+                       the keypress, which matters here: this input sits inside
+                       the Create Contract form, and a bare Enter would
+                       otherwise submit it. #}
                     <input type="text" class="form-control" name="q"
                            id="createContractAwardSearch"
                            placeholder="Find an award by title or keyword…"
                            autocomplete="off"
+                           data-enter-trigger="search-award"
                            hx-get="{{ url_for('admin_dashboard.htmx_contract_award_search') }}"
                            hx-target="#createContractAwardResults"
                            hx-swap="innerHTML"
                            hx-include="#createContractSource"
-                           hx-trigger="keyup[key=='Enter'], search-award from:body"
+                           hx-trigger="search-award from:body"
                            hx-indicator="#createContractSearchSpinner">
                     <button type="button" class="btn btn-outline-secondary"
                             data-action="search-award">

@@ -157,7 +157,7 @@ def contracts():
 @login_required
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def facilities():
-    """Admin Facilities & Allocation Types page (htmx-loaded card)."""
+    """Admin Facilities & Allocations page (htmx-loaded card)."""
     return render_template('dashboards/admin/facilities.html', user=current_user)
 
 

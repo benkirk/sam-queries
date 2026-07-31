@@ -593,11 +593,18 @@ def htmx_contracts_table():
     Moved out of ``htmx_organizations_card``'s Contracts tab. Same query and
     same grouping; it simply lives where an operator looks for it.
 
-    ``active_only`` defaults **on** here, unlike the search box above it on
-    the same page: that one is a query you have already narrowed by typing,
+    The table defaults to active-only, unlike the search box above it on the
+    same page: that one is a query you have already narrowed by typing,
     whereas this is a browse table over 2,225 rows.
+
+    That default is expressed in the **template** — the checkbox ships
+    `checked` and the section's initial `hx-get` carries `?active_only=1` —
+    NOT as `default=True` here. htmx omits an unchecked checkbox entirely, so
+    absent has to mean off; reading it as on makes the toggle a no-op
+    (measured: unchecking re-fetched without the param and still returned the
+    369 active rows). See CLAUDE.md § 10.
     """
-    active_only = read_active_only(request.args, default=True)
+    active_only = read_active_only(request.args)
 
     cs_q = db.session.query(ContractSource).order_by(ContractSource.contract_source)
     if active_only:

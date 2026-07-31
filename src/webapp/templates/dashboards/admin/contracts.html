@@ -72,18 +72,27 @@
                             <label for="candidateSearchInput" class="form-label">
                                 Search by title or keyword
                             </label>
-                            {# hx-trigger includes a body-level custom event so the
-                               Search button and the Enter key are one request path,
-                               not two competing ones. #}
+                            {# One request path for both the button and Enter: a
+                               body-level custom event the input listens for.
+
+                               Enter is bound in form-helpers.js, NOT with an
+                               htmx `keyup[key=='Enter']` filter. htmx compiles
+                               trigger filters with Function(), which
+                               `script-src 'self'` forbids — it raises
+                               htmx:evalDisallowedError and then **fails open**,
+                               so every keystroke fires a request. That would
+                               turn a deliberate button-triggered search into a
+                               typeahead against two public APIs. #}
                             <input type="search" class="form-control" name="q"
                                    id="candidateSearchInput"
                                    placeholder="e.g. boundary layer turbulence"
                                    autocomplete="off"
+                                   data-enter-trigger="find-candidates"
                                    hx-get="{{ url_for('admin_dashboard.htmx_contract_award_candidates') }}"
                                    hx-target="#candidateSearchResults"
                                    hx-swap="innerHTML"
                                    hx-include="#candidateSourceSelect"
-                                   hx-trigger="keyup[key=='Enter'], find-candidates from:body"
+                                   hx-trigger="find-candidates from:body"
                                    hx-indicator="#candidateSearchSpinner">
                         </div>
                         <div class="col-md-3">
