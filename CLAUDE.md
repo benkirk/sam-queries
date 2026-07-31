@@ -582,11 +582,34 @@ to match, rerun schema-validation tests (they catch future drift).
    original `request.form` keys.
 
 ### Skipping CI for trivial changes
-`[skip ci]` / `[ci skip]` / `[no ci]` in the commit message or PR title skips
-test/lint workflows (`sam-ci-docker`, `sam-ci-conda_make`, `test-install`,
-`ci-staging`, `browser-smoke`, `mega-linter`). Does NOT skip
-`build-images-cirrus-deploy` / `deploy-staging` — the deploy-path TruffleHog
-scan runs unconditionally.
+
+Two *different* mechanisms answer to the same tokens — know which one you are
+firing, because they differ in blast radius:
+
+| Where the token appears | What skips |
+|---|---|
+| **PR title** | Only the workflows carrying the repo's `if:` guard — `sam-ci-docker`, `sam-ci-conda_make`, `test-install`, `ci-staging`, `browser-smoke`, `mega-linter`. `build-images-cirrus-deploy` / `deploy-staging` still run, so the deploy-path TruffleHog scan is unconditional. |
+| **Commit message** | **Everything.** GitHub natively suppresses all `push` and `pull_request` workflow runs — including the deploy workflows, whose `if:` guards never even get evaluated. |
+
+⚠️ **Never write the bare tokens in prose.** GitHub scans the *entire* commit
+message for `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]` and
+`[actions skip]` — inside backticks, inside a markdown table, inside a quoted
+commit message, anywhere. When a token is found **no workflow run and no
+Actions check suite are created at all**, which is indistinguishable from a
+GitHub outage. `workflow_dispatch` still works, and that asymmetry is the tell.
+
+This bites hardest on **squash merges**, because GitHub builds the squash
+message from the PR title *and body*. It has cost this repo twice: #406 (which
+quoted image-pin commits that legitimately used a token) and #408 (whose body
+described this very convention). In both cases the resulting staging commit
+shipped with no CI, and then suppressed CI on the open `staging -> main`
+promotion PR whose head it became — and #408's also silently skipped
+`deploy-staging`, so staging was never deployed.
+
+When you need to *write about* the convention, break the string — `skip-ci
+tokens`, or `[skip&nbsp;ci]`. To recover a branch already carrying one, land an
+empty commit with a clean message; reopening the PR does not help, because the
+head commit message is unchanged.
 
 ---
 
