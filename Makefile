@@ -5,7 +5,7 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check perf check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
+.PHONY: help clean clobber distclean fixperms check perf e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
         conda-env prune-old-envs print-env-hash migrate-legacy-env \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
 
@@ -150,6 +150,19 @@ check: ## Run tests
 perf: ## Run perf regression + benchmark suite (serial)
 	$(config_env) && source etc/config_env.sh && \
 	    python3 -m pytest -m perf -n 0 -v
+
+# Where the browser tier points. Defaults to the compose `webapp` service —
+# the gunicorn/production target, and so the more honest thing to smoke.
+# Override for the dev server:  make e2e SAM_E2E_BASE_URL=http://localhost:5050
+SAM_E2E_BASE_URL ?= http://localhost:7050
+
+e2e: ## Run the Playwright browser console sweep against a running stack (needs `make docker-up`)
+	@# Deliberately NOT wrapped in $(config_env)/config_env.sh, unlike `check`
+	@# and `perf`: nothing under e2e/ imports sam/webapp/system_status, and that
+	@# is exactly what lets browser-smoke.yaml install a bare python +
+	@# pytest-playwright instead of building the conda environment.
+	@# One-time local setup:  pip install -e ".[e2e]" && playwright install chromium
+	python3 -m pytest -c e2e/pytest.ini e2e/ --base-url $(SAM_E2E_BASE_URL)
 
 check-db-vs-orms: ## Audit prod DB schema vs ORM models — runs check_db_drift + orm_inventory (skips if PROD_* env unset / VPN unreachable)
 	$(config_env) && source etc/config_env.sh && \

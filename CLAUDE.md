@@ -584,8 +584,9 @@ to match, rerun schema-validation tests (they catch future drift).
 ### Skipping CI for trivial changes
 `[skip ci]` / `[ci skip]` / `[no ci]` in the commit message or PR title skips
 test/lint workflows (`sam-ci-docker`, `sam-ci-conda_make`, `test-install`,
-`ci-staging`, `mega-linter`). Does NOT skip `build-images-cirrus-deploy` /
-`deploy-staging` — the deploy-path TruffleHog scan runs unconditionally.
+`ci-staging`, `browser-smoke`, `mega-linter`). Does NOT skip
+`build-images-cirrus-deploy` / `deploy-staging` — the deploy-path TruffleHog
+scan runs unconditionally.
 
 ---
 
