@@ -211,15 +211,28 @@ class TestTableLinking:
     """A modal opener is five attributes that must agree with a shell in a
     different file; getting one wrong fails silently at runtime."""
 
-    def test_contracts_table_links_contract_numbers_to_the_page_card(
+    def test_contracts_table_links_contract_numbers_to_the_modal(
             self, auth_client):
-        """The table moved off the org card onto /admin/contracts, and with it
-        the target changed: that page owns a card region, so a number swaps
-        #contractCardContainer rather than opening the shared modal — the same
-        target the search box above it already uses."""
+        """The table opens the shared detail modal, NOT the page's card region.
+
+        Targeting the card was tried and reverted: the card sits above the
+        search boxes, so from anywhere down a 2,200-row table a click scrolled
+        nothing into view and read as broken. The modal comes to you. The
+        search box at the top still targets the card — there you are already
+        looking at it.
+        """
         body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
-        assert 'hx-target="#contractCardContainer"' in body
+        assert 'data-modal-id="contractDetailsModal"' in body
+        assert 'hx-target="#contractDetailsModalBody"' in body
         assert '/admin/contract/' in body
+
+    def test_search_results_still_target_the_page_card(self, auth_client,
+                                                       any_contract):
+        """The other half of that split — the two must not converge."""
+        body = auth_client.get(
+            SEARCH_URL, query_string={'q': any_contract.contract_number}
+        ).get_data(as_text=True)
+        assert 'contractCardContainer' in body
 
     def test_contracts_table_links_pi_and_monitor_to_the_user_modal(
             self, auth_client):
@@ -380,3 +393,46 @@ class TestContractsTableToggle:
         toggle = body.split('id="contractsTableActiveOnly"')[1][:200]
         assert 'checked' in toggle
         assert 'contracts-table' in body and 'active_only=1' in body
+
+
+class TestContractsTableLayout:
+    """Row-height and click-target regressions the browser caught.
+
+    Each of these was a real defect that rendered fine in a fragment test but
+    looked broken on screen, so they are pinned as markup contracts.
+    """
+
+    def test_action_cells_do_not_wrap(self, auth_client):
+        """Without text-nowrap the edit/delete buttons stack and every row
+        doubles in height (measured ~95px vs 55px)."""
+        body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        assert 'class="text-end text-nowrap"' in body
+        assert body.count('class="text-end text-nowrap"') >= 2  # source + child
+
+    def test_source_rows_span_the_record_columns(self, auth_client):
+        """A source row is a group header with nothing to put under
+        PI/Monitor/Program/dates. Spanning also keeps long names
+        ('St. Vrain & Left Hand Water Conservancy District') off three lines."""
+        body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        assert 'colspan="7"' in body
+
+    def test_empty_sources_are_not_clickable(self, auth_client, session):
+        """18 of 24 sources are empty under active-only; giving them a chevron
+        and a pointer made most of the table look clickable and do nothing."""
+        from sam.projects.contracts import Contract, ContractSource
+
+        empty = (
+            session.query(ContractSource)
+            .outerjoin(Contract,
+                       Contract.contract_source_id == ContractSource.contract_source_id)
+            .filter(Contract.contract_id.is_(None))
+            .first()
+        )
+        if empty is None:
+            pytest.skip('every contract source has contracts')
+
+        body = auth_client.get(
+            CONTRACTS_TABLE_URL, query_string={'active_only': '1'}
+        ).get_data(as_text=True)
+        # No collapse target is emitted for a source with nothing to reveal.
+        assert f'#contract-source-{empty.contract_source_id}' not in body

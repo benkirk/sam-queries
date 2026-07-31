@@ -21,40 +21,69 @@
            collapse-chevron wiring on — it replaced #organizationsTabsContent
            when this table moved off the Organizations card. #}
         <div class="table-responsive" id="contractsTable">
-            <table class="table table-sm mb-0">
+            {# align-middle + explicit widths: the number column was taking
+               whatever it liked and squeezing Title into a 200px ellipsis,
+               while the Actions column got too little to hold two buttons on
+               one line — which is what made every row ~95px tall. #}
+            <table class="table table-sm table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>Name / Number</th>
-                        <th>Title / Count</th>
-                        <th>PI</th>
-                        <th>Monitor</th>
-                        <th>NSF Program</th>
-                        <th>Start Date</th>
-                        <th>End Date</th>
-                        <th class="text-end">Actions</th>
+                        <th style="width:14%">Name / Number</th>
+                        <th style="width:34%">Title / Count</th>
+                        <th style="width:9%">PI</th>
+                        <th style="width:9%">Monitor</th>
+                        <th style="width:16%">NSF Program</th>
+                        <th style="width:8%">Start</th>
+                        <th style="width:8%">End</th>
+                        <th class="text-end" style="width:1%">Actions</th>
                     </tr>
                 </thead>
                 {% if contract_sources %}
                 {% for cs in contract_sources %}
-                {# ── Source row (clickable trigger) ── #}
+                {% set cs_contracts = contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list %}
+                {# ── Source row ──
+                   Only a collapse trigger when it has something to reveal.
+                   Most sources are empty under the active-only default (18 of
+                   24 on dev), and giving those a chevron and a pointer made
+                   three quarters of the table look clickable and do nothing.
+                   They stay listed — they are still editable rows. #}
                 <tbody>
-                    <tr class="cursor-pointer table-light fw-semibold{% if not cs.active %} opacity-50{% endif %}"
+                    <tr class="table-light fw-semibold{% if not cs.active %} opacity-50{% endif %}
+                               {%- if cs_contracts %} cursor-pointer{% endif %}"
+                        {% if cs_contracts %}
                         data-bs-toggle="collapse"
                         data-bs-target="#contract-source-{{ cs.contract_source_id }}"
-                        aria-expanded="false">
-                        <td>
+                        aria-expanded="false"
+                        {% endif %}>
+                        {# One spanning cell rather than name + count + five
+                           empty <td>s. A source row is a group header, not a
+                           record: it has nothing to put under PI/Monitor/
+                           Program/dates. Spanning also frees long names
+                           ("St. Vrain & Left Hand Water Conservancy District")
+                           from the 14% first column — constrained to it they
+                           wrapped onto three lines and undid the row-height
+                           fix, while text-nowrap instead made column 1 eat a
+                           third of the table and crush Title. #}
+                        <td colspan="7">
+                            {% if cs_contracts %}
                             <i class="fas fa-chevron-right small text-muted me-1 contract-collapse-icon"
                                style="transition: transform 0.2s;"></i>
+                            {% else %}
+                            <i class="fas fa-chevron-right small me-1 invisible"></i>
+                            {% endif %}
                             {{ cs.contract_source }}
+                            <span class="text-muted small fw-normal ms-2">
+                                {% if cs_contracts %}
+                                    {{ cs_contracts|length }} contract{{ 's' if cs_contracts|length != 1 else '' }}
+                                {% else %}
+                                    <span class="fst-italic">none</span>
+                                {% endif %}
+                            </span>
                         </td>
-                        {% set cs_contracts = contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list %}
-                        <td class="text-muted small">{{ cs_contracts|length }} contract{{ 's' if cs_contracts|length != 1 else '' }}</td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td class="text-end">
+                        {# text-nowrap is what keeps the two buttons on one
+                           line; without it they wrap and every row doubles
+                           in height. #}
+                        <td class="text-end text-nowrap">
                             {{ edit_modal_button(
                                 url_for('admin_dashboard.htmx_contract_source_edit_form', source_id=cs.contract_source_id),
                                 modal_id='editContractSourceModal',
@@ -71,22 +100,36 @@
                         </td>
                     </tr>
                 </tbody>
-                {# ── Contract child rows (collapsed by default) ── #}
+                {# ── Contract child rows (collapsed by default) ──
+                   Skipped entirely for an empty source: with no trigger above
+                   it, the tbody could never be revealed, so rendering it was
+                   pure DOM weight (and a dead "No contracts" row). #}
+                {% if cs_contracts %}
                 <tbody class="collapse" id="contract-source-{{ cs.contract_source_id }}">
-                    {% for c in contracts | selectattr('contract_source_id', 'equalto', cs.contract_source_id) | list | sort(attribute='contract_number') %}
+                    {% for c in cs_contracts | sort(attribute='contract_number') %}
                     <tr class="table-secondary{% if not c.is_active %} opacity-50{% endif %}">
                         {# These child rows are not themselves collapse
                            triggers (only the source row above is), so
                            the links need no data-stop-propagation. #}
+                        {# Opens the shared detail modal, NOT the page's
+                           #contractCardContainer. Pointing it at the card
+                           looked tidier but read as broken: the card region
+                           is above the search boxes, so from anywhere down a
+                           2,200-row table a click scrolled nothing into view
+                           and appeared to do nothing at all. The modal comes
+                           to you. The search box up top still targets the
+                           card, because there you are already looking at it. #}
                         <td class="ps-4 fw-semibold text-nowrap">
                             <a href="#" class="text-decoration-none text-reset"
                                title="View contract details"
+                               data-action="show-detail-modal"
+                               data-modal-id="contractDetailsModal"
                                hx-get="{{ url_for('admin_dashboard.contract_card', contract_id=c.contract_id) }}"
-                               hx-target="#contractCardContainer" hx-swap="innerHTML">
+                               hx-target="#contractDetailsModalBody" hx-swap="innerHTML">
                                 {{ c.contract_number }}
                             </a>
                         </td>
-                        <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                        <td class="text-truncate" style="max-width:0"
                             title="{{ c.title }}">{{ c.title }}</td>
                         <td class="text-muted small text-nowrap">
                             {% if c.principal_investigator %}
@@ -135,7 +178,10 @@
                         <td class="text-muted small text-nowrap">
                             {{ c.end_date | fmt_date }}
                         </td>
-                        <td class="text-end">
+                        {# text-nowrap is what keeps the two buttons on one
+                           line; without it they wrap and every row doubles
+                           in height. #}
+                        <td class="text-end text-nowrap">
                             {{ edit_modal_button(
                                 url_for('admin_dashboard.htmx_contract_edit_form', contract_id=c.contract_id),
                                 modal_id='editContractModal',
@@ -149,12 +195,9 @@
                                 permission=Permission.DELETE_ORG_METADATA) }}
                         </td>
                     </tr>
-                    {% else %}
-                    <tr class="table-secondary">
-                        <td colspan="8" class="ps-4 text-muted fst-italic">No contracts for this source.</td>
-                    </tr>
                     {% endfor %}
                 </tbody>
+                {% endif %}
                 {% endfor %}
                 {% else %}
                 <tbody>
