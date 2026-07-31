@@ -988,14 +988,6 @@ class _ContractCreateHandler(HtmxFormHandler):
     def context(self):
         return _contract_create_context(request.form)
 
-    def render_errors(self, errors, field_errors=None):
-        # context() already supplies the augmented `form`, so do not let the
-        # base class overwrite it with the raw request.form (which carries no
-        # `_display` keys and would blank the picker badges).
-        return render_template(self.template, errors=errors,
-                               field_errors=field_errors or {},
-                               **self.context())
-
     def triggers(self, result):
         return _CONTRACT_TRIGGERS
 

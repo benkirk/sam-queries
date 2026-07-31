@@ -170,14 +170,21 @@ class HtmxFormHandler:
     # ------------------------------------------------------------------ #
 
     def render_errors(self, errors, field_errors=None):
-        """Re-render the form fragment with error context."""
-        return render_template(
-            self.template,
-            errors=errors,
-            field_errors=field_errors or {},
-            form=request.form,
-            **self.context(),
-        )
+        """Re-render the form fragment with error context.
+
+        ``form`` defaults to the raw ``request.form`` so the operator's input
+        survives the round-trip, but ``context()`` **wins** if it supplies its
+        own. A handler whose template needs an augmented form (FK pickers
+        carry ``*_display`` labels that ``request.form`` has no way to hold)
+        can therefore just return one from ``context()`` — building the
+        context as a dict rather than passing ``form=`` as a sibling keyword
+        is what makes that possible without a ``TypeError``.
+        """
+        ctx = {'errors': errors,
+               'field_errors': field_errors or {},
+               'form': request.form}
+        ctx.update(self.context())
+        return render_template(self.template, **ctx)
 
     def on_success(self, result):
         """Success response: HX-Redirect when `success_redirect` is set,

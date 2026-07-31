@@ -303,6 +303,29 @@ class TestCreateForm:
         assert 'already exists' in resp.get_data(as_text=True)
         assert 'HX-Trigger' not in resp.headers
 
+    def test_error_rerender_keeps_the_picker_badge(self, auth_client,
+                                                   any_contract):
+        """A failed create must not blank the FK picker badges.
+
+        `fk_search_field` renders the badge from `<field>_display`, which
+        nothing in the DOM posts — `_contract_create_context` synthesises it.
+        `HtmxFormHandler.render_errors` therefore has to let `context()`'s
+        `form` win over the raw `request.form`, which carries no `_display`
+        keys. Pins the behaviour that used to require a local override.
+        """
+        resp = auth_client.post(CREATE_URL, data={
+            'contract_number': any_contract.contract_number,   # duplicate
+            'title': 'Duplicate attempt',
+            'start_date': '2024-01-01',
+            'contract_source_id': str(any_contract.contract_source_id),
+            'principal_investigator_user_id':
+                str(any_contract.principal_investigator_user_id),
+        })
+        body = resp.get_data(as_text=True)
+        assert 'already exists' in body
+        assert 'fk-picker-badge' in body
+        assert any_contract.principal_investigator.username in body
+
     def test_unknown_monitor_is_rejected_before_the_write(self, auth_client,
                                                           any_contract_source):
         resp = auth_client.post(CREATE_URL, data={
