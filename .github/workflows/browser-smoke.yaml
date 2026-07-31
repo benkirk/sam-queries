@@ -18,11 +18,7 @@ name: Browser Smoke
 
 on:
   push:
-    # TEMPORARY — remove `ci_playwright` before merge. workflow_dispatch only
-    # works for workflows already on the default branch, and pull_request
-    # events are not producing runs repo-wide right now, so this is the only
-    # way to exercise this workflow before it lands.
-    branches: [main, ci_playwright]
+    branches: [main]
   pull_request:
     branches: [main, staging]
     paths-ignore:
