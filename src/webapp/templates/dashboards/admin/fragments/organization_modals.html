@@ -8,11 +8,11 @@
 {# ════════════════════════════════════════════════════════ CREATE MODALS #}
 
 {# Gate matches the buttons that open these shells and the routes behind
-   them — all org-metadata create surfaces are CREATE_ORG_METADATA
-   (orgs_routes.py, contracts_routes.py). Gating on CREATE_RESOURCES here
-   (a copy of resources_modals.html) left nusd/csg holding visible create
-   buttons whose modal + htmx target were absent from the DOM: the click
-   silently no-opped with an htmx:targetError. #}
+   them (orgs_routes.py). Gating on CREATE_RESOURCES here — a copy of
+   resources_modals.html — left nusd/csg holding visible create buttons
+   whose modal + htmx target were absent from the DOM: the click silently
+   no-opped with an htmx:targetError. test_modal_shell_contract.py now
+   pins opener and shell to the same permission. #}
 {% if has_permission(Permission.CREATE_ORG_METADATA) %}
 {{ modal_scaffold('createOrganizationModal', 'New Organization',
                   icon='plus', container_id='createOrganizationFormContainer') }}
@@ -32,6 +32,12 @@
 {{ modal_scaffold('createAoiModal', 'New Area of Interest',
                   icon='plus', container_id='createAoiFormContainer') }}
 
+{% endif %}
+
+{# The contract surface has its own permission family — contracts,
+   sources and NSF programs are all served from contracts_routes.py — so
+   these shells gate separately from the org-metadata ones above. #}
+{% if has_permission(Permission.CREATE_CONTRACTS) %}
 {{ modal_scaffold('createContractSourceModal', 'New Contract Source',
                   icon='plus', container_id='createContractSourceFormContainer') }}
 
