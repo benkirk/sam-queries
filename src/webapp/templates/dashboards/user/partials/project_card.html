@@ -1,7 +1,7 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/shared/usage_bar.html' import render_usage_bar with context %}
 {% from 'dashboards/fragments/help.html' import help_icon with context %}
-{% from 'dashboards/fragments/glossary.html' import g_usage_bar with context %}
+{% from 'dashboards/fragments/glossary.html' import g_usage_bar, g_contract_status with context %}
 
 {# Macro: Project Information Section #}
 {% macro render_project_info(project) %}
@@ -14,6 +14,9 @@
                 <span class="text-success font-weight-bold">Active</span>
             {% else %}
                 <span class="text-danger font-weight-bold">Inactive</span>
+                {%- if project.inactivate_time %}
+                <span class="text-muted small">since {{ project.inactivate_time | fmt_date }}</span>
+                {%- endif %}
             {% endif %}
         </span>
     </div>
@@ -47,30 +50,68 @@
         <span class="stat-label">Area:</span>
         <span class="stat-value">{{ project.area_of_interest.area_of_interest if project.area_of_interest else 'N/A' }}</span>
     </div>
-    <!-- Organizations -->
+    <!-- Organizations — every link is shown, current first; a closed window is
+         badged with its end date rather than hidden. -->
     {% if project.organizations %}
     <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Organizations:</span>
       <div class="stat-value text-dark text-detail">
-        {% for po in project.organizations %}
+        {% for po in project.organizations_current_first() %}
             <div class="mb-1">
-                <span class="badge bg-light text-dark border">{{ po.organization.acronym }}</span>
+                <span class="badge bg-light {{ 'text-secondary' if not po.is_active else 'text-dark' }} border">{{ po.organization.acronym }}</span>
                 <span class="text-muted">{{ po.organization.name }}</span>
+                {%- if not po.is_active and po.end_date %}
+                <span class="text-muted small">— until {{ po.end_date | fmt_date }}</span>
+                {%- endif %}
+                {%- if not po.organization.is_active %}
+                {{ status_badge('inactive', extra='ms-1') }}
+                {%- endif %}
             </div>
         {% endfor %}
       </div>
     </div>
     {% endif %}
-    <!-- Contracts -->
+    <!-- Contracts — an expired grant is still the project's funding provenance,
+         so nothing is filtered out; lapsed rows carry a dated badge. -->
     {% if project.contracts %}
     <div class="stat-item stat-item-block mt-2">
-      <span class="stat-label d-block mb-1">Contracts:</span>
+      <span class="stat-label d-block mb-1">
+        Contracts: {{ help_icon(g_contract_status(), rich=True) }}
+      </span>
+      {# The contract number opens #contractDetailsModal, but only for viewers
+         who can actually load that card — a normal user on their own
+         dashboard has no VIEW_ORG_METADATA and the click would 403, so they
+         keep plain text. The opener is data-action rather than a Bootstrap
+         toggle because this card is frequently rendered *inside*
+         #projectDetailsModal, where a toggle would close its host instead of
+         stacking on it. The shell rides along with project_details_modal.html. #}
+      {% set _can_view_contracts = has_permission_any_facility(Permission.VIEW_ORG_METADATA)
+                                   if has_permission_any_facility is defined and Permission is defined
+                                   else false %}
       <div class="stat-value text-dark text-detail">
-        {% for pc in project.contracts %}
+        {% for pc in project.contracts_current_first() %}
             <div class="mb-1">
                 <span class="badge bg-light text-dark border">{{ pc.contract.contract_source.contract_source }}</span>
+                {% if _can_view_contracts %}
+                <a href="#" class="text-decoration-none text-reset"
+                   title="View contract details"
+                   data-action="show-detail-modal"
+                   data-modal-id="contractDetailsModal"
+                   hx-get="{{ url_for('admin_dashboard.contract_card', contract_id=pc.contract.contract_id) }}"
+                   hx-target="#contractDetailsModalBody" hx-swap="innerHTML">
+                    <strong>{{ pc.contract.contract_number }}</strong>
+                </a>
+                {% else %}
                 <strong>{{ pc.contract.contract_number }}</strong>
+                {% endif %}
                 <span class="text-muted">- {{ pc.contract.title }}</span>
+                {%- if not pc.contract.is_active %}
+                  {%- if pc.contract.is_future %}
+                  <span class="badge bg-light text-secondary border fw-normal ms-1">starts {{ pc.contract.start_date | fmt_date }}</span>
+                  {%- else %}
+                  <span class="badge bg-secondary fw-normal ms-1">expired {{ pc.contract.end_date | fmt_date }}</span>
+                  {%- endif %}
+                {%- endif %}
             </div>
         {% endfor %}
       </div>

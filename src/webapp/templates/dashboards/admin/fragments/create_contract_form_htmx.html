@@ -1,6 +1,20 @@
 {% from 'dashboards/fragments/modal_form.html' import htmx_form with context %}
-{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, select_field, fk_search_field with context %}
-{# htmx: Create Contract Form #}
+{% from 'dashboards/fragments/form_fields.html' import text_field, select_field with context %}
+{#
+  htmx: Create Contract Form
+
+  Two modes, mirroring create_project_form_htmx.html's projcode_mode
+  btn-check group: the radio value is itself a submitted field. Here the
+  modes are purely presentational — "Look up award" adds a Fetch button
+  that prefills the field block, and both modes then post the same fields
+  to one Contract.create(). Nothing is fetched during the POST, so a slow
+  agency API can never hold a write transaction open and the operator's
+  edits always win over a prefill.
+
+  Contract number and Source sit outside #createContractFields because they
+  are the lookup *inputs*: a prefill swap must not disturb what was just
+  typed into them, and hx-include="closest form" picks them up from here.
+#}
 {% call htmx_form(
     url_for('admin_dashboard.htmx_contract_create'),
     '#createContractFormContainer',
@@ -26,32 +40,103 @@
             </div>
         </div>
 
-        {{ text_field('title', 'Title',
-                      required=True, maxlength=255,
-                      id='createContractTitle') }}
-
-        {{ text_field('url', 'URL',
-                      type='url', maxlength=1000,
-                      placeholder='https://...',
-                      id='createContractUrl') }}
-
-        <div class="row">
-            <div class="col-md-6">
-                {{ date_field('start_date', 'Start Date',
-                              required=True,
-                              default=today,
-                              id='createContractStart') }}
+        <div class="mb-3">
+            <div class="btn-group btn-group-sm mb-2 w-100" role="group"
+                 aria-label="Contract entry mode">
+                <input type="radio" class="btn-check" name="contract_mode"
+                       id="contractModeManual" value="manual" autocomplete="off"
+                       data-action-change="contract-mode"
+                       {% if not form or form.get('contract_mode', 'manual') == 'manual' %}checked{% endif %}>
+                <label class="btn btn-outline-secondary" for="contractModeManual">
+                    <i class="fas fa-keyboard me-1"></i> Enter manually
+                </label>
+                <input type="radio" class="btn-check" name="contract_mode"
+                       id="contractModeLookup" value="lookup" autocomplete="off"
+                       data-action-change="contract-mode"
+                       {% if form and form.get('contract_mode') == 'lookup' %}checked{% endif %}>
+                <label class="btn btn-outline-secondary" for="contractModeLookup">
+                    <i class="fas fa-cloud-arrow-down me-1"></i> Look up award
+                </label>
             </div>
-            <div class="col-md-6">
-                {{ date_field('end_date', 'End Date',
-                              id='createContractEnd') }}
+
+            {# #contractLookupRow is also the htmx.onLoad marker that
+               form-helpers.js gates the mode re-init on. #}
+            <div id="contractLookupRow" style="display:none;">
+                {# ── Find an award ──
+                   Free-text search, for the common case where the operator
+                   does not yet know the number. Its input is named `q`, which
+                   htmx_contract_award_lookup already pops out of the form
+                   dict, so it cannot leak into the prefill or the POST.
+
+                   Not a keystroke typeahead: a search is ~3 requests to two
+                   public APIs at ~1.5 s, so it is button-triggered and
+                   spinner-backed. `hx-trigger` also fires on Enter so the
+                   keyboard path works without reaching for the mouse. #}
+                <div class="input-group input-group-sm mb-2">
+                    <span class="input-group-text">
+                        <i class="fas fa-magnifying-glass"></i>
+                    </span>
+                    {# Enter is bound in form-helpers.js, not with an htmx
+                       `keyup[key=='Enter']` filter: htmx compiles filters with
+                       Function(), which `script-src 'self'` forbids, and then
+                       fails *open* — every keystroke would fire a search
+                       against two public APIs. The JS handler also swallows
+                       the keypress, which matters here: this input sits inside
+                       the Create Contract form, and a bare Enter would
+                       otherwise submit it. #}
+                    <input type="text" class="form-control" name="q"
+                           id="createContractAwardSearch"
+                           placeholder="Find an award by title or keyword…"
+                           autocomplete="off"
+                           data-enter-trigger="search-award"
+                           hx-get="{{ url_for('admin_dashboard.htmx_contract_award_search') }}"
+                           hx-target="#createContractAwardResults"
+                           hx-swap="innerHTML"
+                           hx-include="#createContractSource"
+                           hx-trigger="search-award from:body"
+                           hx-indicator="#createContractSearchSpinner">
+                    <button type="button" class="btn btn-outline-secondary"
+                            data-action="search-award">
+                        Search
+                    </button>
+                </div>
+                <span id="createContractSearchSpinner"
+                      class="htmx-indicator text-muted small d-block mb-2">
+                    <i class="fas fa-spinner fa-spin me-1"></i>Searching NSF and USAspending…
+                </span>
+                <div id="createContractAwardResults" class="list-group mb-2"></div>
+
+                {# seeded: opened from "Create contract from this award" on
+                   /admin/contracts, so the number and Source are already
+                   filled. Fire the lookup immediately — it is the step that
+                   supplies Monitor and program, which a search result cannot.
+                   `load` fires once per element, and the swap replaces
+                   #createContractFields only, leaving this button alone. #}
+                <button type="button" id="contractFetchAward"
+                        class="btn btn-sm btn-outline-primary"
+                        hx-get="{{ url_for('admin_dashboard.htmx_contract_award_lookup') }}"
+                        hx-target="#createContractFields"
+                        hx-swap="innerHTML"
+                        hx-include="closest form"
+                        {% if seeded %}hx-trigger="load, click"{% endif %}
+                        hx-indicator="#createContractLookupSpinner">
+                    <i class="fas fa-cloud-arrow-down me-1"></i> Fetch award
+                </button>
+                <span id="createContractLookupSpinner"
+                      class="htmx-indicator ms-2 text-muted small">
+                    <i class="fas fa-spinner fa-spin me-1"></i>Contacting the funding source…
+                </span>
+                <div class="form-text">
+                    Search above if you do not know the number, or type it into
+                    Contract Number and fetch directly. NSF awards fill in every
+                    field, including the Program Manager. Other federal sources
+                    are looked up via USAspending, which carries dates and the
+                    award URL but no people.
+                </div>
             </div>
         </div>
 
-        {{ fk_search_field('principal_investigator_user_id', 'Principal Investigator',
-                           search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
-                           required=True,
-                           placeholder='Search by name or username…',
-                           badge_class='bg-primary py-1 px-2',
-                           id_prefix='createContractPI') }}
+        <div id="createContractFields">
+            {% include 'dashboards/admin/fragments/create_contract_fields_htmx.html' %}
+        </div>
 {% endcall %}

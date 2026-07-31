@@ -1,0 +1,33 @@
+{% from 'dashboards/fragments/contract_bits.html' import contract_status_badge with context %}
+{#
+  htmx: Contract search results — clicking a contract loads its card into
+  #contractCardContainer.
+
+  The non-FK sibling of contract_search_results_fk_htmx.html: that one emits
+  data-fk-id / data-fk-label for fk-picker.js, this one navigates. Modelled
+  on project_search_results_htmx.html.
+#}
+{% if contracts %}
+{% for contract in contracts %}
+<button type="button"
+        class="list-group-item list-group-item-action w-100 text-start {% if not contract.is_active %}text-muted{% endif %}"
+        hx-get="{{ url_for('admin_dashboard.contract_card', contract_id=contract.contract_id) }}"
+        hx-target="#contractCardContainer"
+        hx-swap="innerHTML"
+        data-clear-results="contractSearchResults" data-clear-input="contractSearchInput">
+    <div>
+        <strong class="font-monospace">{{ contract.contract_number }}</strong>
+        {% if contract.contract_source %}
+        <span class="badge bg-light text-dark border ms-1">{{ contract.contract_source.contract_source }}</span>
+        {% endif %}
+        {{ contract_status_badge(contract) }}
+    </div>
+    <small class="text-muted">{{ contract.title[:110] }}{% if contract.title | length > 110 %}…{% endif %}</small>
+    {% if contract.principal_investigator %}
+    <br><small class="text-muted">PI: {{ contract.principal_investigator.display_name }}</small>
+    {% endif %}
+</button>
+{% endfor %}
+{% else %}
+<div class="list-group-item text-muted">No contracts found</div>
+{% endif %}

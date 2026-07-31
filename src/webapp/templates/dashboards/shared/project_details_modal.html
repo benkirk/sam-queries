@@ -25,3 +25,11 @@
    no-op (htmx:targetError + no Bootstrap target) on any page that shows the
    project details modal without also remembering this second include. #}
 {% include 'dashboards/user/fragments/allocation_modals.html' %}
+
+{# Same reasoning, one entity over: the modal body's project card lists the
+   project's contracts, and (for viewers with VIEW_ORG_METADATA) each one
+   opens #contractDetailsModal. Including it here means every page that can
+   show a project card gets the contract shell too — rather than repeating
+   the include across base_admin / base_user / base_allocations / base_status
+   and the one-off pages, and silently breaking whichever gets forgotten. #}
+{% include 'dashboards/shared/contract_details_modal.html' %}

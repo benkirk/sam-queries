@@ -1,0 +1,112 @@
+{% from 'dashboards/fragments/form_fields.html' import text_field, date_field, fk_search_field with context %}
+{#
+  htmx: Create Contract — the field block.
+
+  Three entry points, one code path (the htmx_project_parent_prefill idiom):
+    * {% include %}d by create_contract_form_htmx.html on the initial render
+    * hx-get-swapped by htmx_contract_award_lookup after an award fetch
+    * re-rendered inside the whole form on a validation error
+
+  Everything reads from `form` (a pseudo-form dict of strings), so all three
+  paths pre-populate identically. Contract number and Source deliberately
+  live in the parent form, not here: they are the lookup *inputs*, and a
+  swap must not disturb what the operator just typed into them.
+
+  Context:
+    form               — pseudo-form dict (always present)
+    today              — default start date on first render
+    provenance         — (optional) provider name, when values were prefilled
+    unavailable_labels — (optional) human labels for what this provider
+                         structurally cannot supply
+    lookup_error       — (optional) award not found / source unreachable
+    pi_hint            — (optional) PersonRef the source gave that matched no SAM user
+    monitor_hint       — (optional) same, for the program officer
+    program_hint       — (optional) program name absent from nsf_program
+#}
+
+{#
+  Suggest, don't impose (the project_lead_hint_htmx.html pattern): when the
+  award source names someone we cannot resolve to a SAM user, show who they
+  said it was and let the operator search — never guess, and never create a
+  user. The button seeds the picker's search box with the surname.
+#}
+{% macro person_hint(picker_prefix, person) %}
+{% if person %}
+<div class="form-text mt-1 mb-3">
+    <i class="fas fa-user-slash me-1"></i>Award source names
+    <strong>{{ person.name or person.email }}</strong>
+    {%- if person.name and person.email %}
+    <span class="text-muted">&lt;{{ person.email }}&gt;</span>
+    {%- endif %}, who has no matching SAM user.
+    <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline"
+            data-action="search-suggested-person"
+            data-search-input="{{ picker_prefix }}_search"
+            data-search-term="{{ person.name.split()[-1] if person.name else person.email }}">
+        search for them
+    </button>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% if lookup_error %}
+<div class="alert alert-warning py-2 small" role="alert">
+    <i class="fas fa-circle-info me-1"></i>{{ lookup_error }}
+</div>
+{% endif %}
+
+{% if provenance %}
+<div class="alert alert-info py-2 small" role="alert">
+    <i class="fas fa-wand-magic-sparkles me-1"></i>
+    Prefilled from <strong>{{ provenance }}</strong>. Review before saving —
+    these values are a starting point, not the record.
+    {% if unavailable_labels %}
+    <div class="mt-1">
+        <i class="fas fa-circle-exclamation me-1"></i>{{ provenance }} cannot supply
+        {{ unavailable_labels | join(' or ') }} —
+        enter {{ 'these' if unavailable_labels | length > 1 else 'this' }} manually.
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
+{{ text_field('title', 'Title',
+              required=True, maxlength=255,
+              id='createContractTitle') }}
+
+{{ text_field('url', 'URL',
+              type='url', maxlength=1000,
+              placeholder='https://...',
+              id='createContractUrl') }}
+
+<div class="row">
+    <div class="col-md-6">
+        {{ date_field('start_date', 'Start Date',
+                      required=True,
+                      default=today,
+                      id='createContractStart') }}
+    </div>
+    <div class="col-md-6">
+        {{ date_field('end_date', 'End Date',
+                      id='createContractEnd') }}
+    </div>
+</div>
+
+{{ fk_search_field('principal_investigator_user_id', 'Principal Investigator',
+                   search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                   required=True,
+                   placeholder='Search by name or username…',
+                   badge_class='bg-primary py-1 px-2',
+                   id_prefix='createContractPI') }}
+{{ person_hint('createContractPI', pi_hint) }}
+
+{{ fk_search_field('contract_monitor_user_id', 'Contract Monitor',
+                   search_url=url_for('admin_dashboard.htmx_search_users', context='fk'),
+                   optional_text='(optional — the program manager at the funding source)',
+                   placeholder='Search by name or username…',
+                   badge_class='bg-secondary py-1 px-2',
+                   id_prefix='createContractMonitor') }}
+{{ person_hint('createContractMonitor', monitor_hint) }}
+
+<div id="createContractProgramField" class="mb-3">
+    {% include 'dashboards/admin/fragments/contract_nsf_program_field_htmx.html' %}
+</div>

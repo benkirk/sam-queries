@@ -124,6 +124,11 @@ document.body.addEventListener('reloadFacilitiesCard', function() {
 document.body.addEventListener('reloadOrganizationsCard', function() {
     _reloadAdminCard('organizationsSection', 'organizationsCardActiveOnly');
 });
+// Contracts and contract sources live on /admin/contracts, so their
+// mutations reload that table rather than the Organizations card.
+document.body.addEventListener('reloadContractsCard', function() {
+    _reloadAdminCard('contractsTableSection', 'contractsTableActiveOnly');
+});
 document.body.addEventListener('reloadResourcesCard', function() {
     _reloadAdminCard('resourcesSection', 'resourcesCardActiveOnly');
 });

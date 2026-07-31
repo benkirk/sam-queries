@@ -1,0 +1,24 @@
+{# NSF Program contracts modal — body filled via HTMX GET
+   /admin/nsf-program/<id>/contracts (admin_dashboard.nsf_program_contracts).
+
+   One shell serves every program: the fragment sets #nsfProgramContractsModalTitle
+   out-of-band with hx-swap-oob, the idiom the shared audit modal uses.
+
+   Scrollable because the largest program carries 401 contracts. #}
+<div class="modal fade" id="nsfProgramContractsModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg modal-fullscreen-sm-down modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nsfProgramContractsModalTitle">NSF Program</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="nsfProgramContractsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

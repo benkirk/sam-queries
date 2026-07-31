@@ -1,0 +1,31 @@
+{# Contract Details Modal — body filled via HTMX GET /admin/contract/<id>
+   (admin_dashboard.contract_card), the same fragment the #contractCardContainer
+   region on /admin/contracts swaps in.
+
+   Openers use data-action="show-detail-modal" + data-modal-id rather than a
+   Bootstrap toggle: a contract link can sit inside an already-open modal (a
+   project card shown in #projectDetailsModal, a row in the NSF-program
+   modal), where a toggle would close the host instead of stacking on it.
+
+   modal-dialog-scrollable because a contract can list up to 17 projects. #}
+<div class="modal fade" id="contractDetailsModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-xl modal-fullscreen-sm-down modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Contract Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="contractDetailsModalBody">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# The contract card's NSF Program link opens this — it must be a sibling at
+   page level, never nested inside the contract modal. #}
+{% include 'dashboards/shared/nsf_program_contracts_modal.html' %}

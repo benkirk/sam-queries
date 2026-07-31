@@ -1,0 +1,47 @@
+{% from 'dashboards/fragments/form_fields.html' import fk_search_field with context %}
+{#
+  htmx: NSF Program field for the Create Contract form.
+
+  Its own fragment because htmx_contract_program_create swaps just this
+  block back after creating a program from the award-lookup hint — leaving
+  every other field the operator has touched alone.
+
+  A picker rather than a select: there are ~240 programs, and the list is
+  the kind of thing you search, not scroll. The search is active-only (FK
+  convention), but a contract already pointing at a deactivated program
+  still shows it, because the badge comes from `form` and not the search.
+
+  Context:
+    form           — pseudo-form dict; nsf_program_id + nsf_program_id_display
+    program_hint   — (optional) a program name the award source reported that
+                     is absent from nsf_program; renders the opt-in create
+                     button. Never auto-created.
+    program_error  — (optional) message from a failed create attempt
+#}
+{{ fk_search_field('nsf_program_id', 'NSF Program',
+                   search_url=url_for('admin_dashboard.htmx_search_nsf_programs'),
+                   optional_text='(optional)',
+                   placeholder='Search programs…',
+                   badge_class='bg-info py-1 px-2',
+                   wrapper_class='',
+                   id_prefix='createContractNsfProgram') }}
+
+{% if program_error %}
+<div class="form-text text-danger mt-1">
+    <i class="fas fa-triangle-exclamation me-1"></i>{{ program_error }}
+</div>
+{% endif %}
+
+{% if program_hint %}
+<div class="form-text mt-1">
+    <i class="fas fa-lightbulb me-1"></i>Award source reports program
+    <strong>{{ program_hint }}</strong>, which is not in SAM yet.
+    <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline"
+            hx-post="{{ url_for('admin_dashboard.htmx_contract_program_create') }}"
+            hx-target="#createContractProgramField"
+            hx-swap="innerHTML"
+            hx-vals='{"nsf_program_name": {{ program_hint | tojson }}}'>
+        create and select it
+    </button>
+</div>
+{% endif %}

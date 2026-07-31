@@ -117,6 +117,18 @@ class SAMWebappConfig(SAMConfig):
     ALLOCATION_USAGE_CACHE_TTL  = int(os.getenv('ALLOCATION_USAGE_CACHE_TTL', 3600))   # seconds
     ALLOCATION_USAGE_CACHE_SIZE = int(os.getenv('ALLOCATION_USAGE_CACHE_SIZE', 200))    # max entries
 
+    # Award-source lookup cache (sam.integration.awards). Award records are
+    # near-immutable, so this sits at the long end of the range like
+    # FS_SCANS_CACHE_TTL rather than the volatile jobs TTL.
+    AWARD_LOOKUP_CACHE_TTL  = int(os.getenv('AWARD_LOOKUP_CACHE_TTL', 691200))   # 8 days
+    AWARD_LOOKUP_CACHE_SIZE = int(os.getenv('AWARD_LOOKUP_CACHE_SIZE', 256))     # max entries
+
+    # Free-text award search gets its own bucket at a much shorter TTL: a
+    # search is a view over a changing corpus, not a near-immutable record,
+    # so a new award should surface the next day rather than the next week.
+    AWARD_SEARCH_CACHE_TTL  = int(os.getenv('AWARD_SEARCH_CACHE_TTL', 86400))    # 1 day
+    AWARD_SEARCH_CACHE_SIZE = int(os.getenv('AWARD_SEARCH_CACHE_SIZE', 256))     # max entries
+
     # hpc-usage-queries plugin (per-job rows on resource-usage detail pages).
     # The plugin owns its own database — typically a per-machine PostgreSQL
     # database (derecho_jobs, casper_jobs) on the shared `csg-postgres` cluster.
@@ -325,6 +337,17 @@ class TestingConfig(SAMWebappConfig):
     # Disable usage cache in tests to prevent cross-test pollution
     ALLOCATION_USAGE_CACHE_TTL  = 0
     ALLOCATION_USAGE_CACHE_SIZE = 0
+
+    # Award lookups and searches are stubbed in tests; a live cache would let
+    # one test's stub answer leak into the next.  Both buckets must be listed:
+    # a bucket whose keys are absent here falls through to its hardcoded
+    # default and stays LIVE under test, which is exactly how the award-search
+    # cache leaked between cases in CI (docs/plans/implemented/AWARD_SEARCH.md
+    # §13.1).
+    AWARD_LOOKUP_CACHE_TTL  = 0
+    AWARD_LOOKUP_CACHE_SIZE = 0
+    AWARD_SEARCH_CACHE_TTL  = 0
+    AWARD_SEARCH_CACHE_SIZE = 0
 
     # Rate limiting off in tests — xdist parallelism would otherwise trip
     # global limits across worker processes. The one test module that

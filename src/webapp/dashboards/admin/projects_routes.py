@@ -18,7 +18,7 @@ from webapp.extensions import db
 from flask import abort, current_app
 from webapp.utils.rbac import (
     require_permission, require_permission_any_facility,
-    has_permission, has_permission_for_facility,
+    has_permission, has_permission_any_facility, has_permission_for_facility,
     Permission, user_facility_scope,
 )
 from webapp.api.access_control import (
@@ -327,16 +327,19 @@ def _search_orgs_for_project(q, active_only):
 
 
 def _search_contracts_for_project(q, active_only):
+    """Contract FK picker on the project card.
+
+    Deliberately ignores ``active_only``: this picker has no checkbox, and a
+    project can legitimately be linked to a contract whose grant period has
+    lapsed. The sibling ``_search_contracts`` behind /admin/contracts does
+    honour it — it has the checkbox.
+
+    No ``with_details``: the FK result template reads only ``contract_id``,
+    ``contract_number`` and ``title``, so the eager loads would be waste.
+    """
     from sam.projects.contracts import Contract
-    return (
-        db.session.query(Contract)
-        .filter(
-            Contract.contract_number.ilike(f'%{q}%') | Contract.title.ilike(f'%{q}%')
-        )
-        .order_by(Contract.contract_number)
-        .limit(10)
-        .all()
-    )
+    return Contract.search_by_pattern(db.session, q, active_only=False,
+                                      limit=10)
 
 
 def _search_projects_for_parent(q, active_only):
@@ -726,7 +729,6 @@ def edit_project_page(project):
 
     can_edit_governance = can_edit_project_governance(current_user, project)
     can_modify_allocs = can_modify_allocations(current_user, project)
-    from webapp.utils.rbac import has_permission_any_facility
     can_access_admin = has_permission_any_facility(current_user, Permission.ACCESS_ADMIN_DASHBOARD)
 
     # Initial value for the Allocations tab "Active at" date picker (today).
@@ -2239,10 +2241,17 @@ def _linked_elements_context(project):
         project=project,
         allows_org_links=(facility_name in _ORG_LINK_FACILITIES),
         active_organizations=[po for po in project.organizations if po.is_active],
-        contracts=project.contracts,
+        # Contracts are not filtered — an expired grant stays visible as
+        # funding provenance — but current ones sort first and the table
+        # badges the lapsed rows.
+        contracts=project.contracts_current_first(),
         active_directories=[pd for pd in project.directories if pd.is_active],
         disk_roots=_disk_roots_for_picker(),
         can_edit_governance=can_edit_project_governance(current_user, project),
+        # Gated on the contract_card route's own permission so the link
+        # can never 403 for a project lead without org-metadata access.
+        can_view_contracts=has_permission_any_facility(
+            current_user, Permission.VIEW_ORG_METADATA),
         errors=[],
     )
 

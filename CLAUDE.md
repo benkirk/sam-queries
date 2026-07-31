@@ -506,6 +506,10 @@ sam-search user --search "ben%" ; sam-search user --abandoned
 sam-search project SCSG0001 --list-users --verbose
 sam-search project --upcoming-expirations --list-users
 sam-search allocations --resource Derecho --total-facilities --total-types
+sam-search contracts AGS-1852977 --list-projects        # SAM's contract table
+sam-search contracts --search climate [--all] --pi poulsen --source NSF
+sam-search awards AGS-1852977                           # ask NSF/USAspending, cross-ref SAM
+sam-search awards --search turbulence                   # composite free-text
 sam-search accounting --last 7d --user benkirk          # daily rollups (no plugin)
 sam-search accounting --jobs --last 7d --user benkirk   # per-job (job_history plugin)
 sam-search accounting --jobs --last 365d --job-id 6049117[28].desched1

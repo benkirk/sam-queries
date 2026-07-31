@@ -191,3 +191,76 @@ def test_fstree_api_route(auth_client, route_count_queries):
         f"{stats.count} queries > {baseline} baseline. "
         f"{stats.summary()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 8. Project detail API — GET /api/v1/projects/<projcode>
+# ---------------------------------------------------------------------------
+
+def test_project_detail_api_route(app, auth_client, route_count_queries):
+    """Full-stack query count for the project detail API.
+
+    Guards the contract graph. ``ProjectSchema.contracts`` serializes through
+    ``ContractSummarySchema``, which flattens four relationships per contract
+    (source, PI, monitor, program) — left lazy that is an N+1 during
+    ``jsonify()`` traversal, invisible to any function-level test.
+
+    Deliberately runs against the project carrying the *most* contracts, so
+    the count reflects the worst case rather than the common 1-contract one.
+    """
+    from sqlalchemy import func
+
+    from webapp.extensions import db
+    from sam.projects.contracts import ProjectContract
+    from sam.projects.projects import Project
+
+    baseline = get_baseline("project_detail_api_route")
+
+    with app.app_context():
+        row = (db.session.query(ProjectContract.project_id)
+               .group_by(ProjectContract.project_id)
+               .order_by(func.count().desc())
+               .first())
+        if row is None:
+            pytest.skip("snapshot has no project with a linked contract")
+        projcode = db.session.get(Project, row[0]).projcode
+
+    with route_count_queries() as stats:
+        response = auth_client.get(f'/api/v1/projects/{projcode}')
+
+    assert response.status_code == 200, (
+        f"GET /api/v1/projects/{projcode} returned {response.status_code}"
+    )
+    assert stats.count <= baseline, (
+        f"Project detail API route query regression: "
+        f"{stats.count} queries > {baseline} baseline. "
+        f"{stats.summary()}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 9. Admin contracts table — GET /admin/htmx/contracts-table
+# ---------------------------------------------------------------------------
+
+def test_admin_contracts_table_route(auth_client, route_count_queries):
+    """Full-stack query count for the contracts table fragment.
+
+    This is where the ~2,200-row contract load lives since it moved off the
+    Organizations card. `get_contracts_with_pi` selectin-loads PI, monitor and
+    program with lazyload guards on user accounts/emails; without a baseline
+    here, a regression in those guards would be invisible — `make perf` only
+    catches routes that have one.
+    """
+    baseline = get_baseline("admin_contracts_table_route")
+
+    with route_count_queries() as stats:
+        response = auth_client.get('/admin/htmx/contracts-table?active_only=1')
+
+    assert response.status_code == 200, (
+        f"GET /admin/htmx/contracts-table returned {response.status_code}"
+    )
+    assert stats.count <= baseline, (
+        f"Admin contracts table route query regression: "
+        f"{stats.count} queries > {baseline} baseline. "
+        f"{stats.summary()}"
+    )

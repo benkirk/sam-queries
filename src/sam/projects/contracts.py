@@ -1,13 +1,73 @@
 #-------------------------------------------------------------------------bh-
 # Common Imports:
+import re
+
 from ..base import *
 #-------------------------------------------------------------------------eh-
 
 
+def normalize_contract_number(value: Optional[str]) -> Optional[str]:
+    """Fold the whitespace noise manual entry leaves around the hyphen.
+
+    ``contract_number`` is free text, and operators have entered the same
+    award as ``'OCE-1419584'``, ``'OCE- 1419584'`` and ``'OCE - 1419584'``.
+    This is the canonical spelling-cleanup for that column: anything
+    comparing two contract numbers, or comparing SAM's number to an award
+    source's, goes through here.
+
+    Deliberately NOT the same function as the two provider query builders:
+
+    * ``awards.nsf.nsf_award_id`` extracts the bare NSF award id (the digits
+      after the last hyphen) because that is what NSF's API takes as a
+      parameter.
+    * ``awards.usaspending`` strips punctuation entirely for the same reason.
+
+    Both of those build *provider request parameters* and are lossy on
+    purpose. This one preserves the number, only tidying it.
+    """
+    if not value:
+        return None
+    text = re.sub(r'\s*-\s*', '-', str(value).strip())
+    return re.sub(r'\s+', ' ', text).upper()
+
+
+def _squashed_number(value: str) -> str:
+    """All whitespace removed and upper-cased — the SQL-comparable form.
+
+    A superset of :func:`normalize_contract_number`'s folding that can be
+    expressed as a MySQL ``UPPER(REPLACE(col, ' ', ''))``, so a stored value
+    carrying stray spaces can still be matched. Only spaces are handled; a
+    tab inside a contract number would defeat it, which has never been seen.
+    """
+    return re.sub(r'\s+', '', str(value)).upper()
+
+
+class _Unchanged:
+    """Sentinel distinguishing "leave this column alone" from "set it NULL".
+
+    Needed only for nullable FK columns whose edit-form control submits an
+    empty value when cleared — ``None`` there is a real instruction, so it
+    cannot double as the "argument omitted" default.
+    """
+
+    def __repr__(self):
+        return 'UNCHANGED'
+
+
+UNCHANGED = _Unchanged()
+
+
 #-------------------------------------------------------------------------bm-
 #----------------------------------------------------------------------------
-class Contract(Base, TimestampMixin, SessionMixin):
-    """Funding contracts."""
+class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
+    """Funding contracts.
+
+    ``start_date`` / ``end_date`` and the ``is_active`` hybrid come from
+    ``DateRangeMixin``. Note that an expired contract does not only mean the
+    grant period lapsed: unlinking the last project sets
+    ``end_date = now()`` (see ``htmx_remove_project_contract``), so expiry is
+    also how a contract is deactivated.
+    """
     __tablename__ = 'contract'
 
     __table_args__ = (
@@ -25,13 +85,6 @@ class Contract(Base, TimestampMixin, SessionMixin):
     title = Column(String(255), nullable=False)
     url = Column(String(1000))
 
-    start_date = Column(DateTime, nullable=False)
-    end_date = Column(DateTime)
-
-    @validates('end_date')
-    def _validate_end_date(self, key, value):
-        return normalize_end_date(value)
-
     principal_investigator_user_id = Column(Integer, ForeignKey('users.user_id'),
                                            nullable=False)
     contract_monitor_user_id = Column(Integer, ForeignKey('users.user_id'))
@@ -43,33 +96,6 @@ class Contract(Base, TimestampMixin, SessionMixin):
     principal_investigator = relationship('User', foreign_keys=[principal_investigator_user_id], back_populates='pi_contracts')
     projects = relationship('ProjectContract', back_populates='contract')
 
-    def is_active_at(self, check_date: Optional[datetime] = None) -> bool:
-        """Check if contract is active at a given date."""
-        if check_date is None:
-            check_date = datetime.now()
-
-        if self.start_date > check_date:
-            return False
-
-        if self.end_date is not None and self.end_date < check_date:
-            return False
-
-        return True
-
-    @hybrid_property
-    def is_active(self) -> bool:
-        """Check if contract is currently active (Python side)."""
-        return self.is_active_at()
-
-    @is_active.expression
-    def is_active(cls):
-        """Check if contract is currently active (SQL side)."""
-        now = func.now()
-        return and_(
-            cls.start_date <= now,
-            or_(cls.end_date.is_(None), cls.end_date >= now)
-        )
-
     def update(
         self,
         *,
@@ -77,12 +103,14 @@ class Contract(Base, TimestampMixin, SessionMixin):
         url: Optional[str] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
+        contract_monitor_user_id=UNCHANGED,
+        nsf_program_id=UNCHANGED,
     ) -> 'Contract':
         """
         Update this Contract record.
 
-        Only title, url, start_date, and end_date may be changed.
-        PI, contract monitor, source, and number are read-only via this method.
+        Title, url, start_date, end_date, contract monitor, and NSF program
+        may be changed. PI, source, and number are read-only via this method.
 
         NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
 
@@ -91,6 +119,13 @@ class Contract(Base, TimestampMixin, SessionMixin):
             url: New URL (nullable — pass empty string to clear)
             start_date: New start date (NOT NULL)
             end_date: New end date — must be after start_date if both known
+            contract_monitor_user_id: New monitor; pass ``None`` to clear.
+                Omit (``UNCHANGED``) to leave alone — the two are distinct
+                here, unlike the other fields, because these columns are
+                nullable FKs and the edit form's pickers submit an empty
+                value for "cleared". Callers that only touch other fields
+                (e.g. the expire-contract route) must not wipe them.
+            nsf_program_id: New NSF program; same ``None``/``UNCHANGED`` rule
 
         Returns:
             self
@@ -115,6 +150,12 @@ class Contract(Base, TimestampMixin, SessionMixin):
                 raise ValueError("end_date must be after start_date")
             self.end_date = end_date
 
+        if contract_monitor_user_id is not UNCHANGED:
+            self.contract_monitor_user_id = contract_monitor_user_id
+
+        if nsf_program_id is not UNCHANGED:
+            self.nsf_program_id = nsf_program_id
+
         self.session.flush()
         return self
 
@@ -130,9 +171,16 @@ class Contract(Base, TimestampMixin, SessionMixin):
         principal_investigator_user_id: int,
         url: Optional[str] = None,
         end_date: Optional[datetime] = None,
+        contract_monitor_user_id: Optional[int] = None,
+        nsf_program_id: Optional[int] = None,
     ) -> 'Contract':
         """
         Create a new Contract.
+
+        ``contract_monitor_user_id`` (the funding source's program manager)
+        and ``nsf_program_id`` are optional: 98% and 99% of existing rows
+        respectively carry one, but neither column is NOT NULL and non-NSF
+        sources have no program.
 
         NOTE: Does NOT commit. Caller must use management_transaction or commit manually.
         """
@@ -151,10 +199,161 @@ class Contract(Base, TimestampMixin, SessionMixin):
             url=url.strip() if url and url.strip() else None,
             contract_source_id=contract_source_id,
             principal_investigator_user_id=principal_investigator_user_id,
+            contract_monitor_user_id=contract_monitor_user_id,
+            nsf_program_id=nsf_program_id,
         )
         session.add(obj)
         session.flush()
         return obj
+
+    # ── queries ─────────────────────────────────────────────────────────
+
+    @classmethod
+    def get_by_number(cls, session, contract_number: str) -> Optional['Contract']:
+        """The contract with this exact number, or ``None``.
+
+        ``contract_number`` carries a unique index
+        (``contract_contract_number_uk``), so this is a scalar getter rather
+        than a "first match".
+
+        The column is free text and holds things like ``'OCE- 1419584'`` and
+        ``'USDA Prime Award No. 2013-67003-20652'``. An exact match is tried
+        first — that is the indexed path and the common case — and **only on
+        a miss** does a whitespace-insensitive comparison run, so that
+        ``'OCE-1419584'`` finds the row stored as ``'OCE- 1419584'``. The
+        fallback is a scan, but it costs nothing when the exact lookup hits.
+
+        A caller doing free-text search still wants :meth:`search_by_pattern`;
+        this remains a scalar getter.
+        """
+        number = (contract_number or '').strip()
+        if not number:
+            return None
+
+        hit = (session.query(cls)
+               .filter(cls.contract_number == number)
+               .one_or_none())
+        if hit is not None:
+            return hit
+
+        # `contract_number` is uniquely indexed, so two rows can only collapse
+        # to one squashed form if an operator entered the same award twice
+        # with different spacing. Order for determinism rather than raising.
+        return (session.query(cls)
+                .filter(func.upper(func.replace(cls.contract_number, ' ', ''))
+                        == _squashed_number(number))
+                .order_by(cls.contract_id)
+                .first())
+
+    @classmethod
+    def existing_by_number(cls, session, numbers) -> Dict[str, 'Contract']:
+        """Which of *numbers* SAM already has, keyed by normalised number.
+
+        One query for the whole set rather than one per number — this
+        annotates award-search results, where the alternative is a query per
+        row rendered.
+
+        Both sides are compared with whitespace squashed out, so an award
+        numbered ``'OCE-1419584'`` upstream still matches the row an operator
+        stored as ``'OCE- 1419584'``. Look up with
+        :func:`normalize_contract_number` applied to your number.
+        """
+        squashed = {_squashed_number(n) for n in numbers
+                    if n and str(n).strip()}
+        if not squashed:
+            return {}
+
+        rows = (session.query(cls)
+                .filter(func.upper(func.replace(cls.contract_number, ' ', ''))
+                        .in_(sorted(squashed)))
+                .all())
+        return {normalize_contract_number(c.contract_number): c for c in rows}
+
+    @classmethod
+    def search_by_pattern(cls, session, pattern: Optional[str] = None, *,
+                          active_only: bool = True,
+                          source: Optional[str] = None,
+                          pi: Optional[str] = None,
+                          monitor: Optional[str] = None,
+                          program: Optional[str] = None,
+                          limit: int = 50,
+                          with_details: bool = False) -> List['Contract']:
+        """Search contracts by number/title text and optional filters.
+
+        **Wildcard semantics.** *pattern* is treated as a LIKE pattern iff it
+        contains ``%`` or ``_``; otherwise it is substring-matched. So
+        ``'climate'`` and ``'%climate%'`` agree, while ``'AGS-%'`` anchors.
+
+        This is a deliberate divergence from two neighbours, and neither is a
+        mis-port:
+
+        * ``_apply_filter`` in ``sam/queries/charges.py`` is the same shape but
+          falls back to **exact equality**, not substring, and uses ``like``
+          rather than ``ilike``. Substring is the right default for a search
+          box; exact is the right default for a report filter.
+        * ``sam-search user --search`` advertises wildcard support and then
+          strips ``%`` and ``_`` before querying, so its documented semantics
+          are not its real ones. Do not propagate that.
+
+        Args:
+            pattern:      matched against ``contract_number`` OR ``title``;
+                          ``None`` returns everything the filters allow.
+            active_only:  restrict to contracts inside their date range.
+            source:       ``contract_source`` name, e.g. ``'NSF'`` (exact).
+            pi:           principal investigator username (exact).
+            monitor:      contract monitor username (exact).
+            program:      ``nsf_program_name`` — pattern-matched like
+                          *pattern*, since program names are long.
+            limit:        row cap.
+            with_details: eager-load ``contract_source`` and
+                          ``principal_investigator``. Off by default so FK
+                          pickers, which read neither, do not pay for them.
+        """
+        # Neither is in sam.base's star import; User is a cross-domain import
+        # kept local to avoid a core<->projects cycle at module load.
+        from sqlalchemy.orm import aliased, selectinload
+
+        from sam.core.users import User
+
+        def _text_filter(column, value):
+            """LIKE iff the term carries a wildcard, else substring."""
+            return (column.ilike(value) if ('%' in value or '_' in value)
+                    else column.ilike(f'%{value}%'))
+
+        query = session.query(cls)
+
+        if with_details:
+            query = query.options(
+                selectinload(cls.contract_source),
+                selectinload(cls.principal_investigator),
+            )
+
+        if pattern and pattern.strip():
+            term = pattern.strip()
+            query = query.filter(or_(_text_filter(cls.contract_number, term),
+                                     _text_filter(cls.title, term)))
+
+        if active_only:
+            query = query.filter(cls.is_active)
+
+        if source:
+            query = (query.join(ContractSource)
+                     .filter(ContractSource.contract_source == source.strip()))
+
+        if program:
+            term = program.strip()
+            query = (query.join(NSFProgram)
+                     .filter(_text_filter(NSFProgram.nsf_program_name, term)))
+
+        # Two user FKs on one table, so each needs its own alias.
+        for username, fk in ((pi, cls.principal_investigator_user_id),
+                             (monitor, cls.contract_monitor_user_id)):
+            if username:
+                person = aliased(User)
+                query = (query.join(person, fk == person.user_id)
+                         .filter(person.username == username.strip()))
+
+        return query.order_by(cls.contract_number).limit(limit).all()
 
     def __str__(self):
         return f"{self.contract_number}: {self.title[:50]}..."

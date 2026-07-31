@@ -185,6 +185,45 @@ def list_projects():
     })
 
 
+def _warm_contract_graph(project):
+    """Preload the contract graph `ProjectSchema.get_contracts` walks.
+
+    `ContractSummarySchema` flattens four relationships per contract (source,
+    PI, monitor, program). Left lazy that is 4 round trips per contract on a
+    row the access-control decorator already loaded — 69 queries for this
+    field alone on the worst project (7 contracts), against 11 before the
+    schema carried structured contracts.
+
+    One `selectin` pass over the whole set puts every object in the identity
+    map, so the schema's traversal hits zero further queries. Same reasoning
+    as `get_contracts_with_pi`'s eager loads; the `lazyload` guards likewise
+    keep the user loads from dragging in accounts and email addresses that
+    the summary schema never reads.
+
+    **The caller must keep the returned list alive until after `dump()`.**
+    The identity map holds weak references, so discarding it lets the warmed
+    objects be collected and reloaded unloaded — which measured as no
+    improvement at all (78 queries) rather than the 12 this achieves.
+    """
+    from sqlalchemy.orm import selectinload, lazyload
+    from sam.core.users import User
+    from sam.projects.contracts import Contract, ProjectContract
+
+    return (
+        db.session.query(Contract)
+        .join(ProjectContract, ProjectContract.contract_id == Contract.contract_id)
+        .filter(ProjectContract.project_id == project.project_id)
+        .options(
+            selectinload(Contract.contract_source),
+            selectinload(Contract.nsf_program),
+            selectinload(Contract.principal_investigator).lazyload(User.accounts),
+            selectinload(Contract.principal_investigator).lazyload(User.email_addresses),
+            selectinload(Contract.contract_monitor).lazyload(User.accounts),
+            selectinload(Contract.contract_monitor).lazyload(User.email_addresses),
+        ).all()
+    )
+
+
 @bp.route('/<projcode>', methods=['GET'])
 @login_required
 @require_project_access
@@ -207,6 +246,10 @@ def get_project(project):
     """
     # Get max_depth parameter (default: 4)
     max_depth = request.args.get('max_depth', 4, type=int)
+
+    # Held until after dump() — the identity map is weak-referenced, so
+    # dropping this on the floor un-warms the graph. See the helper.
+    _warmed_contracts = _warm_contract_graph(project)   # noqa: F841
 
     # Serialize project using ProjectSchema with tree context
     schema = ProjectSchema()

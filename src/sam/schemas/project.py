@@ -21,6 +21,7 @@ Usage:
 
 from marshmallow import fields
 from . import BaseSchema
+from .contract import ContractSummarySchema
 from .user import UserSummarySchema
 from sam.projects.projects import Project
 
@@ -123,13 +124,18 @@ class ProjectSchema(BaseSchema):
         """Get associated panel"""
         return obj.allocation_type.panel.panel_name if obj.allocation_type and obj.allocation_type.panel else None
 
-    def get_contracts(self,obj):
-        """Get associated contracts"""
-        contracts = []
-        if obj.contracts:
-            for pc in obj.contracts:
-                contracts.append(f"{pc.contract.contract_source.contract_source} {str(pc.contract.contract_number):<20} {pc.contract.title}")
-        return contracts
+    def get_contracts(self, obj):
+        """Get associated contracts as structured objects.
+
+        `obj.contracts` holds `ProjectContract` association rows, so this hops
+        through `.contract` rather than nesting the schema on the attribute
+        directly.
+        """
+        if not obj.contracts:
+            return []
+        return ContractSummarySchema(many=True).dump(
+            [pc.contract for pc in obj.contracts if pc.contract is not None]
+        )
 
     def get_breadcrumb_path(self, obj):
         """

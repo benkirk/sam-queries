@@ -22,6 +22,7 @@ from cli.project.commands import (
 )
 from cli.accounting.commands import AccountingAdminCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
+from cli.contracts.commands import ContractsAuditCommand
 
 # Default base URL for the running webapp (matches the systems-integration
 # shell client, scripts/apis/systems_integration_apis.sh).
@@ -186,6 +187,72 @@ def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_reso
     exit_code = command.execute(projcode, validate=validate, reconcile=reconcile,
                                 list_users=list_users)
     sys.exit(exit_code)
+
+
+@cli.command()
+@click.option('--validate', is_flag=True,
+              help='Audit contract data hygiene (read-only)')
+@click.option('--all', 'audit_all', is_flag=True,
+              help='[validate] Audit all contracts, not just open ones')
+@click.option('--check-sources', 'check_sources', is_flag=True,
+              help='[validate] Also compare each contract against its funding '
+                   'source (slow — hits the network)')
+@click.option('--limit', type=int, default=None,
+              help='[check-sources] Stop after N contracts')
+@click.option('--sleep', 'sleep_between', type=float, default=0.3,
+              show_default=True,
+              help='[check-sources] Seconds to wait between provider requests')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@pass_context
+def contracts(ctx: Context, validate, audit_all, check_sources, limit,
+              sleep_between, verbose):
+    """Administrative contract commands.
+
+    \b
+    Read-only data-hygiene audit over the contract table.  Reports what is
+    wrong; corrections are made through the webapp's edit form.
+
+    \b
+    Defaults to open contracts (inside their date window).  --all widens to
+    every contract, which surfaces long-expired rows nobody will fix but
+    makes the otherwise-vacuous checks meaningful.
+
+    \b
+    --check-sources compares title, dates, number, program and — for NSF —
+    PI and Monitor against what the funding agency reports.  It is the only
+    check that finds *stale* values rather than missing ones.  Set
+    CACHE_REDIS_URL to share the webapp's warm award cache; without it the
+    per-process fallback holds AWARD_LOOKUP_CACHE_SIZE (256) entries, fewer
+    than the open contract count, so a full run partially evicts itself.
+    """
+    if verbose:
+        ctx.verbose = True
+
+    if audit_all and not validate:
+        ctx.console.print("Error: --all requires --validate", style="bold red")
+        sys.exit(1)
+
+    if check_sources and not validate:
+        ctx.console.print("Error: --check-sources requires --validate",
+                          style="bold red")
+        sys.exit(1)
+
+    if limit is not None and not check_sources:
+        ctx.console.print("Error: --limit requires --check-sources",
+                          style="bold red")
+        sys.exit(1)
+
+    if not validate:
+        ctx.console.print("Error: no action specified (use --validate)",
+                          style="bold red")
+        click.echo(click.get_current_context().get_help())
+        sys.exit(EXIT_ERROR)
+
+    command = ContractsAuditCommand(ctx)
+    sys.exit(command.execute(active_only=not audit_all,
+                             check_sources=check_sources,
+                             limit=limit,
+                             sleep_between=sleep_between))
 
 
 @cli.command()
@@ -516,7 +583,9 @@ def accounting(ctx: Context, comp, disk, archive, reconcile_quotas, resource,
 @cli.command()
 @click.option('--refresh', is_flag=True,
               help='Invalidate the running webapp\'s caches')
-@click.option('--category', type=click.Choice(['flask', 'chart', 'usage', 'scans', 'jobs']),
+@click.option('--category',
+              type=click.Choice(['flask', 'chart', 'usage', 'scans', 'jobs',
+                                 'awards']),
               default=None,
               help='Scope the refresh to one cache category (default: all)')
 @click.option('--base', 'base_url', type=str, default=None,

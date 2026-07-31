@@ -164,8 +164,21 @@ def get_areas_of_interest_with_projects(session, active_only=False):
     return q.all()
 
 
-def get_contracts_with_pi(session, active_only=False):
-    """Load all contracts with their principal investigator users.
+def get_contracts_with_pi(session, active_only=False, with_source=False):
+    """Load all contracts with the people and program the card displays.
+
+    The monitor and NSF program are eager-loaded for the same reason the PI
+    is: the Organizations card renders ~2,200 contract rows, so a lazy load
+    per row is 2,200 extra queries. The ``lazyload`` guards keep the user
+    loads from dragging in accounts and email addresses the card never shows.
+
+    Args:
+        active_only: restrict to contracts inside their date window.
+        with_source: also eager-load ``contract_source``. Off by default
+            because the Organizations card does not show it; the contract
+            audit (``sam.queries.contract_audit``) needs it, since several
+            of its checks only apply to ``contract_source = 'NSF'``. One
+            extra ``selectin`` query against a 21-row lookup table.
 
     Returns:
         list of Contract ordered by contract_number
@@ -178,10 +191,91 @@ def get_contracts_with_pi(session, active_only=False):
             .lazyload(User.accounts),
         selectinload(Contract.principal_investigator)
             .lazyload(User.email_addresses),
+        selectinload(Contract.contract_monitor)
+            .lazyload(User.accounts),
+        selectinload(Contract.contract_monitor)
+            .lazyload(User.email_addresses),
+        selectinload(Contract.nsf_program),
     ).order_by(Contract.contract_number)
+    if with_source:
+        q = q.options(selectinload(Contract.contract_source))
     if active_only:
         q = q.filter(Contract.is_active)
     return q.all()
+
+
+def get_contract_detail(session, contract_id):
+    """Load one contract with everything its detail card renders.
+
+    Keyed by id rather than number: contract numbers are free text and
+    include values like ``USDA Prime Award No. 2013-67003-20652`` and
+    ``OCE- 1419584``, so unlike ``username`` / ``projcode`` they cannot key
+    a URL path.
+
+    The linked-project chain is the reason this is a separate loader from
+    ``get_contracts_with_pi`` — that one deliberately skips the source and
+    the project graph because the list view shows neither, and pulling them
+    for 2,200 rows would be expensive.
+
+    Returns:
+        Contract, or None if no such row.
+    """
+    from sam.projects.contracts import Contract, ProjectContract
+    from sam.core.users import User
+
+    return (
+        session.query(Contract)
+        .options(
+            selectinload(Contract.contract_source),
+            selectinload(Contract.nsf_program),
+            selectinload(Contract.principal_investigator)
+                .lazyload(User.accounts),
+            selectinload(Contract.principal_investigator)
+                .lazyload(User.email_addresses),
+            selectinload(Contract.contract_monitor)
+                .lazyload(User.accounts),
+            selectinload(Contract.contract_monitor)
+                .lazyload(User.email_addresses),
+            selectinload(Contract.projects)
+                .joinedload(ProjectContract.project),
+        )
+        .filter(Contract.contract_id == contract_id)
+        .first()
+    )
+
+
+def get_nsf_program_contracts(session, nsf_program_id):
+    """Load one NSF program and its contracts, for the drill-down modal.
+
+    ``get_nsf_programs_with_contracts`` loads bare contracts, which is fine
+    for a count but would N+1 here: the largest program carries 401
+    contracts and the modal shows each one's source and PI.
+
+    Returns:
+        (NSFProgram, list of Contract ordered by number) — (None, []) when
+        no such program.
+    """
+    from sam.projects.contracts import Contract, NSFProgram
+    from sam.core.users import User
+
+    program = session.get(NSFProgram, nsf_program_id)
+    if program is None:
+        return None, []
+
+    contracts = (
+        session.query(Contract)
+        .options(
+            selectinload(Contract.contract_source),
+            selectinload(Contract.principal_investigator)
+                .lazyload(User.accounts),
+            selectinload(Contract.principal_investigator)
+                .lazyload(User.email_addresses),
+        )
+        .filter(Contract.nsf_program_id == nsf_program_id)
+        .order_by(Contract.contract_number)
+        .all()
+    )
+    return program, contracts
 
 
 def get_nsf_programs_with_contracts(session, active_only=False):

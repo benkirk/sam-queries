@@ -446,6 +446,61 @@ class User(Base, TimestampMixin, SessionMixin):
                             key=lambda p: p.projcode),
         }
 
+    @staticmethod
+    def _split_affiliations(associations, fk_attr, as_of=None):
+        """Split date-ranged affiliation rows into (current, former).
+
+        Shared by the institution and organization accessors, which differ
+        only in the relationship they walk and the FK naming the affiliated
+        entity.
+
+        ``current`` is deduplicated on ``fk_attr`` keeping the most recently
+        started row — the same entity is frequently linked more than once with
+        overlapping windows. ``former`` drops any entity that is also current,
+        so a user who left and came back is not reported as both.
+        """
+        current, former = [], []
+        for assoc in associations:
+            (current if assoc.is_active_at(as_of) else former).append(assoc)
+
+        newest_first = sorted(current, key=lambda a: a.start_date, reverse=True)
+        deduped, seen = [], set()
+        for assoc in newest_first:
+            fk = getattr(assoc, fk_attr)
+            if fk not in seen:
+                seen.add(fk)
+                deduped.append(assoc)
+
+        former = [a for a in former if getattr(a, fk_attr) not in seen]
+        # Most recently ended first; a former row without an end_date is
+        # future-dated, so sort it ahead of everything already over.
+        former.sort(key=lambda a: (a.end_date is not None, a.end_date or a.start_date),
+                    reverse=True)
+        return deduped, former
+
+    def active_institutions(self, as_of: Optional[datetime] = None) -> List['UserInstitution']:
+        """Currently-effective institution affiliations, newest start first.
+
+        Returns the association rows (not Institution objects) so callers can
+        show the affiliation window. Complements former_institutions().
+        """
+        return self._split_affiliations(self.institutions, 'institution_id', as_of)[0]
+
+    def former_institutions(self, as_of: Optional[datetime] = None) -> List['UserInstitution']:
+        """Lapsed institution affiliations, most recently ended first.
+
+        Excludes any institution the user is still affiliated with.
+        """
+        return self._split_affiliations(self.institutions, 'institution_id', as_of)[1]
+
+    def active_organizations(self, as_of: Optional[datetime] = None) -> List['UserOrganization']:
+        """Currently-effective organization affiliations, newest start first."""
+        return self._split_affiliations(self.organizations, 'organization_id', as_of)[0]
+
+    def former_organizations(self, as_of: Optional[datetime] = None) -> List['UserOrganization']:
+        """Lapsed organization affiliations, most recently ended first."""
+        return self._split_affiliations(self.organizations, 'organization_id', as_of)[1]
+
     def active_account_users(self, as_of: Optional[datetime] = None) -> List['AccountUser']:
         """Get currently active account users."""
         check_date = as_of or datetime.now()

@@ -2,10 +2,17 @@
 AdhocGroup, MnemonicCode."""
 import os
 import string
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sam.core.groups import AdhocGroup, GidAllocation
-from sam.core.organizations import MnemonicCode, Organization
+from sam.core.organizations import (
+    Institution,
+    MnemonicCode,
+    Organization,
+    UserInstitution,
+    UserOrganization,
+)
 from sam.core.users import User
 
 from ._seq import next_int, next_seq
@@ -50,6 +57,95 @@ def make_organization(
     session.add(org)
     session.flush()
     return org
+
+
+# `institution.institution_id` has the same no-AUTO_INCREMENT problem as
+# organization (see above), so it gets its own worker-namespaced range.
+_INST_ID_BASE = 20_000_000
+_INST_ID_WORKER_BASE = _INST_ID_BASE + _WORKER_NUM * _ORG_ID_PER_WORKER
+
+
+def make_institution(
+    session,
+    *,
+    name: Optional[str] = None,
+    acronym: Optional[str] = None,
+    deleted: bool = False,
+) -> Institution:
+    """Build and flush a fresh Institution row.
+
+    `acronym` is NOT NULL; `institution_id` must be supplied explicitly and is
+    drawn from a worker-namespaced range so xdist workers cannot collide.
+    """
+    if acronym is None:
+        acronym = next_seq("INST")
+    if name is None:
+        name = f"Test Institution {acronym}"
+
+    inst = Institution(
+        institution_id=_INST_ID_WORKER_BASE + next_int("institution_id"),
+        name=name,
+        acronym=acronym,
+        deleted=deleted,
+    )
+    session.add(inst)
+    session.flush()
+    return inst
+
+
+def make_user_institution(
+    session,
+    *,
+    user,
+    institution=None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> UserInstitution:
+    """Link a user to an institution over a date window.
+
+    `start_date` is NOT NULL and defaults to a year ago; `end_date` of None
+    means an open-ended (currently effective) affiliation.
+    """
+    if institution is None:
+        institution = make_institution(session)
+    if start_date is None:
+        start_date = datetime.now() - timedelta(days=365)
+
+    ui = UserInstitution(
+        user_id=user.user_id,
+        institution_id=institution.institution_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    session.add(ui)
+    session.flush()
+    return ui
+
+
+def make_user_organization(
+    session,
+    *,
+    user,
+    organization=None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> UserOrganization:
+    """Link a user to an organization over a date window (see
+    `make_user_institution` for the date conventions)."""
+    if organization is None:
+        organization = make_organization(session)
+    if start_date is None:
+        start_date = datetime.now() - timedelta(days=365)
+
+    uo = UserOrganization(
+        user_id=user.user_id,
+        organization_id=organization.organization_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    session.add(uo)
+    session.flush()
+    return uo
 
 
 def make_user(

@@ -1,0 +1,75 @@
+"""TTL cache for award lookups.
+
+Award records are near-immutable — an NSF award's title, dates, and program
+officer change at most once a year — so this sits at the long end of the
+range, alongside ``FS_SCANS_CACHE_TTL`` (8 days) rather than the 30-minute
+jobs TTL. Its real job is to make the *operator's* workflow cheap: typing a
+number, fetching, editing a field, and re-fetching should cost one request,
+not three.
+
+Registered with the webapp caching facade via ``_BUCKETED_CACHE_MODULES``
+in ``webapp/caching/__init__.py``, which is what puts it on the Admin
+Configuration card and behind ``sam-admin cache --refresh --category awards``.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Callable, Optional
+
+from sam.caching import BucketedTTLCache, BucketSpec
+from sam.projects.contracts import normalize_contract_number
+
+_CACHE = BucketedTTLCache('awards', 'awards', {
+    'default': BucketSpec(
+        name='awards',
+        ttl_key='AWARD_LOOKUP_CACHE_TTL', ttl_default=691200,    # 8 days
+        size_key='AWARD_LOOKUP_CACHE_SIZE', size_default=256,
+    ),
+    # Free-text search gets its own namespace rather than sharing the lookup
+    # bucket: the keys have different shapes, and a search is a *view over a
+    # changing corpus* while an award record is near-immutable. Hence 1 day
+    # against the lookup's 8 — a new award should show up in search results
+    # the next day, not the next week.
+    'search': BucketSpec(
+        name='awards_search',
+        ttl_key='AWARD_SEARCH_CACHE_TTL', ttl_default=86400,     # 1 day
+        size_key='AWARD_SEARCH_CACHE_SIZE', size_default=256,
+    ),
+})
+
+#: Test seam, matching the fs-scans / jobs idiom: ``_adapters`` IS the
+#: cache's memo dict, so clearing it re-initialises the cache.
+_adapters = _CACHE._adapters
+
+
+def cached_lookup(provider_name: str, contract_number: str,
+                  compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise one provider's answer for one award number.
+
+    Only successful answers are cached, including a definite "no such
+    award" (``None``) — an ``AwardSourceUnavailable`` propagates out of
+    *compute* before the store, so a transient outage is never remembered.
+
+    The number is normalised into the key for the same reason
+    :func:`cached_search` casefolds its term: ``'ags-1852977'`` and
+    ``'AGS-1852977'`` are one award, and without this they would occupy two
+    entries in an 8-day bucket.
+    """
+    return _CACHE.get_or_compute(
+        'default',
+        (provider_name, normalize_contract_number(contract_number)),
+        compute)
+
+
+def cached_search(provider_name: str, query: str, limit: int,
+                  compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise one provider's answer for one search term.
+
+    *limit* is part of the key: the same term at a larger limit is a
+    different question, and serving the short answer to the long one would
+    silently truncate. As with :func:`cached_lookup`, an
+    ``AwardSourceUnavailable`` propagates out of *compute* before the store,
+    so a transient outage is never remembered.
+    """
+    return _CACHE.get_or_compute(
+        'search', (provider_name, query.strip().casefold(), limit), compute)

@@ -7,7 +7,8 @@ project search, and allocation expirations tracking.
 Domain-specific routes are split into sub-modules imported at the bottom:
   resources_routes.py  — Resources, Resource Types, Machines, Queues
   facilities_routes.py — Facilities, Panels, Panel Sessions, Allocation Types
-  orgs_routes.py       — Organizations, Institutions, AOIs, Contracts, NSF Programs
+  orgs_routes.py       — Organizations, Institutions, AOIs
+  contracts_routes.py  — Contracts, Contract Sources, NSF Programs
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
@@ -137,11 +138,27 @@ def organizations():
     return render_template('dashboards/admin/organizations.html', user=current_user)
 
 
+@bp.route('/contracts')
+@login_required
+@require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
+def contracts():
+    """Admin Contracts page — two searches, card display area, and the table.
+
+    ``contract_sources`` is passed eagerly because the candidate-search
+    Source filter is part of the initial render; everything else on the page
+    (results, contract card, the table) arrives via htmx.
+    """
+    from webapp.dashboards.admin.contracts_routes import active_contract_sources
+    return render_template('dashboards/admin/contracts.html',
+                           user=current_user,
+                           contract_sources=active_contract_sources())
+
+
 @bp.route('/facilities')
 @login_required
 @require_permission_any_facility(Permission.ACCESS_ADMIN_DASHBOARD)
 def facilities():
-    """Admin Facilities & Allocation Types page (htmx-loaded card)."""
+    """Admin Facilities & Allocations page (htmx-loaded card)."""
     return render_template('dashboards/admin/facilities.html', user=current_user)
 
 
@@ -272,7 +289,15 @@ def user_card(username):
     Returns:
         HTML user card fragment
     """
-    sam_user = db.session.query(User).filter_by(username=username).first()
+    # Eager-load both affiliation graphs: the card renders each of them twice
+    # (current + former blocks), which would otherwise lazy-load per row.
+    from sqlalchemy.orm import selectinload, joinedload
+    from sam.core.organizations import UserInstitution, UserOrganization
+
+    sam_user = db.session.query(User).options(
+        selectinload(User.institutions).joinedload(UserInstitution.institution),
+        selectinload(User.organizations).joinedload(UserOrganization.organization),
+    ).filter_by(username=username).first()
 
     if not sam_user:
         return '<div class="alert alert-warning">User not found</div>'
@@ -1063,4 +1088,4 @@ def htmx_queues_for_resource():
 # Domain route modules — must be imported AFTER bp is defined
 # ============================================================================
 
-from . import resources_routes, facilities_routes, orgs_routes, projects_routes, configuration_routes, rate_limits_routes  # noqa: E402, F401
+from . import resources_routes, facilities_routes, orgs_routes, contracts_routes, projects_routes, configuration_routes, rate_limits_routes  # noqa: E402, F401

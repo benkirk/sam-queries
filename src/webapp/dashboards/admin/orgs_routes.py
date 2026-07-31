@@ -2,34 +2,41 @@
 Admin dashboard — Organization management routes.
 
 Covers: Organizations, Institutions, Institution Types, Areas of Interest,
-AOI Groups, Contract Sources, Contracts, NSF Programs.
+AOI Groups.
+
+Contracts, contract sources and NSF programs moved to `contracts_routes.py`
+once they outgrew being org metadata — see that module's docstring.
 
 The CRUD quintets (edit-form/edit/create-form/create/delete) are generated
 from `_ORG_CRUD_SPECS` at the bottom of this module via `register_crud` —
-only the card/table fragments and the routes that genuinely deviate from
-the pattern (mnemonic-code create with DB-uniqueness checks, contract
-delete which retires by end_date) remain hand-written.
+only the card/table fragments and the one route that genuinely deviates from
+the pattern remain hand-written: mnemonic-code create (DB-uniqueness checks).
 """
 
+import logging
+
 from flask import render_template, request
-from flask_login import login_required
+from flask_login import current_user, login_required
 from datetime import datetime
 from functools import partial
+from sqlalchemy import func
 
 from webapp.utils.htmx import (
     htmx_not_found,
     htmx_success_message,
     modal_triggers,
     read_active_only,
+    register_typeahead,
 )
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.rbac import (
+    has_permission_any_facility,
     require_permission, require_permission_any_facility, Permission,
 )
 from sam.manage import management_transaction
 from sam.core.organizations import Institution, InstitutionType, Organization
+from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
-from sam.projects.contracts import Contract, ContractSource, NSFProgram
 from sam.queries.admin import (
     get_organizations_with_members,
     get_institution_type_tree,
@@ -37,7 +44,9 @@ from sam.queries.admin import (
     get_countries_with_institutions,
     get_aoi_groups_with_areas,
     get_areas_of_interest_with_projects,
+    get_contract_detail,
     get_contracts_with_pi,
+    get_nsf_program_contracts,
     get_nsf_programs_with_contracts,
 )
 from sam.schemas.forms.orgs import (
@@ -47,14 +56,13 @@ from sam.schemas.forms.orgs import (
     CreateMnemonicCodeForm,
     EditAoiGroupForm, CreateAoiGroupForm,
     EditAoiForm, CreateAoiForm,
-    EditContractSourceForm, CreateContractSourceForm,
-    EditContractForm, CreateContractForm,
-    EditNsfProgramForm, CreateNsfProgramForm,
 )
 
 from .blueprint import bp
 from .crud import CrudSpec, register_crud
 
+
+logger = logging.getLogger(__name__)
 
 _ORG_TRIGGERS = modal_triggers('reloadOrganizationsCard')
 
@@ -88,15 +96,6 @@ def _all_aoi_groups():
     return db.session.query(AreaOfInterestGroup).order_by(AreaOfInterestGroup.name).all()
 
 
-def _active_contract_sources():
-    return (
-        db.session.query(ContractSource)
-        .filter(ContractSource.is_active)
-        .order_by(ContractSource.contract_source)
-        .all()
-    )
-
-
 # ── Organization Card ──────────────────────────────────────────────────────
 
 
@@ -106,10 +105,14 @@ def _active_contract_sources():
 @cache.cached(make_cache_key=user_aware_cache_key)
 def htmx_organizations_card():
     """
-    Return the Organization card body fragment with seven tabs:
-    Organizations, Institutions, AOI Groups, Areas of Interest,
-    Contract Sources, Contracts, NSF Programs.
+    Return the Organization card body fragment with four tabs:
+    Organizations, Institutions, Areas of Interest, NSF Programs.
     Lazy-loaded when the Organization collapsible section is first expanded.
+
+    Contracts and contract sources used to be a fifth tab here; they now live
+    on /admin/contracts (:func:`htmx_contracts_table`), which is where an
+    operator looks for them. That also takes ~2,200 eagerly-loaded contract
+    rows out of this one cached call.
     """
     from sam.core.organizations import MnemonicCode
 
@@ -139,12 +142,6 @@ def htmx_organizations_card():
     aoi_groups = get_aoi_groups_with_areas(db.session, active_only=active_only)
     aois = get_areas_of_interest_with_projects(db.session, active_only=active_only)
 
-    cs_q = db.session.query(ContractSource).order_by(ContractSource.contract_source)
-    if active_only:
-        cs_q = cs_q.filter(ContractSource.is_active)
-    contract_sources = cs_q.all()
-
-    contracts = get_contracts_with_pi(db.session, active_only=active_only)
     nsf_programs = get_nsf_programs_with_contracts(db.session, active_only=active_only)
 
     _mc_lookup = MnemonicCode.build_lookup(db.session)
@@ -159,13 +156,16 @@ def htmx_organizations_card():
         org_tree=org_tree,
         aoi_groups=aoi_groups,
         aois=aois,
-        contract_sources=contract_sources,
-        contracts=contracts,
         nsf_programs=nsf_programs,
         org_to_mnemonic=org_to_mnemonic,
         is_admin=True,
         now=now,
         active_only=active_only,
+        # Gate the PI/Monitor links on the user_card route's own permission
+        # so a click can never 403. Safe under @cache.cached because the key
+        # is user-aware.
+        can_view_users=has_permission_any_facility(
+            current_user, Permission.VIEW_USERS),
     )
 
 
@@ -379,28 +379,6 @@ def htmx_mnemonic_code_create():
     return htmx_success_message(_ORG_TRIGGERS, 'Saved successfully.')
 
 
-# ── Contract Delete (bespoke: retires by end_date, not active flag) ────────
-
-
-@bp.route('/htmx/contract-delete/<int:contract_id>', methods=['DELETE'])
-@login_required
-@require_permission(Permission.DELETE_ORG_METADATA)
-def htmx_contract_delete(contract_id):
-    """Soft-delete (expire) a contract."""
-    contract = db.session.get(Contract, contract_id)
-    if not contract:
-        return htmx_not_found('Contract')
-
-    # Contract uses end_date rather than the active flag for retirement.
-    try:
-        with management_transaction(db.session):
-            contract.update(end_date=datetime.now())
-    except Exception as e:
-        return f'<div class="alert alert-danger">Error: {e}</div>', 500
-
-    return ''
-
-
 # ── CRUD quintets — generated from specs ───────────────────────────────────
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are
@@ -414,6 +392,7 @@ _org_spec = partial(
     create_permission=Permission.CREATE_ORG_METADATA,
     delete_permission=Permission.DELETE_ORG_METADATA,
 )
+
 
 _ORG_CRUD_SPECS = (
     _org_spec(
@@ -457,45 +436,6 @@ _ORG_CRUD_SPECS = (
         edit_context=lambda: {'aoi_groups': _all_aoi_groups()},
         create_fields=('area_of_interest', 'area_of_interest_group_id'),
         create_context=lambda: {'aoi_groups': _all_active_aoi_groups()},
-    ),
-    _org_spec(
-        slug='contract-source', name='Contract source',
-        model=ContractSource, id_param='source_id', context_key='source',
-        edit_schema=EditContractSourceForm, create_schema=CreateContractSourceForm,
-        edit_fields=('contract_source', 'active'),
-        create_fields=('contract_source',),
-    ),
-    _org_spec(
-        slug='contract', name='Contract',
-        model=Contract, id_param='contract_id', context_key='contract',
-        edit_schema=EditContractForm, create_schema=CreateContractForm,
-        edit_kwargs=lambda data: dict(
-            title=data['title'],
-            url=data['url'],
-            start_date=datetime.combine(data['start_date'], datetime.min.time()),
-            end_date=data['end_date'],
-        ),
-        create_kwargs=lambda data: dict(
-            contract_number=data['contract_number'],
-            title=data['title'],
-            url=data['url'],
-            start_date=datetime.combine(data['start_date'], datetime.min.time()),
-            end_date=data['end_date'],
-            contract_source_id=data['contract_source_id'],
-            principal_investigator_user_id=data['principal_investigator_user_id'],
-        ),
-        create_context=lambda: {
-            'contract_sources': _active_contract_sources(),
-            'today': datetime.now().strftime('%Y-%m-%d'),
-        },
-        actions=('edit', 'create'),   # delete is bespoke (htmx_contract_delete)
-    ),
-    _org_spec(
-        slug='nsf-program', name='NSF program', noun='NSF program',
-        model=NSFProgram, id_param='nsf_program_id', context_key='program',
-        edit_schema=EditNsfProgramForm, create_schema=CreateNsfProgramForm,
-        edit_fields=('nsf_program_name', 'active'),
-        create_fields=('nsf_program_name',),
     ),
 )
 

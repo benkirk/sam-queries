@@ -62,20 +62,20 @@
         "notes": "measured 55 \u2014 full GET /allocations/; was 52,923 before Issue 1 fix. show_usage toggle removed 2026-04-19 \u2014 usage pipeline now always runs (previously gated; measured 13 when gated off, 54 when gated on)."
     },
     "admin_orgs_card_route": {
-        "queries": 450,
-        "notes": "measured 311 \u2014 full GET /admin/htmx/organizations-card; residual lazy loads in template"
+        "queries": 40,
+        "notes": "measured 20 \u2014 full GET /admin/htmx/organizations-card. Was measured 311 / baseline 450 until the Contracts tab moved to /admin/contracts (see admin_contracts_table_route); the 2,225-contract render was almost all of it."
     },
     "admin_institutions_default_route": {
         "queries": 25,
-        "notes": "measured 13 — full GET /admin/htmx/institutions-fragment (U&P off)"
+        "notes": "measured 13 \u2014 full GET /admin/htmx/institutions-fragment (U&P off)"
     },
     "admin_institutions_users_projects_route": {
         "queries": 200,
-        "notes": "measured 130 — full GET /admin/htmx/institutions-fragment?show_users_projects=1; selectinload chunks × 1367 institutions × users × (led_projects + admin_projects)"
+        "notes": "measured 130 \u2014 full GET /admin/htmx/institutions-fragment?show_users_projects=1; selectinload chunks \u00d7 1367 institutions \u00d7 users \u00d7 (led_projects + admin_projects)"
     },
     "get_institutions_with_members_include_projects": {
         "queries": 180,
-        "notes": "measured 119 — function-level with include_projects=True; selectinload chunking across 1367 institutions"
+        "notes": "measured 119 \u2014 function-level with include_projects=True; selectinload chunking across 1367 institutions"
     },
     "fstree_api_route": {
         "queries": 65,
@@ -84,5 +84,13 @@
     "resource_details_disk_route": {
         "queries": 50,
         "notes": "measured 34 (test snapshot, smallest disk-root subtree) post bulk_current_disk_usage refactor. Flat regardless of subtree size \u2014 was 83 on prod (NMMM0003, 21-node subtree) and scaled with node_count_with_account before the fix. ~50% headroom for snapshot variance."
+    },
+    "project_detail_api_route": {
+        "queries": 45,
+        "notes": "measured 33 \u2014 full GET /api/v1/projects/<projcode> for the most-contract-bearing project (7 contracts). ProjectSchema.contracts serializes via ContractSummarySchema, which flattens 4 relationships per contract; _warm_contract_graph() preloads them. Discarding that helper's return value re-breaks it (weak-ref identity map) and measures 93 \u2014 this baseline is what catches that."
+    },
+    "admin_contracts_table_route": {
+        "queries": 45,
+        "notes": "measured 25 \u2014 full GET /admin/htmx/contracts-table?active_only=1. Where the contract load lives since it moved off the organizations card; guards the selectinload/lazyload set in get_contracts_with_pi."
     }
 }
