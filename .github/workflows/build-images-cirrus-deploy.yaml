@@ -168,7 +168,25 @@ jobs:
 
       - name: Compute build date
         id: build_date
-        run: echo "value=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
+        # Runners are UTC; stamp Mountain instead so the build date reads the
+        # same way as the rest of SAM (naive-Mountain) and as the prod pod's
+        # TZ=America/Denver. %Z resolves to MST/MDT on its own — never
+        # hardcode an offset.
+        #
+        # Guarded: with no tzdata, glibc silently falls back to UTC *and*
+        # prints a truncated zone ("2026-07-15 America") — a wrong time
+        # wearing a plausible label. Confirm the zone actually resolved,
+        # otherwise stamp honest UTC and say so.
+        run: |
+          BUILD_DATE="$(TZ=America/Denver date '+%Y-%m-%d %H:%M %Z')"
+          case "${BUILD_DATE}" in
+            *\ MST|*\ MDT) ;;
+            *)
+              echo "::warning::tzdata unavailable — stamping UTC instead of Mountain"
+              BUILD_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
+              ;;
+          esac
+          echo "value=${BUILD_DATE}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         id: build
