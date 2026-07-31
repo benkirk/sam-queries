@@ -67,18 +67,8 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          # Mountain, not UTC — matches the rest of SAM's display convention.
-          # %Z resolves MST/MDT on its own; never hardcode an offset. Guarded
-          # because with no tzdata glibc silently returns UTC under a
-          # truncated zone name, i.e. a wrong time with a plausible label.
-          BUILD_DATE="$(TZ=America/Denver date '+%Y-%m-%d %H:%M %Z')"
-          case "${BUILD_DATE}" in
-            *\ MST|*\ MDT) ;;
-            *)
-              echo "::warning::tzdata unavailable — stamping UTC instead of Mountain"
-              BUILD_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
-              ;;
-          esac
+          # Mountain, not UTC — see .github/scripts/build_stamp.sh.
+          BUILD_DATE="$(.github/scripts/build_stamp.sh)"
           docker build \
             -f containers/webapp/Dockerfile \
             --build-arg GIT_SHA="$IMAGE_TAG" \
