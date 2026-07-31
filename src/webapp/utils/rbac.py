@@ -179,14 +179,20 @@ GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
     # ---- Real POSIX group bundles (provisional) ----
 
     # nusd: read, edit,everything + write to projects, allocations
-    # and system status. Does NOT confer write on users/groups/facilities/
-    # org_metadata (those remain admin-only). May impersonate any user
-    # whose permission set is a subset of nusd's (the can_impersonate
-    # rule blocks escalation).
+    # and system status. Also creates org metadata — contracts and NSF
+    # programs on /admin/contracts, plus organizations, institutions,
+    # mnemonic codes and areas of interest — since the contract surface
+    # is gated on CREATE_ORG_METADATA and there is no contract-specific
+    # permission (see contracts_routes.py). Does NOT confer create on
+    # users/groups/facilities/resources, and no DELETE_* at all (a
+    # contract retires by editing its end_date, which EDIT_* covers).
+    # May impersonate any user whose permission set is a subset of
+    # nusd's (the can_impersonate rule blocks escalation).
     'nusd': ALL_VIEW | ALL_EDIT | {
         Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.CREATE_PROJECTS,
         Permission.CREATE_ALLOCATIONS,
+        Permission.CREATE_ORG_METADATA,
         Permission.IMPERSONATE_USERS,
     },
 
