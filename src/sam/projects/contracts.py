@@ -246,6 +246,30 @@ class Contract(Base, TimestampMixin, DateRangeMixin, SessionMixin):
                 .first())
 
     @classmethod
+    def existing_by_number(cls, session, numbers) -> Dict[str, 'Contract']:
+        """Which of *numbers* SAM already has, keyed by normalised number.
+
+        One query for the whole set rather than one per number — this
+        annotates award-search results, where the alternative is a query per
+        row rendered.
+
+        Both sides are compared with whitespace squashed out, so an award
+        numbered ``'OCE-1419584'`` upstream still matches the row an operator
+        stored as ``'OCE- 1419584'``. Look up with
+        :func:`normalize_contract_number` applied to your number.
+        """
+        squashed = {_squashed_number(n) for n in numbers
+                    if n and str(n).strip()}
+        if not squashed:
+            return {}
+
+        rows = (session.query(cls)
+                .filter(func.upper(func.replace(cls.contract_number, ' ', ''))
+                        .in_(sorted(squashed)))
+                .all())
+        return {normalize_contract_number(c.contract_number): c for c in rows}
+
+    @classmethod
     def search_by_pattern(cls, session, pattern: Optional[str] = None, *,
                           active_only: bool = True,
                           source: Optional[str] = None,

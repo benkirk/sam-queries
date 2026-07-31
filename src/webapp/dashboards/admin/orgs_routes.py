@@ -772,21 +772,14 @@ def htmx_contract_award_candidates():
 
 
 def _annotate_known(records):
-    """Pair each record with the SAM contract of the same number, if any.
+    """Pair each record with the SAM contract of the same number, if any."""
+    from sam.projects.contracts import Contract, normalize_contract_number
 
-    One query for the whole result set, not one per row.
-    """
-    from sam.projects.contracts import Contract
+    known = Contract.existing_by_number(
+        db.session, [r.contract_number for r in records])
 
-    numbers = {(r.contract_number or '').strip()
-               for r in records if r.contract_number}
-    known = {}
-    if numbers:
-        known = {c.contract_number: c for c in
-                 db.session.query(Contract)
-                 .filter(Contract.contract_number.in_(sorted(numbers))).all()}
-
-    return [{'record': r, 'in_sam': known.get((r.contract_number or '').strip())}
+    return [{'record': r,
+             'in_sam': known.get(normalize_contract_number(r.contract_number))}
             for r in records]
 
 

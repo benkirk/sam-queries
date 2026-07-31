@@ -163,21 +163,14 @@ class AwardPatternSearchCommand(BaseContractCommand):
         return EXIT_ERROR if errors else EXIT_NOT_FOUND
 
     def _known_numbers(self, records) -> dict:
-        """Which of these award numbers SAM already has.
+        """Which of these award numbers SAM already has, by normalised number.
 
-        One query for the whole result set rather than one per row. This is
-        the same protection ``_ContractCreateHandler.clean`` gives when the
-        operator submits a duplicate number, surfaced before they start
-        typing.
+        This is the same protection ``_ContractCreateHandler.clean`` gives
+        when the operator submits a duplicate number, surfaced before they
+        start typing. Shares one implementation with the webapp's
+        ``_annotate_known``.
         """
         from sam.projects.contracts import Contract
 
-        numbers = {(r.contract_number or '').strip()
-                   for r in records if r.contract_number}
-        if not numbers:
-            return {}
-
-        rows = (self.session.query(Contract)
-                .filter(Contract.contract_number.in_(sorted(numbers)))
-                .all())
-        return {c.contract_number: c for c in rows}
+        return Contract.existing_by_number(
+            self.session, [r.contract_number for r in records])
