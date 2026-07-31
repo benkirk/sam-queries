@@ -133,6 +133,75 @@
         if (current) { applyContractMode(current.value); }
     }
 
+    /* ── Create Contract form: "Find an award" ──
+     *
+     * The Search button and the input's Enter key are two ways into one
+     * request. The input owns the hx-get (it carries the `q` the server
+     * reads), so the button dispatches a custom event the input listens for
+     * rather than issuing its own. */
+    /* Enter-to-search for button-triggered search boxes.
+     *
+     * `data-enter-trigger="<event>"` on an input means "Enter here fires this
+     * body-level htmx event", i.e. the same path its Search button uses.
+     *
+     * Deliberately NOT htmx's own `hx-trigger="keyup[key=='Enter']"`: htmx
+     * compiles trigger filters with Function(), which `script-src 'self'`
+     * forbids (webapp/utils/csp.py). It raises htmx:evalDisallowedError and
+     * then **fails open** — every keystroke fires a request, silently turning
+     * a deliberate button-triggered search into a typeahead. Measured with
+     * Playwright: typing "turbulence" issued requests for `q=t` and
+     * `q=turbulence` against a route that queries two public APIs.
+     *
+     * preventDefault is load-bearing for the create-modal instance, whose
+     * input sits inside the Create Contract form: a bare Enter would submit
+     * the form instead of searching. */
+    document.addEventListener('keydown', function (evt) {
+        if (evt.key !== 'Enter') { return; }
+        var input = evt.target.closest && evt.target.closest('[data-enter-trigger]');
+        if (!input) { return; }
+        evt.preventDefault();
+        htmx.trigger(document.body, input.dataset.enterTrigger);
+    });
+
+    registerAction('search-award', function () {
+        var input = document.getElementById('createContractAwardSearch');
+        if (input) { htmx.trigger(document.body, 'search-award'); }
+    });
+
+    /* Same shape for "Find Candidate Contracts" on /admin/contracts: the
+     * input owns the hx-get (it carries `q`), so the button dispatches the
+     * event the input listens for rather than issuing its own request. */
+    registerAction('find-candidates', function () {
+        var input = document.getElementById('candidateSearchInput');
+        if (input) { htmx.trigger(document.body, 'find-candidates'); }
+    });
+
+    /* "Use" on an award search result.
+     *
+     * Writes the two parent-form lookup inputs, then fires the existing Fetch
+     * button. Deliberately not an hx-vals chain straight to the lookup: the
+     * operator has to SEE the number that was selected, and the eventual POST
+     * reads that field — a chain would re-render #createContractFields while
+     * leaving Contract Number visibly empty and posting nothing.
+     *
+     * Source is set for NSF only, and only when the server resolved an NSF
+     * row. `contract_source_id` is a <select>, so guard on the option
+     * existing rather than assigning a value the list does not carry. */
+    registerAction('use-award', function (btn) {
+        var number = document.getElementById('createContractNumber');
+        if (number) { number.value = btn.dataset.awardNumber || ''; }
+
+        var sourceId = btn.dataset.sourceId;
+        var source = document.getElementById('createContractSource');
+        if (source && sourceId &&
+            source.querySelector('option[value="' + sourceId + '"]')) {
+            source.value = sourceId;
+        }
+
+        var fetchBtn = document.getElementById('contractFetchAward');
+        if (fetchBtn) { htmx.trigger(fetchBtn, 'click'); }
+    });
+
     /* "search for them" on an unresolved award-source PI/monitor: seed the
      * picker's search box and let its own hx-trigger fire. A suggestion,
      * never a selection — the operator still has to click a result. */

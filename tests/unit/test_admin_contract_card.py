@@ -23,6 +23,8 @@ SEARCH_URL = '/admin/htmx/search/contracts'
 PAGE_URL = '/admin/contracts'
 PROGRAM_CONTRACTS_URL = '/admin/nsf-program/{}/contracts'
 ORG_CARD_URL = '/admin/htmx/organizations-card'
+CONTRACTS_TABLE_URL = '/admin/htmx/contracts-table'
+CANDIDATES_URL = '/admin/htmx/contract-award-candidates'
 
 MISSING_ID = 99999999
 
@@ -209,16 +211,42 @@ class TestTableLinking:
     """A modal opener is five attributes that must agree with a shell in a
     different file; getting one wrong fails silently at runtime."""
 
-    def test_org_card_links_contract_numbers(self, auth_client):
-        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
-        assert 'data-modal-id="contractDetailsModal"' in body
-        assert 'contractDetailsModalBody' in body
+    def test_contracts_table_links_contract_numbers_to_the_modal(
+            self, auth_client):
+        """The table opens the shared detail modal, NOT the page's card region.
 
-    def test_org_card_links_pi_and_monitor_to_the_user_modal(self, auth_client):
+        Targeting the card was tried and reverted: the card sits above the
+        search boxes, so from anywhere down a 2,200-row table a click scrolled
+        nothing into view and read as broken. The modal comes to you. The
+        search box at the top still targets the card — there you are already
+        looking at it.
+        """
+        body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        assert 'data-modal-id="contractDetailsModal"' in body
+        assert 'hx-target="#contractDetailsModalBody"' in body
+        assert '/admin/contract/' in body
+
+    def test_search_results_still_target_the_page_card(self, auth_client,
+                                                       any_contract):
+        """The other half of that split — the two must not converge."""
+        body = auth_client.get(
+            SEARCH_URL, query_string={'q': any_contract.contract_number}
+        ).get_data(as_text=True)
+        assert 'contractCardContainer' in body
+
+    def test_contracts_table_links_pi_and_monitor_to_the_user_modal(
+            self, auth_client):
         """These were the one place in the app a username was not clickable."""
-        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
+        body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
         assert 'data-action="show-user-details"' in body
         assert 'userDetailsModalBody' in body
+
+    def test_org_card_no_longer_carries_contracts(self, auth_client):
+        """The move must actually remove it, not duplicate it — two tables
+        would drift, and the org card's copy was the expensive one."""
+        body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
+        assert 'contracts-pane' not in body
+        assert 'contract-source-' not in body
 
     def test_org_card_links_nsf_programs_and_their_counts(self, auth_client):
         body = auth_client.get(ORG_CARD_URL).get_data(as_text=True)
@@ -330,3 +358,81 @@ class TestNsfProgramContracts:
         resp = auth_client.get(PROGRAM_CONTRACTS_URL.format(MISSING_ID))
         assert resp.status_code == 200
         assert 'NSF program not found' in resp.get_data(as_text=True)
+
+
+class TestContractsTableToggle:
+    """The Active-only switch on the moved table.
+
+    Absent means OFF (CLAUDE.md § 10): htmx omits an unchecked checkbox
+    entirely, so the route must NOT pass `default=True` — doing so made the
+    toggle a silent no-op, which Playwright caught and no unit test did.
+    The default-on behaviour lives in the template instead: the checkbox
+    ships `checked` and the section's initial hx-get carries active_only=1.
+    """
+
+    def test_explicit_active_only_narrows(self, auth_client):
+        body = auth_client.get(
+            CONTRACTS_TABLE_URL, query_string={'active_only': '1'}
+        ).get_data(as_text=True)
+        assert 'Showing' in body
+        active = int(body.split('Showing ')[1].split(' contract')[0])
+
+        wide = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        allrows = int(wide.split('Showing ')[1].split(' contract')[0])
+
+        # The whole point: absent must mean "include inactive", so the
+        # unfiltered count has to be strictly larger.
+        assert allrows > active, (
+            f'active_only absent returned {allrows}, same as active-only '
+            f'{active} — the toggle is a no-op')
+
+    def test_page_ships_the_toggle_checked_and_seeds_the_param(self,
+                                                               auth_client):
+        """Default-on is expressed in the template, not the route."""
+        body = auth_client.get(PAGE_URL).get_data(as_text=True)
+        toggle = body.split('id="contractsTableActiveOnly"')[1][:200]
+        assert 'checked' in toggle
+        assert 'contracts-table' in body and 'active_only=1' in body
+
+
+class TestContractsTableLayout:
+    """Row-height and click-target regressions the browser caught.
+
+    Each of these was a real defect that rendered fine in a fragment test but
+    looked broken on screen, so they are pinned as markup contracts.
+    """
+
+    def test_action_cells_do_not_wrap(self, auth_client):
+        """Without text-nowrap the edit/delete buttons stack and every row
+        doubles in height (measured ~95px vs 55px)."""
+        body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        assert 'class="text-end text-nowrap"' in body
+        assert body.count('class="text-end text-nowrap"') >= 2  # source + child
+
+    def test_source_rows_span_the_record_columns(self, auth_client):
+        """A source row is a group header with nothing to put under
+        PI/Monitor/Program/dates. Spanning also keeps long names
+        ('St. Vrain & Left Hand Water Conservancy District') off three lines."""
+        body = auth_client.get(CONTRACTS_TABLE_URL).get_data(as_text=True)
+        assert 'colspan="7"' in body
+
+    def test_empty_sources_are_not_clickable(self, auth_client, session):
+        """18 of 24 sources are empty under active-only; giving them a chevron
+        and a pointer made most of the table look clickable and do nothing."""
+        from sam.projects.contracts import Contract, ContractSource
+
+        empty = (
+            session.query(ContractSource)
+            .outerjoin(Contract,
+                       Contract.contract_source_id == ContractSource.contract_source_id)
+            .filter(Contract.contract_id.is_(None))
+            .first()
+        )
+        if empty is None:
+            pytest.skip('every contract source has contracts')
+
+        body = auth_client.get(
+            CONTRACTS_TABLE_URL, query_string={'active_only': '1'}
+        ).get_data(as_text=True)
+        # No collapse target is emitted for a source with nothing to reveal.
+        assert f'#contract-source-{empty.contract_source_id}' not in body

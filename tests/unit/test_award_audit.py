@@ -92,6 +92,35 @@ class TestStatuses:
         assert result['status'] == 'no_record'
 
 
+class TestSuppliedRecord:
+    """`record=` lets a caller that already fetched skip the second lookup."""
+
+    def test_supplied_record_is_compared_without_a_lookup(self, session, contract):
+        record = _matching(contract, title='A different title entirely')
+        with patch('sam.integration.awards.resolve_award') as resolve:
+            result = compare_contract(session, contract, record=record)
+
+        resolve.assert_not_called()
+        assert result['status'] == 'ok'
+        assert [d['field'] for d in result['divergences']] == ['title']
+
+    def test_omitting_it_still_does_the_lookup(self, session, contract):
+        """The default path is unchanged — and is the only one that can
+        report 'unavailable', since a supplied record was already fetched."""
+        result = _compare(session, contract, _matching(contract))
+        assert result['status'] == 'ok'
+
+    def test_a_supplied_record_still_gets_the_suspect_match_guard(
+            self, session, contract):
+        record = _matching(contract, title='MEALS',
+                           start_date=date(2009, 1, 1),
+                           end_date=date(2009, 12, 31))
+        result = compare_contract(session, contract, record=record)
+        assert result['status'] == 'suspect_match'
+        assert result['divergences'] == []
+        assert result['source_summary']['title'] == 'MEALS'
+
+
 class TestScalarDivergence:
 
     def test_single_stale_field_is_reported(self, session, contract):

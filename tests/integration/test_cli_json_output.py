@@ -217,6 +217,95 @@ class TestAccountingJSON:
 
 
 # ----------------------------------------------------------------------
+# Contracts & Awards
+# ----------------------------------------------------------------------
+
+class TestContractJSON:
+
+    def test_contract_exact_envelope(self, runner, mock_search_session,
+                                     any_contract):
+        result = runner.invoke(
+            search_cli, ['--format', 'json', 'contracts',
+                         any_contract.contract_number]
+        )
+        assert result.exit_code == 0, result.output
+        data = _parse_json(result.output)
+        assert data['kind'] == 'contract'
+        assert data['contract_number'] == any_contract.contract_number
+        assert isinstance(data['projects'], list)
+
+    def test_contract_not_found_envelope(self, runner, mock_search_session):
+        result = runner.invoke(
+            search_cli, ['--format', 'json', 'contracts', 'NO-SUCH-9999']
+        )
+        assert result.exit_code == 1
+        data = _parse_json(result.output)
+        assert data['kind'] == 'contract'
+        assert data['error'] == 'not_found'
+
+    def test_contract_search_envelope(self, runner, mock_search_session,
+                                      any_contract):
+        result = runner.invoke(
+            search_cli, ['--format', 'json', 'contracts', '--search',
+                         any_contract.contract_number, '--all']
+        )
+        assert result.exit_code == 0, result.output
+        data = _parse_json(result.output)
+        assert data['kind'] == 'contract_search_results'
+        assert data['count'] >= 1
+        assert any(c['contract_number'] == any_contract.contract_number
+                   for c in data['contracts'])
+
+
+class TestAwardJSON:
+    """Stubbed at the package object — `cli.awards.commands` imports these
+    inside the function body. No network."""
+
+    def test_award_search_envelope(self, runner, mock_search_session):
+        from sam.integration.awards.base import AwardRecord
+
+        record = AwardRecord(provenance='NSF Awards API',
+                             contract_number='AGS-1852977',
+                             title='The Management and Operation of NCAR')
+        with patch('sam.integration.awards.search_awards',
+                   return_value=([record], [])):
+            result = runner.invoke(
+                search_cli, ['--format', 'json', 'awards', '--search', 'ncar']
+            )
+        assert result.exit_code == 0, result.output
+        data = _parse_json(result.output)
+        assert data['kind'] == 'award_search_results'
+        assert data['count'] == 1
+        assert data['errors'] == []
+        assert data['results'][0]['provenance'] == 'NSF Awards API'
+
+    def test_award_lookup_envelope(self, runner, mock_search_session):
+        from sam.integration.awards.base import AwardRecord
+
+        record = AwardRecord(provenance='NSF Awards API',
+                             contract_number='AGS-1852977', title='NCAR')
+        with patch('sam.integration.awards.resolve_award',
+                   return_value=record):
+            result = runner.invoke(
+                search_cli, ['--format', 'json', 'awards', 'AGS-1852977']
+            )
+        assert result.exit_code == 0, result.output
+        data = _parse_json(result.output)
+        assert data['kind'] == 'award'
+        assert data['award']['contract_number'] == 'AGS-1852977'
+
+    def test_award_not_found_envelope(self, runner, mock_search_session):
+        with patch('sam.integration.awards.resolve_award', return_value=None):
+            result = runner.invoke(
+                search_cli, ['--format', 'json', 'awards', 'DE-SC0012671']
+            )
+        assert result.exit_code == 1
+        data = _parse_json(result.output)
+        assert data['kind'] == 'award'
+        assert data['error'] == 'not_found'
+
+
+# ----------------------------------------------------------------------
 # Admin CLI
 # ----------------------------------------------------------------------
 

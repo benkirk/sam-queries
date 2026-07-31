@@ -1,14 +1,31 @@
-"""Contract command classes."""
+"""Contract command classes.
+
+Two exit-code conventions live in this module, and the difference is
+deliberate rather than an oversight:
+
+* ``ContractsAuditCommand`` (``sam-admin``) returns ``EXIT_ERROR`` to mean
+  **findings exist**, matching ``ProjectTreeAuditCommand``. It is a linter.
+* The two search commands (``sam-search``) return ``EXIT_ERROR`` only for a
+  genuine error, ``EXIT_NOT_FOUND`` for "no such contract", matching every
+  other ``sam-search`` subcommand. They are lookups.
+
+Do not unify them; each matches the command family a user invokes it from.
+"""
 
 import time
 
 from rich.progress import track
 
-from cli.core.base import BaseCommand
+from cli.core.base import BaseCommand, BaseContractCommand
 from cli.core.output import output_json
-from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR
-from cli.contracts.builders import build_contract_audit, build_source_check
-from cli.contracts.display import display_contract_audit
+from cli.core.utils import EXIT_SUCCESS, EXIT_ERROR, EXIT_NOT_FOUND
+from cli.contracts.builders import (
+    build_contract, build_contract_audit, build_contract_search,
+    build_source_check,
+)
+from cli.contracts.display import (
+    display_contract, display_contract_audit, display_contract_search,
+)
 from sam.queries.contract_audit import audit_contracts, audit_nsf_programs
 
 
@@ -100,3 +117,65 @@ class ContractsAuditCommand(BaseCommand):
                 time.sleep(sleep_between)
 
         return build_source_check(results)
+
+
+class ContractSearchCommand(BaseContractCommand):
+    """Look one contract up by its exact number and show its detail."""
+
+    def execute(self, contract_number: str, list_projects: bool = False) -> int:
+        try:
+            contract = self.get_contract(contract_number)
+            if contract is None:
+                if self.ctx.output_format == 'json':
+                    output_json({'kind': 'contract', 'error': 'not_found',
+                                 'contract_number': contract_number})
+                else:
+                    self.console.print(
+                        f"❌ Contract not found: {contract_number}",
+                        style="bold red")
+                return EXIT_NOT_FOUND
+
+            # Reload through the detail loader so the project chain and the
+            # two user FKs are warm before serialization.
+            from sam.queries.admin import get_contract_detail
+            detailed = get_contract_detail(self.session, contract.contract_id)
+            data = build_contract(detailed or contract)
+
+            if self.ctx.output_format == 'json':
+                output_json(data)
+            else:
+                display_contract(self.ctx, data, list_projects)
+            return EXIT_SUCCESS
+        except Exception as e:
+            return self.handle_exception(e)
+
+
+class ContractPatternSearchCommand(BaseContractCommand):
+    """Search contracts by number/title pattern plus optional filters."""
+
+    def execute(self, pattern: str = None, active_only: bool = True,
+                source: str = None, pi: str = None, monitor: str = None,
+                program: str = None, limit: int = 50) -> int:
+        try:
+            from sam.projects.contracts import Contract
+
+            contracts = Contract.search_by_pattern(
+                self.session, pattern, active_only=active_only,
+                source=source, pi=pi, monitor=monitor, program=program,
+                limit=limit, with_details=True)
+
+            data = build_contract_search(
+                contracts, pattern=pattern,
+                filters={'source': source, 'pi': pi, 'monitor': monitor,
+                         'program': program},
+                scope='open' if active_only else 'all')
+
+            if self.ctx.output_format == 'json':
+                output_json(data)
+            else:
+                display_contract_search(self.ctx, data)
+
+            # A JSON not-found still emits its envelope, then exits 1.
+            return EXIT_SUCCESS if contracts else EXIT_NOT_FOUND
+        except Exception as e:
+            return self.handle_exception(e)

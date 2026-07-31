@@ -48,8 +48,13 @@ AWARD_PAGE_URL = 'https://www.usaspending.gov/award/{generated_internal_id}/'
 ASSISTANCE_TYPE_CODES = ['02', '03', '04', '05']
 CONTRACT_TYPE_CODES = ['A', 'B', 'C', 'D']
 
+#: ``Description`` **is** available on the search endpoint (verified
+#: 2026-07-30) even though ``_to_record`` reads it from the detail payload —
+#: its absence here previously made it look detail-only. Requesting it is
+#: what lets :meth:`UsaSpendingProvider.search` build a title without a
+#: per-row detail fetch.
 SEARCH_FIELDS = [
-    'Award ID', 'Recipient Name', 'Start Date', 'End Date',
+    'Award ID', 'Description', 'Recipient Name', 'Start Date', 'End Date',
     'Awarding Agency', 'generated_internal_id',
 ]
 
@@ -128,27 +133,60 @@ class UsaSpendingProvider(AwardProvider):
 
         # Exact id match first, once per type group (trap 2).
         for codes in (ASSISTANCE_TYPE_CODES, CONTRACT_TYPE_CODES):
-            hit = self._search({'award_ids': candidates,
-                                'award_type_codes': codes})
-            if hit is not None:
-                return hit
+            hits = self._search({'award_ids': candidates,
+                                 'award_type_codes': codes})
+            if hits:
+                return hits[0]
 
         # Suffixed variants (trap 3): keyword search on the bare number.
         for codes in (ASSISTANCE_TYPE_CODES, CONTRACT_TYPE_CODES):
-            hit = self._search({'keywords': [candidates[-1]],
-                                'award_type_codes': codes})
-            if hit is not None:
-                return hit
+            hits = self._search({'keywords': [candidates[-1]],
+                                 'award_type_codes': codes})
+            if hits:
+                return hits[0]
         return None
 
-    def _search(self, filters: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
+    def _search(self, filters: Mapping[str, Any],
+                limit: int = 5) -> List[Mapping[str, Any]]:
+        """POST one search and return **every** result.
+
+        ``_resolve`` wants only the best hit and takes ``[0]`` itself; free-text
+        search wants them all. Returning the list keeps the request count the
+        same either way — this used to discard four rows it had already paid
+        for.
+        """
         payload = self.client.post_json(SEARCH_URL, {
             'filters': dict(filters),
             'fields': SEARCH_FIELDS,
-            'limit': 5,
+            'limit': limit,
         })
         results: Sequence[Mapping[str, Any]] = (payload or {}).get('results') or []
-        return results[0] if results else None
+        return list(results)
+
+    def search(self, query: str, limit: int = 10) -> List[AwardRecord]:
+        """Keyword search across both award-type groups.
+
+        Two POSTs, not one — mixing the groups errors or returns nothing
+        (trap 2). Results are concatenated in group order and capped.
+        """
+        term = (query or '').strip()
+        if not term:
+            return []
+
+        records: List[AwardRecord] = []
+        for codes in (ASSISTANCE_TYPE_CODES, CONTRACT_TYPE_CODES):
+            if len(records) >= limit:
+                break
+            hits = self._search({'keywords': [term],
+                                 'award_type_codes': codes},
+                                limit=limit)
+            for hit in hits:
+                if len(records) >= limit:
+                    break
+                record = self._to_search_record(hit)
+                if record is not None:
+                    records.append(record)
+        return records
 
     # ── mapping ─────────────────────────────────────────────────────────
 
@@ -174,12 +212,53 @@ class UsaSpendingProvider(AwardProvider):
             # USAspending reports the punctuation-stripped id; keeping it
             # would rewrite the operator's number to a form no other system
             # uses, so the number field is left for them to own.
+            #
+            # This differs from `_to_search_record`, which DOES set it, and
+            # the difference is deliberate — see that method. The policy is
+            # "don't overwrite what the operator owns", not "never emit a
+            # number". Do not "fix" the two into agreement.
             contract_number=None,
             title=title,
             start_date=start,
             end_date=end,
             url=AWARD_PAGE_URL.format(generated_internal_id=internal_id),
             program_name=program_name,
+            pi=None,
+            monitor=None,
+            unavailable_fields=frozenset({'pi', 'monitor'}),
+        )
+
+    @staticmethod
+    def _to_search_record(hit: Mapping[str, Any]) -> Optional[AwardRecord]:
+        """Map one free-text search row. A **summary**, not a full record.
+
+        Two differences from ``_to_record``, both forced by the endpoint:
+
+        * ``program_name`` is ``None``. It comes from ``cfda_info``, which is
+          detail-only, so it cannot be recovered without a per-row fetch.
+          Chaining a chosen hit through ``fetch`` is what supplies it.
+        * ``contract_number`` **is** set, from ``Award ID`` — the opposite of
+          ``_to_record``'s deliberate ``None``. The situations differ: there,
+          an operator has already typed a number and it must not be rewritten
+          to USAspending's punctuation-stripped spelling; here there is no
+          operator input yet, and without a number a search hit gives the form
+          nothing to seed. Same policy, opposite outcome. Do not unify them.
+        """
+        internal_id = (hit.get('generated_internal_id') or '').strip()
+        if not internal_id:
+            return None
+
+        description = (hit.get('Description') or '').strip()
+        number = (hit.get('Award ID') or '').strip() or None
+
+        return AwardRecord(
+            provenance=UsaSpendingProvider.name,
+            contract_number=number,
+            title=description[:TITLE_MAX_LENGTH] or None,
+            start_date=_parse_date(hit.get('Start Date')),
+            end_date=_parse_date(hit.get('End Date')),
+            url=AWARD_PAGE_URL.format(generated_internal_id=internal_id),
+            program_name=None,
             pi=None,
             monitor=None,
             unavailable_fields=frozenset({'pi', 'monitor'}),

@@ -9,15 +9,60 @@ can never drift from the Rich report.
 from sam.queries.contract_audit import CHECKS
 
 
-def _contract_dict(contract):
+def contract_dict(contract):
     """Serialize one contract via the shared Summary-tier schema.
 
     Imported lazily: ``sam.schemas`` pulls in ``webapp.extensions`` at module
     level, and only this one command needs it.  ``dump()`` never touches
     ``BaseSchema.Meta.sqla_session``, so it works with no Flask app context.
+
+    Public rather than ``_``-prefixed because ``cli/awards/`` reuses it: an
+    award cross-reference renders the SAM contract it matched, and both
+    commands must describe a contract the same way.
     """
     from sam.schemas import ContractSummarySchema
     return ContractSummarySchema().dump(contract)
+
+
+def build_contract(contract, *, projects=True) -> dict:
+    """Assemble the ``contract`` envelope for one contract.
+
+    Args:
+        contract: a ``Contract``, ideally loaded via ``get_contract_detail``
+            so the project chain is warm.
+        projects: include the linked-project list.  ``contract.projects``
+            holds ``ProjectContract`` association rows, so this hops through
+            ``.project``.
+    """
+    payload = {'kind': 'contract', **contract_dict(contract)}
+
+    if projects:
+        payload['projects'] = sorted(
+            ({'projcode': link.project.projcode,
+              'title':    link.project.title,
+              'is_active': bool(link.project.is_active)}
+             for link in contract.projects if link.project is not None),
+            key=lambda p: p['projcode'])
+
+    return payload
+
+
+def build_contract_search(contracts, *, pattern=None, filters=None,
+                          scope='open') -> dict:
+    """Assemble the ``contract_search_results`` envelope.
+
+    Mirrors ``user_search_results`` / ``project_search_results``: the search
+    terms are echoed back so a JSON consumer can tell an empty result from a
+    query it did not send.
+    """
+    return {
+        'kind':      'contract_search_results',
+        'pattern':   pattern,
+        'scope':     scope,
+        'filters':   {k: v for k, v in (filters or {}).items() if v},
+        'count':     len(contracts),
+        'contracts': [contract_dict(c) for c in contracts],
+    }
 
 
 def build_contract_audit(findings, program_findings, *, scope,
@@ -48,7 +93,7 @@ def build_contract_audit(findings, program_findings, *, scope,
             'label':    label,
             'severity': severity,
             'count':    len(hits),
-            'findings': [{'contract': _contract_dict(f['contract']),
+            'findings': [{'contract': contract_dict(f['contract']),
                           'detail':   f['detail']} for f in hits],
         })
 
@@ -99,7 +144,7 @@ def build_source_check(results) -> dict:
                 continue
 
         contracts.append({
-            'contract':       _contract_dict(contract),
+            'contract':       contract_dict(contract),
             'status':         status,
             'provenance':     comparison.get('provenance'),
             'divergences':    comparison['divergences'],

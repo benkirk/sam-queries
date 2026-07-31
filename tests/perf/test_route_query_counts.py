@@ -236,3 +236,31 @@ def test_project_detail_api_route(app, auth_client, route_count_queries):
         f"{stats.count} queries > {baseline} baseline. "
         f"{stats.summary()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 8. Admin contracts table — GET /admin/htmx/contracts-table
+# ---------------------------------------------------------------------------
+
+def test_admin_contracts_table_route(auth_client, route_count_queries):
+    """Full-stack query count for the contracts table fragment.
+
+    This is where the ~2,200-row contract load lives since it moved off the
+    Organizations card. `get_contracts_with_pi` selectin-loads PI, monitor and
+    program with lazyload guards on user accounts/emails; without a baseline
+    here, a regression in those guards would be invisible — `make perf` only
+    catches routes that have one.
+    """
+    baseline = get_baseline("admin_contracts_table_route")
+
+    with route_count_queries() as stats:
+        response = auth_client.get('/admin/htmx/contracts-table?active_only=1')
+
+    assert response.status_code == 200, (
+        f"GET /admin/htmx/contracts-table returned {response.status_code}"
+    )
+    assert stats.count <= baseline, (
+        f"Admin contracts table route query regression: "
+        f"{stats.count} queries > {baseline} baseline. "
+        f"{stats.summary()}"
+    )

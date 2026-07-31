@@ -4,52 +4,166 @@
 {% block title %}Admin: Contracts - SAM{% endblock %}
 
 {% block admin_content %}
+{#
+  Two searches, deliberately different in kind, so both say which they are:
 
+  * "Search Existing Contracts" — SAM's own contract table. A typeahead,
+    because it is a local indexed query.
+  * "Find Candidate Contracts" — the funding agencies (NSF, USAspending).
+    Button-triggered, because it is ~3 requests to two public APIs at ~1.5 s;
+    a typeahead would also pollute the shared cache with prefix queries.
+
+  Both cards collapse (open by default) via the .collapse-toggle header
+  idiom from projects.html — the chevron is pure CSS (dashboard.css
+  § COLLAPSIBLE SECTIONS), no JS. Their content is rendered up-front rather
+  than gated on shown.bs.collapse, so nothing lazy-loads behind the toggle.
+#}
+
+<!-- Search Existing Contracts -->
 <div class="row">
-    <div class="col-md-8">
+    <div class="col-12">
         <div class="card inner-card">
-            <div class="card-header d-flex justify-content-between align-items-center mb-4">
-                <h5><i class="fas fa-file-signature"></i> Search Contracts</h5>
-                {% if has_permission(Permission.CREATE_ORG_METADATA) %}
-                {# The create modal is page-level via base_admin ->
-                   organization_modals.html, so this needs no extra plumbing. #}
-                <button type="button" class="btn btn-primary"
-                        data-bs-toggle="modal"
-                        data-bs-target="#createContractModal"
-                        hx-get="{{ url_for('admin_dashboard.htmx_contract_create_form') }}"
-                        hx-target="#createContractFormContainer"
-                        hx-trigger="click">
-                    <i class="fas fa-plus"></i> Create Contract
-                </button>
-                {% endif %}
+            <div class="card-header collapse-toggle d-flex justify-content-between align-items-center"
+                 data-bs-toggle="collapse" data-bs-target="#existingContractsSearch"
+                 role="button" aria-expanded="true" aria-controls="existingContractsSearch">
+                <h5 class="mb-0"><i class="fas fa-file-signature"></i> Search Existing Contracts</h5>
             </div>
-            <div class="card-body">
-                {# toggle_checked=False: only 368 of 2,225 contracts are
-                   currently active, so an active-only default would hide
-                   most of the data behind a control you had to know to
-                   clear. Expired grants stay searchable as provenance. #}
-                {{ active_toggle_search(
-                    search_url=url_for('admin_dashboard.htmx_search_contracts'),
-                    input_id='contractSearchInput',
-                    results_id='contractSearchResults',
-                    label='Search by contract number or title',
-                    placeholder='Start typing a contract number or title...',
-                    toggle_id='activeContractsOnly',
-                    toggle_label='Active contracts only',
-                    toggle_checked=False) }}
+            <div id="existingContractsSearch" class="collapse show">
+                <div class="card-body">
+                    {# toggle_checked=False: only 368 of 2,225 contracts are
+                       currently active, so an active-only default would hide
+                       most of the data behind a control you had to know to
+                       clear. Expired grants stay searchable as provenance. #}
+                    {{ active_toggle_search(
+                        search_url=url_for('admin_dashboard.htmx_search_contracts'),
+                        input_id='contractSearchInput',
+                        results_id='contractSearchResults',
+                        label='Search by contract number or title',
+                        placeholder='Start typing a contract number or title...',
+                        toggle_id='activeContractsOnly',
+                        toggle_label='Active contracts only',
+                        toggle_checked=False) }}
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Find Candidate Contracts (external award providers) -->
+{% if has_permission(Permission.CREATE_ORG_METADATA) %}
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card inner-card">
+            <div class="card-header collapse-toggle d-flex justify-content-between align-items-center"
+                 data-bs-toggle="collapse" data-bs-target="#candidateContractsSearch"
+                 role="button" aria-expanded="true" aria-controls="candidateContractsSearch">
+                <h5 class="mb-0"><i class="fas fa-magnifying-glass-dollar"></i> Find Candidate Contracts</h5>
+            </div>
+            <div id="candidateContractsSearch" class="collapse show">
+                <div class="card-body">
+                    <p class="text-muted small">
+                        Searches the funding agencies directly — NSF's Awards API and
+                        USAspending — for awards SAM does not have yet. Results already
+                        in SAM are flagged.
+                    </p>
+
+                    <div class="row g-2 align-items-end mb-2">
+                        <div class="col-md-7">
+                            <label for="candidateSearchInput" class="form-label">
+                                Search by title or keyword
+                            </label>
+                            {# One request path for both the button and Enter: a
+                               body-level custom event the input listens for.
+
+                               Enter is bound in form-helpers.js, NOT with an
+                               htmx `keyup[key=='Enter']` filter. htmx compiles
+                               trigger filters with Function(), which
+                               `script-src 'self'` forbids — it raises
+                               htmx:evalDisallowedError and then **fails open**,
+                               so every keystroke fires a request. That would
+                               turn a deliberate button-triggered search into a
+                               typeahead against two public APIs. #}
+                            <input type="search" class="form-control" name="q"
+                                   id="candidateSearchInput"
+                                   placeholder="e.g. boundary layer turbulence"
+                                   autocomplete="off"
+                                   data-enter-trigger="find-candidates"
+                                   hx-get="{{ url_for('admin_dashboard.htmx_contract_award_candidates') }}"
+                                   hx-target="#candidateSearchResults"
+                                   hx-swap="innerHTML"
+                                   hx-include="#candidateSourceSelect"
+                                   hx-trigger="find-candidates from:body"
+                                   hx-indicator="#candidateSearchSpinner">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="candidateSourceSelect" class="form-label">Source</label>
+                            <select class="form-select" name="contract_source_id"
+                                    id="candidateSourceSelect">
+                                <option value="">All sources</option>
+                                {% for source in contract_sources %}
+                                <option value="{{ source.contract_source_id }}">{{ source.contract_source }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-grid">
+                            <button type="button" class="btn btn-outline-primary"
+                                    data-action="find-candidates">
+                                <i class="fas fa-magnifying-glass me-1"></i> Search
+                            </button>
+                        </div>
+                    </div>
+
+                    <span id="candidateSearchSpinner"
+                          class="htmx-indicator text-muted small d-block mb-2">
+                        <i class="fas fa-spinner fa-spin me-1"></i>Searching NSF and USAspending…
+                    </span>
+
+                    <div id="candidateSearchResults"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Contract Card Display Area -->
-<div class="row">
+<div class="row mt-3">
     <div class="col-12">
         {# The reload-url idiom concatenates an id onto a base URL. The other
            pages get an empty base from username='' / projcode='', but an
            <int:> converter rejects '', so build it from a placeholder. #}
         <div id="contractCardContainer"
              data-reload-url="{{ url_for('admin_dashboard.contract_card', contract_id=0) | replace('/0', '/') }}"></div>
+    </div>
+</div>
+
+<!-- All Contracts, by funding source -->
+<div class="row mt-3">
+    <div class="col-12">
+        <div class="card inner-card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-table-list"></i> All Contracts</h5>
+                <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch"
+                           id="contractsTableActiveOnly" name="active_only" value="1" checked
+                           hx-get="{{ url_for('admin_dashboard.htmx_contracts_table') }}"
+                           hx-target="#contractsTableSection"
+                           hx-swap="innerHTML"
+                           hx-trigger="change"
+                           hx-include="this">
+                    <label class="form-check-label small" for="contractsTableActiveOnly">
+                        Active only
+                    </label>
+                </div>
+            </div>
+            {# Defaults ON, unlike the search box above: an unfiltered
+               2,225-row browse table is a different proposition from a
+               search you have already narrowed by typing. #}
+            <div id="contractsTableSection"
+                 hx-get="{{ url_for('admin_dashboard.htmx_contracts_table') }}?active_only=1"
+                 hx-trigger="load once"
+                 hx-swap="innerHTML"></div>
+        </div>
     </div>
 </div>
 

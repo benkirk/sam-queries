@@ -24,6 +24,16 @@ _CACHE = BucketedTTLCache('awards', 'awards', {
         ttl_key='AWARD_LOOKUP_CACHE_TTL', ttl_default=691200,    # 8 days
         size_key='AWARD_LOOKUP_CACHE_SIZE', size_default=256,
     ),
+    # Free-text search gets its own namespace rather than sharing the lookup
+    # bucket: the keys have different shapes, and a search is a *view over a
+    # changing corpus* while an award record is near-immutable. Hence 1 day
+    # against the lookup's 8 — a new award should show up in search results
+    # the next day, not the next week.
+    'search': BucketSpec(
+        name='awards_search',
+        ttl_key='AWARD_SEARCH_CACHE_TTL', ttl_default=86400,     # 1 day
+        size_key='AWARD_SEARCH_CACHE_SIZE', size_default=256,
+    ),
 })
 
 #: Test seams, matching the fs-scans / jobs idiom: ``_adapters`` IS the
@@ -42,6 +52,20 @@ def cached_lookup(provider_name: str, contract_number: str,
     """
     return _CACHE.get_or_compute(
         'default', (provider_name, contract_number), compute)
+
+
+def cached_search(provider_name: str, query: str, limit: int,
+                  compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise one provider's answer for one search term.
+
+    *limit* is part of the key: the same term at a larger limit is a
+    different question, and serving the short answer to the long one would
+    silently truncate. As with :func:`cached_lookup`, an
+    ``AwardSourceUnavailable`` propagates out of *compute* before the store,
+    so a transient outage is never remembered.
+    """
+    return _CACHE.get_or_compute(
+        'search', (provider_name, query.strip().casefold(), limit), compute)
 
 
 def purge() -> int:

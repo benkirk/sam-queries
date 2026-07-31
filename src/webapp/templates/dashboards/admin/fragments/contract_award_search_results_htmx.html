@@ -1,0 +1,85 @@
+{#
+  htmx: Award search results — "Find an award" on the Create Contract form.
+
+  A third row shape, distinct from both contract result templates:
+
+  * contract_search_results_fk_htmx.html is inert markup driven by
+    fk-picker.js, and can only fill an `.fk-picker` wrapper. Contract Number
+    and Source are a plain input and a <select>, so that mechanism does not
+    apply.
+  * contract_search_results_htmx.html carries per-row hx-* attributes and
+    navigates.
+
+  These rows do neither: `use-award` writes the two parent-form inputs and
+  then fires the existing Fetch button, so the round-trip that fills the form
+  is the *existing* lookup route. That chain is what recovers USAspending's
+  program name, which a search result structurally cannot carry.
+
+  Rendered inside #contractLookupRow, which sits outside #createContractFields
+  — so the lookup's prefill swap cannot wipe these results.
+#}
+{% if search_error %}
+<div class="list-group-item small text-warning-emphasis bg-warning-subtle">
+    <i class="fas fa-triangle-exclamation me-1"></i>{{ search_error }}
+</div>
+{% elif results %}
+{% for row in results %}
+{% set award = row.record %}
+<div class="list-group-item p-2">
+    <div class="d-flex align-items-start gap-2">
+        <div class="flex-grow-1 min-w-0">
+            <div>
+                <span class="badge bg-light text-dark border me-1">
+                    {{ 'NSF' if award.provenance.startswith('NSF') else award.provenance }}
+                </span>
+                {% if award.contract_number %}
+                <span class="font-monospace small">{{ award.contract_number }}</span>
+                {% endif %}
+                {% if row.in_sam %}
+                <span class="badge bg-secondary ms-1"
+                      title="SAM already has a contract with this number">
+                    <i class="fas fa-check me-1"></i>already in SAM
+                </span>
+                {% endif %}
+            </div>
+            <div class="small text-truncate">{{ award.title or '—' }}</div>
+            <div class="small text-muted">
+                {{ award.start_date | fmt_date }} → {{ award.end_date | fmt_date }}
+                {% if award.monitor and award.monitor.name %}
+                · PM: {{ award.monitor.name }}
+                {% endif %}
+                {% if award.unavailable_fields %}
+                · <span class="fst-italic">no PI/Monitor from this source</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="flex-shrink-0">
+            {% if row.in_sam %}
+            <span class="btn btn-sm btn-outline-secondary disabled"
+                  title="Contract {{ row.in_sam.contract_number }} already exists">
+                In SAM
+            </span>
+            {% else %}
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    data-action="use-award"
+                    data-award-number="{{ award.contract_number or '' }}"
+                    {% if nsf_source_id and award.provenance.startswith('NSF') %}
+                    data-source-id="{{ nsf_source_id }}"
+                    {% endif %}>
+                Use
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% if partial_errors %}
+<div class="list-group-item small text-warning-emphasis bg-warning-subtle">
+    <i class="fas fa-triangle-exclamation me-1"></i>
+    {% for error in partial_errors %}{{ error.provenance }} could not be reached.
+    {% endfor %}These results are partial.
+</div>
+{% endif %}
+{% else %}
+<div class="list-group-item text-muted small py-2">No awards found</div>
+{% endif %}

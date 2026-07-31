@@ -174,7 +174,7 @@ def _compare_person(session, field: str, sam_user, person_ref, record):
             'source': resolved.username}, None
 
 
-def compare_contract(session, contract) -> Dict:
+def compare_contract(session, contract, record=None) -> Dict:
     """
     Compare one contract against its funding source.
 
@@ -186,6 +186,13 @@ def compare_contract(session, contract) -> Dict:
     Args:
         session:  SQLAlchemy session (needed to map agency people onto users).
         contract: a ``Contract``, with ``contract_source`` loaded.
+        record:   an already-fetched :class:`AwardRecord` to compare against,
+                  skipping the lookup.  ``sam-search awards <number>`` has one
+                  in hand and would otherwise fetch twice; the cache makes the
+                  second call nearly free, but threading it through is clearer
+                  than relying on that.  Passing ``None`` (the default) does
+                  the lookup, which is the only path that can report
+                  ``status='unavailable'``.
 
     Returns:
         ::
@@ -208,14 +215,15 @@ def compare_contract(session, contract) -> Dict:
         eyeballing and deliberately reports **no** divergences.  Empty
         ``divergences`` with ``status='ok'`` means SAM agrees with the source.
     """
-    source_name = (contract.contract_source.contract_source
-                   if contract.contract_source else None)
-
-    try:
-        record = awards.resolve_award(source_name, contract.contract_number)
-    except awards.AwardSourceUnavailable as exc:
-        return {'status': 'unavailable', 'provenance': None,
-                'reason': str(exc), 'divergences': [], 'hints': []}
+    if record is None:
+        source_name = (contract.contract_source.contract_source
+                       if contract.contract_source else None)
+        try:
+            record = awards.resolve_award(source_name,
+                                          contract.contract_number)
+        except awards.AwardSourceUnavailable as exc:
+            return {'status': 'unavailable', 'provenance': None,
+                    'reason': str(exc), 'divergences': [], 'hints': []}
 
     if record is None:
         return {'status': 'no_record', 'provenance': None,
