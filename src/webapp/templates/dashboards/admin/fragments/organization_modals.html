@@ -7,7 +7,13 @@
 
 {# ════════════════════════════════════════════════════════ CREATE MODALS #}
 
-{% if has_permission(Permission.CREATE_RESOURCES) %}
+{# Gate matches the buttons that open these shells and the routes behind
+   them — all org-metadata create surfaces are CREATE_ORG_METADATA
+   (orgs_routes.py, contracts_routes.py). Gating on CREATE_RESOURCES here
+   (a copy of resources_modals.html) left nusd/csg holding visible create
+   buttons whose modal + htmx target were absent from the DOM: the click
+   silently no-opped with an htmx:targetError. #}
+{% if has_permission(Permission.CREATE_ORG_METADATA) %}
 {{ modal_scaffold('createOrganizationModal', 'New Organization',
                   icon='plus', container_id='createOrganizationFormContainer') }}
 

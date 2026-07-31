@@ -403,6 +403,110 @@ def test_project_details_fragment_targets_resolve(auth_client, active_project):
 
 
 # ---------------------------------------------------------------------------
+# 4. Permission-gate parity: a visible opener must have a visible shell
+# ---------------------------------------------------------------------------
+#
+# Checks 1-3 resolve ids *textually* — they see the ``modal_scaffold(...)``
+# call and are satisfied, never evaluating the ``{% if has_permission(...) %}``
+# wrapped around it. So a shell can be gated on one permission while the button
+# opening it is gated on another, and the id resolves statically while the DOM
+# is empty at runtime for anyone holding only the opener's permission.
+#
+# That is not hypothetical: ``organization_modals.html`` gated every create
+# shell on CREATE_RESOURCES (copied from ``resources_modals.html``) while the
+# contract/org create buttons and their routes gate on CREATE_ORG_METADATA.
+# When PR #410 granted nusd/csg CREATE_ORG_METADATA, those groups got visible
+# "Create contract" / "Create Source" / "New Organization" buttons whose modal
+# and htmx target were both absent — the click no-opped with an
+# htmx:targetError and no request at all.
+#
+# Only one direction is dangerous: an opener visible to someone the shell is
+# hidden from. A shell that is *ungated* can never go missing, so those pairs
+# are skipped rather than pinned.
+
+_IF_TAG = re.compile(r'{%-?\s*(if|elif|else|endif)\b([^%]*)%}')
+_HAS_PERM = re.compile(r'has_permission(?:_any_facility)?\(\s*Permission\.([A-Z_]+)\s*\)')
+
+# Fragments that are themselves served only behind the shell's own permission,
+# so an ungated opener inside them is unreachable without it. Value is the
+# permission the serving route requires.
+GATE_PARITY_ROUTE_GATED = {
+    'dashboards/admin/fragments/bulk_deactivate_project_directories_form_htmx.html': 'DELETE_PROJECTS',
+    'dashboards/admin/fragments/bulk_deactivate_project_directories_preview_htmx.html': 'DELETE_PROJECTS',
+    'dashboards/admin/fragments/queue_cleanup_preview_htmx.html': 'DELETE_RESOURCES',
+}
+
+
+def _guard_at(src, pos):
+    """Permission guarding offset `pos`, tracking ``{% if %}`` nesting.
+
+    Returns the innermost ``has_permission(Permission.X)`` in force, or None
+    when nothing at that point is permission-gated.
+    """
+    stack = []
+    for m in _IF_TAG.finditer(src):
+        if m.start() >= pos:
+            break
+        kind, cond = m.group(1), m.group(2)
+        if kind == 'if':
+            found = _HAS_PERM.search(cond)
+            stack.append(found.group(1) if found else None)
+        elif kind == 'elif' and stack:
+            found = _HAS_PERM.search(cond)
+            stack[-1] = found.group(1) if found else None
+        elif kind == 'else' and stack:
+            stack[-1] = None
+        elif kind == 'endif' and stack:
+            stack.pop()
+    live = [s for s in stack if s]
+    return live[-1] if live else None
+
+
+def _shell_guards():
+    """{shell id: (defining template, guarding permission or None)}."""
+    guards = {}
+    for template, src in TEMPLATES.items():
+        for m in _SCAFFOLD.finditer(src):
+            guard = _guard_at(src, m.start())
+            for shell_id in [m.group(1)] + _CONTAINER_KWARG.findall(m.group(2)):
+                guards[shell_id] = (template, guard)
+    return guards
+
+
+def test_modal_openers_are_gated_like_their_shells():
+    """A button's permission gate must match the gate on the shell it opens."""
+    shell_guards = _shell_guards()
+    mismatches = []
+    for template, src in TEMPLATES.items():
+        for m in _TARGET.finditer(src):
+            ref = m.group(1)
+            if ref not in shell_guards:
+                continue
+            shell_template, shell_guard = shell_guards[ref]
+            if shell_guard is None:
+                continue          # always in the DOM — cannot go missing
+            opener_guard = _guard_at(src, m.start())
+            if opener_guard == shell_guard:
+                continue
+            if GATE_PARITY_ROUTE_GATED.get(template) == shell_guard:
+                continue          # route already enforces the same permission
+            mismatches.append(
+                f'  #{ref}\n'
+                f'      shell  gated on {shell_guard}  ({shell_template})\n'
+                f'      opener gated on {opener_guard or "nothing"}  ({template})'
+            )
+
+    assert not mismatches, (
+        'Modal openers are visible to users the shell is hidden from — the '
+        'click will silently no-op with an htmx:targetError:\n\n'
+        + '\n'.join(sorted(mismatches))
+        + '\n\nGate the shell on the same permission its openers (and the '
+          'routes behind them) use. If the opener fragment is only ever served '
+          'behind that permission, add it to GATE_PARITY_ROUTE_GATED instead.'
+    )
+
+
+# ---------------------------------------------------------------------------
 # Script order in dashboards/base.html
 # ---------------------------------------------------------------------------
 
