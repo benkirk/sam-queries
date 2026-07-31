@@ -7,7 +7,11 @@
 
 {# ════════════════════════════════════════════════════════ CREATE MODALS #}
 
-{% if has_permission(Permission.CREATE_RESOURCES) %}
+{# Facility/Panel/AllocationType create routes gate on CREATE_FACILITIES
+   (facilities_routes.py CrudSpec), not CREATE_RESOURCES. No bundle holds
+   one without the other today, so this is latent rather than live — but
+   it is the same button/shell gate mismatch as organization_modals.html. #}
+{% if has_permission(Permission.CREATE_FACILITIES) %}
 {{ modal_scaffold('createFacilityModal', 'New Facility',
                   icon='plus', container_id='createFacilityFormContainer') }}
 

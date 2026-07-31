@@ -261,13 +261,13 @@ class TestTableLinking:
         assert 'id="contractDetailsModal"' in body
         assert 'id="nsfProgramContractsModal"' in body
 
-    def test_project_card_link_needs_view_org_metadata(self, auth_client,
-                                                       session, monkeypatch):
+    def test_project_card_link_needs_view_contracts(self, auth_client,
+                                                    session, monkeypatch):
         """The project card renders on the user dashboard, where a normal
-        user has no VIEW_ORG_METADATA and contract_card would 403. With the
+        user has no VIEW_CONTRACTS and contract_card would 403. With the
         permission the number is a link; without it, plain text.
 
-        Every admin-ish Quick Login user happens to hold VIEW_ORG_METADATA,
+        Every admin-ish Quick Login user happens to hold VIEW_CONTRACTS,
         so the negative branch is only reachable by stubbing it.
         """
         from sam.projects.contracts import ProjectContract
@@ -286,7 +286,7 @@ class TestTableLinking:
         real = rbac.has_permission_any_facility
 
         def _deny(user, permission, *a, **kw):
-            if permission == rbac.Permission.VIEW_ORG_METADATA:
+            if permission == rbac.Permission.VIEW_CONTRACTS:
                 return False
             return real(user, permission, *a, **kw)
 

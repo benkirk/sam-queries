@@ -2249,9 +2249,9 @@ def _linked_elements_context(project):
         disk_roots=_disk_roots_for_picker(),
         can_edit_governance=can_edit_project_governance(current_user, project),
         # Gated on the contract_card route's own permission so the link
-        # can never 403 for a project lead without org-metadata access.
+        # can never 403 for a project lead without contract access.
         can_view_contracts=has_permission_any_facility(
-            current_user, Permission.VIEW_ORG_METADATA),
+            current_user, Permission.VIEW_CONTRACTS),
         errors=[],
     )
 
