@@ -42,15 +42,17 @@ class TestReadLayout:
         with app.test_request_context('/'):
             assert read_layout() == 'desktop'
 
-    @pytest.mark.parametrize('value', ['mobile', 'MOBILE', ' mobile '])
-    def test_query_string_selects_mobile(self, app, value):
+    @pytest.mark.parametrize('value', ['mobile', 'MOBILE', ' mobile ',
+                                       'tablet', 'TABLET', ' tablet '])
+    def test_query_string_selects_a_declared_layout(self, app, value):
         with app.test_request_context('/', query_string={'layout': value}):
-            assert read_layout() == 'mobile'
+            assert read_layout() == value.strip().lower()
 
-    def test_cookie_selects_mobile(self, app):
+    @pytest.mark.parametrize('value', ['mobile', 'tablet'])
+    def test_cookie_selects_a_declared_layout(self, app, value):
         with app.test_request_context(
-                '/', headers={'Cookie': f'{LAYOUT_COOKIE}=mobile'}):
-            assert read_layout() == 'mobile'
+                '/', headers={'Cookie': f'{LAYOUT_COOKIE}={value}'}):
+            assert read_layout() == value
 
     def test_query_string_outranks_the_cookie(self, app):
         """The fragment reflects the viewport *now*; the cookie reflects
@@ -72,10 +74,19 @@ class TestReadLayout:
     def test_normalizes_rather_than_passing_through(self, app):
         """The chart layer is lenient too, so passing an unknown value along
         would render correctly — but it would reach the *cache key*, and that
-        key is shared across workers and pods. Two spellings, not arbitrarily
-        many."""
+        key is shared across workers and pods. The declared spellings, not
+        arbitrarily many."""
         with app.test_request_context('/', query_string={'layout': 'bogus'}):
-            assert read_layout() in ('desktop', 'mobile')
+            assert read_layout() in ('desktop', 'tablet', 'mobile')
+
+    def test_every_name_reaches_a_chart_profile(self, app):
+        """A vocabulary the transport accepts but the charts cannot draw would
+        cache an exception path. The two lists are declared in different files;
+        this is what keeps them one list."""
+        from webapp.dashboards.charts import pie
+        from webapp.utils.htmx import _LAYOUTS
+
+        assert _LAYOUTS == set(pie.PieChart.LAYOUTS)
 
 
 # --------------------------------------------------------------------------
@@ -106,9 +117,10 @@ class TestCacheKeyPartitionsByLayout:
             return user_aware_cache_key()
 
     def test_layout_is_in_the_key(self, app):
-        desktop = self._key(app)
-        mobile = self._key(app, headers={'Cookie': f'{LAYOUT_COOKIE}=mobile'})
-        assert desktop != mobile
+        keys = {self._key(app)}
+        for name in ('mobile', 'tablet'):
+            keys.add(self._key(app, headers={'Cookie': f'{LAYOUT_COOKIE}={name}'}))
+        assert len(keys) == 3, 'two layouts share a cached-HTML slot'
 
     def test_same_layout_shares_a_slot(self, app):
         a = self._key(app, headers={'Cookie': f'{LAYOUT_COOKIE}=mobile'})
@@ -135,20 +147,42 @@ class TestLayoutAxisJs:
     def js(self):
         return JS.read_text()
 
+    #: Bootstrap's `max-width` breakpoints (each 0.02px under the `min-width`
+    #: one). A layout boundary that is not one of these is a number somebody
+    #: invented, and it will drift away from the CSS that has to agree with it.
+    BOOTSTRAP_MAX_WIDTHS = {'575.98', '767.98', '991.98', '1199.98', '1399.98'}
+
     def test_uses_the_app_wide_breakpoint(self, js):
         """Bootstrap's `md`, matching ``dashboard-init.js``'s
         ``collapseFilterPanels``. Two definitions of "phone" would put the
-        filter panels and the charts on different sides of the same window."""
+        filter panels and the charts on different sides of the same window.
+
+        This used to assert the two files' query *sets* were equal, which was
+        right while "phone or not" was the only question. The tablet band adds
+        a second boundary that ``dashboard-init.js`` has no opinion on, so the
+        claim narrows to: every breakpoint that file uses is one this file also
+        uses, and anything extra here is a real Bootstrap breakpoint.
+        """
         assert '(max-width: 767.98px)' in js
 
         other = (JS.parent / 'dashboard-init.js').read_text()
         # Both files may hold the query in a constant, so match the literal
         # rather than the matchMedia call site.
-        query = r"\(max-width: [\d.]+px\)"
+        query = r"\(max-width: ([\d.]+)px\)"
         mine = set(re.findall(query, js))
         theirs = set(re.findall(query, other))
-        assert mine and mine == theirs, (
-            f'breakpoint drift: layout-axis {mine} vs dashboard-init {theirs}')
+        assert theirs and theirs <= mine, (
+            f'breakpoint drift: dashboard-init uses {theirs - mine} which '
+            f'layout-axis does not')
+        assert mine <= self.BOOTSTRAP_MAX_WIDTHS, (
+            f'layout-axis invented a breakpoint: '
+            f'{sorted(mine - self.BOOTSTRAP_MAX_WIDTHS)}')
+
+    def test_selects_the_narrowest_matching_band(self, js):
+        """Below 768 both queries match, so the order of the tests is the
+        whole behaviour: mobile must be asked first or a phone gets the tablet
+        figure. Asserted positionally because there is no JS test runner."""
+        assert js.index('MOBILE_QUERY).matches') < js.index('TABLET_QUERY).matches')
 
     def test_cookie_name_matches_the_server(self, js):
         assert f"'{LAYOUT_COOKIE}'" in js or f'"{LAYOUT_COOKIE}"' in js
