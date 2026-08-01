@@ -147,6 +147,34 @@ body {
     color: var(--ncar-blue);
 }
 
+/* Theme toggle — the light/dark switch in the utility menu, the mobile
+   drawer and the login footer. A .btn-link that must not look like a link:
+   no underline, no focus ring inherited from .btn, and it sits beside the
+   user dropdown so it takes the same colour treatment. */
+.theme-toggle {
+    text-decoration: none;
+    padding: 0;
+    margin-right: 1rem;
+    border: 0;
+    line-height: inherit;
+}
+
+.theme-toggle:focus-visible {
+    outline: 2px solid var(--ncar-blue);
+    outline-offset: 2px;
+}
+
+.theme-toggle [data-theme-label] {
+    margin-left: 0.375rem;
+}
+
+/* In the drawer and the login footer the control is a standalone row, not a
+   navbar item, so it should not inherit .utility-menu's zero padding. */
+.mobile-nav-footer .theme-toggle,
+.login-footer .theme-toggle {
+    font-weight: var(--font-weight-semi-bold);
+}
+
 /* Nav row border */
 .navbar-wrapper.border-top {
     border-top-color: #dee2e6 !important;

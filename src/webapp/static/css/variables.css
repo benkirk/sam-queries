@@ -210,3 +210,29 @@
     --bs-tertiary-bg:        var(--surface-tertiary);
     --bs-tertiary-bg-rgb:    var(--surface-tertiary-rgb);
 }
+
+
+/* =========================================================================
+   DARK THEME — tier-2 overrides.
+
+   Set by the server onto <html data-bs-theme="dark"> from the `sam_theme`
+   cookie (webapp/utils/htmx.py read_theme(); the toggle is
+   static/js/theme-toggle.js). Rendering the attribute server-side, rather
+   than setting it from script, is what makes this flash-free by
+   construction: the theme is correct in the first byte of HTML.
+
+   `:root[data-bs-theme="dark"]` (specificity 0,2,0) rather than a bare
+   `[data-bs-theme=dark]` (0,1,0) — it has to outrank Bootstrap's own dark
+   block, which redefines the same --bs-* variables the tier-3 bridge above
+   points at tier 2. A bare `:root` would tie with Bootstrap's and lose
+   whenever the attribute is present.
+
+   INTENTIONALLY EMPTY at D3, and the app is deliberately half-broken in dark
+   mode as a result: Bootstrap's own dark block applies (body, tables, forms,
+   dropdowns), while SAM's hardcoded surfaces stay light. That is the point —
+   it makes the remaining work *inspectable* instead of reasoned about.
+   D4-D6 retire those surfaces onto tokens; D7 fills this block in.
+   ========================================================================= */
+:root[data-bs-theme="dark"] {
+    /* D7 fills this in. */
+}

@@ -41,6 +41,54 @@ def read_layout(default: str = 'desktop') -> str:
     return raw if raw in _LAYOUTS else default
 
 
+#: The themes a request may ask for. Must match ``charts/theme.py:THEMES`` —
+#: the string is passed straight through to the chart layer and into its
+#: cache key, exactly like ``_LAYOUTS``.
+_THEMES = frozenset({'light', 'dark'})
+
+#: Written by ``static/js/theme-toggle.js``. Unlike ``LAYOUT_COOKIE`` this is
+#: a *persistent* cookie (Max-Age one year): a viewport is a property of the
+#: visit, a theme is a preference to remember.
+THEME_COOKIE = 'sam_theme'
+
+
+def read_theme(default: str = 'light') -> str:
+    """Which theme this request wants — see ``_THEMES``.
+
+    Deliberately the same shape as :func:`read_layout`, because it is the same
+    problem: a per-user rendering mode the server must know *before* it
+    renders, since charts are matplotlib SVGs with baked-in colours that no
+    stylesheet can retheme. If these two functions ever stop being readable
+    side by side, something has been reasoned about wrongly.
+
+    **One channel, not two — where this diverges from `read_layout`.**
+    ``layout-axis.js`` injects ``?layout=`` into every htmx request *as well
+    as* writing the cookie, because a viewport is discovered client-side after
+    the server has already answered: the first page a visitor ever loads is
+    rendered before the cookie exists. A theme is never discovered — it is
+    declared by an explicit click that then reloads, so the cookie and the
+    browser can never disagree, and a first-ever visitor has no preference to
+    discover (``light`` is the answer, not a stale guess).
+
+    The query string is still read first, but **no JavaScript ever sets it**.
+    It exists so ``?theme=dark`` works by hand for debugging, and so this
+    function stays literally the same function as ``read_layout`` — the
+    property a reviewer should check.
+
+    **Lenient, never a 400**, for the same reason as ``read_layout``: a stale
+    or hand-typed value must not break a page, and normalizing here keeps the
+    value reaching the *cache key* to the declared spellings rather than
+    arbitrarily many.
+
+    Returns:
+        A member of ``_THEMES`` — never anything else.
+    """
+    raw = (request.args.get('theme')
+           or request.cookies.get(THEME_COOKIE)
+           or '').strip().lower()
+    return raw if raw in _THEMES else default
+
+
 #: Values a checkbox / switch may arrive as. Templates emit ``1`` (see the
 #: ``active_toggle_search`` macro, the admin card toggles and the charts'
 #: log-scale switches) but the set is deliberately permissive: a checkbox

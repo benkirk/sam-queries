@@ -1,5 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+{# `theme` comes from the sam_theme cookie via read_theme() (context processor
+   in run.py). Rendering it here rather than setting it from script is what
+   makes dark mode flash-free by construction — see docs/plans/DARK_MODE.md. #}
+<html lang="en" data-bs-theme="{{ theme }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -58,8 +61,12 @@
                                     </div>
                                 </div>
                             </div>
-                            <!-- Utility menu: user account (desktop only) -->
+                            <!-- Utility menu: theme toggle + user account (desktop only) -->
                             <div class="utility-menu col d-none d-md-flex justify-content-end align-items-center pe-0">
+                                {# Outside the is_authenticated gate on purpose: an anonymous
+                                   visitor should be able to flip the theme too. #}
+                                {% from 'dashboards/fragments/theme_toggle.html' import theme_toggle %}
+                                {{ theme_toggle(theme) }}
                                 {% if current_user.is_authenticated %}
                                 <div class="nav-item dropdown">
                                     <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
@@ -233,6 +240,7 @@
     <script src="{{ url_for('static', filename='js/sortable_table.js') }}"></script>
     <script src="{{ url_for('static', filename='js/svg-chart-links.js') }}"></script>
     <script src="{{ url_for('static', filename='js/layout-axis.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
 
     {% block extra_js %}{% endblock %}
 </body>

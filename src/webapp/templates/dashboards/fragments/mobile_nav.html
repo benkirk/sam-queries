@@ -48,6 +48,8 @@
         </div>
 
         <div class="mobile-nav-footer border-top pt-3 mt-3">
+            {% from 'dashboards/fragments/theme_toggle.html' import theme_toggle %}
+            <div class="mb-2">{{ theme_toggle(theme, labelled=true, classes='px-0') }}</div>
             {% if current_user.is_authenticated %}
             <div class="mb-2">
                 <i class="fas fa-user-circle me-1"></i>

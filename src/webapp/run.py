@@ -338,6 +338,16 @@ def create_app(*, config_overrides: dict | None = None):
     from webapp.vendor_assets import vendor_assets_context_processor
     app.context_processor(vendor_assets_context_processor)
 
+    # Dark mode. Rendered straight onto <html data-bs-theme="..."> in both
+    # page shells, so the theme is correct in the FIRST BYTE of HTML: no
+    # flash to prevent, no <head> script for the nonce-free CSP to forbid,
+    # no localStorage read racing the paint. See webapp/utils/htmx.py
+    # read_theme() and docs/plans/DARK_MODE.md.
+    @app.context_processor
+    def theme_context_processor():
+        from webapp.utils.htmx import read_theme
+        return {'theme': read_theme()}
+
     # Expose runtime feature flags to all templates
     @app.context_processor
     def feature_flags_context_processor():
