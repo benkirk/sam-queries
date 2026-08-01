@@ -865,11 +865,31 @@ rather than as white boxes.
 PR 4 is now genuinely small, because PR 1 and this PR pre-solved its
 structure:
 
-1. **Pass `theme=read_theme()` at the chart call sites** — 24 places that
-   already pass `layout=`. `chart_view` accepts `theme=` and composes it into
-   the cache key today; nothing else has to change for the plumbing.
-   `test_renderers_forward_the_layout_they_are_given` has an obvious sibling
-   worth adding for `theme`.
+1. **Pass `theme=read_theme()` at the chart call sites** — 22 places that
+   already pass `layout=`, across 6 files. `chart_view` accepts `theme=` and
+   composes it into the cache key today; nothing else has to change for the
+   plumbing.
+
+   | File | Sites | How layout arrives |
+   |---|---|---|
+   | `dashboards/allocations/blueprint.py` | 5 | 4 via a local `layout`, 1 `read_layout()` |
+   | `dashboards/user/blueprint.py` | 4 | `read_layout()` at each |
+   | `dashboards/status/blueprint.py` | 4 | `read_layout()` at each |
+   | `jobs/routes.py` | 6 | a local `layout` threaded from the registrar |
+   | `disk_scans/routes.py` | 2 | ditto |
+   | `utils/fragments.py` | 1 | `read_layout()` — the registrar, covers 27 routes |
+
+   The two that are *not* call sites are `charts/__init__.py:188` and
+   `charts/base.py:349`, which are the plumbing itself and already forward
+   `theme`.
+
+   `utils/fragments.py:158` is the high-leverage one: it resolves the axis once
+   for every jobs / disk-scans fragment, so `theme` should be added there the
+   same way — and then **carried by hand** through each panel renderer, which
+   is exactly the hop that silently failed for `layout` in the three jobs
+   histogram panels. `test_renderers_forward_the_layout_they_are_given` is the
+   gate that caught it; give it a `theme` sibling in the same commit, not
+   after.
 2. **Tune `Theme.DARK`.** Its chrome values exist. The two decisions a
    mechanical swap cannot make are still open and are recorded in
    `CHART_ARCHITECTURE.md` Appendix B: the space-blue pie wedge, and the
@@ -883,6 +903,22 @@ structure:
 5. **Redis**: chart keys hash *input data*, not rendering code, so warm
    entries serve old-code SVGs for up to 600 s. Run
    `sam-admin cache --refresh --category chart` after deploying.
+
+### Starting state for that session
+
+- Branch `dark_mode_sans_charts`, PR #419 vs `staging`, D0–D9 landed and CI
+  green. PR 4 should branch from it (or from `staging` once #419 merges).
+- The defect to fix, precisely: chart `<text>` carries a baked
+  `fill="rgb(1,24,55)"` (`--ncar-space-blue`) against the `#1b2733` card —
+  **1.3:1**. Verified in-browser on `/allocations/projects`.
+- Figures already render on a **transparent** background, so there is no white
+  box to remove — only the ink is wrong.
+- `e2e/test_dark_mode.py::test_sampled_surfaces_are_legible` samples chrome,
+  not SVG text. Extending `SAMPLES` to chart `<text>` would turn the current
+  chart defect into a red test — worth doing *first*, as the failing test that
+  PR 4 then makes pass.
+- Local browser tier needs `pytest-playwright` + chromium; it is already
+  installed in this repo's conda env (see the Makefile `e2e` target).
 
 Note for whoever ships it: dark mode doubles the chart cache working set. The
 `svg.fonttype='none'` change in PR 1 cut SVG size 40–77 %, which mostly pays
