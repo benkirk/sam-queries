@@ -180,66 +180,6 @@ body {
     border-top-color: var(--border-default) !important;
 }
 
-/* ---------------------------------------------------------------------------
-   DARK MODE: the navbar stays a LIGHT CHIP.
-   ---------------------------------------------------------------------------
-   TODO(dark-logos): revert this whole block to `--surface-raised` once the
-   reversed brand marks land.
-
-   `img/logo-ncar.png` and `img/NSF_Official_logo.png` are dark navy marks.
-   NSF and UCAR both publish reversed/white variants and Ben is sourcing the
-   official assets, but that is a brand request with external lead time and it
-   must not gate dark mode. So the header keeps a light band — defensible on
-   its own terms; plenty of dark UIs do exactly this — and the marks stay
-   legible and untouched.
-
-   Deliberately NOT using `filter: invert()` on the logos: it renders both as
-   flat white, which is not an approved brand variant of either organization's
-   mark.
-
-   Because the band stays light, every text token inside it has to be pinned
-   back to its LIGHT value — `--text-heading` and friends flip to near-white
-   in dark mode, which on a white navbar is invisible. Same for Bootstrap's
-   `--bs-navbar-*`, whose dark block sets `rgba(255,255,255,.55)`.
-
-   When the reversed assets arrive, the change is: point `--surface-navbar`
-   at `--surface-raised` in the dark block of variables.css, and delete
-   everything below. The `.navbar` rules themselves need no edit. */
-:root[data-bs-theme="dark"] .navbar,
-:root[data-bs-theme="dark"] .navbar-light {
-    /* The band colour itself comes from `--surface-navbar`, which is white in
-       both themes today — no override needed here. What DOES need overriding
-       is everything that assumed a dark band. */
-
-    /* Bootstrap's dark block turns these white — invisible on a white band. */
-    --bs-navbar-color: var(--ncar-space-blue);
-    --bs-navbar-hover-color: var(--ncar-blue);
-    --bs-navbar-active-color: var(--ncar-blue);
-    --bs-navbar-brand-color: var(--ncar-space-blue);
-    --bs-navbar-brand-hover-color: var(--ncar-blue);
-    --bs-navbar-disabled-color: var(--ncar-gray);
-    --bs-navbar-toggler-border-color: var(--ncar-gray-light);
-}
-
-:root[data-bs-theme="dark"] .navbar .nav-link,
-:root[data-bs-theme="dark"] .navbar .site-name h1 a,
-:root[data-bs-theme="dark"] .site-name h1 a,
-:root[data-bs-theme="dark"] .utility-menu .nav-link {
-    color: var(--ncar-space-blue);
-}
-
-:root[data-bs-theme="dark"] .navbar .nav-link:hover,
-:root[data-bs-theme="dark"] .navbar .nav-link:focus,
-:root[data-bs-theme="dark"] .navbar .site-name a,
-:root[data-bs-theme="dark"] .utility-menu .nav-link:hover,
-:root[data-bs-theme="dark"] .site-name h1 a:hover {
-    color: var(--ncar-blue);
-}
-
-:root[data-bs-theme="dark"] .navbar-wrapper.border-top {
-    border-top-color: var(--ncar-gray-light) !important;
-}
-
 /* The dropdown panels hanging off the navbar are already a navy brand surface
    with white text, so they are correct in both themes and must NOT inherit
    the dark theme's card surface. */

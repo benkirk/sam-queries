@@ -302,6 +302,54 @@ class TestThemeToggleJs:
         assert 'querySelectorAll' in js and 'data-theme-toggle' in js
 
 
+class TestReversedBrandMark:
+    """The dark navbar and the reversed lockup are one decision.
+
+    `--surface-navbar` goes dark ONLY because both shells swap in
+    `logo-ncar-reversed.png` at the same time. Change one without the other and
+    you get a navy "NCAR" wordmark on a navy band — legible in the mockup, not
+    on the page.
+    """
+
+    ASSET = 'img/logo-ncar-reversed.png'
+
+    def test_the_reversed_asset_exists(self):
+        path = (Path(__file__).resolve().parents[2] / 'src' / 'webapp'
+                / 'static' / self.ASSET)
+        assert path.exists(), (
+            f'{self.ASSET} is missing, but the dark navbar assumes it — the '
+            f'brand lockup would render navy-on-navy')
+
+    @pytest.mark.parametrize('shell', OWNED_SHELLS)
+    def test_both_shells_swap_the_mark(self, shell):
+        html = (TEMPLATES / shell).read_text()
+        assert self.ASSET in html, (
+            f'{shell} always renders the light lockup; on a dark navbar its '
+            f'"NCAR" wordmark disappears')
+        assert "theme == 'dark'" in html, (
+            f'{shell} references the reversed mark but does not gate it on '
+            f'the theme')
+
+    def test_dark_navbar_is_not_left_light(self):
+        """Guards the other direction: a `--surface-navbar` still pinned white
+        in the dark block would put the *reversed* (white) wordmark on a white
+        band — the same bug, mirrored."""
+        css = (Path(__file__).resolve().parents[2] / 'src' / 'webapp'
+               / 'static' / 'css' / 'variables.css').read_text()
+        # Strip comments first: the selector is also *named* in the prose
+        # explaining the specificity rule, and matching that would read the
+        # light block's value instead.
+        css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
+        dark = css[css.index(':root[data-bs-theme="dark"]'):]
+        block = dark[:dark.index('}')]
+        match = re.search(r'--surface-navbar:\s*([^;]+);', block)
+        assert match, 'the dark block does not set --surface-navbar'
+        value = match.group(1).strip().lower()
+        assert value not in ('#fff', '#ffffff', 'white'), (
+            f'--surface-navbar is {value} in the dark block, but the shells '
+            f'serve the white reversed wordmark — it would be invisible')
+
+
 def test_toggle_macro_is_used_by_every_shell():
     """One macro, three call sites. A shell that hand-rolled the button would
     drift from the JS contract (``data-theme-toggle``, ``data-theme-icon``)

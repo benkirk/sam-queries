@@ -116,11 +116,10 @@
     --surface-card:      #ffffff;   /* cards, modals */
     --surface-raised:    #ffffff;   /* tabs, chips, inputs */
 
-    /* The navbar band. Its own token ONLY because it is currently pinned
-       light in dark mode — the NSF and UCAR marks are dark navy and their
-       reversed variants have not landed yet. See the TODO(dark-logos) block
-       in dashboard.css; when the reversed assets arrive this becomes
-       `var(--surface-raised)` in both themes and the override disappears. */
+    /* The navbar band. Kept as its own token rather than folded into
+       `--surface-raised` because the header is the one surface whose colour is
+       constrained by an *asset* (the brand lockup) and not only by the palette
+       — see `img/logo-ncar-reversed.png` and the note in the dark block. */
     --surface-navbar:    #ffffff;
     --surface-secondary: #e9ecef;   /* stronger recess: progress track, th  */
     --surface-tertiary:  #f8f9fa;   /* gentler recess: wells, stat boxes    */
@@ -293,9 +292,14 @@
     --surface-page:      #14181d;
     --surface-card:      #1b2733;
     --surface-raised:    #222c38;
-    /* Deliberately still WHITE — see TODO(dark-logos). This is the one token
-       whose dark value is a placeholder rather than a design choice. */
-    --surface-navbar:    #ffffff;
+    /* The header band goes dark with everything else. This is only safe
+       because `base.html` / `login.html` swap in `img/logo-ncar-reversed.png`
+       at the same time — a reversed lockup whose "NCAR" wordmark and rule are
+       lightened while the NSF seal and the wave disc are left exactly as the
+       brand ships them (both already read correctly on a dark ground).
+       Changing this value without changing that asset puts a navy wordmark on
+       a navy band. */
+    --surface-navbar:    #1a222c;
     --surface-secondary: #2a3745;   /* stronger recess == lighter here */
     --surface-tertiary:  #222d39;   /* gentler recess */
 

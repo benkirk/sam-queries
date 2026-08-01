@@ -20,7 +20,7 @@
     <div class="login-container">
         <div class="login-header">
             <div class="login-logo">
-                <img src="{{ url_for('static', filename='img/logo-ncar.png') }}" alt="NSF NCAR" class="img-fluid">
+                <img src="{{ url_for('static', filename='img/logo-ncar-reversed.png' if theme == 'dark' else 'img/logo-ncar.png') }}" alt="NSF NCAR" class="img-fluid">
             </div>
             <h1>Systems Accounting<br>Manager</h1>
         </div>

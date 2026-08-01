@@ -43,7 +43,10 @@
                                     <div class="my-1 py-md-0 align-self-center logo-ncar">
                                         <div class="mb-0">
                                             <a href="{{ url_for('user_dashboard.index') }}">
-                                                <img src="{{ url_for('static', filename='img/logo-ncar.png') }}" alt="NSF NCAR" class="img-fluid">
+                                                {# Reversed mark on the dark navbar. Chosen server-side from
+                                                   the same `theme` that sets data-bs-theme, so there is no
+                                                   second <img> to hide and no CSS content: swap. #}
+                                                <img src="{{ url_for('static', filename='img/logo-ncar-reversed.png' if theme == 'dark' else 'img/logo-ncar.png') }}" alt="NSF NCAR" class="img-fluid">
                                             </a>
                                         </div>
                                     </div>

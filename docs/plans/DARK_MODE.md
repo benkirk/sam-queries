@@ -514,29 +514,55 @@ Each of these needs a human answer before D7. None blocks the commits before it.
    a multi-tone or baked-on-white graphic, this decision has to be re-made.
    Verify visually at D7 and revisit only if it actually reads badly.
 
-2. **The logos — RESOLVED (Ben, 2026-08-01): ship the fallback, swap later.**
-   `logo-ncar.png` and `NSF_Official_logo.png` are dark navy marks. NSF and
-   UCAR both publish reversed/white variants; Ben is sourcing the official
-   assets, which is a brand request with external lead time and therefore must
-   not gate this PR.
+2. **The logos — RESOLVED and SHIPPED (Ben, 2026-08-01): dark navbar with a
+   reversed mark.** D9 supersedes the light-chip fallback D7 shipped.
 
-   **D7 ships the light-chip navbar** (decision 3 below is superseded
-   accordingly): in dark mode the navbar keeps a light `--surface-raised`
-   background, so the existing marks stay legible and untouched. This is
-   defensible on its own terms — many dark UIs keep a branded header band — not
-   merely a stopgap.
+   Inspecting the asset rather than assuming changed the answer.
+   `logo-ncar.png` is not "a dark navy mark" — it is a 2457×621 **lockup** of
+   three separately-behaved parts, and only one was the problem:
 
-   Explicitly **not** doing CSS `filter: invert()` on the marks: it produces
-   flat white renderings that are not an approved brand variant of either
-   organization's logo.
+   | Columns | Part | On a dark ground |
+   |---|---|---|
+   | `0–619` | NSF seal (gold gear, blue globe, white "NSF") | **correct as-is** |
+   | `730–747` | vertical rule, `#404040` | invisible |
+   | `869–1271` | NCAR wave disc (blue, white waves) | **correct as-is** |
+   | `1386–2457` | "NCAR" + "OPERATED BY UCAR", brand blue | ~2.6:1 — the defect |
 
-   When the reversed assets arrive, the follow-up is one rule and two files —
-   add `img/logo-ncar-reversed.png` / `img/NSF_Official_logo-reversed.png` and
-   swap them under `:root[data-bs-theme="dark"]`, at which point the navbar can
-   also go dark. Leave a `TODO(dark-logos)` comment at the navbar rule in D7 so
-   the two halves of the decision stay findable together.
+   So `img/logo-ncar-reversed.png` recolours **only the wordmark (white) and
+   the rule (grey)**, preserving alpha so antialiasing survives. The NSF seal
+   is untouched per Ben's instruction — and needs nothing anyway. The wave disc
+   is untouched because it already works.
 
-3. **The navbar — settled by decision 2.** It is `#fff` today (`:29,:35`).
+   Still explicitly **not** `filter: invert()`: it would flatten the NSF seal
+   and the wave disc into white silhouettes, which is not an approved variant
+   of either organization's mark.
+
+   **The swap is server-side**, from the same `theme` that sets
+   `data-bs-theme` — no second `<img>` to hide, no CSS `content:` trick:
+
+   ```jinja
+   {{ url_for('static', filename='img/logo-ncar-reversed.png'
+              if theme == 'dark' else 'img/logo-ncar.png') }}
+   ```
+
+   Note `NSF_Official_logo.png` is **referenced by no template** — the seal
+   ships inside the lockup. Both shells use the lockup and both swap.
+
+   The official reversed asset at `sundog.ucar.edu/page/10560` is behind
+   Microsoft SAML SSO and could not be fetched; if it is preferred, dropping it
+   in as `logo-ncar-reversed.png` is the entire change.
+
+   `TestReversedBrandMark` pins the pairing in **both** directions — a dark
+   navbar without the reversed asset is navy-on-navy, and a white
+   `--surface-navbar` with the reversed asset is white-on-white.
+
+3. **The navbar — settled by decision 2: it goes dark** (`--surface-navbar`
+   `#1a222c`), once the reversed lockup lands with it. The paragraphs below
+   describe the interim light-chip reasoning D7 shipped and D9 removed; kept
+   because the `--bs-navbar-*` hazard it names is real and will bite anyone who
+   pins the band light again.
+
+   It is `#fff` today (`:29,:35`).
    The general dark-mode hazard is that a near-black navbar on a near-black
    page loses the header entirely; the usual answer is `--surface-raised`, one
    step lighter than the page, plus the existing `border-top` on the nav row.
@@ -666,6 +692,7 @@ provably no-op in light mode.
 | **D6** | Semantic colour sets → Bootstrap subtle/emphasis pairs: `status.css` badges, `auth.css`, alert/badge tints, the 15 colour-bearing inline styles | none in light | — |
 | **D7** | The dark palette values + design decisions 2–4 (navbar, logos-or-fallback, status badges). Watermark needs no code — verify visually | **dark mode ships** | e2e sweep in both themes |
 | **D8** | `e2e/` dark sweep; contrast assertions on the representative surfaces | none | full suite |
+| **D9** | Reversed brand lockup + the navbar goes dark (supersedes D7's light chip) | **dark navbar** | both suites; `TestReversedBrandMark` |
 
 Two changes from the first draft's ordering, both for the same reason — a
 commit should be verifiable when it lands, not retroactively:
