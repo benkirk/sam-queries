@@ -118,8 +118,19 @@
     --surface-secondary: #e9ecef;   /* stronger recess: progress track, th  */
     --surface-tertiary:  #f8f9fa;   /* gentler recess: wells, stat boxes    */
 
+    /* `-rgb` companions, for the `rgba(var(--x-rgb), <a>)` idiom — same
+       reason --ncar-blue-rgb exists. Required by the tier-3 bridge: Bootstrap
+       consumes --bs-body-bg-rgb / --bs-secondary-bg-rgb / --bs-tertiary-bg-rgb
+       in 5 places, and bridging only the hex form would leave those resolving
+       to the framework default while everything else moved. */
+    --surface-page-rgb:      246, 247, 246;
+    --surface-card-rgb:      255, 255, 255;
+    --surface-secondary-rgb: 233, 236, 239;
+    --surface-tertiary-rgb:  248, 249, 250;
+
     /* --- Text --- */
     --text-primary:   #323133;   /* body copy */
+    --text-primary-rgb: 50, 49, 51;
     --text-secondary: #718096;   /* muted / supporting copy */
     /* Deliberately INVARIANT. White on a saturated NCAR-blue button is
        correct in both themes; giving that case a name is what stops it being
@@ -145,4 +156,57 @@
 
     /* --- Additional utility tokens --- */
     --bs-warning-text:  #856404;  /* Bootstrap warning text color (D6 retires this) */
+}
+
+
+/* =========================================================================
+   Tier 3: the Bootstrap bridge.
+
+   Bootstrap components are driven entirely by --bs-* variables. Without this
+   block the app runs two parallel surface systems — Bootstrap's white and
+   SAM's warm off-white — that happen to look close enough in light mode to
+   go unnoticed, and diverge visibly the moment a theme flips.
+
+   Pointing the --bs-* chrome variables at tier 2 collapses them into one
+   ramp, which is what makes a large fraction of the app theme itself for
+   free (a modal, a dropdown, a table stripe, an offcanvas all follow).
+
+   ## Load order and specificity — the part that is easy to get wrong
+
+   `bootstrap.min.css` loads BEFORE `variables.css` (see base.html /
+   login.html), and both define these on `:root`. Equal specificity, so
+   source order decides and this block wins.
+
+   That does NOT hold in dark mode. Bootstrap's own dark block is
+   `[data-bs-theme=dark]` (specificity 0,1,0), which outranks a bare `:root`
+   (0,1,0 — tie, but it appears later in *its* file for the attribute case)
+   and, more to the point, applies whenever the attribute is set. The
+   overrides therefore have to be repeated inside `:root[data-bs-theme="dark"]`
+   (0,2,0), which does outrank it. That block arrives with the carrier in D3.
+
+   ## --bs-body-bg maps to --surface-CARD, which looks wrong and is not
+
+   Upstream, `--bs-body-bg` is the default surface for **cards, modals,
+   dropdowns, popovers, offcanvas, tables, list-groups, pagination, accordions,
+   active nav-tabs, form-controls and form-selects** — twelve component
+   variables plus `.form-control` directly. Bootstrap conflates "the page" and
+   "a component surface" because its own defaults make both #fff.
+
+   SAM does not: the page is the warm off-white #f6f7f6, set explicitly on
+   `body` in dashboard.css, and all of those components are white. So in this
+   app `--bs-body-bg` already plays the card role. Pointing it at
+   `--surface-page` would tint every modal and dropdown — and, worse, would
+   make them track the page instead of the card in dark mode, which is the
+   opposite of what a raised surface should do.
+   ========================================================================= */
+:root {
+    --bs-body-bg:            var(--surface-card);
+    --bs-body-bg-rgb:        var(--surface-card-rgb);
+    --bs-body-color:         var(--text-primary);
+    --bs-body-color-rgb:     var(--text-primary-rgb);
+    --bs-border-color:       var(--border-default);
+    --bs-secondary-bg:       var(--surface-secondary);
+    --bs-secondary-bg-rgb:   var(--surface-secondary-rgb);
+    --bs-tertiary-bg:        var(--surface-tertiary);
+    --bs-tertiary-bg-rgb:    var(--surface-tertiary-rgb);
 }

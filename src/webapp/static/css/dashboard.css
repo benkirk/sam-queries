@@ -574,10 +574,10 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-card-inner-border-radius: 0;
     --bs-card-border-width: 0;
     --bs-card-color: var(--ncar-space-blue);
-    --bs-card-bg: #fff;
+    --bs-card-bg: var(--surface-card);
     --bs-card-cap-padding-y: 0.9375rem;
     --bs-card-cap-padding-x: 1.875rem;
-    --bs-card-cap-bg: #fff;
+    --bs-card-cap-bg: var(--surface-card);
     margin-bottom: 1.5rem;
 }
 

@@ -92,7 +92,7 @@ ALLOWED = {
     'allocations.css': 5,
     'auth.css':        4,
     'components.css':  10,
-    'dashboard.css':   76,
+    'dashboard.css':   74,   # D2: -2 (--bs-card-bg, --bs-card-cap-bg)
     'status.css':      20,
 }
 
