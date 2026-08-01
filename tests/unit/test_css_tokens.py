@@ -249,13 +249,19 @@ def test_dark_card_matches_chart_blend_target():
 
     Picking the value once, in CSS, is what makes PR 4 (dark charts)
     mechanical. This test is what keeps it picked once.
+
+    `surface` joined the list in PR 4 and is the load-bearing one: it is what
+    `Theme.data_color` measures a wedge's contrast *against*, so a stale value
+    here does not produce a halo, it produces a palette lifted to clear a
+    surface the chart is not sitting on — silently, and in the direction of
+    "looks fine in the fingerprint".
     """
     from webapp.dashboards.charts.theme import Theme
 
     card = _dark_tokens().get('--surface-card')
     assert card, 'the dark block does not define --surface-card'
 
-    for attr in ('shade_toward', 'legend_face', 'segment_edge'):
+    for attr in ('shade_toward', 'legend_face', 'segment_edge', 'surface'):
         value = getattr(Theme.DARK, attr)
         assert value.lower() == card.lower(), (
             f'Theme.DARK.{attr} = {value} but --surface-card = {card}. '

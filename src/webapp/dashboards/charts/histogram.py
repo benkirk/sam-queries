@@ -105,8 +105,9 @@ class CategoricalStackChart(BaseChart):
         self._buckets = list(self.buckets())
         self.labels = [self.bucket_label(b) for b in self._buckets]
         self.values = [self.bucket_total(b) for b in self._buckets]
-        self.band_colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)]
-                            for i in range(len(self.labels))]
+        self.band_colors = self.theme.data_colors(
+            [UNITY_STACK_10[i % len(UNITY_STACK_10)]
+             for i in range(len(self.labels))])
 
     def is_empty(self) -> bool:
         # Defined explicitly per family — see BaseChart.is_empty on why the
@@ -313,7 +314,11 @@ class JobsHistogram(CategoricalStackChart):
         # (UNITY_PALETTE_10[0], the historical flat chart's colour — NOT the
         # stack palette's first entry, which is gold); with owners it keeps
         # the per-band palette its stack would have used.
-        return self.band_colors[i] if self._has_owners else UNITY_PALETTE_10[0]
+        # `band_colors` is already lifted for the theme; the bare fallback is
+        # not, so it needs the same treatment — ncar-blue is 2.27:1 on the
+        # dark card, and this branch paints the entire chart with it.
+        return (self.band_colors[i] if self._has_owners
+                else self.theme.data_color(UNITY_PALETTE_10[0]))
 
     def prepare(self):
         self._has_owners = any(b.get('owners')

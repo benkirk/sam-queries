@@ -33,14 +33,24 @@ from webapp.dashboards.charts import links
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
-    UNITY_NCAR_GRAY_LIGHT, UNITY_NCAR_NAVY, UNITY_STACK_10, UNITY_STACK_20,
+    UNITY_NCAR_NAVY, UNITY_STACK_10, UNITY_STACK_20,
 )
 
-_PACE_OTHER_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_GRAY_LIGHT, 0.85)
 _PACE_TODAY_LINE_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_NAVY, 0.7)
 _PACE_RATE_SCALE = 365  # internal per-day rates → per-year axis
 
 OTHER_KEY = '__other__'
+
+
+def _pace_other_color(theme):
+    """The inert "Other (N projects)" band.
+
+    Translucent so the ranked bands above it stay dominant, and derived from
+    the theme rather than fixed: `--ncar-gray-light` recedes on a white card
+    and is the *brightest* thing on a dark one, which is exactly backwards for
+    the band that means the least. See `Theme.muted_data`.
+    """
+    return matplotlib.colors.to_rgba(theme.muted_data, 0.85)
 
 
 def pace_bands(allocations: List[Dict], active_at: datetime,
@@ -222,7 +232,8 @@ class PaceChart(BaseChart):
             self.rank_metric.items(), key=lambda kv: kv[1], reverse=True
         )[:top_n]]
         palette = UNITY_STACK_10 if len(self.top_projs) <= 10 else UNITY_STACK_20
-        self.color_map = {pc: palette[i] for i, pc in enumerate(self.top_projs)}
+        self.color_map = {pc: self.theme.data_color(palette[i])
+                          for i, pc in enumerate(self.top_projs)}
 
         self.n_other_projs = len(self.rank_metric) - len(self.top_projs)
         plural = 's' if self.n_other_projs != 1 else ''
@@ -295,8 +306,8 @@ class PaceChart(BaseChart):
         self.days = [self.days[i] for i in keep_idx]
         self.rates_matrix = [band_rates_full[bi, keep_idx] * _PACE_RATE_SCALE
                              for bi in range(band_rates_full.shape[0])]
-        self.colors = [self.color_map.get(k, _PACE_OTHER_COLOR)
-                       for k, _ in ordered]
+        other = _pace_other_color(self.theme)
+        self.colors = [self.color_map.get(k, other) for k, _ in ordered]
 
     def is_empty(self) -> bool:
         # Explicit, not inherited: `self._bands` holds ndarrays, so any
@@ -343,7 +354,7 @@ class PaceChart(BaseChart):
                    for pc in self.top_projs]
         if self.n_other_projs > 0:
             handles.append(mpatches.Patch(
-                color=_PACE_OTHER_COLOR,
+                color=_pace_other_color(theme),
                 label=f'{self.other_label} '
                       f'({_fmt(self.group_sort_totals[OTHER_KEY])})'))
         legend = ax.legend(handles=handles, frameon=False,

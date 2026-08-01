@@ -28,7 +28,7 @@ from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
-    UNITY_NCAR_GRAY_LIGHT, UNITY_PALETTE_10, autopct_color_for,
+    UNITY_PALETTE_10, autopct_color_for,
 )
 
 _PIE_START_ANGLE = 60
@@ -208,7 +208,8 @@ class _FixedCapPie(PieChart):
         names, values = trim_fixed_cap([d[name_key] for d in self.data],
                                        [d[value_key] for d in self.data],
                                        cap=self.slice_cap(_PIE_MAX_ENTITIES))
-        colors = list(UNITY_PALETTE_10[:len(names)])
+        colors = self.theme.data_colors(
+            list(UNITY_PALETTE_10[:len(names)]))
         return names, values, colors, [None] * len(names)
 
 
@@ -289,13 +290,13 @@ class DiskEntityPie(_CumulativePie):
         keys = [d['id'] for d in data[:keep]]
         labels = [d['name'] or f'{numeric_label}{d["id"]}' for d in data[:keep]]
         values = list(values_desc[:keep])
-        colors = list(UNITY_PALETTE_10[:keep])
+        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
 
         if n_others > 0:
             keys.append(None)                  # inert slice
             labels.append(f'Other ({n_others})')
             values.append(sum(values_desc[keep:]))
-            colors.append(UNITY_NCAR_GRAY_LIGHT)
+            colors.append(self.theme.muted_data)
 
         return labels, values, colors, keys
 
@@ -340,13 +341,13 @@ class UserUsagePie(_CumulativePie):
         keys = [d['username'] for d in data[:keep]]
         labels = list(keys)
         values = list(values_desc[:keep])
-        colors = list(UNITY_PALETTE_10[:keep])
+        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
 
         if n_others > 0:
             keys.append(None)                  # inert slice
             labels.append(f'Other ({n_others})')
             values.append(sum(values_desc[keep:]))
-            colors.append(UNITY_NCAR_GRAY_LIGHT)
+            colors.append(self.theme.muted_data)
 
         return labels, values, colors, keys
 
@@ -411,13 +412,13 @@ class JobsUsagePie(_CumulativePie):
         keys = [r.get('value') for r in data[:keep]]
         labels = [k if k is not None else self.unknown_label for k in keys]
         values = list(values_desc[:keep])
-        colors = list(UNITY_PALETTE_10[:keep])
+        colors = self.theme.data_colors(list(UNITY_PALETTE_10[:keep]))
 
         remainder = total - sum(values)
         if remainder > 1e-9:
             keys.append(None)                  # inert slice
             labels.append('Other')
             values.append(remainder)
-            colors.append(UNITY_NCAR_GRAY_LIGHT)
+            colors.append(self.theme.muted_data)
 
         return labels, values, colors, keys

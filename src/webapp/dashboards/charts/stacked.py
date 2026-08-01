@@ -28,8 +28,7 @@ from webapp.dashboards.charts.jobs_metrics import (
 )
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
-    UNITY_NCAR_BLUE, UNITY_NCAR_GRAY_LIGHT, UNITY_STACK_10, UNITY_STACK_20,
-    scale_bytes,
+    UNITY_NCAR_BLUE, UNITY_STACK_10, UNITY_STACK_20, scale_bytes,
 )
 
 _USAGE_METRIC_YLABELS = {
@@ -60,12 +59,10 @@ class StackedSeriesChart(BaseChart):
 
     bar_width = 1
     bar_linewidth = 0.3
-    area_alpha = 0.85
 
     #: Palette for named bands, and whether to walk it backwards.
     palette = UNITY_STACK_10
     palette_reverse = False
-    others_color = UNITY_NCAR_GRAY_LIGHT
 
     show_legend = True
     legend_fontsize = 11
@@ -104,9 +101,12 @@ class StackedSeriesChart(BaseChart):
 
     def prepare(self):
         self.bands = self.build_bands()
+        # The *palette* is lifted for the theme; the inert "Others" band is
+        # not — it takes the theme's muted role, whose whole job is to stay
+        # recessive. Lifting it would defeat that. See `Theme.muted_data`.
         self.colors = series_mod.assign_colors(
-            self.bands, self.palette, self.others_color,
-            reverse=self.palette_reverse)
+            self.bands, self.theme.data_colors(self.palette),
+            self.theme.muted_data, reverse=self.palette_reverse)
         self.x = self.x_values()
 
     def is_empty(self) -> bool:
@@ -139,7 +139,11 @@ class StackedSeriesChart(BaseChart):
 
     def _draw_area(self, ax, theme):
         matrix = [list(self.band_values(b)) for b in self.bands]
-        ax.stackplot(self.x, *matrix, colors=self.colors, alpha=self.area_alpha)
+        # Alpha comes from the theme, not this class: the figure is
+        # transparent, so it composites against the card. See
+        # `Theme.area_alpha`.
+        ax.stackplot(self.x, *matrix, colors=self.colors,
+                     alpha=theme.area_alpha)
 
     def decorate(self, ax, layout, theme):
         ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
@@ -233,7 +237,7 @@ class UsageTrendChart(StackedSeriesChart):
         self._dates = dates
         # A single unnamed band: no legend, so the label never renders.
         self.bands = [series_mod.Series('', vals, None)] if dates else []
-        self.colors = [UNITY_NCAR_BLUE]
+        self.colors = self.theme.data_colors([UNITY_NCAR_BLUE])
         self.x = dates
 
     def x_values(self):

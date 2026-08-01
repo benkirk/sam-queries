@@ -121,9 +121,24 @@ class TestAutopctColor:
 
     def test_is_theme_invariant(self):
         """Driven by the wedge, not the page — so it needs no theme argument
-        and is already correct for dark mode."""
+        and is already correct for dark mode.
+
+        Asserts the *property* (one argument, and it is not a theme) rather
+        than that argument's spelling: it was renamed `bg_hex` -> `color` when
+        wedge colours started arriving as lifted RGBA tuples, and a test that
+        fails on a rename while a real theme argument would slip past it is
+        pinning the wrong thing.
+        """
         import inspect
-        assert list(inspect.signature(T.autopct_color_for).parameters) == ['bg_hex']
+        params = list(inspect.signature(T.autopct_color_for).parameters)
+        assert len(params) == 1 and 'theme' not in params
+
+    def test_accepts_a_lifted_rgba_wedge(self):
+        """`Theme.data_color` hands back RGBA tuples for the colours it lifts,
+        and every one of them is a pie wedge that still needs a label."""
+        lifted = T.Theme.DARK.data_color(T.UNITY_NCAR_SPACE_BLUE)
+        assert not isinstance(lifted, str)          # guard the premise
+        assert T.autopct_color_for(lifted) in (T.UNITY_NCAR_SPACE_BLUE, '#fff')
 
 
 class TestPalettes:

@@ -33,7 +33,7 @@ from typing import Any, Callable, Dict, Mapping, Sequence, Tuple
 
 from flask import url_for
 
-from webapp.utils.htmx import read_layout
+from webapp.utils.htmx import read_layout, read_theme
 
 
 @dataclass(frozen=True)
@@ -151,11 +151,17 @@ def _register_one(bp, panel: PanelSpec, mode: ModeSpec) -> None:
             mode=mode.mode,
             scope_for=mode.scope_for(ctx),
             log_label=mode.log_label(ctx),
-            # Every panel that draws a chart needs the render layout, and this
+            # Every panel that draws a chart needs both render axes, and this
             # is the one place all 27 jobs/disk-scans fragment routes pass
-            # through — so it is resolved once here rather than in each
-            # renderer. Panels that draw no chart accept and ignore it.
+            # through — so they are resolved once here rather than in each
+            # renderer. Panels that draw no chart accept and ignore them.
+            #
+            # Resolving them here is only half the job: each renderer then has
+            # to *carry* them to its delegate by hand, which is the hop that
+            # silently failed for `layout` in the three jobs histogram panels.
+            # `test_layout_transport.py` gates both.
             layout=read_layout(),
+            theme=read_theme(),
             **panel.kwargs, **extras,
         )
 

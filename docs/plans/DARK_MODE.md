@@ -1,6 +1,8 @@
 # Application-wide dark mode
 
-**Status: IMPLEMENTED (2026-08-01) on `dark_mode_sans_charts`, D0–D8 landed.**
+**Status: IMPLEMENTED (2026-08-01). PR 3 on `dark_mode_sans_charts` (D0–D9);
+PR 4, dark charts, on `dark_charts` — see § *PR 4 as built*, which supersedes
+§ *Handoff to PR 4* below.**
 Deviations from this plan are recorded in **Appendix E** — read that before
 treating any section below as a description of the shipped code.
 This is **PR 3** of the four-PR roadmap declared in
@@ -12,8 +14,8 @@ cut from `staging` at `bee0f4d`, PR targets `staging`.
 |---|---|---|---|
 | 1 | Chart architecture refactor (layout **and theme** render axes) | — | **merged** — `bee0f4d` (#414) |
 | 2 | Mobile-friendly charts | 1 | landed with #414 |
-| **3** | **App-wide dark mode** ← *this document* | 1 | this branch |
-| 4 | Dark-mode charts | 1 **and** 3 | not started |
+| **3** | **App-wide dark mode** ← *this document* | 1 | merged to this series — PR #419 |
+| **4** | **Dark-mode charts** | 1 **and** 3 | `dark_charts`, stacked on #419 |
 
 All line references are against `staging` at `bee0f4d` and were re-verified
 while revising; where this document contradicts a count in
@@ -854,6 +856,11 @@ Recorded per that document's own convention.
 
 ## Handoff to PR 4 — dark charts
 
+> **Superseded by § *PR 4 as built*, at the end of this document.** Kept
+> because the scoping below was accurate and the *starting state* it records is
+> what the next reader needs to understand the diff.
+
+
 **Decision (Ben, 2026-08-01): PR 3 ships without chart theming.** The known
 gap is that chart SVGs carry baked colours, so in dark mode their legend text
 is `#011837` on the `#1b2733` card (~1.3:1) and `UNITY_PALETTE_10[8]` space
@@ -974,3 +981,90 @@ except where noted.
 | 8 | (not stated) | `utils/csp.py`'s docstring says "Four routes cache fully-rendered HTML"; there are **five** | Pre-existing drift, fixed in D0 |
 | 9 | (not stated) | Bootstrap's dark block already sets `color-scheme:dark`, so native controls/scrollbars need no work | One less thing |
 | 10 | (not stated) | The navbar utility menu is `is_authenticated`-gated; the login page is a separate shell | Toggle must sit outside the conditional and be duplicated into `login.html` |
+
+---
+
+## PR 4 as built — dark charts (2026-08-01, `dark_charts`)
+
+Supersedes § *Handoff to PR 4*. The handoff's scoping held: the plumbing was
+already merged, and the work was "pass the argument, then decide the colours".
+What it did **not** predict is that passing the argument was the smaller half.
+
+### The defect was bigger than "tune `Theme.DARK`"
+
+`Theme.DARK` had been live and reachable since PR 1, and **nothing applied
+`Theme.text` or `Theme.spine`.** Those two fields had zero readers in the whole
+package — every title, axis label, tick, spine and legend label took its colour
+from the module-level rcParams block, which bakes the *light* chrome in at
+import because it runs once per process, before any request has a theme. So a
+chart asked for in dark rendered the light bytes, which is exactly the 1.3:1
+figure the handoff measured.
+
+The fix is `BaseChart.apply_chrome`, called after `finish()` so the legend
+exists by then. It deliberately does **not** touch `ax.texts`: those are
+artists a chart placed itself, and each already carries a colour chosen for a
+reason no theme should overrule — the pie's percentage labels take theirs from
+the *wedge* luminance, the pace chart's "today" marker from `theme.accent`.
+
+`test_theme_changes_colour_but_never_geometry` is the gate for the class of bug
+this was. It asserts both directions, and the second one is the point: a theme
+that changes no fill is indistinguishable from a theme that is not plumbed in,
+and that is the state the package shipped in for a full release.
+
+### The three data-colour decisions
+
+`CHART_ARCHITECTURE.md` Appendix B flagged two. There were three.
+
+| | Answer | Field |
+|---|---|---|
+| Brand darks as fills — `#011837` at **1.17:1** on the card, `#00357a` at 1.29:1 | Tint toward white to a 3:1 floor (WCAG 1.4.11, non-text) | `min_data_contrast` + `lift_for_contrast` |
+| `alpha=0.85` stackplots compositing against the card | 1.0 on dark | `area_alpha` |
+| **Unflagged** — "Others" at 7.97:1 on the card | A muted role at 1.77:1, mirroring the 1.90:1 it has on white | `muted_data` |
+
+**Why tint rather than raise HSL lightness.** Both restore contrast; only one
+keeps the palette usable. The three failing pie colours are all blues, and
+lifting each to exactly 3:1 by lightness converges them on `#0469f0` /
+`#0068ef` / `#0069eb` — three names for one blue, in a palette whose whole job
+is telling ten things apart. Tinting desaturates as it lightens and lands them
+on `#627083` / `#4c72a2` / `#246fcb`. Measured: every palette's minimum
+pairwise channel distance is unchanged or better, so nothing became harder to
+tell apart than it already was.
+
+**The third one is the interesting one**, and it is the same shape as Appendix
+E's methodological lesson one level up. It is not a contrast failure — 7.97:1
+passes any threshold you care to set. It is an *inverted* one: `others_color`
+is named for a value and used for a role, and the role is "recede". A value
+that recedes on white shouts on near-black. No contrast assertion would ever
+have caught it; it was found by looking at the rendered chart. Note it must
+also **bypass** `data_color`, or `min_data_contrast` lifts it straight back up.
+
+### Light mode is byte-identical, and that is proven rather than asserted
+
+`Theme.LIGHT.min_data_contrast` is `None`, and `data_colors` returns the *same
+object* in that case rather than an equal one. Every value `apply_chrome`
+assigns is the literal the rcParams block already installed. The evidence: of
+the 111 pre-existing fingerprint keys, **0 changed**; the 96 new keys are all
+`@dark`. (The line-level diff on the snapshot looks alarming — sorted-key
+insertion reflows the file — so check keys, not lines.)
+
+### Deviations from the handoff
+
+| # | Handoff said | Actually |
+|---|---|---|
+| 1 | "22 places that already pass `layout=`" | 22 exactly — but they are not 22 call sites. **18** are real chart calls (allocations 5, user 4, status 4, jobs 3, disk-scans 2), **1** is the `utils/fragments.py` registrar covering 27 routes, and **3** are the hand-carry hops inside `jobs/routes.py` where the axis is merely relayed. That last group is the one that silently failed for `layout`, so it is the one worth counting separately. |
+| 2 | "give `test_renderers_forward_the_layout_they_are_given` a `theme` sibling" | Better as one test parameterized over `_AXES` — the two axes are transported identically and fail identically. Added `test_the_registrar_resolves_both_axes` beside it, because the per-renderer test only checks that whatever *arrived* got forwarded; it passes fine if the registrar stops resolving an axis at all. |
+| 3 | "regenerate the fingerprint snapshot at every layout × theme" | Done — 111 → 207 keys. Desktop+light keeps the bare case id, so every previously reviewed diff stays stable. |
+| 4 | "extend `SAMPLES` to chart `<text>`" | A separate test instead. `SAMPLES` walks *ancestors* for the backdrop, which is wrong for a pie: the percentage label sits on a sibling `<path>`, not an ancestor. `test_chart_text_is_legible` hit-tests with `elementsFromPoint`, so a label on a wedge is measured against the wedge. |
+| 5 | (not stated) | `test_resource_details_disk_chart_route.py`'s chart double has a deliberately explicit signature, and it failed loudly on the new kwarg — exactly as its docstring says it should. Extended rather than loosened. |
+
+**Verification.** Full Python suite 4331 passed / 36 skipped. Browser tier 62
+passed against a live stack in both themes. The new browser gate was checked
+for vacuity by disabling `apply_chrome` and confirming it goes red with the
+documented signature — `1.17:1 fg=rgb(1,24,55) bg=rgb(27,39,51)` — while light
+stayed green.
+
+**On deploy**: chart cache keys hash *input data*, not rendering code, so warm
+Redis entries serve pre-PR-4 SVGs for up to 600 s. Run
+`sam-admin cache --refresh --category chart`. Dark mode also doubles the chart
+cache working set; the `maxmemory` rationale still deserves real numbers rather
+than the assumption inherited from PR 1.
