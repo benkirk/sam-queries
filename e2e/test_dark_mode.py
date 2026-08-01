@@ -48,6 +48,12 @@ SAMPLES = [
 #: Pages chosen for coverage of the sampled families, not for breadth.
 PAGES = ['/user/info', '/allocations/transactions', '/status/derecho']
 
+#: Pages that render a chart inline in a full-page GET — the two families that
+#: cover the interesting cases: pies (text sits *on* a wedge) and stacked areas
+#: (text sits on the card). The jobs and disk-scans surfaces draw charts too but
+#: are plugin-gated, and CI runs without those plugins.
+CHART_PAGES = ['/allocations/projects', '/status/derecho']
+
 
 # --------------------------------------------------------------------------
 # WCAG relative luminance / contrast ratio
@@ -145,6 +151,120 @@ def test_sampled_surfaces_are_legible(page, base_url, page_url, theme):
     assert not failures, (
         f'{page_url} ({theme}) has text below {MIN_CONTRAST}:1:\n'
         + '\n'.join(failures))
+
+
+#: Every ``<text>`` in every chart on the page, each measured against whatever
+#: is *actually* behind that glyph.
+#:
+#: The ancestor-background walk the chrome sampler uses is wrong here, and
+#: wrong in the direction that hides the defect: a pie's percentage label sits
+#: on a **wedge**, which is a sibling ``<path>``, not an ancestor. Walking
+#: parents would measure white-on-card for a label that is really white-on-gold
+#: and report a failure that is not real — or, worse, pass a label that is
+#: genuinely unreadable on its wedge.
+#:
+#: So this hit-tests the point instead: ``elementsFromPoint`` returns the paint
+#: order front-to-back, and the first thing under the glyph is the truth.
+#: Shape tags are checked explicitly because ``<g>`` and ``<svg>`` inherit a
+#: ``fill`` and would otherwise answer for a backdrop they do not paint.
+_CHART_TEXT_COLOURS_JS = """
+() => {
+  const SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'polygon']);
+  const parse = (s) => {
+    const m = (s || '').match(/rgba?\\(([^)]+)\\)/);
+    if (!m) return null;
+    const p = m[1].split(',').map(x => parseFloat(x.trim()));
+    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+  };
+  const over = (top, bottom) => ({
+    r: top.r * top.a + bottom.r * (1 - top.a),
+    g: top.g * top.a + bottom.g * (1 - top.a),
+    b: top.b * top.a + bottom.b * (1 - top.a),
+    a: 1,
+  });
+
+  const out = [];
+  const charts = [...document.querySelectorAll('svg')]
+      .filter(s => s.querySelector('text'));
+
+  for (const svg of charts) {
+    // elementsFromPoint is viewport-relative, so the chart has to be on
+    // screen before any of its glyphs can be hit-tested.
+    svg.scrollIntoView({ behavior: 'instant', block: 'center' });
+
+    for (const el of svg.querySelectorAll('text')) {
+      const label = (el.textContent || '').trim();
+      if (!label) continue;
+      const box = el.getBoundingClientRect();
+      if (!box.width || !box.height) continue;
+      const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+      if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) continue;
+
+      const fg = parse(getComputedStyle(el).fill);
+      if (!fg) continue;
+
+      const stack = [];
+      for (const node of document.elementsFromPoint(cx, cy)) {
+        if (node === el || el.contains(node)) continue;
+        const style = getComputedStyle(node);
+        const tag = node.tagName.toLowerCase();
+        const paint = SHAPES.has(tag) ? parse(style.fill)
+                                      : parse(style.backgroundColor);
+        if (!paint || !paint.a) continue;
+        stack.push(paint);
+        if (paint.a === 1) break;
+      }
+
+      let bg = { r: 255, g: 255, b: 255, a: 1 };   // the canvas, last resort
+      for (let i = stack.length - 1; i >= 0; i--) bg = over(stack[i], bg);
+      out.push({ fg: [fg.r, fg.g, fg.b], bg: [bg.r, bg.g, bg.b], text: label });
+    }
+  }
+  return out;
+}
+"""
+
+
+@pytest.mark.parametrize('theme', THEMES)
+@pytest.mark.parametrize('page_url', CHART_PAGES)
+def test_chart_text_is_legible(page, base_url, page_url, theme):
+    """Chart ink, which is the one surface CSS cannot reach.
+
+    Charts are matplotlib SVGs with colours baked in at render time, so no
+    stylesheet can retheme them — the server has to know the theme, which is
+    the whole reason `sam_theme` is a cookie rather than `localStorage`. Before
+    the chart layer applied `Theme`, every label on every chart carried
+    `fill="rgb(1,24,55)"` against the `#1b2733` card: **1.3:1**, on pages that
+    had already been eyeballed and called fine.
+
+    That is the third time in this migration the same defect — brand colour
+    used as foreground — was found by measurement after screenshots missed it
+    (see DARK_MODE.md Appendix E), which is why it is asserted rather than
+    reviewed.
+    """
+    set_theme(page, base_url, theme)
+    visit(page, page_url)
+    assert_theme_applied(page, theme)
+
+    samples = page.evaluate(_CHART_TEXT_COLOURS_JS)
+    assert samples, (
+        f'{page_url} ({theme}) rendered no chart text at all. Either the page '
+        f'stopped drawing charts or `svg.fonttype` left "none" and every glyph '
+        f'is a path again — in which case this test is silently vacuous.')
+
+    failures = []
+    for found in samples:
+        ratio = contrast_ratio(found['fg'], found['bg'])
+        if ratio < MIN_CONTRAST:
+            failures.append(
+                f'  {ratio:.2f}:1 '
+                f'fg=rgb{tuple(round(v) for v in found["fg"])} '
+                f'bg=rgb{tuple(round(v) for v in found["bg"])} '
+                f'text={found["text"]!r}')
+
+    assert not failures, (
+        f'{page_url} ({theme}): {len(failures)} of {len(samples)} chart labels '
+        f'are below {MIN_CONTRAST}:1:\n' + '\n'.join(failures))
 
 
 def test_clicking_the_toggle_persists_the_choice(page, base_url):
