@@ -44,8 +44,18 @@ _SVG_OPEN_RE = re.compile(r'<svg\b[^>]*>')
 _WIDTH_RE = re.compile(r'\bwidth="([\d.]+)pt"')
 _HEIGHT_RE = re.compile(r'\bheight="([\d.]+)pt"')
 
-#: Real ``<text>`` elements, present only if ``svg.fonttype='none'``.
+#: Real ``<text>`` elements, present when ``svg.fonttype='none'``.
 _TEXT_EL_RE = re.compile(r'<text\b[^>]*>(.*?)</text>', re.S)
+
+#: Inner markup of a ``<text>`` — matplotlib splits a log axis's scientific
+#: notation ("2 x 10^2") into several positioned ``<tspan>``s, so the raw
+#: capture is markup rather than a label. Strip to the visible characters.
+_TAG_RE = re.compile(r'<[^>]+>')
+_WS_RE = re.compile(r'\s+')
+
+
+def _text_content(inner: str) -> str:
+    return _WS_RE.sub(' ', _TAG_RE.sub('', inner)).strip()
 
 
 def _collapse_runs(items):
@@ -94,8 +104,15 @@ def svg_fingerprint(rendered: str) -> dict:
 
     fills = [(a or b).lower() for a, b in _FILL_RE.findall(text)]
 
-    labels = [c.strip() for c in _COMMENT_RE.findall(text)]
-    labels += [t.strip() for t in _TEXT_EL_RE.findall(text)]
+    # Under `svg.fonttype='none'` matplotlib emits real <text>, and *also*
+    # still writes the source string as a comment — for mathtext (log axes)
+    # that comment is the raw `$\mathdefault{2\times10^{1}}$`, while the
+    # <text> holds the decomposed, correctly rendered tspans. Prefer the
+    # elements when present so the fingerprint records what is displayed, not
+    # what was requested; fall back to comments under `fonttype='path'`,
+    # where there are no <text> elements at all.
+    elements = [_text_content(t) for t in _TEXT_EL_RE.findall(text)]
+    labels = elements or [c.strip() for c in _COMMENT_RE.findall(text)]
 
     return {
         'kind': 'svg',

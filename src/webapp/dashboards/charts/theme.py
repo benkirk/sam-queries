@@ -75,6 +75,28 @@ plt.rcParams.update({
     'legend.frameon':     False,
     'figure.facecolor':   'none',
     'axes.facecolor':     'none',
+    # Emit real <text> elements instead of converting every glyph to a path
+    # outline. matplotlib's default is 'path', which is what you want for a
+    # standalone file that must render without the font installed — but our
+    # SVGs are always inlined into a page that already loads Poppins as woff2
+    # (static/vendor/poppins/, see vendor_assets.py).
+    #
+    # Buys, in order of how much we care:
+    #   - 40-77% smaller SVGs, which is Redis memory (chart entries are the
+    #     bulk of it) and page weight on every dashboard.
+    #   - chart text becomes selectable, searchable and screen-readable.
+    #   - label colour becomes a real CSS-addressable property, which is what
+    #     dark mode will need.
+    #   - the font-weight request reaches the browser, so `axes.labelweight:
+    #     600` picks vendored Poppins SemiBold rather than matplotlib's
+    #     "Failed to find font weight 600, now using 700" fallback.
+    #
+    # The tradeoff: matplotlib still computes the bbox_inches='tight' box from
+    # its own TTF metrics while the browser lays the glyphs out from the
+    # woff2, so long labels can differ by a pixel or two. Verified in the
+    # browser at 1280px across every chart surface. Reverting is this one
+    # line.
+    'svg.fonttype':       'none',
 })
 
 

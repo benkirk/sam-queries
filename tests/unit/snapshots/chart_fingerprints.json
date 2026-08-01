@@ -6,10 +6,10 @@
   "alloc_type_pie.trimmed": {
     "counts": {
       "a": 0,
-      "g": 68,
-      "path": 59,
-      "text": 0,
-      "use": 207
+      "g": 48,
+      "path": 23,
+      "text": 20,
+      "use": 0
     },
     "drill_hrefs": [],
     "fills": [
@@ -72,10 +72,10 @@
   "disk_area.bytes_linked": {
     "counts": {
       "a": 4,
-      "g": 98,
-      "path": 63,
-      "text": 0,
-      "use": 150
+      "g": 79,
+      "path": 27,
+      "text": 19,
+      "use": 15
     },
     "drill_hrefs": [
       "/admin/user/bob",
@@ -126,10 +126,10 @@
   "disk_area.files": {
     "counts": {
       "a": 0,
-      "g": 123,
-      "path": 70,
-      "text": 0,
-      "use": 194
+      "g": 99,
+      "path": 32,
+      "text": 24,
+      "use": 20
     },
     "drill_hrefs": [],
     "fills": [
@@ -180,10 +180,10 @@
   "disk_entity_pie.group": {
     "counts": {
       "a": 27,
-      "g": 66,
-      "path": 59,
-      "text": 0,
-      "use": 216
+      "g": 46,
+      "path": 21,
+      "text": 20,
+      "use": 0
     },
     "drill_hrefs": [
       "#disk-ent-group-1000",
@@ -273,10 +273,10 @@
   "disk_entity_pie.owner": {
     "counts": {
       "a": 27,
-      "g": 66,
-      "path": 58,
-      "text": 0,
-      "use": 216
+      "g": 46,
+      "path": 21,
+      "text": 20,
+      "use": 0
     },
     "drill_hrefs": [
       "#disk-ent-owner-1000",
@@ -366,10 +366,10 @@
   "distribution.data": {
     "counts": {
       "a": 18,
-      "g": 85,
-      "path": 54,
-      "text": 0,
-      "use": 67
+      "g": 72,
+      "path": 33,
+      "text": 13,
+      "use": 12
     },
     "drill_hrefs": [
       "#ah-bar-0",
@@ -441,10 +441,10 @@
   "distribution.files": {
     "counts": {
       "a": 18,
-      "g": 85,
-      "path": 51,
-      "text": 0,
-      "use": 83
+      "g": 72,
+      "path": 33,
+      "text": 13,
+      "use": 12
     },
     "drill_hrefs": [
       "#ah-bar-0",
@@ -512,10 +512,10 @@
   "distribution.log_y": {
     "counts": {
       "a": 3,
-      "g": 71,
-      "path": 35,
-      "text": 0,
-      "use": 88
+      "g": 66,
+      "path": 12,
+      "text": 5,
+      "use": 16
     },
     "drill_hrefs": [
       "#ah-bar-0",
@@ -535,14 +535,14 @@
       "30-90d",
       "90-180d",
       "&gt; 180d",
-      "$\\mathdefault{10^{2}}$",
-      "$\\mathdefault{2\\times10^{1}}$",
-      "$\\mathdefault{3\\times10^{1}}$",
-      "$\\mathdefault{4\\times10^{1}}$",
-      "$\\mathdefault{6\\times10^{1}}$",
-      "$\\mathdefault{2\\times10^{2}}$",
-      "$\\mathdefault{3\\times10^{2}}$",
-      "$\\mathdefault{4\\times10^{2}}$",
+      "1 0 2",
+      "2 \u00d7 1 0 1",
+      "3 \u00d7 1 0 1",
+      "4 \u00d7 1 0 1",
+      "6 \u00d7 1 0 1",
+      "2 \u00d7 1 0 2",
+      "3 \u00d7 1 0 2",
+      "4 \u00d7 1 0 2",
       "Data (GiB)"
     ],
     "size": [
@@ -557,10 +557,10 @@
   "facility_pie.normal": {
     "counts": {
       "a": 0,
-      "g": 24,
-      "path": 34,
-      "text": 0,
-      "use": 50
+      "g": 18,
+      "path": 7,
+      "text": 6,
+      "use": 0
     },
     "drill_hrefs": [],
     "fills": [
@@ -589,10 +589,10 @@
   "jobs_hist.charges": {
     "counts": {
       "a": 19,
-      "g": 90,
-      "path": 54,
-      "text": 0,
-      "use": 65
+      "g": 76,
+      "path": 34,
+      "text": 14,
+      "use": 13
     },
     "drill_hrefs": [
       "#jh-bar-0",
@@ -667,10 +667,10 @@
   "jobs_hist.flat_no_owners": {
     "counts": {
       "a": 4,
-      "g": 75,
-      "path": 34,
-      "text": 0,
-      "use": 61
+      "g": 61,
+      "path": 19,
+      "text": 14,
+      "use": 13
     },
     "drill_hrefs": [
       "#jh-bar-0",
@@ -707,10 +707,10 @@
   "jobs_hist.jobs_owners": {
     "counts": {
       "a": 19,
-      "g": 90,
-      "path": 49,
-      "text": 0,
-      "use": 61
+      "g": 76,
+      "path": 34,
+      "text": 14,
+      "use": 13
     },
     "drill_hrefs": [
       "#jh-bar-0",
@@ -781,10 +781,10 @@
   "jobs_hist.log_y": {
     "counts": {
       "a": 4,
-      "g": 72,
-      "path": 29,
-      "text": 0,
-      "use": 76
+      "g": 65,
+      "path": 13,
+      "text": 7,
+      "use": 16
     },
     "drill_hrefs": [
       "#jh-bar-0",
@@ -808,12 +808,12 @@
       "1-6h",
       "&gt; 6h",
       "100",
-      "$\\mathdefault{2\\times10^{1}}$",
-      "$\\mathdefault{3\\times10^{1}}$",
-      "$\\mathdefault{4\\times10^{1}}$",
-      "$\\mathdefault{6\\times10^{1}}$",
-      "$\\mathdefault{2\\times10^{2}}$",
-      "$\\mathdefault{3\\times10^{2}}$",
+      "2 \u00d7 1 0 1",
+      "3 \u00d7 1 0 1",
+      "4 \u00d7 1 0 1",
+      "6 \u00d7 1 0 1",
+      "2 \u00d7 1 0 2",
+      "3 \u00d7 1 0 2",
       "Jobs"
     ],
     "size": [
@@ -828,10 +828,10 @@
   "jobs_ts.project_unlinked": {
     "counts": {
       "a": 32,
-      "g": 128,
-      "path": 87,
-      "text": 0,
-      "use": 155
+      "g": 108,
+      "path": 55,
+      "text": 20,
+      "use": 15
     },
     "drill_hrefs": [
       "#jt-bar-0",
@@ -909,10 +909,10 @@
   "jobs_ts.user_linked": {
     "counts": {
       "a": 38,
-      "g": 133,
-      "path": 83,
-      "text": 0,
-      "use": 150
+      "g": 112,
+      "path": 56,
+      "text": 21,
+      "use": 16
     },
     "drill_hrefs": [
       "#jt-bar-0",
@@ -997,10 +997,10 @@
   "jobs_usage_pie.by_project": {
     "counts": {
       "a": 27,
-      "g": 60,
-      "path": 49,
-      "text": 0,
-      "use": 131
+      "g": 43,
+      "path": 21,
+      "text": 17,
+      "use": 0
     },
     "drill_hrefs": [
       "#job-proj-user0",
@@ -1085,10 +1085,10 @@
   "jobs_usage_pie.by_user": {
     "counts": {
       "a": 24,
-      "g": 58,
-      "path": 55,
-      "text": 0,
-      "use": 143
+      "g": 42,
+      "path": 21,
+      "text": 16,
+      "use": 0
     },
     "drill_hrefs": [
       "#job-user-user1",
@@ -1171,10 +1171,10 @@
   "jobs_user_pie.delegated": {
     "counts": {
       "a": 24,
-      "g": 58,
-      "path": 55,
-      "text": 0,
-      "use": 143
+      "g": 42,
+      "path": 21,
+      "text": 16,
+      "use": 0
     },
     "drill_hrefs": [
       "#job-user-user1",
@@ -1257,10 +1257,10 @@
   "nodetype.normal": {
     "counts": {
       "a": 0,
-      "g": 189,
-      "path": 117,
-      "text": 0,
-      "use": 257
+      "g": 158,
+      "path": 54,
+      "text": 31,
+      "use": 33
     },
     "drill_hrefs": [],
     "fills": [
@@ -1321,10 +1321,10 @@
   "pace.future": {
     "counts": {
       "a": 40,
-      "g": 183,
-      "path": 120,
-      "text": 0,
-      "use": 563
+      "g": 143,
+      "path": 66,
+      "text": 40,
+      "use": 17
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0000",
@@ -1465,10 +1465,10 @@
   "pace.size": {
     "counts": {
       "a": 40,
-      "g": 183,
-      "path": 119,
-      "text": 0,
-      "use": 497
+      "g": 143,
+      "path": 66,
+      "text": 40,
+      "use": 17
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0000",
@@ -1609,10 +1609,10 @@
   "pace.small_top_n": {
     "counts": {
       "a": 12,
-      "g": 133,
-      "path": 87,
-      "text": 0,
-      "use": 256
+      "g": 106,
+      "path": 38,
+      "text": 27,
+      "use": 19
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0000",
@@ -1682,10 +1682,10 @@
   "queue.cores": {
     "counts": {
       "a": 0,
-      "g": 198,
-      "path": 107,
-      "text": 0,
-      "use": 224
+      "g": 165,
+      "path": 57,
+      "text": 33,
+      "use": 34
     },
     "drill_hrefs": [],
     "fills": [
@@ -1742,10 +1742,10 @@
   "queue.gpus": {
     "counts": {
       "a": 0,
-      "g": 198,
-      "path": 104,
-      "text": 0,
-      "use": 215
+      "g": 165,
+      "path": 57,
+      "text": 33,
+      "use": 34
     },
     "drill_hrefs": [],
     "fills": [
@@ -1798,10 +1798,10 @@
   "usage_stacked.core_hours": {
     "counts": {
       "a": 28,
-      "g": 105,
-      "path": 81,
-      "text": 0,
-      "use": 104
+      "g": 90,
+      "path": 50,
+      "text": 15,
+      "use": 11
     },
     "drill_hrefs": [
       "#day-bar-2026-03-01",
@@ -1872,10 +1872,10 @@
   "usage_timeseries.charges": {
     "counts": {
       "a": 0,
-      "g": 75,
-      "path": 45,
-      "text": 0,
-      "use": 87
+      "g": 63,
+      "path": 27,
+      "text": 12,
+      "use": 11
     },
     "drill_hrefs": [],
     "fills": [
@@ -1909,10 +1909,10 @@
   "usage_timeseries.linked_jobs": {
     "counts": {
       "a": 8,
-      "g": 75,
-      "path": 46,
-      "text": 0,
-      "use": 89
+      "g": 63,
+      "path": 27,
+      "text": 12,
+      "use": 11
     },
     "drill_hrefs": [
       "#day-bar-2026-03-01",
@@ -1955,10 +1955,10 @@
   "user_proj_area.peak_unlinked": {
     "counts": {
       "a": 0,
-      "g": 107,
-      "path": 56,
-      "text": 0,
-      "use": 159
+      "g": 86,
+      "path": 30,
+      "text": 21,
+      "use": 16
     },
     "drill_hrefs": [],
     "fills": [
@@ -2004,10 +2004,10 @@
   "user_proj_area.project_current": {
     "counts": {
       "a": 6,
-      "g": 107,
-      "path": 56,
-      "text": 0,
-      "use": 159
+      "g": 86,
+      "path": 30,
+      "text": 21,
+      "use": 16
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0001",
@@ -2060,10 +2060,10 @@
   "user_usage_pie.charges": {
     "counts": {
       "a": 27,
-      "g": 66,
-      "path": 54,
-      "text": 0,
-      "use": 182
+      "g": 46,
+      "path": 21,
+      "text": 20,
+      "use": 0
     },
     "drill_hrefs": [
       "#usage-user-user0",
@@ -2153,10 +2153,10 @@
   "user_usage_pie.default_metric": {
     "counts": {
       "a": 27,
-      "g": 66,
-      "path": 54,
-      "text": 0,
-      "use": 182
+      "g": 46,
+      "path": 21,
+      "text": 20,
+      "use": 0
     },
     "drill_hrefs": [
       "#usage-user-user0",
@@ -2250,10 +2250,10 @@
   "user_usage_pie.jobs": {
     "counts": {
       "a": 27,
-      "g": 66,
-      "path": 52,
-      "text": 0,
-      "use": 159
+      "g": 46,
+      "path": 21,
+      "text": 20,
+      "use": 0
     },
     "drill_hrefs": [
       "#usage-user-user0",
