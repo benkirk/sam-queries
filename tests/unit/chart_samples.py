@@ -285,11 +285,11 @@ CASES = [
      (_user_usage_rows(),), {'metric': 'charges'}),
     ('user_usage_pie.jobs', charts.generate_user_usage_pie_chart,
      (_user_usage_rows(),), {'metric': 'jobs'}),
-    # metric is passed explicitly because `_user_usage_pie_cache_key` has no
-    # default for it and raises TypeError before the chart body runs — see
-    # test_chart_cache_key_signatures.py, which pins the fix.
-    ('user_usage_pie.empty', charts.generate_user_usage_pie_chart,
-     ([],), {'metric': 'charges'}),
+    # No metric= on purpose: exercises the defaulted call shape, which used to
+    # raise TypeError in the key function. See test_chart_cache_key_signatures.
+    ('user_usage_pie.default_metric', charts.generate_user_usage_pie_chart,
+     (_user_usage_rows(),), {}),
+    ('user_usage_pie.empty', charts.generate_user_usage_pie_chart, ([],), {}),
 
     # --- 12. jobs histogram ----------------------------------------------
     ('jobs_hist.jobs_owners', charts.generate_jobs_histogram,

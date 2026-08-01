@@ -1172,10 +1172,14 @@ def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _user_usage_pie_cache_key(user_data, metric):
+def _user_usage_pie_cache_key(user_data, metric='charges'):
     # metric selects which column is plotted AND what the legend numbers say,
     # but it isn't part of the default content_hash(args[0]) key — include it
     # so charges/jobs/core_hours variants never alias in the LRU.
+    #
+    # The default MUST mirror the generator's. A key function is called with
+    # the view's own arguments, so an omitted-but-defaulted parameter reaches
+    # it as a missing argument, not as the default.
     return _content_hash([user_data, metric])
 
 
@@ -1791,7 +1795,7 @@ def _pace_key_fields(allocations: List[Dict]) -> list:
     ]
 
 
-def _pace_cache_key(allocations, active_at, window_days=180, top_n=15,
+def _pace_cache_key(allocations, active_at, window_days=180, top_n=20,
                     resource_name='', sort_by='size'):
     return _content_hash([_pace_key_fields(allocations), active_at.isoformat(),
                           int(window_days), int(top_n), resource_name, sort_by])
