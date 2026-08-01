@@ -816,6 +816,43 @@ Recorded per that document's own convention.
 | 2 | (not stated) | The template-side utility classes — `table-light` (49), bare `text-dark` (20), `bg-light` (59) — are a **larger** surface than the CSS whites, and were not inventoried. | ~130 attributes of unbudgeted work. Partly offset by `text-muted` × 624 being free. |
 | 3 | "PR 3 has a real head start" from Bootstrap's unused dark block | True, and stronger than implied: `text-muted`, the app's most-used utility, is already theme-correct. But the same block **does not** redefine `--bs-light-rgb` / `--bs-dark-rgb` / `--bs-secondary-rgb`, which is precisely why item 2 exists. | Head start is real; it is not uniform. |
 
+## Handoff to PR 4 — dark charts
+
+**Decision (Ben, 2026-08-01): PR 3 ships without chart theming.** The known
+gap is that chart SVGs carry baked colours, so in dark mode their legend text
+is `#011837` on the `#1b2733` card (~1.3:1) and `UNITY_PALETTE_10[8]` space
+blue nearly vanishes as a wedge fill. Affected: the allocations dashboard,
+the three status history pages, the jobs explorer and the disk-scans tabs.
+Figures do render on a transparent background, so they read as low-contrast
+rather than as white boxes.
+
+PR 4 is now genuinely small, because PR 1 and this PR pre-solved its
+structure:
+
+1. **Pass `theme=read_theme()` at the chart call sites** — 24 places that
+   already pass `layout=`. `chart_view` accepts `theme=` and composes it into
+   the cache key today; nothing else has to change for the plumbing.
+   `test_renderers_forward_the_layout_they_are_given` has an obvious sibling
+   worth adding for `theme`.
+2. **Tune `Theme.DARK`.** Its chrome values exist. The two decisions a
+   mechanical swap cannot make are still open and are recorded in
+   `CHART_ARCHITECTURE.md` Appendix B: the space-blue pie wedge, and the
+   `alpha=0.85` stackplots that composite against the page.
+3. **Blend targets need no thought** — `--surface-card` is `#1b2733`, and
+   `test_dark_card_matches_chart_blend_target` (added in D7) fails if the CSS
+   and `Theme.DARK.shade_toward` / `legend_face` / `segment_edge` ever drift.
+4. **Regenerate the fingerprint snapshot** at every layout × theme, in the
+   same commit:
+   `CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py`.
+5. **Redis**: chart keys hash *input data*, not rendering code, so warm
+   entries serve old-code SVGs for up to 600 s. Run
+   `sam-admin cache --refresh --category chart` after deploying.
+
+Note for whoever ships it: dark mode doubles the chart cache working set. The
+`svg.fonttype='none'` change in PR 1 cut SVG size 40–77 %, which mostly pays
+for it, but the `maxmemory` rationale deserves real numbers rather than an
+assumption.
+
 ## Appendix E — deviations found during implementation (2026-08-01)
 
 The plan was a good map; these are the places the territory differed. All
