@@ -75,18 +75,31 @@ class Layout:
     #: mobile overrides.
     legend_fontsize: int | None = None
 
-    @property
-    def is_mobile(self) -> bool:
-        return self.name == 'mobile'
+    #: Axis-label size, or None for "whatever the chart declares".
+    #:
+    #: Same None-means-defer rule as `legend_fontsize`, and it exists for the
+    #: same reason: `UserProjectAreaChart` labels at 13pt where everything
+    #: else leaves it to rcParams, and desktop must reproduce both.
+    axis_label_fontsize: int | None = None
 
+    #: Tick-label size, or None for "the chart's own, else `base_fontsize`".
+    tick_fontsize: int | None = None
+
+
+#: One size for every text role on a phone. The four `*_fontsize` fields are
+#: separate because *desktop* needs them separate — a family may label at 13pt
+#: and tick at 12pt — but at 4in wide there is no room for a hierarchy.
+_MOBILE_FONT = 9
 
 #: Applied to every family's mobile profile unless it overrides them.
 #:
 #: `figsize` is deliberately absent: there is no defensible default for it.
 #: See the module docstring on why aspect preservation is the wrong rule.
 MOBILE_DEFAULTS = dict(
-    base_fontsize=9,
-    legend_fontsize=9,
+    base_fontsize=_MOBILE_FONT,
+    legend_fontsize=_MOBILE_FONT,
+    axis_label_fontsize=_MOBILE_FONT,
+    tick_fontsize=_MOBILE_FONT,
     legend_placement='below',
     max_legend_entries=6,
     max_ticks=5,

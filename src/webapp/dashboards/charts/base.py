@@ -114,9 +114,9 @@ class BaseChart:
     #: existed.
     axis_label_fontsize = None
 
-    #: Tick-label size on desktop, or None to take `layout.base_fontsize`
-    #: (which is the rcParams value, so None and 11 are the same picture).
-    #: Mobile always takes the layout's.
+    #: Tick-label size when the layout does not dictate one, or None to take
+    #: `layout.base_fontsize` (which is the rcParams value on desktop, so None
+    #: and 11 are the same picture).
     tick_fontsize = None
 
     # --- lifecycle hooks (override what differs) -------------------------
@@ -223,9 +223,14 @@ class BaseChart:
 
         Returned as a dict rather than a value because `fontsize=None` is not
         the same as omitting it.
+
+        The layout wins where it states a size, and defers where it does not —
+        the rule `legend_fontsize` already used. This used to read
+        `layout.is_mobile`, which was a boolean asked of a vocabulary that now
+        has three values; expressing it as None-means-defer means a new
+        profile needs no new branch here.
         """
-        size = (layout.base_fontsize if layout.is_mobile
-                else self.axis_label_fontsize)
+        size = layout.axis_label_fontsize or self.axis_label_fontsize
         return {'fontsize': size} if size is not None else {}
 
     def apply_date_axis(self, ax, layout):
@@ -261,9 +266,12 @@ class BaseChart:
         because a chart that forgets is invisible until someone looks at a
         phone. Desktop's `base_fontsize` equals the rcParams `font.size`, so
         this is a no-op there and the desktop fingerprints do not move.
+
+        Three-way fallback, same None-means-defer rule as `label_kw`: the
+        layout's size, else the chart's own, else the layout's base size.
         """
-        size = (layout.base_fontsize if layout.is_mobile
-                else (self.tick_fontsize or layout.base_fontsize))
+        size = (layout.tick_fontsize or self.tick_fontsize
+                or layout.base_fontsize)
         for ax in (axes if isinstance(axes, (tuple, list)) else (axes,)):
             ax.tick_params(labelsize=size)
 
