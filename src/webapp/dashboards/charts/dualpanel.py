@@ -109,7 +109,11 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     empty_message = 'No history data available for this node type'
     #: Two stacked panels need real vertical room on a phone — this is the
     #: tallest mobile figure in the package, and still barely enough.
-    LAYOUTS = profile((18, 10), (4.0, 4.7))
+    #: Tablet: this is the chart the tablet band exists for. The status pages
+    #: nest cards, so their chart gets the viewport less 144px — 624px at a
+    #: 768 viewport, where the 18in figure reads 6.0px. 12in lands the tight
+    #: bbox at ~736pt, i.e. 9.3px in that card.
+    LAYOUTS = profile((18, 10), (4.0, 4.7), (12, 7.2))
 
     @staticmethod
     def cache_key(history_data):
@@ -172,7 +176,10 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
     #: Raised from 64 for the second layout profile.
     cache_maxsize = 96
     empty_message = 'No history data available for this queue'
-    LAYOUTS = profile((14, 8), (4.0, 4.2))
+    #: Tablet: same 624px card as its sibling, and the same ~736pt target —
+    #: which this family reaches at the same 12in despite starting 4in
+    #: narrower, because the legend is what the tight bbox is made of.
+    LAYOUTS = profile((14, 8), (4.0, 4.2), (12, 7.2))
 
     @staticmethod
     def cache_key(history_data):

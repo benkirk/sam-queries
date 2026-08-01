@@ -211,7 +211,7 @@ def test_migrated_charts_declare_cache_config():
     for name, cls in _migrated().items():
         assert cls.cache_name, f'{cls.__name__} has no cache_name'
         assert cls.cache_maxsize, f'{cls.__name__} has no cache_maxsize'
-        assert cls.LAYOUTS and 'desktop' in cls.LAYOUTS and 'mobile' in cls.LAYOUTS
+        assert cls.LAYOUTS and {'desktop', 'mobile', 'tablet'} <= set(cls.LAYOUTS)
 
 
 def _cases_by_chart():
@@ -251,16 +251,21 @@ class TestRenderAxesAreKeyed:
     def test_layout_changes_the_key(self):
         from webapp.dashboards.charts.dualpanel import NodetypeHistoryChart as C
         assert self._keys(C) != self._keys(C, layout='mobile')
+        assert self._keys(C) != self._keys(C, layout='tablet')
 
     def test_theme_changes_the_key(self):
         from webapp.dashboards.charts.dualpanel import NodetypeHistoryChart as C
         assert self._keys(C) != self._keys(C, theme='dark')
 
+    LAYOUTS = ('desktop', 'mobile', 'tablet')
+    THEMES = ('light', 'dark')
+
     def test_axes_are_independent(self):
         from webapp.dashboards.charts.dualpanel import NodetypeHistoryChart as C
         seen = {self._keys(C, layout=l, theme=t)
-                for l in ('desktop', 'mobile') for t in ('light', 'dark')}
-        assert len(seen) == 4, 'the two axes are not independent in the key'
+                for l in self.LAYOUTS for t in self.THEMES}
+        assert len(seen) == len(self.LAYOUTS) * len(self.THEMES), (
+            'the two axes are not independent in the key')
 
     def test_every_migrated_chart_renders_under_every_combination(self, app):
         """Both axes must actually render, not merely be accepted.
@@ -271,8 +276,8 @@ class TestRenderAxesAreKeyed:
         cases = _cases_by_chart()
         assert cases, 'no migrated chart has a sample case'
         for fn, (args, kwargs) in cases.items():
-            for lay in ('desktop', 'mobile'):
-                for thm in ('light', 'dark'):
+            for lay in self.LAYOUTS:
+                for thm in self.THEMES:
                     with app.test_request_context('/'):
                         out = fn(*args, **kwargs, layout=lay, theme=thm)
                     assert '<svg' in out, (

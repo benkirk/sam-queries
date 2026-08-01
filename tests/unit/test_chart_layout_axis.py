@@ -23,7 +23,7 @@ from webapp.dashboards import charts
 from webapp.dashboards.charts import dualpanel, histogram, pace, pie, stacked
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.layout import (
-    MOBILE_DEFAULTS, Layout, profile, resolve_layout,
+    MOBILE_DEFAULTS, TABLET_DEFAULTS, Layout, profile, resolve_layout,
 )
 
 #: Every class in the package that declares its own profile.
@@ -48,38 +48,67 @@ def _chart_classes():
 
 class TestProfile:
 
-    def test_mobile_figsize_is_required(self):
-        """It used to default to the desktop aspect ratio at 4.5in wide, which
-        turns 18:5 into a strip with no room for a plot once the legend moves
-        underneath. Making it positional means a new family cannot inherit
-        that mistake by omission."""
+    def test_non_desktop_figsizes_are_required(self):
+        """`mobile_figsize` used to default to the desktop aspect ratio at
+        4.5in wide, which turns 18:5 into a strip with no room for a plot once
+        the legend moves underneath. Making both positional means a new family
+        cannot inherit that mistake by omission — and a family that genuinely
+        wants desktop's figure at tablet size has to say so."""
         with pytest.raises(TypeError):
             profile((18, 5))
+        with pytest.raises(TypeError):
+            profile((18, 5), (4.6, 3.2))
 
-    def test_keywords_configure_desktop_not_mobile(self):
+    @pytest.mark.parametrize('name', ['mobile', 'tablet'])
+    def test_keywords_configure_desktop_not_the_others(self, name):
         """The bug this signature was changed to prevent.
 
         `label_rotation=30` reads like a mobile override and is not one. When
-        mobile overrides were collected with `**kwargs`, any name colliding
-        with a desktop parameter was silently applied to desktop instead —
-        the override looked accepted and did nothing.
+        overrides were collected with `**kwargs`, any name colliding with a
+        desktop parameter was silently applied to desktop instead — the
+        override looked accepted and did nothing.
+
+        Tablet inherits desktop's rotation because `TABLET_DEFAULTS` says
+        nothing about it; mobile flattens it to 45. Either way the assertion
+        is that the *keyword* landed on desktop.
         """
-        p = profile((18, 5), (4.6, 3.2), label_rotation=30)
+        p = profile((18, 5), (4.6, 3.2), (11, 3.6), label_rotation=30)
         assert p['desktop'].label_rotation == 30
-        assert p['mobile'].label_rotation == MOBILE_DEFAULTS['label_rotation']
+        expected = {'mobile': MOBILE_DEFAULTS, 'tablet': TABLET_DEFAULTS}[name]
+        assert p[name].label_rotation == expected.get('label_rotation', 30)
 
     def test_mobile_dict_overrides_the_defaults(self):
-        p = profile((7, 4), (4.0, 3.2), mobile={'legend_placement': 'right'})
+        p = profile((7, 4), (4.0, 3.2), (7, 4),
+                    mobile={'legend_placement': 'right'})
         assert p['mobile'].legend_placement == 'right'
         assert p['desktop'].legend_placement == 'right'
         # Untouched keys still come from MOBILE_DEFAULTS.
         assert p['mobile'].max_legend_entries == MOBILE_DEFAULTS['max_legend_entries']
 
-    def test_unknown_mobile_override_is_rejected(self):
+    def test_tablet_dict_overrides_the_defaults(self):
+        p = profile((7, 4), (4.0, 3.2), (7, 4),
+                    tablet={'max_legend_entries': None})
+        assert p['tablet'].max_legend_entries is None
+        assert p['tablet'].max_ticks == TABLET_DEFAULTS['max_ticks']
+
+    def test_tablet_inherits_desktop_where_it_says_nothing(self):
+        """A tablet is a small desktop, not a large phone. `TABLET_DEFAULTS`
+        names two fields; everything else — placement, rotation, and all four
+        font sizes — must come through from desktop rather than from the
+        phone's flattened one-size-fits-all."""
+        p = profile((18, 5), (4.0, 2.8), (11, 3.6), label_rotation=30)
+        d, t = p['desktop'], p['tablet']
+        for field in ('legend_placement', 'label_rotation', 'base_fontsize',
+                      'legend_fontsize', 'axis_label_fontsize',
+                      'tick_fontsize'):
+            assert getattr(t, field) == getattr(d, field), field
+
+    @pytest.mark.parametrize('name', ['mobile', 'tablet'])
+    def test_unknown_override_is_rejected(self, name):
         """A typo'd field name would otherwise be dropped in silence, which is
         exactly how `legend_placement` came to look wired when it wasn't."""
         with pytest.raises(TypeError, match='unknown Layout field'):
-            profile((7, 4), (4.0, 3.2), mobile={'legend_size': 9})
+            profile((7, 4), (4.0, 3.2), (7, 4), **{name: {'legend_size': 9}})
 
     def test_desktop_legend_fontsize_is_none(self):
         """None means "defer to the chart", which is what keeps desktop
@@ -117,15 +146,39 @@ class TestProfiles:
         assert 3.5 <= mobile[0] <= 5.0, f'{cls.__name__} mobile width {mobile[0]}'
 
     @pytest.mark.parametrize('cls', LAYOUT_OWNERS, ids=lambda c: c.__name__)
-    def test_mobile_is_not_the_desktop_aspect_ratio(self, cls):
-        """Preserving the ratio is what produced a 4.5 x 1.25in strip."""
-        d, m = cls.LAYOUTS['desktop'].figsize, cls.LAYOUTS['mobile'].figsize
-        assert abs(m[1] / m[0] - d[1] / d[0]) > 0.01, cls.__name__
+    def test_tablet_figure_sits_between_the_two(self, cls):
+        """The band is between the other two, so the figure must be as well.
+
+        Non-strict at the desktop end: `PieChart` declares tablet *as* its
+        desktop figure, because a pie's tight bbox is already narrower than
+        every card that renders one. See its `LAYOUTS` comment.
+        """
+        d = cls.LAYOUTS['desktop'].figsize
+        m = cls.LAYOUTS['mobile'].figsize
+        t = cls.LAYOUTS['tablet'].figsize
+        assert m[0] < t[0] <= d[0], (
+            f'{cls.__name__}: mobile {m[0]}in, tablet {t[0]}in, '
+            f'desktop {d[0]}in')
+
+    @pytest.mark.parametrize('cls', LAYOUT_OWNERS, ids=lambda c: c.__name__)
+    @pytest.mark.parametrize('name', ['mobile', 'tablet'])
+    def test_smaller_figures_are_not_the_desktop_aspect_ratio(self, cls, name):
+        """Preserving the ratio is what produced a 4.5 x 1.25in strip.
+
+        A family whose figure is *unchanged* is exempt — it is not a scaled
+        copy, it is the same figure, and the hazard this guards against is
+        scaling one dimension by the other's factor.
+        """
+        d = cls.LAYOUTS['desktop'].figsize
+        s = cls.LAYOUTS[name].figsize
+        if tuple(s) == tuple(d):
+            pytest.skip(f'{cls.__name__} {name} is the desktop figure')
+        assert abs(s[1] / s[0] - d[1] / d[0]) > 0.01, cls.__name__
 
     def test_every_bound_chart_reaches_a_profile(self):
         for name, cls in _chart_classes().items():
             assert cls.LAYOUTS, f'{name} ({cls.__name__}) has no LAYOUTS'
-            assert set(cls.LAYOUTS) == {'desktop', 'mobile'}, name
+            assert set(cls.LAYOUTS) == {'desktop', 'mobile', 'tablet'}, name
 
 
 # --------------------------------------------------------------------------

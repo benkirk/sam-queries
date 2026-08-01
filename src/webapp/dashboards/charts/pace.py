@@ -132,7 +132,12 @@ class PaceChart(BaseChart):
     #: facility-scope fanout — well under 10 MB of cached SVG per process.
     cache_maxsize = 192
     empty_message = 'No allocations available'
-    LAYOUTS = profile((10, 4), (4.0, 3.0))
+    #: Tablet: the narrowest desktop figure of the wide families, and still
+    #: the worst reader — 6.3px at a 624px card, because its smallest text is
+    #: 6pt where the others' is 8.25pt. 6.5in lands the tight bbox at ~590pt.
+    #: The `TABLET_DEFAULTS` legend cap does real work here: 20 project rows
+    #: set the figure height on their own, whatever `figsize` says.
+    LAYOUTS = profile((10, 4), (4.0, 3.0), (6.5, 3.2))
     #: Normalized to the 0.3 every other chart uses (was 0.2, undocumented).
     grid = {'alpha': 0.3}
 
