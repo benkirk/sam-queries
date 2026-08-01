@@ -357,8 +357,8 @@
       "Others"
     ],
     "size": [
-      749.1,
-      254.0
+      692.8,
+      242.9
     ]
   },
   "disk_area.empty": {
@@ -511,8 +511,8 @@
       "Others"
     ],
     "size": [
-      771.2,
-      256.7
+      714.9,
+      245.8
     ]
   },
   "disk_entity_pie.empty": {
@@ -1286,8 +1286,8 @@
       "Data (GiB)"
     ],
     "size": [
-      730.7,
-      312.1
+      674.9,
+      289.9
     ]
   },
   "distribution.empty": {
@@ -1503,8 +1503,8 @@
       "Files"
     ],
     "size": [
-      746.7,
-      312.1
+      690.9,
+      289.9
     ]
   },
   "distribution.log_y": {
@@ -1626,8 +1626,8 @@
       "Data (GiB)"
     ],
     "size": [
-      742.4,
-      312.1
+      686.5,
+      289.9
     ]
   },
   "facility_pie.empty": {
@@ -1957,8 +1957,8 @@
       "Charges"
     ],
     "size": [
-      731.2,
-      309.7
+      675.4,
+      288.0
     ]
   },
   "jobs_hist.empty": {
@@ -2081,8 +2081,8 @@
       "Jobs"
     ],
     "size": [
-      730.7,
-      309.7
+      674.9,
+      288.0
     ]
   },
   "jobs_hist.jobs_owners": {
@@ -2303,8 +2303,8 @@
       "Jobs"
     ],
     "size": [
-      730.7,
-      309.7
+      674.9,
+      288.0
     ]
   },
   "jobs_hist.log_y": {
@@ -2432,8 +2432,8 @@
       "Jobs"
     ],
     "size": [
-      741.9,
-      308.9
+      686.1,
+      286.8
     ]
   },
   "jobs_ts.empty": {
@@ -2689,8 +2689,8 @@
       "Others"
     ],
     "size": [
-      762.3,
-      254.0
+      706.0,
+      242.9
     ]
   },
   "jobs_ts.user_linked": {
@@ -2963,8 +2963,8 @@
       "Others"
     ],
     "size": [
-      756.0,
-      254.0
+      699.7,
+      242.9
     ]
   },
   "jobs_usage_pie.by_project": {
@@ -5392,8 +5392,8 @@
       "Others"
     ],
     "size": [
-      756.1,
-      254.0
+      699.7,
+      242.9
     ]
   },
   "usage_stacked.empty": {
@@ -5501,8 +5501,8 @@
       "Charges"
     ],
     "size": [
-      684.0,
-      254.0
+      628.2,
+      242.9
     ]
   },
   "usage_timeseries.empty": {
@@ -5637,8 +5637,8 @@
       "Job Count"
     ],
     "size": [
-      684.0,
-      254.0
+      628.2,
+      242.9
     ]
   },
   "user_proj_area.empty": {
@@ -5794,8 +5794,8 @@
       "Others (4)"
     ],
     "size": [
-      824.1,
-      257.0
+      767.7,
+      245.9
     ]
   },
   "user_proj_area.project_current": {
@@ -5968,8 +5968,8 @@
       "Others (2)"
     ],
     "size": [
-      824.0,
-      257.0
+      767.7,
+      245.9
     ]
   },
   "user_usage_pie.charges": {

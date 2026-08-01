@@ -18,6 +18,8 @@ render. Together they leave only that one first page, on which charts are
 merely small rather than broken.
 """
 
+import importlib
+import inspect
 import re
 from pathlib import Path
 
@@ -87,6 +89,72 @@ class TestReadLayout:
         from webapp.utils.htmx import _LAYOUTS
 
         assert _LAYOUTS == set(pie.PieChart.LAYOUTS)
+
+
+# --------------------------------------------------------------------------
+# The last hop: renderer to renderer
+# --------------------------------------------------------------------------
+
+#: The modules whose fragment renderers take a ``layout`` argument.
+#: ``utils/fragments.py:_register_one`` resolves it once for all 27
+#: jobs/disk-scans routes and hands it to every panel, so the axis reaches
+#: these two files and then has to be *carried* the rest of the way by hand.
+_RENDERER_MODULES = ('webapp.jobs.routes', 'webapp.disk_scans.routes')
+
+
+def _layout_takers(module):
+    """``{name: fn}`` for everything in the module's namespace that accepts a
+    ``layout`` argument — its own renderers *and* the imported chart callables,
+    which advertise it through ``chart_view``'s explicit ``__signature__``."""
+    out = {}
+    for name, fn in vars(module).items():
+        # Plain functions only. The module namespace also holds Flask
+        # `LocalProxy` objects (`current_app`, `request`), and merely asking
+        # one for a signature dereferences it — outside an app context that
+        # raises rather than returning something uninteresting.
+        if not inspect.isfunction(fn):
+            continue
+        try:
+            sig = inspect.signature(fn)
+        except (TypeError, ValueError):
+            continue
+        if 'layout' in sig.parameters:
+            out[name] = fn
+    return out
+
+
+@pytest.mark.parametrize('mod_name', _RENDERER_MODULES)
+def test_renderers_forward_the_layout_they_are_given(mod_name):
+    """A renderer that delegates to something layout-aware must pass it on.
+
+    This is the one hop nothing else can check. The registrar resolves
+    ``read_layout()`` once and the chart layer honours whatever it is given,
+    so a renderer that accepts ``layout`` and then calls its delegate without
+    it fails *silently* — the fragment renders, at desktop, forever. That is
+    exactly what happened to the three jobs histogram panels (Wait Times, Job
+    Sizes, Durations): ``_panel_histogram`` took the argument and dropped it,
+    and all three served an 18in figure to phones and tablets alike.
+
+    Renderers that draw no chart are exempt by construction rather than by
+    allowlist: they call nothing that takes a ``layout``, so there is nothing
+    to forward. ``utils/fragments.py`` states that contract — "panels that draw
+    no chart accept and ignore it".
+    """
+    module = importlib.import_module(mod_name)
+    takers = _layout_takers(module)
+    assert takers, f'{mod_name} has no layout-aware callables — test is stale'
+
+    dropped = []
+    for name, fn in takers.items():
+        if getattr(fn, '__module__', None) != mod_name:
+            continue                       # imported chart view, not a renderer
+        src = inspect.getsource(fn)
+        delegates = [d for d in takers
+                     if d != name and re.search(rf'\b{re.escape(d)}\s*\(', src)]
+        if delegates and 'layout=layout' not in src:
+            dropped.append(f'{name} calls {sorted(delegates)} without layout=')
+    assert not dropped, (
+        'layout dropped on the way to a chart:\n  ' + '\n  '.join(dropped))
 
 
 # --------------------------------------------------------------------------

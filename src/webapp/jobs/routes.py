@@ -1875,6 +1875,7 @@ def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
         target_id=_target_id(ctx, dim),
         account_projcodes=ctx['account_projcodes'],
         username=ctx['username'],
+        layout=layout,
     )
 
 
