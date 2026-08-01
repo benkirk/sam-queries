@@ -22,7 +22,9 @@ from datetime import date, datetime, timedelta
 
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.colors
 import matplotlib.dates as mdates
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -37,7 +39,7 @@ from webapp.caching.chart import content_hash as _content_hash
 # Imported first for its import-time side effects: registering the
 # server-side Poppins TTFs and applying the structural rcParams. The
 # re-exported names keep `charts.UNITY_*` working for existing importers.
-from webapp.dashboards.charts import links, theme
+from webapp.dashboards.charts import links, series as series_mod, theme
 from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_NCAR_BLUE,
     UNITY_NCAR_GRAY,
@@ -214,14 +216,8 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
 
     # Others (always first per get_daily_user_usage_for_project) gets a
     # neutral grey; named users use the Unity 10-colour stacked palette.
-    colors = []
-    cycle_idx = 0
-    for s in series:
-        if s['label'] == 'Others':
-            colors.append(UNITY_NCAR_GRAY_LIGHT)
-        else:
-            colors.append(UNITY_STACK_10[cycle_idx % 10])
-            cycle_idx += 1
+    bands = series_mod.from_label_series(series)
+    colors = series_mod.assign_colors(bands, UNITY_STACK_10, UNITY_NCAR_GRAY_LIGHT)
 
     fig, ax = plt.subplots(figsize=(18, 5))
 
@@ -246,7 +242,6 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
 
     # Reversed-order legend so it reads top-to-bottom matching the visual
     # stack; each handle/text is addressable by index for set_url().
-    import matplotlib.patches as mpatches
     rev_series = list(reversed(series))
     rev_colors = list(reversed(colors))
     handles = [mpatches.Patch(color=c, label=s['label'])
@@ -262,10 +257,11 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
     )
 
     # Named legend entries → expand that user's Usage-by-User row.
-    for s, patch, text in zip(rev_series, leg.get_patches(), leg.get_texts()):
-        if s['label'] == 'Others':
+    # `is_linkable` is the one rule: Others (and any aggregate) is inert.
+    for band, patch, text in zip(reversed(bands), leg.get_patches(), leg.get_texts()):
+        if not band.is_linkable:
             continue
-        url = links.USAGE_USER.url(s['label'])
+        url = links.USAGE_USER.url(band.link_key)
         patch.set_url(url)
         text.set_url(url)
 
@@ -347,14 +343,8 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None, metric='bytes')
     # Others (always first per get_disk_usage_timeseries_by_user) gets a
     # neutral grey so it doesn't compete with the named-user palette.
     # Named users use the Unity 10-color stacked palette.
-    colors = []
-    cycle_idx = 0
-    for s in series:
-        if s['username'] == 'Others':
-            colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
-        else:
-            colors.append(UNITY_STACK_10[cycle_idx % 10])
-            cycle_idx += 1
+    bands = series_mod.from_username_series(series)
+    colors = series_mod.assign_colors(bands, UNITY_STACK_10, UNITY_NCAR_GRAY_LIGHT)
     ax.stackplot(dates, *scaled_series, colors=colors, alpha=0.85)
     ax.set_ylabel(ylabel)
     if metric == 'files':
@@ -367,7 +357,6 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None, metric='bytes')
     # each handle/text artist is addressable by index for set_url() —
     # mirrors the user_proj_stacked_area / pace chart pattern. Reverses
     # the visual stack so legend reads top-to-bottom in the same order.
-    import matplotlib.patches as mpatches
     rev_series = list(reversed(series))
     rev_colors = list(reversed(colors))
     handles = [mpatches.Patch(color=c, label=s['username'])
@@ -382,10 +371,10 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None, metric='bytes')
     )
 
     if link_kind == 'user':
-        for s, patch, text in zip(rev_series, leg.get_patches(), leg.get_texts()):
-            if s['username'] == 'Others':
+        for band, patch, text in zip(reversed(bands), leg.get_patches(), leg.get_texts()):
+            if not band.is_linkable:
                 continue
-            url = _user_modal_url(s['username'])
+            url = _user_modal_url(band.link_key)
             patch.set_url(url)
             text.set_url(url)
 
@@ -458,16 +447,9 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
     # behaves. Reverse the palette index for named entries so the largest
     # visual band (highest-rank, top of the stack) gets UNITY_STACK_20[0]
     # (gold), matching the pace_chart convention.
-    n_named = sum(1 for s in series if s['label'] != 'Others')
-    colors = []
-    named_idx = 0
-    for s in series:
-        if s['label'] == 'Others':
-            colors.append(UNITY_NCAR_GRAY_LIGHT)  # NCAR ncar-gray-light
-        else:
-            palette_idx = (n_named - 1 - named_idx) % 20
-            colors.append(UNITY_STACK_20[palette_idx])
-            named_idx += 1
+    bands = series_mod.from_label_series(series)
+    colors = series_mod.assign_colors(bands, UNITY_STACK_20, UNITY_NCAR_GRAY_LIGHT,
+                                      reverse=True)
     ax.stackplot(dates, *values_matrix, colors=colors, alpha=0.85)
     ax.set_ylabel(metric_label, fontsize=13)
     ax.tick_params(axis='both', labelsize=12)
@@ -477,7 +459,6 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
     # Build the legend explicitly with reversed-order Patch handles so
     # each handle/text artist is addressable by index for set_url() —
     # mirrors the pace chart pattern.
-    import matplotlib.patches as mpatches
     rev_series = list(reversed(series))
     rev_colors = list(reversed(colors))
 
@@ -514,10 +495,10 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
 
     if link_kind in ('user', 'project'):
         url_fn = _user_modal_url if link_kind == 'user' else _project_modal_url
-        for s, patch, text in zip(rev_series, leg.get_patches(), leg.get_texts()):
-            if s['label'] == 'Others':
+        for band, patch, text in zip(reversed(bands), leg.get_patches(), leg.get_texts()):
+            if not band.is_linkable:
                 continue
-            url = url_fn(s['label'])
+            url = url_fn(band.link_key)
             patch.set_url(url)
             text.set_url(url)
 
@@ -1391,16 +1372,11 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
     if not any(any(v > 0 for v in vals) for _n, vals in series):
         return _empty_state('No jobs in this range')
 
-    bands = (ts or {}).get('bands') or []
+    env_bands = (ts or {}).get('bands') or []
     # Others keeps the neutral grey and does NOT advance the palette cursor,
     # so the named colours are stable whether or not a remainder exists.
-    colors, cycle = [], 0
-    for name, _vals in series:
-        if name == 'Others':
-            colors.append(UNITY_NCAR_GRAY_LIGHT)
-        else:
-            colors.append(UNITY_STACK_10[cycle % len(UNITY_STACK_10)])
-            cycle += 1
+    bands = series_mod.from_pairs(series)
+    colors = series_mod.assign_colors(bands, UNITY_STACK_10, UNITY_NCAR_GRAY_LIGHT)
 
     fig, ax = plt.subplots(figsize=(18, 5))
     x = range(len(labels))
@@ -1415,7 +1391,7 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
             # consequence on the charges view: an all-uncharged band draws
             # at zero and loses its BAR link, but its row in the period
             # table below still carries data-jt-period and still drills.
-            if value and bands[i].get('job_count'):
+            if value and env_bands[i].get('job_count'):
                 rect.set_url(links.JT_PERIOD.url(i))
         bottoms = [b + v for b, v in zip(bottoms, vals)]
 
@@ -1432,7 +1408,6 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
     # Reversed so the legend reads top-to-bottom matching the visual stack.
     # Built from proxy Patches (not the BarContainers) because that is what
     # makes get_patches()/get_texts() positionally addressable for set_url.
-    import matplotlib.patches as mpatches
     rev = list(reversed(series))
     rev_colors = list(reversed(colors))
     handles = [mpatches.Patch(color=c, label=n)
@@ -1443,11 +1418,11 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
     if link_entities:
         modal_url = (_project_modal_url if entity_kind == 'project'
                      else _user_modal_url)
-        for (name, _vals), patch, text in zip(
-                rev, leg.get_patches(), leg.get_texts()):
-            if name == 'Others':
+        for band, patch, text in zip(
+                reversed(bands), leg.get_patches(), leg.get_texts()):
+            if not band.is_linkable:
                 continue
-            url = modal_url(name)
+            url = modal_url(band.link_key)
             patch.set_url(url)
             text.set_url(url)
 
@@ -1834,7 +1809,6 @@ def generate_pace_chart_matplotlib(
     # rank_metric above. For rate sorts, scale per-day → per-year so the
     # number matches the axis units, and tag with "/yr" to keep that
     # explicit.
-    import matplotlib.patches as mpatches
     if sort_by == 'size':
         def _fmt_value(v): return fmt.number(v)
     else:
