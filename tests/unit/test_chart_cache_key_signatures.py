@@ -40,20 +40,15 @@ KEYED_CHARTS = [
     ('generate_disk_usage_stacked_area', '_disk_usage_stacked_area_cache_key'),
     ('generate_user_proj_stacked_area', '_user_proj_stacked_area_cache_key'),
     ('generate_distribution_histogram', '_distribution_cache_key'),
-    ('generate_disk_entity_pie_chart', '_disk_entity_pie_cache_key'),
-    ('generate_user_usage_pie_chart', '_user_usage_pie_cache_key'),
     ('generate_jobs_histogram', '_jobs_histogram_cache_key'),
     ('generate_jobs_timeseries_stacked', '_jobs_timeseries_cache_key'),
-    ('generate_jobs_usage_pie_chart', '_jobs_usage_pie_cache_key'),
     ('generate_pace_chart_matplotlib', '_pace_cache_key'),
 ]
 
 #: Charts still using the decorator's default ``key_fn``. Safe only while they
-#: take exactly one meaningful argument.
-DEFAULT_KEY_CHARTS = [
-    'generate_facility_pie_chart_matplotlib',
-    'generate_allocation_type_pie_chart_matplotlib',
-]
+#: take exactly one meaningful argument. Empty once every chart is migrated —
+#: `chart_view` always supplies an explicit key.
+DEFAULT_KEY_CHARTS = []
 
 
 def _public_charts():
@@ -181,6 +176,22 @@ def test_migrated_charts_declare_cache_config():
         assert cls.LAYOUTS and 'desktop' in cls.LAYOUTS and 'mobile' in cls.LAYOUTS
 
 
+def _cases_by_chart():
+    """One representative fingerprint case per migrated chart.
+
+    Reuses `chart_samples.CASES` rather than inventing a second set of
+    payloads — a chart is only really exercised by data of its own shape, and
+    keeping one source means a new chart cannot be half-covered.
+    """
+    from chart_samples import CASES
+    out = {}
+    for _id, fn, args, kwargs in CASES:
+        if not hasattr(fn, 'chart_class') or _id.endswith('.empty'):
+            continue
+        out.setdefault(fn, (args, kwargs))
+    return out
+
+
 class TestRenderAxesAreKeyed:
     """The point of `chart_view`: layout and theme reach the cache key.
 
@@ -219,21 +230,22 @@ class TestRenderAxesAreKeyed:
         A vocabulary the cache distinguishes but the renderer cannot draw is
         worse than no axis at all — it caches an exception path.
         """
-        for name, cls in _migrated().items():
-            fn = getattr(charts, name)
+        cases = _cases_by_chart()
+        assert cases, 'no migrated chart has a sample case'
+        for fn, (args, kwargs) in cases.items():
             for lay in ('desktop', 'mobile'):
                 for thm in ('light', 'dark'):
                     with app.test_request_context('/'):
-                        out = fn(self.SAMPLE, layout=lay, theme=thm)
-                    assert '<svg' in out, f'{name} failed at {lay}/{thm}'
+                        out = fn(*args, **kwargs, layout=lay, theme=thm)
+                    assert '<svg' in out, (
+                        f'{fn.chart_class.__name__} failed at {lay}/{thm}')
 
     def test_unknown_axis_values_fall_back_silently(self, app):
         """Lenient like the route-level selector parsers — a stale
         localStorage replay must not 500 an htmx fragment."""
-        for name, cls in _migrated().items():
-            fn = getattr(charts, name)
+        for fn, (args, kwargs) in _cases_by_chart().items():
             with app.test_request_context('/'):
-                out = fn(self.SAMPLE, layout='sideways', theme='sepia')
+                out = fn(*args, **kwargs, layout='sideways', theme='sepia')
             assert '<svg' in out
 
 

@@ -52,6 +52,16 @@ from webapp.dashboards.charts.dualpanel import (
     _to_display_tz,
 )
 from webapp.dashboards.charts.layout import Layout, profile as layout_profile
+from webapp.dashboards.charts.pie import (
+    AllocationTypePie,
+    DiskEntityPie,
+    FacilityPie,
+    JobsUsagePie,
+    PieChart,
+    UserUsagePie,
+    trim_cumulative as _pie_cumulative_keep,
+    trim_fixed_cap as _pie_trim,
+)
 from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_NCAR_BLUE,
     UNITY_NCAR_GRAY,
@@ -640,326 +650,17 @@ generate_queue_history_matplotlib = chart_view(QueueHistoryChart)
 
 
 # ---------------------------------------------------------------------------
-# 4. Facility pie chart (allocations dashboard)
-# ---------------------------------------------------------------------------
-
-_PIE_START_ANGLE = 60
-_PIE_MAX_ENTITIES = 10
-
-
-def _pie_trim(names: list, values: list) -> tuple[list, list]:
-    """Sort by value descending, cap at _PIE_MAX_ENTITIES, group remainder as 'Others (N)'."""
-    paired = sorted(zip(names, values), key=lambda x: x[1], reverse=True)
-    names_s = [p[0] for p in paired]
-    values_s = [p[1] for p in paired]
-    if len(names_s) > _PIE_MAX_ENTITIES:
-        n_others = len(names_s) - _PIE_MAX_ENTITIES
-        others_sum = sum(values_s[_PIE_MAX_ENTITIES:])
-        names_s = names_s[:_PIE_MAX_ENTITIES] + [f'Others ({n_others})']
-        values_s = values_s[:_PIE_MAX_ENTITIES] + [others_sum]
-    return names_s, values_s
-
-
-# One entry per resource filter combination; small number of distinct views.
-@caching.chart_cached(name='facility_pie_chart', maxsize=32)
-def generate_facility_pie_chart_matplotlib(facility_data: List[Dict]) -> str:
-    """
-    Generate pie chart showing distribution by facility. Title is rendered
-    in the surrounding HTML (see allocations dashboard template).
-
-    Args:
-        facility_data: List of dicts with facility, annualized_rate, count, percent
-
-    Returns:
-        SVG string ready for template rendering
-    """
-    if not facility_data:
-        return _empty_state('No facility data available')
-
-    raw_names = [d['facility'] for d in facility_data]
-    raw_values = [d['annualized_rate'] for d in facility_data]
-    names, values = _pie_trim(raw_names, raw_values)
-
-    legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
-    colors = UNITY_PALETTE_10[:len(names)]
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    wedges, _texts, autotexts = ax.pie(
-        values,
-        labels=None,
-        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
-        startangle=_PIE_START_ANGLE,
-        counterclock=False,
-        colors=colors,
-        pctdistance=0.85,
-    )
-    for at, wedge_color in zip(autotexts, colors):
-        at.set_color(_autopct_color_for(wedge_color))
-        at.set_fontweight('bold')
-        at.set_fontsize(8)
-
-    ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
-
-    return _fig_to_svg(fig)
-
-
-# ---------------------------------------------------------------------------
-# 5. Allocation type pie chart (allocations dashboard)
-# ---------------------------------------------------------------------------
-
-# One entry per (resource, facility) filter combination.
-@caching.chart_cached(name='allocation_type_pie_chart', maxsize=64)
-def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
-    """
-    Generate pie chart showing allocation distribution by type within a facility.
-    Title is rendered in the surrounding HTML (see allocations dashboard template).
-
-    Args:
-        type_data: List of dicts with allocation_type, total_amount, count, avg_amount
-
-    Returns:
-        SVG string ready for template rendering
-    """
-    if not type_data:
-        return _empty_state('No allocation type data available')
-
-    raw_names = [d['allocation_type'] for d in type_data]
-    raw_values = [d['total_amount'] for d in type_data]
-    names, values = _pie_trim(raw_names, raw_values)
-
-    legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(names, values)]
-    colors = UNITY_PALETTE_10[:len(names)]
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    wedges, _texts, autotexts = ax.pie(
-        values,
-        labels=None,
-        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
-        startangle=_PIE_START_ANGLE,
-        counterclock=False,
-        colors=colors,
-        pctdistance=0.85,
-    )
-    for at, wedge_color in zip(autotexts, colors):
-        at.set_color(_autopct_color_for(wedge_color))
-        at.set_fontweight('bold')
-        at.set_fontsize(8)
-
-    ax.legend(wedges, legend_labels, loc='center left', bbox_to_anchor=(1.0, 0.5), fontsize=9)
-
-    return _fig_to_svg(fig)
-
-
-# ---------------------------------------------------------------------------
-# 5b. Disk-scans entity pie chart (By User / By Group tab)
+# 4/5. Pie charts (allocations dashboard, disk scans, per-user usage)
 #
-# Distribution of scanned bytes across the top owners/groups. Unlike the
-# allocation pies (fixed top-10 cap), this keeps the largest entities up to a
-# ~90% cumulative share and lumps the rest into one "Other" slice. Each kept
-# wedge + its legend entry is clickable: matplotlib set_url() emits an
-# <a xlink:href="#sam/row/{attr}/{id}"> anchor that svg-chart-links.js
-# routes to expanding that entity's row in the table below. The "Other" slice
-# is inert. Sentinels are keyed by uid/gid (part of the hashed input), so the
-# cached SVG is independent of any per-render container id.
+# Migrated to the class hierarchy — see charts/pie.py, where the five pies'
+# byte-identical ax.pie block lives once and each subclass is only what
+# differed: trim strategy, "Other" derivation, legend formatter, drill target.
 # ---------------------------------------------------------------------------
 
-_PIE_CUM_SHARE = 0.90      # show entities up to ~90% cumulative share
-_PIE_HARD_CAP = 9          # never exceed 9 named slices (palette has 10; keep "Other" distinct)
-
-
-def _pie_cumulative_keep(values_desc: list) -> int:
-    """How many leading (descending) entries to show individually.
-
-    The fewest whose cumulative share reaches ``_PIE_CUM_SHARE``, capped at
-    ``_PIE_HARD_CAP``. The remainder (if any) is meant to collapse into one
-    'Other' slice. Returns ``len(values_desc)`` when everything fits (no Other).
-    """
-    total = sum(values_desc)
-    if total <= 0:
-        return min(len(values_desc), _PIE_HARD_CAP)
-    cum = 0.0
-    for i, v in enumerate(values_desc):
-        cum += v
-        if i + 1 >= _PIE_HARD_CAP:
-            return i + 1
-        if cum / total >= _PIE_CUM_SHARE:
-            return i + 1
-    return len(values_desc)
-
-
-def _disk_entity_pie_cache_key(entity_data, kind):
-    # kind is NOT in the default content_hash(args[0]) key, but it drives the
-    # clickable-sentinel prefix — include it so owner/group never alias.
-    return _content_hash([entity_data, kind])
-
-
-@caching.chart_cached(name='disk_entity_pie_chart', maxsize=64,
-                      key_fn=_disk_entity_pie_cache_key)
-def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
-    """Pie of scanned bytes by owner (kind='owner') or group (kind='group').
-
-    Args:
-        entity_data: list of {'id': uid|gid, 'name': str|None, 'value': bytes}
-        kind: 'owner' or 'group' — selects the click sentinel prefix and the
-              numeric fallback label.
-
-    Returns:
-        SVG string ready for template rendering.
-    """
-    if not entity_data:
-        return _empty_state('No usage data available')
-
-    drill = links.DISK_OWNER if kind == 'owner' else links.DISK_GROUP
-    numeric_label = 'uid ' if kind == 'owner' else 'gid '
-
-    # Coerce to float at the single entry point: scan rollups arrive as
-    # decimal.Decimal from Postgres, and Decimal/float don't mix in arithmetic
-    # (cum += v) or matplotlib. Everything downstream is then plain float.
-    data = sorted(entity_data, key=lambda d: float(d['value']), reverse=True)
-    values_desc = [float(d['value']) for d in data]
-    keep = _pie_cumulative_keep(values_desc)
-
-    ids = [d['id'] for d in data[:keep]]
-    labels = [d['name'] or f'{numeric_label}{d["id"]}' for d in data[:keep]]
-    values = list(values_desc[:keep])
-    colors = list(UNITY_PALETTE_10[:keep])
-
-    n_others = len(data) - keep
-    if n_others > 0:
-        ids.append(None)                       # inert slice — no set_url
-        labels.append(f'Other ({n_others})')
-        values.append(sum(values_desc[keep:]))
-        colors.append(UNITY_NCAR_GRAY_LIGHT)
-
-    legend_labels = [f'{n} ({fmt.size(v)})' for n, v in zip(labels, values)]
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    wedges, _texts, autotexts = ax.pie(
-        values,
-        labels=None,
-        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
-        startangle=_PIE_START_ANGLE,
-        counterclock=False,
-        colors=colors,
-        pctdistance=0.85,
-    )
-    for at, wedge_color in zip(autotexts, colors):
-        at.set_color(_autopct_color_for(wedge_color))
-        at.set_fontweight('bold')
-        at.set_fontsize(8)
-
-    legend = ax.legend(wedges, legend_labels, loc='center left',
-                       bbox_to_anchor=(1.0, 0.5), fontsize=9)
-
-    # Clickable wedges + legend entries → expand the matching table row.
-    # Skip the "Other" slice (id is None). svg-chart-links.js intercepts these.
-    leg_patches = legend.get_patches()
-    leg_texts = legend.get_texts()
-    for i, ent_id in enumerate(ids):
-        if ent_id is None:
-            continue
-        url = drill.url(ent_id)
-        wedges[i].set_url(url)
-        if i < len(leg_patches):
-            leg_patches[i].set_url(url)
-        if i < len(leg_texts):
-            leg_texts[i].set_url(url)
-
-    return _fig_to_svg(fig)
-
-
-# ---------------------------------------------------------------------------
-# 5c. Per-user usage pie (compute resource-details "By User" tab)
-#
-# SAM's own comp_charge_summary rollup, not the job-history plugin. Same shape
-# as the disk entity pie above — ~90% cumulative share, inert "Other" — but the
-# click sentinel is ``#sam/user/<username>``, which is the prefix the stacked
-# Usage Trend legend has always used. Reusing it means svg-chart-links.js needs
-# no new table entry and both charts drill into the same Usage-by-User row.
-# ---------------------------------------------------------------------------
-
-
-def _user_usage_pie_cache_key(user_data, metric='charges'):
-    # metric selects which column is plotted AND what the legend numbers say,
-    # but it isn't part of the default content_hash(args[0]) key — include it
-    # so charges/jobs/core_hours variants never alias in the LRU.
-    #
-    # The default MUST mirror the generator's. A key function is called with
-    # the view's own arguments, so an omitted-but-defaulted parameter reaches
-    # it as a missing argument, not as the default.
-    return _content_hash([user_data, metric])
-
-
-@caching.chart_cached(name='user_usage_pie_chart', maxsize=64,
-                      key_fn=_user_usage_pie_cache_key)
-def generate_user_usage_pie_chart(user_data: List[Dict], metric: str = 'charges') -> str:
-    """Pie of ``metric`` by username for the resource-details By User tab.
-
-    Args:
-        user_data: rows from ``get_user_summary_for_project`` — dicts carrying
-            'username' plus the three metric keys ('charges', 'jobs',
-            'core_hours'), which are also the accepted ``metric`` values.
-        metric: which column to plot.
-
-    Returns:
-        SVG string ready for template rendering.
-    """
-    rows = [d for d in (user_data or []) if float(d.get(metric) or 0) > 0]
-    if not rows:
-        return _empty_state('No user activity recorded for this period')
-
-    data = sorted(rows, key=lambda d: float(d[metric]), reverse=True)
-    values_desc = [float(d[metric]) for d in data]
-    keep = _pie_cumulative_keep(values_desc)
-
-    names = [d['username'] for d in data[:keep]]
-    values = list(values_desc[:keep])
-    colors = list(UNITY_PALETTE_10[:keep])
-
-    n_others = len(data) - keep
-    if n_others > 0:
-        names.append(None)                     # inert slice — no set_url
-        values.append(sum(values_desc[keep:]))
-        colors.append(UNITY_NCAR_GRAY_LIGHT)
-
-    legend_labels = [
-        f'{n or f"Other ({n_others})"} ({fmt.number(v)})'
-        for n, v in zip(names, values)
-    ]
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    wedges, _texts, autotexts = ax.pie(
-        values,
-        labels=None,
-        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
-        startangle=_PIE_START_ANGLE,
-        counterclock=False,
-        colors=colors,
-        pctdistance=0.85,
-    )
-    for at, wedge_color in zip(autotexts, colors):
-        at.set_color(_autopct_color_for(wedge_color))
-        at.set_fontweight('bold')
-        at.set_fontsize(8)
-
-    legend = ax.legend(wedges, legend_labels, loc='center left',
-                       bbox_to_anchor=(1.0, 0.5), fontsize=9)
-
-    # Clickable wedges + legend entries → expand that user's row in the table
-    # below. Skip the "Other" slice (name is None).
-    leg_patches = legend.get_patches()
-    leg_texts = legend.get_texts()
-    for i, name in enumerate(names):
-        if name is None:
-            continue
-        url = links.USAGE_USER.url(name)
-        wedges[i].set_url(url)
-        if i < len(leg_patches):
-            leg_patches[i].set_url(url)
-        if i < len(leg_texts):
-            leg_texts[i].set_url(url)
-
-    return _fig_to_svg(fig)
+generate_facility_pie_chart_matplotlib = chart_view(FacilityPie)
+generate_allocation_type_pie_chart_matplotlib = chart_view(AllocationTypePie)
+generate_disk_entity_pie_chart = chart_view(DiskEntityPie)
+generate_user_usage_pie_chart = chart_view(UserUsagePie)
 
 
 # ---------------------------------------------------------------------------
@@ -1300,113 +1001,14 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
     return _fig_to_svg(fig)
 
 
-def _jobs_usage_pie_cache_key(entity_data, metric='cpu_hours', *,
-                              row_attr='data-job-user',
-                              unknown_label='(unknown)'):
-    """row_attr joins the key: identical usage vectors rendered for
-    different entity kinds carry different drill anchors."""
-    rows = (entity_data or {}).get('rows') or []
-    totals = (entity_data or {}).get('totals') or {}
-    payload = [(r.get('value'), _jobs_metric_value(r, metric, 'cpu_hours'))
-               for r in rows]
-    return _content_hash([payload,
-                          _jobs_metric_value(totals, metric, 'cpu_hours'),
-                          str(metric), str(row_attr),
-                          str(unknown_label)])
+generate_jobs_usage_pie_chart = chart_view(JobsUsagePie)
 
-
-@caching.chart_cached(name='jobs_usage_pie_chart', maxsize=64,
-                      key_fn=_jobs_usage_pie_cache_key)
-def generate_jobs_usage_pie_chart(entity_data, metric='cpu_hours', *,
-                                  row_attr='data-job-user',
-                                  unknown_label='(unknown)') -> str:
-    """Pie of per-entity usage from a jobs_usage_by(dimension) envelope.
-
-    Entity-kind-agnostic: the By User tab renders it with
-    ``row_attr='data-job-user'`` (via the delegating
-    :func:`generate_jobs_user_pie_chart`), the My Jobs By Project tab
-    with ``'data-job-project'``.
-
-    Args:
-        entity_data: plugin envelope — ``{'rows': [{'value': name,
-            'job_count', 'cpu_hours', 'gpu_hours'}, …], 'totals': {…}}``.
-            ``totals`` is computed upstream BEFORE any limit truncation.
-        metric: ``'jobs'``, ``'cpu_hours'`` (default) or ``'gpu_hours'``.
-        row_attr: the table-row attribute the drill targets — kept
-            wedges + legend entries carry ``#sam/row/<row_attr>/<value>``
-            anchors that svg-chart-links.js resolves to that row. Naming
-            the attribute here rather than in the JS is what makes adding
-            a drill-down chart a zero-JavaScript change.
-        unknown_label: legend label for a NULL entity value (inert slice).
-
-    The largest entities up to a ~90% cumulative share (9 max) get named
-    slices; everything else — both beyond-cap rows AND the upstream
-    limit's remainder — folds into one inert "Other" slice sized
-    ``totals − Σ kept``, so the pie always sums to the true total.
-    """
-    rows = (entity_data or {}).get('rows') or []
-    totals = (entity_data or {}).get('totals') or {}
-
-    total = _jobs_metric_value(totals, metric, 'cpu_hours')
-    if not rows or total <= 0:
-        return _empty_state('No usage data available')
-
-    # Upstream sorts by combined hours; re-sort by the *chosen* metric so
-    # e.g. the Jobs view leads with the most job-count-heavy users.
-    data = sorted(rows,
-                  key=lambda r: _jobs_metric_value(r, metric, 'cpu_hours'),
-                  reverse=True)
-    values_desc = [_jobs_metric_value(r, metric, 'cpu_hours') for r in data]
-    keep = _pie_cumulative_keep(values_desc)
-
-    names = [r.get('value') for r in data[:keep]]
-    labels = [n if n is not None else unknown_label for n in names]
-    values = list(values_desc[:keep])
-    colors = list(UNITY_PALETTE_10[:keep])
-
-    remainder = total - sum(values)
-    if remainder > 1e-9:
-        names.append(None)                     # inert slice — no set_url
-        labels.append('Other')
-        values.append(remainder)
-        colors.append(UNITY_NCAR_GRAY_LIGHT)
-
-    legend_labels = [f'{n} ({fmt.number(v)})' for n, v in zip(labels, values)]
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    wedges, _texts, autotexts = ax.pie(
-        values,
-        labels=None,
-        autopct=lambda p: fmt.pct(p, decimals=1) if p >= 5 else '',
-        startangle=_PIE_START_ANGLE,
-        counterclock=False,
-        colors=colors,
-        pctdistance=0.85,
-    )
-    for at, wedge_color in zip(autotexts, colors):
-        at.set_color(_autopct_color_for(wedge_color))
-        at.set_fontweight('bold')
-        at.set_fontsize(8)
-
-    legend = ax.legend(wedges, legend_labels, loc='center left',
-                       bbox_to_anchor=(1.0, 0.5), fontsize=9)
-
-    # Clickable wedges + legend entries → expand the matching table row.
-    # Skip "Other" and unnamed rows (name is None). svg-chart-links.js
-    # intercepts these, scoped to the originating tab pane.
-    leg_patches = legend.get_patches()
-    leg_texts = legend.get_texts()
-    for i, name in enumerate(names):
-        if name is None:
-            continue
-        url = links.RowDrill(row_attr).url(name)
-        wedges[i].set_url(url)
-        if i < len(leg_patches):
-            leg_patches[i].set_url(url)
-        if i < len(leg_texts):
-            leg_texts[i].set_url(url)
-
-    return _fig_to_svg(fig)
+#: Cache-key helpers under their historical module-level names. They moved
+#: onto the chart classes as `cache_key`, but several tests import them from
+#: here and they are the same function either way.
+_disk_entity_pie_cache_key = DiskEntityPie.cache_key
+_user_usage_pie_cache_key = UserUsagePie.cache_key
+_jobs_usage_pie_cache_key = JobsUsagePie.cache_key
 
 
 def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
