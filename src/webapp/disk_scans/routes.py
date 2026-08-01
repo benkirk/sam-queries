@@ -394,7 +394,8 @@ def _scope_for(mode, ctx):
 
 
 def _render_directories_fragment(ctx, fragment_url, *, mode, scope_for,
-                                 log_label, browse=False, forced_owner_uid=None):
+                                 log_label, browse=False, forced_owner_uid=None,
+                                 layout='desktop'):
     """Shared body for the project + resource directory fragments.
 
     Both render the *same* ``disk_scans_directories.html`` partial; they differ
@@ -504,7 +505,7 @@ def directories_resource_page(resource):
 
 def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
                      dir_fragment_url,
-                     forced_owner_uid=None):
+                     forced_owner_uid=None, layout='desktop'):
     """Shared body for the project + resource entity (owner|group) fragments.
 
     Both render the *same* ``disk_scans_entities.html`` partial; they differ
@@ -549,7 +550,8 @@ def _render_entities(ctx, fragment_url, *, mode, scope_for, log_label,
             for r in rows if r.get(id_key) is not None
         ]
         if entity_data:
-            pie_chart = generate_disk_entity_pie_chart(entity_data, kind)
+            pie_chart = generate_disk_entity_pie_chart(entity_data, kind,
+                                                       layout=layout)
 
     return render_template(
         'dashboards/user/partials/disk_scans_entities.html',
@@ -567,7 +569,7 @@ _METRIC_WHITELIST = {'data', 'files'}
 def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
                          bucket_header, log_label, dir_fragment_url,
                          metric_toggle=False, log_toggle=False,
-                         forced_owner_uid=None):
+                         forced_owner_uid=None, layout='desktop'):
     """Shared body for the two distribution histogram fragments (both modes).
 
     The Access-history and File-size tabs are identical end to end — same
@@ -612,7 +614,7 @@ def _render_distribution(ctx, fragment_url, *, mode, scope_for, kind,
             scope_for(ctx['fileset']), kind, owner_uid=owner_uid)
         if hist:
             chart_svg = generate_distribution_histogram(
-                hist, log_y=log_on, metric=metric)
+                hist, log_y=log_on, metric=metric, layout=layout)
     except Exception as exc:
         current_app.logger.exception(
             'disk_scans.%s: scan failed for %s resource=%s',

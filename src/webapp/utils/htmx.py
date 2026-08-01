@@ -1,8 +1,42 @@
 import json
-from flask import make_response, render_template
+from flask import make_response, render_template, request
 
 from webapp.extensions import db
 from sam.manage import management_transaction
+
+
+#: The chart layouts a request may ask for. Anything else means "no override".
+_LAYOUTS = frozenset({'desktop', 'mobile'})
+
+#: Written by ``static/js/layout-axis.js`` from ``matchMedia``.
+LAYOUT_COOKIE = 'sam_layout'
+
+
+def read_layout(default: str = 'desktop') -> str:
+    """Which chart layout this request wants: ``'desktop'`` or ``'mobile'``.
+
+    Two sources, in precedence order — the query string, then the cookie —
+    because charts reach the browser two different ways and neither channel
+    covers both (the reasoning is in ``static/js/layout-axis.js``). Query
+    string wins so an htmx fragment reflects the viewport *now* rather than
+    whatever the cookie said when the page was served, and so ``?layout=mobile``
+    works by hand for debugging.
+
+    **Lenient, never a 400.** Matches ``jobs/routes.py:_parse_period`` and
+    ``charts/layout.py:resolve_layout``: an unknown value means "no override".
+    These are htmx fragments, and a stale or hand-typed value must not break a
+    card. Passing an unknown name through would be equally safe — the chart
+    layer falls back too — but normalizing here keeps the value that reaches
+    the *cache key* to two spellings instead of arbitrarily many, and the key
+    is shared across workers and pods.
+
+    Returns:
+        ``'desktop'`` or ``'mobile'`` — never anything else.
+    """
+    raw = (request.args.get('layout')
+           or request.cookies.get(LAYOUT_COOKIE)
+           or '').strip().lower()
+    return raw if raw in _LAYOUTS else default
 
 
 #: Values a checkbox / switch may arrive as. Templates emit ``1`` (see the

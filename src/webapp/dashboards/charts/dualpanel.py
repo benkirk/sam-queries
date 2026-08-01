@@ -23,6 +23,35 @@ from webapp.dashboards.charts.theme import (
 )
 
 
+def mobile_date_axis(ax, layout):
+    """Thin and shorten a datetime x axis for a phone-width figure.
+
+    Desktop leans on `fig.autofmt_xdate()`, which rotates full `2026-07-27`
+    stamps 30 degrees. That does not survive the shrink: at 4in wide the
+    layout affords about five ticks, and five ten-character labels collide
+    even rotated — measured on `/status/derecho`, where the last two ran
+    into each other because `AutoDateLocator` puts an uneven tick at the
+    range edge.
+
+    `ConciseDateFormatter` is the fix rather than a smaller font or a harder
+    rotation: it drops the parts that repeat across the axis and hoists them
+    into a single offset label, so `2026-07-27` becomes `27` with `2026-Aug`
+    written once. Short enough to sit horizontally, which also gives the plot
+    back the vertical band that rotated labels were using.
+
+    Shared with the stacked family — the only import edge between two chart
+    families, alongside `_to_display_tz`, and for the same reason: both draw
+    the same kind of axis.
+    """
+    loc = mdates.AutoDateLocator(maxticks=layout.max_ticks)
+    ax.xaxis.set_major_locator(loc)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(loc))
+    # The offset label is a separate Text artist that `tick_params(labelsize=)`
+    # does not reach, so it kept the 11pt rcParams default and rendered two
+    # points larger than every tick beside it.
+    ax.xaxis.get_offset_text().set_fontsize(layout.base_fontsize)
+
+
 def _to_display_tz(naive_utc_ts):
     """Naive-UTC → naive-local for matplotlib axis rendering.  Strips tzinfo
     after conversion so the existing naive-datetime plotting path is
@@ -97,9 +126,8 @@ class DualPanelTimeSeriesChart(BaseChart):
 
     def finish(self, fig, axes, layout, theme):
         if layout.is_mobile:
-            axes[1].xaxis.set_major_locator(
-                mdates.AutoDateLocator(maxticks=layout.max_ticks))
-            fig.autofmt_xdate(rotation=layout.label_rotation)
+            # sharex=True, so the lower panel owns the visible tick labels.
+            mobile_date_axis(axes[1], layout)
             return
         fig.autofmt_xdate()
 
@@ -113,7 +141,7 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     empty_message = 'No history data available for this node type'
     #: Two stacked panels need real vertical room on a phone — this is the
     #: tallest mobile figure in the package, and still barely enough.
-    LAYOUTS = profile((18, 10), (4.6, 5.4))
+    LAYOUTS = profile((18, 10), (4.0, 4.7))
 
     @staticmethod
     def cache_key(history_data):
@@ -175,7 +203,7 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
     #: One entry per queue; queue counts can be O(10s) across all resources.
     cache_maxsize = 64
     empty_message = 'No history data available for this queue'
-    LAYOUTS = profile((14, 8), (4.6, 4.8))
+    LAYOUTS = profile((14, 8), (4.0, 4.2))
 
     @staticmethod
     def cache_key(history_data):

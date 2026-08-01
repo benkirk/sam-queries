@@ -1805,7 +1805,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    Matching `.chart-container svg` restores the aspect ratio. Note this does
    NOT make the charts legible on a phone: an 18x5in figure scaled to ~350px
    renders 9-11pt text at ~2px regardless. That needs a different figsize from
-   the server — the `layout` render axis — and lands in the mobile pass. */
+   the server — the `layout` render axis, wired in the mobile pass. */
 .jobs-histogram-chart svg,
 .jobs-timeline-chart svg,
 .jobs-user-pie svg {
@@ -1813,6 +1813,42 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin: 0 auto;
     max-width: 100%;
     height: auto;
+}
+
+/* Chart gutters on phones.
+   ------------------------------------------------------------------
+   The server now renders a phone-sized figure (see charts/layout.py), which
+   only pays off if the figure gets the width. Measured at a 375px viewport on
+   /status/derecho, it does not: the chart sits in a card inside a card, and
+   each `.card-body` takes 16px a side, so a 375px viewport hands the chart
+   287px. The figure is then scaled DOWN to fit, undoing part of the point.
+
+   Cards nest on several surfaces and un-nesting them is not a chart change,
+   so instead the chart bleeds back over its immediate card padding. 16px a
+   side, matching `.card-body` exactly — it lines the SVG up with the card
+   edge rather than pushing past it, so nothing can overflow. Charts are
+   self-contained rectangles with their own internal margins; unlike text they
+   do not need the gutter to read.
+
+   `width: 100%` (not just `max-width`) so a figure narrower than the card
+   fills it rather than leaving a gutter. Desktop keeps `max-width` alone —
+   upscaling an 18in figure on a wide screen would just blur it. */
+@media (max-width: 767.98px) {
+    .chart-container,
+    .jobs-histogram-chart,
+    .jobs-timeline-chart,
+    .jobs-user-pie,
+    .disk-entity-pie {
+        margin-left: -1rem;
+        margin-right: -1rem;
+    }
+
+    .chart-container svg,
+    .jobs-histogram-chart svg,
+    .jobs-timeline-chart svg,
+    .jobs-user-pie svg {
+        width: 100%;
+    }
 }
 
 /* ============================================================================

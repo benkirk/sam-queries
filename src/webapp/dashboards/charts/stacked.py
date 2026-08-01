@@ -15,7 +15,6 @@ addressable for `set_url` — the whole reason these charts can have clickable
 legends at all.
 """
 
-import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 from matplotlib.ticker import MaxNLocator
 
@@ -23,7 +22,7 @@ from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links, series as series_mod
 from webapp.dashboards.charts.base import BaseChart
-from webapp.dashboards.charts.dualpanel import _to_display_tz
+from webapp.dashboards.charts.dualpanel import _to_display_tz, mobile_date_axis
 from webapp.dashboards.charts.jobs_metrics import (
     JOBS_METRIC_LABELS, jobs_timeseries_series,
 )
@@ -44,9 +43,11 @@ class StackedSeriesChart(BaseChart):
     """Bands accumulated bottom-to-top, with an optional clickable legend."""
 
     #: `label_rotation=30` on desktop records what `fig.autofmt_xdate()`
-    #: already does; nothing reads it there. Mobile rotates further and thins
-    #: the ticks, because 4.6in of axis cannot carry a dozen date labels.
-    LAYOUTS = profile((18, 5), (4.6, 3.2), label_rotation=30)
+    #: already does; nothing reads it there. The mobile profile's rotation is
+    #: likewise unread by the *date* charts — `mobile_date_axis` shortens the
+    #: labels enough to leave them horizontal — but `JobsTimeseriesChart`
+    #: overrides `decorate` for its categorical axis and does read it.
+    LAYOUTS = profile((18, 5), (4.0, 2.8), label_rotation=30)
 
     #: 'bar' — discrete bars per x position; 'area' — filled stackplot.
     stack_mode = 'bar'
@@ -182,11 +183,7 @@ class StackedSeriesChart(BaseChart):
 
     def finish(self, fig, axes, layout, theme):
         if layout.is_mobile:
-            # A dozen date labels do not fit across 4.6in. Thin them to the
-            # layout's target before autofmt rotates what is left.
-            axes.xaxis.set_major_locator(
-                mdates.AutoDateLocator(maxticks=layout.max_ticks))
-            fig.autofmt_xdate(rotation=layout.label_rotation)
+            mobile_date_axis(axes, layout)
             return
         fig.autofmt_xdate()
 

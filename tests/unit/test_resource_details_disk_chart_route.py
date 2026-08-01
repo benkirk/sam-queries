@@ -23,11 +23,18 @@ _DISK_RESOURCE = 'Campaign_Store'
 @pytest.fixture
 def _sentinel_chart(monkeypatch):
     """Patch the SVG renderer so the route returns deterministic markup
-    without invoking matplotlib. Captures the metric it was called with."""
-    captured = {'metric': None}
+    without invoking matplotlib. Captures the arguments it was called with.
 
-    def _fake(timeseries, link_kind=None, metric='bytes'):
+    The double's signature is deliberately explicit rather than ``**kwargs``:
+    it is the only thing asserting that this route calls the chart the way the
+    chart expects. When the ``layout`` axis was threaded through, this fixture
+    failed loudly — which is the behaviour worth keeping.
+    """
+    captured = {'metric': None, 'layout': None}
+
+    def _fake(timeseries, link_kind=None, metric='bytes', layout='desktop'):
         captured['metric'] = metric
+        captured['layout'] = layout
         return '<svg data-test="disk-chart"></svg>'
 
     monkeypatch.setattr(
@@ -57,6 +64,34 @@ class TestDiskUsageChartRoute:
         assert 'Data Volume' in html and 'File Count' in html
         assert _active_tab_label(html) == 'Data Volume'
         assert _sentinel_chart['metric'] == 'bytes'
+        assert _sentinel_chart['layout'] == 'desktop'
+
+    def test_layout_reaches_the_chart(self, auth_client, active_project,
+                                      _sentinel_chart):
+        """Threading the axis to the chart layer is only half the job; the
+        route has to hand it over. Query string and cookie are both live
+        channels — fragments carry the param, full pages read the cookie."""
+        resp = auth_client.get(
+            _url(active_project.projcode, resource=_DISK_RESOURCE,
+                 layout='mobile'))
+        assert resp.status_code == 200
+        assert _sentinel_chart['layout'] == 'mobile'
+
+        auth_client.set_cookie('sam_layout', 'mobile', domain='localhost')
+        resp = auth_client.get(_url(active_project.projcode,
+                                    resource=_DISK_RESOURCE))
+        assert resp.status_code == 200
+        assert _sentinel_chart['layout'] == 'mobile'
+
+    def test_bogus_layout_falls_back_to_desktop(self, auth_client,
+                                                active_project,
+                                                _sentinel_chart):
+        """Lenient, never a 400 — a stale replay must not break a card."""
+        resp = auth_client.get(
+            _url(active_project.projcode, resource=_DISK_RESOURCE,
+                 layout='sideways'))
+        assert resp.status_code == 200
+        assert _sentinel_chart['layout'] == 'desktop'
 
     def test_files_metric_tab_active(self, auth_client, active_project, _sentinel_chart):
         resp = auth_client.get(

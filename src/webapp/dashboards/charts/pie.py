@@ -81,7 +81,7 @@ class PieChart(BaseChart):
     #: a pie is square, so a legend beside it uses width the plot cannot,
     #: whereas the wide families have no width to spare. The `max_legend_entries`
     #: cap keeps that column from growing taller than the pie.
-    LAYOUTS = profile((7, 4), (4.0, 3.2), mobile={'legend_placement': 'right'})
+    LAYOUTS = profile((7, 4), (3.6, 2.9), mobile={'legend_placement': 'right'})
     grid = None                       # pies have no grid
 
     start_angle = _PIE_START_ANGLE

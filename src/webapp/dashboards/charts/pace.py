@@ -133,7 +133,7 @@ class PaceChart(BaseChart):
     #: facility-scope fanout — well under 10 MB of cached SVG per process.
     cache_maxsize = 192
     empty_message = 'No allocations available'
-    LAYOUTS = profile((10, 4), (4.6, 3.4))
+    LAYOUTS = profile((10, 4), (4.0, 3.0))
     #: Normalized to the 0.3 every other chart uses (was 0.2, undocumented).
     grid = {'alpha': 0.3}
 

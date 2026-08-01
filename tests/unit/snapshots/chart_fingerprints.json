@@ -132,8 +132,8 @@
       "Others (6) (210K)"
     ],
     "size": [
-      306.5,
-      191.8
+      289.7,
+      175.2
     ]
   },
   "disk_area.bytes_linked": {
@@ -192,9 +192,9 @@
   "disk_area.bytes_linked@mobile": {
     "counts": {
       "a": 4,
-      "g": 51,
+      "g": 52,
       "path": 20,
-      "text": 12,
+      "text": 13,
       "use": 8
     },
     "drill_hrefs": [
@@ -217,9 +217,10 @@
     ],
     "kind": "svg",
     "labels": [
-      "2026-03-01",
-      "2026-03-05",
-      "2026-03-09",
+      "Mar",
+      "05",
+      "09",
+      "2026-Mar",
       "0",
       "1",
       "2",
@@ -231,8 +232,8 @@
       "Others"
     ],
     "size": [
-      304.5,
-      246.9
+      266.9,
+      245.2
     ]
   },
   "disk_area.empty": {
@@ -295,9 +296,9 @@
   "disk_area.files@mobile": {
     "counts": {
       "a": 0,
-      "g": 71,
+      "g": 72,
       "path": 25,
-      "text": 17,
+      "text": 18,
       "use": 13
     },
     "drill_hrefs": [],
@@ -315,9 +316,10 @@
     ],
     "kind": "svg",
     "labels": [
-      "2026-03-01",
-      "2026-03-05",
-      "2026-03-09",
+      "Mar",
+      "05",
+      "09",
+      "2026-Mar",
       "0",
       "600B",
       "1.20T",
@@ -334,8 +336,8 @@
       "Others"
     ],
     "size": [
-      318.4,
-      249.3
+      285.0,
+      247.5
     ]
   },
   "disk_entity_pie.empty": {
@@ -516,8 +518,8 @@
       "Other (6) (200 MiB)"
     ],
     "size": [
-      316.8,
-      191.8
+      300.0,
+      175.2
     ]
   },
   "disk_entity_pie.owner": {
@@ -694,8 +696,8 @@
       "Other (6) (200 MiB)"
     ],
     "size": [
-      316.8,
-      191.8
+      300.0,
+      175.2
     ]
   },
   "distribution.data": {
@@ -836,8 +838,8 @@
       "Data (GiB)"
     ],
     "size": [
-      314.1,
-      222.5
+      280.6,
+      200.3
     ]
   },
   "distribution.empty": {
@@ -982,8 +984,8 @@
       "Files"
     ],
     "size": [
-      327.2,
-      222.5
+      293.7,
+      200.3
     ]
   },
   "distribution.log_y": {
@@ -1064,8 +1066,8 @@
       "Data (GiB)"
     ],
     "size": [
-      329.4,
-      222.5
+      295.9,
+      200.3
     ]
   },
   "facility_pie.empty": {
@@ -1138,8 +1140,8 @@
       "NCAR (1.25M)"
     ],
     "size": [
-      289.2,
-      191.8
+      272.4,
+      175.2
     ]
   },
   "jobs_hist.charges": {
@@ -1286,8 +1288,8 @@
       "Charges"
     ],
     "size": [
-      314.5,
-      220.3
+      281.0,
+      198.6
     ]
   },
   "jobs_hist.empty": {
@@ -1370,8 +1372,8 @@
       "Jobs"
     ],
     "size": [
-      314.1,
-      220.3
+      280.6,
+      198.6
     ]
   },
   "jobs_hist.jobs_owners": {
@@ -1518,8 +1520,8 @@
       "Jobs"
     ],
     "size": [
-      314.1,
-      220.3
+      280.6,
+      198.6
     ]
   },
   "jobs_hist.log_y": {
@@ -1604,8 +1606,8 @@
       "Jobs"
     ],
     "size": [
-      329.0,
-      218.8
+      295.5,
+      196.7
     ]
   },
   "jobs_ts.empty": {
@@ -1773,8 +1775,8 @@
       "Others"
     ],
     "size": [
-      311.2,
-      274.0
+      277.7,
+      247.0
     ]
   },
   "jobs_ts.user_linked": {
@@ -1952,8 +1954,8 @@
       "Others"
     ],
     "size": [
-      306.0,
-      274.0
+      272.5,
+      247.0
     ]
   },
   "jobs_usage_pie.by_project": {
@@ -2125,8 +2127,8 @@
       "Other (975)"
     ],
     "size": [
-      282.3,
-      191.8
+      265.5,
+      175.2
     ]
   },
   "jobs_usage_pie.by_user": {
@@ -2286,8 +2288,8 @@
       "Other (9,900)"
     ],
     "size": [
-      311.7,
-      191.8
+      294.9,
+      175.2
     ]
   },
   "jobs_usage_pie.empty": {
@@ -2451,8 +2453,8 @@
       "Other (9,900)"
     ],
     "size": [
-      311.7,
-      191.8
+      294.9,
+      175.2
     ]
   },
   "nodetype.empty": {
@@ -2525,9 +2527,9 @@
   "nodetype.normal@mobile": {
     "counts": {
       "a": 0,
-      "g": 91,
+      "g": 92,
       "path": 34,
-      "text": 20,
+      "text": 21,
       "use": 15
     },
     "drill_hrefs": [],
@@ -2552,10 +2554,11 @@
       "Down",
       "Fully Allocated",
       "Resources Available",
-      "02-28 18",
-      "02-28 21",
-      "03-01 00",
+      "18:00",
+      "21:00",
+      "Mar-01",
       "Time (MDT)",
+      "2026-Mar-01",
       "0%",
       "20%",
       "40%",
@@ -2567,8 +2570,8 @@
       "Memory Utilization"
     ],
     "size": [
-      315.7,
-      382.9
+      292.8,
+      355.8
     ]
   },
   "pace.empty": {
@@ -2743,10 +2746,10 @@
   "pace.future@mobile": {
     "counts": {
       "a": 12,
-      "g": 85,
-      "path": 34,
-      "text": 22,
-      "use": 13
+      "g": 69,
+      "path": 30,
+      "text": 18,
+      "use": 9
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0000",
@@ -2794,13 +2797,9 @@
       "Jun 2026",
       "Sep 2026",
       "0",
-      "2.50M",
       "5.00M",
-      "7.50M",
       "10.0M",
-      "12.5M",
       "15.0M",
-      "17.5M",
       "20.0M",
       "Rate (per year)",
       "today",
@@ -2813,8 +2812,8 @@
       "Other (19 projects) (27.4M/yr)"
     ],
     "size": [
-      343.9,
-      293.1
+      327.2,
+      269.2
     ]
   },
   "pace.size": {
@@ -2985,10 +2984,10 @@
   "pace.size@mobile": {
     "counts": {
       "a": 12,
-      "g": 85,
-      "path": 34,
-      "text": 22,
-      "use": 13
+      "g": 69,
+      "path": 30,
+      "text": 18,
+      "use": 9
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0000",
@@ -3036,13 +3035,9 @@
       "Jun 2026",
       "Sep 2026",
       "0",
-      "2.50M",
       "5.00M",
-      "7.50M",
       "10.0M",
-      "12.5M",
       "15.0M",
-      "17.5M",
       "20.0M",
       "Rate (per year)",
       "today",
@@ -3055,8 +3050,8 @@
       "Other (19 projects) (19.0M)"
     ],
     "size": [
-      330.4,
-      293.1
+      313.6,
+      269.2
     ]
   },
   "pace.small_top_n": {
@@ -3205,8 +3200,8 @@
       "PROJ0005 (100,000)"
     ],
     "size": [
-      318.5,
-      276.0
+      294.6,
+      252.1
     ]
   },
   "queue.cores": {
@@ -3269,9 +3264,9 @@
   "queue.cores@mobile": {
     "counts": {
       "a": 0,
-      "g": 94,
+      "g": 95,
       "path": 36,
-      "text": 21,
+      "text": 22,
       "use": 15
     },
     "drill_hrefs": [],
@@ -3289,10 +3284,11 @@
       "Pending",
       "Held",
       "Active Users",
-      "02-28 18",
-      "02-28 21",
-      "03-01 00",
+      "18:00",
+      "21:00",
+      "Mar-01",
       "Time (MDT)",
+      "2026-Mar-01",
       "0",
       "250",
       "500",
@@ -3303,8 +3299,8 @@
       "Cores Pending"
     ],
     "size": [
-      316.3,
-      353.2
+      282.8,
+      327.7
     ]
   },
   "queue.empty": {
@@ -3371,9 +3367,9 @@
   "queue.gpus@mobile": {
     "counts": {
       "a": 0,
-      "g": 86,
+      "g": 87,
       "path": 34,
-      "text": 19,
+      "text": 20,
       "use": 13
     },
     "drill_hrefs": [],
@@ -3391,10 +3387,11 @@
       "Pending",
       "Held",
       "Active Users",
-      "02-28 18",
-      "02-28 21",
-      "03-01 00",
+      "18:00",
+      "21:00",
+      "Mar-01",
       "Time (MDT)",
+      "2026-Mar-01",
       "0",
       "20",
       "40",
@@ -3403,8 +3400,8 @@
       "GPUs Pending"
     ],
     "size": [
-      306.0,
-      353.2
+      272.5,
+      327.7
     ]
   },
   "usage_stacked.core_hours": {
@@ -3483,9 +3480,9 @@
   "usage_stacked.core_hours@mobile": {
     "counts": {
       "a": 28,
-      "g": 78,
+      "g": 79,
       "path": 47,
-      "text": 12,
+      "text": 13,
       "use": 8
     },
     "drill_hrefs": [
@@ -3532,9 +3529,10 @@
     ],
     "kind": "svg",
     "labels": [
-      "2026-03-01",
-      "2026-03-05",
-      "2026-03-09",
+      "Mar",
+      "05",
+      "09",
+      "2026-Mar",
       "0",
       "20",
       "40",
@@ -3546,8 +3544,8 @@
       "Others"
     ],
     "size": [
-      306.0,
-      248.7
+      272.6,
+      247.0
     ]
   },
   "usage_stacked.empty": {
@@ -3590,9 +3588,9 @@
   "usage_timeseries.charges@mobile": {
     "counts": {
       "a": 0,
-      "g": 51,
+      "g": 52,
       "path": 24,
-      "text": 9,
+      "text": 10,
       "use": 8
     },
     "drill_hrefs": [],
@@ -3602,9 +3600,10 @@
     ],
     "kind": "svg",
     "labels": [
-      "2026-03-01",
-      "2026-03-05",
-      "2026-03-09",
+      "Mar",
+      "05",
+      "09",
+      "2026-Mar",
       "0",
       "20",
       "40",
@@ -3613,8 +3612,8 @@
       "Charges"
     ],
     "size": [
-      306.0,
-      225.1
+      272.6,
+      204.8
     ]
   },
   "usage_timeseries.empty": {
@@ -3666,9 +3665,9 @@
   "usage_timeseries.linked_jobs@mobile": {
     "counts": {
       "a": 8,
-      "g": 51,
+      "g": 52,
       "path": 24,
-      "text": 9,
+      "text": 10,
       "use": 8
     },
     "drill_hrefs": [
@@ -3687,9 +3686,10 @@
     ],
     "kind": "svg",
     "labels": [
-      "2026-03-01",
-      "2026-03-05",
-      "2026-03-09",
+      "Mar",
+      "05",
+      "09",
+      "2026-Mar",
       "0",
       "20",
       "40",
@@ -3698,8 +3698,8 @@
       "Job Count"
     ],
     "size": [
-      306.0,
-      225.1
+      272.6,
+      204.8
     ]
   },
   "user_proj_area.empty": {
@@ -3762,9 +3762,9 @@
   "user_proj_area.peak_unlinked@mobile": {
     "counts": {
       "a": 0,
-      "g": 58,
+      "g": 59,
       "path": 23,
-      "text": 14,
+      "text": 15,
       "use": 9
     },
     "drill_hrefs": [],
@@ -3785,9 +3785,10 @@
     ],
     "kind": "svg",
     "labels": [
-      "02-28 18",
-      "02-28 21",
-      "03-01 00",
+      "18:00",
+      "21:00",
+      "Mar-01",
+      "2026-Mar-01",
       "0",
       "10",
       "20",
@@ -3801,8 +3802,8 @@
       "Others (4)"
     ],
     "size": [
-      306.0,
-      286.5
+      272.5,
+      284.8
     ]
   },
   "user_proj_area.project_current": {
@@ -3868,9 +3869,9 @@
   "user_proj_area.project_current@mobile": {
     "counts": {
       "a": 6,
-      "g": 58,
+      "g": 59,
       "path": 23,
-      "text": 14,
+      "text": 15,
       "use": 9
     },
     "drill_hrefs": [
@@ -3898,9 +3899,10 @@
     ],
     "kind": "svg",
     "labels": [
-      "02-28 18",
-      "02-28 21",
-      "03-01 00",
+      "18:00",
+      "21:00",
+      "Mar-01",
+      "2026-Mar-01",
       "0",
       "10",
       "20",
@@ -3914,8 +3916,8 @@
       "Others (2)"
     ],
     "size": [
-      306.0,
-      286.5
+      272.5,
+      284.8
     ]
   },
   "user_usage_pie.charges": {
@@ -4092,8 +4094,8 @@
       "Other (6) (21,000)"
     ],
     "size": [
-      309.2,
-      191.8
+      292.4,
+      175.2
     ]
   },
   "user_usage_pie.default_metric": {
@@ -4270,8 +4272,8 @@
       "Other (6) (21,000)"
     ],
     "size": [
-      309.2,
-      191.8
+      292.4,
+      175.2
     ]
   },
   "user_usage_pie.empty": {
@@ -4452,8 +4454,8 @@
       "Other (6) (1,050)"
     ],
     "size": [
-      304.0,
-      191.8
+      287.2,
+      175.2
     ]
   }
 }
