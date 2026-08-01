@@ -49,7 +49,7 @@ jobs:
         with:
           lfs: true          # the compose DB restore reads an LFS-backed dump
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
 
