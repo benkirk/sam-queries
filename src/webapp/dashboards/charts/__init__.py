@@ -52,6 +52,12 @@ from webapp.dashboards.charts.dualpanel import (
     _to_display_tz,
 )
 from webapp.dashboards.charts.layout import Layout, profile as layout_profile
+from webapp.dashboards.charts.histogram import (
+    CategoricalStackChart,
+    DistributionHistogram,
+    JobsHistogram,
+    bucket_segments as _bucket_segments,
+)
 from webapp.dashboards.charts.pie import (
     AllocationTypePie,
     DiskEntityPie,
@@ -503,137 +509,14 @@ def generate_user_proj_stacked_area(timeseries, link_kind=None,
 
 
 # ---------------------------------------------------------------------------
-# 1c. Distribution histograms — access-time & file-size (Filesystem Scans — DISK)
+# 1c. Distribution histogram (Filesystem Scans — DISK)
+#
+# Migrated to the class hierarchy — see charts/histogram.py, shared with the
+# job-history histogram below.
 # ---------------------------------------------------------------------------
 
-# Top-N owners drawn as their own stack segment per bar; the rest collapse
-# into one aggregated "other" segment at the base. Matches the table's top-10.
-_AH_TOP_SEGMENTS = 10
-
-
-def _bucket_segments(owners, metric='data'):
-    """Per-bucket stacked-bar segments, bottom → top.
-
-    Returns a list of segment values (in *metric* units — ``'data'`` bytes or
-    ``'files'`` counts) ordered as the long-tail "other" aggregate (if any)
-    followed by the top-``_AH_TOP_SEGMENTS`` owners ascending — so the largest
-    owner sits at the top of the bar. Empty list when the bucket has no owners
-    (→ drawn as a single flat bar).
-    """
-    if not owners:
-        return []
-    ranked = sorted((d.get(metric, 0) or 0) for d in owners.values())
-    if len(ranked) > _AH_TOP_SEGMENTS:
-        return [sum(ranked[:-_AH_TOP_SEGMENTS])] + ranked[-_AH_TOP_SEGMENTS:]
-    return ranked
-
-
-def _distribution_cache_key(hist, *, log_y=False, metric='data'):
-    """Stable key from the per-bucket totals + segment shape + date + options.
-
-    Hashes the bucket order, the exact stacked-bar segment values for the
-    chosen *metric* (top-N owners + "other"), the snapshot date in the title,
-    and the y-scale / metric flags — everything the rendered SVG depends on.
-    """
-    labels = list((hist or {}).get('bucket_labels', []))
-    buckets = (hist or {}).get('buckets', {})
-    payload = [
-        (lbl,
-         tuple(_bucket_segments(buckets.get(lbl, {}).get('owners') or {}, metric)))
-        for lbl in labels
-    ]
-    return _content_hash(
-        [payload, str((hist or {}).get('reference_scan_date', '')),
-         bool(log_y), str(metric)]
-    )
-
-
-@caching.chart_cached(name='distribution_histogram', maxsize=128,
-                      key_fn=_distribution_cache_key)
-def generate_distribution_histogram(hist, *, log_y=False, metric='data') -> str:
-    """Render a stacked bar chart of a metric across distribution buckets.
-
-    Shared by the Access-history and File-size tabs — both consume the same
-    ``{'bucket_labels', 'buckets': {label: {'data','files','owners'}},
-       'reference_scan_date', ...}`` shape (see
-    ``webapp.disk_scans.service.scan_access_history`` /
-    ``scan_file_sizes``). The ``files``/``owners`` detail is surfaced in the
-    surrounding table.
-
-    Each bar is a single-hue stack: the top owners (largest at top) over an
-    aggregated "other" base, shaded light → dark in that band's Unity color,
-    so the spread between users is legible before clicking.
-
-    Args:
-        metric: ``'data'`` plots bytes per bucket (y-axis auto-scaled to
-            GiB / TiB / PiB); ``'files'`` plots file counts (compact-number
-            y-axis). Per-owner stack segments use the same metric.
-        log_y: use a logarithmic y-axis. A log scale can't represent a stack
-            meaningfully, so this falls back to one solid bar per bucket (the
-            band base color). Useful when bucket totals span many orders of
-            magnitude (file sizes by data), where a linear stack buries small
-            bands.
-
-    Returns a "no data" placeholder div when the histogram is empty.
-    """
-    if not hist or not hist.get('bucket_labels'):
-        return _empty_state('No distribution data for this scope')
-
-    is_bytes = (metric != 'files')
-    labels = list(hist['bucket_labels'])
-    buckets = hist.get('buckets', {})
-    vals = [buckets.get(lbl, {}).get(metric, 0) or 0 for lbl in labels]
-
-    if is_bytes:
-        peak = max(vals) if vals else 0
-        # floor='GiB': three rungs here, unlike the disk-usage timeseries.
-        scale, unit_label = scale_bytes(peak, floor='GiB')
-        ylabel = f'Data ({unit_label})'
-    else:
-        scale, ylabel = 1, 'Files'
-    scaled = [v / scale for v in vals]
-
-    fig, ax = plt.subplots(figsize=(14, 5))
-    colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)] for i in range(len(labels))]
-
-    # Buckets with owners get a drill-down anchor (#sam/row/data-ah-bucket/<i>) on every
-    # segment so a click anywhere on the bar expands the matching row —
-    # svg-chart-links.js intercepts the sentinel (mirrors the Usage Trend
-    # day-drill pattern) and scopes the lookup to the originating tab pane.
-    if log_y:
-        # Log scale: one solid bar per bucket (stacking is meaningless on a
-        # log axis). Still anchored for drill-down.
-        bars = ax.bar(range(len(labels)), scaled, color=colors,
-                      edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
-        for i, (lbl, rect) in enumerate(zip(labels, bars.patches)):
-            if buckets.get(lbl, {}).get('owners'):
-                rect.set_url(links.AH_BUCKET.url(i))
-        ax.set_yscale('log')
-    else:
-        # Linear: stack per-owner segments (bottom "other" + top owners
-        # ascending), shaded within the band's color family.
-        for i, lbl in enumerate(labels):
-            owners = buckets.get(lbl, {}).get('owners') or {}
-            segs = [s / scale for s in _bucket_segments(owners, metric)]
-            if not segs:
-                ax.bar(i, scaled[i], color=colors[i],
-                       edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
-                continue
-            shades = _shade_family(colors[i], len(segs))
-            bottom = 0.0
-            for seg_val, shade in zip(segs, shades):
-                cont = ax.bar(i, seg_val, bottom=bottom, color=shade,
-                              edgecolor='white', linewidth=0.3)
-                cont.patches[0].set_url(links.AH_BUCKET.url(i))
-                bottom += seg_val
-    ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=30, ha='right')
-    ax.set_ylabel(ylabel)
-    if not is_bytes:
-        ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax.grid(True, axis='y', alpha=0.3)
-
-    return _fig_to_svg(fig)
+generate_distribution_histogram = chart_view(DistributionHistogram)
+_distribution_cache_key = DistributionHistogram.cache_key
 
 
 # ---------------------------------------------------------------------------
@@ -727,113 +610,8 @@ def _jobs_bucket_segments(bucket, metric, default='jobs'):
     return vals
 
 
-def _jobs_histogram_cache_key(hist, *, metric='jobs', log_y=False):
-    """Hash exactly what the SVG depends on: the bucket labels, the chosen
-    metric's values and owner-segment split, the dimension, null_count and
-    the y-scale (not the full envelope — e.g. min_param/max_param don't
-    affect the rendering). The job_count positivity vector joins the key
-    because it decides which bars carry #sam/row/data-jh-bucket/<i> drill URLs — an
-    hours-metric SVG with matching hours but a different populated-band set
-    must not be reused. Owner names stay out of the key: the SVG carries no
-    owner labels, so only the segment values shape it."""
-    buckets = (hist or {}).get('buckets') or []
-    payload = [(b.get('label'), _jobs_metric_value(b, metric),
-                tuple(_jobs_bucket_segments(b, metric))) for b in buckets]
-    clickable = [int(bool(b.get('job_count'))) for b in buckets]
-    return _content_hash([
-        payload, clickable, str((hist or {}).get('dimension', '')),
-        int((hist or {}).get('null_count') or 0), str(metric), bool(log_y),
-    ])
-
-
-@caching.chart_cached(name='jobs_histogram', maxsize=128,
-                      key_fn=_jobs_histogram_cache_key)
-def generate_jobs_histogram(hist, *, metric='jobs', log_y=False) -> str:
-    """Bar chart over a jobs_histogram envelope; owner-stacked when possible.
-
-    Shared by the Wait Times, Job Sizes, and Durations tabs — the envelope's
-    bucket vector is already complete and ordered (zeros included), so the
-    x-axis is stable across filter changes. When buckets carry ``owners``
-    (plugin ``owners_limit``), each bar becomes a single-hue per-user stack
-    over an aggregated remainder base; otherwise the historical flat
-    single-series chart renders unchanged.
-
-    Args:
-        hist: plugin envelope — ``{'dimension', 'buckets':
-            [{'label','lo','hi','job_count','cpu_hours','gpu_hours'}, …],
-            'null_count', 'total_count', …}``.
-        metric: ``'jobs'`` (bucket job counts), ``'cpu_hours'`` or
-            ``'gpu_hours'`` (charged hours per bucket).
-        log_y: use a logarithmic y-axis — the treatment the filesystem-scan
-            distribution histogram already offers. Job distributions are
-            heavily skewed (most jobs wait seconds, a few wait days), so a
-            linear axis buries the tail bands entirely. A log scale can't
-            represent a stack meaningfully, so this falls back to one solid
-            bar per band (the band's base color), keeping the drill anchors.
-
-    Returns a "no jobs" placeholder div when every bucket is zero.
-    """
-    buckets = (hist or {}).get('buckets') or []
-    if not buckets:
-        return _empty_state('No jobs in this range')
-
-    labels = [b.get('label', '') for b in buckets]
-    vals = [_jobs_metric_value(b, metric) for b in buckets]
-    if not any(vals):
-        return _empty_state('No jobs in this range')
-
-    fig, ax = plt.subplots(figsize=(14, 5))
-    # Populated bands are clickable: #sam/row/data-jh-bucket/<index> sentinels route
-    # through svg-chart-links.js to the matching data-jh-bucket row in
-    # the bucket table, which drills into that band. Index-keyed (not
-    # label) so the JS never parses band labels. Clickability follows
-    # job_count, not the plotted metric.
-    has_owners = any(b.get('owners') for b in buckets)
-    band_colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)]
-                   for i in range(len(labels))]
-    if not has_owners or log_y:
-        # Owner-less envelope (owners_limit unset, or an older plugin) — the
-        # historical flat single-series chart, byte-identical — and the log
-        # y-axis, on which a stack carries no meaning: one solid bar per
-        # band, in the band color its stack would have used.
-        bars = ax.bar(range(len(labels)), vals,
-                      color=(band_colors if has_owners else UNITY_PALETTE_10[0]),
-                      edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
-        for i, (rect, b) in enumerate(zip(bars, buckets)):
-            if b.get('job_count'):
-                rect.set_url(links.JH_BUCKET.url(i))
-    else:
-        # Stack per-owner segments (bottom "other" remainder + owners
-        # ascending), shaded within the band's color family — the fs_scans
-        # distribution-histogram treatment: the spread between users is
-        # legible before clicking.
-        colors = band_colors
-        for i, b in enumerate(buckets):
-            segs = _jobs_bucket_segments(b, metric)
-            url = links.JH_BUCKET.url(i) if b.get('job_count') else None
-            if not segs:
-                bar = ax.bar(i, vals[i], color=colors[i],
-                             edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
-                if url:
-                    bar.patches[0].set_url(url)
-                continue
-            shades = _shade_family(colors[i], len(segs))
-            bottom = 0.0
-            for seg_val, shade in zip(segs, shades):
-                cont = ax.bar(i, seg_val, bottom=bottom, color=shade,
-                              edgecolor='white', linewidth=0.3)
-                if url:
-                    cont.patches[0].set_url(url)
-                bottom += seg_val
-    ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, rotation=30, ha='right')
-    ax.set_ylabel(_JOBS_METRIC_LABELS.get(metric, 'Jobs'))
-    if log_y:
-        ax.set_yscale('log')
-    ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax.grid(True, axis='y', alpha=0.3)
-
-    return _fig_to_svg(fig)
+generate_jobs_histogram = chart_view(JobsHistogram)
+_jobs_histogram_cache_key = JobsHistogram.cache_key
 
 
 def _jobs_timeseries_series(ts, metric):

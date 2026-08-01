@@ -39,8 +39,6 @@ KEYED_CHARTS = [
     ('generate_usage_timeseries_stacked_by_user', '_usage_stacked_cache_key'),
     ('generate_disk_usage_stacked_area', '_disk_usage_stacked_area_cache_key'),
     ('generate_user_proj_stacked_area', '_user_proj_stacked_area_cache_key'),
-    ('generate_distribution_histogram', '_distribution_cache_key'),
-    ('generate_jobs_histogram', '_jobs_histogram_cache_key'),
     ('generate_jobs_timeseries_stacked', '_jobs_timeseries_cache_key'),
     ('generate_pace_chart_matplotlib', '_pace_cache_key'),
 ]
