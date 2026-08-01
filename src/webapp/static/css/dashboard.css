@@ -1815,13 +1815,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     height: auto;
 }
 
-/* Chart gutters on phones.
+/* Chart gutters below desktop.
    ------------------------------------------------------------------
-   The server now renders a phone-sized figure (see charts/layout.py), which
-   only pays off if the figure gets the width. Measured at a 375px viewport on
-   /status/derecho, it does not: the chart sits in a card inside a card, and
-   each `.card-body` takes 16px a side, so a 375px viewport hands the chart
-   287px. The figure is then scaled DOWN to fit, undoing part of the point.
+   The server renders a phone- or tablet-sized figure (see charts/layout.py),
+   which only pays off if the figure gets the width. Measured at a 375px
+   viewport on /status/derecho, it does not: the chart sits in a card inside a
+   card, and each `.card-body` takes 16px a side, so a 375px viewport hands the
+   chart 287px. The figure is then scaled DOWN to fit, undoing part of the
+   point.
 
    Cards nest on several surfaces and un-nesting them is not a chart change,
    so instead the chart bleeds back over its immediate card padding. 16px a
@@ -1830,10 +1831,22 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    self-contained rectangles with their own internal margins; unlike text they
    do not need the gutter to read.
 
-   `width: 100%` (not just `max-width`) so a figure narrower than the card
-   fills it rather than leaving a gutter. Desktop keeps `max-width` alone —
-   upscaling an 18in figure on a wide screen would just blur it. */
-@media (max-width: 767.98px) {
+   The two halves have different bands, which is measurement, not oversight:
+
+   - the **gutter** runs the whole non-desktop range. The nested card bodies
+     cost the same 32px at 768 as at 375, and it buys a real 5%: measured on
+     /status/derecho at a 768 viewport the chart's box goes 625 -> 657px and
+     its smallest label 9.0 -> 9.4px. Verified symmetric and non-overflowing at
+     both edges of the tablet band, and on /status/partition-history, which
+     nests one card body rather than two.
+   - `width: 100%` stays on phones only. It exists to *upscale* a figure
+     narrower than its card, and no tablet figure is: every one measured
+     renders at 100% of its card across the whole band under `max-width`
+     alone. Extending it would only reach the pies, whose tablet profile is
+     deliberately the desktop figure — it would blow them up, not fix them.
+     Desktop keeps `max-width` alone for the original reason: upscaling an
+     18in figure on a wide screen would just blur it. */
+@media (max-width: 1199.98px) {
     .chart-container,
     .jobs-histogram-chart,
     .jobs-timeline-chart,
@@ -1842,7 +1855,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
         margin-left: -1rem;
         margin-right: -1rem;
     }
+}
 
+@media (max-width: 767.98px) {
     .chart-container svg,
     .jobs-histogram-chart svg,
     .jobs-timeline-chart svg,

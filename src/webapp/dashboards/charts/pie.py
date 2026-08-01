@@ -218,9 +218,11 @@ class FacilityPie(_FixedCapPie):
 
     cache_name = 'facility_pie_chart'
     #: One entry per resource filter combination; few distinct views. Raised
-    #: from 32 with the mobile layout: a second live profile splits every
-    #: chart's key space, and this was the tightest budget in the package.
-    cache_maxsize = 48
+    #: 32 -> 48 with the mobile layout and 48 -> 72 with the tablet one: each
+    #: live profile splits every chart's key space, and this was the tightest
+    #: budget in the package. The split is real here even though a tablet pie
+    #: renders the desktop figure — same bytes, different key.
+    cache_maxsize = 72
     empty_message = 'No facility data available'
     fields = ('facility', 'annualized_rate')
 

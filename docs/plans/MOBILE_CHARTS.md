@@ -245,9 +245,14 @@ the same 32 sample cases). Both layouts together are 1.76× desktop alone, not
 actually requested in both layouts inside the 600s TTL, which desktop-majority
 traffic makes well under 1.76×.
 
+*(Superseded by the tablet pass, which measured the third profile at 0.86×
+desktop: three layouts are 2.60× desktop alone and six combinations land near
+5.2×. `helm/values.yaml` carries the current arithmetic.)*
+
 `cache_maxsize` bounds only the **no-Redis fallback** — under Redis, eviction
 is instance-global `allkeys-lru`. The three tightest budgets were raised
-(`facility_pie_chart` 32→48, `nodetype_history` and `queue_history` 64→96);
+(`facility_pie_chart` 32→48, `nodetype_history` and `queue_history` 64→96;
+raised again to 72 and 144 for `tablet`);
 the rest had slack.
 
 ---
@@ -281,10 +286,11 @@ than assuming it.
 - **The jobs explorer's 20px overflow** — pre-existing, a table, not a chart.
 - **Per-surface figure tuning.** Every family has one mobile profile; a
   surface whose card is unusually narrow or wide still gets the family's.
-- **Tablet — the real gap, and measured rather than guessed.** One
-  breakpoint, two profiles, so anything at 768px or wider gets `desktop`.
-  An earlier draft of this doc asserted "scale ~0.65, legible" without
-  measuring. It is worse than that:
+- **Tablet — the real gap, and measured rather than guessed.**
+  **CLOSED by the tablet pass — see `TABLET_CHARTS.md`.** Left below as the
+  measurement that motivated it. One breakpoint, two profiles, so anything at
+  768px or wider got `desktop`. An earlier draft of this doc asserted
+  "scale ~0.65, legible" without measuring. It is worse than that:
 
   | viewport | client px | scale | smallest label |
   |---|---|---|---|
@@ -309,5 +315,12 @@ than assuming it.
 
   One profile cannot serve both: mobile's 4.0in figure would upscale to
   ~1.7x in a 753px card and render 9pt text at ~15px.
+
+  The tablet pass took this and cost what this section predicted: a third
+  entry in `LAYOUTS`, in `_LAYOUTS`, and in the sender, plus tuning. Two
+  things it did not predict — `Layout.is_mobile` had to go (a boolean asked
+  of a three-value vocabulary), and the three jobs histogram panels turned
+  out never to have received the axis at all, so phones had been getting the
+  desktop figure on those tabs since this pass shipped.
 - **`theme`** — PR 3 and PR 4. The cookie rail built here is the one they
   should reuse; `user_aware_cache_key` already has the slot beside `l:`.

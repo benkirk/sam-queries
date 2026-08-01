@@ -79,13 +79,15 @@ class BaseChart:
     #: eviction is instance-global `allkeys-lru` — so it only bounds the
     #: no-Redis fallback, where overflowing costs a re-render rather than
     #: correctness. A live second layout splits every chart's key space, so
-    #: the three tightest budgets were raised when `mobile` shipped; the rest
-    #: had enough slack. Sizes are per-chart because the working sets differ
+    #: the three tightest budgets were raised when `mobile` shipped and again
+    #: when `tablet` did; the rest had enough slack. Sizes are per-chart
+    #: because the working sets differ
     #: by two orders of magnitude (one facility pie vs the jobs explorer's
     #: per-filter-set fanout).
     cache_maxsize: int = 128
 
-    #: `{'desktop': Layout, 'mobile': Layout}` — build with `layout.profile`.
+    #: `{'desktop': Layout, 'mobile': Layout, 'tablet': Layout}` — build with
+    #: `layout.profile`.
     LAYOUTS: dict = None
 
     # --- rendering defaults ----------------------------------------------

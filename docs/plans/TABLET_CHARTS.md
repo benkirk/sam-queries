@@ -1,6 +1,12 @@
 # Tablet chart layout — the third profile
 
-**Status: NOT STARTED. Handoff doc, written 2026-08-01** at the end of the
+**Status: IMPLEMENTED 2026-08-01** on `chart-ipad-profile`, stacked on
+PR #416. Commits T1-T5. The answers to the open questions and the places the
+work departed from this plan are recorded at the bottom; everything above that
+is the handoff doc as written, kept because its measurements are the reason
+for the design.
+
+**Originally: NOT STARTED. Handoff doc, written 2026-08-01** at the end of the
 mobile pass (PR #416), which is where the gap was measured.
 
 Adds a `tablet` layout profile between `mobile` and `desktop`. The machinery
@@ -274,3 +280,108 @@ a retarget.
    three discrete ones — more accurate, but it puts a measured pixel width in
    the cache key, which fragments the cache badly. The discrete-profile answer
    is almost certainly right; recorded so nobody re-derives it from scratch.
+
+---
+
+## As built — answers, deviations, and what this plan missed
+
+Implemented on `chart-ipad-profile` (stacked on PR #416) in five commits,
+T1-T5. Full suite green; fingerprint deltas confined to `@tablet` keys in
+every commit that declared one.
+
+### The four open questions
+
+1. **Upper boundary — 1200.** Measured on `/status/derecho`, where the chart's
+   card is the viewport less 144px and the desktop figure's smallest label is
+   12 user-units:
+
+   | clientWidth | card | smallest label |
+   |---|---|---|
+   | 785 | 641 | 6.0px |
+   | 1009 | 865 | 8.1px |
+   | 1185 | 1041 | 9.7px |
+   | 1265 | 1121 | 10.4px |
+
+   Desktop clears 9px at ~1110 and 10px at ~1217. This plan said "if it lands
+   at 1280, use `xxl` (1400)". It lands between the two, and `xl` won anyway:
+   `xxl` would hand every 1280 laptop a figure sized for a 640px card. 1200
+   measures 9.7px, which is inside the noise of the 10px target.
+
+2. **`legend_placement='right'` survives** — comfortably, at every tablet
+   width. It is not overridden; `TABLET_DEFAULTS` says nothing about
+   placement, so it inherits desktop's.
+
+3. **Landscape iPad at 1024 is tablet**, falling out of (1). It reads
+   10-13px there.
+
+4. **Discrete profiles were right.** Nothing encountered argued for a
+   container-width parameter.
+
+### Deviations
+
+- **`PieChart`'s tablet figure IS its desktop figure.** A pie trims to its own
+  square, so its tight bbox is ~360pt where the wide families' is near their
+  declared inches — every surface already gives a pie more width than it can
+  use (measured 10.7px, 13.8px and 16.6px at a 768 viewport). Shrinking it
+  would make the jobs pie smaller on screen and the allocations pie's labels
+  larger. The ordering assertions are therefore `mobile < tablet <= desktop`,
+  non-strict at the desktop end, and the aspect-ratio test skips a figure that
+  is unchanged rather than scaled.
+
+- **`TABLET_DEFAULTS` is two fields, not a mobile-shaped block.** Everything
+  absent inherits *desktop*, which is the whole design: a tablet is a small
+  desktop. The per-family type hierarchy the phone had to flatten survives.
+
+- **Fonts are not overridden at all.** With the chart always filling its card,
+  on-screen label size is `fontsize x card / bbox` — so font size and figure
+  size are one knob, not two, and the plan's "~9.3in figure" arithmetic was
+  replaced by measuring each family against the card it renders into.
+
+- **The gutter CSS split in two.** The negative margin extends to the whole
+  tablet band (worth 625 -> 657px and 9.0 -> 9.4px on the status page);
+  `width: 100%` stays on phones only, because no tablet figure needs
+  upscaling and extending it would only inflate the pies.
+
+- **`Layout.is_mobile` retirement grew two fields, not one.** `label_kw()` and
+  `apply_tick_fontsize()` needed `axis_label_fontsize` *and* `tick_fontsize`
+  as separate `int | None` fields, because `UserProjectAreaChart` labels at
+  13pt and ticks at 12pt and desktop has to reproduce both.
+
+### What this plan did not predict
+
+**Three fragments never received the axis at all.** `_panel_histogram` in
+`webapp/jobs/routes.py` accepted `layout` and dropped it, so Wait Times, Job
+Sizes and Durations rendered the 18in desktop figure at every viewport — a
+mobile-pass bug that had been shipping since PR #416, found only because
+shrinking the tablet figure changed nothing on screen.
+`test_renderers_forward_the_layout_they_are_given` now gates that last hop:
+a renderer that accepts `layout` and calls another layout-aware callable must
+forward it. Renderers that draw no chart are exempt by construction — they
+call nothing that takes one — so there is no allowlist to rot.
+
+### Measured result, at a 768 viewport (min on-screen label px)
+
+| surface | before | after |
+|---|---|---|
+| /status/derecho stacked, 625px card | 6.0 | 9.4 |
+| /status/partition-history dual panel | 6.4 | 10.7 |
+| /status/queue-history dual panel | 8.1 | 10.5 |
+| jobs explorer timeline | 6.5 | 10.4 |
+| jobs explorer histograms | 8.8 (stuck at desktop) | 11.0 |
+| /status/filesystem-scans distribution | — | 10.7 |
+| /allocations pace | 5.9 | 9.2-10.6 |
+| pies (unchanged by design) | 10.7-16.6 | 10.7-16.6 |
+
+Across the band the same chart reads 9.4px at 768 and 15.4px at 1199, filling
+its card at both ends. At a 1215px window the cookie flips to `desktop` and
+the 18in figure returns at 9.8px; at 390px `mobile` still measures 9.8px.
+
+### Cache
+
+Measured across the 32 sample cases: desktop 562 KB, tablet 483 KB (0.86x),
+mobile 417 KB (0.74x) — three layouts are **2.60x** desktop alone, and six
+combinations with the theme axis land near **5.2x**, up from the 3.1x
+`helm/values.yaml` budgeted for four. Still comfortably inside 192 MB against
+a base that dropped 58% with `svg.fonttype: none`. The three tightest
+`cache_maxsize` budgets were raised again: `facility_pie_chart` 48 -> 72,
+`nodetype_history` and `queue_history` 96 -> 144.
