@@ -81,7 +81,19 @@ class PieChart(BaseChart):
     #: a pie is square, so a legend beside it uses width the plot cannot,
     #: whereas the wide families have no width to spare. The `max_legend_entries`
     #: cap keeps that column from growing taller than the pie.
-    LAYOUTS = profile((7, 4), (3.6, 2.9), mobile={'legend_placement': 'right'})
+    #:
+    #: **Tablet is desktop, deliberately.** A pie's tight bbox is only ~360pt
+    #: — a pie trims to its own square, where the wide families trim to nearly
+    #: their declared inches — so every surface that renders one already gives
+    #: it as much width as it can use. Measured at a 768 viewport the three
+    #: pie surfaces read 13.8px, 10.7px and 16.6px; shrinking the figure would
+    #: make the jobs pie smaller on screen and the allocations pie's labels
+    #: larger, and neither is an improvement. The `max_legend_entries` cap is
+    #: dropped with it, because on this family the cap removes *slices*, and a
+    #: tablet has room for all of them.
+    LAYOUTS = profile((7, 4), (3.6, 2.9), (7, 4),
+                      mobile={'legend_placement': 'right'},
+                      tablet={'max_legend_entries': None})
     grid = None                       # pies have no grid
 
     start_angle = _PIE_START_ANGLE
@@ -206,9 +218,11 @@ class FacilityPie(_FixedCapPie):
 
     cache_name = 'facility_pie_chart'
     #: One entry per resource filter combination; few distinct views. Raised
-    #: from 32 with the mobile layout: a second live profile splits every
-    #: chart's key space, and this was the tightest budget in the package.
-    cache_maxsize = 48
+    #: 32 -> 48 with the mobile layout and 48 -> 72 with the tablet one: each
+    #: live profile splits every chart's key space, and this was the tightest
+    #: budget in the package. The split is real here even though a tablet pie
+    #: renders the desktop figure — same bytes, different key.
+    cache_maxsize = 72
     empty_message = 'No facility data available'
     fields = ('facility', 'annualized_rate')
 

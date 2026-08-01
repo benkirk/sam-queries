@@ -57,7 +57,11 @@ def bucket_segments(owners, metric='data'):
 class CategoricalStackChart(BaseChart):
     """One bar per bucket; each bar a shaded single-hue stack."""
 
-    LAYOUTS = profile((14, 5), (4.0, 2.6), label_rotation=30)
+    #: Tablet: 11in puts the tight bbox at ~796pt, 9.5px in the 687px jobs
+    #: card at a 768 viewport. 12in measured 8.9px there — this family looks
+    #: like it needs the least shrinking (it starts at 14in, not 18) but its
+    #: per-bucket owner segments give it a full-height legend to carry.
+    LAYOUTS = profile((14, 5), (4.0, 2.6), (11, 4.2), label_rotation=30)
     grid = {'axis': 'y', 'alpha': 0.3}
 
     bar_edge_width = 0.5

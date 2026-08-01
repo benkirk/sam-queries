@@ -14,18 +14,20 @@ Regenerate after an intentional change, then review the diff in that commit:
 
     CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py
 
-## Both layouts are pinned
+## Every layout is pinned
 
-Every non-empty case is rendered twice, at ``layout='desktop'`` and at
-``layout='mobile'``, under snapshot keys ``<case>`` and ``<case>@mobile``.
+Every non-empty case is rendered once per declared layout: desktop keeps the
+bare case id, and each other profile adds a suffix — ``<case>@mobile``,
+``<case>@tablet``. The list is read off the chart classes, so a fourth profile
+pins itself.
 
-The mobile half exists because the mobile pass is *tuning* work: figure
+The non-desktop halves exist because these passes are *tuning* work: figure
 sizes, legend placement and font sizes get moved until they look right, and
 without a pinned baseline "I nudged the pace chart" and "I broke the pace
 chart" produce the same diff — none. It also makes the desktop invariant
-enforceable in the same run: a mobile-tuning commit that moves a desktop
-fingerprint has leaked, and that is the single most likely way this pass
-regresses the 1,000+ desktop users it is not for.
+enforceable in the same run: a mobile- or tablet-tuning commit that moves a
+desktop fingerprint has leaked, and that is the single most likely way these
+passes regress the 1,000+ desktop users they are not for.
 
 Empty cases are layout-invariant by construction — ``is_empty()`` short-circuits
 before ``make_figure()`` — so they are pinned once, and
@@ -44,19 +46,33 @@ from chart_samples import CASES
 
 SNAPSHOT = Path(__file__).parent / 'snapshots' / 'chart_fingerprints.json'
 
-#: Suffix appended to a case id for its mobile rendering. Desktop keeps the
-#: bare id so the existing snapshot keys — and every diff anyone has already
-#: reviewed — stay stable.
-MOBILE_SUFFIX = '@mobile'
+
+def extra_layouts():
+    """Every declared layout except desktop, which keeps the bare case id.
+
+    Read off the chart classes rather than listed here, so adding a profile to
+    ``layout.profile()`` pins it in this gate without touching this file. The
+    bare-id convention for desktop is what keeps the existing snapshot keys —
+    and every diff anyone has already reviewed — stable.
+    """
+    from webapp.dashboards import charts
+
+    names = set()
+    for fn in vars(charts).values():
+        cls = getattr(fn, 'chart_class', None)
+        if cls is not None and cls.LAYOUTS:
+            names |= set(cls.LAYOUTS)
+    return tuple(sorted(names - {'desktop'}))
 
 
 def _render_all(app):
-    """Render every case inside one app context, at both layouts.
+    """Render every case inside one app context, at every layout.
 
     Several charts resolve modal routes through ``url_for``, so an application
     context is required even though nothing here touches the database.
     """
     out = {}
+    layouts = extra_layouts()
     with app.test_request_context('/'):
         for case_id, fn, args, kwargs in CASES:
             out[case_id] = svg_fingerprint(fn(*args, **kwargs))
@@ -64,8 +80,9 @@ def _render_all(app):
                 # Layout-invariant by construction; pinned once. The claim is
                 # tested directly by test_empty_state_is_layout_invariant.
                 continue
-            out[case_id + MOBILE_SUFFIX] = svg_fingerprint(
-                fn(*args, **kwargs, layout='mobile'))
+            for name in layouts:
+                out[f'{case_id}@{name}'] = svg_fingerprint(
+                    fn(*args, **kwargs, layout=name))
     return out
 
 
@@ -156,8 +173,18 @@ def test_empty_state_is_layout_invariant(app):
     with app.test_request_context('/'):
         for case_id, fn, args, kwargs in empties:
             desktop = fn(*args, **kwargs)
-            mobile = fn(*args, **kwargs, layout='mobile')
-            assert desktop == mobile, f'{case_id} placeholder differs by layout'
+            for name in extra_layouts():
+                other = fn(*args, **kwargs, layout=name)
+                assert desktop == other, (
+                    f'{case_id} placeholder differs at layout={name}')
+
+
+def _pairs(rendered, name):
+    suffix = '@' + name
+    out = [(cid, cid + suffix) for cid in rendered
+           if '@' not in cid and cid + suffix in rendered]
+    assert out, f'no desktop/{name} pairs rendered'
+    return sorted(out)
 
 
 def test_mobile_renders_smaller_than_desktop(rendered):
@@ -168,15 +195,29 @@ def test_mobile_renders_smaller_than_desktop(rendered):
     labels rendered at roughly their nominal size, and it is the one claim
     that must hold for all fifteen charts no matter how the tuning moves.
     """
-    pairs = [(cid, cid + MOBILE_SUFFIX) for cid in rendered
-             if not cid.endswith(MOBILE_SUFFIX)
-             and cid + MOBILE_SUFFIX in rendered]
-    assert pairs, 'no desktop/mobile pairs rendered'
-
     wider = []
-    for desktop_id, mobile_id in sorted(pairs):
+    for desktop_id, mobile_id in _pairs(rendered, 'mobile'):
         dw = rendered[desktop_id]['size'][0]
         mw = rendered[mobile_id]['size'][0]
         if mw >= dw:
             wider.append(f'{desktop_id}: desktop {dw}pt -> mobile {mw}pt')
     assert not wider, 'mobile figure is not narrower:\n  ' + '\n  '.join(wider)
+
+
+def test_tablet_falls_between_mobile_and_desktop(rendered):
+    """The band is between the other two, so the figure must be as well.
+
+    Non-strict at the desktop end on purpose: the pie family declares tablet
+    *as* its desktop figure (see `PieChart.LAYOUTS`), because a pie's tight
+    bbox is already narrower than every card that renders one. Strict at the
+    mobile end, where no family has a reason to tie.
+    """
+    bad = []
+    for desktop_id, tablet_id in _pairs(rendered, 'tablet'):
+        dw = rendered[desktop_id]['size'][0]
+        tw = rendered[tablet_id]['size'][0]
+        mw = rendered[desktop_id + '@mobile']['size'][0]
+        if not mw < tw <= dw:
+            bad.append(f'{desktop_id}: mobile {mw}pt, tablet {tw}pt, '
+                       f'desktop {dw}pt')
+    assert not bad, 'tablet figure is out of order:\n  ' + '\n  '.join(bad)

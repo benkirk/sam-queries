@@ -6,14 +6,16 @@ from sam.manage import management_transaction
 
 
 #: The chart layouts a request may ask for. Anything else means "no override".
-_LAYOUTS = frozenset({'desktop', 'mobile'})
+#: Must match the names ``charts/layout.profile()`` builds — the string is
+#: passed straight through to the chart layer and into its cache key.
+_LAYOUTS = frozenset({'desktop', 'tablet', 'mobile'})
 
 #: Written by ``static/js/layout-axis.js`` from ``matchMedia``.
 LAYOUT_COOKIE = 'sam_layout'
 
 
 def read_layout(default: str = 'desktop') -> str:
-    """Which chart layout this request wants: ``'desktop'`` or ``'mobile'``.
+    """Which chart layout this request wants — see ``_LAYOUTS``.
 
     Two sources, in precedence order — the query string, then the cookie —
     because charts reach the browser two different ways and neither channel
@@ -27,11 +29,11 @@ def read_layout(default: str = 'desktop') -> str:
     These are htmx fragments, and a stale or hand-typed value must not break a
     card. Passing an unknown name through would be equally safe — the chart
     layer falls back too — but normalizing here keeps the value that reaches
-    the *cache key* to two spellings instead of arbitrarily many, and the key
-    is shared across workers and pods.
+    the *cache key* to the declared spellings instead of arbitrarily many, and
+    the key is shared across workers and pods.
 
     Returns:
-        ``'desktop'`` or ``'mobile'`` — never anything else.
+        A member of ``_LAYOUTS`` — never anything else.
     """
     raw = (request.args.get('layout')
            or request.cookies.get(LAYOUT_COOKIE)

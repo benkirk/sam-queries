@@ -359,6 +359,13 @@ instance method, so a cache hit never constructs the chart or runs `prepare()`.
 
 ### 4. Two render axes: `layout` and `theme`
 
+> **As shipped:** `layout` has three values, not two — `mobile` (PR 2,
+> `MOBILE_CHARTS.md`) and `tablet` (`TABLET_CHARTS.md`) beside `desktop`. The
+> `Layout` sketch below also gained `legend_fontsize`, `axis_label_fontsize`
+> and `tick_fontsize`, each `int | None` where None means "defer to the
+> chart's own attribute" — that is what lets one desktop profile reproduce
+> four per-family legend sizes byte for byte. Everything else here holds.
+
 Both are orthogonal, both default to today's behaviour, both must enter the cache
 key. `layout` and `theme` are unclaimed names — `variant` already means "the
 per-metric cached rendering" in existing prose, and `preset` belongs to the

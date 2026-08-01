@@ -23,8 +23,8 @@
  * Together they cover both: fragments are correct on the very first paint
  * because `hx-trigger="load"` fires after this listener registers, and full
  * pages are correct from the second navigation onward. A first-ever visit on
- * a phone sees desktop-sized charts on one page. They still fit — nothing
- * overflows at 390px — they are merely small, which is the status quo.
+ * a phone or tablet sees desktop-sized charts on one page. They still fit —
+ * nothing overflows at 390px — they are merely small, which is the status quo.
  *
  * PR 3 (app-wide dark mode) wants the same carrier for `theme`, with the
  * added constraint that a theme flash is visible where a chart size is not.
@@ -45,12 +45,24 @@
     /* Bootstrap's `md` breakpoint, matching dashboard-init.js's
      * collapseFilterPanels. One definition of "phone" across the app. */
     var MOBILE_QUERY = '(max-width: 767.98px)';
+
+    /* Bootstrap's `xl`. The upper edge of the tablet band was measured, not
+     * picked: on these pages the chart's card is the viewport less ~144px, so
+     * the desktop figure's smallest label lands at 6.0px at 768, 8.1px at
+     * 1024, 9.7px at 1200 and 10.4px at 1280. Desktop stops being the problem
+     * around 1110-1200, and `xl` is the breakpoint there. Going up to `xxl`
+     * instead would hand every 1280 laptop a figure sized for a 640px card. */
+    var TABLET_QUERY = '(max-width: 1199.98px)';
+
     var COOKIE = 'sam_layout';
     var PARAM = 'layout';
 
+    /* Narrowest match wins — below 768 both queries are true. */
     function currentLayout() {
-        return window.matchMedia && window.matchMedia(MOBILE_QUERY).matches
-            ? 'mobile' : 'desktop';
+        if (!window.matchMedia) { return 'desktop'; }
+        if (window.matchMedia(MOBILE_QUERY).matches) { return 'mobile'; }
+        if (window.matchMedia(TABLET_QUERY).matches) { return 'tablet'; }
+        return 'desktop';
     }
 
     /* Session cookie (no Max-Age): the viewport is a property of this visit,

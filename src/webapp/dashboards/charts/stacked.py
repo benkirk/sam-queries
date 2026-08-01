@@ -46,7 +46,14 @@ class StackedSeriesChart(BaseChart):
     #: smart date axis shortens labels enough to leave them horizontal. It
     #: survives for `JobsTimeseriesChart`, whose categorical axis falls back
     #: to rotation when its period labels are a grain we cannot compact.
-    LAYOUTS = profile((18, 5), (4.0, 2.8), label_rotation=30)
+    #: Tablet: 10in. This family has the widest legend labels in the package
+    #: — the status page's "WYOM0247 (33,408)" is a name *and* a value — so
+    #: its tight bbox runs ~130pt past what a sample payload predicts, and 11in
+    #: measured 8.4px in the narrowest card any chart sits in (625px, the
+    #: status page nests two card bodies). Proportionally taller than desktop:
+    #: 18:5 at 10in is a 2.8in strip, and the band count does not shrink with
+    #: the figure.
+    LAYOUTS = profile((18, 5), (4.0, 2.8), (10, 3.4), label_rotation=30)
 
     #: 'bar' — discrete bars per x position; 'area' — filled stackplot.
     stack_mode = 'bar'
