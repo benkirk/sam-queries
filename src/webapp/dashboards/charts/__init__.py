@@ -55,7 +55,11 @@ from webapp.caching.chart import content_hash as _content_hash  # legacy alias u
 #      transparent=True so legend/grid colors carry against any backdrop).
 # ---------------------------------------------------------------------------
 
-_FONT_DIR = Path(__file__).resolve().parent.parent / 'static' / 'fonts' / 'poppins'
+# parents[2] is src/webapp/ — this module is webapp/dashboards/charts/__init__.py.
+# Counting up from __file__ is fragile under exactly the kind of move that
+# created this package, so test_chart_fonts asserts the registered font
+# actually resolves inside this directory rather than to a system font.
+_FONT_DIR = Path(__file__).resolve().parents[2] / 'static' / 'fonts' / 'poppins'
 if _FONT_DIR.exists():
     for _ttf in _FONT_DIR.glob('*.ttf'):
         matplotlib.font_manager.fontManager.addfont(str(_ttf))
