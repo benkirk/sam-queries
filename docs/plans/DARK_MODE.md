@@ -1,21 +1,32 @@
 # Application-wide dark mode
 
-**Status: PROPOSED (2026-08-01), verified against source 2026-08-01.**
+**Status: READY (revised 2026-08-01), re-verified against `staging` 2026-08-01.**
 This is **PR 3** of the four-PR roadmap declared in
 `docs/plans/CHART_ARCHITECTURE.md` § *Roadmap*, which deferred it to "a
-separate planning session". This is that session. No code has been written.
+separate planning session". Implementation branch: `dark_mode_sans_charts`,
+cut from `staging` at `bee0f4d`, PR targets `staging`.
 
 | # | PR | Depends on | State |
 |---|---|---|---|
-| 1 | Chart architecture refactor | — | branch `chart-architecture-refactor` |
-| 2 | Mobile-friendly charts | 1 | not started |
-| **3** | **App-wide dark mode** ← *this document* | — (parallel to 2) | this plan |
+| 1 | Chart architecture refactor (layout **and theme** render axes) | — | **merged** — `bee0f4d` (#414) |
+| 2 | Mobile-friendly charts | 1 | landed with #414 |
+| **3** | **App-wide dark mode** ← *this document* | 1 | this branch |
 | 4 | Dark-mode charts | 1 **and** 3 | not started |
 
-All line references are against the working tree at 2026-08-01 and were
-re-verified while writing; where this document contradicts a count in
+All line references are against `staging` at `bee0f4d` and were re-verified
+while revising; where this document contradicts a count in
 `CHART_ARCHITECTURE.md`, the correction and its reason are recorded in
-Appendix C.
+Appendix C. Corrections made to *this* document's own first draft are in
+Appendix D.
+
+> **Revision note (2026-08-01).** The first draft was written before PR 1
+> merged and assumed the theme carrier had to be designed from scratch. It
+> does not: PR 1 shipped the **layout** axis using exactly the cookie-read-
+> server-side mechanism proposed here, and left explicit hooks for this PR in
+> `utils/htmx.py`, `static/js/layout-axis.js` and `extensions.py`. The carrier
+> section below is rewritten to *mirror* that precedent rather than reinvent
+> it, which removes a design decision and one of the two transport channels.
+> See § *The theme carrier*.
 
 ---
 
@@ -40,6 +51,11 @@ Both constraints point at the same answer, which is why this is a cheap
 feature rather than an awkward one: **a cookie, read server-side, rendered
 into `<html data-bs-theme="…">`.** One mechanism satisfies both, and it is
 FOUC-free *by construction* rather than by racing the paint.
+
+That is no longer a proposal. PR 1 shipped this exact mechanism for the
+**layout** axis and left hooks for this PR by name — so the carrier here is a
+second instance of an established pattern, and the review question is
+"does it match `read_layout`?" See § *What PR 1 already bought*.
 
 3. **Bootstrap 5.3.3 is already vendored with a complete, unused
    `[data-bs-theme=dark]` block** — 15 selectors covering body, borders,
@@ -84,25 +100,69 @@ SVG served to every user, globally, across pods. PR 4 inherits a correct key
 without doing anything. **This plan must not undo that**, and § *Caching*
 extends the same reasoning to the five fully-rendered-HTML cache entries.
 
-`Theme.DARK` already exists with starting values. It is explicitly *not*
-shippable — Appendix B of the chart plan records the two decisions a mechanical
-swap cannot make, and both are still open. They are restated in § *Design
-decisions* below because they belong to PR 4, not here.
+**The carrier itself, already built and load-bearing.** This is the largest
+correction to the first draft. PR 1's **layout** axis is the same problem
+shape — a per-user rendering mode the server must know before it renders — and
+it was solved the same way this document independently proposed:
+
+| Piece | Layout (shipped) | Theme (this PR) |
+|---|---|---|
+| Cookie constant | `LAYOUT_COOKIE = 'sam_layout'` (`utils/htmx.py:14`) | `THEME_COOKIE = 'sam_theme'`, same module |
+| Lenient reader | `read_layout(default='desktop')` (`:17`) | `read_theme(default='light')`, same shape |
+| Validity set | `_LAYOUTS` frozenset, unknown → default, **never a 400** | `_THEMES` frozenset, same rule |
+| Client writer | `static/js/layout-axis.js` | `static/js/theme-toggle.js` |
+| Chart plumbing | `BaseChart.render(layout, theme)`, `chart_view(layout=, theme=)` | **already accepts `theme=`** |
+| HTML cache key | `user_aware_cache_key` ends `\|l:{read_layout()}` | append `\|t:{read_theme()}` |
+
+`static/js/layout-axis.js` says so in its own header comment:
+
+> *PR 3 (app-wide dark mode) wants the same carrier for `theme`, with the added
+> constraint that a theme flash is visible where a chart size is not. Keep the
+> cookie shape reusable.*
+
+and `user_aware_cache_key`'s docstring already names the change:
+
+> *The dark-mode pass adds `theme` here for exactly the same reason, and with a
+> more visible failure.*
+
+So this PR does not choose a mechanism. It follows one, and the reviewer's
+question becomes "does this match `read_layout`?" rather than "is a cookie
+right?".
+
+`Theme.DARK`, `THEMES` and `resolve_theme()` already exist and are live
+(`charts/theme.py:266-278`) — nothing requests `DARK` yet. `Theme.DARK` is
+explicitly *not* shippable: Appendix B of the chart plan records the two
+decisions a mechanical swap cannot make, and both are still open. They are
+restated in § *Design decisions* below because they belong to PR 4, not here.
+The consequence for scoping is sharp: **PR 4 is now "pass `theme=read_theme()`
+at the 18 chart call sites, then tune `Theme.DARK`" and nothing else.** Every
+structural piece it needs is merged.
 
 ---
 
 ## The theme carrier
 
-### Decision: a cookie, rendered server-side
+### Decision: a cookie, rendered server-side — the `read_layout` pattern
 
 ```
 Cookie:  sam_theme = "light" | "dark"
-         SameSite=Lax; Max-Age=31536000; Path=/; Secure (prod)
+         Path=/; SameSite=Lax; Max-Age=31536000
          NOT HttpOnly — the toggle sets it from JS
 ```
 
+```python
+# webapp/utils/htmx.py — directly beneath LAYOUT_COOKIE / read_layout
+_THEMES = frozenset({'light', 'dark'})
+THEME_COOKIE = 'sam_theme'
+
+def read_theme(default: str = 'light') -> str:
+    raw = (request.cookies.get(THEME_COOKIE) or '').strip().lower()
+    return raw if raw in _THEMES else default
+```
+
 - No PII, no session coupling, no server state. Safe to send on every request.
-- Read in a `before_request`/context processor into `g.theme`; exposed to Jinja.
+- Read by a context processor into the Jinja globals (mirroring how
+  `read_layout` is consumed at call sites); no `before_request`, no `g`.
 - Rendered directly onto the root element of **both** page shells:
   `templates/dashboards/base.html:2` and `templates/auth/login.html:2` (the
   only two `<html>` tags the app owns — `templates/errors/429.html` inherits,
@@ -117,13 +177,56 @@ flash to prevent, no `<head>` script to nonce, no `localStorage` read racing
 the paint, and nothing for the CSP to forbid. The constraint that looked like
 an obstacle produced the better design.
 
+`color-scheme` needs no work: Bootstrap's dark block opens with
+`[data-bs-theme=dark]{color-scheme:dark; …}` (verified in the vendored 5.3.3),
+so native scrollbars, form controls and the browser's own chrome flip with the
+attribute.
+
+### One transport channel, not two — where theme *diverges* from layout
+
+`read_layout` reads **query string, then cookie**, and `layout-axis.js`
+injects `?layout=` into every htmx request. `read_theme` reads **the cookie
+only**, and `theme-toggle.js` injects nothing. This is a deliberate
+simplification, and the reason is the asymmetry named in `layout-axis.js`:
+
+- **Layout is *discovered*, client-side, after the server has already
+  answered.** The server cannot know a viewport, so the first page a visitor
+  ever loads is rendered before the cookie exists. The query-string channel is
+  what makes htmx fragments correct on that first paint anyway.
+- **Theme is *declared*, by an explicit click, which reloads.** There is no
+  moment at which the browser knows a theme the server does not — the browser
+  only ever learns it *from* the cookie the click wrote. A first-ever visitor
+  has no preference to discover; `light` is the answer, not a stale guess.
+
+Adding a `?theme=` param would therefore buy nothing and cost something real:
+it would split the `chart_view` and `user_aware_cache_key` key spaces on a
+value that can never disagree with the cookie, and it would need the same
+duplicate-query-key defence `layout-axis.js` carries. Skip it.
+
+The one thing lost is `?theme=dark` as a hand-debugging affordance. That is
+worth having, so `read_theme` keeps the query string as an override **for
+debugging only**, in the same precedence order as `read_layout` — but no JS
+ever sets it, so it never appears in ordinary traffic. Cost: one line, and
+`read_theme` stays literally the same function as `read_layout`, which is the
+property a reviewer will check.
+
+> **Consistency note for the implementer.** If `read_theme` and `read_layout`
+> end up structurally different, that is the signal something has been
+> reasoned about wrongly. They should be readable side by side and differ only
+> in constant names and the cookie's lifetime.
+
 ### The toggle
 
-A control in the navbar utility menu (`base.html:62-85`, beside the user
-dropdown; mobile gets it in the offcanvas drawer). Behaviour lives in a new
-`static/js/theme-toggle.js`, loaded alongside the existing 16 scripts at
-`base.html:219-234` — **external, not inline**, because
+A control in the navbar utility menu (`base.html:61-85` — the
+`.utility-menu` div, beside the user dropdown; mobile gets it in the offcanvas
+drawer). Behaviour lives in a new `static/js/theme-toggle.js`, loaded alongside
+the existing 17 scripts — **external, not inline**, because
 `test_template_csp_lint.py` will fail the build otherwise, and correctly so.
+
+The utility menu is `{% if current_user.is_authenticated %}`-gated, so place
+the toggle **outside** that conditional: an anonymous visitor on the login page
+should be able to flip the theme, and `login.html` is a separate shell that
+needs its own copy of the control regardless.
 
 On click:
 
@@ -409,16 +512,41 @@ Each of these needs a human answer before D7. None blocks the commits before it.
    a multi-tone or baked-on-white graphic, this decision has to be re-made.
    Verify visually at D7 and revisit only if it actually reads badly.
 
-2. **The logos.** `logo-ncar.png` and `NSF_Official_logo.png` are dark navy
-   marks. NSF and UCAR both publish reversed/white variants — this is a brand
-   request, not a CSS problem, and it should be started early because it has
-   external lead time. Interim fallback: keep the navbar a light chip in dark
-   mode (defensible — many dark UIs keep a branded header band).
+2. **The logos — RESOLVED (Ben, 2026-08-01): ship the fallback, swap later.**
+   `logo-ncar.png` and `NSF_Official_logo.png` are dark navy marks. NSF and
+   UCAR both publish reversed/white variants; Ben is sourcing the official
+   assets, which is a brand request with external lead time and therefore must
+   not gate this PR.
 
-3. **The navbar.** It is `#fff` today (`:29,:35`). In dark mode a near-black
-   navbar on a near-black page loses the header entirely. Recommendation:
-   `--surface-raised`, one step lighter than the page, plus the existing
-   `border-top` on the nav row.
+   **D7 ships the light-chip navbar** (decision 3 below is superseded
+   accordingly): in dark mode the navbar keeps a light `--surface-raised`
+   background, so the existing marks stay legible and untouched. This is
+   defensible on its own terms — many dark UIs keep a branded header band — not
+   merely a stopgap.
+
+   Explicitly **not** doing CSS `filter: invert()` on the marks: it produces
+   flat white renderings that are not an approved brand variant of either
+   organization's logo.
+
+   When the reversed assets arrive, the follow-up is one rule and two files —
+   add `img/logo-ncar-reversed.png` / `img/NSF_Official_logo-reversed.png` and
+   swap them under `:root[data-bs-theme="dark"]`, at which point the navbar can
+   also go dark. Leave a `TODO(dark-logos)` comment at the navbar rule in D7 so
+   the two halves of the decision stay findable together.
+
+3. **The navbar — settled by decision 2.** It is `#fff` today (`:29,:35`).
+   The general dark-mode hazard is that a near-black navbar on a near-black
+   page loses the header entirely; the usual answer is `--surface-raised`, one
+   step lighter than the page, plus the existing `border-top` on the nav row.
+
+   For **this** PR the navbar stays a **light chip** in dark mode, because the
+   logos are not yet reversed (decision 2). `--surface-raised` becomes the
+   right value once they are, and the `TODO(dark-logos)` comment marks the
+   spot. Note the nav *links* must then be checked against the light chip —
+   Bootstrap's dark block redefines `--bs-navbar-color` to
+   `rgba(255,255,255,.55)`, which is invisible on a light navbar. Pin the
+   navbar's `--bs-navbar-*` variables to their light values inside the dark
+   block rather than letting them inherit.
 
 4. **Status badges.** `status.css:17-32` — `.status-online` / `.status-degraded`
    / `.status-offline` are hardcoded pastel background + dark text + pastel
@@ -429,7 +557,35 @@ Each of these needs a human answer before D7. None blocks the commits before it.
    block of their own. Same treatment for `auth.css:105` (`#fff8e1` →
    `--bs-warning-bg-subtle`) and the alert/badge tints in `dashboard.css`.
 
-5. **Charts** (PR 4, restated here so it isn't rediscovered): `UNITY_PALETTE_10[8]`
+5. **Heading/emphasis navy — new, found by reading the `text-dark` sites.**
+   The first draft treated "20 bare `text-dark` → `text-body-emphasis`" as a
+   mechanical swap. It isn't, because **15 of the 20 are the identical string**
+   `class="stat-value text-dark text-detail"`, in three card partials
+   (`user/partials/user_card.html` ×9, `user/partials/project_card.html` ×3,
+   `admin/fragments/contract_card.html` ×2). And `.stat-value`
+   (`dashboard.css:1607`) already declares `color: var(--ncar-navy)` — which
+   `text-dark`'s `!important` is currently *overriding*.
+
+   So that `text-dark` is not a colour choice; it is an accidental suppression
+   of the brand navy. Three options, and this needs a human answer:
+
+   | | Light-mode effect | Dark-mode effect |
+   |---|---|---|
+   | **(a) delete `text-dark`** | stat values become NCAR navy — a **visible change**, arguably the intended design | navy `#00357a` on `#14181d` is **unreadable**; forces a tier-2 `--text-heading` that lightens on dark |
+   | **(b) → `text-body-emphasis`** | near-identical to today | correct, free |
+   | **(c) keep, and let the token layer fix it** | identical | wrong — `.text-dark` is `--bs-dark-rgb`, not redefined in the dark block |
+
+   **RESOLVED (Ben, 2026-08-01): (b).** `text-body-emphasis` for all 15. It is
+   a true no-op in light mode, which is the property D5 is supposed to have;
+   (a) changes the look of the three most-viewed cards in the app and deserves
+   its own conversation rather than riding in on a dark-mode codemod. If (a) is
+   later wanted, `--ncar-navy` gets a role-named tier-2 sibling and the swap is
+   one line.
+
+   The remaining 5 bare sites are genuine one-offs (3 `text-decoration-none`
+   links on `status/casper.html`, 2 in allocation modals) — swap individually.
+
+6. **Charts** (PR 4, restated here so it isn't rediscovered): `UNITY_PALETTE_10[8]`
    is space blue `#011837` used as a **pie wedge fill** — on a dark page it
    vanishes while still carrying a white percentage label. And the `alpha=0.85`
    stackplots composite against the *page*, so every band desaturates on dark.
@@ -450,10 +606,12 @@ Redis, and dark mode doubles the working set. The `svg.fonttype='none'` change
 in PR 1 cut SVG size 40–77 %, which mostly pays for it, but the `maxmemory`
 rationale should be revisited with real numbers rather than assumed.
 
-**Fully-rendered HTML caches — need a decision.** Five routes cache complete
-HTML under `user_aware_cache_key` (`extensions.py:26`):
-`allocations/blueprint.py:307,622`, `admin/orgs_routes.py:105,175`,
-`admin/contracts_routes.py:268`.
+**Fully-rendered HTML caches — decided, and already half-written.** Five routes
+cache complete HTML under `user_aware_cache_key` (`extensions.py:26`):
+`allocations/blueprint.py:309,635`, `admin/orgs_routes.py:105,175`,
+`admin/contracts_routes.py:268`. (`utils/csp.py`'s module docstring still says
+"Four routes" — pre-existing drift from before the fifth was added; fix it in
+D0 while touching nothing else.)
 
 Today all five are table/card fragments with no chart SVG and no
 `data-bs-theme` in their output, so their bytes are genuinely
@@ -461,8 +619,8 @@ theme-independent — theming reaches them by CSS inheritance from the root
 attribute, which lives in the page shell, not the fragment. Strictly, the key
 needs no theme component.
 
-**Recommendation: add `theme` to `user_aware_cache_key` anyway.** The
-invariant "no cached fragment ever contains a theme-dependent byte" is real
+**Decision: add `theme` to `user_aware_cache_key`, and do it in D3, not last.**
+The invariant "no cached fragment ever contains a theme-dependent byte" is real
 today and completely invisible tomorrow — the failure mode is a chart added to
 the allocations dashboard fragment, after which one user's dark SVG is served
 to every light-mode user with the same facility scope, and it will present as
@@ -470,6 +628,22 @@ an intermittent rendering bug rather than a caching bug. The cost is at most
 5 extra key partitions on 5 routes. This is the same argument `chart_view`'s
 docstring makes about the aliasing trap, and it should be resolved the same
 way: make the wrong thing inexpressible.
+
+The change is one line and its docstring already announces itself:
+
+```python
+return (f"u:{user_part}|{request.path}|{qs}|s:{scope_part}"
+        f"|l:{read_layout()}|t:{read_theme()}")
+```
+
+**The first draft scheduled this as D8, the final commit. That is wrong, and
+it is the ordering bug worth catching in review.** D3 is the commit that makes
+the theme observable; D4–D7 are then spent clicking between themes with a live
+Redis, against five routes whose cached HTML is keyed *without* the theme. Any
+theme bug seen on those pages during that window would be indistinguishable
+from a stale-cache artifact, and the debugging cost of one such false lead
+exceeds the entire cost of the line. Ship it in the same commit that ships the
+carrier — the mechanism and its cache key are one idea.
 
 ---
 
@@ -481,17 +655,30 @@ provably no-op in light mode.
 
 | # | Commit | Visual change | Gate |
 |---|---|---|---|
-| **D0** | `tests/unit/test_css_tokens.py` — lint: no raw hex in `background-color` / `color` / `border-color` outside `variables.css`; allowlist the current sites so it passes at HEAD and shrinks per commit | none | new test green |
+| **D0** | `tests/unit/test_css_tokens.py` — lint: no raw hex in `background-color` / `color` / `border-color` outside `variables.css`; allowlist the current sites so it passes at HEAD and shrinks per commit. Fix `csp.py`'s stale "Four routes" docstring | none | new test green |
 | **D1** | Token layer: three tiers, role names, tier-1 ↔ `charts/theme.py` agreement test. Light values byte-identical | **none** | D0 allowlist shrinks; browser-smoke green |
 | **D2** | Bootstrap bridge (`--bs-body-bg`, `--bs-body-color`, `--bs-border-color`, `--bs-card-bg`, `--bs-card-cap-bg` → tier 2) | **none** | as above |
-| **D3** | Carrier: cookie, context processor, `data-bs-theme` on both roots, `theme-toggle.js`, navbar + offcanvas control, empty `:root[data-bs-theme="dark"]` block | Bootstrap's own dark appears; app CSS still light → **deliberately broken, and now inspectable** | CSP lint green (external JS); route-map parity |
+| **D3** | Carrier, complete: `THEME_COOKIE` + `read_theme()` beside `read_layout`, context processor, `data-bs-theme` on both roots, `theme-toggle.js`, navbar + offcanvas + login control, `\|t:` in `user_aware_cache_key`, empty `:root[data-bs-theme="dark"]` block | Bootstrap's own dark appears; app CSS still light → **deliberately broken, and now inspectable** | CSP lint green (external JS); route-map parity; new carrier unit test |
 | **D4** | The 15 surface declarations → tier-2 tokens | none in light | visual diff both themes |
-| **D5** | Utility-class codemod: 49 `table-light`, 20 bare `text-dark`, 59 `bg-light` | **declared** light-mode shift on `bg-light` surfaces | reviewed site-by-site |
+| **D5** | Utility-class codemod: 49 `table-light`, 20 bare `text-dark` (per decision 5), 59 `bg-light` | **declared** light-mode shift on `bg-light` surfaces | reviewed site-by-site |
 | **D6** | Semantic colour sets → Bootstrap subtle/emphasis pairs: `status.css` badges, `auth.css`, alert/badge tints, the 15 colour-bearing inline styles | none in light | — |
 | **D7** | The dark palette values + design decisions 2–4 (navbar, logos-or-fallback, status badges). Watermark needs no code — verify visually | **dark mode ships** | e2e sweep in both themes |
-| **D8** | `theme` into `user_aware_cache_key`; e2e fixture parameterized over the cookie | none | full suite |
+| **D8** | `e2e/` dark sweep; contrast assertions on the representative surfaces | none | full suite |
 
-PR 4 (dark charts) unblocks after D7.
+Two changes from the first draft's ordering, both for the same reason — a
+commit should be verifiable when it lands, not retroactively:
+
+- **The cache key moved D8 → D3.** Rationale in § *Caching*: leaving five
+  rendered-HTML routes theme-blind across D4–D7 turns every theme bug seen on
+  them into a suspected cache bug for the four commits where we are most
+  actively looking at them.
+- **D8 is now testing only.** With the key in D3, the last commit has no
+  production code in it, which makes it trivially revertable if the browser
+  tier turns out flaky in CI.
+
+PR 4 (dark charts) unblocks after D7, and is now scoped to *passing
+`theme=read_theme()` at the 18 chart call sites plus tuning `Theme.DARK`* —
+`chart_view` already accepts and keys on the argument.
 
 ---
 
@@ -515,12 +702,27 @@ PR 4 (dark charts) unblocks after D7.
 
 - `test_css_tokens.py` (D0) — the raw-colour lint, with a shrinking allowlist.
   Its value is mostly *after* this work: it is what stops the next 83 whites.
-- A Jinja test asserting both `<html>` roots carry `data-bs-theme` and that it
-  round-trips from the cookie. Cheap, and it covers the login page, which is
-  otherwise easy to forget (separate shell, separate CSS).
-- `e2e/` already has a Playwright console sweep (`test_console_sweep.py`) and a
-  CI workflow (`browser-smoke.yaml`). Parameterize the fixture over the
-  `sam_theme` cookie so every swept page renders twice.
+- A carrier unit test (D3) mirroring whatever covers `read_layout`: unknown
+  cookie value → `light` (never a 400), and both `<html>` roots carry
+  `data-bs-theme` round-tripped from the cookie. Cheap, and it covers the login
+  page, which is otherwise easy to forget (separate shell, separate CSS).
+- **`e2e/` is at the repo root, not `tests/e2e/`** — `e2e/test_console_sweep.py`
+  plus `e2e/conftest.py`, driven by `.github/workflows/browser-smoke.yaml`, and
+  it runs against a *running stack over HTTP* (it imports no `sam`/`webapp`
+  code — that boundary is load-bearing for CI, see its docstring).
+
+  **Do not parameterize the whole suite over the cookie.** The sweep derives
+  its route list from `tests/unit/snapshots/dashboard_route_map.json`
+  (≥20 pages) and also runs several declared interaction flows; doubling all of
+  it doubles browser-smoke wall time to catch, in the flows, nothing a theme
+  can break. Instead:
+  - parameterize **`test_page_loads_without_console_errors` only** over
+    `('light', 'dark')`, setting the cookie via `context.add_cookies`;
+  - leave the declared flows at the default theme.
+
+  Note `ALLOWED_CONSOLE = ()` — the allowlist is empty and
+  `test_console_allowlist_has_no_dead_entries` keeps it honest. Dark mode must
+  not add an entry.
 
 **On contrast checking — the honest gap.** Pixel snapshots would be noisy and
 high-maintenance for a 257-template app. Recommendation: an axe-core pass (or a
@@ -572,8 +774,12 @@ surfaces have settled.
 | `table-light` | 49 | 35 `thead`, 6 `tr`, 1 `tfoot` |
 | `bg-light` | 59 | ~23 badge pairs |
 | Inline `style=` / colour-bearing | 301 / **15** | — |
-| Value-named token `var()` callsites | 28 (CSS), **0** (templates) | the rename surface |
+| Value-named token `var()` callsites | **27** (CSS), **0** (templates) | the rename surface |
+| — of which `--bg-gray-medium` | **4** (draft said 5) | `grep -ro 'var(--bg-gray-medium)'` |
 | Fully-rendered-HTML cache routes | 5 | `user_aware_cache_key` |
+| Bare `text-dark` that are `stat-value text-dark text-detail` | **15 of 20** | 3 card partials; see decision 5 |
+| App-owned JS files | 17 | `static/js/` — `theme-toggle.js` makes 18 |
+| `color-scheme:dark` shipped by Bootstrap | **yes** | first declaration of its dark block |
 | Watermark PNG: transparent / visible | 99.3 % / **0.7 %** | RGBA, 1029×3088 |
 | Watermark: distinct visible colours | **1** — `#faa119` (`--ncar-orange`) @ α≈33 % | why it needs no dark variant |
 
@@ -607,3 +813,22 @@ Recorded per that document's own convention.
 | 1 | "83 hardcoded-white sites" as the scope of the CSS work | 83 is correct as a count, but **26 are foreground-on-brand (correct as-is)** and 22 are `--bs-*` overrides of which only 3 are surfaces. The real surface work is **12 declarations + 3 card variables**. | Scope estimate ~5× high. The nine `background-color: #fff` sites it lists for `dashboard.css` are exactly right. |
 | 2 | (not stated) | The template-side utility classes — `table-light` (49), bare `text-dark` (20), `bg-light` (59) — are a **larger** surface than the CSS whites, and were not inventoried. | ~130 attributes of unbudgeted work. Partly offset by `text-muted` × 624 being free. |
 | 3 | "PR 3 has a real head start" from Bootstrap's unused dark block | True, and stronger than implied: `text-muted`, the app's most-used utility, is already theme-correct. But the same block **does not** redefine `--bs-light-rgb` / `--bs-dark-rgb` / `--bs-secondary-rgb`, which is precisely why item 2 exists. | Head start is real; it is not uniform. |
+
+## Appendix D — corrections to this document's first draft (2026-08-01)
+
+Recorded so the diff between drafts is auditable rather than silent. Every
+count in the original was re-run against `staging@bee0f4d`; all of them held
+except where noted.
+
+| # | First draft | Actually | Impact |
+|---|---|---|---|
+| 1 | Treated the theme carrier as a new design ("Decision: a cookie…"), written before PR 1 merged | PR 1 shipped the identical mechanism for **layout** — `LAYOUT_COOKIE`/`read_layout`/`layout-axis.js` — and left named hooks for this PR in three files. `chart_view` already accepts `theme=` and keys on it; `user_aware_cache_key`'s docstring already specifies the change | The carrier is now *followed*, not designed. Removes a decision and shrinks PR 4 to "pass the argument" |
+| 2 | Implied theme would ride the same two channels as layout | Theme needs **one** channel. Layout is discovered client-side after first paint; theme is declared by a click that reloads, so cookie and browser can never disagree | Drops the `?theme=` htmx param, its key-space split, and its duplicate-query-key defence |
+| 3 | `theme` into `user_aware_cache_key` scheduled as **D8** (last) | Belongs in **D3**, with the carrier | Avoids four commits of theme bugs that are indistinguishable from stale-cache artifacts, on exactly the pages under manual test |
+| 4 | "20 bare `text-dark` → `text-body-emphasis`" as a mechanical swap | 15 of 20 are one repeated string over `.stat-value`, which already sets `color: var(--ncar-navy)` that `text-dark`'s `!important` suppresses | New design decision 5; the "mechanical" framing would have shipped either an unreadable navy on dark or an undeclared light-mode restyle of the three most-viewed cards |
+| 5 | "28 `var()` callsites"; `--bg-gray-medium` × 5 | **27**; `--bg-gray-medium` × **4** | Cosmetic |
+| 6 | "`e2e/` … parameterize the fixture so every swept page renders twice" | `e2e/` is at the **repo root**, and "the fixture" would double the declared interaction flows too | Parameterize the route sweep only |
+| 7 | `allocations/blueprint.py:307,622` | `:309,635` | Line drift from #414 |
+| 8 | (not stated) | `utils/csp.py`'s docstring says "Four routes cache fully-rendered HTML"; there are **five** | Pre-existing drift, fixed in D0 |
+| 9 | (not stated) | Bootstrap's dark block already sets `color-scheme:dark`, so native controls/scrollbars need no work | One less thing |
+| 10 | (not stated) | The navbar utility menu is `is_authenticated`-gated; the login page is a separate shell | Toggle must sit outside the conditional and be duplicated into `login.html` |
