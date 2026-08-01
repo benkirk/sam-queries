@@ -84,8 +84,9 @@ class PieChart(BaseChart):
     #: Wedges under this percentage get no inline label — they'd overlap.
     autopct_min_pct = 5
     autopct_fontsize = 8
+    #: 9pt on a (7,4) figure — see the note on PaceChart.legend_fontsize.
     legend_fontsize = 9
-    legend_anchor = (1.0, 0.5)
+    legend_anchor = (1.01, 0.5)
 
     #: A drill target (`RowDrill`/`UserDrill`) or None. When None the legend
     #: is built but its return value discarded, exactly as before — the two

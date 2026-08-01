@@ -68,6 +68,12 @@ plt.rcParams.update({
     'axes.spines.right':  False,
     'xtick.color':        '#011837',
     'ytick.color':        '#011837',
+    # Legend labels and any bare ax.text(). NEVER SET until C12, so every
+    # legend in every chart rendered in matplotlib's default pure black while
+    # the rest of the chrome was space-blue — subtle enough that nobody
+    # noticed for a year, and invisible in a diff until the palette had one
+    # home.
+    'text.color':         '#011837',
     'grid.color':         '#bbbcbc',   # ncar-gray-light
     'grid.alpha':         0.4,
     'grid.linewidth':     0.5,

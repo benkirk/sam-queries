@@ -134,12 +134,13 @@ class PaceChart(BaseChart):
     cache_maxsize = 192
     empty_message = 'No allocations available'
     LAYOUTS = profile((10, 4))
-    #: The one chart with a lighter grid than the 0.3 everything else uses.
-    #: Undocumented and probably accidental; C12 normalizes it deliberately.
-    grid = {'alpha': 0.2}
+    #: Normalized to the 0.3 every other chart uses (was 0.2, undocumented).
+    grid = {'alpha': 0.3}
 
+    #: 9pt: this is a (10,4) figure, so the legend is proportionally larger
+    #: than the same point size on an 18-inch chart. Same tier as the pies.
     legend_fontsize = 9
-    legend_anchor = (1.0, 0.5)
+    legend_anchor = (1.01, 0.5)
 
     def __init__(self, allocations: List[Dict], active_at: datetime,
                  window_days: int = 180, top_n: int = 20,

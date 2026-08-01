@@ -35,7 +35,9 @@ class DualPanelTimeSeriesChart(BaseChart):
     #: Legend keyword arguments. Framed with a solid face — the one place in
     #: the app where a chart legend sits *over* the data rather than beside
     #: it, so it needs to occlude. `facecolor` comes from the theme.
-    legend_fontsize = 10
+    #: 11pt, matching the rcParams default and every other large figure.
+    #: Was 10 for no recorded reason.
+    legend_fontsize = 11
 
     def __init__(self, history_data: List[Dict]):
         self.history_data = history_data or []
@@ -108,10 +110,10 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
         ax1.set_ylabel('Number of Nodes', fontsize=layout.base_fontsize)
         ax1.set_ylim([0, None])
         ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-        # Preserved verbatim: this panel's grid is the literal 'grey', not the
-        # rcParams gray-light every other chart uses, and undocumented. C12
-        # normalizes it deliberately.
-        self.apply_grid(ax1, theme, color='grey')
+        # Normalized: this panel used the literal 'grey' rather than the
+        # themed gray-light every other chart uses. Undocumented, and the one
+        # grid colour a dark theme could not have swapped.
+        self.apply_grid(ax1, theme)
 
         ax2.set_ylabel('Utilization', fontsize=layout.base_fontsize)
         ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=layout.base_fontsize)
