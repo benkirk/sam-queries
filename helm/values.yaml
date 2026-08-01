@@ -51,9 +51,20 @@ topologySpread:
 # ~15 KB; the live jobs timeline measures ~35 KB and its histogram ~10 KB.
 #
 # maxmemory is DELIBERATELY NOT reduced to match. The freed headroom is
-# earmarked: the layout and theme render axes multiply each chart's working
-# set by up to 4 once the mobile and dark-mode passes wire them up, which
-# roughly cancels the saving. Headroom is the safe direction anyway because
+# earmarked for the layout and theme render axes. The mobile pass has now
+# spent half of that earmark, and it came in cheaper than the "up to 4x"
+# this comment previously budgeted: a mobile SVG is a ~4in figure rather
+# than an 18in one, so it carries fewer path points and less text, and
+# measures **0.76x** its desktop twin (411 KB vs 542 KB across the same 32
+# sample cases). Both layouts together are 1.76x desktop alone, not 2x.
+# Extrapolating, all four combinations should land near 3.1x rather than 4x
+# — still comfortably inside 192 MB against a base that dropped 58%.
+#
+# Note the multiplier applies only to charts actually *requested* in both
+# layouts inside the 600s TTL. Desktop remains the overwhelming majority of
+# traffic, so the real working set grows well under 1.76x.
+#
+# Headroom is the safe direction anyway because
 # allkeys-lru is instance-GLOBAL: under pressure it is free to evict the
 # rate limiter's DB 1 counters. Container limit keeps ~1.7x maxmemory for
 # redis overhead and fragmentation. Watch `INFO stats: evicted_keys` and

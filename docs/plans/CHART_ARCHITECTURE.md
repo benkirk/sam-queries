@@ -21,9 +21,18 @@ noted, because several of these numbers are commit-completion gates.
 | # | PR | Depends on | Ships |
 |---|---|---|---|
 | **1** | **Chart architecture refactor** ← *this document* | — | The OO hierarchy, the structured drill scheme, `Layout`/`Theme` as inert parameters, plus cosmetic normalization (C12) and `svg.fonttype` (C2a). Visual change is permitted but confined to declared commits. |
-| 2 | Mobile-friendly charts | 1 | Wires the `mobile` layout: transport, `_parse_layout()`, per-family mobile profiles, CSS for the unstyled wrappers. |
+| 2 | Mobile-friendly charts — **SHIPPED**, see `MOBILE_CHARTS.md` | 1 | Wires the `mobile` layout: cookie + htmx transport, `read_layout()`, per-family mobile profiles, the two `Layout` fields nothing read, mobile chart gutters. |
 | 3 | App-wide dark mode | — (parallel to 2) | `data-bs-theme`, cookie carrier, `variables.css` dark block, the 83 hardcoded-white sites. **Separate planning session.** |
 | 4 | Dark-mode charts | 1 **and** 3 | Wires the `dark` theme through the axis PR 1 built. |
+
+**What PR 2 leaves PR 3/4.** The cookie rail exists and is worth reusing:
+`static/js/layout-axis.js` writes `sam_layout` from `matchMedia` and
+`webapp/utils/htmx.py:read_layout()` reads query-string-then-cookie. Theme
+needs the same shape with one extra constraint — a theme flash is visible
+where a chart size is not, so the cookie must be read server-side into
+`<html data-bs-theme>` rather than applied by script. **`user_aware_cache_key`
+already carries `|l:<layout>` and needs `|t:<theme>` beside it**; that is the
+one edit whose omission is silent and global.
 
 PR 1 is the only one specified here. Its job is to make 2 and 4 *small*, and to
 leave 3 unblocked. § **Groundwork the follow-on passes will find waiting**

@@ -73,6 +73,15 @@ class BaseChart:
     #: it is a Redis key prefix (`redis_chart.py`) and test_redis_cache.py
     #: names several directly.
     cache_name: str = None
+
+    #: In-process LRU capacity. **Redis ignores this entirely** — under Redis
+    #: eviction is instance-global `allkeys-lru` — so it only bounds the
+    #: no-Redis fallback, where overflowing costs a re-render rather than
+    #: correctness. A live second layout splits every chart's key space, so
+    #: the three tightest budgets were raised when `mobile` shipped; the rest
+    #: had enough slack. Sizes are per-chart because the working sets differ
+    #: by two orders of magnitude (one facility pie vs the jobs explorer's
+    #: per-filter-set fanout).
     cache_maxsize: int = 128
 
     #: `{'desktop': Layout, 'mobile': Layout}` — build with `layout.profile`.

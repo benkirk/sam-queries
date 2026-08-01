@@ -575,17 +575,41 @@ charts/
 bespoke).
 
 **Lifecycle** — override only what differs; all hooks default to no-ops:
-`prepare()` → `is_empty()`/`empty_state` → `make_figure()` → `draw()` →
-`decorate()` → `add_legend()` → `finish()` → SVG.
+`prepare()` → `is_empty()`/`empty_state` → `make_figure()` →
+`apply_tick_fontsize()` → `draw()` → `decorate()` → `add_legend()` →
+`finish()` → SVG.
+
+### The `layout` axis (desktop / mobile)
+
+Every chart renders at two figure sizes. Desktop is the identity — it
+reproduces pre-axis output byte for byte. Mobile exists because an 18in figure
+scaled into a phone card puts 9-11pt labels on screen at ~2px, which no CSS
+can fix.
+
+| | |
+|---|---|
+| **Declare** | `LAYOUTS = profile(desktop_figsize, mobile_figsize, **desktop_kwargs, mobile={...})`. Keyword args configure **desktop**; mobile overrides go in the `mobile` dict — a bare keyword that collides with a desktop parameter silently configures desktop. |
+| **Consume** | `layout.figsize` / `base_fontsize` / `legend_placement` / `max_legend_entries` / `max_ticks` / `label_rotation` / `legend_fontsize`. Helpers on `BaseChart`: `legend_kwargs()`, `legend_entry_cap()`, `label_kw()`. |
+| **Transport** | `static/js/layout-axis.js` sets a `sam_layout` cookie **and** injects `?layout=` into every htmx request; routes read `webapp.utils.htmx.read_layout()`. Both are needed — 9 of 18 call sites render in a full-page GET that htmx never touches. |
+| **Cache** | `chart_view` composes `layout` into the chart key; `user_aware_cache_key` composes it into cached *HTML*. Forget the latter and a cached page serves one layout to everyone. |
+
+`render()` sets `self.layout` before `prepare()`, so data-shaping hooks can
+consult it — pies cap **slices** on mobile rather than legend rows, because an
+unlabelled wedge is also an unlabelled drill target.
+
+Design + measurements: `docs/plans/MOBILE_CHARTS.md`.
 
 ### Adding a chart
 
 1. Subclass the closest family; set `cache_name`, `cache_maxsize`,
-   `empty_message`, `LAYOUTS = profile((w, h))`.
+   `empty_message`, `LAYOUTS = profile((w, h), (mobile_w, mobile_h))`.
 2. `cache_key` is a **staticmethod over the raw constructor arguments** — a
    cache hit must never construct the chart or run `prepare()`.
 3. Bind with `chart_view(...)` in `__init__.py`, add to `__all__`.
-4. Add a case to `tests/unit/chart_samples.py` (a gate requires one).
+4. Add a case to `tests/unit/chart_samples.py` (a gate requires one). It is
+   fingerprinted at **both** layouts automatically.
+5. Pass `layout=read_layout()` at the call site. Fragments registered through
+   `utils/fragments.py` get it for free.
 
 ### Drill-downs
 
@@ -617,15 +641,23 @@ a row drill — row drills resolve within the clicked chart's pane.
    `jobs_metrics.py` — enforced by `test_chart_module_boundaries.py`.
 ❌ **DON'T** reorder the `chart_view` calls: that order is the admin Caching
    card's row order, and cache names are Redis key prefixes.
+❌ **DON'T** put a mobile override in `profile()`'s bare keywords — those are
+   desktop. Use `mobile={...}`, which validates against `Layout`'s fields.
+❌ **DON'T** cap a legend without passing `ordered=True` to `link_legend` — it
+   zips bands against patches by position, and a capped legend is no longer
+   `reversed(bands)`. The fingerprint proves href *strings*, not the artists
+   carrying them, so a misaligned drill looks green.
 ✅ **DO** regenerate the fingerprint snapshot in the *same commit* as an
    intentional visual change:
    `CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py`.
-   A fingerprint delta in a commit that didn't declare one is a bug.
+   A fingerprint delta in a commit that didn't declare one is a bug. **A
+   desktop delta in a mobile-tuning commit always is.**
 ✅ **DO** run `sam-admin cache --refresh --category chart` after deploying a
    visible change — keys hash *input data*, not rendering code, so warm Redis
    entries serve old-code SVGs for up to 600 s.
 
-Design + rationale: `docs/plans/CHART_ARCHITECTURE.md`.
+Design + rationale: `docs/plans/CHART_ARCHITECTURE.md` (the hierarchy),
+`docs/plans/MOBILE_CHARTS.md` (the layout axis).
 
 ---
 

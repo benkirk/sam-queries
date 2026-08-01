@@ -205,8 +205,10 @@ class FacilityPie(_FixedCapPie):
     surrounding HTML (see allocations dashboard template)."""
 
     cache_name = 'facility_pie_chart'
-    #: One entry per resource filter combination; few distinct views.
-    cache_maxsize = 32
+    #: One entry per resource filter combination; few distinct views. Raised
+    #: from 32 with the mobile layout: a second live profile splits every
+    #: chart's key space, and this was the tightest budget in the package.
+    cache_maxsize = 48
     empty_message = 'No facility data available'
     fields = ('facility', 'annualized_rate')
 

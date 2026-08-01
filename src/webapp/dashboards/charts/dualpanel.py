@@ -136,8 +136,9 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     """Node availability (stacked) over CPU/GPU + memory utilization."""
 
     cache_name = 'nodetype_history'
-    #: One entry per node type; can be O(10s) across all machines.
-    cache_maxsize = 64
+    #: One entry per node type; can be O(10s) across all machines. Raised
+    #: from 64 for the second layout profile.
+    cache_maxsize = 96
     empty_message = 'No history data available for this node type'
     #: Two stacked panels need real vertical room on a phone — this is the
     #: tallest mobile figure in the package, and still barely enough.
@@ -201,7 +202,8 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
 
     cache_name = 'queue_history'
     #: One entry per queue; queue counts can be O(10s) across all resources.
-    cache_maxsize = 64
+    #: Raised from 64 for the second layout profile.
+    cache_maxsize = 96
     empty_message = 'No history data available for this queue'
     LAYOUTS = profile((14, 8), (4.0, 4.2))
 
