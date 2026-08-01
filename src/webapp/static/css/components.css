@@ -28,8 +28,8 @@
    =================================================================== */
 
 .stat-box {
-    background: var(--bg-gray-light);
-    border: 1px solid #dee2e6;
+    background: var(--surface-tertiary);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-sm);
     padding: 15px;
     text-align: center;
@@ -201,7 +201,7 @@ svg a, svg a:hover, svg a:focus, svg a:visited {
 
 /* edit_project.html: contracts/orgs tree lists */
 .tree-list { list-style: none; padding-left: 1.25rem; }
-.tree-list > li { border-left: 2px solid #dee2e6; padding: 0.25rem 0.5rem; margin-bottom: 0.1rem; }
+.tree-list > li { border-left: 2px solid var(--border-default); padding: 0.25rem 0.5rem; margin-bottom: 0.1rem; }
 
 /* admin configuration card: two-column definition stats */
 .config-stats {
@@ -249,16 +249,16 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
    neutral up/down cue (click to sort) and an arrow for the active column.
    Mirrors the rule duplicated in admin.css / allocations.css. */
 .sortable-header { cursor: pointer; user-select: none; white-space: nowrap; }
-.sortable-header::after { content: ' \2195'; color: #adb5bd; font-size: 0.8em; }
-.sortable-header.sort-asc::after { content: ' \2191'; color: #495057; }
-.sortable-header.sort-desc::after { content: ' \2193'; color: #495057; }
+.sortable-header::after { content: ' \2195'; color: var(--text-tertiary); font-size: 0.8em; }
+.sortable-header.sort-asc::after { content: ' \2191'; color: var(--text-primary); }
+.sortable-header.sort-desc::after { content: ' \2193'; color: var(--text-primary); }
 
 /* Secondary sort handle inside a sortable header (sortable_table.js):
    its own arrow for an alternate sort key on the same column, e.g.
    first-name sort to the left of "Name" (which sorts by last name). */
-.sortable-header .sort-handle::after { content: '\2195 '; color: #adb5bd; font-size: 0.8em; }
-.sortable-header .sort-handle.sort-asc::after { content: '\2191 '; color: #495057; }
-.sortable-header .sort-handle.sort-desc::after { content: '\2193 '; color: #495057; }
+.sortable-header .sort-handle::after { content: '\2195 '; color: var(--text-tertiary); font-size: 0.8em; }
+.sortable-header .sort-handle.sort-asc::after { content: '\2191 '; color: var(--text-primary); }
+.sortable-header .sort-handle.sort-desc::after { content: '\2193 '; color: var(--text-primary); }
 
 /* resource_details Historical Usage / Usage by User tables.
    Each lazily-loaded user/queue/date subtree renders as its own nested
@@ -279,7 +279,7 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
    .help-icon — chrome-less ⓘ/? button next to a heading or label.
    .help-term — inline term/column-header with a dotted-underline cue. */
 .help-icon {
-    color: #adb5bd;
+    color: var(--text-tertiary);
     font-size: inherit;
     line-height: 1;
     vertical-align: baseline;
@@ -287,7 +287,7 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     text-decoration: none;
 }
 .help-icon:hover,
-.help-icon:focus-visible { color: #6c757d; }
+.help-icon:focus-visible { color: var(--text-secondary); }
 .help-term {
     cursor: help;
     text-decoration: underline dotted;

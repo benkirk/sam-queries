@@ -8,9 +8,10 @@ csp_extra=) its origin flows into the right directives automatically.
 
 Design constraints (see docs/plans/implemented/CSP-discussion.md):
 
-- Nonce-free by design. Four routes cache fully-rendered HTML in Redis
-  per-user (orgs/institutions cards, allocations dashboard + fragment);
-  a per-request nonce would go stale on every cache hit. Instead, the
+- Nonce-free by design. Five routes cache fully-rendered HTML in Redis
+  per-user (orgs/institutions cards, contracts card, allocations
+  dashboard + fragment) — grep `user_aware_cache_key`; a per-request
+  nonce would go stale on every cache hit. Instead, the
   templates carry zero inline executable scripts — behavior lives in
   static JS, dynamic data rides data-* attributes or non-executable
   <script type="application/json"> blocks. tests/unit/test_template_csp_lint.py

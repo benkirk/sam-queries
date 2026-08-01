@@ -31,7 +31,7 @@
 
 <div class="table-responsive">
     <table class="table table-sm mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
             <tr>
                 <th>Root Directory</th>
                 <th>Charging Exempt</th>
@@ -45,7 +45,7 @@
         {% set _total_roots.n = _total_roots.n + r.root_directories|length %}
         {# ── Resource row (clickable trigger) ── #}
         <tbody>
-            <tr class="cursor-pointer table-light fw-semibold"
+            <tr class="cursor-pointer table-subtle fw-semibold"
                 data-bs-toggle="collapse"
                 data-bs-target="#disk-root-res-{{ r.resource_id }}"
                 aria-expanded="false">

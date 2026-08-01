@@ -132,14 +132,14 @@
       </span>
     {% endif %}
     {% if filters.user %}
-      <span class="badge bg-light text-dark me-1">user: {{ filters.user }}</span>
+      <span class="badge bg-body-tertiary text-body-emphasis me-1">user: {{ filters.user }}</span>
     {% endif %}
     {% if filters.queue %}
-      <span class="badge bg-light text-dark me-1">queue: {{ filters.queue }}</span>
+      <span class="badge bg-body-tertiary text-body-emphasis me-1">queue: {{ filters.queue }}</span>
     {% endif %}
     {% if filters.account %}
       {# User-mode account narrowing (the By Project drill). #}
-      <span class="badge bg-light text-dark me-1">project: {{ filters.account }}</span>
+      <span class="badge bg-body-tertiary text-body-emphasis me-1">project: {{ filters.account }}</span>
     {% endif %}
     {% if qos_options %}
       {# QoS filter — bound to the hidden filter form via form="…" so
@@ -164,14 +164,14 @@
       {# Single shared QoS across all rows: the per-row column is suppressed,
          so surface the value (and charging multiplier) here instead of
          leaving it silent. #}
-      <span class="badge bg-light text-dark me-1">
+      <span class="badge bg-body-tertiary text-body-emphasis me-1">
         QoS: {{ qos_badge.name }}{% if qos_badge.factor is not none %} ({{ qos_badge.factor | fmt_factor }}){% endif %}
       </span>
     {% endif %}
     {% if user_badge %}
       {# Whole (single-page) result belongs to one user with no pin/filter
          in play: the User column is suppressed, so name them here. #}
-      <span class="badge bg-light text-dark me-1">user: {{ user_badge.name }}</span>
+      <span class="badge bg-body-tertiary text-body-emphasis me-1">user: {{ user_badge.name }}</span>
     {% endif %}
     <span class="ms-auto text-muted small">
       {{ total | fmt_number }} job{{ '' if total == 1 else 's' }}
@@ -183,7 +183,7 @@
   {% else %}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0 jobs-fragment-table">
-        <thead class="table-light">
+        <thead class="table-subtle">
           <tr>
             <th style="width:1.5rem;" aria-label="Expand"></th>
             {% for col in visible_cols %}
@@ -216,7 +216,7 @@
               {% endfor %}
             </tr>
             <tr class="collapse jobs-detail-row" id="{{ rowid }}">
-              <td colspan="{{ visible_cols | length + 1 }}" class="bg-light">
+              <td colspan="{{ visible_cols | length + 1 }}" class="bg-body-tertiary">
                 <dl class="row mb-0 small">
                   {% for col in verbose_extras %}
                     {% set v = r.get(col) %}

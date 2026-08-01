@@ -45,11 +45,11 @@
       {% endif %}
     </h3>
     {% if mode == 'machine' %}
-      <span class="badge bg-warning-subtle text-dark border">
+      <span class="badge bg-warning-subtle text-warning-emphasis border">
         <i class="fas fa-shield-halved me-1"></i> Machine-wide (operator view)
       </span>
     {% elif mode == 'project' and scope %}
-      <span class="badge bg-secondary-subtle text-dark border"
+      <span class="badge bg-secondary-subtle text-secondary-emphasis border"
             title="Re-rooted to a subtree of {{ project.projcode }}">
         <i class="fas fa-diagram-project me-1"></i> scope: {{ scope }}
       </span>

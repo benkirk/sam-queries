@@ -6,10 +6,16 @@ matplotlib's font manager, and applying the rcParams that give every chart the
 editorial flat look. Nothing else in the package may rely on import order.
 
 **Data colours vs chrome colours.** The ``UNITY_*`` palettes below encode data
-— a wedge, a stack band, a bar — and are theme-invariant: a project keeps its
-colour whether the page is light or dark. Everything a `Theme` carries is
-*chrome*: text, spines, grid, edges, the shading blend target. That split is
-what lets a dark theme be a mechanical swap rather than a redesign.
+— a wedge, a stack band, a bar — and are theme-invariant in *hue*: a project
+keeps its colour whether the page is light or dark. Everything a `Theme`
+carries is *chrome*: text, spines, grid, edges, the shading blend target. That
+split is what lets a dark theme be a mechanical swap rather than a redesign.
+
+The one place the split leaks is `Theme.data_color`, and it is a leak the
+chart-architecture plan predicted (Appendix B, "needs a design decision, not a
+mechanical swap"): three of the ten pie colours are brand *darks*, and a dark
+fill on a dark card is not a colour choice, it is an invisible wedge. See
+`lift_for_contrast` for what is done about it and why hue survives.
 """
 
 from dataclasses import dataclass
@@ -238,9 +244,62 @@ class Theme:
     shade_toward: str    # `shade_family` blend target
     accent: str          # the pace chart's "today" marker
 
+    #: The colour actually behind the figure. Every chart is saved with
+    #: ``transparent=True``, so the "background" of a chart is whichever card
+    #: the SVG is inlined into — `--surface-card` in `static/css/variables.css`.
+    #: Distinct from `shade_toward` despite sharing a value in both themes:
+    #: that one is a *blend target* a family may point elsewhere, this one is a
+    #: statement of fact about the page.
+    surface: str
+
+    #: Minimum contrast a data fill must reach against `surface`, or None to
+    #: leave data colours exactly as the palette declares them. See
+    #: `lift_for_contrast`.
+    min_data_contrast: float | None
+
+    #: Fill for the inert aggregate band — the "Others" / "Other (N projects)"
+    #: remainder every family collapses its tail into.
+    #:
+    #: A *role*, not a colour, and the reason it needs one is that its job is
+    #: to **recede**. `--ncar-gray-light` recedes against a white card (1.90:1)
+    #: and shouts against a dark one (7.97:1), where it is routinely the
+    #: largest band on the chart — so on dark it became the loudest thing in
+    #: the picture while meaning the least. The dark value is picked to sit at
+    #: 1.77:1, i.e. to be as recessive as the light one is, and it must NOT go
+    #: through `data_color`: `min_data_contrast` would lift it straight back
+    #: up to 3:1 and undo exactly what it is for. Lift the palette, then place
+    #: this beside it.
+    muted_data: str
+
+    #: Alpha for stacked *areas*. A property of the theme rather than the
+    #: chart, because the figure is transparent and the alpha therefore
+    #: composites against `surface`: 0.85 over white is the light page's
+    #: deliberate softening, and the same 0.85 over `#1b2733` drags every band
+    #: back down toward the card and undoes `min_data_contrast`.
+    area_alpha: float
+
     @property
     def is_dark(self) -> bool:
         return self.name == 'dark'
+
+    # --- data colours ------------------------------------------------------
+
+    def data_color(self, color):
+        """One palette colour, made legible against this theme's `surface`.
+
+        Identity — the *same object* — whenever `min_data_contrast` is None,
+        which is how `Theme.LIGHT` guarantees byte-identical output rather
+        than merely equivalent output.
+        """
+        if self.min_data_contrast is None:
+            return color
+        return lift_for_contrast(color, self.surface, self.min_data_contrast)
+
+    def data_colors(self, colors):
+        """`data_color` over a sequence, preserving order and length."""
+        if self.min_data_contrast is None:
+            return colors
+        return [self.data_color(c) for c in colors]
 
 
 #: Today's rendering, exactly. Every value here is the literal the charts
@@ -255,14 +314,26 @@ Theme.LIGHT = Theme(
     legend_face='white',
     shade_toward='#ffffff',
     accent=UNITY_NCAR_NAVY,
+    surface='#ffffff',
+    # **None, not 3.0.** Four of the palette's warm colours (gold at 1.43:1,
+    # yellow-33 at 1.30:1, orange and sky at 2.06:1) have never cleared 3:1
+    # against a white card and are not defects — a gold wedge outlined by its
+    # neighbours reads fine, and "fixing" them would darken the brand palette
+    # on every existing page. The floor exists for the dark surface, where
+    # the failing colours are *text-dark navies* rather than brand yellows.
+    min_data_contrast=None,
+    area_alpha=0.85,
+    muted_data=UNITY_NCAR_GRAY_LIGHT,
 )
 
-#: Defined so the axis is real and testable, not so it is shippable. The
-#: values are a starting point for the dark-mode pass, which also has to
-#: decide two things a mechanical swap cannot (see the plan, Appendix B):
-#: `UNITY_PALETTE_10[8]` is space blue used as a *wedge fill* and vanishes
-#: into a dark page, and the alpha=0.85 stackplots composite against the page
-#: so every band desaturates.
+# The dark rendering. Chrome values were chosen in PR 1; the two data-colour
+# decisions PR 1 deferred are answered by `min_data_contrast` and
+# `area_alpha` above.
+#:
+# `surface` is `--surface-card` from `static/css/variables.css`, and
+# `test_dark_card_matches_chart_blend_target` fails if the two drift — a
+# chart blending toward a card colour the card no longer has produces a halo
+# that no test other than that one would see.
 Theme.DARK = Theme(
     name='dark',
     text='#e9ecef',
@@ -273,6 +344,18 @@ Theme.DARK = Theme(
     legend_face='#1b2733',
     shade_toward='#1b2733',
     accent='#adc2e6',
+    surface='#1b2733',
+    # WCAG 2.1 SC 1.4.11 (Non-text Contrast) — 3:1 for a graphical object you
+    # need to see to understand the content, which is what a pie wedge is.
+    min_data_contrast=3.0,
+    # 1.0, not 0.85 — see the field docstring. The softening the light page
+    # wants is the thing that makes a dark page muddy.
+    area_alpha=1.0,
+    # 1.77:1 against `surface`, mirroring the 1.90:1 `--ncar-gray-light` has
+    # against a white card. Deliberately not `grid` (2.00:1) despite the
+    # family resemblance — a data band the exact colour of the gridlines
+    # reads as a rendering fault.
+    muted_data='#434d59',
 )
 
 THEMES = {'light': Theme.LIGHT, 'dark': Theme.DARK}
@@ -294,7 +377,63 @@ def resolve_theme(theme) -> Theme:
 # Colour helpers
 # ---------------------------------------------------------------------------
 
-def autopct_color_for(bg_hex: str) -> str:
+def relative_luminance(color) -> float:
+    """WCAG 2.1 relative luminance of any matplotlib colour.
+
+    The same formula `e2e/test_dark_mode.py` runs in the browser, so a colour
+    this module lifts and a colour Playwright measures are judged identically.
+    """
+    def channel(c):
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = matplotlib.colors.to_rgb(color)
+    return (0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b))
+
+
+def contrast_ratio(a, b) -> float:
+    """WCAG 2.1 contrast ratio between two colours, ignoring alpha."""
+    la, lb = relative_luminance(a), relative_luminance(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def lift_for_contrast(color, surface, min_ratio: float):
+    """*color*, tinted toward white just far enough to clear *min_ratio*.
+
+    Returned unchanged (identity) when it already clears, which is the common
+    case: on the dark card this touches 3 of the 10 pie colours, 1 of the 10
+    stack colours and 3 of the 20 — the brand *darks*, `#011837` at 1.17:1 and
+    `#00357a` at 1.29:1, which are text colours pressed into service as fills.
+
+    **Why tint toward white rather than raise HSL lightness.** Both restore
+    contrast; only one keeps the palette usable. The three failing pie colours
+    are all blues, and lifting each to exactly 3:1 by lightness converges them
+    on `#0469f0` / `#0068ef` / `#0069eb` — three names for one blue, in a
+    palette whose entire job is telling ten things apart. Tinting lands them
+    on `#627083` / `#4c72a2` / `#246fcb`, which desaturates as it lightens and
+    therefore keeps them separable. Measured: this leaves every palette's
+    minimum pairwise channel distance at or above what it already was, so
+    nothing becomes harder to tell apart than it is today.
+
+    Alpha is carried through untouched — the ratio is a property of the fill,
+    and the one translucent constant in the package (the pace chart's
+    "Other" band) clears the floor anyway.
+    """
+    if contrast_ratio(color, surface) >= min_ratio:
+        return color
+
+    r, g, b, a = matplotlib.colors.to_rgba(color)
+    # Walk in 8-bit steps: the SVG is 8-bit per channel regardless, so a finer
+    # search would return values that render identically, and integer steps
+    # make the result reproducible across platforms and matplotlib versions.
+    for step in range(1, 256):
+        f = step / 255
+        lifted = tuple(round(255 * (c + (1 - c) * f)) / 255 for c in (r, g, b))
+        if contrast_ratio(lifted, surface) >= min_ratio:
+            return lifted + (a,)
+    return (1.0, 1.0, 1.0, a)
+
+
+def autopct_color_for(color) -> str:
     """Pick a readable text color for percent labels on a colored pie wedge.
 
     Returns space-blue on light wedges (gold, sky) and white on dark wedges
@@ -302,9 +441,14 @@ def autopct_color_for(bg_hex: str) -> str:
     against UNITY_PALETTE_10.
 
     Theme-invariant on purpose: the choice is driven by the *wedge* luminance,
-    not the page, so it is already correct in both themes.
+    not the page, so it is already correct in both themes — and it stays
+    correct for free once `Theme.data_color` lifts a wedge, because a lifted
+    wedge is a lighter wedge and this flips to space-blue on its own.
+
+    Accepts any matplotlib colour rather than only a hex string, because a
+    lifted wedge arrives as an RGBA tuple.
     """
-    r, g, b = (int(bg_hex[i:i+2], 16) / 255 for i in (1, 3, 5))
+    r, g, b = matplotlib.colors.to_rgb(color)
     lum = 0.299 * r + 0.587 * g + 0.114 * b
     return UNITY_NCAR_SPACE_BLUE if lum > 0.6 else '#fff'
 

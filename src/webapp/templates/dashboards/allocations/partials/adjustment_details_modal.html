@@ -15,7 +15,7 @@
 <div class="mb-3 d-flex align-items-center flex-wrap gap-2">
     <span class="badge bg-secondary fs-6">{{ r.adjustment_type }}</span>
     <span class="text-muted">·</span>
-    <span class="text-dark">{{ r.adjustment_date | fmt_date }}</span>
+    <span class="text-body-emphasis">{{ r.adjustment_date | fmt_date }}</span>
 </div>
 
 <div class="project-stats-box" style="grid-template-columns: auto minmax(0, 1fr);">
@@ -87,7 +87,7 @@
     {% if r.comment %}
     <div class="stat-item stat-item-block">
         <span class="stat-label d-block mb-1">Comment:</span>
-        <pre class="stat-value mb-0 p-2 bg-light border rounded"
+        <pre class="stat-value mb-0 p-2 bg-body-tertiary border rounded"
              style="white-space:pre-wrap; word-break:break-word; font-size:0.85rem; font-weight:normal;">{{ r.comment }}</pre>
     </div>
     {% endif %}

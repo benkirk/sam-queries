@@ -20,6 +20,7 @@ instead — `links.py` and `series.py` import no matplotlib, enforced by test.
         decorate(axes, ...)       labels, ticks, grid, scale, theme chrome
         add_legend(axes, ...)     placement from layout, colours from theme
         finish(fig, axes, ...)    autofmt_xdate, xlim, annotations
+        apply_chrome(...)         theme.text/spine onto every chrome artist
         to_svg(fig)               the single savefig/close chokepoint
 
 Hooks default to no-ops, so a leaf implements only what differs. State goes on
@@ -261,6 +262,54 @@ class BaseChart:
         # default beside 9pt ticks.
         ax.xaxis.get_offset_text().set_fontsize(layout.base_fontsize)
 
+    def apply_chrome(self, fig, axes, theme):
+        """Recolour every chrome artist from *theme*, after the chart is drawn.
+
+        The rcParams block in `theme.py` bakes the **light** chrome in at
+        import — it runs once per process, before any request has a theme —
+        so every title, axis label, tick, spine and legend label starts life
+        `#011837`. That is the whole of the dark-chart defect: figures already
+        render on a transparent background, so there was never a white box to
+        remove, only ink that could not be read. Verified in-browser at
+        **1.3:1** on `/allocations/projects` before this existed.
+
+        Applied centrally, after `finish()`, rather than left to each family,
+        for the reason `apply_tick_fontsize` gives: a chart that forgets is
+        invisible until someone looks at it in the other theme, and there are
+        sixteen of them.
+
+        **What it deliberately does not touch: `ax.texts`.** Those are the
+        artists a chart placed itself, and every one of them already carries a
+        colour chosen for a reason no theme should overrule — the pie's
+        percentage labels take theirs from the *wedge* luminance
+        (`autopct_color_for`), and the pace chart's "today" marker takes
+        theirs from `theme.accent`. Blanket-setting them would paint white
+        text onto a gold wedge.
+
+        A no-op in light mode by construction: every value assigned here is
+        the literal the rcParams block already installed, which
+        `test_chart_theme.py::TestThemeLight` is what keeps true.
+        """
+        for ax in (axes if isinstance(axes, (tuple, list)) else (axes,)):
+            ax.title.set_color(theme.text)
+            ax.xaxis.label.set_color(theme.text)
+            ax.yaxis.label.set_color(theme.text)
+            # `colors` covers the tick marks and their labels together, which
+            # is what rcParams `xtick.color` + `labelcolor: inherit` does.
+            ax.tick_params(axis='both', colors=theme.text)
+            for spine in ax.spines.values():
+                spine.set_color(theme.spine)
+            # A separate Text artist that `tick_params` does not reach — the
+            # same one `apply_date_axis` has to size by hand.
+            for axis in (ax.xaxis, ax.yaxis):
+                axis.get_offset_text().set_color(theme.text)
+
+            legend = ax.get_legend()
+            if legend is not None:
+                for text in legend.get_texts():
+                    text.set_color(theme.text)
+                legend.get_title().set_color(theme.text)
+
     def apply_tick_fontsize(self, axes, layout):
         """Size tick labels from the layout.
 
@@ -301,6 +350,9 @@ class BaseChart:
         self.decorate(axes, lay, thm)
         self.add_legend(axes, lay, thm)
         self.finish(fig, axes, lay, thm)
+        # Last, so it reaches artists the hooks above created — the legend in
+        # particular does not exist until `add_legend` has run.
+        self.apply_chrome(fig, axes, thm)
         return fig_to_svg(fig)
 
     # --- caching ----------------------------------------------------------

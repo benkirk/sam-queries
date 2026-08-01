@@ -7,7 +7,7 @@
 <div class="card-body p-0" id="facilities-pane">
     <div class="table-responsive">
         <table class="table table-sm mb-0">
-            <thead class="table-light">
+            <thead class="table-subtle">
                 <tr>
                     <th>Name</th>
                     <th>Code</th>
@@ -23,7 +23,7 @@
 
             {# ── Facility row (clickable collapse trigger) ── #}
             <tbody>
-                <tr class="cursor-pointer table-light fw-semibold{% if not f.active %} opacity-50{% endif %}"
+                <tr class="cursor-pointer table-subtle fw-semibold{% if not f.active %} opacity-50{% endif %}"
                     data-bs-toggle="collapse"
                     data-bs-target="#facility-panels-{{ f.facility_id }}"
                     aria-expanded="false">
@@ -34,7 +34,7 @@
                     </td>
                     <td>
                         {% if f.code %}
-                        <span class="badge bg-light text-dark border">{{ f.code }}</span>
+                        <span class="badge bg-body-tertiary text-body-emphasis border">{{ f.code }}</span>
                         {% else %}—{% endif %}
                     </td>
                     <td class="text-muted">{{ f.description or '—' }}</td>
@@ -93,7 +93,7 @@
                     <td colspan="5" class="ps-5 pt-0 pb-2">
                         {% if visible_ats %}
                         <table class="table table-sm table-bordered mb-0 bg-white" style="font-size: 0.875em;">
-                            <thead class="table-light">
+                            <thead class="table-subtle">
                                 <tr>
                                     <th>Allocation Type</th>
                                     <th>Default Amount</th>

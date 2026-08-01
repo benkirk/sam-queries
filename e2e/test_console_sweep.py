@@ -12,8 +12,9 @@ suite fast and stable; breadth comes from the route sweep.
 """
 import pytest
 
-from conftest import (ALLOWED_CONSOLE, dashboard_page_routes,
-                      expand_first_project_card, visit)
+from conftest import (ALLOWED_CONSOLE, THEMES, assert_theme_applied,
+                      dashboard_page_routes, expand_first_project_card,
+                      set_theme, visit)
 
 PAGE_ROUTES = dashboard_page_routes()
 
@@ -27,11 +28,27 @@ def test_route_list_is_not_empty():
     )
 
 
+@pytest.mark.parametrize('theme', THEMES)
 @pytest.mark.parametrize('route', PAGE_ROUTES)
-def test_page_loads_without_console_errors(page, errors, route):
+def test_page_loads_without_console_errors(page, errors, base_url, route, theme):
+    """Every dashboard page, in both themes.
+
+    Only the route sweep is theme-parameterized — the declared interaction
+    flows below are not. Dark mode is a *rendering* concern: it changes which
+    CSS custom properties resolve and, once PR 4 lands, which SVG bytes the
+    server produces. It cannot change whether an `hx-target` resolves or
+    whether a modal shell exists, which is what those flows are for. Doubling
+    them would double browser-smoke wall time to catch nothing.
+
+    What this *does* catch is the failure mode that theming really has: a
+    template or fragment that only renders under one theme, or a stylesheet
+    that throws the page into a state where a script fails.
+    """
+    set_theme(page, base_url, theme)
     visit(page, route)
+    assert_theme_applied(page, theme)
     found = errors.drain()
-    assert not found, f'{route} produced browser errors:\n' + '\n'.join(
+    assert not found, f'{route} ({theme}) produced browser errors:\n' + '\n'.join(
         f'  {entry}' for entry in found)
 
 

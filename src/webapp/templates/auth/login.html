@@ -1,5 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+{# Separate shell from dashboards/base.html — it needs its own copy of the
+   theme attribute and its own toggle. See docs/plans/DARK_MODE.md. #}
+<html lang="en" data-bs-theme="{{ theme }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,7 +20,7 @@
     <div class="login-container">
         <div class="login-header">
             <div class="login-logo">
-                <img src="{{ url_for('static', filename='img/logo-ncar.png') }}" alt="NSF NCAR" class="img-fluid">
+                <img src="{{ url_for('static', filename='img/logo-ncar-reversed.png' if theme == 'dark' else 'img/logo-ncar.png') }}" alt="NSF NCAR" class="img-fluid">
             </div>
             <h1>Systems Accounting<br>Manager</h1>
         </div>
@@ -119,12 +121,15 @@
         {% endif %}
 
         <div class="login-footer">
-            <small class="text-muted">
+            {% from 'dashboards/fragments/theme_toggle.html' import theme_toggle %}
+            {{ theme_toggle(theme, labelled=true) }}
+            <small class="text-muted d-block">
                 NSF NCAR &middot; SAM Web UI &copy; 2026
             </small>
         </div>
     </div>
 
     {{ vendor_js(['jquery', 'bootstrap-js']) }}
+    <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
 </body>
 </html>

@@ -37,7 +37,7 @@
 
 <div class="table-responsive">
     <table class="table table-sm mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
             <tr>
                 <th>Name / Acronym</th>
                 <th>Count</th>
@@ -54,7 +54,7 @@
         {% for it, insts in institution_types_grouped %}
         {# ── Institution Type row (clickable trigger) ── #}
         <tbody>
-            <tr class="cursor-pointer table-light fw-semibold"
+            <tr class="cursor-pointer table-subtle fw-semibold"
                 data-bs-toggle="collapse"
                 data-bs-target="#inst-type-{{ it.institution_type_id }}"
                 aria-expanded="false">

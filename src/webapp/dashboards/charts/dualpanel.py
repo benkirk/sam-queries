@@ -125,13 +125,19 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
 
     def draw(self, axes, layout, theme):
         ax1, ax2 = axes
+        # Series colours through the theme: only ncar-blue actually moves (it
+        # is 2.27:1 on the dark card), but resolving all of them one way keeps
+        # the next colour added here from being the exception.
+        vermilion, blue, sky, teal = theme.data_colors(
+            [UNITY_NCAR_VERMILION, UNITY_NCAR_BLUE, UNITY_NCAR_SKY,
+             UNITY_NCAR_TEAL])
         ax1.stackplot(
             self.timestamps,
             self.column('nodes_down'),
             self.column('nodes_allocated'),
             self.column('nodes_available'),
             labels=['Down', 'Fully Allocated', 'Resources Available'],
-            colors=[UNITY_NCAR_VERMILION, UNITY_NCAR_BLUE, UNITY_NCAR_SKY])
+            colors=[vermilion, blue, sky])
 
         utilization = [d.get('utilization_percent') for d in self.history_data]
         memory = [d.get('memory_utilization_percent') for d in self.history_data]
@@ -139,12 +145,12 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
         if any(u is not None for u in utilization):
             times = [self.timestamps[i] for i, u in enumerate(utilization) if u is not None]
             ax2.plot(times, [u for u in utilization if u is not None],
-                     color=UNITY_NCAR_BLUE, linewidth=3, label='CPU/GPU Utilization')
+                     color=blue, linewidth=3, label='CPU/GPU Utilization')
 
         if any(m is not None for m in memory):
             times = [self.timestamps[i] for i, m in enumerate(memory) if m is not None]
             ax2.plot(times, [m for m in memory if m is not None],
-                     color=UNITY_NCAR_TEAL, linewidth=3, label='Memory Utilization')
+                     color=teal, linewidth=3, label='Memory Utilization')
 
     def decorate(self, axes, layout, theme):
         ax1, ax2 = axes
@@ -189,26 +195,29 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
     def draw(self, axes, layout, theme):
         ax1, ax2 = axes
         ts = self.timestamps
-        ax1.plot(ts, self.column('running_jobs'), color=UNITY_NCAR_TEAL,
+        teal, orange, vermilion, blue = theme.data_colors(
+            [UNITY_NCAR_TEAL, UNITY_NCAR_ORANGE, UNITY_NCAR_VERMILION,
+             UNITY_NCAR_BLUE])
+        ax1.plot(ts, self.column('running_jobs'), color=teal,
                  linewidth=3, label='Running')
-        ax1.plot(ts, self.column('pending_jobs'), color=UNITY_NCAR_ORANGE,
+        ax1.plot(ts, self.column('pending_jobs'), color=orange,
                  linewidth=3, label='Pending')
-        ax1.plot(ts, self.column('held_jobs'), color=UNITY_NCAR_VERMILION,
+        ax1.plot(ts, self.column('held_jobs'), color=vermilion,
                  linewidth=3, label='Held')
-        ax1.plot(ts, self.column('active_users'), color=UNITY_NCAR_BLUE,
+        ax1.plot(ts, self.column('active_users'), color=blue,
                  linestyle='--', linewidth=2, label='Active Users')
 
         gpus_alloc = self.column('gpus_allocated')
         gpus_pend = self.column('gpus_pending')
         if any(gpus_alloc) or any(gpus_pend):
-            ax2.plot(ts, gpus_alloc, color=UNITY_NCAR_BLUE, linewidth=3,
+            ax2.plot(ts, gpus_alloc, color=blue, linewidth=3,
                      label='GPUs Running')
-            ax2.plot(ts, gpus_pend, color=UNITY_NCAR_TEAL, linewidth=3,
+            ax2.plot(ts, gpus_pend, color=teal, linewidth=3,
                      label='GPUs Pending')
         else:
-            ax2.plot(ts, self.column('cores_allocated'), color=UNITY_NCAR_BLUE,
+            ax2.plot(ts, self.column('cores_allocated'), color=blue,
                      linewidth=3, label='Cores Running')
-            ax2.plot(ts, self.column('cores_pending'), color=UNITY_NCAR_TEAL,
+            ax2.plot(ts, self.column('cores_pending'), color=teal,
                      linewidth=3, label='Cores Pending')
 
     def decorate(self, axes, layout, theme):

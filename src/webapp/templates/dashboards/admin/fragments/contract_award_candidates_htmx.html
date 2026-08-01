@@ -37,7 +37,7 @@
             <div class="card-body pb-2">
                 <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
                     <div class="min-w-0">
-                        <span class="badge bg-light text-dark border">
+                        <span class="badge bg-body-tertiary text-body-emphasis border">
                             {{ 'NSF' if award.provenance.startswith('NSF') else award.provenance }}
                         </span>
                         {% if award.contract_number %}
