@@ -11,9 +11,11 @@ instead — `links.py` and `series.py` import no matplotlib, enforced by test.
 ## The lifecycle
 
     render(layout, theme)
+        self.layout/self.theme    resolved, for hooks that run pre-draw
         prepare()                 raw payload -> plot-ready state on self
         is_empty()  -> empty_state()      short-circuit
         make_figure(layout)       plt.subplots(figsize=layout.figsize)
+        apply_tick_fontsize()     layout.base_fontsize on every Axes
         draw(axes, ...)           REQUIRED — the family draws the marks
         decorate(axes, ...)       labels, ticks, grid, scale, theme chrome
         add_legend(axes, ...)     placement from layout, colours from theme
@@ -85,6 +87,28 @@ class BaseChart:
     #: deliberately.
     grid: dict = {'alpha': 0.3}
 
+    #: Legend anchor for `legend_placement='right'`. Per-family, because the
+    #: dual-panel charts put theirs *inside* the axes and override wholesale.
+    legend_anchor = (1.01, 0.5)
+
+    #: Legend text size when the layout does not dictate one (i.e. desktop).
+    legend_fontsize = 11
+
+    #: Columns to spread a `legend_placement='below'` legend across. Two is
+    #: right for the short labels most charts carry; charts with long labels
+    #: (usernames, project codes plus a formatted value) set 1.
+    legend_ncol_below = 2
+
+    #: Axis-label size when the layout does not dictate one. None means "leave
+    #: it to rcParams", which is what every chart but two did before the axis
+    #: existed.
+    axis_label_fontsize = None
+
+    #: Tick-label size on desktop, or None to take `layout.base_fontsize`
+    #: (which is the rcParams value, so None and 11 are the same picture).
+    #: Mobile always takes the layout's.
+    tick_fontsize = None
+
     # --- lifecycle hooks (override what differs) -------------------------
 
     def prepare(self):
@@ -130,23 +154,82 @@ class BaseChart:
         kwargs.setdefault('color', theme.grid)
         ax.grid(True, **kwargs)
 
-    def link_legend(self, legend, bands, url_fn):
-        """Wire drill links onto a reversed proxy-`Patch` legend.
+    def link_legend(self, legend, bands, url_fn, *, ordered=False):
+        """Wire drill links onto a proxy-`Patch` legend.
 
-        Zips the reversed bands against `get_patches()`/`get_texts()`, which
-        are positionally addressable only because the legend was built from
-        proxy Patches rather than the BarContainers.
+        Zips the bands against `get_patches()`/`get_texts()`, which are
+        positionally addressable only because the legend was built from proxy
+        Patches rather than the BarContainers.
+
+        `bands` is in *plot* order (bottom to top) and reversed here, matching
+        how the legend is built — unless `ordered=True`, which says the caller
+        already resolved legend order. That matters once a layout caps the
+        legend: a capped legend is no longer `reversed(bands)`, and blindly
+        reversing would put valid-looking hrefs on the wrong swatches, which
+        is the exact failure the fingerprint cannot see (it proves the href
+        *strings*, not the artists they land on).
 
         `Series.is_linkable` is the whole rule — "Others", unnamed entities
         and aggregates are inert by construction.
         """
+        entries = list(bands) if ordered else list(reversed(list(bands)))
         patches, texts = legend.get_patches(), legend.get_texts()
-        for band, patch, text in zip(reversed(list(bands)), patches, texts):
+        for band, patch, text in zip(entries, patches, texts):
             if not band.is_linkable:
                 continue
             url = url_fn(band.link_key)
             patch.set_url(url)
             text.set_url(url)
+
+    # --- the layout axis --------------------------------------------------
+
+    def legend_kwargs(self, layout, **overrides):
+        """Placement kwargs for `ax.legend()`, from `layout.legend_placement`.
+
+        'right' reproduces today's call exactly. 'below' puts the legend under
+        the axes in `legend_ncol_below` columns — the only placement that
+        works once the figure is phone-width, because a side legend on a 4.5in
+        figure eats a third of it before the plot gets any.
+
+        Callers still pass their own `frameon`/`labelspacing`; this owns
+        position and nothing else.
+        """
+        if layout.legend_placement == 'below':
+            kwargs = dict(loc='upper center', bbox_to_anchor=(0.5, -0.22),
+                          ncol=self.legend_ncol_below)
+        else:
+            kwargs = dict(loc='center left', bbox_to_anchor=self.legend_anchor)
+        kwargs['fontsize'] = layout.legend_fontsize or self.legend_fontsize
+        kwargs.update(overrides)
+        return kwargs
+
+    def legend_entry_cap(self, layout, n):
+        """How many of `n` legend entries this layout affords."""
+        cap = layout.max_legend_entries
+        return n if cap is None else min(n, cap)
+
+    def label_kw(self, layout):
+        """`fontsize` kwargs for axis labels, or `{}` to leave it to rcParams.
+
+        Returned as a dict rather than a value because `fontsize=None` is not
+        the same as omitting it.
+        """
+        size = (layout.base_fontsize if layout.is_mobile
+                else self.axis_label_fontsize)
+        return {'fontsize': size} if size is not None else {}
+
+    def apply_tick_fontsize(self, axes, layout):
+        """Size tick labels from the layout.
+
+        Applied centrally in `render()` rather than left to each `decorate()`,
+        because a chart that forgets is invisible until someone looks at a
+        phone. Desktop's `base_fontsize` equals the rcParams `font.size`, so
+        this is a no-op there and the desktop fingerprints do not move.
+        """
+        size = (layout.base_fontsize if layout.is_mobile
+                else (self.tick_fontsize or layout.base_fontsize))
+        for ax in (axes if isinstance(axes, (tuple, list)) else (axes,)):
+            ax.tick_params(labelsize=size)
 
     # --- the driver -------------------------------------------------------
 
@@ -154,11 +237,20 @@ class BaseChart:
         lay = resolve_layout(self.LAYOUTS, layout)
         thm = resolve_theme(theme)
 
+        # Also on `self`, because `prepare()` runs before the drawing hooks
+        # and some charts need the layout while shaping data, not just while
+        # drawing it: a pie caps its *slices* on a phone rather than leaving
+        # unlabelled wedges, and the pace chart clamps its top-N grouping.
+        # The drawing hooks still take it as an argument — that is the
+        # signature, and `self.layout` is not an invitation to stop passing it.
+        self.layout, self.theme = lay, thm
+
         self.prepare()
         if self.is_empty():
             return empty_state(self.empty_message, self.empty_classes)
 
         fig, axes = self.make_figure(lay)
+        self.apply_tick_fontsize(axes, lay)
         self.draw(axes, lay, thm)
         self.decorate(axes, lay, thm)
         self.add_legend(axes, lay, thm)

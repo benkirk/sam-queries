@@ -57,7 +57,7 @@ def bucket_segments(owners, metric='data'):
 class CategoricalStackChart(BaseChart):
     """One bar per bucket; each bar a shaded single-hue stack."""
 
-    LAYOUTS = profile((14, 5), label_rotation=30)
+    LAYOUTS = profile((14, 5), (4.6, 3.0), label_rotation=30)
     grid = {'axis': 'y', 'alpha': 0.3}
 
     bar_edge_width = 0.5

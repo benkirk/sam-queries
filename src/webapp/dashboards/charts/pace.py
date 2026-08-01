@@ -133,7 +133,7 @@ class PaceChart(BaseChart):
     #: facility-scope fanout — well under 10 MB of cached SVG per process.
     cache_maxsize = 192
     empty_message = 'No allocations available'
-    LAYOUTS = profile((10, 4))
+    LAYOUTS = profile((10, 4), (4.6, 3.4))
     #: Normalized to the 0.3 every other chart uses (was 0.2, undocumented).
     grid = {'alpha': 0.3}
 
@@ -208,9 +208,15 @@ class PaceChart(BaseChart):
             self.sort_by = 'size'
             self.rank_metric = proj_size
 
+        # `top_n` defaults to 20, which is the single worst legend in the app
+        # on a phone: twenty rows of "PROJ0001 (1.2M/yr)" underneath a 3.4in
+        # figure would be taller than the chart. The layout clamps it, and the
+        # surplus projects fold into the existing "Other" band rather than
+        # disappearing — the areas still sum to the same total.
+        top_n = min(self.top_n, self.layout.max_legend_entries or self.top_n)
         self.top_projs = [pc for pc, _ in sorted(
             self.rank_metric.items(), key=lambda kv: kv[1], reverse=True
-        )[:self.top_n]]
+        )[:top_n]]
         palette = UNITY_STACK_10 if len(self.top_projs) <= 10 else UNITY_STACK_20
         self.color_map = {pc: palette[i] for i, pc in enumerate(self.top_projs)}
 
@@ -336,9 +342,8 @@ class PaceChart(BaseChart):
                 color=_PACE_OTHER_COLOR,
                 label=f'{self.other_label} '
                       f'({_fmt(self.group_sort_totals[OTHER_KEY])})'))
-        legend = ax.legend(handles=handles, loc='center left',
-                           bbox_to_anchor=self.legend_anchor,
-                           fontsize=self.legend_fontsize, frameon=False)
+        legend = ax.legend(handles=handles, frameon=False,
+                           **self.legend_kwargs(layout))
 
         # Tag each top-N legend entry with the project-modal URL. The trailing
         # "Other" patch (if present) gets none — it is not a single project.
@@ -353,11 +358,21 @@ class PaceChart(BaseChart):
 
     def decorate(self, ax, layout, theme):
         ax.set_xlim(self.window_start, self.window_end)
-        ax.xaxis.set_major_locator(mdates.MonthLocator())
+        # A 360-day window is twelve "Mon YYYY" labels. That fits across 10in
+        # and does not across 4.6in, so mobile takes every Nth month — still
+        # the MonthLocator, still on month boundaries, just fewer of them.
+        interval = 1
+        if layout.is_mobile:
+            months = max(1, round(2 * self.window_days / 30))
+            interval = max(1, -(-months // layout.max_ticks))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=interval))
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
         ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-        ax.set_ylabel('Rate (per year)')
+        ax.set_ylabel('Rate (per year)', **self.label_kw(layout))
         self.apply_grid(ax, theme)
 
     def finish(self, fig, axes, layout, theme):
+        if layout.is_mobile:
+            fig.autofmt_xdate(rotation=layout.label_rotation)
+            return
         fig.autofmt_xdate()

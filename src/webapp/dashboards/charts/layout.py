@@ -7,14 +7,26 @@ putting its 9-11pt labels at roughly **2px on screen**. No stylesheet can fix
 that — the only fix is to re-render at a different figure size and font size,
 which means the server has to know the layout. That is what this axis is for.
 
-**Nothing requests `mobile` yet.** This ships the parameter, a defined profile
-per family, and the cache-key plumbing; the transport (`matchMedia` sender,
-`_parse_layout()` at the fragment boundary) and the visual tuning land in the
-mobile PR. The numbers in `MOBILE_DEFAULTS` are a starting point chosen to be
-legible, not a tuned design — treat them as the thing that pass revises.
+## What the mobile pass changed here
+
+PR 1 shipped this module with `mobile` defined but unrequested, and said of
+`MOBILE_DEFAULTS`: *"a starting point chosen to be legible, not a tuned design
+— treat them as the thing that pass revises."* This is that revision.
+
+Two of the six fields — `legend_placement` and `max_legend_entries` — were
+declared and read by nothing; `base_fontsize` reached two charts of fifteen,
+`max_ticks` one, `label_rotation` two. All six are now consumed by every
+family that has the concept.
+
+The aspect-preserving `mobile_figsize` default is gone. Preserving an 18:5
+ratio at phone width gives a 4.5in x 1.25in strip, and once the legend moves
+underneath, the plot itself is under an inch tall. **Mobile figures are
+declared explicitly per family**, sized so the tight-bbox intrinsic width
+lands near 350pt — roughly 1:1 with a phone viewport once card padding is off,
+which is what puts a 9pt label on screen at ~9px instead of ~2px.
 """
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 
 
 @dataclass(frozen=True)
@@ -26,7 +38,10 @@ class Layout:
     #: matplotlib figure size in inches.
     figsize: tuple
 
-    #: Base font size. Ticks and legends scale from it.
+    #: Base font size — tick labels and axis labels.
+    #:
+    #: Desktop leaves this at the rcParams value (11), so applying it is a
+    #: no-op and today's output is reproduced byte for byte.
     base_fontsize: int
 
     #: 'right' — outside the axes, vertically centred (today's placement).
@@ -36,6 +51,12 @@ class Layout:
 
     #: Cap on legend entries, or None for no cap. A 20-entry legend is
     #: unreadable on a phone and steals the space the plot needs.
+    #:
+    #: Charts honour this at whichever point keeps the picture *honest*, which
+    #: is not the same point for every family: a pie caps its slices (capping
+    #: only the legend would leave unlabelled wedges), the pace chart and the
+    #: histogram clamp the "top N" they were already computing, and the
+    #: stacked family caps legend rows while still drawing every band.
     max_legend_entries: int | None
 
     #: Target tick count on the category/date axis.
@@ -44,14 +65,28 @@ class Layout:
     #: Tick-label rotation in degrees.
     label_rotation: int
 
+    #: Legend text size, or None for "whatever the chart declares".
+    #:
+    #: Desktop is None on purpose. Legend sizes are genuinely per-family today
+    #: — 9pt on pies and pace, 11pt on stacked and dual-panel, 13pt on the
+    #: user/proj area chart — and there is no expression of `base_fontsize`
+    #: that reproduces all four. Rather than flatten a real difference to make
+    #: the axis look tidy, desktop defers to the class attribute and only
+    #: mobile overrides.
+    legend_fontsize: int | None = None
+
     @property
     def is_mobile(self) -> bool:
         return self.name == 'mobile'
 
 
 #: Applied to every family's mobile profile unless it overrides them.
+#:
+#: `figsize` is deliberately absent: there is no defensible default for it.
+#: See the module docstring on why aspect preservation is the wrong rule.
 MOBILE_DEFAULTS = dict(
     base_fontsize=9,
+    legend_fontsize=9,
     legend_placement='below',
     max_legend_entries=6,
     max_ticks=5,
@@ -59,19 +94,26 @@ MOBILE_DEFAULTS = dict(
 )
 
 
-def profile(figsize, *, base_fontsize=11, legend_placement='right',
-            max_legend_entries=None, max_ticks=12, label_rotation=0,
-            mobile_figsize=None, **mobile_overrides):
+def profile(figsize, mobile_figsize, *, base_fontsize=11,
+            legend_placement='right', max_legend_entries=None, max_ticks=12,
+            label_rotation=0, mobile=None):
     """Build one family's ``{'desktop': ..., 'mobile': ...}`` pair.
 
-    The desktop values must reproduce today's rendering exactly — they are
-    read straight off the existing `plt.subplots(figsize=...)` call and the
-    tick/rotation constants around it.
+    The keyword arguments configure **desktop**, and must reproduce today's
+    rendering exactly — they are read straight off the existing
+    `plt.subplots(figsize=...)` call and the tick/rotation constants around
+    it. Mobile overrides go in the `mobile` dict, never as bare keywords: an
+    earlier version collected them with `**kwargs`, which meant a name that
+    happened to match a desktop parameter was silently applied to desktop
+    instead. `legend_placement='right'` on the pies read as a mobile override
+    and configured desktop, where it was already the default, so it did
+    nothing at all and looked like it worked.
 
-    `mobile_figsize` defaults to a 4.5in-wide figure with the family's aspect
-    ratio preserved, which is roughly 1:1 with a 390px viewport once the card
-    padding is taken off, so text lands near its nominal point size instead of
-    at 22% of it.
+    `mobile_figsize` is **required and positional**. It used to default to the
+    desktop aspect ratio at 4.5in wide, which sounds reasonable and is not:
+    18:5 becomes a 4.5 x 1.25in strip, and a strip with its legend moved
+    underneath has well under an inch of plot left. Every family now states
+    its own, sized so the tight bbox lands near 350pt wide.
     """
     desktop = Layout(
         name='desktop',
@@ -81,16 +123,17 @@ def profile(figsize, *, base_fontsize=11, legend_placement='right',
         max_legend_entries=max_legend_entries,
         max_ticks=max_ticks,
         label_rotation=label_rotation,
+        legend_fontsize=None,
     )
 
-    if mobile_figsize is None:
-        w, h = figsize
-        mobile_w = 4.5
-        mobile_figsize = (mobile_w, round(mobile_w * h / w, 2))
-
-    mobile = replace(desktop, name='mobile', figsize=tuple(mobile_figsize),
-                     **{**MOBILE_DEFAULTS, **mobile_overrides})
-    return {'desktop': desktop, 'mobile': mobile}
+    overrides = {**MOBILE_DEFAULTS, **(mobile or {})}
+    unknown = set(overrides) - {f.name for f in fields(Layout)}
+    if unknown:
+        raise TypeError(f'unknown Layout field(s) in mobile override: '
+                        f'{sorted(unknown)}')
+    return {'desktop': desktop,
+            'mobile': replace(desktop, name='mobile',
+                              figsize=tuple(mobile_figsize), **overrides)}
 
 
 def resolve_layout(layouts, layout) -> Layout:

@@ -81,9 +81,9 @@
   "alloc_type_pie.trimmed@mobile": {
     "counts": {
       "a": 0,
-      "g": 48,
-      "path": 23,
-      "text": 20,
+      "g": 34,
+      "path": 15,
+      "text": 14,
       "use": 0
     },
     "drill_hrefs": [],
@@ -95,15 +95,10 @@
       "#faa119",
       "#00818f",
       "#42c0ff",
-      "#00a2b4",
-      "#011837",
-      "#97999b",
-      "#0057c2",
       "#ffffff",
       "#011837",
       "#ffffff",
       "#011837",
-      "#ffffff",
       "#0057c2",
       "#011837",
       "#00357a",
@@ -117,12 +112,6 @@
       "#00818f",
       "#011837",
       "#42c0ff",
-      "#011837",
-      "#00a2b4",
-      "#011837",
-      "#97999b",
-      "#011837",
-      "#0057c2",
       "#011837"
     ],
     "kind": "svg",
@@ -133,24 +122,18 @@
       "11.5%",
       "10.3%",
       "9.0%",
-      "7.7%",
-      "6.4%",
-      "5.1%",
+      "26.9%",
       "Type01 (120K)",
       "Type02 (110K)",
       "Type03 (100,000)",
       "Type04 (90,000)",
       "Type05 (80,000)",
       "Type06 (70,000)",
-      "Type07 (60,000)",
-      "Type08 (50,000)",
-      "Type09 (40,000)",
-      "Type10 (30,000)",
-      "Others (2) (30,000)"
+      "Others (6) (210K)"
     ],
     "size": [
-      281.0,
-      205.2
+      306.5,
+      191.8
     ]
   },
   "disk_area.bytes_linked": {
@@ -209,10 +192,10 @@
   "disk_area.bytes_linked@mobile": {
     "counts": {
       "a": 4,
-      "g": 67,
-      "path": 24,
-      "text": 16,
-      "use": 12
+      "g": 51,
+      "path": 20,
+      "text": 12,
+      "use": 8
     },
     "drill_hrefs": [
       "/admin/user/bob",
@@ -235,25 +218,21 @@
     "kind": "svg",
     "labels": [
       "2026-03-01",
-      "2026-03-02",
-      "2026-03-03",
-      "2026-03-04",
       "2026-03-05",
-      "2026-03-06",
-      "2026-03-07",
-      "2026-03-08",
       "2026-03-09",
-      "2026-03-10",
       "0",
+      "1",
       "2",
+      "3",
+      "4",
       "Disk usage (TiB)",
       "bob",
       "alice",
       "Others"
     ],
     "size": [
-      399.9,
-      143.7
+      304.5,
+      246.9
     ]
   },
   "disk_area.empty": {
@@ -316,10 +295,10 @@
   "disk_area.files@mobile": {
     "counts": {
       "a": 0,
-      "g": 99,
-      "path": 32,
-      "text": 24,
-      "use": 20
+      "g": 71,
+      "path": 25,
+      "text": 17,
+      "use": 13
     },
     "drill_hrefs": [],
     "fills": [
@@ -337,15 +316,8 @@
     "kind": "svg",
     "labels": [
       "2026-03-01",
-      "2026-03-02",
-      "2026-03-03",
-      "2026-03-04",
       "2026-03-05",
-      "2026-03-06",
-      "2026-03-07",
-      "2026-03-08",
       "2026-03-09",
-      "2026-03-10",
       "0",
       "600B",
       "1.20T",
@@ -362,8 +334,8 @@
       "Others"
     ],
     "size": [
-      404.9,
-      140.5
+      318.4,
+      249.3
     ]
   },
   "disk_entity_pie.empty": {
@@ -473,10 +445,10 @@
   },
   "disk_entity_pie.group@mobile": {
     "counts": {
-      "a": 27,
-      "g": 46,
-      "path": 21,
-      "text": 20,
+      "a": 18,
+      "g": 34,
+      "path": 15,
+      "text": 14,
       "use": 0
     },
     "drill_hrefs": [
@@ -486,9 +458,6 @@
       "#sam/row/data-group-gid/1003",
       "#sam/row/data-group-gid/1004",
       "#sam/row/data-group-gid/1005",
-      "#sam/row/data-group-gid/1006",
-      "#sam/row/data-group-gid/1007",
-      "#sam/row/data-group-gid/1008",
       "#sam/row/data-group-gid/1000",
       "#sam/row/data-group-gid/1000",
       "#sam/row/data-group-gid/1001",
@@ -500,13 +469,7 @@
       "#sam/row/data-group-gid/1004",
       "#sam/row/data-group-gid/1004",
       "#sam/row/data-group-gid/1005",
-      "#sam/row/data-group-gid/1005",
-      "#sam/row/data-group-gid/1006",
-      "#sam/row/data-group-gid/1006",
-      "#sam/row/data-group-gid/1007",
-      "#sam/row/data-group-gid/1007",
-      "#sam/row/data-group-gid/1008",
-      "#sam/row/data-group-gid/1008"
+      "#sam/row/data-group-gid/1005"
     ],
     "fills": [
       "#0057c2",
@@ -515,12 +478,7 @@
       "#fdd509",
       "#faa119",
       "#00818f",
-      "#42c0ff",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
-      "#ffffff",
-      "#011837",
       "#ffffff",
       "#011837",
       "#ffffff",
@@ -536,10 +494,6 @@
       "#faa119",
       "#011837",
       "#00818f",
-      "#011837",
-      "#42c0ff",
-      "#011837",
-      "#00a2b4",
       "#011837",
       "#bbbcbc",
       "#011837"
@@ -552,24 +506,18 @@
       "11.5%",
       "10.3%",
       "9.0%",
-      "7.7%",
-      "6.4%",
-      "5.1%",
-      "7.7%",
+      "26.9%",
       "gid 1000 (114 MiB)",
       "user1 (105 MiB)",
       "user2 (95.4 MiB)",
       "gid 1003 (85.8 MiB)",
       "user4 (76.3 MiB)",
       "user5 (66.8 MiB)",
-      "gid 1006 (57.2 MiB)",
-      "user7 (47.7 MiB)",
-      "user8 (38.1 MiB)",
-      "Other (3) (57.2 MiB)"
+      "Other (6) (200 MiB)"
     ],
     "size": [
-      282.2,
-      188.1
+      316.8,
+      191.8
     ]
   },
   "disk_entity_pie.owner": {
@@ -675,10 +623,10 @@
   },
   "disk_entity_pie.owner@mobile": {
     "counts": {
-      "a": 27,
-      "g": 46,
-      "path": 21,
-      "text": 20,
+      "a": 18,
+      "g": 34,
+      "path": 15,
+      "text": 14,
       "use": 0
     },
     "drill_hrefs": [
@@ -688,9 +636,6 @@
       "#sam/row/data-owner-uid/1003",
       "#sam/row/data-owner-uid/1004",
       "#sam/row/data-owner-uid/1005",
-      "#sam/row/data-owner-uid/1006",
-      "#sam/row/data-owner-uid/1007",
-      "#sam/row/data-owner-uid/1008",
       "#sam/row/data-owner-uid/1000",
       "#sam/row/data-owner-uid/1000",
       "#sam/row/data-owner-uid/1001",
@@ -702,13 +647,7 @@
       "#sam/row/data-owner-uid/1004",
       "#sam/row/data-owner-uid/1004",
       "#sam/row/data-owner-uid/1005",
-      "#sam/row/data-owner-uid/1005",
-      "#sam/row/data-owner-uid/1006",
-      "#sam/row/data-owner-uid/1006",
-      "#sam/row/data-owner-uid/1007",
-      "#sam/row/data-owner-uid/1007",
-      "#sam/row/data-owner-uid/1008",
-      "#sam/row/data-owner-uid/1008"
+      "#sam/row/data-owner-uid/1005"
     ],
     "fills": [
       "#0057c2",
@@ -717,12 +656,7 @@
       "#fdd509",
       "#faa119",
       "#00818f",
-      "#42c0ff",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
-      "#ffffff",
-      "#011837",
       "#ffffff",
       "#011837",
       "#ffffff",
@@ -738,10 +672,6 @@
       "#faa119",
       "#011837",
       "#00818f",
-      "#011837",
-      "#42c0ff",
-      "#011837",
-      "#00a2b4",
       "#011837",
       "#bbbcbc",
       "#011837"
@@ -754,24 +684,18 @@
       "11.5%",
       "10.3%",
       "9.0%",
-      "7.7%",
-      "6.4%",
-      "5.1%",
-      "7.7%",
+      "26.9%",
       "uid 1000 (114 MiB)",
       "user1 (105 MiB)",
       "user2 (95.4 MiB)",
       "uid 1003 (85.8 MiB)",
       "user4 (76.3 MiB)",
       "user5 (66.8 MiB)",
-      "uid 1006 (57.2 MiB)",
-      "user7 (47.7 MiB)",
-      "user8 (38.1 MiB)",
-      "Other (3) (57.2 MiB)"
+      "Other (6) (200 MiB)"
     ],
     "size": [
-      282.2,
-      188.1
+      316.8,
+      191.8
     ]
   },
   "distribution.data": {
@@ -848,10 +772,10 @@
   "distribution.data@mobile": {
     "counts": {
       "a": 18,
-      "g": 56,
-      "path": 29,
-      "text": 9,
-      "use": 8
+      "g": 72,
+      "path": 33,
+      "text": 13,
+      "use": 12
     },
     "drill_hrefs": [
       "#sam/row/data-ah-bucket/0",
@@ -902,14 +826,18 @@
       "90-180d",
       "&gt; 180d",
       "0",
+      "50",
       "100",
+      "150",
       "200",
+      "250",
       "300",
+      "350",
       "Data (GiB)"
     ],
     "size": [
-      312.2,
-      153.2
+      314.1,
+      222.5
     ]
   },
   "distribution.empty": {
@@ -990,10 +918,10 @@
   "distribution.files@mobile": {
     "counts": {
       "a": 18,
-      "g": 56,
-      "path": 29,
-      "text": 9,
-      "use": 8
+      "g": 72,
+      "path": 33,
+      "text": 13,
+      "use": 12
     },
     "drill_hrefs": [
       "#sam/row/data-ah-bucket/0",
@@ -1044,14 +972,18 @@
       "90-180d",
       "&gt; 180d",
       "0",
+      "5,000",
       "10,000",
+      "15,000",
       "20,000",
+      "25,000",
       "30,000",
+      "35,000",
       "Files"
     ],
     "size": [
-      328.2,
-      153.2
+      327.2,
+      222.5
     ]
   },
   "distribution.log_y": {
@@ -1132,8 +1064,8 @@
       "Data (GiB)"
     ],
     "size": [
-      323.9,
-      154.9
+      329.4,
+      222.5
     ]
   },
   "facility_pie.empty": {
@@ -1206,8 +1138,8 @@
       "NCAR (1.25M)"
     ],
     "size": [
-      253.9,
-      156.9
+      289.2,
+      191.8
     ]
   },
   "jobs_hist.charges": {
@@ -1287,10 +1219,10 @@
   "jobs_hist.charges@mobile": {
     "counts": {
       "a": 19,
-      "g": 60,
-      "path": 30,
-      "text": 10,
-      "use": 9
+      "g": 76,
+      "path": 34,
+      "text": 14,
+      "use": 13
     },
     "drill_hrefs": [
       "#sam/row/data-jh-bucket/0",
@@ -1344,14 +1276,18 @@
       "1-6h",
       "&gt; 6h",
       "0",
+      "100",
       "200",
+      "300",
       "400",
+      "500",
       "600",
+      "700",
       "Charges"
     ],
     "size": [
-      312.7,
-      148.7
+      314.5,
+      220.3
     ]
   },
   "jobs_hist.empty": {
@@ -1401,10 +1337,10 @@
   "jobs_hist.flat_no_owners@mobile": {
     "counts": {
       "a": 4,
-      "g": 45,
-      "path": 15,
-      "text": 10,
-      "use": 9
+      "g": 61,
+      "path": 19,
+      "text": 14,
+      "use": 13
     },
     "drill_hrefs": [
       "#sam/row/data-jh-bucket/0",
@@ -1424,14 +1360,18 @@
       "1-6h",
       "&gt; 6h",
       "0",
+      "50",
       "100",
+      "150",
       "200",
+      "250",
       "300",
+      "350",
       "Jobs"
     ],
     "size": [
-      312.2,
-      148.7
+      314.1,
+      220.3
     ]
   },
   "jobs_hist.jobs_owners": {
@@ -1511,10 +1451,10 @@
   "jobs_hist.jobs_owners@mobile": {
     "counts": {
       "a": 19,
-      "g": 60,
-      "path": 30,
-      "text": 10,
-      "use": 9
+      "g": 76,
+      "path": 34,
+      "text": 14,
+      "use": 13
     },
     "drill_hrefs": [
       "#sam/row/data-jh-bucket/0",
@@ -1568,14 +1508,18 @@
       "1-6h",
       "&gt; 6h",
       "0",
+      "50",
       "100",
+      "150",
       "200",
+      "250",
       "300",
+      "350",
       "Jobs"
     ],
     "size": [
-      312.2,
-      148.7
+      314.1,
+      220.3
     ]
   },
   "jobs_hist.log_y": {
@@ -1660,8 +1604,8 @@
       "Jobs"
     ],
     "size": [
-      323.4,
-      148.7
+      329.0,
+      218.8
     ]
   },
   "jobs_ts.empty": {
@@ -1756,10 +1700,10 @@
   "jobs_ts.project_unlinked@mobile": {
     "counts": {
       "a": 32,
-      "g": 85,
-      "path": 53,
-      "text": 13,
-      "use": 8
+      "g": 93,
+      "path": 55,
+      "text": 15,
+      "use": 10
     },
     "drill_hrefs": [
       "#sam/row/data-jt-period/0",
@@ -1818,7 +1762,9 @@
       "2026-03-07",
       "2026-03-09",
       "0",
+      "50",
       "100",
+      "150",
       "200",
       "CPU-hours",
       "alice",
@@ -1827,8 +1773,8 @@
       "Others"
     ],
     "size": [
-      398.7,
-      149.1
+      311.2,
+      274.0
     ]
   },
   "jobs_ts.user_linked": {
@@ -1926,10 +1872,10 @@
   "jobs_ts.user_linked@mobile": {
     "counts": {
       "a": 38,
-      "g": 85,
-      "path": 53,
-      "text": 13,
-      "use": 8
+      "g": 97,
+      "path": 56,
+      "text": 16,
+      "use": 11
     },
     "drill_hrefs": [
       "#sam/row/data-jt-period/0",
@@ -1994,8 +1940,11 @@
       "2026-03-07",
       "2026-03-09",
       "0",
+      "10",
       "20",
+      "30",
       "40",
+      "50",
       "Jobs",
       "alice",
       "bob",
@@ -2003,8 +1952,8 @@
       "Others"
     ],
     "size": [
-      398.7,
-      149.1
+      306.0,
+      274.0
     ]
   },
   "jobs_usage_pie.by_project": {
@@ -2105,10 +2054,10 @@
   },
   "jobs_usage_pie.by_project@mobile": {
     "counts": {
-      "a": 27,
-      "g": 43,
-      "path": 21,
-      "text": 17,
+      "a": 18,
+      "g": 34,
+      "path": 15,
+      "text": 14,
       "use": 0
     },
     "drill_hrefs": [
@@ -2118,9 +2067,6 @@
       "#sam/row/data-job-project/user3",
       "#sam/row/data-job-project/user4",
       "#sam/row/data-job-project/user5",
-      "#sam/row/data-job-project/user6",
-      "#sam/row/data-job-project/user7",
-      "#sam/row/data-job-project/user8",
       "#sam/row/data-job-project/user0",
       "#sam/row/data-job-project/user0",
       "#sam/row/data-job-project/user1",
@@ -2132,13 +2078,7 @@
       "#sam/row/data-job-project/user4",
       "#sam/row/data-job-project/user4",
       "#sam/row/data-job-project/user5",
-      "#sam/row/data-job-project/user5",
-      "#sam/row/data-job-project/user6",
-      "#sam/row/data-job-project/user6",
-      "#sam/row/data-job-project/user7",
-      "#sam/row/data-job-project/user7",
-      "#sam/row/data-job-project/user8",
-      "#sam/row/data-job-project/user8"
+      "#sam/row/data-job-project/user5"
     ],
     "fills": [
       "#0057c2",
@@ -2147,9 +2087,6 @@
       "#fdd509",
       "#faa119",
       "#00818f",
-      "#42c0ff",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
       "#ffffff",
       "#011837",
@@ -2166,10 +2103,6 @@
       "#faa119",
       "#011837",
       "#00818f",
-      "#011837",
-      "#42c0ff",
-      "#011837",
-      "#00a2b4",
       "#011837",
       "#bbbcbc",
       "#011837"
@@ -2182,21 +2115,18 @@
       "5.7%",
       "5.3%",
       "5.0%",
-      "52.0%",
+      "65.0%",
       "user0 (100)",
       "user1 (95)",
       "user2 (90)",
       "user3 (85)",
       "user4 (80)",
       "user5 (75)",
-      "user6 (70)",
-      "user7 (65)",
-      "user8 (60)",
-      "Other (780)"
+      "Other (975)"
     ],
     "size": [
-      247.1,
-      188.1
+      282.3,
+      191.8
     ]
   },
   "jobs_usage_pie.by_user": {
@@ -2291,10 +2221,10 @@
   },
   "jobs_usage_pie.by_user@mobile": {
     "counts": {
-      "a": 24,
-      "g": 42,
-      "path": 21,
-      "text": 16,
+      "a": 15,
+      "g": 33,
+      "path": 15,
+      "text": 13,
       "use": 0
     },
     "drill_hrefs": [
@@ -2303,9 +2233,6 @@
       "#sam/row/data-job-user/user3",
       "#sam/row/data-job-user/user4",
       "#sam/row/data-job-user/user5",
-      "#sam/row/data-job-user/user6",
-      "#sam/row/data-job-user/user7",
-      "#sam/row/data-job-user/user8",
       "#sam/row/data-job-user/user1",
       "#sam/row/data-job-user/user1",
       "#sam/row/data-job-user/user2",
@@ -2315,13 +2242,7 @@
       "#sam/row/data-job-user/user4",
       "#sam/row/data-job-user/user4",
       "#sam/row/data-job-user/user5",
-      "#sam/row/data-job-user/user5",
-      "#sam/row/data-job-user/user6",
-      "#sam/row/data-job-user/user6",
-      "#sam/row/data-job-user/user7",
-      "#sam/row/data-job-user/user7",
-      "#sam/row/data-job-user/user8",
-      "#sam/row/data-job-user/user8"
+      "#sam/row/data-job-user/user5"
     ],
     "fills": [
       "#0057c2",
@@ -2330,9 +2251,6 @@
       "#fdd509",
       "#faa119",
       "#00818f",
-      "#42c0ff",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
       "#ffffff",
       "#011837",
@@ -2348,10 +2266,6 @@
       "#011837",
       "#00818f",
       "#011837",
-      "#42c0ff",
-      "#011837",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
       "#011837"
     ],
@@ -2362,21 +2276,18 @@
       "5.9%",
       "5.5%",
       "5.1%",
-      "54.4%",
+      "66.0%",
       "(unknown) (1,000)",
       "user1 (940)",
       "user2 (880)",
       "user3 (820)",
       "user4 (760)",
       "user5 (700)",
-      "user6 (640)",
-      "user7 (580)",
-      "user8 (520)",
-      "Other (8,160)"
+      "Other (9,900)"
     ],
     "size": [
-      276.4,
-      188.1
+      311.7,
+      191.8
     ]
   },
   "jobs_usage_pie.empty": {
@@ -2475,10 +2386,10 @@
   },
   "jobs_user_pie.delegated@mobile": {
     "counts": {
-      "a": 24,
-      "g": 42,
-      "path": 21,
-      "text": 16,
+      "a": 15,
+      "g": 33,
+      "path": 15,
+      "text": 13,
       "use": 0
     },
     "drill_hrefs": [
@@ -2487,9 +2398,6 @@
       "#sam/row/data-job-user/user3",
       "#sam/row/data-job-user/user4",
       "#sam/row/data-job-user/user5",
-      "#sam/row/data-job-user/user6",
-      "#sam/row/data-job-user/user7",
-      "#sam/row/data-job-user/user8",
       "#sam/row/data-job-user/user1",
       "#sam/row/data-job-user/user1",
       "#sam/row/data-job-user/user2",
@@ -2499,13 +2407,7 @@
       "#sam/row/data-job-user/user4",
       "#sam/row/data-job-user/user4",
       "#sam/row/data-job-user/user5",
-      "#sam/row/data-job-user/user5",
-      "#sam/row/data-job-user/user6",
-      "#sam/row/data-job-user/user6",
-      "#sam/row/data-job-user/user7",
-      "#sam/row/data-job-user/user7",
-      "#sam/row/data-job-user/user8",
-      "#sam/row/data-job-user/user8"
+      "#sam/row/data-job-user/user5"
     ],
     "fills": [
       "#0057c2",
@@ -2514,9 +2416,6 @@
       "#fdd509",
       "#faa119",
       "#00818f",
-      "#42c0ff",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
       "#ffffff",
       "#011837",
@@ -2532,10 +2431,6 @@
       "#011837",
       "#00818f",
       "#011837",
-      "#42c0ff",
-      "#011837",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
       "#011837"
     ],
@@ -2546,21 +2441,18 @@
       "5.9%",
       "5.5%",
       "5.1%",
-      "54.4%",
+      "66.0%",
       "(unknown) (1,000)",
       "user1 (940)",
       "user2 (880)",
       "user3 (820)",
       "user4 (760)",
       "user5 (700)",
-      "user6 (640)",
-      "user7 (580)",
-      "user8 (520)",
-      "Other (8,160)"
+      "Other (9,900)"
     ],
     "size": [
-      276.4,
-      188.1
+      311.7,
+      191.8
     ]
   },
   "nodetype.empty": {
@@ -2633,10 +2525,10 @@
   "nodetype.normal@mobile": {
     "counts": {
       "a": 0,
-      "g": 126,
-      "path": 46,
-      "text": 23,
-      "use": 25
+      "g": 91,
+      "path": 34,
+      "text": 20,
+      "use": 15
     },
     "drill_hrefs": [],
     "fills": [
@@ -2644,45 +2536,39 @@
       "#0057c2",
       "#42c0ff",
       "#011837",
-      "#ffffff",
       "#ff1f1f",
       "#011837",
       "#0057c2",
       "#011837",
       "#42c0ff",
-      "#011837",
-      "#ffffff",
       "#011837"
     ],
     "kind": "svg",
     "labels": [
       "0",
+      "50",
       "100",
       "Number of Nodes",
       "Down",
       "Fully Allocated",
       "Resources Available",
-      "02-28 17",
       "02-28 18",
-      "02-28 19",
-      "02-28 20",
       "02-28 21",
-      "02-28 22",
-      "02-28 23",
       "03-01 00",
-      "03-01 01",
-      "03-01 02",
       "Time (MDT)",
       "0%",
-      "50%",
+      "20%",
+      "40%",
+      "60%",
+      "80%",
       "100%",
       "Utilization",
       "CPU/GPU Utilization",
       "Memory Utilization"
     ],
     "size": [
-      314.8,
-      209.9
+      315.7,
+      382.9
     ]
   },
   "pace.empty": {
@@ -2856,11 +2742,11 @@
   },
   "pace.future@mobile": {
     "counts": {
-      "a": 40,
-      "g": 135,
-      "path": 64,
-      "text": 38,
-      "use": 15
+      "a": 12,
+      "g": 85,
+      "path": 34,
+      "text": 22,
+      "use": 13
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0000",
@@ -2874,57 +2760,15 @@
       "/user/project-details-modal/PROJ0008",
       "/user/project-details-modal/PROJ0008",
       "/user/project-details-modal/PROJ0010",
-      "/user/project-details-modal/PROJ0010",
-      "/user/project-details-modal/PROJ0012",
-      "/user/project-details-modal/PROJ0012",
-      "/user/project-details-modal/PROJ0001",
-      "/user/project-details-modal/PROJ0001",
-      "/user/project-details-modal/PROJ0003",
-      "/user/project-details-modal/PROJ0003",
-      "/user/project-details-modal/PROJ0014",
-      "/user/project-details-modal/PROJ0014",
-      "/user/project-details-modal/PROJ0005",
-      "/user/project-details-modal/PROJ0005",
-      "/user/project-details-modal/PROJ0007",
-      "/user/project-details-modal/PROJ0007",
-      "/user/project-details-modal/PROJ0016",
-      "/user/project-details-modal/PROJ0016",
-      "/user/project-details-modal/PROJ0009",
-      "/user/project-details-modal/PROJ0009",
-      "/user/project-details-modal/PROJ0011",
-      "/user/project-details-modal/PROJ0011",
-      "/user/project-details-modal/PROJ0018",
-      "/user/project-details-modal/PROJ0018",
-      "/user/project-details-modal/PROJ0013",
-      "/user/project-details-modal/PROJ0013",
-      "/user/project-details-modal/PROJ0015",
-      "/user/project-details-modal/PROJ0015",
-      "/user/project-details-modal/PROJ0020",
-      "/user/project-details-modal/PROJ0020",
-      "/user/project-details-modal/PROJ0017",
-      "/user/project-details-modal/PROJ0017"
+      "/user/project-details-modal/PROJ0010"
     ],
     "fills": [
       "#fdd509",
       "#fbe174",
-      "#f8ebb7",
       "#faa119",
       "#fabe72",
-      "#f8dbb5",
       "#ff1f1f",
       "#00818f",
-      "#00a2b4",
-      "#71c0cb",
-      "#42c0ff",
-      "#86d3fc",
-      "#34e1f4",
-      "#86e8f5",
-      "#0057c2",
-      "#5a77a6",
-      "#a8b7ce",
-      "#adc2e6",
-      "#00357a",
-      "#556379",
       "#bbbcbc",
       "#011837",
       "#00357a",
@@ -2932,61 +2776,31 @@
       "#011837",
       "#fbe174",
       "#011837",
-      "#f8ebb7",
-      "#011837",
       "#faa119",
       "#011837",
       "#fabe72",
       "#011837",
-      "#f8dbb5",
-      "#011837",
       "#ff1f1f",
       "#011837",
       "#00818f",
-      "#011837",
-      "#00a2b4",
-      "#011837",
-      "#71c0cb",
-      "#011837",
-      "#42c0ff",
-      "#011837",
-      "#86d3fc",
-      "#011837",
-      "#34e1f4",
-      "#011837",
-      "#86e8f5",
-      "#011837",
-      "#0057c2",
-      "#011837",
-      "#5a77a6",
-      "#011837",
-      "#a8b7ce",
-      "#011837",
-      "#adc2e6",
-      "#011837",
-      "#00357a",
-      "#011837",
-      "#556379",
       "#011837",
       "#bbbcbc",
       "#011837"
     ],
     "kind": "svg",
     "labels": [
-      "Oct 2025",
-      "Nov 2025",
       "Dec 2025",
-      "Jan 2026",
-      "Feb 2026",
       "Mar 2026",
-      "Apr 2026",
-      "May 2026",
       "Jun 2026",
-      "Jul 2026",
-      "Aug 2026",
       "Sep 2026",
       "0",
+      "2.50M",
+      "5.00M",
+      "7.50M",
       "10.0M",
+      "12.5M",
+      "15.0M",
+      "17.5M",
       "20.0M",
       "Rate (per year)",
       "today",
@@ -2996,25 +2810,11 @@
       "PROJ0006 (3.93M/yr)",
       "PROJ0008 (3.51M/yr)",
       "PROJ0010 (3.10M/yr)",
-      "PROJ0012 (2.69M/yr)",
-      "PROJ0001 (2.65M/yr)",
-      "PROJ0003 (2.43M/yr)",
-      "PROJ0014 (2.27M/yr)",
-      "PROJ0005 (2.21M/yr)",
-      "PROJ0007 (1.99M/yr)",
-      "PROJ0016 (1.86M/yr)",
-      "PROJ0009 (1.77M/yr)",
-      "PROJ0011 (1.55M/yr)",
-      "PROJ0018 (1.45M/yr)",
-      "PROJ0013 (1.33M/yr)",
-      "PROJ0015 (1.11M/yr)",
-      "PROJ0020 (1.03M/yr)",
-      "PROJ0017 (885K/yr)",
-      "Other (5 projects) (2.15M/yr)"
+      "Other (19 projects) (27.4M/yr)"
     ],
     "size": [
-      490.0,
-      376.2
+      343.9,
+      293.1
     ]
   },
   "pace.size": {
@@ -3184,11 +2984,11 @@
   },
   "pace.size@mobile": {
     "counts": {
-      "a": 40,
-      "g": 135,
-      "path": 64,
-      "text": 38,
-      "use": 15
+      "a": 12,
+      "g": 85,
+      "path": 34,
+      "text": 22,
+      "use": 13
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0000",
@@ -3202,57 +3002,15 @@
       "/user/project-details-modal/PROJ0004",
       "/user/project-details-modal/PROJ0004",
       "/user/project-details-modal/PROJ0005",
-      "/user/project-details-modal/PROJ0005",
-      "/user/project-details-modal/PROJ0006",
-      "/user/project-details-modal/PROJ0006",
-      "/user/project-details-modal/PROJ0007",
-      "/user/project-details-modal/PROJ0007",
-      "/user/project-details-modal/PROJ0008",
-      "/user/project-details-modal/PROJ0008",
-      "/user/project-details-modal/PROJ0009",
-      "/user/project-details-modal/PROJ0009",
-      "/user/project-details-modal/PROJ0010",
-      "/user/project-details-modal/PROJ0010",
-      "/user/project-details-modal/PROJ0011",
-      "/user/project-details-modal/PROJ0011",
-      "/user/project-details-modal/PROJ0012",
-      "/user/project-details-modal/PROJ0012",
-      "/user/project-details-modal/PROJ0013",
-      "/user/project-details-modal/PROJ0013",
-      "/user/project-details-modal/PROJ0014",
-      "/user/project-details-modal/PROJ0014",
-      "/user/project-details-modal/PROJ0015",
-      "/user/project-details-modal/PROJ0015",
-      "/user/project-details-modal/PROJ0016",
-      "/user/project-details-modal/PROJ0016",
-      "/user/project-details-modal/PROJ0017",
-      "/user/project-details-modal/PROJ0017",
-      "/user/project-details-modal/PROJ0018",
-      "/user/project-details-modal/PROJ0018",
-      "/user/project-details-modal/PROJ0019",
-      "/user/project-details-modal/PROJ0019"
+      "/user/project-details-modal/PROJ0005"
     ],
     "fills": [
       "#fdd509",
       "#fbe174",
-      "#f8ebb7",
       "#faa119",
       "#fabe72",
-      "#f8dbb5",
       "#ff1f1f",
       "#00818f",
-      "#00a2b4",
-      "#71c0cb",
-      "#42c0ff",
-      "#86d3fc",
-      "#34e1f4",
-      "#86e8f5",
-      "#0057c2",
-      "#5a77a6",
-      "#a8b7ce",
-      "#adc2e6",
-      "#00357a",
-      "#556379",
       "#bbbcbc",
       "#011837",
       "#00357a",
@@ -3260,61 +3018,31 @@
       "#011837",
       "#fbe174",
       "#011837",
-      "#f8ebb7",
-      "#011837",
       "#faa119",
       "#011837",
       "#fabe72",
       "#011837",
-      "#f8dbb5",
-      "#011837",
       "#ff1f1f",
       "#011837",
       "#00818f",
-      "#011837",
-      "#00a2b4",
-      "#011837",
-      "#71c0cb",
-      "#011837",
-      "#42c0ff",
-      "#011837",
-      "#86d3fc",
-      "#011837",
-      "#34e1f4",
-      "#011837",
-      "#86e8f5",
-      "#011837",
-      "#0057c2",
-      "#011837",
-      "#5a77a6",
-      "#011837",
-      "#a8b7ce",
-      "#011837",
-      "#adc2e6",
-      "#011837",
-      "#00357a",
-      "#011837",
-      "#556379",
       "#011837",
       "#bbbcbc",
       "#011837"
     ],
     "kind": "svg",
     "labels": [
-      "Oct 2025",
-      "Nov 2025",
       "Dec 2025",
-      "Jan 2026",
-      "Feb 2026",
       "Mar 2026",
-      "Apr 2026",
-      "May 2026",
       "Jun 2026",
-      "Jul 2026",
-      "Aug 2026",
       "Sep 2026",
       "0",
+      "2.50M",
+      "5.00M",
+      "7.50M",
       "10.0M",
+      "12.5M",
+      "15.0M",
+      "17.5M",
       "20.0M",
       "Rate (per year)",
       "today",
@@ -3324,25 +3052,11 @@
       "PROJ0003 (2.20M)",
       "PROJ0004 (2.10M)",
       "PROJ0005 (2.00M)",
-      "PROJ0006 (1.90M)",
-      "PROJ0007 (1.80M)",
-      "PROJ0008 (1.70M)",
-      "PROJ0009 (1.60M)",
-      "PROJ0010 (1.50M)",
-      "PROJ0011 (1.40M)",
-      "PROJ0012 (1.30M)",
-      "PROJ0013 (1.20M)",
-      "PROJ0014 (1.10M)",
-      "PROJ0015 (1.00M)",
-      "PROJ0016 (900K)",
-      "PROJ0017 (800K)",
-      "PROJ0018 (700K)",
-      "PROJ0019 (600K)",
-      "Other (5 projects) (1.50M)"
+      "Other (19 projects) (19.0M)"
     ],
     "size": [
-      477.8,
-      376.2
+      330.4,
+      293.1
     ]
   },
   "pace.small_top_n": {
@@ -3427,10 +3141,10 @@
   "pace.small_top_n@mobile": {
     "counts": {
       "a": 12,
-      "g": 90,
-      "path": 34,
-      "text": 23,
-      "use": 15
+      "g": 74,
+      "path": 30,
+      "text": 19,
+      "use": 11
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0000",
@@ -3470,21 +3184,17 @@
     ],
     "kind": "svg",
     "labels": [
-      "Oct 2025",
-      "Nov 2025",
       "Dec 2025",
-      "Jan 2026",
-      "Feb 2026",
       "Mar 2026",
-      "Apr 2026",
-      "May 2026",
       "Jun 2026",
-      "Jul 2026",
-      "Aug 2026",
       "Sep 2026",
       "0",
-      "500K",
+      "200K",
+      "400K",
+      "600K",
+      "800K",
       "1.00M",
+      "1.20M",
       "Rate (per year)",
       "today",
       "PROJ0000 (600K)",
@@ -3495,8 +3205,8 @@
       "PROJ0005 (100,000)"
     ],
     "size": [
-      449.1,
-      157.7
+      318.5,
+      276.0
     ]
   },
   "queue.cores": {
@@ -3559,48 +3269,42 @@
   "queue.cores@mobile": {
     "counts": {
       "a": 0,
-      "g": 125,
-      "path": 47,
-      "text": 23,
-      "use": 24
+      "g": 94,
+      "path": 36,
+      "text": 21,
+      "use": 15
     },
     "drill_hrefs": [],
     "fills": [
-      "#011837",
-      "#ffffff",
-      "#011837",
-      "#ffffff",
       "#011837"
     ],
     "kind": "svg",
     "labels": [
       "0",
+      "5",
       "10",
+      "15",
       "Count",
       "Running",
       "Pending",
       "Held",
       "Active Users",
-      "02-28 17",
       "02-28 18",
-      "02-28 19",
-      "02-28 20",
       "02-28 21",
-      "02-28 22",
-      "02-28 23",
       "03-01 00",
-      "03-01 01",
-      "03-01 02",
       "Time (MDT)",
       "0",
+      "250",
+      "500",
+      "750",
       "1,000",
       "Resources",
       "Cores Running",
       "Cores Pending"
     ],
     "size": [
-      315.5,
-      201.5
+      316.3,
+      353.2
     ]
   },
   "queue.empty": {
@@ -3667,48 +3371,40 @@
   "queue.gpus@mobile": {
     "counts": {
       "a": 0,
-      "g": 125,
-      "path": 47,
-      "text": 23,
-      "use": 24
+      "g": 86,
+      "path": 34,
+      "text": 19,
+      "use": 13
     },
     "drill_hrefs": [],
     "fills": [
-      "#011837",
-      "#ffffff",
-      "#011837",
-      "#ffffff",
       "#011837"
     ],
     "kind": "svg",
     "labels": [
       "0",
+      "5",
       "10",
+      "15",
       "Count",
       "Running",
       "Pending",
       "Held",
       "Active Users",
-      "02-28 17",
       "02-28 18",
-      "02-28 19",
-      "02-28 20",
       "02-28 21",
-      "02-28 22",
-      "02-28 23",
       "03-01 00",
-      "03-01 01",
-      "03-01 02",
       "Time (MDT)",
       "0",
-      "50",
+      "20",
+      "40",
       "Resources",
       "GPUs Running",
       "GPUs Pending"
     ],
     "size": [
-      302.9,
-      201.5
+      306.0,
+      353.2
     ]
   },
   "usage_stacked.core_hours": {
@@ -3837,21 +3533,21 @@
     "kind": "svg",
     "labels": [
       "2026-03-01",
-      "2026-03-03",
       "2026-03-05",
-      "2026-03-07",
       "2026-03-09",
-      "2026-03-11",
       "0",
-      "50",
+      "20",
+      "40",
+      "60",
+      "80",
       "Core-Hours",
       "bob",
       "alice",
       "Others"
     ],
     "size": [
-      389.7,
-      133.5
+      306.0,
+      248.7
     ]
   },
   "usage_stacked.empty": {
@@ -3907,18 +3603,18 @@
     "kind": "svg",
     "labels": [
       "2026-03-01",
-      "2026-03-03",
       "2026-03-05",
-      "2026-03-07",
       "2026-03-09",
-      "2026-03-11",
       "0",
-      "50",
+      "20",
+      "40",
+      "60",
+      "80",
       "Charges"
     ],
     "size": [
-      305.7,
-      128.9
+      306.0,
+      225.1
     ]
   },
   "usage_timeseries.empty": {
@@ -3992,18 +3688,18 @@
     "kind": "svg",
     "labels": [
       "2026-03-01",
-      "2026-03-03",
       "2026-03-05",
-      "2026-03-07",
       "2026-03-09",
-      "2026-03-11",
       "0",
-      "50",
+      "20",
+      "40",
+      "60",
+      "80",
       "Job Count"
     ],
     "size": [
-      305.7,
-      128.9
+      306.0,
+      225.1
     ]
   },
   "user_proj_area.empty": {
@@ -4066,10 +3762,10 @@
   "user_proj_area.peak_unlinked@mobile": {
     "counts": {
       "a": 0,
-      "g": 70,
-      "path": 26,
-      "text": 17,
-      "use": 12
+      "g": 58,
+      "path": 23,
+      "text": 14,
+      "use": 9
     },
     "drill_hrefs": [],
     "fills": [
@@ -4089,17 +3785,14 @@
     ],
     "kind": "svg",
     "labels": [
-      "02-28 17",
       "02-28 18",
-      "02-28 19",
-      "02-28 20",
       "02-28 21",
-      "02-28 22",
-      "02-28 23",
       "03-01 00",
-      "03-01 01",
-      "03-01 02",
       "0",
+      "10",
+      "20",
+      "30",
+      "40",
       "50",
       "Jobs",
       "PROJ0001 (28)",
@@ -4108,8 +3801,8 @@
       "Others (4)"
     ],
     "size": [
-      457.7,
-      148.4
+      306.0,
+      286.5
     ]
   },
   "user_proj_area.project_current": {
@@ -4175,10 +3868,10 @@
   "user_proj_area.project_current@mobile": {
     "counts": {
       "a": 6,
-      "g": 70,
-      "path": 26,
-      "text": 17,
-      "use": 12
+      "g": 58,
+      "path": 23,
+      "text": 14,
+      "use": 9
     },
     "drill_hrefs": [
       "/user/project-details-modal/PROJ0001",
@@ -4205,17 +3898,14 @@
     ],
     "kind": "svg",
     "labels": [
-      "02-28 17",
       "02-28 18",
-      "02-28 19",
-      "02-28 20",
       "02-28 21",
-      "02-28 22",
-      "02-28 23",
       "03-01 00",
-      "03-01 01",
-      "03-01 02",
       "0",
+      "10",
+      "20",
+      "30",
+      "40",
       "50",
       "Jobs",
       "PROJ0001 (20)",
@@ -4224,8 +3914,8 @@
       "Others (2)"
     ],
     "size": [
-      457.7,
-      148.4
+      306.0,
+      286.5
     ]
   },
   "user_usage_pie.charges": {
@@ -4331,10 +4021,10 @@
   },
   "user_usage_pie.charges@mobile": {
     "counts": {
-      "a": 27,
-      "g": 46,
-      "path": 21,
-      "text": 20,
+      "a": 18,
+      "g": 34,
+      "path": 15,
+      "text": 14,
       "use": 0
     },
     "drill_hrefs": [
@@ -4344,9 +4034,6 @@
       "#sam/user/user3",
       "#sam/user/user4",
       "#sam/user/user5",
-      "#sam/user/user6",
-      "#sam/user/user7",
-      "#sam/user/user8",
       "#sam/user/user0",
       "#sam/user/user0",
       "#sam/user/user1",
@@ -4358,13 +4045,7 @@
       "#sam/user/user4",
       "#sam/user/user4",
       "#sam/user/user5",
-      "#sam/user/user5",
-      "#sam/user/user6",
-      "#sam/user/user6",
-      "#sam/user/user7",
-      "#sam/user/user7",
-      "#sam/user/user8",
-      "#sam/user/user8"
+      "#sam/user/user5"
     ],
     "fills": [
       "#0057c2",
@@ -4373,12 +4054,7 @@
       "#fdd509",
       "#faa119",
       "#00818f",
-      "#42c0ff",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
-      "#ffffff",
-      "#011837",
       "#ffffff",
       "#011837",
       "#ffffff",
@@ -4394,10 +4070,6 @@
       "#faa119",
       "#011837",
       "#00818f",
-      "#011837",
-      "#42c0ff",
-      "#011837",
-      "#00a2b4",
       "#011837",
       "#bbbcbc",
       "#011837"
@@ -4410,24 +4082,18 @@
       "11.5%",
       "10.3%",
       "9.0%",
-      "7.7%",
-      "6.4%",
-      "5.1%",
-      "7.7%",
+      "26.9%",
       "user0 (12,000)",
       "user1 (11,000)",
       "user2 (10,000)",
       "user3 (9,000)",
       "user4 (8,000)",
       "user5 (7,000)",
-      "user6 (6,000)",
-      "user7 (5,000)",
-      "user8 (4,000)",
-      "Other (3) (6,000)"
+      "Other (6) (21,000)"
     ],
     "size": [
-      271.2,
-      188.1
+      309.2,
+      191.8
     ]
   },
   "user_usage_pie.default_metric": {
@@ -4533,10 +4199,10 @@
   },
   "user_usage_pie.default_metric@mobile": {
     "counts": {
-      "a": 27,
-      "g": 46,
-      "path": 21,
-      "text": 20,
+      "a": 18,
+      "g": 34,
+      "path": 15,
+      "text": 14,
       "use": 0
     },
     "drill_hrefs": [
@@ -4546,9 +4212,6 @@
       "#sam/user/user3",
       "#sam/user/user4",
       "#sam/user/user5",
-      "#sam/user/user6",
-      "#sam/user/user7",
-      "#sam/user/user8",
       "#sam/user/user0",
       "#sam/user/user0",
       "#sam/user/user1",
@@ -4560,13 +4223,7 @@
       "#sam/user/user4",
       "#sam/user/user4",
       "#sam/user/user5",
-      "#sam/user/user5",
-      "#sam/user/user6",
-      "#sam/user/user6",
-      "#sam/user/user7",
-      "#sam/user/user7",
-      "#sam/user/user8",
-      "#sam/user/user8"
+      "#sam/user/user5"
     ],
     "fills": [
       "#0057c2",
@@ -4575,12 +4232,7 @@
       "#fdd509",
       "#faa119",
       "#00818f",
-      "#42c0ff",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
-      "#ffffff",
-      "#011837",
       "#ffffff",
       "#011837",
       "#ffffff",
@@ -4596,10 +4248,6 @@
       "#faa119",
       "#011837",
       "#00818f",
-      "#011837",
-      "#42c0ff",
-      "#011837",
-      "#00a2b4",
       "#011837",
       "#bbbcbc",
       "#011837"
@@ -4612,24 +4260,18 @@
       "11.5%",
       "10.3%",
       "9.0%",
-      "7.7%",
-      "6.4%",
-      "5.1%",
-      "7.7%",
+      "26.9%",
       "user0 (12,000)",
       "user1 (11,000)",
       "user2 (10,000)",
       "user3 (9,000)",
       "user4 (8,000)",
       "user5 (7,000)",
-      "user6 (6,000)",
-      "user7 (5,000)",
-      "user8 (4,000)",
-      "Other (3) (6,000)"
+      "Other (6) (21,000)"
     ],
     "size": [
-      271.2,
-      188.1
+      309.2,
+      191.8
     ]
   },
   "user_usage_pie.empty": {
@@ -4739,10 +4381,10 @@
   },
   "user_usage_pie.jobs@mobile": {
     "counts": {
-      "a": 27,
-      "g": 46,
-      "path": 21,
-      "text": 20,
+      "a": 18,
+      "g": 34,
+      "path": 15,
+      "text": 14,
       "use": 0
     },
     "drill_hrefs": [
@@ -4752,9 +4394,6 @@
       "#sam/user/user3",
       "#sam/user/user4",
       "#sam/user/user5",
-      "#sam/user/user6",
-      "#sam/user/user7",
-      "#sam/user/user8",
       "#sam/user/user0",
       "#sam/user/user0",
       "#sam/user/user1",
@@ -4766,13 +4405,7 @@
       "#sam/user/user4",
       "#sam/user/user4",
       "#sam/user/user5",
-      "#sam/user/user5",
-      "#sam/user/user6",
-      "#sam/user/user6",
-      "#sam/user/user7",
-      "#sam/user/user7",
-      "#sam/user/user8",
-      "#sam/user/user8"
+      "#sam/user/user5"
     ],
     "fills": [
       "#0057c2",
@@ -4781,12 +4414,7 @@
       "#fdd509",
       "#faa119",
       "#00818f",
-      "#42c0ff",
-      "#00a2b4",
-      "#011837",
       "#bbbcbc",
-      "#ffffff",
-      "#011837",
       "#ffffff",
       "#011837",
       "#ffffff",
@@ -4802,10 +4430,6 @@
       "#faa119",
       "#011837",
       "#00818f",
-      "#011837",
-      "#42c0ff",
-      "#011837",
-      "#00a2b4",
       "#011837",
       "#bbbcbc",
       "#011837"
@@ -4818,24 +4442,18 @@
       "11.5%",
       "10.3%",
       "9.0%",
-      "7.7%",
-      "6.4%",
-      "5.1%",
-      "7.7%",
+      "26.9%",
       "user0 (600)",
       "user1 (550)",
       "user2 (500)",
       "user3 (450)",
       "user4 (400)",
       "user5 (350)",
-      "user6 (300)",
-      "user7 (250)",
-      "user8 (200)",
-      "Other (3) (300)"
+      "Other (6) (1,050)"
     ],
     "size": [
-      263.3,
-      188.1
+      304.0,
+      191.8
     ]
   }
 }

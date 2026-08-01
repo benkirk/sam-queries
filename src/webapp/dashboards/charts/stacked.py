@@ -15,6 +15,7 @@ addressable for `set_url` — the whole reason these charts can have clickable
 legends at all.
 """
 
+import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 from matplotlib.ticker import MaxNLocator
 
@@ -42,7 +43,10 @@ _USAGE_METRIC_YLABELS = {
 class StackedSeriesChart(BaseChart):
     """Bands accumulated bottom-to-top, with an optional clickable legend."""
 
-    LAYOUTS = profile((18, 5))
+    #: `label_rotation=30` on desktop records what `fig.autofmt_xdate()`
+    #: already does; nothing reads it there. Mobile rotates further and thins
+    #: the ticks, because 4.6in of axis cannot carry a dozen date labels.
+    LAYOUTS = profile((18, 5), (4.6, 3.2), label_rotation=30)
 
     #: 'bar' — discrete bars per x position; 'area' — filled stackplot.
     stack_mode = 'bar'
@@ -131,31 +135,59 @@ class StackedSeriesChart(BaseChart):
         ax.stackplot(self.x, *matrix, colors=self.colors, alpha=self.area_alpha)
 
     def decorate(self, ax, layout, theme):
-        ax.set_ylabel(self.ylabel())
+        ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
         ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
         self.apply_grid(ax, theme)
 
+    def legend_entries(self, layout):
+        """`[(band, colour), ...]` in legend order, capped for the layout.
+
+        Reversed so the legend reads top-to-bottom matching the visual stack.
+
+        When the cap bites, the trailing inert band — "Others", the grey
+        aggregate that sits at the bottom of every stack — is *kept* and the
+        smallest named bands are dropped instead. Dropping "Others" would
+        leave a visible grey band with nothing in the legend explaining it,
+        which is worse than dropping a sliver that is already hard to see.
+        Every band is still drawn either way; only the legend is capped.
+        """
+        entries = list(zip(reversed(self.bands), reversed(self.colors)))
+        cap = self.legend_entry_cap(layout, len(entries))
+        if cap >= len(entries):
+            return entries
+        keep_tail = entries[-1:] if not entries[-1][0].is_linkable else []
+        return entries[:cap - len(keep_tail)] + keep_tail
+
     def add_legend(self, ax, layout, theme):
-        if not self.show_legend:
+        if not self.show_legend or layout.legend_placement == 'none':
             return
-        # Reversed so the legend reads top-to-bottom matching the visual stack.
+        entries = self.legend_entries(layout)
         handles = [mpatches.Patch(color=c, label=self.legend_label(b))
-                   for b, c in zip(reversed(self.bands), reversed(self.colors))]
+                   for b, c in entries]
         legend = ax.legend(
             handles=handles,
-            loc='center left',
-            bbox_to_anchor=self.legend_anchor,
             frameon=False,
-            fontsize=self.legend_fontsize,
             title_fontsize=12,
+            **self.legend_kwargs(layout),
             **({'labelspacing': self.legend_labelspacing}
                if self.legend_labelspacing else {}),
         )
         drill = self.legend_drill
         if drill is not None:
-            self.link_legend(legend, self.bands, drill.url)
+            # `ordered=True`: `entries` is already in legend order and may be
+            # capped, so re-reversing it would misalign hrefs onto the wrong
+            # swatches.
+            self.link_legend(legend, [b for b, _ in entries], drill.url,
+                             ordered=True)
 
     def finish(self, fig, axes, layout, theme):
+        if layout.is_mobile:
+            # A dozen date labels do not fit across 4.6in. Thin them to the
+            # layout's target before autofmt rotates what is left.
+            axes.xaxis.set_major_locator(
+                mdates.AutoDateLocator(maxticks=layout.max_ticks))
+            fig.autofmt_xdate(rotation=layout.label_rotation)
+            return
         fig.autofmt_xdate()
 
 
@@ -344,7 +376,13 @@ class UserProjAreaChart(StackedSeriesChart):
     stack_mode = 'area'
     palette = UNITY_STACK_20
     palette_reverse = True
+    #: This chart is deliberately set a tier larger than the rest of the
+    #: stacked family — it is the status dashboard's headline chart.
     legend_fontsize = 13
+    axis_label_fontsize = 13
+    tick_fontsize = 12
+    #: Long labels ("PROJ0001 (1,234)"), so a below-legend gets one column.
+    legend_ncol_below = 1
 
     def __init__(self, timeseries, link_kind=None, rank_by: str = 'current'):
         self.timeseries = timeseries or {}
@@ -388,8 +426,11 @@ class UserProjAreaChart(StackedSeriesChart):
         return self.timeseries.get('metric_label', 'Jobs')
 
     def decorate(self, ax, layout, theme):
-        ax.set_ylabel(self.ylabel(), fontsize=13)
-        ax.tick_params(axis='both', labelsize=12)
+        # Sizes are class attributes now (`axis_label_fontsize`,
+        # `tick_fontsize`) so the layout can override them on a phone, where
+        # this chart's deliberately-larger 13/12pt chrome would crowd out the
+        # plot rather than emphasize it.
+        ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
         ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
         self.apply_grid(ax, theme)
 
@@ -483,8 +524,8 @@ class JobsTimeseriesChart(StackedSeriesChart):
         step = max(1, len(self.labels) // layout.max_ticks)
         ticks = list(range(0, len(self.labels), step))
         ax.set_xticks(ticks)
-        ax.set_xticklabels([self.labels[i] for i in ticks], rotation=30,
-                           ha='right')
+        ax.set_xticklabels([self.labels[i] for i in ticks],
+                           rotation=layout.label_rotation, ha='right')
         ax.set_xlim(-0.5, len(self.labels) - 0.5)
         super().decorate(ax, layout, theme)
 

@@ -11,6 +11,7 @@ key, two charts, and the smallest blast radius of any family.
 
 from typing import Dict, List
 
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
 from sam import fmt
@@ -38,6 +39,9 @@ class DualPanelTimeSeriesChart(BaseChart):
     #: 11pt, matching the rcParams default and every other large figure.
     #: Was 10 for no recorded reason.
     legend_fontsize = 11
+    #: Two- and three-word labels ("Resources Available", "GPUs Pending"), so
+    #: an outside legend gets two columns.
+    legend_ncol_below = 2
 
     def __init__(self, history_data: List[Dict]):
         self.history_data = history_data or []
@@ -52,16 +56,51 @@ class DualPanelTimeSeriesChart(BaseChart):
 
     def make_figure(self, layout):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=layout.figsize, sharex=True)
+        if layout.legend_placement == 'below':
+            # Open up the inter-panel gap for the lower panel's legend — see
+            # `panel_legend` on why it goes there rather than underneath.
+            fig.subplots_adjust(hspace=0.45)
         return fig, (ax1, ax2)
 
-    def panel_legend(self, ax, theme, loc=2):
-        ax.legend(loc=loc, fontsize=self.legend_fontsize, frameon=True,
-                  facecolor=theme.legend_face, edgecolor='none', framealpha=0.9)
+    def panel_legend(self, ax, layout, theme, loc=2):
+        """A framed legend inside the panel — or, on a phone, above it.
+
+        Occluding the data is an acceptable trade at 18x10in, where the legend
+        covers a small corner. At 4.6in wide it covers the plot: measured, the
+        nodetype legend spanned over half the upper panel's width and most of
+        its height. So mobile moves it out, and with it the frame goes away —
+        there is nothing left to occlude.
+
+        **Above, not below** — and this family is the reason the direction is
+        not simply "below" everywhere. Two stacked Axes share one x axis, so
+        the lower panel's underside is where the rotated date labels and the
+        "Time (MDT)" label live; a legend placed there lands on top of them
+        (measured, at three different anchors — moving the anchor down moves
+        the label down with it, because the tight bbox grows to fit both).
+        Above puts the upper panel's legend in the figure's top margin and the
+        lower panel's in the inter-panel gap, which `sharex` leaves empty
+        precisely because the upper panel's tick labels are hidden. `hspace`
+        in `make_figure` is what widens that gap to hold it.
+        """
+        if layout.legend_placement != 'below':
+            ax.legend(loc=loc, fontsize=self.legend_fontsize, frameon=True,
+                      facecolor=theme.legend_face, edgecolor='none',
+                      framealpha=0.9)
+            return
+        ax.legend(loc='lower center', bbox_to_anchor=(0.5, 1.03),
+                  ncol=self.legend_ncol_below,
+                  fontsize=layout.legend_fontsize or self.legend_fontsize,
+                  frameon=False)
 
     def column(self, key, default=0):
         return [d.get(key, default) for d in self.history_data]
 
     def finish(self, fig, axes, layout, theme):
+        if layout.is_mobile:
+            axes[1].xaxis.set_major_locator(
+                mdates.AutoDateLocator(maxticks=layout.max_ticks))
+            fig.autofmt_xdate(rotation=layout.label_rotation)
+            return
         fig.autofmt_xdate()
 
 
@@ -72,7 +111,9 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
     #: One entry per node type; can be O(10s) across all machines.
     cache_maxsize = 64
     empty_message = 'No history data available for this node type'
-    LAYOUTS = profile((18, 10))
+    #: Two stacked panels need real vertical room on a phone — this is the
+    #: tallest mobile figure in the package, and still barely enough.
+    LAYOUTS = profile((18, 10), (4.6, 5.4))
 
     @staticmethod
     def cache_key(history_data):
@@ -123,8 +164,8 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
 
     def add_legend(self, axes, layout, theme):
         ax1, ax2 = axes
-        self.panel_legend(ax1, theme, loc=2)
-        self.panel_legend(ax2, theme, loc='best')
+        self.panel_legend(ax1, layout, theme, loc=2)
+        self.panel_legend(ax2, layout, theme, loc='best')
 
 
 class QueueHistoryChart(DualPanelTimeSeriesChart):
@@ -134,7 +175,7 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
     #: One entry per queue; queue counts can be O(10s) across all resources.
     cache_maxsize = 64
     empty_message = 'No history data available for this queue'
-    LAYOUTS = profile((14, 8))
+    LAYOUTS = profile((14, 8), (4.6, 4.8))
 
     @staticmethod
     def cache_key(history_data):
@@ -181,4 +222,4 @@ class QueueHistoryChart(DualPanelTimeSeriesChart):
 
     def add_legend(self, axes, layout, theme):
         for ax in axes:
-            self.panel_legend(ax, theme, loc=2)
+            self.panel_legend(ax, layout, theme, loc=2)
