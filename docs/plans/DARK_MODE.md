@@ -528,10 +528,19 @@ Each of these needs a human answer before D7. None blocks the commits before it.
    | `869–1271` | NCAR wave disc (blue, white waves) | **correct as-is** |
    | `1386–2457` | "NCAR" + "OPERATED BY UCAR", brand blue | ~2.6:1 — the defect |
 
-   So `img/logo-ncar-reversed.png` recolours **only the wordmark (white) and
-   the rule (grey)**, preserving alpha so antialiasing survives. The NSF seal
-   is untouched per Ben's instruction — and needs nothing anyway. The wave disc
-   is untouched because it already works.
+   So `img/logo-ncar-reversed.png` recolours **only the wordmark and the
+   rule**, preserving alpha so antialiasing survives. The NSF seal is untouched
+   per Ben's instruction — and needs nothing anyway. The wave disc is untouched
+   because it already works.
+
+   The wordmark is `--ncar-sky` **#42C0FF** (Ben's choice over white): 7.87:1
+   on the band, and the same blue as `--text-link` in the dark theme, so the
+   mark, the "Systems Accounting Manager" lockup text and every dark-mode link
+   agree. The rule goes to a mid neutral #8C98A6.
+
+   The asset is reproducible — `scripts/make_reversed_logo.py` derives the
+   column spans from the alpha channel and fails loudly if the lockup's part
+   count changes, rather than trusting hardcoded offsets.
 
    Still explicitly **not** `filter: invert()`: it would flatten the NSF seal
    and the wave disc into white silhouettes, which is not an approved variant
