@@ -84,12 +84,26 @@ class Permission(Enum):
     CREATE_GROUPS = "create_groups"
     DELETE_GROUPS = "delete_groups"
 
-    # Organizational metadata: organizations, institutions, contracts,
-    # NSF programs, areas of interest. Slowly-changing reference data.
+    # Organizational metadata: organizations, institutions, mnemonic
+    # codes, areas of interest. Slowly-changing reference data.
     VIEW_ORG_METADATA = "view_org_metadata"
     EDIT_ORG_METADATA = "edit_org_metadata"
     CREATE_ORG_METADATA = "create_org_metadata"
     DELETE_ORG_METADATA = "delete_org_metadata"
+
+    # Contracts: the awards/grants funding projects, plus their sources
+    # and NSF programs — the whole /admin/contracts surface. Carved out
+    # of ORG_METADATA because contract administration tracks allocation
+    # administration (who funds this project, through when) rather than
+    # the slowly-changing directory reference data above.
+    #
+    # DELETE_CONTRACTS is a soft retire, not a row delete: the contract
+    # route stamps ``end_date`` (contracts_routes.py) and the generated
+    # source/program deletes set ``active=False``.
+    VIEW_CONTRACTS = "view_contracts"
+    EDIT_CONTRACTS = "edit_contracts"
+    CREATE_CONTRACTS = "create_contracts"
+    DELETE_CONTRACTS = "delete_contracts"
 
     # Reports and analytics
     VIEW_REPORTS = "view_reports"
@@ -175,32 +189,81 @@ ALL_DELETE = _perms_with_action('delete')
 # to that appear here.
 #
 # Groups that don't appear in this dict simply confer no permissions.
-GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
-    # ---- Real POSIX group bundles (provisional) ----
-
-    # nusd: read, edit,everything + write to projects, allocations
-    # and system status. Does NOT confer write on users/groups/facilities/
-    # org_metadata (those remain admin-only). May impersonate any user
-    # whose permission set is a subset of nusd's (the can_impersonate
-    # rule blocks escalation).
-    'nusd': ALL_VIEW | ALL_EDIT | {
+# ---- The allocation-administrator tier ----
+#
+# Provisions and manages projects, allocations and contracts end to end.
+# The defining exclusion is the **definition layer**: an allocation
+# administrator has no authority over resources, machines, queues or
+# facilities — those describe the plant, not who may use it.
+#
+# Reads everything (ALL_VIEW), edits everything except that definition
+# layer, and creates the entities its job requires.
+#
+# Deletes are enumerated positively rather than as ``ALL_DELETE - {...}``.
+# Every delete granted here is a **soft** retire — the generated CRUD
+# deletes set ``active=False`` (crud.py → handle_htmx_soft_delete) and the
+# bespoke contract delete stamps ``end_date``. The withheld ones are where
+# delete means something harsher or machine-shaped:
+#
+#   DELETE_RESOURCES   hard-deletes disk-root rows and fair-share override
+#                      rows, and decommissions machines/queues
+#   DELETE_FACILITIES  facility definitions
+#   DELETE_USERS       hard row delete via the Flask-Admin layer
+#   DELETE_GROUPS      ditto
+#
+# Failing closed matters more than the ALL_* auto-pickup here: a future
+# ``delete_*`` domain must be added deliberately, not inherited.
+#
+# Known limitation (accepted): AllocationType and Panel are
+# allocation-shaped concepts that live under the *_FACILITIES family, so
+# default allocation amounts and fair-share percentages are NOT editable
+# at this tier — see facilities_routes.py.
+_ALLOCATION_ADMIN: Set[Permission] = (
+    ALL_VIEW
+    | (ALL_EDIT - {Permission.EDIT_RESOURCES, Permission.EDIT_FACILITIES})
+    | {
         Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.CREATE_PROJECTS,
         Permission.CREATE_ALLOCATIONS,
+        Permission.CREATE_ORG_METADATA,
+        Permission.CREATE_CONTRACTS,
+        # Soft retires only — see the note above.
+        Permission.DELETE_PROJECTS,
+        Permission.DELETE_ALLOCATIONS,
+        Permission.DELETE_ORG_METADATA,
+        Permission.DELETE_CONTRACTS,
         Permission.IMPERSONATE_USERS,
-    },
+    }
+)
 
-    # hsg: read-only across the board,
-    # resources permissions, and edit system status (for outages...)
+
+GROUP_PERMISSIONS: Dict[str, Set[Permission]] = {
+    # ---- Real POSIX group bundles (provisional) ----
+
+    # nusd: the allocation-administrator tier, unmodified. Deliberately
+    # holds nothing over the resource/facility definition layer — NUSD's
+    # job is allocations and contracts, and they should not have to think
+    # about machines or queues.
+    #
+    # May impersonate any user whose permission set is a subset of nusd's
+    # (the can_impersonate rule blocks escalation). Note nusd is now a
+    # strict subset of csg, so nusd cannot impersonate a csg user.
+    'nusd': _ALLOCATION_ADMIN,
+
+    # csg: the allocation-administrator tier PLUS edit on resources —
+    # CSG runs the plant, so machines, queues, disk roots and per-facility
+    # fair-share overrides stay editable. Create/delete of resources is
+    # still withheld (ssg holds CREATE_RESOURCES for that).
+    'csg': _ALLOCATION_ADMIN | {Permission.EDIT_RESOURCES},
+
+    # ssg: read-only across the board, plus resource create/edit and
+    # edit system status (for outages...)
     'ssg': ALL_VIEW | {
         Permission.ACCESS_ADMIN_DASHBOARD,
         Permission.EDIT_RESOURCES, Permission.CREATE_RESOURCES,
         Permission.EDIT_SYSTEM_STATUS
     },
 }
-
-# csg - same as nusd
-GROUP_PERMISSIONS['csg'] = GROUP_PERMISSIONS['nusd']
 
 # Per-user permission overrides
 #
@@ -270,6 +333,11 @@ USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]] = {
             # confer.
             Permission.VIEW_RESOURCES,
             Permission.VIEW_ORG_METADATA,
+            # Enumerated tiers do NOT get the ALL_VIEW auto-pickup that
+            # group bundles do, so a new *_CONTRACTS family had to be
+            # added here by hand or this tier would silently lose the
+            # contracts card. Any future VIEW_* domain needs the same.
+            Permission.VIEW_CONTRACTS,
             Permission.VIEW_FACILITIES,
             Permission.VIEW_USERS,
             Permission.VIEW_GROUPS,

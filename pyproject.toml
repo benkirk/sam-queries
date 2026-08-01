@@ -72,6 +72,20 @@ test = [
     #   pyright                       → Gap B type checking
     # Re-add to this list when starting the corresponding workstream.
 ]
+e2e = [
+    # Browser regression net (e2e/) — see docs/plans/FRONTEND_TEST_NET.md.
+    # Deliberately NOT folded into [test]: the 8-minute sam-ci-docker path must
+    # not start installing browser libraries. Installed only by the
+    # browser-smoke.yaml workflow and by devs running `make e2e`.
+    #
+    # Pinned with an upper bound because .github/dependabot.yml is scoped to
+    # github-actions on purpose ("Python dependencies … are a separate
+    # decision"), so nothing bumps this for us. Pinning the driver also pins
+    # the Chromium build that `playwright install` fetches.
+    "pytest",
+    "pytest-playwright>=0.7,<0.8",
+    "pytest-timeout",   # e2e/pytest.ini timeout = 120
+]
 dev = ["samuel[test]", "jupyterlab", "pandas", "pre-commit"]
 
 [tool.setuptools]

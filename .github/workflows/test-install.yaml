@@ -30,13 +30,13 @@ jobs:
         run: echo "INSTALL_DIR=${{ runner.temp }}/test-install-target" >> ${GITHUB_ENV}
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           lfs: true
 
       # Latest docker for compatibility with --wait, COPY --exclude, etc.
       - name: Install latest Docker
-        uses: docker/setup-docker-action@v4
+        uses: docker/setup-docker-action@v5
         with:
           docker-ce-version: latest
 

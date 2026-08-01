@@ -298,6 +298,77 @@ make perf                                         # performance suite
 
 ---
 
+## Browser tier (`e2e/`) — front-end regression net
+
+Until this tier the Python suite had zero coverage of the ~3,000 lines of
+dashboard JavaScript. PR #378 fixed two bugs that nothing could have caught: a
+dead edit pencil (its modal shell was never included on the page) and a scroll
+overshoot past a card title. See
+[`docs/plans/FRONTEND_TEST_NET.md`](plans/FRONTEND_TEST_NET.md) for the full
+decision record, including why a JS unit harness (vitest/jsdom) was rejected.
+
+Two complementary layers, both driven by pytest:
+
+| Layer | Where | Catches |
+|---|---|---|
+| Shell contracts | `tests/unit/test_modal_shell_contract.py` | dangling `data-bs-target` — **completely silent in the browser** |
+| Console sweep | `e2e/` (Playwright) | dangling `hx-target`, uncaught JS exceptions, script-order breaks |
+
+Neither subsumes the other. htmx *does* `console.error("htmx:targetError")` on a
+dangling `hx-target`, so the browser catches that — but a dangling
+`data-bs-target` produces no console output at all, so a Bootstrap-only
+affordance would slip past a browser-only net entirely.
+
+### Why `e2e/` lives outside `tests/`
+
+`tests/conftest.py`'s `pytest_configure` guard hard-exits unless
+`SAM_TEST_DB_URL` points at the allowlisted `mysql-test` container. Browser
+tests talk HTTP and never touch the DB. Because conftest files are only loaded
+from a test file's ancestor directories, keeping `e2e/` a *sibling* of `tests/`
+means the guard is never loaded and never has to be weakened — and bare
+`pytest` never collects it (`testpaths = tests`). Same reasoning as
+`utils/parity/` below. Nothing under `e2e/` may import `sam`, `webapp` or
+`system_status`; that boundary is what lets CI install a bare Python plus
+`pytest-playwright` instead of building a conda environment.
+
+### Running it locally
+
+```bash
+pip install -e ".[e2e]"          # one-time; not part of [test] on purpose
+playwright install chromium      # one-time
+
+make docker-up                                   # stack must be running
+make e2e                                         # -> :7050 (gunicorn/prod target)
+make e2e SAM_E2E_BASE_URL=http://localhost:5050  # -> dev server
+```
+
+The sweep logs in once as `benkirk` through the stub form and reuses the
+cookie — the same admin-equivalent identity the `auth_client` fixture uses, and
+the one username the obfuscated snapshot preserves. Its route list is *derived*
+from `tests/unit/snapshots/dashboard_route_map.json`, so a new top-level tab
+enters the sweep automatically.
+
+### The flake rule
+
+E2E flake is the real long-term cost of this tier, so it is budgeted up front:
+**no retries** (`--reruns`/`--retries` are deliberately absent from
+`e2e/pytest.ini`), auto-waiting only — never a bare `sleep` as a substitute for
+a wait condition — and a flaky sweep route gets *fixed or deleted*, never
+retried. If flake ever becomes chronic the fallback is `continue-on-error: true`
+on `browser-smoke.yaml` alone, which is cheap precisely because it is its own
+workflow; letting people learn to ignore a red check is not an option.
+
+### CI
+
+`.github/workflows/browser-smoke.yaml` — checkout → `setup-python` →
+`pip install -e ".[e2e]"` → `make docker-up` → `make e2e` → `make docker-down`.
+It runs on PRs to `main`/`staging` (with the usual `docs/**` `paths-ignore`) and
+on `workflow_dispatch`. It raises `RATELIMIT_AUTHED` in `.env` first: the sweep
+is a single rate-limit actor against a **global** 200/min default, and a 429
+would surface as an htmx error indistinguishable from a real regression.
+
+---
+
 ## Related: ad-hoc parity checks (not in the test suite)
 
 Legacy-vs-new API parity verification lives outside `tests/` because it

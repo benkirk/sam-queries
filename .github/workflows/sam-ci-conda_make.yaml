@@ -50,11 +50,11 @@ jobs:
           sudo apt-get install -y mysql-client
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           lfs: true
 
-      - uses: conda-incubator/setup-miniconda@v3
+      - uses: conda-incubator/setup-miniconda@v4
         with:
           activate-environment: ./conda-env/
           environment-file: conda-env.yaml
@@ -68,7 +68,7 @@ jobs:
       # currently needed for e.g. COPY --exclude syntax (1.19.0 / 2025-09-30)
       # https://docs.docker.com/build/buildkit/dockerfile-release-notes/?utm_source=chatgpt.com#1190
       - name: Install latest Docker
-        uses: docker/setup-docker-action@v4
+        uses: docker/setup-docker-action@v5
         with:
           docker-ce-version: latest   # or pin a version like "29.0.3"
 

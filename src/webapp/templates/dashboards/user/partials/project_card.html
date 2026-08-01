@@ -80,12 +80,12 @@
       </span>
       {# The contract number opens #contractDetailsModal, but only for viewers
          who can actually load that card — a normal user on their own
-         dashboard has no VIEW_ORG_METADATA and the click would 403, so they
+         dashboard has no VIEW_CONTRACTS and the click would 403, so they
          keep plain text. The opener is data-action rather than a Bootstrap
          toggle because this card is frequently rendered *inside*
          #projectDetailsModal, where a toggle would close its host instead of
          stacking on it. The shell rides along with project_details_modal.html. #}
-      {% set _can_view_contracts = has_permission_any_facility(Permission.VIEW_ORG_METADATA)
+      {% set _can_view_contracts = has_permission_any_facility(Permission.VIEW_CONTRACTS)
                                    if has_permission_any_facility is defined and Permission is defined
                                    else false %}
       <div class="stat-value text-dark text-detail">

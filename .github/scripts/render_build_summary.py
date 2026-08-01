@@ -12,7 +12,7 @@ Each sidecar is expected to look like:
       "all_tags": ["ghcr.io/.../webapp:latest", "ghcr.io/.../webapp:main", ...],
       "digest": "sha256:...",
       "sizes": { "linux/amd64": 412345678, "linux/arm64": 401234567 },
-      "build_date": "2026-05-05 14:22 UTC"
+      "build_date": "2026-05-05 08:22 MDT"
     }
 """
 

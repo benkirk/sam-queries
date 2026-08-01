@@ -114,7 +114,7 @@ def _search_contracts(q, active_only):
 
 register_typeahead(
     bp, rule='/htmx/search/contracts', endpoint='htmx_search_contracts',
-    permission=Permission.VIEW_ORG_METADATA, any_facility=True,
+    permission=Permission.VIEW_CONTRACTS, any_facility=True,
     search=_search_contracts,
     template='dashboards/admin/fragments/contract_search_results_htmx.html',
     ctx_key='contracts',
@@ -123,7 +123,7 @@ register_typeahead(
 
 register_typeahead(
     bp, rule='/htmx/search/nsf-programs', endpoint='htmx_search_nsf_programs',
-    permission=Permission.VIEW_ORG_METADATA,
+    permission=Permission.VIEW_CONTRACTS,
     search=_search_nsf_programs_fk,
     template='dashboards/admin/fragments/nsf_program_search_results_fk_htmx.html',
     ctx_key='nsf_programs',
@@ -142,7 +142,7 @@ register_typeahead(
 
 @bp.route('/contract/<int:contract_id>')
 @login_required
-@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+@require_permission_any_facility(Permission.VIEW_CONTRACTS)
 def contract_card(contract_id):
     """HTML fragment for a single contract's detail card.
 
@@ -178,7 +178,7 @@ def contract_card(contract_id):
 
 @bp.route('/nsf-program/<int:nsf_program_id>/contracts')
 @login_required
-@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+@require_permission_any_facility(Permission.VIEW_CONTRACTS)
 def nsf_program_contracts(nsf_program_id):
     """The contracts under one NSF program, for the drill-down modal.
 
@@ -264,7 +264,7 @@ def _contract_create_context(form=None, **extra):
 
 @bp.route('/htmx/contracts-table')
 @login_required
-@require_permission_any_facility(Permission.VIEW_ORG_METADATA)
+@require_permission_any_facility(Permission.VIEW_CONTRACTS)
 @cache.cached(make_cache_key=user_aware_cache_key)
 def htmx_contracts_table():
     """The All Contracts table on /admin/contracts, grouped by funding source.
@@ -304,7 +304,7 @@ def htmx_contracts_table():
 
 @bp.route('/htmx/contract-create-form')
 @login_required
-@require_permission(Permission.CREATE_ORG_METADATA)
+@require_permission(Permission.CREATE_CONTRACTS)
 def htmx_contract_create_form():
     """Render the Create Contract form, optionally seeded from an award.
 
@@ -397,7 +397,7 @@ def _award_search_context(query, source_id):
 
 @bp.route('/htmx/contract-award-search')
 @login_required
-@require_permission(Permission.CREATE_ORG_METADATA)
+@require_permission(Permission.CREATE_CONTRACTS)
 def htmx_contract_award_search():
     """Free-text search across the award providers, above the Fetch button.
 
@@ -428,12 +428,12 @@ def htmx_contract_award_search():
 
 @bp.route('/htmx/contract-award-candidates')
 @login_required
-@require_permission(Permission.CREATE_ORG_METADATA)
+@require_permission(Permission.CREATE_CONTRACTS)
 def htmx_contract_award_candidates():
     """"Find Candidate Contracts" on /admin/contracts — the same search, as cards.
 
     The page-level sibling of :func:`htmx_contract_award_search`. Gated on
-    ``CREATE_ORG_METADATA`` rather than the page's own ``VIEW_ORG_METADATA``
+    ``CREATE_CONTRACTS`` rather than the page's own ``VIEW_CONTRACTS``
     because every row here leads to creating a contract, and because it
     spends two public APIs' quota per press.
 
@@ -482,7 +482,7 @@ def _nsf_source_id():
 
 @bp.route('/htmx/contract-award-lookup')
 @login_required
-@require_permission(Permission.CREATE_ORG_METADATA)
+@require_permission(Permission.CREATE_CONTRACTS)
 def htmx_contract_award_lookup():
     """Prefill the contract field block from the funding source's API.
 
@@ -579,7 +579,7 @@ def htmx_contract_award_lookup():
 
 @bp.route('/htmx/contract-program-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_ORG_METADATA)
+@require_permission(Permission.CREATE_CONTRACTS)
 def htmx_contract_program_create():
     """Create an NSF program from the create-contract form and select it.
 
@@ -669,7 +669,7 @@ class _ContractCreateHandler(HtmxFormHandler):
 
 @bp.route('/htmx/contract-create', methods=['POST'])
 @login_required
-@require_permission(Permission.CREATE_ORG_METADATA)
+@require_permission(Permission.CREATE_CONTRACTS)
 def htmx_contract_create():
     """Create a new contract."""
     return _ContractCreateHandler().handle()
@@ -680,7 +680,7 @@ def htmx_contract_create():
 
 @bp.route('/htmx/contract-delete/<int:contract_id>', methods=['DELETE'])
 @login_required
-@require_permission(Permission.DELETE_ORG_METADATA)
+@require_permission(Permission.DELETE_CONTRACTS)
 def htmx_contract_delete(contract_id):
     """Soft-delete (expire) a contract."""
     contract = db.session.get(Contract, contract_id)
@@ -700,17 +700,18 @@ def htmx_contract_delete(contract_id):
 
 # ── CRUD quintets — generated from specs ───────────────────────────────────
 #
-# Endpoints, URL rules, templates, permissions, and not-found messages are
-# unchanged by the split from orgs_routes (pinned by the route-map parity
-# snapshot). Contracts still carry the *ORG_METADATA permissions: they are
-# admin metadata, and no contract-specific permission exists.
+# Endpoints, URL rules, templates and not-found messages are unchanged by the
+# split from orgs_routes (pinned by the route-map parity snapshot). The
+# permissions are not: the whole contract surface moved off *ORG_METADATA onto
+# its own *CONTRACTS family, so contract administration can be granted
+# without conferring write on organizations, institutions and AOIs.
 
 _contract_spec = partial(
     CrudSpec,
     triggers=_CONTRACT_TRIGGERS,
-    edit_permission=Permission.EDIT_ORG_METADATA,
-    create_permission=Permission.CREATE_ORG_METADATA,
-    delete_permission=Permission.DELETE_ORG_METADATA,
+    edit_permission=Permission.EDIT_CONTRACTS,
+    create_permission=Permission.CREATE_CONTRACTS,
+    delete_permission=Permission.DELETE_CONTRACTS,
 )
 
 _CONTRACT_CRUD_SPECS = (

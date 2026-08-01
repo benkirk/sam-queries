@@ -206,6 +206,139 @@ class TestPermissionEnumSurface:
 
 
 # ---------------------------------------------------------------------------
+# Org-metadata grants per bundle
+# ---------------------------------------------------------------------------
+
+class TestOrgMetadataGrants:
+    """Who may create and retire org metadata (organizations, institutions,
+    mnemonic codes, AOIs). Pinned so an ``ALL_*`` refactor can't silently
+    revert or over-grant it. Contracts are a separate family — see
+    :class:`TestContractGrants`."""
+
+    def test_nusd_can_create_org_metadata(self):
+        assert Permission.CREATE_ORG_METADATA in GROUP_PERMISSIONS['nusd']
+
+    def test_csg_can_create_org_metadata(self):
+        assert Permission.CREATE_ORG_METADATA in GROUP_PERMISSIONS['csg']
+
+    def test_nusd_can_delete_org_metadata(self):
+        # The generated org-metadata deletes are soft (active=False, via
+        # handle_htmx_soft_delete), so the allocation-admin tier holds them.
+        assert Permission.DELETE_ORG_METADATA in GROUP_PERMISSIONS['nusd']
+
+    def test_ssg_cannot_create_org_metadata(self):
+        # ssg is read-only apart from resources / system status.
+        assert Permission.CREATE_ORG_METADATA not in GROUP_PERMISSIONS['ssg']
+
+
+# ---------------------------------------------------------------------------
+# Contracts: a permission family of its own
+# ---------------------------------------------------------------------------
+
+class TestContractGrants:
+    """The /admin/contracts surface (award search, contract create, sources,
+    NSF programs) carries its own ``*_CONTRACTS`` family, carved out of
+    ``*_ORG_METADATA`` so contract administration can be granted without
+    conferring write on organizations, institutions and AOIs."""
+
+    @pytest.mark.parametrize('action', ['VIEW', 'EDIT', 'CREATE', 'DELETE'])
+    def test_family_is_complete(self, action):
+        assert hasattr(Permission, f'{action}_CONTRACTS')
+
+    @pytest.mark.parametrize('bundle', ['nusd', 'csg'])
+    @pytest.mark.parametrize('perm', [
+        Permission.VIEW_CONTRACTS, Permission.EDIT_CONTRACTS,
+        Permission.CREATE_CONTRACTS, Permission.DELETE_CONTRACTS,
+    ])
+    def test_allocation_admin_bundles_hold_full_contract_crud(self, bundle, perm):
+        assert perm in GROUP_PERMISSIONS[bundle]
+
+    def test_ssg_is_read_only_on_contracts(self):
+        assert Permission.VIEW_CONTRACTS in GROUP_PERMISSIONS['ssg']
+        for perm in (Permission.EDIT_CONTRACTS, Permission.CREATE_CONTRACTS,
+                     Permission.DELETE_CONTRACTS):
+            assert perm not in GROUP_PERMISSIONS['ssg']
+
+    def test_facility_scoped_tier_keeps_contract_read(self):
+        """The regression this family's introduction could have caused.
+
+        ``_perms_with_action`` is lexical, so group bundles built from
+        ``ALL_VIEW`` picked up ``VIEW_CONTRACTS`` for free — but
+        ``USER_FACILITY_PERMISSIONS`` enumerates its grants explicitly and
+        would have silently lost the contracts card. It has to be listed
+        by hand, and any future VIEW_* domain does too.
+        """
+        assert Permission.VIEW_CONTRACTS in rbac.USER_FACILITY_PERMISSIONS['sureshm']['WNA']
+
+    def test_facility_scoped_tier_gets_no_contract_write(self):
+        granted = rbac.USER_FACILITY_PERMISSIONS['sureshm']['WNA']
+        for perm in (Permission.EDIT_CONTRACTS, Permission.CREATE_CONTRACTS,
+                     Permission.DELETE_CONTRACTS):
+            assert perm not in granted
+
+
+# ---------------------------------------------------------------------------
+# The allocation-administrator tier
+# ---------------------------------------------------------------------------
+
+class TestAllocationAdminTier:
+    """nusd and csg are the allocation-administrator tier: full authority
+    over projects, allocations and contracts, none over the resource /
+    facility *definition* layer. csg additionally keeps EDIT_RESOURCES."""
+
+    @pytest.mark.parametrize('bundle', ['nusd', 'csg'])
+    @pytest.mark.parametrize('perm', [
+        Permission.EDIT_FACILITIES, Permission.CREATE_FACILITIES,
+        Permission.DELETE_FACILITIES, Permission.CREATE_RESOURCES,
+        Permission.DELETE_RESOURCES,
+    ])
+    def test_definition_layer_is_withheld(self, bundle, perm):
+        assert perm not in GROUP_PERMISSIONS[bundle]
+
+    def test_nusd_cannot_edit_resources(self):
+        # The change of direction: ALL_EDIT is lexical over 'edit_', so nusd
+        # previously held EDIT_RESOURCES implicitly and could edit machines,
+        # queues and fair-share overrides.
+        assert Permission.EDIT_RESOURCES not in GROUP_PERMISSIONS['nusd']
+
+    def test_csg_keeps_edit_resources(self):
+        # CSG runs the plant; NUSD does not.
+        assert Permission.EDIT_RESOURCES in GROUP_PERMISSIONS['csg']
+
+    def test_csg_and_nusd_are_no_longer_the_same_object(self):
+        # They aliased the same set until csg diverged on EDIT_RESOURCES;
+        # mutating one would otherwise mutate the other.
+        assert GROUP_PERMISSIONS['csg'] is not GROUP_PERMISSIONS['nusd']
+        assert GROUP_PERMISSIONS['nusd'] < GROUP_PERMISSIONS['csg']
+
+    @pytest.mark.parametrize('bundle', ['nusd', 'csg'])
+    @pytest.mark.parametrize('perm', [
+        Permission.DELETE_PROJECTS, Permission.DELETE_ALLOCATIONS,
+        Permission.DELETE_ORG_METADATA, Permission.DELETE_CONTRACTS,
+    ])
+    def test_soft_deletes_are_granted(self, bundle, perm):
+        """Every delete granted here retires a row (active=False or an
+        end_date stamp) rather than removing it."""
+        assert perm in GROUP_PERMISSIONS[bundle]
+
+    @pytest.mark.parametrize('bundle', ['nusd', 'csg'])
+    @pytest.mark.parametrize('perm', [
+        Permission.DELETE_RESOURCES,   # hard-deletes disk roots + overrides
+        Permission.DELETE_FACILITIES,
+        Permission.DELETE_USERS,       # hard row delete via Flask-Admin
+        Permission.DELETE_GROUPS,
+    ])
+    def test_hard_and_machine_deletes_are_withheld(self, bundle, perm):
+        assert perm not in GROUP_PERMISSIONS[bundle]
+
+    def test_no_bundle_gets_system_admin(self):
+        for name, granted in GROUP_PERMISSIONS.items():
+            if name == 'admin-testing-only':   # synthetic test fixture
+                continue
+            assert Permission.SYSTEM_ADMIN not in granted, name
+
+
+# ---------------------------------------------------------------------------
 # Template context processor — can_act_on_project closure
 # ---------------------------------------------------------------------------
 

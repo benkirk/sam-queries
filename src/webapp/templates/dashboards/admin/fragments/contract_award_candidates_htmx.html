@@ -99,7 +99,7 @@
                         hx-swap="innerHTML">
                     View contract
                 </button>
-                {% elif has_permission(Permission.CREATE_ORG_METADATA) %}
+                {% elif has_permission(Permission.CREATE_CONTRACTS) %}
                 <button type="button" class="btn btn-sm btn-primary"
                         data-bs-toggle="modal" data-bs-target="#createContractModal"
                         hx-get="{{ url_for('admin_dashboard.htmx_contract_create_form',
