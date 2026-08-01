@@ -22,8 +22,8 @@ noted, because several of these numbers are commit-completion gates.
 |---|---|---|---|
 | **1** | **Chart architecture refactor** ← *this document* | — | The OO hierarchy, the structured drill scheme, `Layout`/`Theme` as inert parameters, plus cosmetic normalization (C12) and `svg.fonttype` (C2a). Visual change is permitted but confined to declared commits. |
 | 2 | Mobile-friendly charts — **SHIPPED**, see `MOBILE_CHARTS.md` | 1 | Wires the `mobile` layout: cookie + htmx transport, `read_layout()`, per-family mobile profiles, the two `Layout` fields nothing read, mobile chart gutters. |
-| 3 | App-wide dark mode | — (parallel to 2) | `data-bs-theme`, cookie carrier, `variables.css` dark block, the 83 hardcoded-white sites. **Separate planning session.** |
-| 4 | Dark-mode charts | 1 **and** 3 | Wires the `dark` theme through the axis PR 1 built. |
+| 3 | App-wide dark mode — **SHIPPED**, see `DARK_MODE.md` | — (parallel to 2) | `data-bs-theme`, cookie carrier, `variables.css` dark block, the 83 hardcoded-white sites. |
+| 4 | Dark-mode charts — **SHIPPED**, see `DARK_MODE.md` § *PR 4 as built* | 1 **and** 3 | Wires the `dark` theme through the axis PR 1 built: `apply_chrome`, `Theme.data_color`, `theme=read_theme()` at the call sites. |
 
 **What PR 2 leaves PR 3/4.** The cookie rail exists and is worth reusing:
 `static/js/layout-axis.js` writes `sam_layout` from `matchMedia` and
@@ -1076,11 +1076,14 @@ Every colour below is **chrome** and must move onto `Theme`. Data/series colours
 colour from the *wedge* luminance, not the page, so it is already correct for both
 themes. (It does return a bare `'#fff'` at `:205` — a literal, but a correct one.)
 
-**Needs a design decision, not a mechanical swap:** `UNITY_PALETTE_10[8]` is
-`#011837` (space blue) used as a **pie wedge fill** (`:118`) — on a dark page it
-vanishes into the background while still carrying a white percentage label. And
-the `alpha=0.85` stackplots (`:482`, `:595`) plus `_PACE_OTHER_COLOR` composite
-against the *page*, so every stacked band desaturates on dark.
+**Needed a design decision, not a mechanical swap** — all three were answered
+in PR 4, and the third had not been anticipated here:
+
+| Flagged | Answer |
+|---|---|
+| `UNITY_PALETTE_10[8]` `#011837` as a **pie wedge fill** (`:118`) — 1.17:1 on the dark card | `Theme.min_data_contrast` + `lift_for_contrast`: tint toward white to a 3:1 floor. Touches 3 of 10 pie colours; hue and separability both survive (tinting desaturates as it lightens, where an HSL lift collapsed all three blues onto one). |
+| `alpha=0.85` stackplots (`:482`, `:595`) compositing against the page | `Theme.area_alpha` — 0.85 light, **1.0** dark. The softening a white page wants is what makes a dark one muddy. |
+| **Not flagged, and the one that actually looked worst:** `_PACE_OTHER_COLOR` / `others_color` — `--ncar-gray-light` | `Theme.muted_data`. This is not a contrast problem, it is an *inverted* one: the inert "Others" band is 1.90:1 on white (recessive, correct) and 7.97:1 on the dark card, making the band that means least the brightest thing on the chart. It must bypass the lift, or `min_data_contrast` drags it back up. |
 
 ## Appendix C — corrections applied on re-verification (2026-07-31)
 

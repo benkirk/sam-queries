@@ -623,6 +623,25 @@ same vocabulary, and unparsable grains come back unchanged.
 Design + measurements: `docs/plans/MOBILE_CHARTS.md`,
 `docs/plans/TABLET_CHARTS.md`.
 
+### The `theme` axis (light / dark)
+
+The second render axis, and the reason dark mode needs a *server-side* carrier
+at all: charts are matplotlib SVGs with colours baked into the bytes, so no
+stylesheet can retheme them. Transport mirrors `layout` — `read_theme()` in
+`utils/htmx.py`, composed into both `chart_view`'s key and
+`user_aware_cache_key` — but uses **one channel, the cookie**: a viewport is
+discovered client-side after the server answers, a theme is declared by a click
+that reloads, so cookie and browser can never disagree.
+
+| | |
+|---|---|
+| **Chrome** | `Theme` carries text/spine/grid/edges/legend-face/accent. `BaseChart.apply_chrome()` applies them after `finish()`. It must **not** touch `ax.texts` — those artists set their own colour for a reason (pie autopct reads the *wedge*, the pace marker reads `theme.accent`). |
+| **Data** | The `UNITY_*` palettes are invariant in **hue** only. `Theme.data_color()` tints a fill toward white until it clears `min_data_contrast` (3:1) against `Theme.surface`; `Theme.LIGHT` sets it `None` and returns the identical object, which is what makes light byte-identical. |
+| **Roles** | `Theme.muted_data` is the inert "Others" band and must **bypass** the lift — its job is to recede, and lifting it undoes that. `Theme.area_alpha` is 0.85 light / 1.0 dark because figures are transparent and composite against the card. |
+| **Surface** | `Theme.DARK.surface` == `--surface-card` == `#1b2733`, pinned by `test_dark_card_matches_chart_blend_target`. |
+
+Design + rationale: `docs/plans/DARK_MODE.md` § *PR 4 as built*.
+
 ### Adding a chart
 
 1. Subclass the closest family; set `cache_name`, `cache_maxsize`,
@@ -632,9 +651,11 @@ Design + measurements: `docs/plans/MOBILE_CHARTS.md`,
    cache hit must never construct the chart or run `prepare()`.
 3. Bind with `chart_view(...)` in `__init__.py`, add to `__all__`.
 4. Add a case to `tests/unit/chart_samples.py` (a gate requires one). It is
-   fingerprinted at **every** layout automatically.
-5. Pass `layout=read_layout()` at the call site. Fragments registered through
-   `utils/fragments.py` get it for free.
+   fingerprinted at **every** layout × theme automatically.
+5. Pass `layout=read_layout(), theme=read_theme()` at the call site. Fragments
+   registered through `utils/fragments.py` get both for free — but a renderer
+   that *relays* them to a delegate must forward them by hand
+   (`test_renderers_forward_the_axis_they_are_given` is the gate).
 
 ### Drill-downs
 
@@ -676,16 +697,20 @@ a row drill — row drills resolve within the clicked chart's pane.
    zips bands against patches by position, and a capped legend is no longer
    `reversed(bands)`. The fingerprint proves href *strings*, not the artists
    carrying them, so a misaligned drill looks green.
+❌ **DON'T** put a theme-dependent colour in `ax.text()` without setting it
+   explicitly — `apply_chrome` skips `ax.texts` by design, so it will render in
+   whatever the light rcParams baked in.
 ✅ **DO** regenerate the fingerprint snapshot in the *same commit* as an
    intentional visual change:
    `CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py`.
    A fingerprint delta in a commit that didn't declare one is a bug. **A
-   desktop delta in a mobile-tuning commit always is.**
+   desktop-light delta in a mobile- or dark-tuning commit always is.**
 ✅ **DO** run `sam-admin cache --refresh --category chart` after deploying a
    visible change — keys hash *input data*, not rendering code, so warm Redis
    entries serve old-code SVGs for up to 600 s.
 
 Design + rationale: `docs/plans/CHART_ARCHITECTURE.md` (the hierarchy),
+`docs/plans/DARK_MODE.md` (the theme axis),
 `docs/plans/MOBILE_CHARTS.md` + `docs/plans/TABLET_CHARTS.md` (the layout
 axis).
 
