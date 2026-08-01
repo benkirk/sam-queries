@@ -97,7 +97,9 @@ ALLOWED = {
     # D2: -2 (--bs-card-bg, --bs-card-cap-bg)
     # D4: -49 (10 surfaces + 39 foregrounds -> --text-on-brand)
     # D6: -3  (greys and borders -> role tokens)
-    'dashboard.css':   22,
+    # D8: -3  (the white pill fills in the .btn-group selector rows, found by
+    #          the browser contrast assertions)
+    'dashboard.css':   19,
 }
 
 

@@ -639,8 +639,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ========================================================================= */
 
 .accordion {
-    --bs-accordion-color: var(--ncar-space-blue);
-    --bs-accordion-btn-color: var(--ncar-space-blue);
+    --bs-accordion-color: var(--text-heading);
+    --bs-accordion-btn-color: var(--text-heading);
     --bs-accordion-active-color: var(--text-on-brand);
     --bs-accordion-active-bg: rgba(var(--ncar-blue-rgb), 0.1);
     --bs-accordion-btn-focus-border-color: var(--ncar-blue);
@@ -649,6 +649,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-accordion-btn-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23011837'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
     /* Chevron icon filled with white for expanded state */
     --bs-accordion-btn-active-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+/* The collapsed-state chevron is a data-URI SVG with `fill='%23011837'`
+   baked in — space blue, invisible on a dark card. A data URI cannot
+   reference a CSS variable, so the only options are a second URI or an SVG
+   filter; a second URI is the honest one. (The *expanded* chevron is already
+   white and sits on an --ncar-blue fill, so it is correct in both themes.) */
+:root[data-bs-theme="dark"] .accordion {
+    --bs-accordion-btn-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23e8eef7'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
 }
 
 .accordion-button:not(.collapsed) {
@@ -668,7 +677,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-card-border-radius: 0;
     --bs-card-inner-border-radius: 0;
     --bs-card-border-width: 0;
-    --bs-card-color: var(--ncar-space-blue);
+    --bs-card-color: var(--text-heading);
     --bs-card-bg: var(--surface-card);
     --bs-card-cap-padding-y: 0.9375rem;
     --bs-card-cap-padding-x: 1.875rem;
@@ -758,14 +767,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-btn-color: var(--text-on-brand);
     --bs-btn-hover-bg: transparent;
     --bs-btn-hover-border-color: var(--ncar-blue);
-    --bs-btn-hover-color: var(--ncar-blue);
+    --bs-btn-hover-color: var(--text-link);
     --bs-btn-active-bg: var(--ncar-blue);
     --bs-btn-active-border-color: var(--ncar-blue);
     --bs-btn-active-color: var(--text-on-brand);
 }
 
 .btn-outline-primary {
-    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-color: var(--text-link);
     --bs-btn-border-color: var(--ncar-blue);
     --bs-btn-hover-bg: var(--ncar-blue);
     --bs-btn-hover-border-color: var(--ncar-blue);
@@ -776,7 +785,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .btn-outline-secondary {
-    --bs-btn-color: var(--ncar-navy);
+    --bs-btn-color: var(--text-title);
     --bs-btn-border-color: var(--ncar-navy);
     --bs-btn-hover-bg: var(--ncar-navy);
     --bs-btn-hover-border-color: var(--ncar-navy);
@@ -816,7 +825,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .btn-link {
-    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-color: var(--text-link);
     --bs-btn-hover-color: var(--ncar-sky);
     text-decoration: none;
 }
@@ -864,23 +873,23 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-btn-hover-bg: var(--ncar-navy);
     --bs-btn-hover-border-color: var(--ncar-navy);
     --bs-btn-hover-color: var(--text-on-brand);
-    --bs-btn-active-bg: #fff;
+    --bs-btn-active-bg: var(--surface-card);
     --bs-btn-active-border-color: var(--ncar-blue);
-    --bs-btn-active-color: var(--ncar-blue);
+    --bs-btn-active-color: var(--text-link);
 }
 
 .btn-group .btn-secondary,
 .btn-group .btn-secondary.active,
 .btn-group .btn-secondary:active {
-    --bs-btn-bg: #fff;
+    --bs-btn-bg: var(--surface-card);
     --bs-btn-border-color: var(--ncar-blue);
-    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-color: var(--text-link);
     --bs-btn-hover-bg: rgba(var(--ncar-teal-rgb), 0.08);
     --bs-btn-hover-border-color: var(--ncar-blue);
-    --bs-btn-hover-color: var(--ncar-blue);
-    --bs-btn-active-bg: #fff;
+    --bs-btn-hover-color: var(--text-link);
+    --bs-btn-active-bg: var(--surface-card);
     --bs-btn-active-border-color: var(--ncar-blue);
-    --bs-btn-active-color: var(--ncar-blue);
+    --bs-btn-active-color: var(--text-link);
 }
 
 /* Unity-style focus ring on interactive button-like elements — upstream
@@ -1205,8 +1214,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    active-state in time-range / date-range pickers stays Bootstrap-stock. */
 .modal-footer .btn-secondary {
     --bs-btn-bg: transparent;
-    --bs-btn-border-color: var(--ncar-gray-light);
-    --bs-btn-color: var(--ncar-navy);
+    --bs-btn-border-color: var(--border-default);
+    --bs-btn-color: var(--text-title);
     --bs-btn-hover-bg: var(--ncar-navy);
     --bs-btn-hover-border-color: var(--ncar-navy);
     --bs-btn-hover-color: var(--text-on-brand);
@@ -1231,9 +1240,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    inactive treatment needs the explicit :not(.active) rules — mirroring
    how .nav-tabs is written. */
 .nav-pills {
-    --bs-nav-link-color: var(--ncar-blue);
-    --bs-nav-link-hover-color: var(--ncar-navy);
-    --bs-nav-pills-link-active-color: var(--ncar-blue);
+    --bs-nav-link-color: var(--text-link);
+    --bs-nav-link-hover-color: var(--text-title);
+    --bs-nav-pills-link-active-color: var(--text-link);
     --bs-nav-pills-link-active-bg: var(--surface-card);
 }
 
