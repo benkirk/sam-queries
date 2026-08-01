@@ -87,15 +87,17 @@ NAMED_RE = re.compile(
 # `color: #fff` on saturated brand fills, which are correct in both themes and
 # become `var(--text-on-brand)` — a token, so they leave the count — but the
 # rest is ordinary pre-existing debt that dark mode is not obliged to retire.
+# D6 cleared five of the six files outright. What is left in dashboard.css is
+# not dark-mode debt: 22 sites that are shadows (`rgba(0,0,0,…)`), mask
+# gradients, translucent white overlays on brand fills, and the navy dropdown
+# panel's own `--bs-dropdown-*` values — all of which are either theme-neutral
+# or deliberately pinned to a brand surface. They are left as ordinary
+# pre-existing debt for a later pass rather than forced into tokens here.
 ALLOWED = {
-    'admin.css':       4,
-    'allocations.css': 5,
-    'auth.css':        1,    # D4: -3 (login container, user-btn x2)
-    'components.css':  10,
     # D2: -2 (--bs-card-bg, --bs-card-cap-bg)
     # D4: -49 (10 surfaces + 39 foregrounds -> --text-on-brand)
-    'dashboard.css':   25,
-    'status.css':      20,
+    # D6: -3  (greys and borders -> role tokens)
+    'dashboard.css':   22,
 }
 
 

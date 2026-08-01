@@ -8,7 +8,7 @@
    =================================================================== */
 
 .nav-tabs .nav-link {
-    color: #495057;
+    color: var(--text-primary);
 }
 
 .nav-tabs .nav-link.active {
@@ -53,18 +53,18 @@
 
 .sortable-header::after {
     content: ' \2195';
-    color: #adb5bd;
+    color: var(--text-tertiary);
     font-size: 0.8em;
 }
 
 .sortable-header.sort-asc::after {
     content: ' \2191';
-    color: #495057;
+    color: var(--text-primary);
 }
 
 .sortable-header.sort-desc::after {
     content: ' \2193';
-    color: #495057;
+    color: var(--text-primary);
 }
 
 /* ===================================================================
@@ -86,8 +86,8 @@
     position: sticky;
     left: 0;
     z-index: 2;
-    background: var(--bs-body-bg, #fff);
-    box-shadow: 1px 0 0 var(--bs-border-color, #dee2e6);
+    background: var(--surface-card);
+    box-shadow: 1px 0 0 var(--border-default);
 }
 
 .access-grid thead th.sticky-col {
@@ -95,7 +95,7 @@
 }
 
 .access-grid tbody tr:hover td.sticky-col {
-    background: var(--bs-tertiary-bg, #f8f9fa);
+    background: var(--surface-tertiary);
 }
 
 /* Chevron affordance on the collapsible card header. */

@@ -80,13 +80,13 @@ body {
 }
 
 .navbar .site-name a {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     text-decoration: none;
 }
 
 .navbar .site-name a:hover,
 .navbar .site-name a:active {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 .site-name h1 {
@@ -98,24 +98,24 @@ body {
 }
 
 .site-name h1 a {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     text-decoration: none;
 }
 
 .site-name h1 a:hover {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 /* Nav links (desktop-only row — mobile navigation is the offcanvas drawer) */
 .navbar .nav-link {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     font-size: 1rem;
     line-height: 1.5rem;
 }
 
 .navbar .nav-link:hover,
 .navbar .nav-link:focus {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 .navbar .nav-item {
@@ -138,13 +138,13 @@ body {
 }
 
 .utility-menu .nav-link {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     font-weight: var(--font-weight-semi-bold);
     padding: 0;
 }
 
 .utility-menu .nav-link:hover {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 /* Theme toggle — the light/dark switch in the utility menu, the mobile
@@ -177,7 +177,7 @@ body {
 
 /* Nav row border */
 .navbar-wrapper.border-top {
-    border-top-color: #dee2e6 !important;
+    border-top-color: var(--border-default) !important;
 }
 
 .navbar .navbar-wrapper .container-lg {
@@ -299,7 +299,7 @@ body {
     .navbar .nav-link.active {
         border-bottom: 0.1875rem solid var(--ncar-blue);
         margin-bottom: -0.1875rem;
-        color: var(--ncar-space-blue);
+        color: var(--text-heading);
     }
 
     .navbar .site-name {
@@ -336,14 +336,14 @@ body {
 }
 
 .mobile-nav .accordion-button {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     font-weight: var(--font-weight-semi-bold);
     padding: 0.875rem 1rem;
 }
 
 .mobile-nav .accordion-button:not(.collapsed) {
     background: none;
-    color: var(--ncar-blue);
+    color: var(--text-link);
     box-shadow: none;
 }
 
@@ -354,24 +354,24 @@ body {
 .mobile-nav .mobile-nav-link {
     display: block;
     padding: 0.625rem 1rem 0.625rem 1.75rem;
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     text-decoration: none;
 }
 
 .mobile-nav .mobile-nav-link:hover,
 .mobile-nav .mobile-nav-link:focus {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 .mobile-nav .mobile-nav-link.active {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     font-weight: var(--font-weight-semi-bold);
     border-left: 3px solid var(--ncar-blue);
     background-color: rgba(var(--ncar-blue-rgb), 0.06);
 }
 
 .mobile-nav-footer a {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 /* ============================================================================
@@ -388,7 +388,7 @@ body {
 }
 
 .sam-breadcrumbs .breadcrumb-item a {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     text-decoration: none;
 }
 
@@ -553,7 +553,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .main-content h1,
 .main-content h2 {
-    color: var(--ncar-navy);
+    color: var(--text-title);
 }
 
 .page-header {
@@ -563,7 +563,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .page-header p {
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
     font-size: 1rem;
 }
 
@@ -616,7 +616,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .inner-card > .card-header {
     padding: 0 !important;
     font-weight: var(--font-weight-semi-bold);
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
 }
 
 .inner-card > .card-header h5 {
@@ -624,7 +624,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-weight: 600;
     line-height: 1;
     text-transform: uppercase;
-    color: var(--ncar-navy);
+    color: var(--text-title);
 }
 
 .inner-card > .card-body {
@@ -645,7 +645,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .card-header h5 {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     font-weight: var(--font-weight-semi-bold);
     margin: 0;
 }
@@ -744,7 +744,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .btn-outline-secondary[disabled] {
     background-color: transparent !important;
     border-color: transparent !important;
-    color: var(--ncar-gray) !important;
+    color: var(--text-tertiary) !important;
     opacity: 1;
 }
 
@@ -838,7 +838,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .footer small {
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
     font-weight: var(--font-weight-semi-bold);
 }
 
@@ -907,7 +907,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .spinner-border-primary {
-    color: var(--ncar-blue) !important;
+    color: var(--text-link) !important;
 }
 
 .htmx-indicator {
@@ -932,7 +932,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .table thead th {
     border-bottom: 2px solid var(--ncar-blue);
-    color: var(--ncar-navy);
+    color: var(--text-title);
     font-weight: 700;
     text-transform: uppercase;
     font-size: 0.85rem;
@@ -999,7 +999,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 /* Date-bounds group header row in resources table */
 .date-group-header td {
     background-color: #f1f3f5;
-    border-top: 2px solid #dee2e6 !important;
+    border-top: 2px solid var(--border-default) !important;
 }
 
 /* ============================================================================
@@ -1015,20 +1015,20 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     padding: 0.875rem 1rem;
 }
 
 .alert a,
 .alert button {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     text-decoration: underline;
     font-weight: var(--font-weight-semi-bold);
 }
 
 .alert a:hover,
 .alert button:hover {
-    color: var(--ncar-navy);
+    color: var(--text-title);
 }
 
 .alert-info {
@@ -1043,7 +1043,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .alert-warning {
     background-color: var(--ncar-orange);
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
 }
 
 .alert-danger {
@@ -1189,7 +1189,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    badges they drop into a pill. */
 .nav-pills .nav-link:not(.active) .badge {
     background-color: var(--surface-on-brand) !important;
-    color: var(--ncar-blue) !important;
+    color: var(--text-link) !important;
 }
 
 .nav-pills .nav-link.active .badge {
@@ -1213,7 +1213,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     flex-shrink: 0;
     font-size: 1rem !important;
     font-weight: 600;
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 /* When tabs are followed by tab-content, kill any mb-* utility margin so the
@@ -1235,7 +1235,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .nav-tabs .nav-link {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     font-weight: var(--font-weight-semi-bold);
     background-color: var(--surface-card);
     border: none;
@@ -1256,7 +1256,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .nav-tabs .nav-link.active {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     background-color: var(--surface-card);
     border: none;
 }
@@ -1298,7 +1298,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-weight: var(--font-weight-semi-bold);
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
 }
 
 .jobs-facet-values {
@@ -1335,7 +1335,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .facet-chip:hover {
     background-color: var(--surface-raised);
     border-color: var(--ncar-blue);
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 .facet-chip:focus-visible {
@@ -1347,7 +1347,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    chips doesn't jitter as the digits change. */
 .facet-chip-count {
     font-size: 0.75rem;
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
     font-variant-numeric: tabular-nums;
 }
 
@@ -1477,11 +1477,11 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .filter-sidebar input[type="email"],
 .filter-sidebar input[type="number"] {
     background-color: var(--surface-raised);
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
 }
 
 .filter-sidebar input::placeholder {
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
 }
 
 /* fk-pickers embedded in a horizontal align-items-end filter row (jobs +
@@ -1527,8 +1527,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     user-select: none;
     padding: 16px;
     background-color: var(--surface-page);
-    color: var(--ncar-blue);
-    border-bottom: 1px solid #dee2e6;
+    color: var(--text-link);
+    border-bottom: 1px solid var(--border-default);
     transition: background-color var(--transition-base), color var(--transition-base);
 }
 
@@ -1537,7 +1537,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    the .text-primary utility class on the icon. */
 .project-card .card-header h5 i,
 .project-card .card-header .accordion-chevron {
-    color: var(--ncar-space-blue) !important;
+    color: var(--text-heading) !important;
 }
 
 /* Match Unity's .accordion-button: fixed 1rem font, semi-bold, single weight
@@ -1621,7 +1621,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .project-stats-box h6 {
-    color: var(--ncar-navy);
+    color: var(--text-title);
     font-weight: 700;
     margin-bottom: 6px;
     font-size: 0.9rem;
@@ -1656,13 +1656,13 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .stat-label {
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
     font-weight: var(--font-weight-semi-bold);
 }
 
 .stat-value {
     font-weight: 700;
-    color: var(--ncar-navy);
+    color: var(--text-title);
 }
 
 /* ============================================================================
@@ -1697,7 +1697,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .tree-list li strong {
-    color: var(--ncar-navy);
+    color: var(--text-title);
     font-weight: 700;
 }
 
@@ -1734,7 +1734,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .form-label {
     font-weight: 600;
-    color: var(--ncar-navy);
+    color: var(--text-title);
     margin-bottom: 0.5rem;
 }
 
@@ -1750,15 +1750,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ========================================================================= */
 
 .text-ncar-navy {
-    color: var(--ncar-navy) !important;
+    color: var(--text-title) !important;
 }
 
 .text-ncar-blue {
-    color: var(--ncar-blue) !important;
+    color: var(--text-link) !important;
 }
 
 .text-muted-custom {
-    color: var(--ncar-gray) !important;
+    color: var(--text-tertiary) !important;
 }
 
 .border-ncar-blue {
@@ -1771,7 +1771,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 /* Text color utilities for table cells */
 .text-primary {
-    color: var(--ncar-blue) !important;
+    color: var(--text-link) !important;
 }
 
 .text-success {

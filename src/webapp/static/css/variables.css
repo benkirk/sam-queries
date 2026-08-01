@@ -118,6 +118,13 @@
     --surface-secondary: #e9ecef;   /* stronger recess: progress track, th  */
     --surface-tertiary:  #f8f9fa;   /* gentler recess: wells, stat boxes    */
 
+    /* A blue-TINTED grouping surface, deliberately outside the neutral ramp
+       above: the allocations facility rows use it to read as "a heading row",
+       not "a recess". Kept separate so darkening the neutral ramp cannot
+       silently flatten that distinction. */
+    --surface-accent:       #edf2f7;
+    --surface-accent-hover: #d0dce9;
+
     /* `-rgb` companions, for the `rgba(var(--x-rgb), <a>)` idiom — same
        reason --ncar-blue-rgb exists. Required by the tier-3 bridge: Bootstrap
        consumes --bs-body-bg-rgb / --bs-secondary-bg-rgb / --bs-tertiary-bg-rgb
@@ -132,6 +139,24 @@
     --text-primary:   #323133;   /* body copy */
     --text-primary-rgb: 50, 49, 51;
     --text-secondary: #718096;   /* muted / supporting copy */
+
+    /* Brand-toned text roles.
+     *
+     * These exist because 59 CSS rules set `color: var(--ncar-*)` directly —
+     * headings, card titles, table headers, links, meta text. Those are TIER-1
+     * primitives and therefore invariant, which is correct for a logo and
+     * fatal for text: `--ncar-space-blue` (#011837) on a near-black page is
+     * unreadable.
+     *
+     * Light values are byte-identical to the primitives they replace, so
+     * adopting them changes nothing today; the dark block gives each a legible
+     * counterpart. The four tones are kept distinct rather than collapsed
+     * because the light design really does use them at different weights, and
+     * merging them would be an undeclared restyle. */
+    --text-heading:   #011837;   /* == --ncar-space-blue: headings, nav labels */
+    --text-title:     #00357a;   /* == --ncar-navy: card titles, th, stat values */
+    --text-link:      #0057c2;   /* == --ncar-blue: links, interactive accents */
+    --text-tertiary:  #97999b;   /* == --ncar-gray: de-emphasised meta */
     /* Deliberately INVARIANT. White on a saturated NCAR-blue button is
        correct in both themes; giving that case a name is what stops it being
        "fixed" into a flipping token and breaking every button in light mode. */
@@ -161,8 +186,6 @@
     --transition-fast: 0.2s ease;
     --transition-base: 0.3s ease;
 
-    /* --- Additional utility tokens --- */
-    --bs-warning-text:  #856404;  /* Bootstrap warning text color (D6 retires this) */
 }
 
 
@@ -216,6 +239,12 @@
     --bs-secondary-bg-rgb:   var(--surface-secondary-rgb);
     --bs-tertiary-bg:        var(--surface-tertiary);
     --bs-tertiary-bg-rgb:    var(--surface-tertiary-rgb);
+    /* Links: Bootstrap's dark block lightens --bs-link-color to #6ea8fe on
+       its own, but our own link rules use --text-link. Bridging keeps stock
+       Bootstrap links and SAM links the same colour in BOTH themes instead
+       of two blues that only agree in light mode. */
+    --bs-link-color:         var(--text-link);
+    --bs-link-hover-color:   var(--text-title);
 }
 
 
