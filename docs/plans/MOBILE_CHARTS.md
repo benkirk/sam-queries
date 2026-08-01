@@ -281,7 +281,33 @@ than assuming it.
 - **The jobs explorer's 20px overflow** — pre-existing, a table, not a chart.
 - **Per-surface figure tuning.** Every family has one mobile profile; a
   surface whose card is unusually narrow or wide still gets the family's.
-- **Tablet.** One breakpoint, two profiles. A 820px iPad gets `desktop`,
-  which at that width is legible (scale ~0.65 on the widest chart).
+- **Tablet — the real gap, and measured rather than guessed.** One
+  breakpoint, two profiles, so anything at 768px or wider gets `desktop`.
+  An earlier draft of this doc asserted "scale ~0.65, legible" without
+  measuring. It is worse than that:
+
+  | viewport | client px | scale | smallest label |
+  |---|---|---|---|
+  | 390 phone (**mobile** layout) | 375 | 1.08 | **9.8px** |
+  | 768 iPad portrait | 753 | 0.52 | **6.2px** |
+  | 820 iPad Air portrait | 805 | 0.51 | **6.2px** |
+  | 1024 iPad landscape | 1009 | 0.67 | 8.1px |
+  | 1440 laptop | 1425 | 0.99 | 11.8px |
+
+  So **a phone now renders these charts better than an iPad does**, and
+  768px portrait is the worst legibility left in the product. Note
+  `max-width: 767.98px` misses an iPad Mini in portrait by 0.02px, which is
+  not a margin anyone should rely on.
+
+  This is **not a regression** — verified against this branch's parent at
+  1024px, which renders byte-identically (1288pt intrinsic, 0.672 scale,
+  8.1px). The tablet band is exactly as this PR found it. But it is the
+  obvious next pass, and it is cheap *because* of this one: `LAYOUTS` is a
+  dict, `read_layout` normalizes against a set, and the sender holds a
+  single media query. A `tablet` profile is a third entry in each, plus a
+  tuning pass at 768/820/1024.
+
+  One profile cannot serve both: mobile's 4.0in figure would upscale to
+  ~1.7x in a 753px card and render 9pt text at ~15px.
 - **`theme`** — PR 3 and PR 4. The cookie rail built here is the one they
   should reuse; `user_aware_cache_key` already has the slot beside `l:`.
