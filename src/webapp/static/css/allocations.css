@@ -11,7 +11,7 @@
    =================================================================== */
 
 .allocation-card {
-    background: var(--bg-gray-light);
+    background: var(--surface-tertiary);
     border-left: 4px solid var(--ncar-blue);
     padding: 1rem;
     margin-bottom: 1rem;
@@ -27,7 +27,7 @@
 }
 
 .summary-table th {
-    background-color: var(--bg-gray-medium);
+    background-color: var(--surface-secondary);
     font-weight: 600;
 }
 
@@ -41,7 +41,7 @@
 }
 
 .expandable-row:hover {
-    background-color: var(--bg-gray-light);
+    background-color: var(--surface-tertiary);
 }
 
 .expand-icon {
@@ -57,7 +57,7 @@
 
 .project-details-row {
     display: none;
-    background-color: var(--bg-gray-light);
+    background-color: var(--surface-tertiary);
 }
 
 .project-details-row.show {

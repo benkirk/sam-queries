@@ -28,7 +28,7 @@
    =================================================================== */
 
 .stat-box {
-    background: var(--bg-gray-light);
+    background: var(--surface-tertiary);
     border: 1px solid #dee2e6;
     border-radius: var(--radius-sm);
     padding: 15px;

@@ -15,7 +15,7 @@ body {
     /* Match the dashboard wave watermark so the login page reads as the
        same app — same color, same image, same position triple. The flex
        centering is the only login-specific addition. */
-    background-color: var(--bg-light);
+    background-color: var(--surface-page);
     background-image: url('../img/UCAR-Waves-Lines-Only-66.png');
     background-position: 150% 0%;
     background-repeat: repeat-y;
@@ -25,7 +25,7 @@ body {
     align-items: center;
     justify-content: center;
     font-family: var(--font-family-default);
-    color: var(--text-dark);
+    color: var(--text-primary);
 }
 
 /* ===================================================================
@@ -219,7 +219,7 @@ body {
 }
 
 .text-muted {
-    color: var(--color-gray-muted) !important;
+    color: var(--text-secondary) !important;
 }
 
 .login-footer {

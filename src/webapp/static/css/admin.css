@@ -28,7 +28,7 @@
    =================================================================== */
 
 .table th {
-    background-color: var(--bg-gray-light);
+    background-color: var(--surface-tertiary);
     font-weight: 600;
 }
 

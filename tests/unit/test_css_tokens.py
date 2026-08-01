@@ -168,6 +168,107 @@ def test_token_file_is_the_only_place_colour_is_defined():
         f'test_no_new_raw_colours a no-op guard.')
 
 
+#: Tier-1 CSS token -> the `charts/theme.py` scalar that must hold the same
+#: hex. The brand palette is duplicated because matplotlib cannot read CSS;
+#: this pins the copies together. Direct precedent: `test_chart_theme.py`
+#: already asserts `Theme.LIGHT` matches the module-level rcParams, "so a dark
+#: theme never has to fight a stale global". Same argument, one layer out.
+TIER1_PAIRS = {
+    '--ncar-blue':       'UNITY_NCAR_BLUE',
+    '--ncar-navy':       'UNITY_NCAR_NAVY',
+    '--ncar-vermilion':  'UNITY_NCAR_VERMILION',
+    '--ncar-orange':     'UNITY_NCAR_ORANGE',
+    '--ncar-gold':       'UNITY_NCAR_GOLD',
+    '--ncar-teal':       'UNITY_NCAR_TEAL',
+    '--ncar-sky':        'UNITY_NCAR_SKY',
+    '--ncar-light-blue': 'UNITY_NCAR_LIGHT_BLUE',
+    '--ncar-space-blue': 'UNITY_NCAR_SPACE_BLUE',
+    '--ncar-gray-light': 'UNITY_NCAR_GRAY_LIGHT',
+    '--ncar-gray':       'UNITY_NCAR_GRAY',
+}
+
+
+def _css_tokens():
+    """{token: value} for every custom property defined in variables.css."""
+    text = COMMENT_RE.sub('', (CSS_DIR / TOKEN_FILE).read_text())
+    return {name: value.strip()
+            for name, value in DECL_RE.findall(text)
+            if name.startswith('--')}
+
+
+def test_tier1_matches_chart_palette():
+    """The brand palette is triplicated; keep at least two copies honest.
+
+    `variables.css` and `charts/theme.py` both spell out the NCAR brand
+    colours — the CSS for the app chrome, the Python for matplotlib, which
+    cannot read CSS. Consolidating them properly is a build-step question and
+    is explicitly out of scope (docs/plans/DARK_MODE.md § *Keep the palette
+    single-sourced*), so assert agreement instead.
+    """
+    from webapp.dashboards.charts import theme as chart_theme
+
+    tokens = _css_tokens()
+    mismatches = []
+    for token, scalar in sorted(TIER1_PAIRS.items()):
+        css_value = tokens.get(token)
+        py_value = getattr(chart_theme, scalar, None)
+        assert css_value is not None, f'variables.css lost {token}'
+        assert py_value is not None, f'charts/theme.py lost {scalar}'
+        if css_value.lower() != py_value.lower():
+            mismatches.append(
+                f'  {token} = {css_value}   !=   {scalar} = {py_value}')
+
+    assert not mismatches, (
+        '\nBrand palette drifted between variables.css and '
+        'charts/theme.py:\n' + '\n'.join(mismatches))
+
+
+def test_role_tokens_exist():
+    """The tier-2 contract, asserted by name.
+
+    Component CSS is supposed to reach for these and nothing else for chrome.
+    A rename that dropped one would otherwise surface as an unstyled surface
+    somewhere far away, since an undefined `var()` silently resolves to
+    nothing.
+    """
+    tokens = _css_tokens()
+    required = {
+        '--surface-page', '--surface-card', '--surface-raised',
+        '--surface-secondary', '--surface-tertiary',
+        '--text-primary', '--text-secondary', '--text-on-brand',
+        '--border-default',
+    }
+    missing = sorted(required - set(tokens))
+    assert not missing, f'tier-2 role tokens missing from variables.css: {missing}'
+
+
+def test_value_named_tokens_are_gone():
+    """The old value-named tokens must not come back.
+
+    `--text-dark` resolving to near-white is the exact failure this rename
+    exists to prevent, and it is invisible at the callsite. Re-adding any of
+    these — even as a back-compat alias — reopens it.
+    """
+    retired = {'--bg-light', '--text-dark', '--bg-gray-light',
+               '--bg-gray-medium', '--border-color', '--color-gray-muted'}
+    tokens = set(_css_tokens())
+    resurrected = sorted(retired & tokens)
+    assert not resurrected, (
+        f'value-named tokens redefined in variables.css: {resurrected}. '
+        f'Use a tier-2 role token instead — see the file header.')
+
+    # And nothing may reference them, with or without a var() fallback.
+    referencing = []
+    for path in sorted(CSS_DIR.glob('*.css')):
+        text = COMMENT_RE.sub('', path.read_text())
+        for name in retired:
+            if re.search(r'var\(\s*' + re.escape(name) + r'\s*[,)]', text):
+                referencing.append(f'{path.name}: var({name})')
+    assert not referencing, (
+        'references to retired value-named tokens:\n  '
+        + '\n  '.join(referencing))
+
+
 def test_ratchet_lists_only_real_files():
     """An ALLOWED entry for a file that does not exist would never fail."""
     present = {p.name for p in CSS_DIR.glob('*.css')}

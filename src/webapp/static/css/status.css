@@ -37,7 +37,7 @@
    =================================================================== */
 
 .metric-card {
-    background: var(--bg-gray-light);
+    background: var(--surface-tertiary);
     border-left: 4px solid var(--ncar-blue);
     padding: 1rem;
     margin-bottom: 1rem;
@@ -127,7 +127,7 @@
 .load-stack .progress {
     height: 5px;
     border-radius: 0;
-    background-color: var(--bg-gray-medium, #e9ecef);
+    background-color: var(--surface-secondary);
     overflow: hidden;
 }
 

@@ -2,6 +2,38 @@
  * SAM Design Tokens
  * Central CSS custom-property definitions shared across all pages.
  * Load this file before any other local CSS.
+ *
+ * ## Three tiers — and which one component CSS is allowed to touch
+ *
+ *   Tier 1  primitives      brand constants. Theme-INVARIANT.
+ *                           `--ncar-blue` is the same blue on a white page
+ *                           and a black one. Component CSS must NOT
+ *                           reference these for chrome (text, surfaces,
+ *                           borders) — only for brand accents that really
+ *                           are meant to stay put.
+ *
+ *   Tier 2  role tokens     the ONLY thing component CSS should use for
+ *                           chrome. Named for the JOB (`--surface-card`,
+ *                           `--text-primary`), never the value.
+ *
+ *   Tier 3  Bootstrap bridge  maps `--bs-*` onto tier 2 so Bootstrap's
+ *                           components and our own CSS agree on one set of
+ *                           surfaces instead of two. (Added in D2.)
+ *
+ * ## Why the rename happened
+ *
+ * These tokens used to be named after their light-mode VALUES:
+ * `--bg-light`, `--text-dark`, `--bg-gray-light`, `--bg-gray-medium`,
+ * `--border-color`, `--color-gray-muted`. A token literally named
+ * `--text-dark` whose dark-mode value must be near-white is not survivable:
+ * a maintainer reading `color: var(--text-dark)` cannot tell whether that
+ * means "the dark colour" (invariant) or "the body text colour" (flips), and
+ * no test catches the wrong guess. See docs/plans/DARK_MODE.md
+ * § *The token layer*.
+ *
+ * `tests/unit/test_css_tokens.py` enforces that colour literals stay in this
+ * file, and that tier 1 agrees with `webapp/dashboards/charts/theme.py`
+ * (the palette is duplicated there because matplotlib cannot read CSS).
  */
 
 :root {
@@ -35,7 +67,9 @@
     --line-height-xxxxlg: 4.5rem;
 
 
-    /* --- NCAR brand colors --- */
+    /* --- Tier 1: NCAR brand colors. Theme-INVARIANT. ---
+       Mirrored as UNITY_NCAR_* scalars in charts/theme.py; the two are
+       pinned together by test_css_tokens.py::test_tier1_matches_chart_palette. */
     --ncar-space-blue: #011837;   /* Unity space-blue — darkest nav/heading text */
     --ncar-gray-light: #bbbcbc;   /* Unity grays.light — nav item dividers */
     --ncar-navy:       #00357a;   /* NSF NCAR brand navy */
@@ -52,19 +86,50 @@
     --ncar-navy-mid:   #003579;   /* gradient midpoint (navy → blue) */
     --ncar-teal-rgb:   0, 153, 204;  /* #0099CC used in rgba() calls */
 
-    /* --- Semantic colors --- */
+    /* --- Tier 1: status colors. Theme-INVARIANT. ---
+       Meaning-bearing, not chrome: "danger" is the same red on either
+       theme. Contrast against a dark surface is D7's problem, not a reason
+       to make these flip. */
     --success-color:   #10b981;
     --warning-color:   #f59e0b;
     --danger-color:    #E81D24;   /* brand vermilion */
     --info-color:      #0056C2;
-    --bg-light:        #f6f7f6;   /* NSF NCAR warm off-white */
-    --text-dark:       #323133;
-    --border-color:    #E2E8F0;
+
+    /* =====================================================================
+       Tier 2: ROLE tokens — the only ones component CSS should use for
+       chrome. Every value here is redefined under
+       :root[data-bs-theme="dark"] below.
+       ===================================================================== */
+
+    /* --- Surfaces, as an elevation ladder ---
+       Ordered page → card → raised. The two "recess" steps borrow
+       Bootstrap's vocabulary on purpose: their light values are *identical*
+       to --bs-secondary-bg / --bs-tertiary-bg, so the tier-3 bridge (D2) and
+       the `bg-light` → `bg-body-secondary` codemod (D5) land in one ramp
+       rather than two that drift.
+
+       Note the ordering INVERTS in dark mode — a recess renders lighter, not
+       darker, which is Bootstrap's own dark convention (--bs-secondary-bg
+       #343a40 sits above --bs-body-bg #212529). That inversion is precisely
+       why these are named for their role and not their brightness. */
+    --surface-page:      #f6f7f6;   /* body — NSF NCAR warm off-white */
+    --surface-card:      #ffffff;   /* cards, modals */
+    --surface-raised:    #ffffff;   /* navbar, tabs, chips, inputs */
+    --surface-secondary: #e9ecef;   /* stronger recess: progress track, th  */
+    --surface-tertiary:  #f8f9fa;   /* gentler recess: wells, stat boxes    */
+
+    /* --- Text --- */
+    --text-primary:   #323133;   /* body copy */
+    --text-secondary: #718096;   /* muted / supporting copy */
+    /* Deliberately INVARIANT. White on a saturated NCAR-blue button is
+       correct in both themes; giving that case a name is what stops it being
+       "fixed" into a flipping token and breaking every button in light mode. */
+    --text-on-brand:  #ffffff;
+
+    /* --- Lines --- */
+    --border-default: #E2E8F0;
 
     /* --- Design system tokens --- */
-    --bg-gray-light:     #f8f9fa;
-    --bg-gray-medium:    #e9ecef;
-
     --shadow-sm:  0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
     --shadow-md:  0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --shadow-lg:  0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
@@ -79,6 +144,5 @@
     --transition-base: 0.3s ease;
 
     /* --- Additional utility tokens --- */
-    --color-gray-muted: #718096;  /* muted gray for secondary text */
-    --bs-warning-text:  #856404;  /* Bootstrap warning text color */
+    --bs-warning-text:  #856404;  /* Bootstrap warning text color (D6 retires this) */
 }
