@@ -23,7 +23,6 @@ from datetime import date, datetime, timedelta
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.dates as mdates
-import matplotlib.font_manager
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -31,59 +30,36 @@ from flask import url_for
 
 from sam import fmt
 from webapp.caching import caching
-from webapp.caching.chart import content_hash as _content_hash  # legacy alias used by _pace_cache_key
+# `content_hash` under its historical private name — used by several
+# `_*_cache_key` functions below.
+from webapp.caching.chart import content_hash as _content_hash
 
-
-# ---------------------------------------------------------------------------
-# Unity NCAR chart styling — runs once at module import.
-#
-# Two pieces:
-#   1. Register Poppins TTFs with matplotlib's font manager. Skipped silently
-#      if the directory is empty / missing, so the import still works in
-#      environments where the static assets haven't been deployed yet.
-#
-#      NOTE: these .ttf files are a deliberate SERVER-SIDE copy for matplotlib
-#      and are NOT the same assets the browser uses. The browser loads the
-#      vendored .woff2 set under static/vendor/poppins/ (see vendor_assets.py);
-#      matplotlib's font_manager cannot read woff2 (only ttf/otf/afm), so it
-#      needs its own ttf set here. Do NOT delete static/fonts/poppins/*.ttf as
-#      "unreferenced" — they are referenced here, and a regression test
-#      (test_chart_fonts.py) asserts findfont('Poppins') still resolves.
-#   2. Apply rcParams that mirror the editorial flat look on the HTML side:
-#      Poppins text, space-blue chrome, hairline gray grid, no top/right
-#      spines, transparent figure/axes (we already savefig with
-#      transparent=True so legend/grid colors carry against any backdrop).
-# ---------------------------------------------------------------------------
-
-# parents[2] is src/webapp/ — this module is webapp/dashboards/charts/__init__.py.
-# Counting up from __file__ is fragile under exactly the kind of move that
-# created this package, so test_chart_fonts asserts the registered font
-# actually resolves inside this directory rather than to a system font.
-_FONT_DIR = Path(__file__).resolve().parents[2] / 'static' / 'fonts' / 'poppins'
-if _FONT_DIR.exists():
-    for _ttf in _FONT_DIR.glob('*.ttf'):
-        matplotlib.font_manager.fontManager.addfont(str(_ttf))
-
-plt.rcParams.update({
-    'font.family':        ['Poppins', 'DejaVu Sans'],   # fallback if Poppins missing
-    'font.size':          11,
-    'axes.titleweight':   600,
-    'axes.titlecolor':    '#011837',   # ncar-space-blue
-    'axes.labelcolor':    '#011837',
-    'axes.labelweight':   600,
-    'axes.edgecolor':     '#011837',
-    'axes.spines.top':    False,
-    'axes.spines.right':  False,
-    'xtick.color':        '#011837',
-    'ytick.color':        '#011837',
-    'grid.color':         '#bbbcbc',   # ncar-gray-light
-    'grid.alpha':         0.4,
-    'grid.linewidth':     0.5,
-    'legend.fontsize':    11,
-    'legend.frameon':     False,
-    'figure.facecolor':   'none',
-    'axes.facecolor':     'none',
-})
+# Imported first for its import-time side effects: registering the
+# server-side Poppins TTFs and applying the structural rcParams. The
+# re-exported names keep `charts.UNITY_*` working for existing importers.
+from webapp.dashboards.charts import theme
+from webapp.dashboards.charts.theme import (  # noqa: F401
+    UNITY_NCAR_BLUE,
+    UNITY_NCAR_GRAY,
+    UNITY_NCAR_GRAY_LIGHT,
+    UNITY_NCAR_GOLD,
+    UNITY_NCAR_LIGHT_BLUE,
+    UNITY_NCAR_NAVY,
+    UNITY_NCAR_ORANGE,
+    UNITY_NCAR_SKY,
+    UNITY_NCAR_SPACE_BLUE,
+    UNITY_NCAR_TEAL,
+    UNITY_NCAR_VERMILION,
+    UNITY_PALETTE_10,
+    UNITY_STACK_10,
+    UNITY_STACK_20,
+    Theme,
+    autopct_color_for as _autopct_color_for,
+    resolve_theme,
+    scale_bytes,
+    shade_family as _shade_family,
+    _FONT_DIR,
+)
 
 
 def _fig_to_svg(fig) -> str:
@@ -104,109 +80,6 @@ def _empty_state(msg: str, extra_classes: str = '') -> str:
     """The no-data placeholder fragment charts return instead of an SVG."""
     classes = f'text-center text-muted {extra_classes}'.rstrip()
     return f'<div class="{classes}">{msg}</div>'
-
-
-# Unity NCAR palette ordered for chart use. Indices 0-2 are the brand spine
-# (blue → navy → vermilion); 3-4 the warm accents (gold, orange); 5-7 the
-# teal family (teal, sky, light-blue); 8-9 are tertiary fillers. Sequential
-# visual distinction at small sizes (pie wedges).
-UNITY_PALETTE_10 = (
-    '#0057c2',  # ncar-blue
-    '#00357a',  # ncar-navy
-    '#ff1f1f',  # ncar-vermilion
-    '#fdd509',  # ncar-gold
-    '#faa119',  # ncar-orange
-    '#00818F',  # ncar-teal
-    '#42C0FF',  # ncar-sky
-    '#00A2B4',  # ncar-light-blue
-    '#011837',  # ncar-space-blue
-    '#97999b',  # ncar-gray
-)
-
-UNITY_NCAR_BLUE       = '#0057c2'
-UNITY_NCAR_NAVY       = '#00357a'
-UNITY_NCAR_VERMILION  = '#ff1f1f'
-UNITY_NCAR_ORANGE     = '#faa119'
-UNITY_NCAR_GOLD       = '#fdd509'
-UNITY_NCAR_TEAL       = '#00818F'
-UNITY_NCAR_SKY        = '#42C0FF'
-UNITY_NCAR_LIGHT_BLUE = '#00A2B4'
-UNITY_NCAR_SPACE_BLUE = '#011837'
-UNITY_NCAR_GRAY_LIGHT = '#bbbcbc'
-UNITY_NCAR_GRAY       = '#97999b'
-
-
-# Stacked-area categorical palette. Family-grouped: each color family's
-# shades sit adjacent (gold→yellow-33→yellow-66, orange→orange-33→…),
-# then we move to the next family. Within a family, ordered saturated →
-# pale. Ordered warm → cool so the highest-rank bands (which stackplot
-# puts at the bottom, visually most prominent) get the loudest warm
-# anchors (gold, orange, vermilion), then transition through teal /
-# sky / blue / navy as rank decreases.
-UNITY_STACK_20 = (
-    # Gold family — bright warm anchor, highest visual prominence
-    '#fdd509',   # 1.  gold
-    '#fbe174',   # 2.  yellow-33
-    '#f8ebb7',   # 3.  yellow-66
-
-    # Orange family
-    '#faa119',   # 4.  orange
-    '#fabe72',   # 5.  orange-33
-    '#f8dbb5',   # 6.  orange-66
-
-    # Vermilion (single; no lighter variant in Unity's secondary ladder)
-    '#ff1f1f',   # 7.  vermilion
-
-    # Teal family — warm-cool transition
-    '#00818F',   # 8.  teal
-    '#00a2b4',   # 9.  ucar-base-33
-    '#71c0cb',   # 10. ucar-base-66
-
-    # Sky / cyan family
-    '#42c0ff',   # 11. sky
-    '#86d3fc',   # 12. ncar-light-33
-    '#34e1f4',   # 13. ucar-light (cyan)
-    '#86e8f5',   # 14. ucar-light-33
-
-    # Blue family (deep cool)
-    '#0057c2',   # 15. ncar-blue
-    '#5a77a6',   # 16. blue-33
-    '#a8b7ce',   # 17. blue-66
-    '#adc2e6',   # 18. ncar-base-66
-
-    # Navy / slate family
-    '#00357a',   # 19. navy
-    '#556379',   # 20. space-blue-33
-)
-
-# 10-color variant: distinct tuple (NOT UNITY_STACK_20[:10], which would be
-# 3 golds + 3 oranges + vermilion + 3 teals — too warm-loaded). Picks 2
-# shades from each main hue family plus vermilion, in the same warm-to-cool
-# order as _20 so the same chart looks like a subsetted version, not a
-# different palette.
-UNITY_STACK_10 = (
-    '#fdd509',   # 1.  gold
-    '#fbe174',   # 2.  yellow-33
-    '#faa119',   # 3.  orange
-    '#fabe72',   # 4.  orange-33
-    '#ff1f1f',   # 5.  vermilion
-    '#00818F',   # 6.  teal
-    '#00a2b4',   # 7.  ucar-base-33
-    '#42c0ff',   # 8.  sky
-    '#0057c2',   # 9.  ncar-blue
-    '#5a77a6',   # 10. blue-33
-)
-
-
-def _autopct_color_for(bg_hex: str) -> str:
-    """Pick a readable text color for percent labels on a colored pie wedge.
-
-    Returns space-blue on light wedges (gold, sky) and white on dark wedges
-    (blue, navy, vermilion). Luminance threshold ~0.6 — empirically tuned
-    against UNITY_PALETTE_10."""
-    r, g, b = (int(bg_hex[i:i+2], 16) / 255 for i in (1, 3, 5))
-    lum = 0.299 * r + 0.587 * g + 0.114 * b
-    return UNITY_NCAR_SPACE_BLUE if lum > 0.6 else '#fff'
 
 
 def _project_modal_url(projcode: str) -> str:
@@ -405,9 +278,10 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
 # 1b. Disk usage stacked-area chart (Resource Usage Details — DISK)
 # ---------------------------------------------------------------------------
 
-_BYTES_PER_GIB = 1024 ** 3
-_BYTES_PER_TIB = 1024 ** 4
-_BYTES_PER_PIB = 1024 ** 5
+# Historical private aliases; the definitions live in theme.py.
+_BYTES_PER_GIB = theme.BYTES_PER_GIB
+_BYTES_PER_TIB = theme.BYTES_PER_TIB
+_BYTES_PER_PIB = theme.BYTES_PER_PIB
 
 
 def _disk_usage_stacked_area_cache_key(timeseries, link_kind=None, metric='bytes'):
@@ -459,12 +333,10 @@ def generate_disk_usage_stacked_area(timeseries, link_kind=None, metric='bytes')
             for i in range(len(dates))
         ]
         peak = max(stacked_totals) if stacked_totals else 0
-        if peak >= _BYTES_PER_PIB:
-            scale = _BYTES_PER_PIB
-            unit_label = 'PiB'
-        else:
-            scale = _BYTES_PER_TIB
-            unit_label = 'TiB'
+        # floor='TiB': this chart never drops to a GiB axis, so a sub-TiB
+        # series shows as a fractional TiB. Deliberate — its readers think
+        # in TiB — and NOT the same ladder the distribution histogram uses.
+        scale, unit_label = scale_bytes(peak, floor='TiB')
         scaled_series = [
             [v / scale for v in s['values']]
             for s in series
@@ -680,24 +552,6 @@ def _bucket_segments(owners, metric='data'):
     return ranked
 
 
-def _shade_family(base_hex, n, lightest=0.66):
-    """``n`` colors blended from a light tint (index 0) to *base_hex* (index n-1).
-
-    Gives each stacked bar a single-hue gradient: the bottom "other" segment
-    is the palest, the top (largest) owner the boldest base color.
-    """
-    import matplotlib.colors as mcolors
-    base = np.array(mcolors.to_rgb(base_hex))
-    white = np.array([1.0, 1.0, 1.0])
-    if n <= 1:
-        return [tuple(base)]
-    return [
-        tuple(base * (1 - f) + white * f)
-        for j in range(n)
-        for f in (lightest * (1 - j / (n - 1)),)
-    ]
-
-
 def _distribution_cache_key(hist, *, log_y=False, metric='data'):
     """Stable key from the per-bucket totals + segment shape + date + options.
 
@@ -756,12 +610,9 @@ def generate_distribution_histogram(hist, *, log_y=False, metric='data') -> str:
 
     if is_bytes:
         peak = max(vals) if vals else 0
-        if peak >= _BYTES_PER_PIB:
-            scale, ylabel = _BYTES_PER_PIB, 'Data (PiB)'
-        elif peak >= _BYTES_PER_TIB:
-            scale, ylabel = _BYTES_PER_TIB, 'Data (TiB)'
-        else:
-            scale, ylabel = _BYTES_PER_GIB, 'Data (GiB)'
+        # floor='GiB': three rungs here, unlike the disk-usage timeseries.
+        scale, unit_label = scale_bytes(peak, floor='GiB')
+        ylabel = f'Data ({unit_label})'
     else:
         scale, ylabel = 1, 'Files'
     scaled = [v / scale for v in vals]
