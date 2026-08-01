@@ -452,7 +452,7 @@ def test_entities_group_drilldown_and_pie(app, auth_client, active_project, monk
     assert resp.status_code == 200
     assert 'data-group-gid="2001"' in body     # row addressable from a pie wedge
     assert 'owner_gid=2001' in body            # collapse lazy-loads directories by GID
-    assert '#disk-ent-group-2001' in body      # pie wedge/legend sentinel
+    assert '#sam/row/data-group-gid/2001' in body      # pie wedge/legend sentinel
 
 
 def test_entities_kind_whitelisted(app, auth_client, active_project, monkeypatch):
@@ -510,9 +510,9 @@ def test_access_history_renders_svg(app, auth_client, active_project, monkeypatc
     assert 'alice' in body                # username resolved via username_map
     assert 'bob' in body
     assert 'data-bs-toggle="collapse"' in body   # bucket rows are expandable
-    # Chart bar → row drill-down wiring (svg-chart-links.js #ah-bar- branch):
+    # Chart bar → row drill-down wiring (svg-chart-links.js #sam/row/data-ah-bucket/ branch):
     # buckets with owners get an SVG anchor and a matching row lookup attr.
-    assert '#ah-bar-0' in body            # bar anchor for the first owned bucket
+    assert '#sam/row/data-ah-bucket/0' in body            # bar anchor for the first owned bucket
     assert 'data-ah-bucket="0"' in body   # row the anchor expands
 
 
@@ -681,7 +681,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     assert '<svg' in body                 # matplotlib SVG rendered
     assert '100 GiB+' in body             # file-size bucket label in the table
     assert 'fasullo' in body              # per-user breakdown resolved
-    assert '#ah-bar-0' in body            # bar→row drill-down anchor (shared scheme)
+    assert '#sam/row/data-ah-bucket/0' in body            # bar→row drill-down anchor (shared scheme)
     assert 'data-ah-bucket="0"' in body
     # Data ↔ Files metric pill present (file-sizes only) and defaults to Data.
     assert 'metric=files' in body
@@ -711,7 +711,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     body3 = resp3.get_data(as_text=True)
     assert '<svg' in body3
     assert 'checked' in body3              # switch reflects log_on
-    assert '#ah-bar-0' in body3            # drill-down preserved under log
+    assert '#sam/row/data-ah-bucket/0' in body3            # drill-down preserved under log
 
 
 def test_fragment_missing_resource_is_graceful(app, auth_client, active_project, monkeypatch):
@@ -1843,16 +1843,16 @@ class TestDiskEntityPie:
         data = [{'id': 1000 + i, 'name': f'u{i}', 'value': v}
                 for i, v in enumerate([50, 20, 10, 6, 5, 3, 2, 1, 1, 1, 0.5, 0.5])]
         svg = generate_disk_entity_pie_chart(data, 'owner')
-        assert '#disk-ent-owner-1000' in svg     # top kept entity is clickable
+        assert '#sam/row/data-owner-uid/1000' in svg     # top kept entity is clickable
         assert 'Other (' in svg                  # long tail lumped into one slice
-        assert '#disk-ent-owner-None' not in svg  # the Other slice has no sentinel
+        assert '#sam/row/data-owner-uid/None' not in svg  # the Other slice has no sentinel
 
     def test_group_uses_group_prefix(self):
         from webapp.dashboards.charts import generate_disk_entity_pie_chart
         svg = generate_disk_entity_pie_chart(
             [{'id': 500, 'name': 'csg', 'value': 10},
              {'id': 501, 'name': None, 'value': 1}], 'group')
-        assert '#disk-ent-group-500' in svg
+        assert '#sam/row/data-group-gid/500' in svg
 
     def test_empty_returns_placeholder(self):
         from webapp.dashboards.charts import generate_disk_entity_pie_chart
@@ -1866,7 +1866,7 @@ class TestDiskEntityPie:
         data = [{'id': 7, 'name': 'g7', 'value': Decimal('10')},
                 {'id': 8, 'name': 'g8', 'value': Decimal('3')}]
         svg = generate_disk_entity_pie_chart(data, 'group')
-        assert '#disk-ent-group-7' in svg
+        assert '#sam/row/data-group-gid/7' in svg
 
 
 # ---------------------------------------------------------------------------

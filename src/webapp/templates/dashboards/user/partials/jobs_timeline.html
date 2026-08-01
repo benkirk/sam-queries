@@ -139,7 +139,8 @@
 
   {# Period table under the SVG — the same zero-filled band vector the chart
      draws, so counts are copy/paste-able. Populated bands expand (row click,
-     or bar click via the #jt-bar-<i> sentinel and svg-chart-links.js) into
+     or bar click via the #sam/row/data-jt-period/<i> anchor and
+     svg-chart-links.js) into
      the per-owner tier, each owner lazy-loading its jobs in that band.
      data-no-persist: a restored auto-expand would re-fire the drills. #}
   {% set _mkey = 'job_count' if metric == 'jobs' else metric %}

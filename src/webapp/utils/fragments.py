@@ -33,6 +33,8 @@ from typing import Any, Callable, Dict, Mapping, Sequence, Tuple
 
 from flask import url_for
 
+from webapp.utils.htmx import read_layout
+
 
 @dataclass(frozen=True)
 class ModeSpec:
@@ -149,6 +151,11 @@ def _register_one(bp, panel: PanelSpec, mode: ModeSpec) -> None:
             mode=mode.mode,
             scope_for=mode.scope_for(ctx),
             log_label=mode.log_label(ctx),
+            # Every panel that draws a chart needs the render layout, and this
+            # is the one place all 27 jobs/disk-scans fragment routes pass
+            # through — so it is resolved once here rather than in each
+            # renderer. Panels that draw no chart accept and ignore it.
+            layout=read_layout(),
             **panel.kwargs, **extras,
         )
 

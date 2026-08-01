@@ -24,7 +24,8 @@ cache = caching.flask
 
 
 def user_aware_cache_key() -> str:
-    """Cache key keyed on (current user id, path, query string, facility scope).
+    """Cache key keyed on (current user id, path, query string, facility scope,
+    chart layout).
 
     Use as ``@cache.cached(make_cache_key=user_aware_cache_key)`` on any
     response whose rendered output depends on who is logged in — most
@@ -41,9 +42,21 @@ def user_aware_cache_key() -> str:
     today, but the scope tag future-proofs against routes where two
     users might legitimately share a user-id slot — e.g. team-role
     impersonation — and makes the dependency explicit).
+
+    The layout tag is why the query string alone is not enough. Charts render
+    per-layout, and a full-page route like ``/allocations/projects`` learns its
+    layout from a **cookie**, not the URL — so without this, the first visitor
+    to warm the cache would decide whether every later visitor got phone-sized
+    or desktop-sized pies. The dark-mode pass adds ``theme`` here for exactly
+    the same reason, and with a more visible failure.
+
+    Routes with no chart in them pay a doubled key space for nothing. That is
+    the right trade at five call sites: the cost is a few extra cache entries,
+    and the failure it prevents is silent and user-visible.
     """
     from flask import request
     from flask_login import current_user
+    from webapp.utils.htmx import read_layout
     from webapp.utils.rbac import user_facility_scope, Permission
 
     user_part = (
@@ -62,4 +75,5 @@ def user_aware_cache_key() -> str:
         # not stable across processes. ``sorted`` gives a deterministic
         # key so two users with the same scope get the same slot.
         scope_part = ','.join(sorted(scope))
-    return f"u:{user_part}|{request.path}|{qs}|s:{scope_part}"
+    return (f"u:{user_part}|{request.path}|{qs}|s:{scope_part}"
+            f"|l:{read_layout()}")

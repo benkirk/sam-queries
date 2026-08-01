@@ -245,7 +245,7 @@ def _mock_user_summary(monkeypatch):
 class TestUserPieRoute:
     """The By User pane's chart fragment — sibling of the Usage Trend one.
 
-    Its wedges must emit ``#usage-user-<username>`` sentinels, because
+    Its wedges must emit ``#sam/user/<username>`` sentinels, because
     svg-chart-links.js routes that prefix (and only that prefix) to the
     Usage-by-User table row. A renamed sentinel breaks the drill-down
     silently, so it is asserted rather than assumed.
@@ -260,8 +260,8 @@ class TestUserPieRoute:
         )
         assert resp.status_code == 200
         body = resp.get_data(as_text=True)
-        assert '#usage-user-alice' in body
-        assert '#usage-user-bob' in body
+        assert '#sam/user/alice' in body
+        assert '#sam/user/bob' in body
         assert _mock_user_summary['kwargs']['resource'] == 'Derecho'
 
     def test_missing_resource_returns_400(self, auth_client, active_project):

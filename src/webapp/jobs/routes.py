@@ -60,7 +60,6 @@ from webapp.dashboards.charts import (
     generate_jobs_histogram,
     generate_jobs_timeseries_stacked,
     generate_jobs_usage_pie_chart,
-    generate_jobs_user_pie_chart,
 )
 from webapp.extensions import db
 from webapp.jobs import service
@@ -868,7 +867,6 @@ _USAGE_ENTITIES = {
         'label':          'User',
         'form_key':       'byuser',
         'row_prefix':     '-u',
-        'sentinel':       'job-user',
         'sentinel_attr':  'data-job-user',
         'drill_param':    'user',
         'modal_endpoint': 'admin_dashboard.user_card',
@@ -885,7 +883,6 @@ _USAGE_ENTITIES = {
         'label':          'Project',
         'form_key':       'byproj',
         'row_prefix':     '-p',
-        'sentinel':       'job-proj',
         'sentinel_attr':  'data-job-project',
         'drill_param':    'account',
         'modal_endpoint': 'user_dashboard.project_details_modal',
@@ -916,7 +913,8 @@ def _usage_affordance_permission(entity_key: str, mode: str) -> bool:
 
 def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
                         jobs_fragment_url, target_id,
-                        username=None, account_projcodes=None):
+                        username=None, account_projcodes=None,
+                        layout='desktop'):
     """Shared renderer for the By User / By Project tabs (all modes).
 
     Scoping is the scope object's job; what differs here is only the entity
@@ -950,7 +948,8 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
         error = str(exc)
 
     pie_svg = generate_jobs_usage_pie_chart(
-        usage, metric=metric, sentinel_prefix=entity['sentinel']) if usage else None
+        usage, metric=metric, row_attr=entity['sentinel_attr'],
+        layout=layout) if usage else None
     other = _usage_other(usage) if usage else None
 
     return render_template(
@@ -1082,7 +1081,8 @@ def _band_drill_url(jobs_fragment_url, band, roundtrip):
 
 def _render_timeline(*, mode, machine, fragment_url, target_id,
                      jobs_fragment_url=None,
-                     account_projcodes=None, username=None):
+                     account_projcodes=None, username=None,
+                     layout='desktop'):
     """Renderer for the Jobs tab's activity timeline.
 
     The one panel with a time axis. Upstream cost swings ~500x on whether
@@ -1167,7 +1167,8 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
     chart_svg = (generate_jobs_timeseries_stacked(
         ts, metric=metric, period=period,
         entity_kind=group_by,
-        link_entities=link_entities) if has_bands else None)
+        link_entities=link_entities,
+        layout=layout) if has_bands else None)
 
     params = _roundtrip_params(machine, target_id)
     band_drills = None
@@ -1200,7 +1201,8 @@ def _render_timeline(*, mode, machine, fragment_url, target_id,
 def _render_histogram(*, mode, machine, dimension, dimension_toggle,
                       fragment_url, target_id,
                       jobs_fragment_url=None,
-                      account_projcodes=None, username=None):
+                      account_projcodes=None, username=None,
+                      layout='desktop'):
     """Shared renderer for the Wait Times / Job Sizes / Durations tabs."""
     template = 'dashboards/user/partials/jobs_histogram.html'
     if not is_enabled():
@@ -1263,7 +1265,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         error = str(exc)
 
     # Trim BEFORE the chart and the drill list: the bar sentinels
-    # (#jh-bar-<i>) and the table's data-jh-bucket indices are both
+    # (#sam/row/data-jh-bucket/<i>) and the table's data-jh-bucket indices are both
     # positions in this bucket vector, so all three have to see the
     # same one. An all-zero distribution trims to no bands at all, which
     # is how the template knows to render one empty state instead of a
@@ -1271,7 +1273,8 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
     hist = _trim_empty_edge_bands(hist)
     has_bands = bool((hist or {}).get('buckets'))
 
-    chart_svg = (generate_jobs_histogram(hist, metric=metric, log_y=log_on)
+    chart_svg = (generate_jobs_histogram(hist, metric=metric, log_y=log_on,
+                                        layout=layout)
                  if has_bands else None)
     params = _roundtrip_params(machine, target_id)
 
@@ -1839,7 +1842,7 @@ def _panel_jobs_table(ctx, fragment_url, *, mode, scope_for, log_label, **_kw):
 
 
 def _panel_usage(ctx, fragment_url, *, mode, scope_for, log_label,
-                 entity_key, jobs_fragment_url=None, **_kw):
+                 entity_key, jobs_fragment_url=None, layout='desktop', **_kw):
     """HTMX fragment: a per-entity usage pie + drillable rows."""
     entity = _USAGE_ENTITIES[entity_key]
     if ctx['machine'] is None:
@@ -1852,12 +1855,13 @@ def _panel_usage(ctx, fragment_url, *, mode, scope_for, log_label,
         target_id=_target_id(ctx, entity['target_stem']),
         username=ctx['username'],
         account_projcodes=ctx['account_projcodes'],
+        layout=layout,
     )
 
 
 def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
                      dimension, dimension_toggle=False,
-                     jobs_fragment_url=None, **_kw):
+                     jobs_fragment_url=None, layout='desktop', **_kw):
     """HTMX fragment: one of the three distribution histograms."""
     dim = _panel_dimension(dimension, dimension_toggle)
     if ctx['machine'] is None:
@@ -1871,11 +1875,12 @@ def _panel_histogram(ctx, fragment_url, *, mode, scope_for, log_label,
         target_id=_target_id(ctx, dim),
         account_projcodes=ctx['account_projcodes'],
         username=ctx['username'],
+        layout=layout,
     )
 
 
 def _panel_timeline(ctx, fragment_url, *, mode, scope_for, log_label,
-                    jobs_fragment_url=None, **_kw):
+                    jobs_fragment_url=None, layout='desktop', **_kw):
     """HTMX fragment: the Jobs tab's activity timeline."""
     if ctx['machine'] is None:
         return _render_timeline(mode=mode, machine=None,
@@ -1886,6 +1891,7 @@ def _panel_timeline(ctx, fragment_url, *, mode, scope_for, log_label,
         target_id=_target_id(ctx, 'timeline'),
         account_projcodes=ctx['account_projcodes'],
         username=ctx['username'],
+        layout=layout,
     )
 
 
