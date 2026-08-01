@@ -22,7 +22,7 @@ from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links, series as series_mod
 from webapp.dashboards.charts.base import BaseChart
-from webapp.dashboards.charts.dualpanel import _to_display_tz, mobile_date_axis
+from webapp.dashboards.charts.dualpanel import _to_display_tz
 from webapp.dashboards.charts.jobs_metrics import (
     JOBS_METRIC_LABELS, jobs_timeseries_series,
 )
@@ -42,11 +42,10 @@ _USAGE_METRIC_YLABELS = {
 class StackedSeriesChart(BaseChart):
     """Bands accumulated bottom-to-top, with an optional clickable legend."""
 
-    #: `label_rotation=30` on desktop records what `fig.autofmt_xdate()`
-    #: already does; nothing reads it there. The mobile profile's rotation is
-    #: likewise unread by the *date* charts — `mobile_date_axis` shortens the
-    #: labels enough to leave them horizontal — but `JobsTimeseriesChart`
-    #: overrides `decorate` for its categorical axis and does read it.
+    #: `label_rotation` is unread by the *date* charts in this family — the
+    #: smart date axis shortens labels enough to leave them horizontal. It
+    #: survives for `JobsTimeseriesChart`, whose categorical axis falls back
+    #: to rotation when its period labels are a grain we cannot compact.
     LAYOUTS = profile((18, 5), (4.0, 2.8), label_rotation=30)
 
     #: 'bar' — discrete bars per x position; 'area' — filled stackplot.
@@ -182,10 +181,7 @@ class StackedSeriesChart(BaseChart):
                              ordered=True)
 
     def finish(self, fig, axes, layout, theme):
-        if layout.is_mobile:
-            mobile_date_axis(axes, layout)
-            return
-        fig.autofmt_xdate()
+        self.apply_date_axis(axes, layout)
 
 
 # ---------------------------------------------------------------------------
@@ -521,8 +517,19 @@ class JobsTimeseriesChart(StackedSeriesChart):
         step = max(1, len(self.labels) // layout.max_ticks)
         ticks = list(range(0, len(self.labels), step))
         ax.set_xticks(ticks)
-        ax.set_xticklabels([self.labels[i] for i in ticks],
-                           rotation=layout.label_rotation, ha='right')
+        # This axis is categorical — band indices against period strings the
+        # plugin already formatted (`2026-07-26` / `2026-07` / `2026`), so a
+        # matplotlib date formatter cannot reach it. `compact_date_labels`
+        # applies the same vocabulary to the strings, which matters because
+        # this chart sits one tab away from ones that do use the date axis.
+        # A grain it cannot parse (week, quarter) comes back unchanged.
+        shown = [self.labels[i] for i in ticks]
+        compact = fmt.compact_date_labels(shown)
+        # Rotation only if the labels are still long, i.e. nothing was
+        # compacted — two-line labels read badly on a slant.
+        rotation = 0 if compact != shown else layout.label_rotation
+        ax.set_xticklabels(compact, rotation=rotation,
+                           ha='center' if rotation == 0 else 'right')
         ax.set_xlim(-0.5, len(self.labels) - 0.5)
         super().decorate(ax, layout, theme)
 

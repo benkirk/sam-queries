@@ -597,6 +597,18 @@ can fix.
 consult it — pies cap **slices** on mobile rather than legend rows, because an
 unlabelled wedge is also an unlabelled drill target.
 
+### Date axes
+
+`self.apply_date_axis(ax, layout)` in `finish()` — never `fig.autofmt_xdate()`,
+whose rotation exists to fit labels the smart axis removes. The tick carries
+what changes and a second line carries the context, drawn only where it
+changes: `00:00 / Jul 26`, `01:00`, `02:00`. Vocabulary lives in
+`fmt.mpl_date_ticks()`; `fmt.date_str` stays ISO for tables.
+
+A **categorical** axis of pre-formatted period strings (the jobs timeline
+plots band indices) calls `fmt.compact_date_labels()` on the labels instead —
+same vocabulary, and unparsable grains come back unchanged.
+
 Design + measurements: `docs/plans/MOBILE_CHARTS.md`.
 
 ### Adding a chart

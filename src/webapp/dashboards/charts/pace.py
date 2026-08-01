@@ -24,7 +24,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 import matplotlib.colors
-import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 import numpy as np
 
@@ -358,21 +357,13 @@ class PaceChart(BaseChart):
 
     def decorate(self, ax, layout, theme):
         ax.set_xlim(self.window_start, self.window_end)
-        # A 360-day window is twelve "Mon YYYY" labels. That fits across 10in
-        # and does not across 4.6in, so mobile takes every Nth month — still
-        # the MonthLocator, still on month boundaries, just fewer of them.
-        interval = 1
-        if layout.is_mobile:
-            months = max(1, round(2 * self.window_days / 30))
-            interval = max(1, -(-months // layout.max_ticks))
-        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=interval))
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
         ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
         ax.set_ylabel('Rate (per year)', **self.label_kw(layout))
         self.apply_grid(ax, theme)
 
     def finish(self, fig, axes, layout, theme):
-        if layout.is_mobile:
-            fig.autofmt_xdate(rotation=layout.label_rotation)
-            return
-        fig.autofmt_xdate()
+        # Was a `MonthLocator` with `%b %Y` on every tick — twelve labels
+        # repeating the same year across a default 360-day window. The shared
+        # date axis still lands on month boundaries and still says the year,
+        # once, where it changes.
+        self.apply_date_axis(axes, layout)

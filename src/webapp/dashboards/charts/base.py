@@ -39,6 +39,7 @@ from io import StringIO
 
 import matplotlib.pyplot as plt
 
+from sam import fmt
 from webapp.caching import caching
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts.layout import resolve_layout
@@ -226,6 +227,32 @@ class BaseChart:
         size = (layout.base_fontsize if layout.is_mobile
                 else self.axis_label_fontsize)
         return {'fontsize': size} if size is not None else {}
+
+    def apply_date_axis(self, ax, layout):
+        """Ticks and labels for a datetime x axis, at either layout.
+
+        Replaces `fig.autofmt_xdate()`, and deliberately does not rotate: the
+        rotation existed to fit `2026-07-26` repeated across every tick, and
+        `fmt.mpl_date_ticks` removes the repetition instead. Horizontal labels
+        give the plot back the vertical band the slant was using — which is
+        worth more on a phone but is not worth nothing on a dashboard.
+
+        Tick count comes from the layout, so a phone gets five where a
+        dashboard gets twelve.
+
+        Charts whose x axis is categorical — the jobs timeline plots band
+        indices against period strings the plugin already formatted — cannot
+        use this. They call `fmt.compact_date_labels` on the label strings
+        instead, which applies the same vocabulary.
+        """
+        locator, formatter = fmt.mpl_date_ticks(max_ticks=layout.max_ticks)
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(formatter)
+        # The offset text is a separate Text artist that `tick_params` does
+        # not reach. Nothing sets it now that context rides the tick labels,
+        # but sizing it keeps a stray one from rendering at the rcParams
+        # default beside 9pt ticks.
+        ax.xaxis.get_offset_text().set_fontsize(layout.base_fontsize)
 
     def apply_tick_fontsize(self, axes, layout):
         """Size tick labels from the layout.

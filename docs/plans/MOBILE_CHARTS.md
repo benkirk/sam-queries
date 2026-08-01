@@ -136,21 +136,60 @@ puts the upper legend in the top margin and the lower one in the inter-panel
 gap, which `sharex` leaves empty because the upper panel's tick labels are
 hidden. `hspace=0.45` widens that gap to hold it.
 
-### 5. `ConciseDateFormatter` on mobile date axes
+### 5. A span-aware date axis, on **both** layouts
 
-Found in the browser, not in a test. Five `2026-07-27` stamps do not fit
-across 4in even rotated 45°, and `AutoDateLocator` puts an uneven tick at the
-range edge, so the last two overlapped outright on `/status/derecho`.
-Shortening beats rotating harder: `2026-07-27` → `27`, with `2026-Aug`
-hoisted into one offset label. The labels then sit horizontally, giving the
-plot back the band the rotation was using.
+Scope grew here deliberately, after the mobile work exposed that the axis
+vocabulary was the underlying problem and the phone was only where it hurt
+first. Measured before:
 
-`mobile_date_axis()` lives in `dualpanel.py` and is imported by `stacked.py` —
-the one allowed cross-family edge, alongside `_to_display_tz`, and pinned by
-`test_chart_module_boundaries.py`.
+| span | tick labels | redundancy |
+|---|---|---|
+| 6h | `07-26 00` `07-26 01` `07-26 02` … | date on **every** tick |
+| 7d | `2026-07-26` `2026-07-27` … | year **and** month on every tick |
+| 1y | `2026-09` `2026-11` `2027-01` … | year mostly repeated |
 
-Its offset label is a separate `Text` artist that `tick_params(labelsize=)`
-does not reach, so it rendered two points larger than every tick beside it.
+...all rotated 30°, so vertical space was being spent to render characters
+identical across every label.
+
+The rule is one line: **the tick carries what changes, a second line carries
+the context, and the context is drawn only where it changes** — always at the
+first tick, so an axis is never left without its date.
+
+```
+6h   00:00   01:00  02:00  03:00      1y   Jul    Sep  Nov  Jan    Mar
+     Jul 26                                2026                2027
+```
+
+`fmt.mpl_date_ticks(max_ticks)` returns `(locator, formatter)`, matching the
+existing `mpl_number_formatter` / `mpl_pct_formatter` factories. **`date_str`
+is untouched** — a table column wants ISO, sortable and unambiguous; this is a
+charting concern only.
+
+**`ConciseDateFormatter` was tried, shipped for mobile, and then replaced.**
+It implements the same
+idea, but two behaviours disqualify it here: it derives its offset label from
+the **last** tick, so a window showing Jul 26–31 gets labelled `2026-Aug`; and
+at day scale it emits bare day numbers (`26 27 28`) with the month only in
+that offset. Ours computes context from the visible ticks, and applies it
+to desktop too — where the redundancy was just as bad and nobody had
+looked.
+
+**The band comes from actual tick spacing, not the data's span.** They usually
+agree, but the locator has the last word on where ticks land, and a formatter
+that guessed from the span would mislabel whenever they diverged.
+
+Rotation is gone, on both layouts — it existed to fit labels this removes.
+
+*The jobs timeline is the exception.* It plots band indices against period
+strings the plugin already grouped (`2026-07-26` / `2026-07` / `2026`), so no
+matplotlib formatter can reach it. `fmt.compact_date_labels()` applies the
+same vocabulary to the strings — no plugin change — and returns them unchanged
+if any fails to parse, so a week or quarter grain degrades to today's
+rendering rather than raising inside a chart.
+
+Blast radius, from the fingerprint: **15 of 47 desktop cases and 15 of 32
+mobile** — exactly the eight date-axis charts and their variants. Every pie
+and histogram case is byte-identical.
 
 ### 6. Charts bleed over their card padding on phones
 

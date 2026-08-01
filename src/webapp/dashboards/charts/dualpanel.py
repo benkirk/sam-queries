@@ -11,7 +11,6 @@ key, two charts, and the smallest blast radius of any family.
 
 from typing import Dict, List
 
-import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
 from sam import fmt
@@ -21,35 +20,6 @@ from webapp.dashboards.charts.theme import (
     UNITY_NCAR_BLUE, UNITY_NCAR_ORANGE, UNITY_NCAR_SKY, UNITY_NCAR_TEAL,
     UNITY_NCAR_VERMILION,
 )
-
-
-def mobile_date_axis(ax, layout):
-    """Thin and shorten a datetime x axis for a phone-width figure.
-
-    Desktop leans on `fig.autofmt_xdate()`, which rotates full `2026-07-27`
-    stamps 30 degrees. That does not survive the shrink: at 4in wide the
-    layout affords about five ticks, and five ten-character labels collide
-    even rotated — measured on `/status/derecho`, where the last two ran
-    into each other because `AutoDateLocator` puts an uneven tick at the
-    range edge.
-
-    `ConciseDateFormatter` is the fix rather than a smaller font or a harder
-    rotation: it drops the parts that repeat across the axis and hoists them
-    into a single offset label, so `2026-07-27` becomes `27` with `2026-Aug`
-    written once. Short enough to sit horizontally, which also gives the plot
-    back the vertical band that rotated labels were using.
-
-    Shared with the stacked family — the only import edge between two chart
-    families, alongside `_to_display_tz`, and for the same reason: both draw
-    the same kind of axis.
-    """
-    loc = mdates.AutoDateLocator(maxticks=layout.max_ticks)
-    ax.xaxis.set_major_locator(loc)
-    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(loc))
-    # The offset label is a separate Text artist that `tick_params(labelsize=)`
-    # does not reach, so it kept the 11pt rcParams default and rendered two
-    # points larger than every tick beside it.
-    ax.xaxis.get_offset_text().set_fontsize(layout.base_fontsize)
 
 
 def _to_display_tz(naive_utc_ts):
@@ -125,11 +95,8 @@ class DualPanelTimeSeriesChart(BaseChart):
         return [d.get(key, default) for d in self.history_data]
 
     def finish(self, fig, axes, layout, theme):
-        if layout.is_mobile:
-            # sharex=True, so the lower panel owns the visible tick labels.
-            mobile_date_axis(axes[1], layout)
-            return
-        fig.autofmt_xdate()
+        # sharex=True, so the lower panel owns the visible tick labels.
+        self.apply_date_axis(axes[1], layout)
 
 
 class NodetypeHistoryChart(DualPanelTimeSeriesChart):

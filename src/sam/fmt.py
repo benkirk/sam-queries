@@ -513,3 +513,174 @@ def mpl_pct_formatter(decimals: int = 0):
     """
     from matplotlib.ticker import FuncFormatter
     return FuncFormatter(lambda x, _: pct(x, decimals=decimals))
+
+
+# ---------------------------------------------------------------------------
+# Date axes
+# ---------------------------------------------------------------------------
+#
+# `date_str` deliberately stays ISO — a table column wants `2026-07-26`,
+# sortable and unambiguous. A chart axis wants the opposite: the parts that
+# repeat across every tick are noise, and the space they occupy is the space
+# the plot needs.
+#
+# Measured before this existed, on the status dashboard's user/project chart:
+#
+#   6h window   07-26 00  07-26 01  07-26 02  07-26 03   <- date on every tick
+#   7d window   2026-07-26  2026-07-27  2026-07-28       <- year AND month
+#   1y window   2026-09  2026-11  2027-01  2027-03
+#
+# ...all rotated 30 degrees, so vertical space was being spent to render
+# characters identical across every label.
+#
+# The rule is one line: **the tick carries what changes, a second line carries
+# the context, and the context is drawn only where it changes.** The first tick
+# always counts as a change, so an axis is never left without its date.
+#
+#   6h    14:00   15:00   16:00   17:00        1y    Sep   Nov   Jan   Mar
+#         Jul 26                                     2026        2027
+#
+# Note this is derived from the ACTUAL TICK SPACING, not the data's span. They
+# usually agree, but the locator has the last word on where ticks land, and a
+# formatter that guessed from the span would mislabel whenever they diverged.
+
+#: ``(max median tick delta in seconds, tick_fn, context_fn)``, coarsening.
+#: A `context_fn` of None means the tick is already self-describing.
+_DATE_TICK_BANDS = (
+    (20 * 3600,        lambda d: f'{d:%H:%M}',      lambda d: f'{d:%b} {d.day}'),
+    (20 * 86400,       lambda d: f'{d:%b} {d.day}', lambda d: f'{d:%Y}'),
+    (300 * 86400,      lambda d: f'{d:%b}',         lambda d: f'{d:%Y}'),
+    (float('inf'),     lambda d: f'{d:%Y}',         None),
+)
+
+
+def _date_band(deltas_seconds):
+    """Pick a band from the median gap between ticks."""
+    if not deltas_seconds:
+        # One tick, or none. Day-grain is the safe middle: it names the month
+        # and the day, so a lone tick is still readable.
+        return _DATE_TICK_BANDS[1]
+    ordered = sorted(deltas_seconds)
+    median = ordered[len(ordered) // 2]
+    for limit, tick_fn, ctx_fn in _DATE_TICK_BANDS:
+        if median < limit:
+            return limit, tick_fn, ctx_fn
+    return _DATE_TICK_BANDS[-1]
+
+
+def _label_ticks(dates):
+    """``[str]`` for a list of tick datetimes — the shared vocabulary.
+
+    Two-line where context changes, one line elsewhere. Used by both the
+    matplotlib formatter and the categorical-axis helper, so a chart plotting
+    pre-bucketed period strings reads identically to one plotting datetimes.
+    """
+    deltas = [(b - a).total_seconds() for a, b in zip(dates, dates[1:])]
+    _limit, tick_fn, ctx_fn = _date_band(deltas)
+
+    out, prev_ctx = [], None
+    for d in dates:
+        tick = tick_fn(d)
+        ctx = ctx_fn(d) if ctx_fn else None
+        if ctx is not None and ctx != prev_ctx:
+            out.append(f'{tick}\n{ctx}')
+            prev_ctx = ctx
+        else:
+            out.append(tick)
+    return out
+
+
+_DATE_FORMATTER_CLS = None
+
+
+def _date_formatter_cls():
+    """Build (once) the ``Formatter`` subclass, keeping matplotlib out of this
+    module's import path — `sam.fmt` is imported by every CLI invocation."""
+    global _DATE_FORMATTER_CLS
+    if _DATE_FORMATTER_CLS is None:
+        from matplotlib.dates import num2date
+        from matplotlib.ticker import Formatter
+
+        class _SpanDateFormatter(Formatter):
+            """Labels a whole tick row at once.
+
+            `format_ticks` rather than `__call__` because the vocabulary is a
+            property of the row, not of any one tick: the band comes from the
+            spacing between ticks, and "context changed" is only answerable
+            with the neighbours in hand.
+
+            This is also what makes it correct where `ConciseDateFormatter` is
+            not — that one derives its offset label from the LAST tick, so a
+            window showing Jul 26-31 gets labelled `2026-Aug`.
+            """
+
+            def format_ticks(self, values):
+                dates = [num2date(v).replace(tzinfo=None) for v in values]
+                return _label_ticks(dates)
+
+            def __call__(self, x, pos=None):
+                # Single-value path (cursor readout, `format_data_short`).
+                # No neighbours, so no context to suppress.
+                return f'{num2date(x).replace(tzinfo=None):%Y-%m-%d %H:%M}'
+
+        _DATE_FORMATTER_CLS = _SpanDateFormatter
+    return _DATE_FORMATTER_CLS
+
+
+def mpl_date_ticks(max_ticks: int = 12):
+    """Return ``(locator, formatter)`` for a matplotlib datetime axis.
+
+    Usage:
+        loc, fmtr = fmt.mpl_date_ticks(max_ticks=layout.max_ticks)
+        ax.xaxis.set_major_locator(loc)
+        ax.xaxis.set_major_formatter(fmtr)
+
+    Labels come out short and horizontal, so callers should NOT also call
+    `fig.autofmt_xdate()` — the rotation it applies exists to fit long labels
+    that this removes.
+
+    Args:
+        max_ticks: upper bound on tick count. Comes from the chart layout, so
+                   a phone gets fewer ticks than a dashboard.
+    """
+    from matplotlib.dates import AutoDateLocator
+    return AutoDateLocator(maxticks=max_ticks), _date_formatter_cls()()
+
+
+#: Grains a pre-bucketed period label can arrive in, longest first. These are
+#: the SQL `strftime`/`to_char` formats the job-history plugin groups by.
+_PERIOD_LABEL_FORMATS = ('%Y-%m-%d', '%Y-%m', '%Y')
+
+
+def parse_period_label(label: str) -> Optional[datetime]:
+    """Parse a plugin period label (``2026-07-26`` / ``2026-07`` / ``2026``).
+
+    Returns None for anything else — a week or quarter grain, or a label the
+    plugin someday spells differently. Callers fall back to the raw string,
+    so an unrecognized grain degrades to today's rendering rather than
+    raising inside a chart.
+    """
+    for f in _PERIOD_LABEL_FORMATS:
+        try:
+            return datetime.strptime(label, f)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def compact_date_labels(labels: list) -> list:
+    """Apply the date-axis vocabulary to **pre-formatted period strings**.
+
+    Charts plotting a categorical axis of `2026-07-26`-style labels — the
+    job-history timeline groups server-side, so its x values are band indices,
+    not datetimes — cannot use a matplotlib date formatter. This gives them the
+    same labels anyway, so two charts on one tab do not disagree about how a
+    date looks.
+
+    Returns *labels* unchanged if any of them fails to parse: a half-converted
+    axis is worse than a consistent ISO one.
+    """
+    parsed = [parse_period_label(l) for l in labels]
+    if not parsed or any(p is None for p in parsed):
+        return list(labels)
+    return _label_ticks(parsed)

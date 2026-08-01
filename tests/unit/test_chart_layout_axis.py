@@ -204,10 +204,22 @@ class TestFieldsAreConsumed:
         assert at(mobile, d_pt) == 0
 
     def test_max_ticks_thins_the_date_axis(self, app):
-        """12 date labels do not fit across 4.6in."""
+        """A dozen date labels do not fit across 4in.
+
+        Counted from the tick groups matplotlib emits, not from label text:
+        the smart date axis strips the repeated year, so counting `2026-`
+        occurrences (as an earlier version did) now measures the vocabulary
+        rather than the tick density.
+        """
+        import re
         desktop, mobile = self._svgs(app, self._case('usage_stacked.core_hours'))
-        assert mobile.count('<!-- 2026-') < desktop.count('<!-- 2026-') or \
-               mobile.count('2026-') < desktop.count('2026-')
+
+        def xticks(svg):
+            return len(re.findall(r'<g id="xtick_\d+">', svg))
+
+        assert xticks(desktop) > 0, 'no x ticks found — the regex is stale'
+        assert xticks(mobile) < xticks(desktop), (
+            f'mobile drew {xticks(mobile)} x ticks, desktop {xticks(desktop)}')
 
 
 # --------------------------------------------------------------------------
