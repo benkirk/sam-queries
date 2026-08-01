@@ -35,7 +35,6 @@ from webapp.dashboards import charts
 #: ``(generator_name, key_fn_name)`` for charts still bound as plain
 #: functions with a hand-written key. Shrinks to empty as the refactor lands.
 KEYED_CHARTS = [
-    ('generate_pace_chart_matplotlib', '_pace_cache_key'),
 ]
 
 #: Charts still using the decorator's default ``key_fn``. Safe only while they
