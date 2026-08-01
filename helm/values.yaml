@@ -39,10 +39,21 @@ topologySpread:
 #
 # maxmemory sizing: one instance holds all 15 chart SVG caches, both jobs
 # aggregation buckets, both fs-scans buckets, the allocation-usage cache
-# and the whole Flask-Caching layer. A single cached jobs pie SVG measures
-# ~49 KB and owner-stacked histograms run larger, and the jobs explorer
-# multiplies the distinct chart keys in flight (one per filter set viewed
-# inside the 10-minute chart TTL). Headroom is the safe direction because
+# and the whole Flask-Caching layer. The jobs explorer multiplies the
+# distinct chart keys in flight (one per filter set viewed inside the
+# 10-minute chart TTL).
+#
+# Per-SVG sizes dropped ~58% when charts switched to `svg.fonttype: none`
+# (real <text> instead of per-glyph path outlines — see charts/theme.py).
+# Measured across all 32 chart sample cases: 1.34 MB -> 0.57 MB total;
+# pies save most (~70%, they are mostly legend text), bar histograms least
+# (~40%, they are mostly real paths). A cached jobs pie went from ~49 KB to
+# ~15 KB; the live jobs timeline measures ~35 KB and its histogram ~10 KB.
+#
+# maxmemory is DELIBERATELY NOT reduced to match. The freed headroom is
+# earmarked: the layout and theme render axes multiply each chart's working
+# set by up to 4 once the mobile and dark-mode passes wire them up, which
+# roughly cancels the saving. Headroom is the safe direction anyway because
 # allkeys-lru is instance-GLOBAL: under pressure it is free to evict the
 # rate limiter's DB 1 counters. Container limit keeps ~1.7x maxmemory for
 # redis overhead and fragmentation. Watch `INFO stats: evicted_keys` and
