@@ -90,9 +90,11 @@ NAMED_RE = re.compile(
 ALLOWED = {
     'admin.css':       4,
     'allocations.css': 5,
-    'auth.css':        4,
+    'auth.css':        1,    # D4: -3 (login container, user-btn x2)
     'components.css':  10,
-    'dashboard.css':   74,   # D2: -2 (--bs-card-bg, --bs-card-cap-bg)
+    # D2: -2 (--bs-card-bg, --bs-card-cap-bg)
+    # D4: -49 (10 surfaces + 39 foregrounds -> --text-on-brand)
+    'dashboard.css':   25,
     'status.css':      20,
 }
 
