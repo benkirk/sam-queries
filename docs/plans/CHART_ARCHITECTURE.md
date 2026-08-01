@@ -573,28 +573,50 @@ follow-up; it is not this PR.)
 
 ## File layout
 
+Planned, then **as shipped**:
+
 ```
-src/webapp/dashboards/charts/
-  __init__.py    ~150   facade: theme import, 15 chart_view bindings, delegator,
-                        ~35 re-export aliases, __all__
-  theme.py       ~230   fonts + structural rcParams, UNITY_* palettes (comments
-                        intact), Theme.LIGHT / Theme.DARK, _autopct_color_for,
-                        scale_bytes(peak, floor)
-  layout.py       ~80   Layout dataclass + per-family desktop/mobile profiles
-  base.py        ~200   BaseChart + chart_view + _fig_to_svg + _empty_state
-  links.py        ~80   RowDrill/DayDrill/UserDrill/ModalRoute, encode,
-                        apply_urls, link_legend            [no matplotlib]
-  series.py       ~70   Series + three adapters            [no matplotlib]
-  pie.py         ~240   PieChart + 5 concretes (2 of them ~10 lines)
-  stacked.py     ~270   StackedSeriesChart + 5 concretes
-  histogram.py   ~180   CategoricalStackChart + 2 concretes
-  dualpanel.py   ~140   DualPanelTimeSeriesChart + 2 concretes
-  pace.py        ~200   PaceChart + _pace_bands + _pace_key_fields
-                ─────
-                ~1840
+src/webapp/dashboards/charts/          planned   actual
+  __init__.py     facade: 15 chart_view bindings,   ~150     231
+                  re-export aliases, __all__
+  theme.py        fonts + rcParams, UNITY_* palettes, ~230     358
+                  Theme.LIGHT / DARK, scale_bytes
+  layout.py       Layout + per-family profiles        ~80     105
+  base.py         BaseChart + chart_view + to_svg    ~200     224
+  links.py        drill targets  [no matplotlib]      ~80     144
+  series.py       Series + adapters [no matplotlib]   ~70      99
+  jobs_metrics.py plugin envelopes  [no matplotlib]     —     110
+  pie.py          PieChart + 5 concretes             ~240     388
+  stacked.py      StackedSeriesChart + 5 concretes   ~270     493
+  histogram.py    CategoricalStackChart + 2          ~180     321
+  dualpanel.py    DualPanelTimeSeriesChart + 2       ~140     182
+  pace.py         PaceChart + bands + key fields     ~200     362
+                                                   ──────  ──────
+                                                    ~1840    3017
 ```
 
-No file over ~270 lines.
+**The estimate was 60 % low, and the reason is worth recording.** The plan said
+*"LOC reduction is explicitly not a goal"* and predicted roughly break-even.
+Actual is +1,000 lines over the 2,011-line original. Three causes, in order of
+size:
+
+1. **Prose.** The original was ~49 % comment/docstring, and every load-bearing
+   note was preserved *and* given the context its new location needed — plus
+   new docstrings explaining each family's hooks and each deliberate
+   non-unification. This is the bulk of the growth and it is the point.
+2. **Explicit hooks beat implicit copies.** `bucket_is_clickable`,
+   `flat_bar_color`, `legend_label`, `band_values` each cost a method
+   definition per subclass where the flat version had an inline expression.
+3. **`jobs_metrics.py` was unplanned** — extracted in C11 once three modules
+   needed it.
+
+`stacked.py` at 493 exceeds the "no file over ~270" target; it holds five
+concrete charts and is the honest home for them. A 550-line ceiling is
+enforced by `test_chart_module_boundaries.py` so nothing drifts back toward
+the monolith.
+
+*See `feedback_extraction_loc_estimates` — discount extraction LOC estimates
+here by ~3x, and lead with structural counts rather than line count.*
 
 ---
 

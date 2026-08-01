@@ -37,7 +37,7 @@ topologySpread:
 # Single replica, no persistence, no HA. Eviction = allkeys-lru.
 # See docs/plans/REDIS.md.
 #
-# maxmemory sizing: one instance holds all 13 chart SVG caches, both jobs
+# maxmemory sizing: one instance holds all 15 chart SVG caches, both jobs
 # aggregation buckets, both fs-scans buckets, the allocation-usage cache
 # and the whole Flask-Caching layer. A single cached jobs pie SVG measures
 # ~49 KB and owner-stacked histograms run larger, and the jobs explorer

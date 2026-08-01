@@ -60,7 +60,6 @@ from webapp.dashboards.charts import (
     generate_jobs_histogram,
     generate_jobs_timeseries_stacked,
     generate_jobs_usage_pie_chart,
-    generate_jobs_user_pie_chart,
 )
 from webapp.extensions import db
 from webapp.jobs import service

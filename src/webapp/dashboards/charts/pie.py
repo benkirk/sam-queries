@@ -25,6 +25,7 @@ from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
 from webapp.dashboards.charts.base import BaseChart
+from webapp.dashboards.charts.jobs_metrics import jobs_metric_value
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
     UNITY_NCAR_GRAY_LIGHT, UNITY_PALETTE_10, autopct_color_for,
@@ -344,13 +345,12 @@ class JobsUsagePie(_CumulativePie):
                   row_attr='data-job-user', unknown_label='(unknown)'):
         """row_attr joins the key: identical usage vectors rendered for
         different entity kinds carry different drill anchors."""
-        from webapp.dashboards.charts import _jobs_metric_value
         rows = (entity_data or {}).get('rows') or []
         totals = (entity_data or {}).get('totals') or {}
-        payload = [(r.get('value'), _jobs_metric_value(r, metric, 'cpu_hours'))
+        payload = [(r.get('value'), jobs_metric_value(r, metric, 'cpu_hours'))
                    for r in rows]
         return content_hash([payload,
-                             _jobs_metric_value(totals, metric, 'cpu_hours'),
+                             jobs_metric_value(totals, metric, 'cpu_hours'),
                              str(metric), str(row_attr), str(unknown_label)])
 
     @property
@@ -358,18 +358,16 @@ class JobsUsagePie(_CumulativePie):
         return links.RowDrill(self.row_attr)
 
     def build(self):
-        from webapp.dashboards.charts import _jobs_metric_value
-
         rows = self.entity_data.get('rows') or []
         totals = self.entity_data.get('totals') or {}
-        total = _jobs_metric_value(totals, self.metric, 'cpu_hours')
+        total = jobs_metric_value(totals, self.metric, 'cpu_hours')
         if not rows or total <= 0:
             return [], [], [], []
 
         # Upstream sorts by combined hours; re-sort by the *chosen* metric so
         # e.g. the Jobs view leads with the most job-count-heavy users.
         def value_of(r):
-            return _jobs_metric_value(r, self.metric, 'cpu_hours')
+            return jobs_metric_value(r, self.metric, 'cpu_hours')
 
         data = sorted(rows, key=value_of, reverse=True)
         values_desc = [value_of(r) for r in data]

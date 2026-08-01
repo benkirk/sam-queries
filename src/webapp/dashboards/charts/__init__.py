@@ -1,78 +1,81 @@
+"""Server-side chart rendering.
+
+Every chart is a `BaseChart` subclass bound to its cache by `chart_view`,
+which reads `cache_name` / `cache_maxsize` off the class and composes the two
+render axes into the cache key. Callers pass normal Python objects; hashing
+and caching are handled internally.
+
+    charts/
+      __init__.py     this facade: bindings, re-exports, __all__
+      base.py         BaseChart lifecycle + chart_view (the cache binder)
+      theme.py        fonts, rcParams, the Unity palettes, Theme
+      layout.py       Layout — the geometry axis
+      links.py        drill targets                     [no matplotlib]
+      series.py       stacked-band normalization        [no matplotlib]
+      jobs_metrics.py plugin-envelope accessors         [no matplotlib]
+      pie.py stacked.py histogram.py dualpanel.py pace.py    the families
+
+## Adding chart #17
+
+1. Subclass the closest family (or `BaseChart` directly — see `pace.py` for
+   when that is the right call).
+2. Set `cache_name`, `cache_maxsize`, `empty_message`, `LAYOUTS`.
+3. Implement `cache_key` as a **staticmethod over the raw constructor
+   arguments**, so a cache hit never constructs the chart or runs `prepare()`.
+4. Bind it here with `chart_view(...)` and add its name to `__all__`.
+5. Add a case to `tests/unit/chart_samples.py` — a gate asserts every public
+   generator has one.
+
+If it drills into a table row, declare the row attribute at the chart
+(`links.RowDrill('data-...')`). **No JavaScript change is needed**; the
+attribute travels in the href.
+
+## Two things to know before editing
+
+**Cache names are Redis key prefixes** (`caching/redis_chart.py`), and the
+order of the `chart_view` calls below is the order rows appear on the admin
+Caching card. `tests/unit/test_chart_cache_registry.py` pins both.
+
+**Cache keys hash input data, not rendering code.** After a deploy, warm Redis
+entries serve old-code SVGs until the 600 s TTL expires. Run
+`sam-admin cache --refresh --category chart` when a change is user-visible.
 """
-Chart generation utilities for server-side rendering.
 
-All chart functions are decorated with `@caching.chart_cached(name=..., maxsize=...)`,
-which caches rendered SVGs by content hash through the unified `Caching` facade
-(see webapp.caching). The public API is unchanged -- callers pass normal Python
-objects; hashing and caching are handled internally.
-
-Cache keys are stable MD5 hex digests of the input data, so key computation is
-O(n) time but O(1) memory regardless of input size. This is safe for large
-inputs (e.g. a year of 5-minute history) where materialising the full data as
-a hashable tuple would allocate several MB per call even on a cache hit.
-
-NOTE: ChartCache is per-process and thread-safe. It is safe with both gunicorn
-sync workers (each worker is a forked process) and gthread workers.
-"""
-
-from io import StringIO
-from pathlib import Path
-from typing import List, Dict
-from datetime import date, datetime, timedelta
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.colors
-import matplotlib.dates as mdates
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
-import numpy as np
-
-from flask import url_for
-
-from sam import fmt
-from webapp.caching import caching
-# `content_hash` under its historical private name — used by several
-# `_*_cache_key` functions below.
-from webapp.caching.chart import content_hash as _content_hash
-
-# Imported first for its import-time side effects: registering the
-# server-side Poppins TTFs and applying the structural rcParams. The
-# re-exported names keep `charts.UNITY_*` working for existing importers.
-from webapp.dashboards.charts import links, series as series_mod, theme
+from webapp.dashboards.charts import (  # noqa: F401
+    jobs_metrics, layout, links, series, theme,
+)
 from webapp.dashboards.charts.base import (  # noqa: F401
     BaseChart,
     chart_view,
     empty_state as _empty_state,
     fig_to_svg as _fig_to_svg,
 )
-from webapp.dashboards.charts.dualpanel import (
+from webapp.dashboards.charts.dualpanel import (  # noqa: F401
+    DualPanelTimeSeriesChart,
     NodetypeHistoryChart,
     QueueHistoryChart,
     _to_display_tz,
 )
-from webapp.dashboards.charts.layout import Layout, profile as layout_profile
-from webapp.dashboards.charts.histogram import (
+from webapp.dashboards.charts.histogram import (  # noqa: F401
     CategoricalStackChart,
     DistributionHistogram,
     JobsHistogram,
     bucket_segments as _bucket_segments,
 )
-from webapp.dashboards.charts.pace import (
+from webapp.dashboards.charts.jobs_metrics import (  # noqa: F401
+    JOBS_METRIC_KEYS as _JOBS_METRIC_KEYS,
+    JOBS_METRIC_LABELS as _JOBS_METRIC_LABELS,
+    jobs_bucket_segments as _jobs_bucket_segments,
+    jobs_metric_value as _jobs_metric_value,
+    jobs_timeseries_series as _jobs_timeseries_series,
+)
+from webapp.dashboards.charts.layout import Layout  # noqa: F401
+from webapp.dashboards.charts.pace import (  # noqa: F401
     PaceChart,
     pace_bands as _pace_bands,
     pace_key_fields as _pace_key_fields,
 )
-from webapp.dashboards.charts.stacked import (
-    DiskUsageAreaChart,
-    JobsTimeseriesChart,
-    StackedSeriesChart,
-    UsageTrendChart,
-    UsageTrendStackedChart,
-    UserProjAreaChart,
-    _USAGE_METRIC_YLABELS,
-)
-from webapp.dashboards.charts.pie import (
+from webapp.dashboards.charts.pie import (  # noqa: F401
     AllocationTypePie,
     DiskEntityPie,
     FacilityPie,
@@ -82,11 +85,20 @@ from webapp.dashboards.charts.pie import (
     trim_cumulative as _pie_cumulative_keep,
     trim_fixed_cap as _pie_trim,
 )
+from webapp.dashboards.charts.stacked import (  # noqa: F401
+    DiskUsageAreaChart,
+    JobsTimeseriesChart,
+    StackedSeriesChart,
+    UsageTrendChart,
+    UsageTrendStackedChart,
+    UserProjAreaChart,
+    _USAGE_METRIC_YLABELS,
+)
 from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_NCAR_BLUE,
+    UNITY_NCAR_GOLD,
     UNITY_NCAR_GRAY,
     UNITY_NCAR_GRAY_LIGHT,
-    UNITY_NCAR_GOLD,
     UNITY_NCAR_LIGHT_BLUE,
     UNITY_NCAR_NAVY,
     UNITY_NCAR_ORANGE,
@@ -98,11 +110,11 @@ from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_STACK_10,
     UNITY_STACK_20,
     Theme,
+    _FONT_DIR,
     autopct_color_for as _autopct_color_for,
     resolve_theme,
     scale_bytes,
     shade_family as _shade_family,
-    _FONT_DIR,
 )
 
 
@@ -119,197 +131,101 @@ def _user_modal_url(username: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 1. Stacked time series (usage trend, disk usage, user/proj queue load)
+# The 15 cached charts.
 #
-# Migrated to the class hierarchy — see charts/stacked.py, where bar vs area
-# is a `stack_mode` attribute rather than a fourth level of hierarchy.
+# ORDER IS LOAD-BEARING: `chart_cached` appends to the cache registry at
+# decoration time, so this is the order rows appear on the admin Caching card.
 # ---------------------------------------------------------------------------
 
+# 1. Stacked time series — usage trend (flat + by user), disk usage,
+#    user/project queue load.  charts/stacked.py
 generate_usage_timeseries_matplotlib = chart_view(UsageTrendChart)
 generate_usage_timeseries_stacked_by_user = chart_view(UsageTrendStackedChart)
 generate_disk_usage_stacked_area = chart_view(DiskUsageAreaChart)
 generate_user_proj_stacked_area = chart_view(UserProjAreaChart)
 
-_usage_timeseries_cache_key = UsageTrendChart.cache_key
-_usage_stacked_cache_key = UsageTrendStackedChart.cache_key
-_disk_usage_stacked_area_cache_key = DiskUsageAreaChart.cache_key
-_user_proj_stacked_area_cache_key = UserProjAreaChart.cache_key
-
-
-# ---------------------------------------------------------------------------
-# 1c. Distribution histogram (Filesystem Scans — DISK)
-#
-# Migrated to the class hierarchy — see charts/histogram.py, shared with the
-# job-history histogram below.
-# ---------------------------------------------------------------------------
-
+# 2. Categorical stacked-bar histogram.  charts/histogram.py
 generate_distribution_histogram = chart_view(DistributionHistogram)
-_distribution_cache_key = DistributionHistogram.cache_key
 
-
-# ---------------------------------------------------------------------------
-# 2/3. Dual-panel status time series (node type + queue history)
-#
-# Migrated to the class hierarchy — see charts/dualpanel.py. `chart_view`
-# reads cache_name/cache_maxsize off the class and composes the layout/theme
-# render axes into the cache key.
-# ---------------------------------------------------------------------------
-
+# 3. Dual-panel status time series.  charts/dualpanel.py
 generate_nodetype_history_matplotlib = chart_view(NodetypeHistoryChart)
 generate_queue_history_matplotlib = chart_view(QueueHistoryChart)
 
-
-
-# ---------------------------------------------------------------------------
-# 4/5. Pie charts (allocations dashboard, disk scans, per-user usage)
-#
-# Migrated to the class hierarchy — see charts/pie.py, where the five pies'
-# byte-identical ax.pie block lives once and each subclass is only what
-# differed: trim strategy, "Other" derivation, legend formatter, drill target.
-# ---------------------------------------------------------------------------
-
+# 4. Pies.  charts/pie.py
 generate_facility_pie_chart_matplotlib = chart_view(FacilityPie)
 generate_allocation_type_pie_chart_matplotlib = chart_view(AllocationTypePie)
 generate_disk_entity_pie_chart = chart_view(DiskEntityPie)
 generate_user_usage_pie_chart = chart_view(UserUsagePie)
 
-
-# ---------------------------------------------------------------------------
-# Job-history charts (jobs card: Wait Times / Job Sizes / Durations + By User)
-#
-# Inputs are the hpc-usage-queries plugin envelopes verbatim (see
-# webapp.jobs.service.jobs_histogram / jobs_usage_by_user) — the histogram
-# envelope is self-describing (dimension, unit, full zero-filled bucket
-# vector, null_count), so these renderers never hardcode bucket tables.
-# ---------------------------------------------------------------------------
-
-# UI metric name → the plugin key(s) SUMMED to produce it. 'jobs' is the
-# count metric; the hours metrics come from the LEFT OUTER JOIN against
-# job_charges upstream. 'charges' is a pair because the plugin reports
-# cpu_charges and gpu_charges separately (they are separately meaningful and
-# separately rankable) while the pill means "total charged".
-#
-# Charges are NOT proportional to hours: qos_factor is a genuine 0.0 for the
-# 'uncharged' QoS, so a charges view can legitimately render an empty bar
-# where an hours view shows work.
-_JOBS_METRIC_KEYS = {
-    'jobs':      ('job_count',),
-    'cpu_hours': ('cpu_hours',),
-    'gpu_hours': ('gpu_hours',),
-    'charges':   ('cpu_charges', 'gpu_charges'),
-}
-_JOBS_METRIC_LABELS = {
-    'jobs':      'Jobs',
-    'cpu_hours': 'CPU-hours',
-    'gpu_hours': 'GPU-hours',
-    'charges':   'Charges',
-}
-
-
-def _jobs_metric_value(d, metric, default='jobs'):
-    """Value of *metric* from a plugin band / row / owner dict.
-
-    One accessor so a multi-key metric can never be read as a single key
-    somewhere and silently render as zero.
-    """
-    keys = _JOBS_METRIC_KEYS.get(metric) or _JOBS_METRIC_KEYS[default]
-    return sum(float((d or {}).get(k) or 0) for k in keys)
-
-
-def _jobs_bucket_segments(bucket, metric, default='jobs'):
-    """Per-bucket stacked-bar segments (active-metric units), bottom → top.
-
-    The plugin envelope carries pre-truncated top-N ``owners`` per bucket
-    with authoritative bucket totals, so — unlike the fs_scans
-    ``_bucket_segments``, which derives the long tail locally — the "other"
-    base segment here is ``bucket total − Σ owners`` (it also absorbs
-    NULL-username jobs). Owner segments follow ascending so the largest
-    owner sits at the top of the bar. Empty list when the bucket has no
-    owners (→ drawn as a single flat bar).
-    """
-    owners = bucket.get('owners') or {}
-    if not owners:
-        return []
-    vals = sorted(_jobs_metric_value(d, metric, default)
-                  for d in owners.values())
-    remainder = _jobs_metric_value(bucket, metric, default) - sum(vals)
-    if remainder > 1e-9:
-        return [remainder] + vals
-    return vals
-
-
+# 5. Job-history charts.  charts/histogram.py, charts/stacked.py, charts/pie.py
 generate_jobs_histogram = chart_view(JobsHistogram)
-_jobs_histogram_cache_key = JobsHistogram.cache_key
-
-
-def _jobs_timeseries_series(ts, metric):
-    """``(labels, series)`` for the stacked timeline, bottom → top.
-
-    ``series`` is ``[(label, [value per band]), …]`` with ``'Others'``
-    first — the ``get_daily_user_usage_for_project`` convention the
-    resource-details Usage Trend already renders, so the two stacked charts
-    read the same way.
-
-    The plugin hands owners back in **global rank order, identical in every
-    band**, so a name keeps its colour and its position across the whole
-    axis. That is the property a stacked time series needs and the reason
-    ``jobs_timeseries`` ranks once over the window rather than per band.
-    Owners are reversed here so the largest lands on top of the stack, and
-    "Others" is ``band total − Σ owners`` — derivable, never synthesized.
-    """
-    bands = (ts or {}).get('bands') or []
-    labels = [b.get('label', '') for b in bands]
-    if not bands:
-        return labels, []
-
-    # Every band carries the same keys; take the order from the first.
-    owner_names = list((bands[0].get('owners') or {}).keys())
-
-    others = []
-    for band in bands:
-        owners = band.get('owners') or {}
-        total = _jobs_metric_value(band, metric)
-        named = sum(_jobs_metric_value(owners.get(n), metric)
-                    for n in owner_names)
-        others.append(max(0.0, total - named))
-
-    series = []
-    if any(v > 1e-9 for v in others) or not owner_names:
-        series.append(('Others', others))
-    for name in reversed(owner_names):
-        series.append((name, [
-            _jobs_metric_value((b.get('owners') or {}).get(name), metric)
-            for b in bands
-        ]))
-    return labels, series
-
-
 generate_jobs_timeseries_stacked = chart_view(JobsTimeseriesChart)
-_jobs_timeseries_cache_key = JobsTimeseriesChart.cache_key
-
-
 generate_jobs_usage_pie_chart = chart_view(JobsUsagePie)
 
-#: Cache-key helpers under their historical module-level names. They moved
-#: onto the chart classes as `cache_key`, but several tests import them from
-#: here and they are the same function either way.
-_disk_entity_pie_cache_key = DiskEntityPie.cache_key
-_user_usage_pie_cache_key = UserUsagePie.cache_key
-_jobs_usage_pie_cache_key = JobsUsagePie.cache_key
+# 6. Allocation pace chart.  charts/pace.py
+generate_pace_chart_matplotlib = chart_view(PaceChart)
 
 
 def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
     """By User pie — delegates to the entity-agnostic renderer with the
-    ``data-job-user`` row family."""
+    ``data-job-user`` row family.
+
+    Deliberately a facade rather than a 16th bound chart: binding it would
+    register a second cache and add a row to the admin Caching card for what
+    is really the same chart under a different drill attribute.
+    """
     return generate_jobs_usage_pie_chart(entity_data, metric,
                                          row_attr=links.JOB_USER.attr)
 
 
-# ---------------------------------------------------------------------------
-# 6. Allocation pace chart (allocations dashboard)
-#
-# A direct BaseChart subclass with no family — see charts/pace.py for why.
-# ---------------------------------------------------------------------------
-
-generate_pace_chart_matplotlib = chart_view(PaceChart)
+#: Cache-key helpers under their historical module-level names. They moved
+#: onto the chart classes as `cache_key`; several tests import them from here
+#: and they are the same function either way.
+_usage_timeseries_cache_key = UsageTrendChart.cache_key
+_usage_stacked_cache_key = UsageTrendStackedChart.cache_key
+_disk_usage_stacked_area_cache_key = DiskUsageAreaChart.cache_key
+_user_proj_stacked_area_cache_key = UserProjAreaChart.cache_key
+_distribution_cache_key = DistributionHistogram.cache_key
+_disk_entity_pie_cache_key = DiskEntityPie.cache_key
+_user_usage_pie_cache_key = UserUsagePie.cache_key
+_jobs_histogram_cache_key = JobsHistogram.cache_key
+_jobs_timeseries_cache_key = JobsTimeseriesChart.cache_key
+_jobs_usage_pie_cache_key = JobsUsagePie.cache_key
 _pace_cache_key = PaceChart.cache_key
+
+
+__all__ = [
+    # The 16 public generators.
+    'generate_usage_timeseries_matplotlib',
+    'generate_usage_timeseries_stacked_by_user',
+    'generate_disk_usage_stacked_area',
+    'generate_user_proj_stacked_area',
+    'generate_distribution_histogram',
+    'generate_nodetype_history_matplotlib',
+    'generate_queue_history_matplotlib',
+    'generate_facility_pie_chart_matplotlib',
+    'generate_allocation_type_pie_chart_matplotlib',
+    'generate_disk_entity_pie_chart',
+    'generate_user_usage_pie_chart',
+    'generate_jobs_histogram',
+    'generate_jobs_timeseries_stacked',
+    'generate_jobs_usage_pie_chart',
+    'generate_jobs_user_pie_chart',
+    'generate_pace_chart_matplotlib',
+    # The hierarchy, for anyone subclassing.
+    'BaseChart',
+    'chart_view',
+    'CategoricalStackChart',
+    'DualPanelTimeSeriesChart',
+    'PieChart',
+    'StackedSeriesChart',
+    # The render axes.
+    'Layout',
+    'Theme',
+    'resolve_theme',
+    # Palettes and helpers used outside the package.
+    'UNITY_PALETTE_10',
+    'UNITY_STACK_10',
+    'UNITY_STACK_20',
+    'scale_bytes',
+]

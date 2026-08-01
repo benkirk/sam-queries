@@ -23,6 +23,9 @@ from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links, series as series_mod
 from webapp.dashboards.charts.base import BaseChart
 from webapp.dashboards.charts.dualpanel import _to_display_tz
+from webapp.dashboards.charts.jobs_metrics import (
+    JOBS_METRIC_LABELS, jobs_timeseries_series,
+)
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
     UNITY_NCAR_BLUE, UNITY_NCAR_GRAY_LIGHT, UNITY_STACK_10, UNITY_STACK_20,
@@ -427,8 +430,7 @@ class JobsTimeseriesChart(StackedSeriesChart):
         positivity vector joins the key because it decides which bars carry
         drill URLs — a charges SVG with matching charges but a different
         populated-band set must not be reused."""
-        from webapp.dashboards.charts import _jobs_timeseries_series
-        labels, series = _jobs_timeseries_series(ts, metric)
+        labels, series = jobs_timeseries_series(ts, metric)
         clickable = [int(bool(b.get('job_count')))
                      for b in (ts or {}).get('bands') or []]
         return content_hash([
@@ -444,14 +446,12 @@ class JobsTimeseriesChart(StackedSeriesChart):
                 else links.USER_MODAL)
 
     def prepare(self):
-        from webapp.dashboards.charts import _jobs_timeseries_series
-        self.labels, pairs = _jobs_timeseries_series(self.ts, self.metric)
+        self.labels, pairs = jobs_timeseries_series(self.ts, self.metric)
         self.env_bands = self.ts.get('bands') or []
         super().prepare()
 
     def build_bands(self):
-        from webapp.dashboards.charts import _jobs_timeseries_series
-        _labels, pairs = _jobs_timeseries_series(self.ts, self.metric)
+        _labels, pairs = jobs_timeseries_series(self.ts, self.metric)
         return series_mod.from_pairs(pairs)
 
     def x_values(self):
@@ -476,8 +476,7 @@ class JobsTimeseriesChart(StackedSeriesChart):
         return links.JT_PERIOD.url(i)
 
     def ylabel(self):
-        from webapp.dashboards.charts import _JOBS_METRIC_LABELS
-        return _JOBS_METRIC_LABELS.get(self.metric, 'Jobs')
+        return JOBS_METRIC_LABELS.get(self.metric, 'Jobs')
 
     def decorate(self, ax, layout, theme):
         # Thin the tick labels rather than rotating 120 of them into a smear.

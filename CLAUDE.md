@@ -552,6 +552,83 @@ display code. (Migration history: `docs/plans/implemented/FORMAT_DISPLAY.md`.)
 
 ---
 
+## Charts — `webapp/dashboards/charts/`
+
+16 matplotlib charts, server-rendered to **inline SVG** (no PNG/base64/dpi
+anywhere). Each is a `BaseChart` subclass bound to its cache by `chart_view`.
+
+```
+charts/
+  __init__.py     facade: the 15 chart_view bindings, re-exports, __all__
+  base.py         BaseChart lifecycle + chart_view (the cache binder)
+  theme.py        fonts, rcParams, Unity palettes, Theme, scale_bytes
+  layout.py       Layout — the geometry axis
+  links.py        drill targets                      [no matplotlib]
+  series.py       stacked-band normalization         [no matplotlib]
+  jobs_metrics.py plugin-envelope accessors          [no matplotlib]
+  pie.py stacked.py histogram.py dualpanel.py pace.py    the five families
+```
+
+**Families**: `PieChart` (5 charts) · `StackedSeriesChart` (5; bar vs area is a
+`stack_mode` attribute) · `CategoricalStackChart` (2) ·
+`DualPanelTimeSeriesChart` (2) · `PaceChart` (direct `BaseChart` subclass, ~60 %
+bespoke).
+
+**Lifecycle** — override only what differs; all hooks default to no-ops:
+`prepare()` → `is_empty()`/`empty_state` → `make_figure()` → `draw()` →
+`decorate()` → `add_legend()` → `finish()` → SVG.
+
+### Adding a chart
+
+1. Subclass the closest family; set `cache_name`, `cache_maxsize`,
+   `empty_message`, `LAYOUTS = profile((w, h))`.
+2. `cache_key` is a **staticmethod over the raw constructor arguments** — a
+   cache hit must never construct the chart or run `prepare()`.
+3. Bind with `chart_view(...)` in `__init__.py`, add to `__all__`.
+4. Add a case to `tests/unit/chart_samples.py` (a gate requires one).
+
+### Drill-downs
+
+One scheme, `#sam/<action>/<segments>`, percent-encoded, built by `links.py`:
+
+| Form | Behaviour |
+|---|---|
+| `#sam/row/<attr>/<value>` | expand the row carrying `<attr>="<value>"`, scoped to the clicked chart's tab pane |
+| `#sam/day/<iso>` | Historical Usage day row (handles month-then-day nesting) |
+| `#sam/user/<name>` | Usage-by-User row (looks up `data-sort-value`) |
+
+**A row drill is one attribute name declared at the chart — no JavaScript
+change.** `svg-chart-links.js` parses the href and dispatches; it holds no
+prefix→attribute table. Legend entries that open a modal keep **real URLs**
+(`ModalRoute`), which are inspectable and degrade gracefully.
+
+A chart whose target rows live in a *different* tab pane must use a modal, not
+a row drill — row drills resolve within the clicked chart's pane.
+
+### Gotchas
+
+❌ **DON'T** let `BaseChart` swallow exceptions — callers own that, and
+   inconsistently (`disk_scans/routes.py` wraps its call, `jobs/routes.py`
+   does not).
+❌ **DON'T** rely on a base `is_empty` default: several charts hold ndarrays,
+   where `not self.data` raises *"truth value of an array is ambiguous"*.
+   Define it per family.
+❌ **DON'T** import matplotlib into `links.py` / `series.py` /
+   `jobs_metrics.py` — enforced by `test_chart_module_boundaries.py`.
+❌ **DON'T** reorder the `chart_view` calls: that order is the admin Caching
+   card's row order, and cache names are Redis key prefixes.
+✅ **DO** regenerate the fingerprint snapshot in the *same commit* as an
+   intentional visual change:
+   `CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py`.
+   A fingerprint delta in a commit that didn't declare one is a bug.
+✅ **DO** run `sam-admin cache --refresh --category chart` after deploying a
+   visible change — keys hash *input data*, not rendering code, so warm Redis
+   entries serve old-code SVGs for up to 600 s.
+
+Design + rationale: `docs/plans/CHART_ARCHITECTURE.md`.
+
+---
+
 ## Development Workflow
 
 ### Running the Web Application

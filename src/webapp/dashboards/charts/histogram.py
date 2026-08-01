@@ -24,6 +24,9 @@ from sam import fmt
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts import links
 from webapp.dashboards.charts.base import BaseChart
+from webapp.dashboards.charts.jobs_metrics import (
+    JOBS_METRIC_LABELS, jobs_bucket_segments, jobs_metric_value,
+)
 from webapp.dashboards.charts.layout import profile
 from webapp.dashboards.charts.theme import (
     UNITY_PALETTE_10, UNITY_STACK_10, scale_bytes, shade_family,
@@ -266,12 +269,9 @@ class JobsHistogram(CategoricalStackChart):
         with matching hours but a different populated-band set must not be
         reused. Owner names stay out of the key: the SVG carries no owner
         labels, so only the segment values shape it."""
-        from webapp.dashboards.charts import (
-            _jobs_bucket_segments, _jobs_metric_value,
-        )
         buckets = (hist or {}).get('buckets') or []
-        payload = [(b.get('label'), _jobs_metric_value(b, metric),
-                    tuple(_jobs_bucket_segments(b, metric))) for b in buckets]
+        payload = [(b.get('label'), jobs_metric_value(b, metric),
+                    tuple(jobs_bucket_segments(b, metric))) for b in buckets]
         clickable = [int(bool(b.get('job_count'))) for b in buckets]
         return content_hash([
             payload, clickable, str((hist or {}).get('dimension', '')),
@@ -285,12 +285,10 @@ class JobsHistogram(CategoricalStackChart):
         return bucket.get('label', '')
 
     def bucket_total(self, bucket):
-        from webapp.dashboards.charts import _jobs_metric_value
-        return _jobs_metric_value(bucket, self.metric)
+        return jobs_metric_value(bucket, self.metric)
 
     def bucket_segments(self, bucket):
-        from webapp.dashboards.charts import _jobs_bucket_segments
-        return _jobs_bucket_segments(bucket, self.metric)
+        return jobs_bucket_segments(bucket, self.metric)
 
     def bucket_is_clickable(self, bucket):
         # Follows job_count, not the plotted metric: a band with no jobs is
@@ -298,8 +296,7 @@ class JobsHistogram(CategoricalStackChart):
         return bool(bucket.get('job_count'))
 
     def ylabel(self):
-        from webapp.dashboards.charts import _JOBS_METRIC_LABELS
-        return _JOBS_METRIC_LABELS.get(self.metric, 'Jobs')
+        return JOBS_METRIC_LABELS.get(self.metric, 'Jobs')
 
     def flat_only(self):
         # Owner-less envelope (owners_limit unset, or an older plugin) — the

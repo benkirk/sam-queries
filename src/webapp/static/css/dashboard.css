@@ -1791,6 +1791,30 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     height: auto;
 }
 
+/* Job-history charts. These use bare `d-flex justify-content-center` wrappers
+   rather than `.chart-container`, and had no CSS at all.
+
+   They do NOT overflow — a flex item shrinks below its intrinsic width by
+   default, so the page stays within the viewport. The bug is subtler: without
+   `height: auto` the box keeps the SVG's intrinsic `height` attribute while
+   flexbox shrinks its width, and the viewBox letterboxes the drawing inside
+   it. Measured at 390px, the jobs histogram's 2.50:1 figure rendered into a
+   277x446px box (0.62:1) — the chart drawn ~277x111 with ~335px of empty
+   space padded around it.
+
+   Matching `.chart-container svg` restores the aspect ratio. Note this does
+   NOT make the charts legible on a phone: an 18x5in figure scaled to ~350px
+   renders 9-11pt text at ~2px regardless. That needs a different figsize from
+   the server — the `layout` render axis — and lands in the mobile pass. */
+.jobs-histogram-chart svg,
+.jobs-timeline-chart svg,
+.jobs-user-pie svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+}
+
 /* ============================================================================
    MUTED BADGE PALETTE — saturated Bootstrap defaults (bg-primary/info/success/
    warning/danger) read as aggressive next to the flat Unity surfaces, especially
