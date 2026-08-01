@@ -227,6 +227,88 @@ def test_tier1_matches_chart_palette():
         'charts/theme.py:\n' + '\n'.join(mismatches))
 
 
+def _dark_tokens():
+    """{token: value} from the `:root[data-bs-theme="dark"]` block."""
+    text = COMMENT_RE.sub('', (CSS_DIR / TOKEN_FILE).read_text())
+    start = text.index(':root[data-bs-theme="dark"]')
+    block = text[text.index('{', start) + 1:text.index('}', start)]
+    return {n: v.strip() for n, v in DECL_RE.findall(block) if n.startswith('--')}
+
+
+def test_dark_card_matches_chart_blend_target():
+    """The dark card surface and the chart layer's blend target are one value.
+
+    Charts are matplotlib SVGs rendered *inside* cards, and `Theme.DARK`
+    blends its stacked-band shades, legend faces and segment edges toward the
+    surface behind them. If `--surface-card` and `Theme.DARK.shade_toward`
+    drift apart, every dark chart gets a faint rectangular halo where the
+    figure meets the card — a defect that is easy to see and very hard to
+    attribute.
+
+    Picking the value once, in CSS, is what makes PR 4 (dark charts)
+    mechanical. This test is what keeps it picked once.
+    """
+    from webapp.dashboards.charts.theme import Theme
+
+    card = _dark_tokens().get('--surface-card')
+    assert card, 'the dark block does not define --surface-card'
+
+    for attr in ('shade_toward', 'legend_face', 'segment_edge'):
+        value = getattr(Theme.DARK, attr)
+        assert value.lower() == card.lower(), (
+            f'Theme.DARK.{attr} = {value} but --surface-card = {card}. '
+            f'Charts would blend toward a surface they no longer sit on — '
+            f'change both together, in the same commit.')
+
+
+def test_dark_block_redeclares_the_bootstrap_bridge():
+    """Not redundant with the `:root` bridge — required.
+
+    Bootstrap's own `[data-bs-theme=dark]` block redefines these same
+    variables. Our selector is `:root[data-bs-theme="dark"]` (specificity
+    0,2,0) precisely so it outranks Bootstrap's bare attribute selector
+    (0,1,0). Drop any of them and cards, modals and tables silently revert to
+    Bootstrap's grey #212529 ramp while the rest of the app uses the blue one —
+    a mismatch that reads as "dark mode is buggy" rather than "a variable is
+    missing".
+    """
+    dark = _dark_tokens()
+    required = {'--bs-body-bg', '--bs-body-color', '--bs-border-color',
+                '--bs-secondary-bg', '--bs-tertiary-bg'}
+    missing = sorted(required - set(dark))
+    assert not missing, (
+        f'the dark block does not re-declare {missing}; Bootstrap\'s own dark '
+        f'values will win for those')
+
+
+def test_invariant_tokens_are_not_flipped():
+    """`--text-on-brand` / `--surface-on-brand` must NOT appear in the dark
+    block. White on a saturated NCAR-blue button is correct in both themes;
+    "fixing" either into a theme-dependent value breaks every button and every
+    pill badge in one of the two."""
+    dark = _dark_tokens()
+    flipped = sorted({'--text-on-brand', '--surface-on-brand'} & set(dark))
+    assert not flipped, (
+        f'{flipped} redefined in the dark block, but they are invariant by '
+        f'design — see their definitions in variables.css')
+
+
+def test_every_role_token_has_a_dark_value():
+    """A tier-2 token with no dark counterpart keeps its LIGHT value on a dark
+    page — a white surface or near-black text, silently. This is the check
+    that catches a token added later and half-wired."""
+    light = {n for n in _css_tokens()
+             if n.startswith(('--surface-', '--text-', '--border-'))}
+    invariant = {'--text-on-brand', '--surface-on-brand'}
+    # `-rgb` companions are covered by their parents being covered.
+    expected = {n for n in light if not n.endswith('-rgb')} - invariant
+    dark = set(_dark_tokens())
+    missing = sorted(expected - dark)
+    assert not missing, (
+        f'tier-2 tokens with no dark value (they will stay light on a dark '
+        f'page): {missing}')
+
+
 def test_role_tokens_exist():
     """The tier-2 contract, asserted by name.
 

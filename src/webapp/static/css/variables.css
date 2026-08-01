@@ -114,7 +114,14 @@
        why these are named for their role and not their brightness. */
     --surface-page:      #f6f7f6;   /* body — NSF NCAR warm off-white */
     --surface-card:      #ffffff;   /* cards, modals */
-    --surface-raised:    #ffffff;   /* navbar, tabs, chips, inputs */
+    --surface-raised:    #ffffff;   /* tabs, chips, inputs */
+
+    /* The navbar band. Its own token ONLY because it is currently pinned
+       light in dark mode — the NSF and UCAR marks are dark navy and their
+       reversed variants have not landed yet. See the TODO(dark-logos) block
+       in dashboard.css; when the reversed assets arrive this becomes
+       `var(--surface-raised)` in both themes and the override disappears. */
+    --surface-navbar:    #ffffff;
     --surface-secondary: #e9ecef;   /* stronger recess: progress track, th  */
     --surface-tertiary:  #f8f9fa;   /* gentler recess: wells, stat boxes    */
 
@@ -270,5 +277,80 @@
    D4-D6 retire those surfaces onto tokens; D7 fills this block in.
    ========================================================================= */
 :root[data-bs-theme="dark"] {
-    /* D7 fills this in. */
+    /* --- Surfaces ---
+       The elevation ladder INVERTS: a recess renders lighter, not darker.
+       That is Bootstrap's own dark convention (--bs-secondary-bg #343a40 sits
+       above --bs-body-bg #212529) and it is why these tokens are named for
+       their role rather than their brightness.
+
+       --surface-card is #1b2733 on purpose: it is already
+       Theme.DARK.legend_face / shade_toward / segment_edge in
+       webapp/dashboards/charts/theme.py. Charts sit inside cards, and PR 4's
+       blend targets have to match the surface they blend into. Picking the
+       value here, once, is what makes PR 4 mechanical. Do not drift it
+       without changing charts/theme.py in the same commit —
+       test_dark_card_matches_chart_blend_target pins the pair. */
+    --surface-page:      #14181d;
+    --surface-card:      #1b2733;
+    --surface-raised:    #222c38;
+    /* Deliberately still WHITE — see TODO(dark-logos). This is the one token
+       whose dark value is a placeholder rather than a design choice. */
+    --surface-navbar:    #ffffff;
+    --surface-secondary: #2a3745;   /* stronger recess == lighter here */
+    --surface-tertiary:  #222d39;   /* gentler recess */
+
+    --surface-page-rgb:      20, 24, 29;
+    --surface-card-rgb:      27, 39, 51;
+    --surface-secondary-rgb: 42, 55, 69;
+    --surface-tertiary-rgb:  34, 45, 57;
+
+    /* The blue-tinted grouping surface keeps its tint rather than folding
+       into the neutral ramp — same distinction as in light mode. */
+    --surface-accent:       #1e2b3d;
+    --surface-accent-hover: #26364b;
+
+    /* --- Text --- */
+    --text-primary:     #e9ecef;
+    --text-primary-rgb: 233, 236, 239;
+    --text-secondary:   #adb5bd;
+
+    /* The brand tones, lightened. --text-link lands on --ncar-sky, which is
+       already the app's established "brand blue on a dark panel" — the navbar
+       dropdown has used it on the navy panel since long before dark mode. */
+    --text-heading:  #e8eef7;
+    --text-title:    #b8cde8;
+    --text-link:     #42c0ff;   /* == --ncar-sky */
+    --text-tertiary: #9aa4ae;
+
+    --border-default: #39414b;
+
+    /* --text-on-brand and --surface-on-brand are deliberately NOT redefined:
+       they are invariant. White on an NCAR-blue button is correct in both
+       themes. See their definitions above. */
+
+    /* --- Bootstrap bridge, repeated ---
+       Required, not redundant. Bootstrap's own `[data-bs-theme=dark]` block
+       redefines these same variables, and it would otherwise win: this
+       selector is `:root[data-bs-theme="dark"]` (specificity 0,2,0) precisely
+       so it outranks Bootstrap's bare attribute selector (0,1,0). Drop these
+       and cards/modals/tables silently revert to Bootstrap's grey #212529
+       ramp while the rest of the app uses the blue one. */
+    --bs-body-bg:          var(--surface-card);
+    --bs-body-bg-rgb:      var(--surface-card-rgb);
+    --bs-body-color:       var(--text-primary);
+    --bs-body-color-rgb:   var(--text-primary-rgb);
+    --bs-border-color:     var(--border-default);
+    --bs-secondary-bg:     var(--surface-secondary);
+    --bs-secondary-bg-rgb: var(--surface-secondary-rgb);
+    --bs-tertiary-bg:      var(--surface-tertiary);
+    --bs-tertiary-bg-rgb:  var(--surface-tertiary-rgb);
+    --bs-link-color:       var(--text-link);
+    --bs-link-hover-color: var(--ncar-cyan);
+
+    /* Shadows are near-invisible on a dark page — a black blur on near-black
+       reads as nothing, which loses every card and dropdown edge. Deepened
+       rather than removed so elevation still exists; the borders do the rest. */
+    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.45);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
 }
