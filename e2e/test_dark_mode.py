@@ -48,11 +48,28 @@ SAMPLES = [
 #: Pages chosen for coverage of the sampled families, not for breadth.
 PAGES = ['/user/info', '/allocations/transactions', '/status/derecho']
 
-#: Pages that render a chart inline in a full-page GET — the two families that
-#: cover the interesting cases: pies (text sits *on* a wedge) and stacked areas
-#: (text sits on the card). The jobs and disk-scans surfaces draw charts too but
-#: are plugin-gated, and CI runs without those plugins.
+#: Pages that draw a chart — the two families that cover the interesting cases:
+#: pies (text sits *on* a wedge) and stacked areas (text sits on the card). The
+#: jobs and disk-scans surfaces draw charts too but are plugin-gated, and CI
+#: runs without those plugins.
 CHART_PAGES = ['/allocations/projects', '/status/derecho']
+
+#: Chart pages whose data comes from the collector-fed `system_status` tables
+#: rather than the SAM snapshot, and which therefore draw nothing on a stack
+#: that has never had a collector pointed at it.
+#:
+#: `/status/derecho`'s only chart is the user/project load area chart, off
+#: `user_proj_queue_status` — and the obfuscated dump CI restores carries zero
+#: rows of it (the `*_status` rows it does carry are as old as the snapshot,
+#: while the chart windows the last 168 hours). So the card renders
+#: `UserProjAreaChart.empty_message` and there is no SVG to measure. Locally,
+#: where collectors have been running, the same page draws ~60k rows' worth
+#: and is measured for real.
+#:
+#: Skipped when the page drew **nothing**; never when it drew something. A
+#: figure with no `<text>` in it still fails here, which is the property that
+#: keeps this test honest — see below.
+COLLECTOR_FED_CHART_PAGES = {'/status/derecho'}
 
 
 # --------------------------------------------------------------------------
@@ -184,8 +201,14 @@ _CHART_TEXT_COLOURS_JS = """
   });
 
   const out = [];
-  const charts = [...document.querySelectorAll('svg')]
-      .filter(s => s.querySelector('text'));
+  // Every matplotlib figure on the page, whether or not it carries <text>.
+  // `g#figure_1` is matplotlib's own wrapper and is emitted at both
+  // `svg.fonttype` settings, so counting figures separates "this page drew
+  // no chart at all" (a data question) from "this page drew charts whose
+  // glyphs are paths" (the regression this test exists to catch).
+  const figures = [...document.querySelectorAll('svg')]
+      .filter(s => s.querySelector('g[id^="figure_"]'));
+  const charts = figures.filter(s => s.querySelector('text'));
 
   for (const svg of charts) {
     // elementsFromPoint is viewport-relative, so the chart has to be on
@@ -220,7 +243,7 @@ _CHART_TEXT_COLOURS_JS = """
       out.push({ fg: [fg.r, fg.g, fg.b], bg: [bg.r, bg.g, bg.b], text: label });
     }
   }
-  return out;
+  return { figures: figures.length, samples: out };
 }
 """
 
@@ -246,11 +269,22 @@ def test_chart_text_is_legible(page, base_url, page_url, theme):
     visit(page, page_url)
     assert_theme_applied(page, theme)
 
-    samples = page.evaluate(_CHART_TEXT_COLOURS_JS)
+    found_charts = page.evaluate(_CHART_TEXT_COLOURS_JS)
+    figures, samples = found_charts['figures'], found_charts['samples']
+
+    if not figures and page_url in COLLECTOR_FED_CHART_PAGES:
+        pytest.skip(
+            f'{page_url} drew no chart — its data comes from the collector-fed '
+            f'system_status tables, which the obfuscated fixture does not '
+            f'carry. See COLLECTOR_FED_CHART_PAGES.')
+
+    assert figures, (
+        f'{page_url} ({theme}) drew no chart at all — the page stopped '
+        f'rendering charts, or its data went away.')
     assert samples, (
-        f'{page_url} ({theme}) rendered no chart text at all. Either the page '
-        f'stopped drawing charts or `svg.fonttype` left "none" and every glyph '
-        f'is a path again — in which case this test is silently vacuous.')
+        f'{page_url} ({theme}) drew {figures} chart(s) but not one glyph of '
+        f'text: `svg.fonttype` left "none" and every glyph is a path again — '
+        f'in which case this test is silently vacuous.')
 
     failures = []
     for found in samples:
