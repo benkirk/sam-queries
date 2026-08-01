@@ -58,7 +58,10 @@ def test_every_chart_is_covered():
     from webapp.dashboards import charts
 
     public = {n for n in dir(charts) if n.startswith('generate_')}
-    covered = {fn.__name__ for _id, fn, _a, _k in CASES}
+    # Match by identity, not `__name__`: charts bound through `chart_view` are
+    # closures whose `__name__` is the wrapper's, not the public alias's.
+    cased = {id(fn) for _id, fn, _a, _k in CASES}
+    covered = {n for n in public if id(getattr(charts, n)) in cased}
     assert public - covered == set(), f'charts with no fingerprint case: {public - covered}'
 
 

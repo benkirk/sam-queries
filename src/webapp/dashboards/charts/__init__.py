@@ -40,6 +40,18 @@ from webapp.caching.chart import content_hash as _content_hash
 # server-side Poppins TTFs and applying the structural rcParams. The
 # re-exported names keep `charts.UNITY_*` working for existing importers.
 from webapp.dashboards.charts import links, series as series_mod, theme
+from webapp.dashboards.charts.base import (  # noqa: F401
+    BaseChart,
+    chart_view,
+    empty_state as _empty_state,
+    fig_to_svg as _fig_to_svg,
+)
+from webapp.dashboards.charts.dualpanel import (
+    NodetypeHistoryChart,
+    QueueHistoryChart,
+    _to_display_tz,
+)
+from webapp.dashboards.charts.layout import Layout, profile as layout_profile
 from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_NCAR_BLUE,
     UNITY_NCAR_GRAY,
@@ -64,26 +76,6 @@ from webapp.dashboards.charts.theme import (  # noqa: F401
 )
 
 
-def _fig_to_svg(fig) -> str:
-    """Serialize a figure to SVG and ALWAYS close it.
-
-    savefig can raise on pathological data; without the finally the figure
-    would leak in the Agg backend's global registry until process restart.
-    """
-    try:
-        svg_io = StringIO()
-        fig.savefig(svg_io, format='svg', bbox_inches='tight', transparent=True)
-        return svg_io.getvalue()
-    finally:
-        plt.close(fig)
-
-
-def _empty_state(msg: str, extra_classes: str = '') -> str:
-    """The no-data placeholder fragment charts return instead of an SVG."""
-    classes = f'text-center text-muted {extra_classes}'.rstrip()
-    return f'<div class="{classes}">{msg}</div>'
-
-
 def _project_modal_url(projcode: str) -> str:
     """Resolve the project-details modal route, with blueprint prefix.
     Used to mark legend entries with set_url() — svg-chart-links.js
@@ -94,13 +86,6 @@ def _project_modal_url(projcode: str) -> str:
 def _user_modal_url(username: str) -> str:
     """Resolve the user-card modal route, with blueprint prefix."""
     return links.USER_MODAL.url(username)
-
-
-def _to_display_tz(naive_utc_ts: datetime) -> datetime:
-    """Naive-UTC → naive-local for matplotlib axis rendering.  Strips tzinfo
-    after conversion so the existing naive-datetime plotting path is
-    unchanged (matplotlib renders the local-clock values directly)."""
-    return fmt.to_local_dt(naive_utc_ts).replace(tzinfo=None)
 
 
 # ---------------------------------------------------------------------------
@@ -642,130 +627,16 @@ def generate_distribution_histogram(hist, *, log_y=False, metric='data') -> str:
 
 
 # ---------------------------------------------------------------------------
-# 2. Node type history (status dashboard)
+# 2/3. Dual-panel status time series (node type + queue history)
+#
+# Migrated to the class hierarchy — see charts/dualpanel.py. `chart_view`
+# reads cache_name/cache_maxsize off the class and composes the layout/theme
+# render axes into the cache key.
 # ---------------------------------------------------------------------------
 
-# One entry per node type; can be O(10s) across all machines.
-@caching.chart_cached(name='nodetype_history', maxsize=64)
-def generate_nodetype_history_matplotlib(history_data: List[Dict]) -> str:
-    """
-    Generate node type history chart showing availability and utilization.
-    Title is rendered in the surrounding HTML (see status dashboard template).
+generate_nodetype_history_matplotlib = chart_view(NodetypeHistoryChart)
+generate_queue_history_matplotlib = chart_view(QueueHistoryChart)
 
-    Args:
-        history_data: List of dicts with timestamp, nodes_*, utilization_percent
-
-    Returns:
-        SVG string ready for template rendering
-    """
-    if not history_data:
-        return _empty_state('No history data available for this node type')
-
-    timestamps = [_to_display_tz(d['timestamp']) for d in history_data]
-    nodes_available = [d.get('nodes_available', 0) for d in history_data]
-    nodes_down = [d.get('nodes_down', 0) for d in history_data]
-    nodes_allocated = [d.get('nodes_allocated', 0) for d in history_data]
-    utilization = [d.get('utilization_percent') for d in history_data]
-    memory_utilization = [d.get('memory_utilization_percent') for d in history_data]
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
-
-    ax1.stackplot(timestamps, nodes_down, nodes_allocated, nodes_available,
-                  labels=['Down', 'Fully Allocated', 'Resources Available'],
-                  colors=[UNITY_NCAR_VERMILION, UNITY_NCAR_BLUE, UNITY_NCAR_SKY])
-    ax1.set_ylabel('Number of Nodes', fontsize=11)
-    ax1.set_ylim([0, None])
-    ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax1.legend(loc=2, fontsize=10,
-               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
-    ax1.grid(True, alpha=0.3, color='grey')
-
-    if any(u is not None for u in utilization):
-        util_times = [timestamps[i] for i, u in enumerate(utilization) if u is not None]
-        util_vals = [u for u in utilization if u is not None]
-        ax2.plot(util_times, util_vals, color=UNITY_NCAR_BLUE, linewidth=3, label='CPU/GPU Utilization')
-
-    if any(m is not None for m in memory_utilization):
-        mem_times = [timestamps[i] for i, m in enumerate(memory_utilization) if m is not None]
-        mem_vals = [m for m in memory_utilization if m is not None]
-        ax2.plot(mem_times, mem_vals, color=UNITY_NCAR_TEAL, linewidth=3, label='Memory Utilization')
-
-    ax2.set_ylabel('Utilization', fontsize=11)
-    ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
-    ax2.set_ylim(0, 100)
-    ax2.yaxis.set_major_formatter(fmt.mpl_pct_formatter())
-    ax2.legend(loc='best', fontsize=10,
-               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
-    ax2.grid(True, alpha=0.3)
-
-    fig.autofmt_xdate()
-
-    return _fig_to_svg(fig)
-
-
-# ---------------------------------------------------------------------------
-# 3. Queue history (status dashboard)
-# ---------------------------------------------------------------------------
-
-# One entry per queue; queue counts can be O(10s) across all resources.
-@caching.chart_cached(name='queue_history', maxsize=64)
-def generate_queue_history_matplotlib(history_data: List[Dict]) -> str:
-    """
-    Generate queue history chart showing job flow and resource demand.
-    Title is rendered in the surrounding HTML (see status dashboard template).
-
-    Args:
-        history_data: List of dicts with timestamp, job counts, resources
-
-    Returns:
-        SVG string ready for template rendering
-    """
-    if not history_data:
-        return _empty_state('No history data available for this queue')
-
-    timestamps = [_to_display_tz(d['timestamp']) for d in history_data]
-    running_jobs = [d.get('running_jobs', 0) for d in history_data]
-    pending_jobs = [d.get('pending_jobs', 0) for d in history_data]
-    held_jobs = [d.get('held_jobs', 0) for d in history_data]
-    active_users = [d.get('active_users', 0) for d in history_data]
-    cores_allocated = [d.get('cores_allocated', 0) for d in history_data]
-    cores_pending = [d.get('cores_pending', 0) for d in history_data]
-    gpus_allocated = [d.get('gpus_allocated', 0) for d in history_data]
-    gpus_pending = [d.get('gpus_pending', 0) for d in history_data]
-
-    has_gpus = any(gpus_allocated) or any(gpus_pending)
-
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
-
-    ax1.plot(timestamps, running_jobs, color=UNITY_NCAR_TEAL, linewidth=3, label='Running')
-    ax1.plot(timestamps, pending_jobs, color=UNITY_NCAR_ORANGE, linewidth=3, label='Pending')
-    ax1.plot(timestamps, held_jobs, color=UNITY_NCAR_VERMILION, linewidth=3, label='Held')
-    ax1.plot(timestamps, active_users, color=UNITY_NCAR_BLUE, linestyle='--', linewidth=2, label='Active Users')
-    ax1.set_ylim([0, None])
-    ax1.set_ylabel('Count', fontsize=11)
-    ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax1.legend(loc=2, fontsize=10,
-               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
-    ax1.grid(True, alpha=0.3)
-
-    if has_gpus:
-        ax2.plot(timestamps, gpus_allocated, color=UNITY_NCAR_BLUE, linewidth=3, label='GPUs Running')
-        ax2.plot(timestamps, gpus_pending, color=UNITY_NCAR_TEAL, linewidth=3, label='GPUs Pending')
-    else:
-        ax2.plot(timestamps, cores_allocated, color=UNITY_NCAR_BLUE, linewidth=3, label='Cores Running')
-        ax2.plot(timestamps, cores_pending, color=UNITY_NCAR_TEAL, linewidth=3, label='Cores Pending')
-
-    ax2.set_ylim([0, None])
-    ax2.set_ylabel('Resources', fontsize=11)
-    ax2.set_xlabel(f'Time ({fmt.local_tz_label()})', fontsize=11)
-    ax2.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-    ax2.legend(loc=2, fontsize=10,
-               frameon=True, facecolor='white', edgecolor='none', framealpha=0.9)
-    ax2.grid(True, alpha=0.3)
-
-    fig.autofmt_xdate()
-
-    return _fig_to_svg(fig)
 
 
 # ---------------------------------------------------------------------------
