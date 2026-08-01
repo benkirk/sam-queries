@@ -13,6 +13,24 @@ bug until proven otherwise.
 Regenerate after an intentional change, then review the diff in that commit:
 
     CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py
+
+## Both layouts are pinned
+
+Every non-empty case is rendered twice, at ``layout='desktop'`` and at
+``layout='mobile'``, under snapshot keys ``<case>`` and ``<case>@mobile``.
+
+The mobile half exists because the mobile pass is *tuning* work: figure
+sizes, legend placement and font sizes get moved until they look right, and
+without a pinned baseline "I nudged the pace chart" and "I broke the pace
+chart" produce the same diff — none. It also makes the desktop invariant
+enforceable in the same run: a mobile-tuning commit that moves a desktop
+fingerprint has leaked, and that is the single most likely way this pass
+regresses the 1,000+ desktop users it is not for.
+
+Empty cases are layout-invariant by construction — ``is_empty()`` short-circuits
+before ``make_figure()`` — so they are pinned once, and
+``test_empty_state_is_layout_invariant`` proves the short-circuit really does
+precede the geometry.
 """
 
 import json
@@ -26,9 +44,14 @@ from chart_samples import CASES
 
 SNAPSHOT = Path(__file__).parent / 'snapshots' / 'chart_fingerprints.json'
 
+#: Suffix appended to a case id for its mobile rendering. Desktop keeps the
+#: bare id so the existing snapshot keys — and every diff anyone has already
+#: reviewed — stay stable.
+MOBILE_SUFFIX = '@mobile'
+
 
 def _render_all(app):
-    """Render every case inside one app context.
+    """Render every case inside one app context, at both layouts.
 
     Several charts resolve modal routes through ``url_for``, so an application
     context is required even though nothing here touches the database.
@@ -37,6 +60,12 @@ def _render_all(app):
     with app.test_request_context('/'):
         for case_id, fn, args, kwargs in CASES:
             out[case_id] = svg_fingerprint(fn(*args, **kwargs))
+            if case_id.endswith('.empty'):
+                # Layout-invariant by construction; pinned once. The claim is
+                # tested directly by test_empty_state_is_layout_invariant.
+                continue
+            out[case_id + MOBILE_SUFFIX] = svg_fingerprint(
+                fn(*args, **kwargs, layout='mobile'))
     return out
 
 
@@ -113,3 +142,41 @@ def test_empty_states_are_placeholders(rendered):
         if case_id.endswith('.empty'):
             assert fp['kind'] == 'placeholder', f'{case_id} did not short-circuit'
             assert 'text-muted' in fp['html']
+
+
+def test_empty_state_is_layout_invariant(app):
+    """Pinning empty cases once is only safe if the short-circuit really is
+    layout-independent — i.e. ``is_empty()`` runs before ``make_figure()``.
+
+    Cheap to assert, and it fails loudly if anyone ever moves the empty check
+    below the figure creation to give the placeholder a layout-aware size.
+    """
+    empties = [c for c in CASES if c[0].endswith('.empty')]
+    assert empties, 'no empty cases — the invariant below would be vacuous'
+    with app.test_request_context('/'):
+        for case_id, fn, args, kwargs in empties:
+            desktop = fn(*args, **kwargs)
+            mobile = fn(*args, **kwargs, layout='mobile')
+            assert desktop == mobile, f'{case_id} placeholder differs by layout'
+
+
+def test_mobile_renders_smaller_than_desktop(rendered):
+    """The point of the axis, asserted as a property rather than a snapshot.
+
+    Every chart's mobile figure must be *narrower* than its desktop one.
+    This is what turns 9-11pt labels rendered at ~2-3px on a phone into
+    labels rendered at roughly their nominal size, and it is the one claim
+    that must hold for all fifteen charts no matter how the tuning moves.
+    """
+    pairs = [(cid, cid + MOBILE_SUFFIX) for cid in rendered
+             if not cid.endswith(MOBILE_SUFFIX)
+             and cid + MOBILE_SUFFIX in rendered]
+    assert pairs, 'no desktop/mobile pairs rendered'
+
+    wider = []
+    for desktop_id, mobile_id in sorted(pairs):
+        dw = rendered[desktop_id]['size'][0]
+        mw = rendered[mobile_id]['size'][0]
+        if mw >= dw:
+            wider.append(f'{desktop_id}: desktop {dw}pt -> mobile {mw}pt')
+    assert not wider, 'mobile figure is not narrower:\n  ' + '\n  '.join(wider)
