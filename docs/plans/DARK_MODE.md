@@ -1,6 +1,8 @@
 # Application-wide dark mode
 
-**Status: READY (revised 2026-08-01), re-verified against `staging` 2026-08-01.**
+**Status: IMPLEMENTED (2026-08-01) on `dark_mode_sans_charts`, D0–D8 landed.**
+Deviations from this plan are recorded in **Appendix E** — read that before
+treating any section below as a description of the shipped code.
 This is **PR 3** of the four-PR roadmap declared in
 `docs/plans/CHART_ARCHITECTURE.md` § *Roadmap*, which deferred it to "a
 separate planning session". Implementation branch: `dark_mode_sans_charts`,
@@ -813,6 +815,37 @@ Recorded per that document's own convention.
 | 1 | "83 hardcoded-white sites" as the scope of the CSS work | 83 is correct as a count, but **26 are foreground-on-brand (correct as-is)** and 22 are `--bs-*` overrides of which only 3 are surfaces. The real surface work is **12 declarations + 3 card variables**. | Scope estimate ~5× high. The nine `background-color: #fff` sites it lists for `dashboard.css` are exactly right. |
 | 2 | (not stated) | The template-side utility classes — `table-light` (49), bare `text-dark` (20), `bg-light` (59) — are a **larger** surface than the CSS whites, and were not inventoried. | ~130 attributes of unbudgeted work. Partly offset by `text-muted` × 624 being free. |
 | 3 | "PR 3 has a real head start" from Bootstrap's unused dark block | True, and stronger than implied: `text-muted`, the app's most-used utility, is already theme-correct. But the same block **does not** redefine `--bs-light-rgb` / `--bs-dark-rgb` / `--bs-secondary-rgb`, which is precisely why item 2 exists. | Head start is real; it is not uniform. |
+
+## Appendix E — deviations found during implementation (2026-08-01)
+
+The plan was a good map; these are the places the territory differed. All
+were found by building and measuring, not by re-reading.
+
+| # | Plan said | Implementation found | Where |
+|---|---|---|---|
+| 1 | D2 bridges `--bs-body-bg` to "tier 2" | It must be **`--surface-card`**, not `--surface-page`. Upstream, `--bs-body-bg` drives twelve component variables (card, modal, dropdown, table, form-control…) because Bootstrap's own page and card are both `#fff`. SAM separates them, so that variable already plays the *card* role. `--surface-page` would have tinted every modal and, in dark, made them track the page instead of the card. | D2 |
+| 2 | D2 has "no visual change" | Two real light-mode shifts: `--bs-body-color` #212529→#323133 and `--bs-border-color` #dee2e6→#E2E8F0. Both are SAM's own token displacing a Bootstrap default — the point of the bridge — but they are changes. | D2 |
+| 3 | The `-rgb` companions were not mentioned | Bootstrap consumes `--bs-body-bg-rgb` (×3), `--bs-body-color-rgb` (×5), `--bs-secondary-bg-rgb`, `--bs-tertiary-bg-rgb`. Bridging only the hex form leaves those on the framework default. Tier 2 needed matching triplets. | D2 |
+| 4 | D5's `bg-light` → `bg-body-secondary` is "a declared light-mode shift" | **No shift needed.** D2's bridge makes `--bs-tertiary-bg` = `--surface-tertiary` = `#f8f9fa`, exactly what `.bg-light` renders — so `bg-body-**tertiary**` is byte-identical in light *and* follows the ramp in dark. The plan's one predicted visible regression was avoidable. | D5 |
+| 5 | `table-light` → (unspecified) | No stock Bootstrap class flips: the dark block redefines **none** of the `.table-*` variants, nor `--bs-light-rgb`. Needed a SAM class, `.table-subtle`, valued to match `.table-light` exactly. | D5 |
+| 6 | `text-dark` splits into "bare (convert)" vs "co-occurs with `bg-*`" (keep) | The real rule is "sits on a fill that **stays put**". Three families the inventory missed, all of which break on dark: `bg-light text-dark` badges (28 — the background became theme-aware), `bg-*-subtle text-dark` (6 — the `-subtle` tints *are* redefined in the dark block), and `bg-secondary bg-opacity-25 text-dark` (4 — a 25 % wash composites light in light and dark in dark). Also: a codemod cannot see through `bg-{% if %}danger{% endif %}`, so 2 sites had to be reverted by hand. | D5 |
+| 7 | (not stated) | **59 CSS rules set a tier-1 brand primitive as `color:`** — `--ncar-space-blue` ×16, `--ncar-blue` ×21, `--ncar-gray` ×13, `--ncar-navy` ×9. Invariant by design, and `#011837` on `#1b2733` is unreadable. Needed four new role tokens (`--text-heading`, `--text-title`, `--text-link`, `--text-tertiary`) with light values identical to the primitives. The plan inventoried the `text-dark` *utility* but not CSS rules using brand colour as text. | D6 |
+| 8 | (not stated) | The same defect again in **`--bs-*-color` custom properties** — `--bs-card-color: var(--ncar-space-blue)` gave every card body **1.17:1** contrast. Missed by D6's codemod, whose lookbehind excluded custom-property definitions. 19 sites. **Found only by the D8 contrast assertions**, on pages already eyeballed and called good. | D8 |
+| 9 | (not stated) | The collapsed accordion chevron is a data-URI SVG with `fill='%23011837'` baked in. A data URI cannot reference a CSS variable, so dark mode needs a second URI. | D8 |
+| 10 | Decision 3 recommends a `--surface-raised` navbar | Superseded by resolved decision 2: the navbar stays a **light chip** until the reversed brand marks land. That in turn requires pinning Bootstrap's `--bs-navbar-*` back to light values — its dark block sets `rgba(255,255,255,.55)`, invisible on white. | D7 |
+| 11 | Cache key scheduled at D8 | Moved to **D3**. Leaving five rendered-HTML routes theme-blind across D4–D7 would make every theme bug seen on them indistinguishable from a stale-cache artifact, during exactly the commits spent clicking between themes. | D3 |
+| 12 | (not stated) | `/admin/expirations` was being swept as a *page* by `e2e/test_console_sweep.py`, but it is an htmx fragment with no `<html>`. Pre-existing gap in the sweep's rule-based filter; it passed only because fragments emit no console errors. | D8 |
+
+**What the plan got right and is worth repeating**: the cookie carrier, the
+three-tier token layer, the ordering that makes D3 "visible and broken", the
+`text-muted` × 624 free win, and the watermark analysis (single `#faa119` at
+33 % alpha — it needed no code, exactly as predicted).
+
+**The methodological lesson**: items 7, 8 and 9 are all the same defect —
+*brand colour used as foreground* — found three times, at three different
+syntactic hiding places, by three different means (a runtime palette
+injection, a grep, and an automated contrast assertion). Only the third found
+the worst instance. Eyeballing screenshots missed a 1.17:1 card body twice.
 
 ## Appendix D — corrections to this document's first draft (2026-08-01)
 
