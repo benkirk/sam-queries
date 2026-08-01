@@ -40,33 +40,34 @@ _PIE_CUM_SHARE = 0.90
 _PIE_HARD_CAP = 9
 
 
-def trim_fixed_cap(names: list, values: list) -> tuple[list, list]:
-    """Sort by value descending, cap at 10, group remainder as 'Others (N)'."""
+def trim_fixed_cap(names: list, values: list, cap: int = _PIE_MAX_ENTITIES
+                   ) -> tuple[list, list]:
+    """Sort by value descending, cap, group the remainder as 'Others (N)'."""
     paired = sorted(zip(names, values), key=lambda x: x[1], reverse=True)
     names_s = [p[0] for p in paired]
     values_s = [p[1] for p in paired]
-    if len(names_s) > _PIE_MAX_ENTITIES:
-        n_others = len(names_s) - _PIE_MAX_ENTITIES
-        others_sum = sum(values_s[_PIE_MAX_ENTITIES:])
-        names_s = names_s[:_PIE_MAX_ENTITIES] + [f'Others ({n_others})']
-        values_s = values_s[:_PIE_MAX_ENTITIES] + [others_sum]
+    if len(names_s) > cap:
+        n_others = len(names_s) - cap
+        others_sum = sum(values_s[cap:])
+        names_s = names_s[:cap] + [f'Others ({n_others})']
+        values_s = values_s[:cap] + [others_sum]
     return names_s, values_s
 
 
-def trim_cumulative(values_desc: list) -> int:
+def trim_cumulative(values_desc: list, cap: int = _PIE_HARD_CAP) -> int:
     """How many leading (descending) entries to show individually.
 
     The fewest whose cumulative share reaches ``_PIE_CUM_SHARE``, capped at
-    ``_PIE_HARD_CAP``. The remainder (if any) is meant to collapse into one
-    'Other' slice. Returns ``len(values_desc)`` when everything fits.
+    ``cap``. The remainder (if any) is meant to collapse into one 'Other'
+    slice. Returns ``len(values_desc)`` when everything fits.
     """
     total = sum(values_desc)
     if total <= 0:
-        return min(len(values_desc), _PIE_HARD_CAP)
+        return min(len(values_desc), cap)
     cum = 0.0
     for i, v in enumerate(values_desc):
         cum += v
-        if i + 1 >= _PIE_HARD_CAP:
+        if i + 1 >= cap:
             return i + 1
         if cum / total >= _PIE_CUM_SHARE:
             return i + 1
@@ -76,7 +77,23 @@ def trim_cumulative(values_desc: list) -> int:
 class PieChart(BaseChart):
     """Shared pie rendering. Subclasses supply slices and, optionally, a drill."""
 
-    LAYOUTS = profile((7, 4))
+    #: Pies keep their side legend on mobile — measured, and it reads fine:
+    #: a pie is square, so a legend beside it uses width the plot cannot,
+    #: whereas the wide families have no width to spare. The `max_legend_entries`
+    #: cap keeps that column from growing taller than the pie.
+    #:
+    #: **Tablet is desktop, deliberately.** A pie's tight bbox is only ~360pt
+    #: — a pie trims to its own square, where the wide families trim to nearly
+    #: their declared inches — so every surface that renders one already gives
+    #: it as much width as it can use. Measured at a 768 viewport the three
+    #: pie surfaces read 13.8px, 10.7px and 16.6px; shrinking the figure would
+    #: make the jobs pie smaller on screen and the allocations pie's labels
+    #: larger, and neither is an improvement. The `max_legend_entries` cap is
+    #: dropped with it, because on this family the cap removes *slices*, and a
+    #: tablet has room for all of them.
+    LAYOUTS = profile((7, 4), (3.6, 2.9), (7, 4),
+                      mobile={'legend_placement': 'right'},
+                      tablet={'max_legend_entries': None})
     grid = None                       # pies have no grid
 
     start_angle = _PIE_START_ANGLE
@@ -103,6 +120,19 @@ class PieChart(BaseChart):
 
     def legend_label(self, label, value) -> str:
         return f'{label} ({fmt.number(value)})'
+
+    def slice_cap(self, default: int) -> int:
+        """How many named slices this layout affords, before 'Other'.
+
+        A pie is the one family where `max_legend_entries` must bite on the
+        **data**, not the legend. Capping only the legend would draw wedges
+        that nothing identifies — and every one of these pies is a drill
+        target, so an unidentified wedge is also an unlabelled click.
+
+        Read off `self.layout` because this runs inside `build()`, which
+        `prepare()` calls before the drawing hooks get their arguments.
+        """
+        return min(default, self.layout.max_legend_entries or default)
 
     # --- lifecycle --------------------------------------------------------
 
@@ -134,9 +164,8 @@ class PieChart(BaseChart):
     def add_legend(self, ax, layout, theme):
         legend_labels = [self.legend_label(l, v)
                          for l, v in zip(self.labels, self.values)]
-        legend = ax.legend(self.wedges, legend_labels, loc='center left',
-                           bbox_to_anchor=self.legend_anchor,
-                           fontsize=self.legend_fontsize)
+        legend = ax.legend(self.wedges, legend_labels,
+                           **self.legend_kwargs(layout))
         if self.drill is None:
             return
 
@@ -177,7 +206,8 @@ class _FixedCapPie(PieChart):
     def build(self):
         name_key, value_key = self.fields
         names, values = trim_fixed_cap([d[name_key] for d in self.data],
-                                       [d[value_key] for d in self.data])
+                                       [d[value_key] for d in self.data],
+                                       cap=self.slice_cap(_PIE_MAX_ENTITIES))
         colors = list(UNITY_PALETTE_10[:len(names)])
         return names, values, colors, [None] * len(names)
 
@@ -187,8 +217,12 @@ class FacilityPie(_FixedCapPie):
     surrounding HTML (see allocations dashboard template)."""
 
     cache_name = 'facility_pie_chart'
-    #: One entry per resource filter combination; few distinct views.
-    cache_maxsize = 32
+    #: One entry per resource filter combination; few distinct views. Raised
+    #: 32 -> 48 with the mobile layout and 48 -> 72 with the tablet one: each
+    #: live profile splits every chart's key space, and this was the tightest
+    #: budget in the package. The split is real here even though a tablet pie
+    #: renders the desktop figure — same bytes, different key.
+    cache_maxsize = 72
     empty_message = 'No facility data available'
     fields = ('facility', 'annualized_rate')
 
@@ -208,7 +242,7 @@ class _CumulativePie(PieChart):
 
     def split(self, values_desc):
         """``(keep, n_others)`` for a descending value vector."""
-        keep = trim_cumulative(values_desc)
+        keep = trim_cumulative(values_desc, cap=self.slice_cap(_PIE_HARD_CAP))
         return keep, len(values_desc) - keep
 
 

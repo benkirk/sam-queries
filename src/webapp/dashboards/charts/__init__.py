@@ -166,16 +166,26 @@ generate_jobs_usage_pie_chart = chart_view(JobsUsagePie)
 generate_pace_chart_matplotlib = chart_view(PaceChart)
 
 
-def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
+def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours', *,
+                                 layout='desktop', theme='light') -> str:
     """By User pie — delegates to the entity-agnostic renderer with the
     ``data-job-user`` row family.
 
     Deliberately a facade rather than a 16th bound chart: binding it would
     register a second cache and add a row to the admin Caching card for what
     is really the same chart under a different drill attribute.
+
+    Being a hand-written facade rather than a `chart_view` binding, it is also
+    the one generator that does not get the render axes for free — and it
+    silently didn't have them, because nothing in `src/` calls it (the live
+    By-User path passes `row_attr=` to the bound renderer directly) and the
+    fingerprint gate only ever rendered at the defaults. Forwarding them keeps
+    the facade honest: `test_migrated_charts_expose_the_render_axes` reads the
+    signature, and a caller that ever does appear must not find a `TypeError`.
     """
     return generate_jobs_usage_pie_chart(entity_data, metric,
-                                         row_attr=links.JOB_USER.attr)
+                                         row_attr=links.JOB_USER.attr,
+                                         layout=layout, theme=theme)
 
 
 #: Cache-key helpers under their historical module-level names. They moved

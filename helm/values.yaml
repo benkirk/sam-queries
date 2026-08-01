@@ -51,9 +51,36 @@ topologySpread:
 # ~15 KB; the live jobs timeline measures ~35 KB and its histogram ~10 KB.
 #
 # maxmemory is DELIBERATELY NOT reduced to match. The freed headroom is
-# earmarked: the layout and theme render axes multiply each chart's working
-# set by up to 4 once the mobile and dark-mode passes wire them up, which
-# roughly cancels the saving. Headroom is the safe direction anyway because
+# earmarked for the layout and theme render axes, and both layout passes came
+# in cheaper than the "up to 4x" this comment originally budgeted: a smaller
+# figure carries fewer path points and less text, so it costs less than its
+# desktop twin rather than the same. Measured across the same 32 sample cases:
+#
+#   desktop  562 KB  1.00x
+#   tablet   483 KB  0.86x
+#   mobile   417 KB  0.74x
+#   ------------------------
+#   all three         2.60x
+#
+# The layout axis is therefore complete at 2.6x, not the 3x a third profile
+# suggests. With the theme axis doubling that, six combinations land near
+# **5.2x** — up from the 3.1x this comment budgeted for four. Against a base
+# that dropped 58% when charts switched to `svg.fonttype: none`, 5.2x of the
+# post-drop base is ~2.2x of the pre-drop one, which is what 192 MB was
+# already sized for.
+#
+# Note the multiplier applies only to charts actually *requested* in more than
+# one combination inside the 600s TTL. Desktop-light remains the overwhelming
+# majority of traffic, so the real working set grows well under 2.6x.
+#
+# One caveat specific to the tablet profile: `PieChart` declares tablet *as*
+# its desktop figure (a pie's bbox is already narrower than any card that
+# renders one), so the five pies pay for a duplicate cache entry holding
+# byte-identical SVG. That is ~5% of the chart working set, and the
+# alternative — a layout that renders identically but keys differently —
+# would be a special case in `chart_view._key` for no measured gain.
+#
+# Headroom is the safe direction anyway because
 # allkeys-lru is instance-GLOBAL: under pressure it is free to evict the
 # rate limiter's DB 1 counters. Container limit keeps ~1.7x maxmemory for
 # redis overhead and fragmentation. Watch `INFO stats: evicted_keys` and

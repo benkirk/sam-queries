@@ -13,6 +13,26 @@ bug until proven otherwise.
 Regenerate after an intentional change, then review the diff in that commit:
 
     CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py
+
+## Every layout is pinned
+
+Every non-empty case is rendered once per declared layout: desktop keeps the
+bare case id, and each other profile adds a suffix — ``<case>@mobile``,
+``<case>@tablet``. The list is read off the chart classes, so a fourth profile
+pins itself.
+
+The non-desktop halves exist because these passes are *tuning* work: figure
+sizes, legend placement and font sizes get moved until they look right, and
+without a pinned baseline "I nudged the pace chart" and "I broke the pace
+chart" produce the same diff — none. It also makes the desktop invariant
+enforceable in the same run: a mobile- or tablet-tuning commit that moves a
+desktop fingerprint has leaked, and that is the single most likely way these
+passes regress the 1,000+ desktop users they are not for.
+
+Empty cases are layout-invariant by construction — ``is_empty()`` short-circuits
+before ``make_figure()`` — so they are pinned once, and
+``test_empty_state_is_layout_invariant`` proves the short-circuit really does
+precede the geometry.
 """
 
 import json
@@ -27,16 +47,42 @@ from chart_samples import CASES
 SNAPSHOT = Path(__file__).parent / 'snapshots' / 'chart_fingerprints.json'
 
 
+def extra_layouts():
+    """Every declared layout except desktop, which keeps the bare case id.
+
+    Read off the chart classes rather than listed here, so adding a profile to
+    ``layout.profile()`` pins it in this gate without touching this file. The
+    bare-id convention for desktop is what keeps the existing snapshot keys —
+    and every diff anyone has already reviewed — stable.
+    """
+    from webapp.dashboards import charts
+
+    names = set()
+    for fn in vars(charts).values():
+        cls = getattr(fn, 'chart_class', None)
+        if cls is not None and cls.LAYOUTS:
+            names |= set(cls.LAYOUTS)
+    return tuple(sorted(names - {'desktop'}))
+
+
 def _render_all(app):
-    """Render every case inside one app context.
+    """Render every case inside one app context, at every layout.
 
     Several charts resolve modal routes through ``url_for``, so an application
     context is required even though nothing here touches the database.
     """
     out = {}
+    layouts = extra_layouts()
     with app.test_request_context('/'):
         for case_id, fn, args, kwargs in CASES:
             out[case_id] = svg_fingerprint(fn(*args, **kwargs))
+            if case_id.endswith('.empty'):
+                # Layout-invariant by construction; pinned once. The claim is
+                # tested directly by test_empty_state_is_layout_invariant.
+                continue
+            for name in layouts:
+                out[f'{case_id}@{name}'] = svg_fingerprint(
+                    fn(*args, **kwargs, layout=name))
     return out
 
 
@@ -113,3 +159,65 @@ def test_empty_states_are_placeholders(rendered):
         if case_id.endswith('.empty'):
             assert fp['kind'] == 'placeholder', f'{case_id} did not short-circuit'
             assert 'text-muted' in fp['html']
+
+
+def test_empty_state_is_layout_invariant(app):
+    """Pinning empty cases once is only safe if the short-circuit really is
+    layout-independent — i.e. ``is_empty()`` runs before ``make_figure()``.
+
+    Cheap to assert, and it fails loudly if anyone ever moves the empty check
+    below the figure creation to give the placeholder a layout-aware size.
+    """
+    empties = [c for c in CASES if c[0].endswith('.empty')]
+    assert empties, 'no empty cases — the invariant below would be vacuous'
+    with app.test_request_context('/'):
+        for case_id, fn, args, kwargs in empties:
+            desktop = fn(*args, **kwargs)
+            for name in extra_layouts():
+                other = fn(*args, **kwargs, layout=name)
+                assert desktop == other, (
+                    f'{case_id} placeholder differs at layout={name}')
+
+
+def _pairs(rendered, name):
+    suffix = '@' + name
+    out = [(cid, cid + suffix) for cid in rendered
+           if '@' not in cid and cid + suffix in rendered]
+    assert out, f'no desktop/{name} pairs rendered'
+    return sorted(out)
+
+
+def test_mobile_renders_smaller_than_desktop(rendered):
+    """The point of the axis, asserted as a property rather than a snapshot.
+
+    Every chart's mobile figure must be *narrower* than its desktop one.
+    This is what turns 9-11pt labels rendered at ~2-3px on a phone into
+    labels rendered at roughly their nominal size, and it is the one claim
+    that must hold for all fifteen charts no matter how the tuning moves.
+    """
+    wider = []
+    for desktop_id, mobile_id in _pairs(rendered, 'mobile'):
+        dw = rendered[desktop_id]['size'][0]
+        mw = rendered[mobile_id]['size'][0]
+        if mw >= dw:
+            wider.append(f'{desktop_id}: desktop {dw}pt -> mobile {mw}pt')
+    assert not wider, 'mobile figure is not narrower:\n  ' + '\n  '.join(wider)
+
+
+def test_tablet_falls_between_mobile_and_desktop(rendered):
+    """The band is between the other two, so the figure must be as well.
+
+    Non-strict at the desktop end on purpose: the pie family declares tablet
+    *as* its desktop figure (see `PieChart.LAYOUTS`), because a pie's tight
+    bbox is already narrower than every card that renders one. Strict at the
+    mobile end, where no family has a reason to tie.
+    """
+    bad = []
+    for desktop_id, tablet_id in _pairs(rendered, 'tablet'):
+        dw = rendered[desktop_id]['size'][0]
+        tw = rendered[tablet_id]['size'][0]
+        mw = rendered[desktop_id + '@mobile']['size'][0]
+        if not mw < tw <= dw:
+            bad.append(f'{desktop_id}: mobile {mw}pt, tablet {tw}pt, '
+                       f'desktop {dw}pt')
+    assert not bad, 'tablet figure is out of order:\n  ' + '\n  '.join(bad)

@@ -42,6 +42,15 @@ KEYED_CHARTS = [
 #: `chart_view` always supplies an explicit key.
 DEFAULT_KEY_CHARTS = []
 
+#: Generators that accept the render axes without being ``chart_view``-bound
+#: because they *delegate* to one that is, so the axes do reach a cache key —
+#: just not their own. Exempt from `test_unmigrated_charts_do_not_accept_render_axes`,
+#: and required by `test_delegating_facades_forward_the_axes` to prove the
+#: forwarding actually happens rather than being asserted here.
+DELEGATING_FACADES = {
+    'generate_jobs_user_pie_chart': 'generate_jobs_usage_pie_chart',
+}
+
 
 def _public_charts():
     return {n: getattr(charts, n) for n in dir(charts) if n.startswith('generate_')}
@@ -117,12 +126,49 @@ def test_unmigrated_charts_do_not_accept_render_axes():
     ``chart_view`` has an unkeyed render axis — the aliasing bug this whole
     module exists to prevent."""
     for name, fn in _public_charts().items():
-        if hasattr(fn, 'chart_class'):
+        if hasattr(fn, 'chart_class') or name in DELEGATING_FACADES:
             continue
         params = set(_params(fn))
         assert not (params & {'layout', 'theme'}), (
             f'{name} accepts a render axis but is not bound via chart_view, '
             f'so the axis is missing from its cache key.')
+
+
+@pytest.mark.parametrize('facade,delegate', sorted(DELEGATING_FACADES.items()))
+def test_delegating_facades_forward_the_axes(facade, delegate, app):
+    """The exemption above is only sound if the facade really does pass the
+    axes down to the bound chart that owns the cache key.
+
+    Asserted by rendering rather than by reading the source: a facade that
+    accepted ``layout=`` and dropped it on the floor would satisfy every
+    signature check in this module while quietly serving desktop SVGs to
+    phones — the same class of silent aliasing bug the module header lists.
+    """
+    fn = getattr(charts, facade)
+    assert facade in _public_charts()
+    assert hasattr(getattr(charts, delegate), 'chart_class'), (
+        f'{delegate} is not chart_view-bound, so {facade} has no keyed home')
+
+    params = _params(fn)
+    assert params['layout'].default == 'desktop'
+    assert params['theme'].default == 'light'
+
+    # Reuse the fingerprint suite's payload rather than inventing one: the
+    # empty-state short-circuit would make a malformed hand-rolled dict pass
+    # this test for the wrong reason.
+    from chart_samples import CASES
+    sample = next(((a, k) for _id, f, a, k in CASES
+                   if f is fn and not _id.endswith('.empty')), None)
+    assert sample is not None, f'{facade} has no non-empty case in chart_samples'
+    args, kwargs = sample
+
+    with app.test_request_context('/'):
+        desktop = fn(*args, **kwargs)
+        mobile = fn(*args, **kwargs, layout='mobile')
+    assert '<svg' in desktop and '<svg' in mobile
+    assert desktop != mobile, (
+        f'{facade} accepts layout= but renders identically — it is not '
+        f'forwarding the axis to {delegate}')
 
 
 # --------------------------------------------------------------------------
@@ -165,7 +211,7 @@ def test_migrated_charts_declare_cache_config():
     for name, cls in _migrated().items():
         assert cls.cache_name, f'{cls.__name__} has no cache_name'
         assert cls.cache_maxsize, f'{cls.__name__} has no cache_maxsize'
-        assert cls.LAYOUTS and 'desktop' in cls.LAYOUTS and 'mobile' in cls.LAYOUTS
+        assert cls.LAYOUTS and {'desktop', 'mobile', 'tablet'} <= set(cls.LAYOUTS)
 
 
 def _cases_by_chart():
@@ -205,16 +251,21 @@ class TestRenderAxesAreKeyed:
     def test_layout_changes_the_key(self):
         from webapp.dashboards.charts.dualpanel import NodetypeHistoryChart as C
         assert self._keys(C) != self._keys(C, layout='mobile')
+        assert self._keys(C) != self._keys(C, layout='tablet')
 
     def test_theme_changes_the_key(self):
         from webapp.dashboards.charts.dualpanel import NodetypeHistoryChart as C
         assert self._keys(C) != self._keys(C, theme='dark')
 
+    LAYOUTS = ('desktop', 'mobile', 'tablet')
+    THEMES = ('light', 'dark')
+
     def test_axes_are_independent(self):
         from webapp.dashboards.charts.dualpanel import NodetypeHistoryChart as C
         seen = {self._keys(C, layout=l, theme=t)
-                for l in ('desktop', 'mobile') for t in ('light', 'dark')}
-        assert len(seen) == 4, 'the two axes are not independent in the key'
+                for l in self.LAYOUTS for t in self.THEMES}
+        assert len(seen) == len(self.LAYOUTS) * len(self.THEMES), (
+            'the two axes are not independent in the key')
 
     def test_every_migrated_chart_renders_under_every_combination(self, app):
         """Both axes must actually render, not merely be accepted.
@@ -225,8 +276,8 @@ class TestRenderAxesAreKeyed:
         cases = _cases_by_chart()
         assert cases, 'no migrated chart has a sample case'
         for fn, (args, kwargs) in cases.items():
-            for lay in ('desktop', 'mobile'):
-                for thm in ('light', 'dark'):
+            for lay in self.LAYOUTS:
+                for thm in self.THEMES:
                     with app.test_request_context('/'):
                         out = fn(*args, **kwargs, layout=lay, theme=thm)
                     assert '<svg' in out, (

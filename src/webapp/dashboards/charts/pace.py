@@ -24,7 +24,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 import matplotlib.colors
-import matplotlib.dates as mdates
 import matplotlib.patches as mpatches
 import numpy as np
 
@@ -133,7 +132,12 @@ class PaceChart(BaseChart):
     #: facility-scope fanout — well under 10 MB of cached SVG per process.
     cache_maxsize = 192
     empty_message = 'No allocations available'
-    LAYOUTS = profile((10, 4))
+    #: Tablet: the narrowest desktop figure of the wide families, and still
+    #: the worst reader — 6.3px at a 624px card, because its smallest text is
+    #: 6pt where the others' is 8.25pt. 6.5in lands the tight bbox at ~590pt.
+    #: The `TABLET_DEFAULTS` legend cap does real work here: 20 project rows
+    #: set the figure height on their own, whatever `figsize` says.
+    LAYOUTS = profile((10, 4), (4.0, 3.0), (6.5, 3.2))
     #: Normalized to the 0.3 every other chart uses (was 0.2, undocumented).
     grid = {'alpha': 0.3}
 
@@ -208,9 +212,15 @@ class PaceChart(BaseChart):
             self.sort_by = 'size'
             self.rank_metric = proj_size
 
+        # `top_n` defaults to 20, which is the single worst legend in the app
+        # on a phone: twenty rows of "PROJ0001 (1.2M/yr)" underneath a 3.4in
+        # figure would be taller than the chart. The layout clamps it, and the
+        # surplus projects fold into the existing "Other" band rather than
+        # disappearing — the areas still sum to the same total.
+        top_n = min(self.top_n, self.layout.max_legend_entries or self.top_n)
         self.top_projs = [pc for pc, _ in sorted(
             self.rank_metric.items(), key=lambda kv: kv[1], reverse=True
-        )[:self.top_n]]
+        )[:top_n]]
         palette = UNITY_STACK_10 if len(self.top_projs) <= 10 else UNITY_STACK_20
         self.color_map = {pc: palette[i] for i, pc in enumerate(self.top_projs)}
 
@@ -336,9 +346,8 @@ class PaceChart(BaseChart):
                 color=_PACE_OTHER_COLOR,
                 label=f'{self.other_label} '
                       f'({_fmt(self.group_sort_totals[OTHER_KEY])})'))
-        legend = ax.legend(handles=handles, loc='center left',
-                           bbox_to_anchor=self.legend_anchor,
-                           fontsize=self.legend_fontsize, frameon=False)
+        legend = ax.legend(handles=handles, frameon=False,
+                           **self.legend_kwargs(layout))
 
         # Tag each top-N legend entry with the project-modal URL. The trailing
         # "Other" patch (if present) gets none — it is not a single project.
@@ -353,11 +362,13 @@ class PaceChart(BaseChart):
 
     def decorate(self, ax, layout, theme):
         ax.set_xlim(self.window_start, self.window_end)
-        ax.xaxis.set_major_locator(mdates.MonthLocator())
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
         ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-        ax.set_ylabel('Rate (per year)')
+        ax.set_ylabel('Rate (per year)', **self.label_kw(layout))
         self.apply_grid(ax, theme)
 
     def finish(self, fig, axes, layout, theme):
-        fig.autofmt_xdate()
+        # Was a `MonthLocator` with `%b %Y` on every tick — twelve labels
+        # repeating the same year across a default 360-day window. The shared
+        # date axis still lands on month boundaries and still says the year,
+        # once, where it changes.
+        self.apply_date_axis(axes, layout)

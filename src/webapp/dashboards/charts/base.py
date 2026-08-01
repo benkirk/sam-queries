@@ -11,9 +11,11 @@ instead — `links.py` and `series.py` import no matplotlib, enforced by test.
 ## The lifecycle
 
     render(layout, theme)
+        self.layout/self.theme    resolved, for hooks that run pre-draw
         prepare()                 raw payload -> plot-ready state on self
         is_empty()  -> empty_state()      short-circuit
         make_figure(layout)       plt.subplots(figsize=layout.figsize)
+        apply_tick_fontsize()     layout.base_fontsize on every Axes
         draw(axes, ...)           REQUIRED — the family draws the marks
         decorate(axes, ...)       labels, ticks, grid, scale, theme chrome
         add_legend(axes, ...)     placement from layout, colours from theme
@@ -37,6 +39,7 @@ from io import StringIO
 
 import matplotlib.pyplot as plt
 
+from sam import fmt
 from webapp.caching import caching
 from webapp.caching.chart import content_hash
 from webapp.dashboards.charts.layout import resolve_layout
@@ -71,9 +74,20 @@ class BaseChart:
     #: it is a Redis key prefix (`redis_chart.py`) and test_redis_cache.py
     #: names several directly.
     cache_name: str = None
+
+    #: In-process LRU capacity. **Redis ignores this entirely** — under Redis
+    #: eviction is instance-global `allkeys-lru` — so it only bounds the
+    #: no-Redis fallback, where overflowing costs a re-render rather than
+    #: correctness. A live second layout splits every chart's key space, so
+    #: the three tightest budgets were raised when `mobile` shipped and again
+    #: when `tablet` did; the rest had enough slack. Sizes are per-chart
+    #: because the working sets differ
+    #: by two orders of magnitude (one facility pie vs the jobs explorer's
+    #: per-filter-set fanout).
     cache_maxsize: int = 128
 
-    #: `{'desktop': Layout, 'mobile': Layout}` — build with `layout.profile`.
+    #: `{'desktop': Layout, 'mobile': Layout, 'tablet': Layout}` — build with
+    #: `layout.profile`.
     LAYOUTS: dict = None
 
     # --- rendering defaults ----------------------------------------------
@@ -84,6 +98,28 @@ class BaseChart:
     #: even where the differences look accidental; C12 normalizes them
     #: deliberately.
     grid: dict = {'alpha': 0.3}
+
+    #: Legend anchor for `legend_placement='right'`. Per-family, because the
+    #: dual-panel charts put theirs *inside* the axes and override wholesale.
+    legend_anchor = (1.01, 0.5)
+
+    #: Legend text size when the layout does not dictate one (i.e. desktop).
+    legend_fontsize = 11
+
+    #: Columns to spread a `legend_placement='below'` legend across. Two is
+    #: right for the short labels most charts carry; charts with long labels
+    #: (usernames, project codes plus a formatted value) set 1.
+    legend_ncol_below = 2
+
+    #: Axis-label size when the layout does not dictate one. None means "leave
+    #: it to rcParams", which is what every chart but two did before the axis
+    #: existed.
+    axis_label_fontsize = None
+
+    #: Tick-label size when the layout does not dictate one, or None to take
+    #: `layout.base_fontsize` (which is the rcParams value on desktop, so None
+    #: and 11 are the same picture).
+    tick_fontsize = None
 
     # --- lifecycle hooks (override what differs) -------------------------
 
@@ -130,23 +166,116 @@ class BaseChart:
         kwargs.setdefault('color', theme.grid)
         ax.grid(True, **kwargs)
 
-    def link_legend(self, legend, bands, url_fn):
-        """Wire drill links onto a reversed proxy-`Patch` legend.
+    def link_legend(self, legend, bands, url_fn, *, ordered=False):
+        """Wire drill links onto a proxy-`Patch` legend.
 
-        Zips the reversed bands against `get_patches()`/`get_texts()`, which
-        are positionally addressable only because the legend was built from
-        proxy Patches rather than the BarContainers.
+        Zips the bands against `get_patches()`/`get_texts()`, which are
+        positionally addressable only because the legend was built from proxy
+        Patches rather than the BarContainers.
+
+        `bands` is in *plot* order (bottom to top) and reversed here, matching
+        how the legend is built — unless `ordered=True`, which says the caller
+        already resolved legend order. That matters once a layout caps the
+        legend: a capped legend is no longer `reversed(bands)`, and blindly
+        reversing would put valid-looking hrefs on the wrong swatches, which
+        is the exact failure the fingerprint cannot see (it proves the href
+        *strings*, not the artists they land on).
 
         `Series.is_linkable` is the whole rule — "Others", unnamed entities
         and aggregates are inert by construction.
         """
+        entries = list(bands) if ordered else list(reversed(list(bands)))
         patches, texts = legend.get_patches(), legend.get_texts()
-        for band, patch, text in zip(reversed(list(bands)), patches, texts):
+        for band, patch, text in zip(entries, patches, texts):
             if not band.is_linkable:
                 continue
             url = url_fn(band.link_key)
             patch.set_url(url)
             text.set_url(url)
+
+    # --- the layout axis --------------------------------------------------
+
+    def legend_kwargs(self, layout, **overrides):
+        """Placement kwargs for `ax.legend()`, from `layout.legend_placement`.
+
+        'right' reproduces today's call exactly. 'below' puts the legend under
+        the axes in `legend_ncol_below` columns — the only placement that
+        works once the figure is phone-width, because a side legend on a 4.5in
+        figure eats a third of it before the plot gets any.
+
+        Callers still pass their own `frameon`/`labelspacing`; this owns
+        position and nothing else.
+        """
+        if layout.legend_placement == 'below':
+            kwargs = dict(loc='upper center', bbox_to_anchor=(0.5, -0.22),
+                          ncol=self.legend_ncol_below)
+        else:
+            kwargs = dict(loc='center left', bbox_to_anchor=self.legend_anchor)
+        kwargs['fontsize'] = layout.legend_fontsize or self.legend_fontsize
+        kwargs.update(overrides)
+        return kwargs
+
+    def legend_entry_cap(self, layout, n):
+        """How many of `n` legend entries this layout affords."""
+        cap = layout.max_legend_entries
+        return n if cap is None else min(n, cap)
+
+    def label_kw(self, layout):
+        """`fontsize` kwargs for axis labels, or `{}` to leave it to rcParams.
+
+        Returned as a dict rather than a value because `fontsize=None` is not
+        the same as omitting it.
+
+        The layout wins where it states a size, and defers where it does not —
+        the rule `legend_fontsize` already used. This used to read
+        `layout.is_mobile`, which was a boolean asked of a vocabulary that now
+        has three values; expressing it as None-means-defer means a new
+        profile needs no new branch here.
+        """
+        size = layout.axis_label_fontsize or self.axis_label_fontsize
+        return {'fontsize': size} if size is not None else {}
+
+    def apply_date_axis(self, ax, layout):
+        """Ticks and labels for a datetime x axis, at either layout.
+
+        Replaces `fig.autofmt_xdate()`, and deliberately does not rotate: the
+        rotation existed to fit `2026-07-26` repeated across every tick, and
+        `fmt.mpl_date_ticks` removes the repetition instead. Horizontal labels
+        give the plot back the vertical band the slant was using — which is
+        worth more on a phone but is not worth nothing on a dashboard.
+
+        Tick count comes from the layout, so a phone gets five where a
+        dashboard gets twelve.
+
+        Charts whose x axis is categorical — the jobs timeline plots band
+        indices against period strings the plugin already formatted — cannot
+        use this. They call `fmt.compact_date_labels` on the label strings
+        instead, which applies the same vocabulary.
+        """
+        locator, formatter = fmt.mpl_date_ticks(max_ticks=layout.max_ticks)
+        ax.xaxis.set_major_locator(locator)
+        ax.xaxis.set_major_formatter(formatter)
+        # The offset text is a separate Text artist that `tick_params` does
+        # not reach. Nothing sets it now that context rides the tick labels,
+        # but sizing it keeps a stray one from rendering at the rcParams
+        # default beside 9pt ticks.
+        ax.xaxis.get_offset_text().set_fontsize(layout.base_fontsize)
+
+    def apply_tick_fontsize(self, axes, layout):
+        """Size tick labels from the layout.
+
+        Applied centrally in `render()` rather than left to each `decorate()`,
+        because a chart that forgets is invisible until someone looks at a
+        phone. Desktop's `base_fontsize` equals the rcParams `font.size`, so
+        this is a no-op there and the desktop fingerprints do not move.
+
+        Three-way fallback, same None-means-defer rule as `label_kw`: the
+        layout's size, else the chart's own, else the layout's base size.
+        """
+        size = (layout.tick_fontsize or self.tick_fontsize
+                or layout.base_fontsize)
+        for ax in (axes if isinstance(axes, (tuple, list)) else (axes,)):
+            ax.tick_params(labelsize=size)
 
     # --- the driver -------------------------------------------------------
 
@@ -154,11 +283,20 @@ class BaseChart:
         lay = resolve_layout(self.LAYOUTS, layout)
         thm = resolve_theme(theme)
 
+        # Also on `self`, because `prepare()` runs before the drawing hooks
+        # and some charts need the layout while shaping data, not just while
+        # drawing it: a pie caps its *slices* on a phone rather than leaving
+        # unlabelled wedges, and the pace chart clamps its top-N grouping.
+        # The drawing hooks still take it as an argument — that is the
+        # signature, and `self.layout` is not an invitation to stop passing it.
+        self.layout, self.theme = lay, thm
+
         self.prepare()
         if self.is_empty():
             return empty_state(self.empty_message, self.empty_classes)
 
         fig, axes = self.make_figure(lay)
+        self.apply_tick_fontsize(axes, lay)
         self.draw(axes, lay, thm)
         self.decorate(axes, lay, thm)
         self.add_legend(axes, lay, thm)

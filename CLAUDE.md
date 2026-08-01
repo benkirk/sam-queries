@@ -575,17 +575,66 @@ charts/
 bespoke).
 
 **Lifecycle** — override only what differs; all hooks default to no-ops:
-`prepare()` → `is_empty()`/`empty_state` → `make_figure()` → `draw()` →
-`decorate()` → `add_legend()` → `finish()` → SVG.
+`prepare()` → `is_empty()`/`empty_state` → `make_figure()` →
+`apply_tick_fontsize()` → `draw()` → `decorate()` → `add_legend()` →
+`finish()` → SVG.
+
+### The `layout` axis (mobile / tablet / desktop)
+
+Every chart renders at three figure sizes, banded on Bootstrap breakpoints:
+**mobile ≤767.98px · tablet 768–1199.98px · desktop ≥1200px**. Desktop is the
+identity — it reproduces pre-axis output byte for byte. The other two exist
+because an 18in figure scaled into a small card puts 9-11pt labels on screen
+at ~2px (phone) or ~6px (iPad portrait), which no CSS can fix.
+
+Mobile is a redesign — legend below, one 9pt size for every text role, capped
+entries. **Tablet is desktop with a smaller figure**: `TABLET_DEFAULTS` names
+only `max_legend_entries` and `max_ticks`, so placement, rotation and all four
+font sizes inherit desktop's per-family values.
+
+| | |
+|---|---|
+| **Declare** | `LAYOUTS = profile(desktop_figsize, mobile_figsize, tablet_figsize, **desktop_kwargs, mobile={...}, tablet={...})`. Keyword args configure **desktop**; overrides go in the `mobile`/`tablet` dicts — a bare keyword that collides with a desktop parameter silently configures desktop. |
+| **Consume** | `layout.figsize` / `base_fontsize` / `legend_placement` / `max_legend_entries` / `max_ticks` / `label_rotation`, plus `legend_fontsize` / `axis_label_fontsize` / `tick_fontsize`, each `int | None` where **None means defer to the chart's own attribute**. Helpers on `BaseChart`: `legend_kwargs()`, `legend_entry_cap()`, `label_kw()`. |
+| **Transport** | `static/js/layout-axis.js` sets a `sam_layout` cookie **and** injects `?layout=` into every htmx request; routes read `webapp.utils.htmx.read_layout()`. Both are needed — 9 of 18 call sites render in a full-page GET that htmx never touches. Two media queries, **narrowest asked first**. |
+| **Cache** | `chart_view` composes `layout` into the chart key; `user_aware_cache_key` composes it into cached *HTML*. Forget the latter and a cached page serves one layout to everyone. |
+
+`render()` sets `self.layout` before `prepare()`, so data-shaping hooks can
+consult it — pies cap **slices** on mobile rather than legend rows, because an
+unlabelled wedge is also an unlabelled drill target.
+
+Sizing rule: aim the tight-bbox intrinsic width at the **narrowest card the
+family actually renders into** (viewport − 144px on the status pages, − 82px
+on the jobs cards), and measure it — the bbox is a function of the legend
+contents, so it cannot be derived from figsize.
+
+### Date axes
+
+`self.apply_date_axis(ax, layout)` in `finish()` — never `fig.autofmt_xdate()`,
+whose rotation exists to fit labels the smart axis removes. The tick carries
+what changes and a second line carries the context, drawn only where it
+changes: `00:00 / Jul 26`, `01:00`, `02:00`. Vocabulary lives in
+`fmt.mpl_date_ticks()`; `fmt.date_str` stays ISO for tables.
+
+A **categorical** axis of pre-formatted period strings (the jobs timeline
+plots band indices) calls `fmt.compact_date_labels()` on the labels instead —
+same vocabulary, and unparsable grains come back unchanged.
+
+Design + measurements: `docs/plans/MOBILE_CHARTS.md`,
+`docs/plans/TABLET_CHARTS.md`.
 
 ### Adding a chart
 
 1. Subclass the closest family; set `cache_name`, `cache_maxsize`,
-   `empty_message`, `LAYOUTS = profile((w, h))`.
+   `empty_message`, `LAYOUTS = profile((w, h), (mobile_w, mobile_h),
+   (tablet_w, tablet_h))`.
 2. `cache_key` is a **staticmethod over the raw constructor arguments** — a
    cache hit must never construct the chart or run `prepare()`.
 3. Bind with `chart_view(...)` in `__init__.py`, add to `__all__`.
-4. Add a case to `tests/unit/chart_samples.py` (a gate requires one).
+4. Add a case to `tests/unit/chart_samples.py` (a gate requires one). It is
+   fingerprinted at **every** layout automatically.
+5. Pass `layout=read_layout()` at the call site. Fragments registered through
+   `utils/fragments.py` get it for free.
 
 ### Drill-downs
 
@@ -617,15 +666,28 @@ a row drill — row drills resolve within the clicked chart's pane.
    `jobs_metrics.py` — enforced by `test_chart_module_boundaries.py`.
 ❌ **DON'T** reorder the `chart_view` calls: that order is the admin Caching
    card's row order, and cache names are Redis key prefixes.
+❌ **DON'T** put a mobile or tablet override in `profile()`'s bare keywords —
+   those are desktop. Use `mobile={...}` / `tablet={...}`, which validate
+   against `Layout`'s fields.
+❌ **DON'T** accept a `layout` argument in a fragment renderer and then call a
+   delegate without it — the fragment still renders, at desktop, forever.
+   `test_renderers_forward_the_layout_they_are_given` is the gate.
+❌ **DON'T** cap a legend without passing `ordered=True` to `link_legend` — it
+   zips bands against patches by position, and a capped legend is no longer
+   `reversed(bands)`. The fingerprint proves href *strings*, not the artists
+   carrying them, so a misaligned drill looks green.
 ✅ **DO** regenerate the fingerprint snapshot in the *same commit* as an
    intentional visual change:
    `CHART_FINGERPRINT_REGEN=1 pytest tests/unit/test_chart_fingerprints.py`.
-   A fingerprint delta in a commit that didn't declare one is a bug.
+   A fingerprint delta in a commit that didn't declare one is a bug. **A
+   desktop delta in a mobile-tuning commit always is.**
 ✅ **DO** run `sam-admin cache --refresh --category chart` after deploying a
    visible change — keys hash *input data*, not rendering code, so warm Redis
    entries serve old-code SVGs for up to 600 s.
 
-Design + rationale: `docs/plans/CHART_ARCHITECTURE.md`.
+Design + rationale: `docs/plans/CHART_ARCHITECTURE.md` (the hierarchy),
+`docs/plans/MOBILE_CHARTS.md` + `docs/plans/TABLET_CHARTS.md` (the layout
+axis).
 
 ---
 

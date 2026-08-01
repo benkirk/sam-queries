@@ -42,7 +42,18 @@ _USAGE_METRIC_YLABELS = {
 class StackedSeriesChart(BaseChart):
     """Bands accumulated bottom-to-top, with an optional clickable legend."""
 
-    LAYOUTS = profile((18, 5))
+    #: `label_rotation` is unread by the *date* charts in this family — the
+    #: smart date axis shortens labels enough to leave them horizontal. It
+    #: survives for `JobsTimeseriesChart`, whose categorical axis falls back
+    #: to rotation when its period labels are a grain we cannot compact.
+    #: Tablet: 10in. This family has the widest legend labels in the package
+    #: — the status page's "WYOM0247 (33,408)" is a name *and* a value — so
+    #: its tight bbox runs ~130pt past what a sample payload predicts, and 11in
+    #: measured 8.4px in the narrowest card any chart sits in (625px, the
+    #: status page nests two card bodies). Proportionally taller than desktop:
+    #: 18:5 at 10in is a 2.8in strip, and the band count does not shrink with
+    #: the figure.
+    LAYOUTS = profile((18, 5), (4.0, 2.8), (10, 3.4), label_rotation=30)
 
     #: 'bar' — discrete bars per x position; 'area' — filled stackplot.
     stack_mode = 'bar'
@@ -131,32 +142,53 @@ class StackedSeriesChart(BaseChart):
         ax.stackplot(self.x, *matrix, colors=self.colors, alpha=self.area_alpha)
 
     def decorate(self, ax, layout, theme):
-        ax.set_ylabel(self.ylabel())
+        ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
         ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
         self.apply_grid(ax, theme)
 
+    def legend_entries(self, layout):
+        """`[(band, colour), ...]` in legend order, capped for the layout.
+
+        Reversed so the legend reads top-to-bottom matching the visual stack.
+
+        When the cap bites, the trailing inert band — "Others", the grey
+        aggregate that sits at the bottom of every stack — is *kept* and the
+        smallest named bands are dropped instead. Dropping "Others" would
+        leave a visible grey band with nothing in the legend explaining it,
+        which is worse than dropping a sliver that is already hard to see.
+        Every band is still drawn either way; only the legend is capped.
+        """
+        entries = list(zip(reversed(self.bands), reversed(self.colors)))
+        cap = self.legend_entry_cap(layout, len(entries))
+        if cap >= len(entries):
+            return entries
+        keep_tail = entries[-1:] if not entries[-1][0].is_linkable else []
+        return entries[:cap - len(keep_tail)] + keep_tail
+
     def add_legend(self, ax, layout, theme):
-        if not self.show_legend:
+        if not self.show_legend or layout.legend_placement == 'none':
             return
-        # Reversed so the legend reads top-to-bottom matching the visual stack.
+        entries = self.legend_entries(layout)
         handles = [mpatches.Patch(color=c, label=self.legend_label(b))
-                   for b, c in zip(reversed(self.bands), reversed(self.colors))]
+                   for b, c in entries]
         legend = ax.legend(
             handles=handles,
-            loc='center left',
-            bbox_to_anchor=self.legend_anchor,
             frameon=False,
-            fontsize=self.legend_fontsize,
             title_fontsize=12,
+            **self.legend_kwargs(layout),
             **({'labelspacing': self.legend_labelspacing}
                if self.legend_labelspacing else {}),
         )
         drill = self.legend_drill
         if drill is not None:
-            self.link_legend(legend, self.bands, drill.url)
+            # `ordered=True`: `entries` is already in legend order and may be
+            # capped, so re-reversing it would misalign hrefs onto the wrong
+            # swatches.
+            self.link_legend(legend, [b for b, _ in entries], drill.url,
+                             ordered=True)
 
     def finish(self, fig, axes, layout, theme):
-        fig.autofmt_xdate()
+        self.apply_date_axis(axes, layout)
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +376,13 @@ class UserProjAreaChart(StackedSeriesChart):
     stack_mode = 'area'
     palette = UNITY_STACK_20
     palette_reverse = True
+    #: This chart is deliberately set a tier larger than the rest of the
+    #: stacked family — it is the status dashboard's headline chart.
     legend_fontsize = 13
+    axis_label_fontsize = 13
+    tick_fontsize = 12
+    #: Long labels ("PROJ0001 (1,234)"), so a below-legend gets one column.
+    legend_ncol_below = 1
 
     def __init__(self, timeseries, link_kind=None, rank_by: str = 'current'):
         self.timeseries = timeseries or {}
@@ -388,8 +426,11 @@ class UserProjAreaChart(StackedSeriesChart):
         return self.timeseries.get('metric_label', 'Jobs')
 
     def decorate(self, ax, layout, theme):
-        ax.set_ylabel(self.ylabel(), fontsize=13)
-        ax.tick_params(axis='both', labelsize=12)
+        # Sizes are class attributes now (`axis_label_fontsize`,
+        # `tick_fontsize`) so the layout can override them on a phone, where
+        # this chart's deliberately-larger 13/12pt chrome would crowd out the
+        # plot rather than emphasize it.
+        ax.set_ylabel(self.ylabel(), **self.label_kw(layout))
         ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
         self.apply_grid(ax, theme)
 
@@ -483,8 +524,19 @@ class JobsTimeseriesChart(StackedSeriesChart):
         step = max(1, len(self.labels) // layout.max_ticks)
         ticks = list(range(0, len(self.labels), step))
         ax.set_xticks(ticks)
-        ax.set_xticklabels([self.labels[i] for i in ticks], rotation=30,
-                           ha='right')
+        # This axis is categorical — band indices against period strings the
+        # plugin already formatted (`2026-07-26` / `2026-07` / `2026`), so a
+        # matplotlib date formatter cannot reach it. `compact_date_labels`
+        # applies the same vocabulary to the strings, which matters because
+        # this chart sits one tab away from ones that do use the date axis.
+        # A grain it cannot parse (week, quarter) comes back unchanged.
+        shown = [self.labels[i] for i in ticks]
+        compact = fmt.compact_date_labels(shown)
+        # Rotation only if the labels are still long, i.e. nothing was
+        # compacted — two-line labels read badly on a slant.
+        rotation = 0 if compact != shown else layout.label_rotation
+        ax.set_xticklabels(compact, rotation=rotation,
+                           ha='center' if rotation == 0 else 'right')
         ax.set_xlim(-0.5, len(self.labels) - 0.5)
         super().decorate(ax, layout, theme)
 
