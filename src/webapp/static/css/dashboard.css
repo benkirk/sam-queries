@@ -939,6 +939,34 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     letter-spacing: 0.5px;
 }
 
+/* Theme-aware replacement for Bootstrap's .table-light.
+ *
+ * `.table-light` hardcodes `--bs-table-bg:#f8f9fa` and `--bs-table-color:#000`,
+ * and Bootstrap's `[data-bs-theme=dark]` block does NOT redefine
+ * `--bs-light-rgb` or any of the `.table-*` variants — so every one of them
+ * stays light on a dark page. There is no stock class that flips; a SAM class
+ * driven by tier-2 tokens is the only option that does.
+ *
+ * Values chosen to match `.table-light` exactly in light mode:
+ * `--surface-tertiary` IS #f8f9fa. The colour is `--text-primary` rather than
+ * Bootstrap's `#000`, matching the rest of the app's body copy.
+ *
+ * Used on `<thead>` (the common case), and on the `<tr>`/`<tfoot>` rows that
+ * want the same recessed treatment. */
+.table-subtle {
+    --bs-table-bg: var(--surface-tertiary);
+    --bs-table-color: var(--text-primary);
+    --bs-table-border-color: var(--border-default);
+    --bs-table-striped-bg: var(--surface-secondary);
+    --bs-table-striped-color: var(--text-primary);
+    --bs-table-active-bg: var(--surface-secondary);
+    --bs-table-active-color: var(--text-primary);
+    --bs-table-hover-bg: var(--surface-secondary);
+    --bs-table-hover-color: var(--text-primary);
+    color: var(--bs-table-color);
+    border-color: var(--bs-table-border-color);
+}
+
 .table-hover tbody tr:hover {
     background-color: rgba(var(--ncar-teal-rgb), 0.05);
 }

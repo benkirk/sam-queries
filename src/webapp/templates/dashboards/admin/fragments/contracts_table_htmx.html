@@ -27,7 +27,7 @@
                while the Actions column got too little to hold two buttons on
                one line — which is what made every row ~95px tall. #}
             <table class="table table-sm table-hover align-middle mb-0">
-                <thead class="table-light">
+                <thead class="table-subtle">
                     <tr>
                         <th style="width:14%">Name / Number</th>
                         <th style="width:34%">Title / Count</th>
@@ -49,7 +49,7 @@
                    three quarters of the table look clickable and do nothing.
                    They stay listed — they are still editable rows. #}
                 <tbody>
-                    <tr class="table-light fw-semibold{% if not cs.active %} opacity-50{% endif %}
+                    <tr class="table-subtle fw-semibold{% if not cs.active %} opacity-50{% endif %}
                                {%- if cs_contracts %} cursor-pointer{% endif %}"
                         {% if cs_contracts %}
                         data-bs-toggle="collapse"

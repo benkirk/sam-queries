@@ -43,7 +43,7 @@
     Used by both tree macros below so the affordance stays identical. -#}
 {% macro shared_badge() -%}
 {{ term('shared', g_shared_alloc(), rich=True, title='Shared allocation',
-        extra_class='badge bg-secondary bg-opacity-25 text-dark border small') }}
+        extra_class='badge bg-secondary bg-opacity-25 text-body-emphasis border small') }}
 {%- endmacro %}
 
 {% macro render_project_tree(nodes,

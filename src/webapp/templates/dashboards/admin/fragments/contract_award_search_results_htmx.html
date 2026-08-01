@@ -29,7 +29,7 @@
     <div class="d-flex align-items-start gap-2">
         <div class="flex-grow-1 min-w-0">
             <div>
-                <span class="badge bg-light text-dark border me-1">
+                <span class="badge bg-body-tertiary text-body-emphasis border me-1">
                     {{ 'NSF' if award.provenance.startswith('NSF') else award.provenance }}
                 </span>
                 {% if award.contract_number %}

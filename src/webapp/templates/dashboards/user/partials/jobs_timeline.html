@@ -126,7 +126,7 @@
      a bar-click .show() and a chevron toggle both fire the fetch. The owner
      rides the band drill URL as the entity's own filter param. #}
   {% macro owner_jobs_drill(dt_id, owner, drill_url, band_label) %}
-  <div class="p-2 bg-light" id="{{ dt_id }}"
+  <div class="p-2 bg-body-tertiary" id="{{ dt_id }}"
        hx-get="{{ drill_url }}&{{ entity.drill_param }}={{ owner | urlencode }}&target_id={{ dt_id }}"
        hx-trigger="shown.bs.collapse from:closest tr.collapse once"
        hx-swap="innerHTML">
@@ -147,7 +147,7 @@
   <div class="small text-muted mt-2 mb-1">Period breakdown</div>
   <div class="table-responsive">
     <table class="table table-sm table-hover align-middle mb-0">
-      <thead class="table-light">
+      <thead class="table-subtle">
         <tr>
           <th>Period</th>
           <th class="text-end">Jobs</th>
@@ -183,7 +183,7 @@
           </tr>
           <tr class="collapse" id="{{ _rid }}-row" data-no-persist>
             <td colspan="5" class="p-0 border-0">
-              <div class="p-2 bg-light">
+              <div class="p-2 bg-body-tertiary">
                 <div class="table-responsive">
                   <table class="table table-sm table-hover align-middle mb-0">
                     <thead>
@@ -301,7 +301,7 @@
           {% if drill_url %}
           <tr class="collapse" id="{{ _rid }}-row" data-no-persist>
             <td colspan="5" class="p-0 border-0">
-              <div class="p-2 bg-light" id="{{ _rid }}-content"
+              <div class="p-2 bg-body-tertiary" id="{{ _rid }}-content"
                    hx-get="{{ drill_url }}&target_id={{ _rid }}-content"
                    hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                    hx-swap="innerHTML">

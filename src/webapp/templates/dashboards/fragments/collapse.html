@@ -26,7 +26,7 @@
 
       {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 
-      <tr class="table-light fw-semibold">
+      <tr class="table-subtle fw-semibold">
           <td class="cursor-pointer" {{ collapse_toggle('grp-' ~ id) }}>…</td>
           <td class="cursor-pointer" {{ collapse_toggle('grp-' ~ id) }}>…</td>
           <td class="text-end">{{ edit_modal_button(...) }}</td>   {# no toggle #}

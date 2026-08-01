@@ -87,7 +87,7 @@
        detail row reorder together under client sort. #}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
           {# Initial sort indicator follows the active metric pill — the
              server ranks rows by it (and the top-N cut is taken in it). #}
           <tr>
@@ -152,7 +152,7 @@
                    shown.bs.collapse (not click) so it fires under a
                    pie-wedge open and under nav-view-persistence restore too.
                    Carries the pane's date window + shared filters. #}
-                <div class="p-2 bg-light" id="{{ _rid }}-content"
+                <div class="p-2 bg-body-tertiary" id="{{ _rid }}-content"
                      hx-get="{{ jobs_fragment_url }}?machine={{ machine }}&{{ entity.drill_param }}={{ val }}{% if params.start %}&start={{ params.start }}{% endif %}{% if params.end %}&end={{ params.end }}{% endif %}{% if params.queue %}&queue={{ params.queue }}{% endif %}{% if params.qos %}&qos={{ params.qos }}{% endif %}{% if params.exit_status %}&exit_status={{ params.exit_status }}{% endif %}&target_id={{ _rid }}-content"
                      hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                      hx-swap="innerHTML">
