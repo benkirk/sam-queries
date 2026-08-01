@@ -2,7 +2,7 @@
 
 ``generate_jobs_histogram`` renders the plugin's self-describing histogram
 envelope; ``generate_jobs_user_pie_chart`` renders the jobs_usage_by('user')
-envelope with clickable ``#job-user-<username>`` sentinels routed by
+envelope with clickable ``#sam/row/data-job-user/<username>`` sentinels routed by
 svg-chart-links.js. matplotlib's SVG backend rasterizes most text to paths,
 so assertions favor behavior (placeholders, sentinels, distinct output per
 metric) over label grepping.
@@ -143,12 +143,12 @@ def test_histogram_dimension_in_cache_key():
 
 
 def test_histogram_bars_carry_bucket_sentinels():
-    """Populated bands are wrapped in #jh-bar-<index> anchors (index-keyed,
+    """Populated bands are wrapped in #sam/row/data-jh-bucket/<index> anchors (index-keyed,
     matching data-jh-bucket rows); empty bands get no anchor."""
     svg = generate_jobs_histogram(_hist(counts=(10, 5, 0)))
-    assert '#jh-bar-0' in svg
-    assert '#jh-bar-1' in svg
-    assert '#jh-bar-2' not in svg
+    assert '#sam/row/data-jh-bucket/0' in svg
+    assert '#sam/row/data-jh-bucket/1' in svg
+    assert '#sam/row/data-jh-bucket/2' not in svg
 
 
 def test_histogram_sentinels_follow_job_count_not_metric():
@@ -156,7 +156,7 @@ def test_histogram_sentinels_follow_job_count_not_metric():
     with jobs but zero cpu_hours must still be drillable."""
     h = _hist(counts=(10, 5, 3), cpu_hours=(100.0, 50.0, 0.0))
     svg = generate_jobs_histogram(h, metric='cpu_hours')
-    assert '#jh-bar-2' in svg
+    assert '#sam/row/data-jh-bucket/2' in svg
 
 
 def test_histogram_count_vector_in_cache_key():
@@ -186,9 +186,9 @@ def test_histogram_log_scale_renders_and_differs_from_linear():
 def test_histogram_log_scale_keeps_bucket_sentinels():
     """The bars stop stacking on a log axis but stay drillable."""
     svg = generate_jobs_histogram(_hist(counts=(10, 5, 0)), log_y=True)
-    assert '#jh-bar-0' in svg
-    assert '#jh-bar-1' in svg
-    assert '#jh-bar-2' not in svg
+    assert '#sam/row/data-jh-bucket/0' in svg
+    assert '#sam/row/data-jh-bucket/1' in svg
+    assert '#sam/row/data-jh-bucket/2' not in svg
 
 
 def test_histogram_log_scale_in_cache_key():
@@ -276,7 +276,7 @@ def test_histogram_segments_ascending_with_remainder_first():
 
 
 def test_histogram_every_segment_carries_sentinel():
-    """A stacked bucket's segments all carry the SAME #jh-bar-<i> anchor
+    """A stacked bucket's segments all carry the SAME #sam/row/data-jh-bucket/<i> anchor
     (click anywhere on the bar drills the band); a zero-job bucket stays
     inert even in a stacked chart."""
     rich = _with_owners(_hist(counts=(10, 5, 0)), {
@@ -284,8 +284,8 @@ def test_histogram_every_segment_carries_sentinel():
         1: {'alice': _owner(5, 50.0)},
     })
     svg = generate_jobs_histogram(rich)
-    assert svg.count('#jh-bar-0') >= 2
-    assert '#jh-bar-2' not in svg
+    assert svg.count('#sam/row/data-jh-bucket/0') >= 2
+    assert '#sam/row/data-jh-bucket/2' not in svg
 
 
 def test_histogram_log_scale_unstacks_owner_bars():
@@ -299,8 +299,8 @@ def test_histogram_log_scale_unstacks_owner_bars():
     })
     log = generate_jobs_histogram(rich, log_y=True)
     assert '<svg' in log
-    assert log.count('#jh-bar-0') == 1
-    assert generate_jobs_histogram(rich).count('#jh-bar-0') >= 2
+    assert log.count('#sam/row/data-jh-bucket/0') == 1
+    assert generate_jobs_histogram(rich).count('#sam/row/data-jh-bucket/0') >= 2
 
 
 def test_histogram_flat_fallback_without_owners():
@@ -308,7 +308,7 @@ def test_histogram_flat_fallback_without_owners():
     same sentinels, renders fine."""
     svg = generate_jobs_histogram(_hist(counts=(10, 5, 0)))
     assert '<svg' in svg
-    assert '#jh-bar-0' in svg and '#jh-bar-2' not in svg
+    assert '#sam/row/data-jh-bucket/0' in svg and '#sam/row/data-jh-bucket/2' not in svg
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +318,8 @@ def test_histogram_flat_fallback_without_owners():
 def test_pie_wedges_clickable():
     svg = generate_jobs_user_pie_chart(_usage())
     assert '<svg' in svg
-    assert '#job-user-alice' in svg
-    assert '#job-user-bob' in svg
+    assert '#sam/row/data-job-user/alice' in svg
+    assert '#sam/row/data-job-user/bob' in svg
 
 
 def test_pie_other_slice_from_pretruncation_totals():
@@ -328,8 +328,8 @@ def test_pie_other_slice_from_pretruncation_totals():
     usage = _usage(totals={'job_count': 100, 'cpu_hours': 800.0, 'gpu_hours': 5.0})
     svg = generate_jobs_user_pie_chart(usage)
     assert 'Other' in svg
-    assert '#job-user-Other' not in svg
-    assert '#job-user-None' not in svg
+    assert '#sam/row/data-job-user/Other' not in svg
+    assert '#sam/row/data-job-user/None' not in svg
 
 
 def test_pie_no_other_when_rows_cover_totals():
@@ -345,8 +345,8 @@ def test_pie_long_tail_lumped_at_hard_cap():
     usage = _usage(rows=rows, totals={'job_count': 15, 'cpu_hours': total,
                                       'gpu_hours': 0.0})
     svg = generate_jobs_user_pie_chart(usage)
-    assert '#job-user-u0' in svg            # biggest user kept + clickable
-    assert '#job-user-u14' not in svg       # tail folded into Other
+    assert '#sam/row/data-job-user/u0' in svg            # biggest user kept + clickable
+    assert '#sam/row/data-job-user/u14' not in svg       # tail folded into Other
     assert 'Other' in svg
 
 
@@ -361,7 +361,7 @@ def test_pie_metric_selects_and_resorts():
     svg_hours = generate_jobs_user_pie_chart(usage, metric='cpu_hours')
     svg_jobs  = generate_jobs_user_pie_chart(usage, metric='jobs')
     assert svg_hours != svg_jobs
-    assert '#job-user-bob' in svg_jobs
+    assert '#sam/row/data-job-user/bob' in svg_jobs
 
 
 def test_pie_charges_resorts_and_keeps_its_remainder_in_charge_units():
@@ -384,7 +384,7 @@ def test_pie_charges_resorts_and_keeps_its_remainder_in_charge_units():
                            'gpu_charges': 0.0})
     svg = generate_jobs_user_pie_chart(usage, metric='charges')
     assert '<svg' in svg
-    assert '#job-user-bob' in svg          # the only charged entity
+    assert '#sam/row/data-job-user/bob' in svg          # the only charged entity
     assert 'Other' in svg                  # 400 - 100 of charges beyond rows
     # An hours view of the same envelope is a different picture entirely.
     assert svg != generate_jobs_user_pie_chart(usage, metric='cpu_hours')
@@ -416,11 +416,11 @@ def test_pie_unknown_user_row_is_inert():
     usage = _usage(rows=rows, totals={'job_count': 7, 'cpu_hours': 70.0,
                                       'gpu_hours': 0.0})
     svg = generate_jobs_user_pie_chart(usage)
-    assert '#job-user-alice' in svg
-    assert '#job-user-None' not in svg
+    assert '#sam/row/data-job-user/alice' in svg
+    assert '#sam/row/data-job-user/None' not in svg
 
 
-def test_pie_sentinel_prefix_parameterized():
+def test_pie_row_attr_parameterized():
     """The generalized renderer emits the caller's sentinel family — the
     By Project pie drills data-job-project rows, not user rows."""
     from webapp.dashboards.charts import generate_jobs_usage_pie_chart
@@ -429,17 +429,17 @@ def test_pie_sentinel_prefix_parameterized():
     ]
     usage = _usage(rows=rows, totals={'job_count': 5, 'cpu_hours': 50.0,
                                       'gpu_hours': 0.0})
-    svg = generate_jobs_usage_pie_chart(usage, sentinel_prefix='job-proj')
-    assert '#job-proj-SCSG0001' in svg
-    assert '#job-user-' not in svg
+    svg = generate_jobs_usage_pie_chart(usage, row_attr='data-job-project')
+    assert '#sam/row/data-job-project/SCSG0001' in svg
+    assert '#sam/row/data-job-user/' not in svg
 
 
-def test_pie_sentinel_prefix_in_cache_key():
+def test_pie_row_attr_in_cache_key():
     """Identical usage vectors under different sentinel families must not
     share a cache entry — the embedded drill anchors differ."""
     from webapp.dashboards.charts import _jobs_usage_pie_cache_key
-    a = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-user')
-    b = _jobs_usage_pie_cache_key(_usage(), sentinel_prefix='job-proj')
+    a = _jobs_usage_pie_cache_key(_usage(), row_attr='data-job-user')
+    b = _jobs_usage_pie_cache_key(_usage(), row_attr='data-job-project')
     assert a != b
 
 
@@ -515,10 +515,10 @@ def test_timeline_empty_and_all_zero_return_placeholder():
 def test_timeline_bars_carry_period_sentinels():
     out = generate_jobs_timeseries_stacked(_ts(counts=(10, 0, 5)),
                                            metric='jobs')
-    assert '#jt-bar-0' in out
-    assert '#jt-bar-2' in out
+    assert '#sam/row/data-jt-period/0' in out
+    assert '#sam/row/data-jt-period/2' in out
     # The interior zero band is not clickable — nothing to drill into.
-    assert '#jt-bar-1' not in out
+    assert '#sam/row/data-jt-period/1' not in out
 
 
 def test_timeline_uncharged_band_keeps_jobs_but_loses_its_bar_link():
@@ -528,8 +528,8 @@ def test_timeline_uncharged_band_keeps_jobs_but_loses_its_bar_link():
     ts = _ts(counts=(10, 5), cpu_charges=[100.0, 0.0], gpu_charges=[0.0, 0.0])
     charges = generate_jobs_timeseries_stacked(ts, metric='charges')
     jobs = generate_jobs_timeseries_stacked(ts, metric='jobs')
-    assert '#jt-bar-1' in jobs
-    assert '#jt-bar-1' not in charges
+    assert '#sam/row/data-jt-period/1' in jobs
+    assert '#sam/row/data-jt-period/1' not in charges
 
 
 def test_timeline_legend_identical_across_bands():
@@ -561,7 +561,7 @@ def test_timeline_no_others_series_when_owners_cover_totals():
 
 
 def test_timeline_legend_opens_the_entity_modal_not_a_row_sentinel(app):
-    """A #job-user- sentinel is resolved by openEntityRow() *within the
+    """A #sam/row/data-job-user/ sentinel is resolved by openEntityRow() *within the
     clicked chart's tab-pane*. This chart lives in the Jobs pane while those
     rows live in their own lazily-loaded panes, so a row sentinel here
     resolves to nothing — verified in the browser. The modal route works
@@ -572,7 +572,7 @@ def test_timeline_legend_opens_the_entity_modal_not_a_row_sentinel(app):
                                                 entity_kind='user')
         proj = generate_jobs_timeseries_stacked(ts, metric='jobs',
                                                 entity_kind='project')
-    assert '#job-user-alice' not in user
+    assert '#sam/row/data-job-user/alice' not in user
     assert '/admin/user/alice' in user
     assert 'project-details-modal/alice' in proj
 

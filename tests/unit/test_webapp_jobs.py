@@ -1656,7 +1656,7 @@ def test_by_user_fragment_renders_rows_and_pie(
     assert 'data-job-user="alice"' in body
     assert 'data-job-user="bob"' in body
     assert '<svg' in body                       # pie rendered
-    assert '#job-user-alice' in body            # clickable wedge sentinel
+    assert '#sam/row/data-job-user/alice' in body            # clickable wedge sentinel
     # No remainder beyond the row cap → no Other row.
     assert 'beyond top' not in body
     # Plugin was asked for the user dimension, scoped to the project tree.
@@ -2975,7 +2975,7 @@ def test_by_project_fragment_renders_rows_and_pinned_pie(
     assert kwargs['user'] == 'benkirk'
     assert kwargs['limit'] == 25
     assert 'data-job-project="SCSG0001"' in body
-    assert '#job-proj-SCSG0001' in body
+    assert '#sam/row/data-job-project/SCSG0001' in body
     # Row drill narrows the user-mode jobs fragment by account.
     assert '/dashboards/user/jobs/user/derecho?machine=derecho&account=SCSG0001' in body
 
@@ -4201,7 +4201,7 @@ def test_job_sizes_fragment_hides_the_empty_zero_band(
 def test_job_sizes_bar_and_row_indices_stay_aligned_after_trim(
     app, auth_client, active_project, monkeypatch,
 ):
-    """#jh-bar-<i> and data-jh-bucket=<i> both index the trimmed vector."""
+    """#sam/row/data-jh-bucket/<i> and data-jh-bucket=<i> both index the trimmed vector."""
     _install_mock_plugin(app, monkeypatch, jobs_histogram_return=_sizes_hist())
     body = auth_client.get(
         f'/dashboards/user/jobs/{active_project.projcode}/job-sizes'
@@ -4315,7 +4315,7 @@ def test_log_on_renders_and_offers_the_way_back(
 
     assert '<svg' in body
     assert 'checked' in body
-    assert '#jh-bar-0' in body
+    assert '#sam/row/data-jh-bucket/0' in body
     assert 'log=0' in body
 
 

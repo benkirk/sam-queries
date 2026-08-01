@@ -868,7 +868,6 @@ _USAGE_ENTITIES = {
         'label':          'User',
         'form_key':       'byuser',
         'row_prefix':     '-u',
-        'sentinel':       'job-user',
         'sentinel_attr':  'data-job-user',
         'drill_param':    'user',
         'modal_endpoint': 'admin_dashboard.user_card',
@@ -885,7 +884,6 @@ _USAGE_ENTITIES = {
         'label':          'Project',
         'form_key':       'byproj',
         'row_prefix':     '-p',
-        'sentinel':       'job-proj',
         'sentinel_attr':  'data-job-project',
         'drill_param':    'account',
         'modal_endpoint': 'user_dashboard.project_details_modal',
@@ -950,7 +948,7 @@ def _render_usage_panel(*, entity_key, mode, machine, fragment_url,
         error = str(exc)
 
     pie_svg = generate_jobs_usage_pie_chart(
-        usage, metric=metric, sentinel_prefix=entity['sentinel']) if usage else None
+        usage, metric=metric, row_attr=entity['sentinel_attr']) if usage else None
     other = _usage_other(usage) if usage else None
 
     return render_template(
@@ -1263,7 +1261,7 @@ def _render_histogram(*, mode, machine, dimension, dimension_toggle,
         error = str(exc)
 
     # Trim BEFORE the chart and the drill list: the bar sentinels
-    # (#jh-bar-<i>) and the table's data-jh-bucket indices are both
+    # (#sam/row/data-jh-bucket/<i>) and the table's data-jh-bucket indices are both
     # positions in this bucket vector, so all three have to see the
     # same one. An all-zero distribution trims to no bands at all, which
     # is how the template knows to render one empty state instead of a

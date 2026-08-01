@@ -315,7 +315,7 @@ CASES = [
      (_jobs_usage(),), {'metric': 'cpu_hours'}),
     ('jobs_usage_pie.by_project', charts.generate_jobs_usage_pie_chart,
      (_jobs_usage(with_unknown=False),), {'metric': 'jobs',
-                                          'sentinel_prefix': 'job-proj'}),
+                                          'row_attr': 'data-job-project'}),
     ('jobs_usage_pie.empty', charts.generate_jobs_usage_pie_chart, ({},), {}),
 
     # --- 15. jobs user pie (the delegating facade) -----------------------

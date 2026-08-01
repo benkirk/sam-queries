@@ -964,7 +964,7 @@ def resource_details_user_pie(project):
     """HTMX fragment: By User pie for the selected metric.
 
     Sibling of the Usage Trend fragment above — same window, same scope, same
-    metric pills. Wedge and legend clicks emit ``#usage-user-<username>``,
+    metric pills. Wedge and legend clicks emit ``#sam/user/<username>``,
     which svg-chart-links.js already routes to the Usage by User row in the
     same pane.
     """

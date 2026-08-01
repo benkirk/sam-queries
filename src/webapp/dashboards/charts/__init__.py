@@ -37,7 +37,7 @@ from webapp.caching.chart import content_hash as _content_hash
 # Imported first for its import-time side effects: registering the
 # server-side Poppins TTFs and applying the structural rcParams. The
 # re-exported names keep `charts.UNITY_*` working for existing importers.
-from webapp.dashboards.charts import theme
+from webapp.dashboards.charts import links, theme
 from webapp.dashboards.charts.theme import (  # noqa: F401
     UNITY_NCAR_BLUE,
     UNITY_NCAR_GRAY,
@@ -86,12 +86,12 @@ def _project_modal_url(projcode: str) -> str:
     """Resolve the project-details modal route, with blueprint prefix.
     Used to mark legend entries with set_url() — svg-chart-links.js
     intercepts clicks on these anchors and dispatches the modal."""
-    return url_for('user_dashboard.project_details_modal', projcode=projcode)
+    return links.PROJECT_MODAL.url(projcode)
 
 
 def _user_modal_url(username: str) -> str:
     """Resolve the user-card modal route, with blueprint prefix."""
-    return url_for('admin_dashboard.user_card', username=username)
+    return links.USER_MODAL.url(username)
 
 
 def _to_display_tz(naive_utc_ts: datetime) -> datetime:
@@ -129,7 +129,7 @@ def generate_usage_timeseries_matplotlib(daily_data, link_to_day_rows=False,
             per-day charges, job counts, or core-hours depending on
             ``metric``; the renderer is metric-agnostic.
         link_to_day_rows: When True, each bar is wrapped in an
-            ``<a xlink:href="#day-bar-YYYY-MM-DD">`` anchor via
+            ``<a xlink:href="#sam/day/YYYY-MM-DD">`` anchor via
             ``Rectangle.set_url()``. ``svg-chart-links.js`` intercepts
             those clicks and expands the matching day row in the
             Historical Usage card below. Zero-value days are skipped.
@@ -162,7 +162,7 @@ def generate_usage_timeseries_matplotlib(daily_data, link_to_day_rows=False,
             if not value:
                 continue
             iso = d.isoformat() if hasattr(d, 'isoformat') else str(d)
-            rect.set_url(f'#day-bar-{iso}')
+            rect.set_url(links.DAY.url(iso))
     ax.set_ylabel(_USAGE_METRIC_YLABELS.get(metric, 'Charges'))
     ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
     ax.grid(True, alpha=0.3)
@@ -197,9 +197,9 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
 
     Interactions (wired via svg-chart-links.js):
         - every bar segment of a non-zero day links to
-          ``#day-bar-YYYY-MM-DD`` → expands that day's row in the Historical
+          ``#sam/day/YYYY-MM-DD`` → expands that day's row in the Historical
           Usage table (same as the flat-bar chart).
-        - each named legend entry links to ``#usage-user-<username>`` →
+        - each named legend entry links to ``#sam/user/<username>`` →
           expands that user's row in the Usage by User card. 'Others' is
           never linked.
 
@@ -226,7 +226,7 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
     fig, ax = plt.subplots(figsize=(18, 5))
 
     # Stack the daily bars: accumulate `bottom` across series. Every segment
-    # of a given day carries the same #day-bar-<iso> url so a click anywhere
+    # of a given day carries the same #sam/day/<iso> url so a click anywhere
     # in that day's stack expands the day (preserves the flat-bar behaviour).
     bottoms = [0.0] * len(dates)
     for s, color in zip(series, colors):
@@ -237,7 +237,7 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
             if not value:
                 continue
             iso = d.isoformat() if hasattr(d, 'isoformat') else str(d)
-            rect.set_url(f'#day-bar-{iso}')
+            rect.set_url(links.DAY.url(iso))
         bottoms = [b + v for b, v in zip(bottoms, vals)]
 
     ax.set_ylabel(_USAGE_METRIC_YLABELS.get(metric, 'Charges'))
@@ -265,7 +265,7 @@ def generate_usage_timeseries_stacked_by_user(timeseries, metric='charges') -> s
     for s, patch, text in zip(rev_series, leg.get_patches(), leg.get_texts()):
         if s['label'] == 'Others':
             continue
-        url = f'#usage-user-{s["label"]}'
+        url = links.USAGE_USER.url(s['label'])
         patch.set_url(url)
         text.set_url(url)
 
@@ -620,10 +620,10 @@ def generate_distribution_histogram(hist, *, log_y=False, metric='data') -> str:
     fig, ax = plt.subplots(figsize=(14, 5))
     colors = [UNITY_STACK_10[i % len(UNITY_STACK_10)] for i in range(len(labels))]
 
-    # Buckets with owners get a drill-down anchor (#ah-bar-<i>) on every
+    # Buckets with owners get a drill-down anchor (#sam/row/data-ah-bucket/<i>) on every
     # segment so a click anywhere on the bar expands the matching row —
     # svg-chart-links.js intercepts the sentinel (mirrors the Usage Trend
-    # day-bar pattern) and scopes the lookup to the originating tab pane.
+    # day-drill pattern) and scopes the lookup to the originating tab pane.
     if log_y:
         # Log scale: one solid bar per bucket (stacking is meaningless on a
         # log axis). Still anchored for drill-down.
@@ -631,7 +631,7 @@ def generate_distribution_histogram(hist, *, log_y=False, metric='data') -> str:
                       edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
         for i, (lbl, rect) in enumerate(zip(labels, bars.patches)):
             if buckets.get(lbl, {}).get('owners'):
-                rect.set_url(f'#ah-bar-{i}')
+                rect.set_url(links.AH_BUCKET.url(i))
         ax.set_yscale('log')
     else:
         # Linear: stack per-owner segments (bottom "other" + top owners
@@ -648,7 +648,7 @@ def generate_distribution_histogram(hist, *, log_y=False, metric='data') -> str:
             for seg_val, shade in zip(segs, shades):
                 cont = ax.bar(i, seg_val, bottom=bottom, color=shade,
                               edgecolor='white', linewidth=0.3)
-                cont.patches[0].set_url(f'#ah-bar-{i}')
+                cont.patches[0].set_url(links.AH_BUCKET.url(i))
                 bottom += seg_val
     ax.set_xticks(range(len(labels)))
     ax.set_xticklabels(labels, rotation=30, ha='right')
@@ -905,7 +905,7 @@ def generate_allocation_type_pie_chart_matplotlib(type_data: List[Dict]) -> str:
 # allocation pies (fixed top-10 cap), this keeps the largest entities up to a
 # ~90% cumulative share and lumps the rest into one "Other" slice. Each kept
 # wedge + its legend entry is clickable: matplotlib set_url() emits an
-# <a xlink:href="#disk-ent-{kind}-{id}"> sentinel that svg-chart-links.js
+# <a xlink:href="#sam/row/{attr}/{id}"> anchor that svg-chart-links.js
 # routes to expanding that entity's row in the table below. The "Other" slice
 # is inert. Sentinels are keyed by uid/gid (part of the hashed input), so the
 # cached SVG is independent of any per-render container id.
@@ -957,7 +957,7 @@ def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
     if not entity_data:
         return _empty_state('No usage data available')
 
-    prefix = '#disk-ent-owner-' if kind == 'owner' else '#disk-ent-group-'
+    drill = links.DISK_OWNER if kind == 'owner' else links.DISK_GROUP
     numeric_label = 'uid ' if kind == 'owner' else 'gid '
 
     # Coerce to float at the single entry point: scan rollups arrive as
@@ -1006,7 +1006,7 @@ def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
     for i, ent_id in enumerate(ids):
         if ent_id is None:
             continue
-        url = f'{prefix}{ent_id}'
+        url = drill.url(ent_id)
         wedges[i].set_url(url)
         if i < len(leg_patches):
             leg_patches[i].set_url(url)
@@ -1021,7 +1021,7 @@ def generate_disk_entity_pie_chart(entity_data: List[Dict], kind: str) -> str:
 #
 # SAM's own comp_charge_summary rollup, not the job-history plugin. Same shape
 # as the disk entity pie above — ~90% cumulative share, inert "Other" — but the
-# click sentinel is ``#usage-user-<username>``, which is the prefix the stacked
+# click sentinel is ``#sam/user/<username>``, which is the prefix the stacked
 # Usage Trend legend has always used. Reusing it means svg-chart-links.js needs
 # no new table entry and both charts drill into the same Usage-by-User row.
 # ---------------------------------------------------------------------------
@@ -1100,7 +1100,7 @@ def generate_user_usage_pie_chart(user_data: List[Dict], metric: str = 'charges'
     for i, name in enumerate(names):
         if name is None:
             continue
-        url = f'#usage-user-{name}'
+        url = links.USAGE_USER.url(name)
         wedges[i].set_url(url)
         if i < len(leg_patches):
             leg_patches[i].set_url(url)
@@ -1179,7 +1179,7 @@ def _jobs_histogram_cache_key(hist, *, metric='jobs', log_y=False):
     metric's values and owner-segment split, the dimension, null_count and
     the y-scale (not the full envelope — e.g. min_param/max_param don't
     affect the rendering). The job_count positivity vector joins the key
-    because it decides which bars carry #jh-bar-<i> drill URLs — an
+    because it decides which bars carry #sam/row/data-jh-bucket/<i> drill URLs — an
     hours-metric SVG with matching hours but a different populated-band set
     must not be reused. Owner names stay out of the key: the SVG carries no
     owner labels, so only the segment values shape it."""
@@ -1230,7 +1230,7 @@ def generate_jobs_histogram(hist, *, metric='jobs', log_y=False) -> str:
         return _empty_state('No jobs in this range')
 
     fig, ax = plt.subplots(figsize=(14, 5))
-    # Populated bands are clickable: #jh-bar-<index> sentinels route
+    # Populated bands are clickable: #sam/row/data-jh-bucket/<index> sentinels route
     # through svg-chart-links.js to the matching data-jh-bucket row in
     # the bucket table, which drills into that band. Index-keyed (not
     # label) so the JS never parses band labels. Clickability follows
@@ -1248,7 +1248,7 @@ def generate_jobs_histogram(hist, *, metric='jobs', log_y=False) -> str:
                       edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
         for i, (rect, b) in enumerate(zip(bars, buckets)):
             if b.get('job_count'):
-                rect.set_url(f'#jh-bar-{i}')
+                rect.set_url(links.JH_BUCKET.url(i))
     else:
         # Stack per-owner segments (bottom "other" remainder + owners
         # ascending), shaded within the band's color family — the fs_scans
@@ -1257,7 +1257,7 @@ def generate_jobs_histogram(hist, *, metric='jobs', log_y=False) -> str:
         colors = band_colors
         for i, b in enumerate(buckets):
             segs = _jobs_bucket_segments(b, metric)
-            url = f'#jh-bar-{i}' if b.get('job_count') else None
+            url = links.JH_BUCKET.url(i) if b.get('job_count') else None
             if not segs:
                 bar = ax.bar(i, vals[i], color=colors[i],
                              edgecolor=UNITY_NCAR_NAVY, linewidth=0.5)
@@ -1331,7 +1331,7 @@ def _jobs_timeseries_cache_key(ts, *, metric='jobs', period='day',
     """Hash what the SVG depends on: band labels, the chosen metric's
     per-series values, and the legend's link treatment. The job_count
     positivity vector joins the key because it decides which bars carry
-    #jt-bar-<i> drill URLs — a charges SVG with matching charges but a
+    #sam/row/data-jt-period/<i> drill URLs — a charges SVG with matching charges but a
     different populated-band set must not be reused."""
     labels, series = _jobs_timeseries_series(ts, metric)
     clickable = [int(bool(b.get('job_count')))
@@ -1369,11 +1369,11 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
             tables gate their own quick-view links.
 
     Interactions (via svg-chart-links.js):
-        - every segment of a populated band links to ``#jt-bar-<index>`` →
+        - every segment of a populated band links to ``#sam/row/data-jt-period/<index>`` →
           expands that band's row in the period table below. Index-keyed,
           so the JS never parses band labels.
         - each named legend entry links to the entity's **modal route**
-          (``MODAL_ROUTES``), NOT a ``#job-user-`` row sentinel. Those
+          (``MODAL_ROUTES``), NOT a ``#sam/row/data-job-user/`` row sentinel. Those
           sentinels are scoped by ``openEntityRow`` to the *clicked* chart's
           tab-pane, and this chart lives in the Jobs pane while the By User
           / By Project rows live in their own — which are lazily loaded and
@@ -1416,7 +1416,7 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
             # at zero and loses its BAR link, but its row in the period
             # table below still carries data-jt-period and still drills.
             if value and bands[i].get('job_count'):
-                rect.set_url(f'#jt-bar-{i}')
+                rect.set_url(links.JT_PERIOD.url(i))
         bottoms = [b + v for b, v in zip(bottoms, vals)]
 
     # Thin the tick labels rather than rotating 120 of them into a smear.
@@ -1455,9 +1455,9 @@ def generate_jobs_timeseries_stacked(ts, *, metric='jobs', period='day',
 
 
 def _jobs_usage_pie_cache_key(entity_data, metric='cpu_hours', *,
-                              sentinel_prefix='job-user',
+                              row_attr='data-job-user',
                               unknown_label='(unknown)'):
-    """sentinel_prefix joins the key: identical usage vectors rendered for
+    """row_attr joins the key: identical usage vectors rendered for
     different entity kinds carry different drill anchors."""
     rows = (entity_data or {}).get('rows') or []
     totals = (entity_data or {}).get('totals') or {}
@@ -1465,30 +1465,32 @@ def _jobs_usage_pie_cache_key(entity_data, metric='cpu_hours', *,
                for r in rows]
     return _content_hash([payload,
                           _jobs_metric_value(totals, metric, 'cpu_hours'),
-                          str(metric), str(sentinel_prefix),
+                          str(metric), str(row_attr),
                           str(unknown_label)])
 
 
 @caching.chart_cached(name='jobs_usage_pie_chart', maxsize=64,
                       key_fn=_jobs_usage_pie_cache_key)
 def generate_jobs_usage_pie_chart(entity_data, metric='cpu_hours', *,
-                                  sentinel_prefix='job-user',
+                                  row_attr='data-job-user',
                                   unknown_label='(unknown)') -> str:
     """Pie of per-entity usage from a jobs_usage_by(dimension) envelope.
 
     Entity-kind-agnostic: the By User tab renders it with
-    ``sentinel_prefix='job-user'`` (via the delegating
+    ``row_attr='data-job-user'`` (via the delegating
     :func:`generate_jobs_user_pie_chart`), the My Jobs By Project tab
-    with ``'job-proj'``.
+    with ``'data-job-project'``.
 
     Args:
         entity_data: plugin envelope — ``{'rows': [{'value': name,
             'job_count', 'cpu_hours', 'gpu_hours'}, …], 'totals': {…}}``.
             ``totals`` is computed upstream BEFORE any limit truncation.
         metric: ``'jobs'``, ``'cpu_hours'`` (default) or ``'gpu_hours'``.
-        sentinel_prefix: drill-anchor prefix — kept wedges + legend
-            entries carry ``#<sentinel_prefix>-<value>`` sentinels routed
-            by svg-chart-links.js to the matching table row.
+        row_attr: the table-row attribute the drill targets — kept
+            wedges + legend entries carry ``#sam/row/<row_attr>/<value>``
+            anchors that svg-chart-links.js resolves to that row. Naming
+            the attribute here rather than in the JS is what makes adding
+            a drill-down chart a zero-JavaScript change.
         unknown_label: legend label for a NULL entity value (inert slice).
 
     The largest entities up to a ~90% cumulative share (9 max) get named
@@ -1551,7 +1553,7 @@ def generate_jobs_usage_pie_chart(entity_data, metric='cpu_hours', *,
     for i, name in enumerate(names):
         if name is None:
             continue
-        url = f'#{sentinel_prefix}-{name}'
+        url = links.RowDrill(row_attr).url(name)
         wedges[i].set_url(url)
         if i < len(leg_patches):
             leg_patches[i].set_url(url)
@@ -1563,9 +1565,9 @@ def generate_jobs_usage_pie_chart(entity_data, metric='cpu_hours', *,
 
 def generate_jobs_user_pie_chart(entity_data, metric='cpu_hours') -> str:
     """By User pie — delegates to the entity-agnostic renderer with the
-    ``#job-user-<username>`` sentinel family."""
+    ``data-job-user`` row family."""
     return generate_jobs_usage_pie_chart(entity_data, metric,
-                                         sentinel_prefix='job-user')
+                                         row_attr=links.JOB_USER.attr)
 
 
 # ---------------------------------------------------------------------------

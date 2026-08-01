@@ -20,7 +20,7 @@
               row cap (totals are pre-truncation), or None
     metric  — 'jobs' | 'cpu_hours' | 'gpu_hours' | 'charges'
               (drives the pie + ranking)
-    pie_svg — chart SVG (clickable #{{ entity.sentinel }}-<value> sentinels)
+    pie_svg — chart SVG (clickable #sam/row/{{ entity.sentinel_attr }}/<value> anchors)
     fragment_url      — this fragment (metric pill re-fetch)
     jobs_fragment_url — the mode's per-job fragment (row drill target)
     can_view_entity   — gates the quick-view modal affordance
