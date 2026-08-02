@@ -1063,6 +1063,29 @@ for vacuity by disabling `apply_chrome` and confirming it goes red with the
 documented signature — `1.17:1 fg=rgb(1,24,55) bg=rgb(27,39,51)` — while light
 stayed green.
 
+**Follow-up: the gate was local-only on one of its two pages.** It went red in
+CI on `/status/derecho` in both themes with "rendered no chart text at all",
+and green locally — a *data* divergence, not the font one the message
+suggests. That page's only chart is the user/project load area chart off
+`system_status.user_proj_queue_status`, and the obfuscated dump CI restores
+carries **zero** rows of it (locally the collectors have written ~60k), so the
+card renders `UserProjAreaChart.empty_message` and there is no SVG to measure.
+Fonts were never involved: `/allocations/projects` passed in the same CI run,
+which it could not have done with `svg.fonttype` flipped or Poppins missing —
+`findfont('Poppins')` resolves to the in-image
+`static/fonts/poppins/Poppins-SemiBold.ttf` for the weight-600 request, with
+no system-font dependency for k8s to get wrong.
+
+Fixed by counting matplotlib figures (`g[id^="figure_"]`, emitted at both
+`svg.fonttype` settings) separately from `<text>`. Zero figures on a page in
+`COLLECTOR_FED_CHART_PAGES` skips; zero figures anywhere else fails; **figures
+with no text still fails**, which is the vacuity guard the original assertion
+was reaching for and the only part of it that fonts could ever break. Cost:
+CI's coverage of this gate is pies + pace on `/allocations/projects`; the
+stacked-area family is measured only where collectors have run. Closing that
+would mean seeding `user_proj_queue_status` with rows dated relative to *now*
+— the window is the last 168 hours, so a snapshot cannot supply them.
+
 **On deploy**: chart cache keys hash *input data*, not rendering code, so warm
 Redis entries serve pre-PR-4 SVGs for up to 600 s. Run
 `sam-admin cache --refresh --category chart`. Dark mode also doubles the chart
