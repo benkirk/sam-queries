@@ -93,13 +93,24 @@ NAMED_RE = re.compile(
 # panel's own `--bs-dropdown-*` values — all of which are either theme-neutral
 # or deliberately pinned to a brand surface. They are left as ordinary
 # pre-existing debt for a later pass rather than forced into tokens here.
+#: Tier-2 tokens that are deliberately theme-INVARIANT: they name the one case
+#: where the surface underneath does not move between themes, so the ink on it
+#: must not either. Named in one place because two tests need the same set —
+#: one asserts they are absent from the dark block, the other exempts them from
+#: the "every role token has a dark value" rule, and a token added to one but
+#: not the other is the half-wired state both exist to catch.
+INVARIANT_TOKENS = {'--text-on-brand', '--surface-on-brand',
+                    '--text-on-brand-dark'}
+
 ALLOWED = {
     # D2: -2 (--bs-card-bg, --bs-card-cap-bg)
     # D4: -49 (10 surfaces + 39 foregrounds -> --text-on-brand)
     # D6: -3  (greys and borders -> role tokens)
     # D8: -3  (the white pill fills in the .btn-group selector rows, found by
     #          the browser contrast assertions)
-    'dashboard.css':   19,
+    # stragglers: -1 (.date-group-header's #f1f3f5 -> --surface-tertiary; the
+    #          one light row background the dark theme could not reach)
+    'dashboard.css':   18,
 }
 
 
@@ -290,12 +301,17 @@ def test_dark_block_redeclares_the_bootstrap_bridge():
 
 
 def test_invariant_tokens_are_not_flipped():
-    """`--text-on-brand` / `--surface-on-brand` must NOT appear in the dark
-    block. White on a saturated NCAR-blue button is correct in both themes;
-    "fixing" either into a theme-dependent value breaks every button and every
-    pill badge in one of the two."""
+    """The `-on-brand` tokens must NOT appear in the dark block.
+
+    White on a saturated NCAR-blue button is correct in both themes; "fixing"
+    either into a theme-dependent value breaks every button and every pill
+    badge in one of the two. `--text-on-brand-dark` is the same contract read
+    the other way — space-blue on a LIGHT brand fill (gold, orange) is correct
+    in both themes, and it exists because `--text-heading` was being used
+    there, which does flip and put near-white on orange at 1.77:1.
+    """
     dark = _dark_tokens()
-    flipped = sorted({'--text-on-brand', '--surface-on-brand'} & set(dark))
+    flipped = sorted(INVARIANT_TOKENS & set(dark))
     assert not flipped, (
         f'{flipped} redefined in the dark block, but they are invariant by '
         f'design — see their definitions in variables.css')
@@ -307,7 +323,7 @@ def test_every_role_token_has_a_dark_value():
     that catches a token added later and half-wired."""
     light = {n for n in _css_tokens()
              if n.startswith(('--surface-', '--text-', '--border-'))}
-    invariant = {'--text-on-brand', '--surface-on-brand'}
+    invariant = INVARIANT_TOKENS
     # `-rgb` companions are covered by their parents being covered.
     expected = {n for n in light if not n.endswith('-rgb')} - invariant
     dark = set(_dark_tokens())
