@@ -16,7 +16,7 @@
                            projcode=projcode, resource=resource_name,
                            scope=node.projcode,
                            start_date=start_date, end_date=end_date) %}
-<li style="{{ 'background: #fff3cd; border-left-color: #ffc107; font-weight: bold;' if is_selected else '' }}">
+<li{% if is_selected %} class="tree-node-current"{% endif %}>
     {% if is_clickable %}
     <a href="{{ node_url }}" class="d-flex align-items-center gap-2 text-decoration-none text-body">
     {% else %}
@@ -214,7 +214,7 @@
                                                   projcode=projcode, resource=resource_name,
                                                   scope=scope, fileset=d.name,
                                                   start_date=start_date, end_date=end_date) %}
-                        <tr style="cursor: pointer;{% if is_active %} background: #fff3cd;{% endif %}"
+                        <tr class="cursor-pointer{% if is_active %} tree-node-current{% endif %}"
                             data-action="navigate" data-href="{{ row_url }}">
                             {% if _multi_proj %}
                             <td><strong>{{ d.projcode }}</strong></td>

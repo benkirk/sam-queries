@@ -58,7 +58,7 @@
       <div class="stat-value text-body-emphasis text-detail">
         {% for po in project.organizations_current_first() %}
             <div class="mb-1">
-                <span class="badge bg-body-tertiary {{ 'text-secondary' if not po.is_active else 'text-body-emphasis' }} border">{{ po.organization.acronym }}</span>
+                <span class="badge bg-body-tertiary {{ 'text-body-secondary' if not po.is_active else 'text-body-emphasis' }} border">{{ po.organization.acronym }}</span>
                 <span class="text-muted">{{ po.organization.name }}</span>
                 {%- if not po.is_active and po.end_date %}
                 <span class="text-muted small">— until {{ po.end_date | fmt_date }}</span>
@@ -107,7 +107,7 @@
                 <span class="text-muted">- {{ pc.contract.title }}</span>
                 {%- if not pc.contract.is_active %}
                   {%- if pc.contract.is_future %}
-                  <span class="badge bg-body-tertiary text-secondary border fw-normal ms-1">starts {{ pc.contract.start_date | fmt_date }}</span>
+                  <span class="badge bg-body-tertiary text-body-secondary border fw-normal ms-1">starts {{ pc.contract.start_date | fmt_date }}</span>
                   {%- else %}
                   <span class="badge bg-secondary fw-normal ms-1">expired {{ pc.contract.end_date | fmt_date }}</span>
                   {%- endif %}
@@ -216,7 +216,7 @@
                                                         show_label=True) }}
                                     {% if first.bar_state == 'active' and resource.resource_type in ['HPC', 'DAV'] %}
                                     <div class="position-absolute"
-                                         style="left: {{ first.elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(33,37,41,0.55); z-index: 2; pointer-events: none;"
+                                         style="left: {{ first.elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(var(--text-primary-rgb),0.55); z-index: 2; pointer-events: none;"
                                          title="{{ first.elapsed_pct | fmt_pct }} of allocation period elapsed"></div>
                                     {% endif %}
                                 </div>

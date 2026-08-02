@@ -105,7 +105,7 @@
                                             show_label=True) }}
                         {% if bar_state == 'active' %}
                         <div class="position-absolute"
-                             style="left: {{ elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(33,37,41,0.55); z-index: 2; pointer-events: none;"
+                             style="left: {{ elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(var(--text-primary-rgb),0.55); z-index: 2; pointer-events: none;"
                              title="{{ elapsed_pct | fmt_pct }} of allocation period elapsed"></div>
                         {% endif %}
                     </div>
