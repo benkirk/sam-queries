@@ -131,7 +131,7 @@
                 <div class="stat-value text-body-emphasis text-detail">
                     {% for ui in former_insts %}
                     <div class="mb-1">
-                        <span class="badge bg-body-tertiary text-secondary border">{{ ui.institution.acronym or '—' }}</span>
+                        <span class="badge bg-body-tertiary text-body-secondary border">{{ ui.institution.acronym or '—' }}</span>
                         <span class="text-muted">{{ ui.institution.name }}</span>
                         <span class="text-muted small">
                             {%- if ui.is_future %} — starts {{ ui.start_date | fmt_date }}
@@ -172,7 +172,7 @@
                 <div class="stat-value text-body-emphasis text-detail">
                     {% for uo in former_orgs %}
                     <div class="mb-1">
-                        <span class="badge bg-body-tertiary text-secondary border">{{ uo.organization.acronym }}</span>
+                        <span class="badge bg-body-tertiary text-body-secondary border">{{ uo.organization.acronym }}</span>
                         <span class="text-muted">{{ uo.organization.name }}</span>
                         <span class="text-muted small">
                             {%- if uo.is_future %} — starts {{ uo.start_date | fmt_date }}
@@ -246,7 +246,7 @@
                     {% endfor %}
                     {% for project in former.ended %}
                     <a href="{{ url_for('admin_dashboard.projects', projcode=project.projcode) }}"
-                       class="badge bg-body-tertiary text-secondary border text-decoration-none me-1 mb-1">
+                       class="badge bg-body-tertiary text-body-secondary border text-decoration-none me-1 mb-1">
                         {{ project.projcode }}
                     </a>
                     {% endfor %}

@@ -168,6 +168,17 @@
        "fixed" into a flipping token and breaking every button in light mode. */
     --text-on-brand:  #ffffff;
 
+    /* The same idea for the brand fills that are themselves LIGHT — gold,
+       orange, sky. `--text-on-brand` is white and white on `--ncar-orange` is
+       1.77:1, so those surfaces need the opposite ink, and it is invariant for
+       exactly the same reason: the fill does not move between themes, so the
+       ink must not either. Value is `--ncar-space-blue`, which is what
+       `--text-heading` already resolved to in light — so the surfaces adopting
+       this are byte-identical in light mode and only stop being near-white on
+       orange in dark. Found by the browser sweep on the /status outage
+       banner. */
+    --text-on-brand-dark: #011837;
+
     /* The surface equivalent, and invariant for the same reason: a white chip
        sitting ON a brand fill, not on a page. The one case today is the
        counter badge inside an inactive (NCAR-blue) nav-pill — the pill stays

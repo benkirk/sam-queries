@@ -877,6 +877,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     transition: width var(--transition-base);
 }
 
+/* The percentage label sits ON the fill, and two of the four fills are light:
+ * white on --success-color measured 2.54:1 and on --warning-color 2.15:1.
+ * Theme-invariant (the fills are), so this was equally unreadable in light and
+ * is a declared legibility fix in both rather than a dark-mode repair — the
+ * browser sweep does not distinguish, and neither does a reader. Scoped to
+ * `.progress-bar` so the same utility classes keep white ink on badges. */
+.progress-bar.bg-success,
+.progress-bar.bg-warning {
+    color: var(--text-on-brand-dark);
+}
+
 /* Progress bar color variants */
 .bg-success {
     background-color: var(--success-color) !important;
@@ -983,6 +994,91 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     border-color: var(--bs-table-border-color);
 }
 
+/* The OTHER five contextual table variants, in dark mode only.
+ *
+ * `.table-subtle` above replaced `.table-light` and stopped there; the same
+ * defect applies verbatim to `.table-primary` / `-secondary` / `-info` /
+ * `-warning` / `-danger` / `-success`, which are used on 24 rows across 11
+ * templates. Both halves of the stock class bite, and they bite independently:
+ *
+ *   --bs-table-bg    a light tint. The `/admin/resources` nested rows
+ *                    (#e2e3e5) and the resource-details month row (#cfe2ff),
+ *                    which put a `.text-muted` chevron at 1.01:1.
+ *   --bs-table-color #000. Survives on its own wherever a SAM rule already
+ *                    supplies a dark background — that is the black "Total"
+ *                    row in the `/allocations/projects` facility table, whose
+ *                    <th> cells were already painting --surface-secondary.
+ *
+ * Deviation from the `.table-subtle` precedent, which migrated its call sites
+ * onto a SAM class: these keep the stock class name at the call site because
+ * the tint is load-bearing there in a way `.table-light` on a <thead> never
+ * was — project_directories_card.html marks an orphaned row `table-warning`
+ * *inside* a `table-secondary` table, and that reads at a glance. Overriding
+ * in a dark-only block also leaves light mode byte-identical by construction.
+ *
+ * `-secondary` is the group-header / subtotal row, so it takes SAM's recess
+ * (--surface-secondary, LIGHTER than the card — the dark ladder inverts)
+ * rather than Bootstrap's --bs-secondary-bg-subtle, which is #161719 and would
+ * make a header darker than the surface it sits on. The five that carry a hue
+ * take Bootstrap's `-bg-subtle` palette, which does retheme itself — the same
+ * lever status.css:17 uses for the status badges — because for those the hue
+ * IS the message. All six take --text-primary rather than the stock #000 or
+ * the `-text-emphasis` tint, matching .table-subtle and the app's body copy. */
+:root[data-bs-theme="dark"] .table-secondary {
+    --bs-table-bg: var(--surface-secondary);
+    --bs-table-striped-bg: var(--surface-raised);
+    --bs-table-active-bg: var(--surface-raised);
+    --bs-table-hover-bg: var(--surface-raised);
+}
+
+:root[data-bs-theme="dark"] .table-primary {
+    --bs-table-bg: var(--bs-primary-bg-subtle);
+    --bs-table-striped-bg: var(--bs-primary-bg-subtle);
+    --bs-table-active-bg: var(--bs-primary-border-subtle);
+    --bs-table-hover-bg: var(--bs-primary-border-subtle);
+}
+
+:root[data-bs-theme="dark"] .table-info {
+    --bs-table-bg: var(--bs-info-bg-subtle);
+    --bs-table-striped-bg: var(--bs-info-bg-subtle);
+    --bs-table-active-bg: var(--bs-info-border-subtle);
+    --bs-table-hover-bg: var(--bs-info-border-subtle);
+}
+
+:root[data-bs-theme="dark"] .table-warning {
+    --bs-table-bg: var(--bs-warning-bg-subtle);
+    --bs-table-striped-bg: var(--bs-warning-bg-subtle);
+    --bs-table-active-bg: var(--bs-warning-border-subtle);
+    --bs-table-hover-bg: var(--bs-warning-border-subtle);
+}
+
+:root[data-bs-theme="dark"] .table-success {
+    --bs-table-bg: var(--bs-success-bg-subtle);
+    --bs-table-striped-bg: var(--bs-success-bg-subtle);
+    --bs-table-active-bg: var(--bs-success-border-subtle);
+    --bs-table-hover-bg: var(--bs-success-border-subtle);
+}
+
+:root[data-bs-theme="dark"] .table-danger {
+    --bs-table-bg: var(--bs-danger-bg-subtle);
+    --bs-table-striped-bg: var(--bs-danger-bg-subtle);
+    --bs-table-active-bg: var(--bs-danger-border-subtle);
+    --bs-table-hover-bg: var(--bs-danger-border-subtle);
+}
+
+/* The colour half, shared. Separate from the per-variant blocks above so the
+ * one thing every variant gets wrong the same way is stated once. */
+:root[data-bs-theme="dark"] :is(.table-primary, .table-secondary, .table-success,
+                                .table-info, .table-warning, .table-danger) {
+    --bs-table-color: var(--text-primary);
+    --bs-table-striped-color: var(--text-primary);
+    --bs-table-active-color: var(--text-primary);
+    --bs-table-hover-color: var(--text-primary);
+    --bs-table-border-color: var(--border-default);
+    color: var(--bs-table-color);
+    border-color: var(--bs-table-border-color);
+}
+
 .table-hover tbody tr:hover {
     background-color: rgba(var(--ncar-teal-rgb), 0.05);
 }
@@ -1014,7 +1110,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 /* Date-bounds group header row in resources table */
 .date-group-header td {
-    background-color: #f1f3f5;
+    background-color: var(--surface-tertiary);
     border-top: 2px solid var(--border-default) !important;
 }
 
@@ -1057,9 +1153,34 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--text-on-brand);
 }
 
+/* The one alert whose fill is LIGHT, so it is the one that cannot take
+ * `--text-on-brand`. It used `--text-heading`, which is space-blue in light and
+ * near-white in dark — 1.77:1 on orange, found by the browser sweep on the
+ * /status outage banner. `--text-on-brand-dark` IS that space-blue, pinned
+ * invariant: light mode does not move, dark stops inheriting a flipped token
+ * onto a fill that never flips. */
 .alert-warning {
     background-color: var(--ncar-orange);
-    color: var(--text-heading);
+    color: var(--text-on-brand-dark);
+}
+
+.alert-warning a,
+.alert-warning button {
+    color: var(--text-on-brand-dark);
+}
+
+/* Descendants that set their own colour have the same problem one level down:
+ * `.text-muted` inside the outage banner resolved to rgba(222,226,230,.75),
+ * i.e. 1.39:1 on orange. Inheriting the alert's ink and de-emphasising with
+ * opacity keeps the "muted" intent without reintroducing a theme-dependent
+ * colour on an invariant fill.
+ *
+ * `!important` because Bootstrap's colour utilities carry it — a plain
+ * declaration here loses to `.text-muted` regardless of specificity, which is
+ * how the first pass at this silently did nothing. */
+.alert .text-muted {
+    color: inherit !important;
+    opacity: 0.8;
 }
 
 .alert-danger {
@@ -1715,6 +1836,51 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .tree-list li strong {
     color: var(--text-title);
     font-weight: 700;
+}
+
+/* "You are here" in a project tree — the node whose projcode is the current
+ * scope, and the row form of the same thing in the disk fileset table.
+ *
+ * Was five copies of an inline `background: #fff3cd; border-left-color:
+ * #ffc107` across resource_details.html, resource_details_disk.html (twice)
+ * and shared/project_tree.html (twice). An inline literal is the one surface
+ * a stylesheet cannot reach, so in dark mode the outermost node stayed a
+ * bright pastel with --text-primary (#e9ecef) written on it.
+ *
+ * --bs-warning-bg-subtle IS #fff3cd in light — byte-identical to what the
+ * inline style painted — and #332701 in dark. It is one of the few Bootstrap
+ * families that rethemes itself (see status.css:17). The left border keeps
+ * --bs-warning, which is #ffc107 in both themes: it is the same gold as the
+ * `text-warning` arrow icon the templates put next to it, and a marker on a
+ * tinted ground is meant to stay put.
+ *
+ * The <tr> form sets --bs-table-bg rather than `background`, because
+ * Bootstrap paints every <td> opaquely over any row-level background —
+ * the trap already documented at components.css:14. */
+/* `.tree-list li` (0,1,1) sets the node background, so the bare class would
+ * lose to it on specificity and the current node would be indistinguishable —
+ * which is exactly what the first draft of this shipped. The second selector
+ * carries the tree case; the first carries anything outside a `.tree-list`. */
+.tree-node-current,
+.tree-list li.tree-node-current {
+    background: var(--bs-warning-bg-subtle);
+    border-left-color: var(--bs-warning);
+    font-weight: 700;
+}
+
+tr.tree-node-current {
+    --bs-table-bg: var(--bs-warning-bg-subtle);
+    --bs-table-color: var(--text-primary);
+    color: var(--bs-table-color);
+}
+
+/* The other half of the same inline block: a node whose project is inactive.
+ * `#6c757d` -> --text-secondary (#718096 light) is a declared shift; the 0.6
+ * opacity is carried over exactly rather than rounded to Bootstrap's
+ * `.opacity-50`, which would have moved light mode for no reason. */
+.tree-node-inactive {
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 /* ============================================================================

@@ -107,14 +107,14 @@
         <span class="fw-semibold text-nowrap" style="font-size:0.82rem;">{{ label }}</span>
 
         {# col 2: thermometer bar #}
-        <div class="position-relative" style="height:18px; background:#e9ecef; border-radius:4px; overflow:visible;">
+        <div class="position-relative" style="height:18px; background:var(--surface-secondary); border-radius:4px; overflow:visible;">
             <div style="position:absolute; left:0; top:0; height:100%; width:{{ center_pos }}%; background:rgba(13,202,240,0.08); border-radius:4px 0 0 4px;"></div>
             <div style="position:absolute; left:{{ center_pos }}%; top:0; height:100%; width:{{ center_pos }}%; background:rgba(253,126,20,0.08); border-radius:0 4px 4px 0;"></div>
             <div style="position:absolute; left:{{ fill_start }}%; top:0; height:100%; width:{{ fill_width_pct }}%; background:{{ fill_color }}; border-radius:4px; opacity:0.85;"></div>
-            <div style="position:absolute; left:{{ center_pos }}%; top:-2px; bottom:-2px; width:2px; background:#343a40; opacity:0.75;" title="100% = steady-state"></div>
+            <div style="position:absolute; left:{{ center_pos }}%; top:-2px; bottom:-2px; width:2px; background:var(--text-primary); opacity:0.75;" title="100% = steady-state"></div>
             {% if win.threshold_pct is not none and thresh_pos > center_pos %}
-            <div style="position:absolute; left:{{ thresh_pos }}%; top:-2px; bottom:-2px; width:0; border-left:2px dashed #dc3545; opacity:0.85;" title="{{ win.threshold_pct }}% limit"></div>
-            <span style="position:absolute; left:{{ thresh_pos }}%; top:50%; transform:translate(-50%,-50%); font-size:0.6rem; font-weight:600; color:#dc3545; background:rgba(255,255,255,0.82); padding:0 3px; border-radius:2px; white-space:nowrap; pointer-events:none; z-index:1;">{{ win.threshold_pct }}%</span>
+            <div style="position:absolute; left:{{ thresh_pos }}%; top:-2px; bottom:-2px; width:0; border-left:2px dashed var(--bs-danger); opacity:0.85;" title="{{ win.threshold_pct }}% limit"></div>
+            <span style="position:absolute; left:{{ thresh_pos }}%; top:50%; transform:translate(-50%,-50%); font-size:0.6rem; font-weight:600; color:var(--bs-danger); background:rgba(var(--surface-card-rgb),0.82); padding:0 3px; border-radius:2px; white-space:nowrap; pointer-events:none; z-index:1;">{{ win.threshold_pct }}%</span>
             {% endif %}
         </div>
 
@@ -168,7 +168,7 @@
 
         {# Scale row — col1: empty spacer, col2: tick labels, col3+col4: nothing #}
         <span></span>
-        <div class="position-relative" style="height:1.1rem; font-size:0.65rem; color:#6c757d; margin-top:1px;">
+        <div class="position-relative" style="height:1.1rem; font-size:0.65rem; color:var(--text-secondary); margin-top:1px;">
             <span style="position:absolute; left:0;">0%</span>
             <span style="position:absolute; left:{{ center_pos }}%; transform:translateX(-50%);">&#9650; 100%</span>
             <span style="position:absolute; right:0;">200%</span>
