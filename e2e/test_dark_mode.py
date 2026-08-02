@@ -301,6 +301,165 @@ def test_chart_text_is_legible(page, base_url, page_url, theme):
         f'are below {MIN_CONTRAST}:1:\n' + '\n'.join(failures))
 
 
+#: The dark-only sweep: every element that carries its own text, measured
+#: against the surface actually behind it. `SAMPLES` above is eight hand-picked
+#: selectors, and every defect this sweep was written for sat outside all eight
+#: — a `.table-primary` month row, `.table-secondary` group headers three
+#: tables deep, a `bg-white` tab panel, an inline `#fff3cd` on a tree node.
+#: Picking selectors only finds what you already suspect.
+#:
+#: Leaf text only (no element child carrying text of its own), so a card is
+#: measured at its labels rather than reported once per ancestor for the same
+#: glyphs. Backgrounds composite up the ancestor chain exactly as
+#: `_EFFECTIVE_COLOURS_JS` does — an element with `background: transparent`
+#: inside a card is read against the card.
+#:
+#: Ancestor `opacity` is deliberately NOT folded in: a faded row is a design
+#: choice, and applying it would make every `.opacity-50` inactive row a
+#: failure. This measures the colours, not the fade.
+_DARK_SWEEP_JS = """
+() => {
+  const parse = (s) => {
+    const m = (s || '').match(/rgba?\\(([^)]+)\\)/);
+    if (!m) return null;
+    const p = m[1].split(',').map(x => parseFloat(x.trim()));
+    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+  };
+  const over = (top, bottom) => ({
+    r: top.r * top.a + bottom.r * (1 - top.a),
+    g: top.g * top.a + bottom.g * (1 - top.a),
+    b: top.b * top.a + bottom.b * (1 - top.a),
+    a: 1,
+  });
+  const bgOf = (el) => {
+    const stack = [];
+    for (let n = el; n; n = n.parentElement) {
+      const c = parse(getComputedStyle(n).backgroundColor);
+      if (c && c.a > 0) { stack.push(c); if (c.a === 1) break; }
+    }
+    let bg = { r: 255, g: 255, b: 255, a: 1 };      // the canvas
+    for (let i = stack.length - 1; i >= 0; i--) bg = over(stack[i], bg);
+    return bg;
+  };
+  const ownText = (el) => {
+    let s = '';
+    for (const node of el.childNodes) {
+      if (node.nodeType === 3) s += node.textContent;
+    }
+    return s.trim();
+  };
+
+  const out = [];
+  for (const el of document.querySelectorAll('body *')) {
+    const text = ownText(el);
+    if (!text) continue;
+    const box = el.getBoundingClientRect();
+    if (!box.width || !box.height) continue;          // collapsed / hidden
+    const cs = getComputedStyle(el);
+    if (cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0) continue;
+    const fg = parse(cs.color);
+    if (!fg) continue;
+    const bg = bgOf(el);
+    out.push({
+      fg: [over(fg, bg).r, over(fg, bg).g, over(fg, bg).b],
+      bg: [bg.r, bg.g, bg.b],
+      text: text.slice(0, 40),
+      where: el.tagName.toLowerCase() +
+             (el.className && typeof el.className === 'string'
+                ? '.' + el.className.trim().split(/\\s+/).slice(0, 3).join('.')
+                : ''),
+    });
+  }
+  return out;
+}
+"""
+
+#: Everything on the page that opens without navigating. The nested
+#: `/admin/resources` tables — three of the five reported defects — do not
+#: exist in the DOM until their row is expanded, so a sweep that only measured
+#: what loads would have called that page clean. Restricted to targets that
+#: resolve to a `.collapse` in this document, so the nav accordions and any
+#: htmx-driven toggle are left alone.
+_EXPAND_ALL_JS = """
+() => {
+  let opened = 0;
+  for (const el of document.querySelectorAll('[data-bs-toggle="collapse"]')) {
+    const sel = el.getAttribute('data-bs-target') ||
+                el.getAttribute('href') || '';
+    if (!sel.startsWith('#')) continue;
+    const target = document.querySelector(sel);
+    if (!target || !target.classList.contains('collapse')) continue;
+    if (target.classList.contains('show')) continue;
+    if (/mobileNav/.test(sel)) continue;
+    el.click();
+    opened += 1;
+  }
+  return opened;
+}
+"""
+
+#: Pages for the sweep. `PAGES` covers the sampled-surface families; these add
+#: the three that carried reported defects — the nested admin tables, the
+#: allocations facility table with its `<tfoot>` total, and the resource
+#: details page with its month table and project tree. Static routes only: a
+#: `<projcode>` URL would have to assume a project survives the obfuscated
+#: snapshot.
+SWEEP_PAGES = PAGES + [
+    '/admin/resources',
+    '/allocations/projects',
+    '/user/accounts',
+]
+
+
+def test_no_unreadable_text_in_dark_mode(page, base_url):
+    """Sweep every text-bearing element on a page, not a list of selectors.
+
+    Dark only. Light is the theme every one of these surfaces was designed in
+    and the one the token layer leaves byte-identical; sweeping it doubles the
+    runtime to re-assert the status quo.
+
+    The failure mode this catches is the one that keeps recurring: a surface
+    Bootstrap owns and does not retheme (`.table-*` contextual classes,
+    `.bg-white`), or a colour literal inlined into a template where no
+    stylesheet can reach it. Both render light-on-light and both are invisible
+    in a diff.
+
+    There is no allowlist on purpose. An exception here would mean a surface
+    that is unreadable and approved, which is not a thing — the same reasoning
+    that keeps `ALLOWED_CONSOLE` in conftest.py empty.
+    """
+    set_theme(page, base_url, 'dark')
+
+    failures = []
+    for page_url in SWEEP_PAGES:
+        visit(page, page_url)
+        assert_theme_applied(page, 'dark')
+        page.evaluate(_EXPAND_ALL_JS)
+        page.wait_for_timeout(400)          # Bootstrap's collapse transition
+
+        found = page.evaluate(_DARK_SWEEP_JS)
+        assert found, f'{page_url} rendered no measurable text at all'
+
+        seen = set()
+        for item in found:
+            ratio = contrast_ratio(item['fg'], item['bg'])
+            if ratio >= MIN_CONTRAST:
+                continue
+            key = (item['where'], tuple(round(v) for v in item['bg']))
+            if key in seen:                 # one row of a table stands for all
+                continue
+            seen.add(key)
+            failures.append(
+                f'  {page_url}  {ratio:.2f}:1  {item["where"]}\n'
+                f'      fg=rgb{tuple(round(v) for v in item["fg"])} '
+                f'bg=rgb{tuple(round(v) for v in item["bg"])} '
+                f'text={item["text"]!r}')
+
+    assert not failures, (
+        f'{len(failures)} surface(s) below {MIN_CONTRAST}:1 in dark mode:\n'
+        + '\n'.join(failures))
+
+
 def test_clicking_the_toggle_persists_the_choice(page, base_url):
     """The real control, end to end: click -> cookie -> reload -> next page.
 
