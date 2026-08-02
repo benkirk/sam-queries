@@ -1,0 +1,38 @@
+{#
+  Light/dark theme toggle.
+
+  One definition, three shells: the desktop utility menu and the mobile
+  offcanvas drawer (both in dashboards/base.html), and auth/login.html — which
+  is a separate <html> shell and would otherwise be easy to forget.
+
+  Behaviour lives in static/js/theme-toggle.js, keyed off the
+  `data-theme-toggle` attribute rather than an id, precisely so more than one
+  copy can be on the page at once. That script also keeps every copy's icon,
+  title and aria-pressed in sync, so this macro only has to render a sensible
+  *initial* state — it is passed `theme` from the context processor, the same
+  value already on <html data-bs-theme>.
+
+  External JS, not an inline handler: tests/unit/test_template_csp_lint.py
+  forbids on*= attributes, and correctly so — the CSP is nonce-free by design.
+
+  Args:
+    theme:   'light' | 'dark' — the CURRENT theme.
+    labelled: show a text label beside the icon (drawer / login), or icon-only
+              (desktop navbar, where space is tight).
+    classes: extra classes for the control.
+#}
+{% macro theme_toggle(theme, labelled=false, classes='') %}
+{%- set next = 'light' if theme == 'dark' else 'dark' -%}
+{%- set label = 'Switch to dark mode' if next == 'dark' else 'Switch to light mode' -%}
+<button type="button"
+        class="btn btn-link nav-link theme-toggle {{ classes }}"
+        data-theme-toggle
+        aria-label="{{ label }}"
+        title="{{ label }}"
+        aria-pressed="{{ 'true' if theme == 'dark' else 'false' }}">
+    <i class="fas {{ 'fa-moon' if next == 'dark' else 'fa-sun' }}" data-theme-icon aria-hidden="true"></i>
+    {%- if labelled %}
+    <span data-theme-label>{{ 'Dark mode' if next == 'dark' else 'Light mode' }}</span>
+    {%- endif %}
+</button>
+{% endmacro %}

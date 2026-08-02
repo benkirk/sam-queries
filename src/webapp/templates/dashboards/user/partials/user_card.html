@@ -65,7 +65,7 @@
             <!-- Emails -->
             <div class="stat-item stat-item-block mt-2">
                 <span class="stat-label d-block mb-1">Email{{ 's' if sam_user.email_addresses|length != 1 else '' }}:</span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% for email in sam_user.email_addresses %}
                     <div class="mb-1">
                         {{ email.email_address }}
@@ -82,7 +82,7 @@
             {% if sam_user.phones %}
             <div class="stat-item stat-item-block mt-2">
                 <span class="stat-label d-block mb-1">Phone{{ 's' if sam_user.phones|length != 1 else '' }}:</span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% for phone in sam_user.phones %}
                     <div class="mb-1">
                         {{ phone.phone_number }}
@@ -107,10 +107,10 @@
                 {# Count-based plural, but the empty block takes "(s)" — "Institutions:
                    No current affiliation" would be asserting a plural that isn't there. #}
                 <span class="stat-label d-block mb-1">Institution{{ '(s)' if active_insts|length == 0 else ('' if active_insts|length == 1 else 's') }}:</span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% for ui in active_insts %}
                     <div class="mb-1">
-                        <span class="badge bg-light text-dark border">{{ ui.institution.acronym or '—' }}</span>
+                        <span class="badge bg-body-tertiary text-body-emphasis border">{{ ui.institution.acronym or '—' }}</span>
                         <span class="text-muted">{{ ui.institution.name }}</span>
                     </div>
                     {% else %}
@@ -128,10 +128,10 @@
                     Former Institution{{ 's' if former_insts|length != 1 else '' }}:
                     {{ help_icon(g_former_affiliations(), rich=True) }}
                 </span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% for ui in former_insts %}
                     <div class="mb-1">
-                        <span class="badge bg-light text-secondary border">{{ ui.institution.acronym or '—' }}</span>
+                        <span class="badge bg-body-tertiary text-body-secondary border">{{ ui.institution.acronym or '—' }}</span>
                         <span class="text-muted">{{ ui.institution.name }}</span>
                         <span class="text-muted small">
                             {%- if ui.is_future %} — starts {{ ui.start_date | fmt_date }}
@@ -148,10 +148,10 @@
             {% if active_orgs or (show_history and sam_user.organizations) %}
             <div class="stat-item stat-item-block mt-2">
                 <span class="stat-label d-block mb-1">Organization{{ '(s)' if active_orgs|length == 0 else ('' if active_orgs|length == 1 else 's') }}:</span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% for uo in active_orgs %}
                     <div class="mb-1">
-                        <span class="badge bg-light text-dark border">{{ uo.organization.acronym }}</span>
+                        <span class="badge bg-body-tertiary text-body-emphasis border">{{ uo.organization.acronym }}</span>
                         <span class="text-muted">{{ uo.organization.name }}</span>
                     </div>
                     {% else %}
@@ -169,10 +169,10 @@
                     Former Organization{{ 's' if former_orgs|length != 1 else '' }}:
                     {{ help_icon(g_former_affiliations(), rich=True) }}
                 </span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% for uo in former_orgs %}
                     <div class="mb-1">
-                        <span class="badge bg-light text-secondary border">{{ uo.organization.acronym }}</span>
+                        <span class="badge bg-body-tertiary text-body-secondary border">{{ uo.organization.acronym }}</span>
                         <span class="text-muted">{{ uo.organization.name }}</span>
                         <span class="text-muted small">
                             {%- if uo.is_future %} — starts {{ uo.start_date | fmt_date }}
@@ -197,7 +197,7 @@
             <!-- Active projects -->
             <div class="stat-item stat-item-block mt-2">
                 <span class="stat-label d-block mb-1">Active Projects:</span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% set active_projects = sam_user.active_projects() %}
                     {% if active_projects %}
                         {% for project in active_projects %}
@@ -237,7 +237,7 @@
                 <span class="stat-label d-block mb-1">
                     Inactive / Former Projects: {{ help_icon(g_former_projects(), rich=True) }}
                 </span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% for project in former.inactive %}
                     <a href="{{ url_for('admin_dashboard.projects', projcode=project.projcode) }}"
                        class="badge bg-secondary text-decoration-none me-1 mb-1">
@@ -246,7 +246,7 @@
                     {% endfor %}
                     {% for project in former.ended %}
                     <a href="{{ url_for('admin_dashboard.projects', projcode=project.projcode) }}"
-                       class="badge bg-light text-secondary border text-decoration-none me-1 mb-1">
+                       class="badge bg-body-tertiary text-body-secondary border text-decoration-none me-1 mb-1">
                         {{ project.projcode }}
                     </a>
                     {% endfor %}
@@ -259,7 +259,7 @@
             {% if user_groups is not none %}
             <div class="stat-item stat-item-block mt-2">
                 <span class="stat-label d-block mb-1">Active Groups:</span>
-                <div class="stat-value text-dark text-detail">
+                <div class="stat-value text-body-emphasis text-detail">
                     {% set branches = user_groups.keys() | list | sort %}
                     {% if branches %}
                     {% set tab_id = 'groupsTabs-' ~ sam_user.username %}
@@ -345,7 +345,7 @@
         {% if exemptions %}
         <div class="table-responsive">
             <table class="table table-sm table-hover mb-0">
-                <thead class="table-light">
+                <thead class="table-subtle">
                     <tr>
                         <th>Resource</th>
                         <th>Queue</th>

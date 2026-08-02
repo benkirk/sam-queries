@@ -18,7 +18,7 @@
     <div>
         <strong class="font-monospace">{{ contract.contract_number }}</strong>
         {% if contract.contract_source %}
-        <span class="badge bg-light text-dark border ms-1">{{ contract.contract_source.contract_source }}</span>
+        <span class="badge bg-body-tertiary text-body-emphasis border ms-1">{{ contract.contract_source.contract_source }}</span>
         {% endif %}
         {{ contract_status_badge(contract) }}
     </div>

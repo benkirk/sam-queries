@@ -189,7 +189,7 @@
   {% set _okey = 'account' if group_by | default('user') == 'project'
      else 'user' %}
   {% macro owner_jobs_drill(dt_id, owner, drill_url, band_label) %}
-  <div class="p-2 bg-light" id="{{ dt_id }}"
+  <div class="p-2 bg-body-tertiary" id="{{ dt_id }}"
        hx-get="{{ drill_url }}&{{ _okey }}={{ owner | urlencode }}&target_id={{ dt_id }}"
        hx-trigger="shown.bs.collapse from:closest tr.collapse once"
        hx-swap="innerHTML">
@@ -202,7 +202,7 @@
 
   {# Bucket table under the SVG — the same full, zero-filled vector the
      chart renders, so counts are copy/paste-able. Populated bands expand
-     (row click or bar click via the #jh-bar-<i> sentinel and
+     (row click or bar click via the #sam/row/data-jh-bucket/<i> sentinel and
      svg-chart-links.js) into a per-owner tier (users, or projects under
      the Project pill) rendered from the envelope's owners (ranked by the
      active metric), each owner lazy-loading its jobs in the band
@@ -214,7 +214,7 @@
   <div class="small text-muted mt-2 mb-1">Bucket breakdown</div>
   <div class="table-responsive">
     <table class="table table-sm table-hover align-middle mb-0">
-      <thead class="table-light">
+      <thead class="table-subtle">
         <tr>
           <th>Range</th>
           <th class="text-end">Jobs</th>
@@ -258,7 +258,7 @@
                 {{ owner_jobs_drill(_rid ~ '-content',
                                     (owners | list | first), drill_url, b.label) }}
               {% else %}
-                <div class="p-2 bg-light">
+                <div class="p-2 bg-body-tertiary">
                   <div class="table-responsive">
                     <table class="table table-sm table-hover align-middle mb-0">
                       <thead>
@@ -399,7 +399,7 @@
               {# Lazy-load this band's jobs on first expand — bind to
                  shown.bs.collapse (not click) so a bar-click open
                  triggers it too. #}
-              <div class="p-2 bg-light" id="{{ _rid }}-content"
+              <div class="p-2 bg-body-tertiary" id="{{ _rid }}-content"
                    hx-get="{{ drill_url }}&target_id={{ _rid }}-content"
                    hx-trigger="shown.bs.collapse from:closest tr.collapse once"
                    hx-swap="innerHTML">

@@ -49,7 +49,7 @@
              aria-labelledby="orgs-tab">
             <div class="table-responsive">
                 <table class="table table-sm mb-0" id="orgs-tree-table">
-                    <thead class="table-light">
+                    <thead class="table-subtle">
                         <tr>
                             <th>Organization</th>
                             <th>Description</th>
@@ -70,9 +70,9 @@
                                    data-action="org-toggle-children"
                                    data-org-id="{{ org.organization_id }}"></i>
                                 {% else %}
-                                <i class="fas fa-circle small me-1" style="font-size:0.35em; color:#ccc; vertical-align:middle;"></i>
+                                <i class="fas fa-circle small me-1" style="font-size:0.35em; color:var(--text-tertiary); vertical-align:middle;"></i>
                                 {% endif %}
-                                <span class="badge bg-light text-dark border">{{ org.acronym }}</span>
+                                <span class="badge bg-body-tertiary text-body-emphasis border">{{ org.acronym }}</span>
                                 <span class="ms-1">{{ org.name }}</span>
                             </td>
                             <td class="text-muted small">{{ org.description or '—' }}</td>
@@ -137,7 +137,7 @@
              aria-labelledby="areas-tab">
             <div class="table-responsive">
                 <table class="table table-sm mb-0">
-                    <thead class="table-light">
+                    <thead class="table-subtle">
                         <tr>
                             <th>Name</th>
                             <th>Count</th>
@@ -148,7 +148,7 @@
                     {% for g in aoi_groups %}
                     {# ── Group row (clickable trigger) ── #}
                     <tbody>
-                        <tr class="cursor-pointer table-light fw-semibold{% if not g.active %} opacity-50{% endif %}"
+                        <tr class="cursor-pointer table-subtle fw-semibold{% if not g.active %} opacity-50{% endif %}"
                             data-bs-toggle="collapse"
                             data-bs-target="#aoi-group-{{ g.area_of_interest_group_id }}"
                             aria-expanded="false">
@@ -242,7 +242,7 @@
              aria-labelledby="nsf-programs-tab">
             <div class="table-responsive">
                 <table class="table table-hover table-sm mb-0">
-                    <thead class="table-light">
+                    <thead class="table-subtle">
                         <tr>
                             <th class="sortable-header" data-sort="text">Program Name</th>
                             <th class="sortable-header" data-sort="numeric"># Contracts</th>

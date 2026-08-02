@@ -11,7 +11,9 @@ from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
-from webapp.utils.htmx import handle_htmx_form_post, register_typeahead
+from webapp.utils.htmx import (
+    handle_htmx_form_post, read_layout, read_theme, register_typeahead,
+)
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
     count_recent_allocation_transactions,
@@ -330,6 +332,15 @@ def projects():
     # Allow cache bypass for debugging / stale data
     force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
 
+    # This route renders four pies inline, so it is one of the nine chart call
+    # sites with no htmx request behind them — the layout arrives on the
+    # cookie. `user_aware_cache_key` partitions the cached HTML by it; without
+    # that, the first visitor to warm this page would decide whether everyone
+    # else got phone-sized or desktop-sized pies. The theme rides the same
+    # cookie mechanism and the same cache-key partition, and its failure is the
+    # louder one — a light pie on a dark page.
+    layout, theme = read_layout(), read_theme()
+
     # Facility scope resolution.
     # ``allowed_facility_names`` is the user's universe — every facility
     # they may *ever* see on this dashboard. For unscoped users that's
@@ -416,7 +427,8 @@ def projects():
         overview_data = all_overviews.get(rn, [])
         resource_overviews[rn] = {
             'table_data': overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(overview_data),
+            'chart': generate_facility_pie_chart_matplotlib(
+                overview_data, layout=layout, theme=theme),
         }
 
     # Generate allocation type pie chart SVGs per resource/facility
@@ -426,7 +438,8 @@ def projects():
         for facility_name, types in facilities.items():
             if len(types) > 1:
                 allocation_type_charts[resource_name][facility_name] = \
-                    generate_allocation_type_pie_chart_matplotlib(types)
+                    generate_allocation_type_pie_chart_matplotlib(
+                        types, layout=layout, theme=theme)
             else:
                 allocation_type_charts[resource_name][facility_name] = None
 
@@ -478,7 +491,8 @@ def projects():
             ]
             if len(chartable) > 1:
                 allocation_type_usage_charts[resource_name][facility_name] = \
-                    generate_allocation_type_pie_chart_matplotlib(chartable)
+                    generate_allocation_type_pie_chart_matplotlib(
+                        chartable, layout=layout, theme=theme)
             else:
                 allocation_type_usage_charts[resource_name][facility_name] = None
 
@@ -494,7 +508,8 @@ def projects():
         chartable = [d for d in usage_overview_data if d.get('total_used', 0.0) > 0]
         resource_usage_overviews[rn] = {
             'table_data': usage_overview_data,
-            'chart': generate_facility_pie_chart_matplotlib(chartable)
+            'chart': generate_facility_pie_chart_matplotlib(
+                chartable, layout=layout, theme=theme)
                      if chartable else '<div class="text-center text-muted small py-3">No usage data yet</div>',
         }
 
@@ -578,7 +593,7 @@ def htmx_pace_chart(resource_name):
 
     chart_svg = generate_pace_chart_matplotlib(
         per_project_usage, active_at, resource_name=resource_name,
-        sort_by=sort_by,
+        sort_by=sort_by, layout=read_layout(), theme=read_theme(),
     )
 
     # Sanitize resource_name into a stable HTML id — matches the

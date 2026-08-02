@@ -11,7 +11,7 @@
    =================================================================== */
 
 .allocation-card {
-    background: var(--bg-gray-light);
+    background: var(--surface-tertiary);
     border-left: 4px solid var(--ncar-blue);
     padding: 1rem;
     margin-bottom: 1rem;
@@ -27,7 +27,7 @@
 }
 
 .summary-table th {
-    background-color: var(--bg-gray-medium);
+    background-color: var(--surface-secondary);
     font-weight: 600;
 }
 
@@ -41,7 +41,7 @@
 }
 
 .expandable-row:hover {
-    background-color: var(--bg-gray-light);
+    background-color: var(--surface-tertiary);
 }
 
 .expand-icon {
@@ -57,7 +57,7 @@
 
 .project-details-row {
     display: none;
-    background-color: var(--bg-gray-light);
+    background-color: var(--surface-tertiary);
 }
 
 .project-details-row.show {
@@ -68,15 +68,18 @@
    Hierarchical Facility / Allocation-Type Table (flat, interleaved rows)
    =================================================================== */
 
-/* Facility header rows (top-level collapsible) */
+/* Facility header rows (top-level collapsible).
+   Blue-tinted rather than grey — deliberately distinct from the neutral
+   --surface-* ramp, which is why these get their own accent tokens instead
+   of being folded into it. */
 .facility-row {
-    background-color: #edf2f7;
+    background-color: var(--surface-accent);
     cursor: pointer;
     transition: background-color var(--transition-fast);
 }
 
 .facility-row:hover {
-    background-color: #d0dce9;
+    background-color: var(--surface-accent-hover);
 }
 
 /* Allocation type rows — hidden by default, revealed when facility expands */
@@ -119,18 +122,18 @@
 
 .sortable-header::after {
     content: ' \2195';
-    color: #adb5bd;
+    color: var(--text-tertiary);
     font-size: 0.8em;
 }
 
 .sortable-header.sort-asc::after {
     content: ' \2191';
-    color: #495057;
+    color: var(--text-primary);
 }
 
 .sortable-header.sort-desc::after {
     content: ' \2193';
-    color: #495057;
+    color: var(--text-primary);
 }
 
 /* ===================================================================

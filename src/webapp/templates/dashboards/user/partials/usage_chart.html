@@ -3,10 +3,10 @@
    re-rendered when a metric pill is clicked; see metric_pills for how the
    selection persists across the two panes.
 
-   The bar chart's `set_url('#day-bar-YYYY-MM-DD')` anchors are wired
+   The bar chart's `set_url('#sam/day/YYYY-MM-DD')` anchors are wired
    regardless of metric; svg-chart-links.js handles the click and expands the
    matching day row in the Historical Usage table below. The stacked variant
-   additionally links legend usernames to `#usage-user-<name>`, which lands in
+   additionally links legend usernames to `#sam/user/<name>`, which lands in
    the *other* pane — activateOwningTab switches to it first. #}
 
 {% from 'dashboards/user/partials/_resource_details_macros.html' import metric_pills with context %}

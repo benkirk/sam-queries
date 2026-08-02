@@ -11,7 +11,7 @@
   hist: bucket_labels, buckets{label:{data,files,owners}},
         total_data, total_files, directory, fast_path, reference_scan_date,
         username_map.
-  The bar→row drill-down (#ah-bar-<i> / data-ah-bucket=<i>) is pane-scoped in
+  The bar→row drill-down (#sam/row/data-ah-bucket/<i> / data-ah-bucket=<i>) is pane-scoped in
   svg-chart-links.js, so both tabs can use the same anchor scheme.
 #}
 
@@ -26,7 +26,7 @@
    per-user table is skipped — there's only one user). Binds to
    shown.bs.collapse so it fires under nav restore. #}
 {% macro dir_drill(dt_id, uid, uname, b, date_band, resource_name, scope, dir_fragment_url) %}
-<div class="p-2 bg-light" id="{{ dt_id }}"
+<div class="p-2 bg-body-tertiary" id="{{ dt_id }}"
      hx-get="{{ dir_fragment_url }}?owner_uid={{ uid }}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if date_band %}{% if b.get('accessed_after') %}&accessed_after={{ b.accessed_after }}{% endif %}&accessed_before={{ b.accessed_before }}{% else %}&min_avg_size={{ b.size_min }}{% if b.get('size_max') is not none %}&max_avg_size={{ b.size_max }}{% endif %}{% endif %}&recursive=0&sort_by=size_nr&limit=25&target_id={{ dt_id }}"
      hx-trigger="shown.bs.collapse from:closest tr.collapse once"
      hx-swap="innerHTML">
@@ -154,7 +154,7 @@
   {% set _cols = 5 if _show_owners else 4 %}
   <div class="table-responsive mt-3">
     <table class="table table-sm table-hover align-middle mb-0">
-      <thead class="table-light">
+      <thead class="table-subtle">
         <tr>
           <th style="width:1.5rem;" aria-label="Expand"></th>
           <th>{{ bucket_header or 'Bucket' }}</th>
@@ -214,7 +214,7 @@
                table order matches the stacked bar. #}
             {% set ranked = owners.items() | sort(attribute='1.' ~ _metric, reverse=true) %}
             <tr class="collapse" id="{{ rowid }}">
-              <td colspan="{{ _cols }}" class="bg-light">
+              <td colspan="{{ _cols }}" class="bg-body-tertiary">
                 <div class="small text-muted mb-1">
                   Top users by {{ 'files' if _by_files else 'data' }} in <strong>{{ label }}</strong>
                   ({{ owners | length | fmt_number }} total)

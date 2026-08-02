@@ -2,6 +2,38 @@
  * SAM Design Tokens
  * Central CSS custom-property definitions shared across all pages.
  * Load this file before any other local CSS.
+ *
+ * ## Three tiers — and which one component CSS is allowed to touch
+ *
+ *   Tier 1  primitives      brand constants. Theme-INVARIANT.
+ *                           `--ncar-blue` is the same blue on a white page
+ *                           and a black one. Component CSS must NOT
+ *                           reference these for chrome (text, surfaces,
+ *                           borders) — only for brand accents that really
+ *                           are meant to stay put.
+ *
+ *   Tier 2  role tokens     the ONLY thing component CSS should use for
+ *                           chrome. Named for the JOB (`--surface-card`,
+ *                           `--text-primary`), never the value.
+ *
+ *   Tier 3  Bootstrap bridge  maps `--bs-*` onto tier 2 so Bootstrap's
+ *                           components and our own CSS agree on one set of
+ *                           surfaces instead of two. (Added in D2.)
+ *
+ * ## Why the rename happened
+ *
+ * These tokens used to be named after their light-mode VALUES:
+ * `--bg-light`, `--text-dark`, `--bg-gray-light`, `--bg-gray-medium`,
+ * `--border-color`, `--color-gray-muted`. A token literally named
+ * `--text-dark` whose dark-mode value must be near-white is not survivable:
+ * a maintainer reading `color: var(--text-dark)` cannot tell whether that
+ * means "the dark colour" (invariant) or "the body text colour" (flips), and
+ * no test catches the wrong guess. See docs/plans/DARK_MODE.md
+ * § *The token layer*.
+ *
+ * `tests/unit/test_css_tokens.py` enforces that colour literals stay in this
+ * file, and that tier 1 agrees with `webapp/dashboards/charts/theme.py`
+ * (the palette is duplicated there because matplotlib cannot read CSS).
  */
 
 :root {
@@ -35,7 +67,9 @@
     --line-height-xxxxlg: 4.5rem;
 
 
-    /* --- NCAR brand colors --- */
+    /* --- Tier 1: NCAR brand colors. Theme-INVARIANT. ---
+       Mirrored as UNITY_NCAR_* scalars in charts/theme.py; the two are
+       pinned together by test_css_tokens.py::test_tier1_matches_chart_palette. */
     --ncar-space-blue: #011837;   /* Unity space-blue — darkest nav/heading text */
     --ncar-gray-light: #bbbcbc;   /* Unity grays.light — nav item dividers */
     --ncar-navy:       #00357a;   /* NSF NCAR brand navy */
@@ -52,19 +86,110 @@
     --ncar-navy-mid:   #003579;   /* gradient midpoint (navy → blue) */
     --ncar-teal-rgb:   0, 153, 204;  /* #0099CC used in rgba() calls */
 
-    /* --- Semantic colors --- */
+    /* --- Tier 1: status colors. Theme-INVARIANT. ---
+       Meaning-bearing, not chrome: "danger" is the same red on either
+       theme. Contrast against a dark surface is D7's problem, not a reason
+       to make these flip. */
     --success-color:   #10b981;
     --warning-color:   #f59e0b;
     --danger-color:    #E81D24;   /* brand vermilion */
     --info-color:      #0056C2;
-    --bg-light:        #f6f7f6;   /* NSF NCAR warm off-white */
-    --text-dark:       #323133;
-    --border-color:    #E2E8F0;
+
+    /* =====================================================================
+       Tier 2: ROLE tokens — the only ones component CSS should use for
+       chrome. Every value here is redefined under
+       :root[data-bs-theme="dark"] below.
+       ===================================================================== */
+
+    /* --- Surfaces, as an elevation ladder ---
+       Ordered page → card → raised. The two "recess" steps borrow
+       Bootstrap's vocabulary on purpose: their light values are *identical*
+       to --bs-secondary-bg / --bs-tertiary-bg, so the tier-3 bridge (D2) and
+       the `bg-light` → `bg-body-secondary` codemod (D5) land in one ramp
+       rather than two that drift.
+
+       Note the ordering INVERTS in dark mode — a recess renders lighter, not
+       darker, which is Bootstrap's own dark convention (--bs-secondary-bg
+       #343a40 sits above --bs-body-bg #212529). That inversion is precisely
+       why these are named for their role and not their brightness. */
+    --surface-page:      #f6f7f6;   /* body — NSF NCAR warm off-white */
+    --surface-card:      #ffffff;   /* cards, modals */
+    --surface-raised:    #ffffff;   /* tabs, chips, inputs */
+
+    /* The navbar band. Kept as its own token rather than folded into
+       `--surface-raised` because the header is the one surface whose colour is
+       constrained by an *asset* (the brand lockup) and not only by the palette
+       — see `img/logo-ncar-reversed.png` and the note in the dark block. */
+    --surface-navbar:    #ffffff;
+    --surface-secondary: #e9ecef;   /* stronger recess: progress track, th  */
+    --surface-tertiary:  #f8f9fa;   /* gentler recess: wells, stat boxes    */
+
+    /* A blue-TINTED grouping surface, deliberately outside the neutral ramp
+       above: the allocations facility rows use it to read as "a heading row",
+       not "a recess". Kept separate so darkening the neutral ramp cannot
+       silently flatten that distinction. */
+    --surface-accent:       #edf2f7;
+    --surface-accent-hover: #d0dce9;
+
+    /* `-rgb` companions, for the `rgba(var(--x-rgb), <a>)` idiom — same
+       reason --ncar-blue-rgb exists. Required by the tier-3 bridge: Bootstrap
+       consumes --bs-body-bg-rgb / --bs-secondary-bg-rgb / --bs-tertiary-bg-rgb
+       in 5 places, and bridging only the hex form would leave those resolving
+       to the framework default while everything else moved. */
+    --surface-page-rgb:      246, 247, 246;
+    --surface-card-rgb:      255, 255, 255;
+    --surface-secondary-rgb: 233, 236, 239;
+    --surface-tertiary-rgb:  248, 249, 250;
+
+    /* --- Text --- */
+    --text-primary:   #323133;   /* body copy */
+    --text-primary-rgb: 50, 49, 51;
+    --text-secondary: #718096;   /* muted / supporting copy */
+
+    /* Brand-toned text roles.
+     *
+     * These exist because 59 CSS rules set `color: var(--ncar-*)` directly —
+     * headings, card titles, table headers, links, meta text. Those are TIER-1
+     * primitives and therefore invariant, which is correct for a logo and
+     * fatal for text: `--ncar-space-blue` (#011837) on a near-black page is
+     * unreadable.
+     *
+     * Light values are byte-identical to the primitives they replace, so
+     * adopting them changes nothing today; the dark block gives each a legible
+     * counterpart. The four tones are kept distinct rather than collapsed
+     * because the light design really does use them at different weights, and
+     * merging them would be an undeclared restyle. */
+    --text-heading:   #011837;   /* == --ncar-space-blue: headings, nav labels */
+    --text-title:     #00357a;   /* == --ncar-navy: card titles, th, stat values */
+    --text-link:      #0057c2;   /* == --ncar-blue: links, interactive accents */
+    --text-tertiary:  #97999b;   /* == --ncar-gray: de-emphasised meta */
+    /* Deliberately INVARIANT. White on a saturated NCAR-blue button is
+       correct in both themes; giving that case a name is what stops it being
+       "fixed" into a flipping token and breaking every button in light mode. */
+    --text-on-brand:  #ffffff;
+
+    /* The same idea for the brand fills that are themselves LIGHT — gold,
+       orange, sky. `--text-on-brand` is white and white on `--ncar-orange` is
+       1.77:1, so those surfaces need the opposite ink, and it is invariant for
+       exactly the same reason: the fill does not move between themes, so the
+       ink must not either. Value is `--ncar-space-blue`, which is what
+       `--text-heading` already resolved to in light — so the surfaces adopting
+       this are byte-identical in light mode and only stop being near-white on
+       orange in dark. Found by the browser sweep on the /status outage
+       banner. */
+    --text-on-brand-dark: #011837;
+
+    /* The surface equivalent, and invariant for the same reason: a white chip
+       sitting ON a brand fill, not on a page. The one case today is the
+       counter badge inside an inactive (NCAR-blue) nav-pill — the pill stays
+       brand blue in both themes, so its badge must stay white in both. Making
+       this follow --surface-card would put a near-black badge on a blue pill. */
+    --surface-on-brand: #ffffff;
+
+    /* --- Lines --- */
+    --border-default: #E2E8F0;
 
     /* --- Design system tokens --- */
-    --bg-gray-light:     #f8f9fa;
-    --bg-gray-medium:    #e9ecef;
-
     --shadow-sm:  0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
     --shadow-md:  0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --shadow-lg:  0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
@@ -78,7 +203,169 @@
     --transition-fast: 0.2s ease;
     --transition-base: 0.3s ease;
 
-    /* --- Additional utility tokens --- */
-    --color-gray-muted: #718096;  /* muted gray for secondary text */
-    --bs-warning-text:  #856404;  /* Bootstrap warning text color */
+}
+
+
+/* =========================================================================
+   Tier 3: the Bootstrap bridge.
+
+   Bootstrap components are driven entirely by --bs-* variables. Without this
+   block the app runs two parallel surface systems — Bootstrap's white and
+   SAM's warm off-white — that happen to look close enough in light mode to
+   go unnoticed, and diverge visibly the moment a theme flips.
+
+   Pointing the --bs-* chrome variables at tier 2 collapses them into one
+   ramp, which is what makes a large fraction of the app theme itself for
+   free (a modal, a dropdown, a table stripe, an offcanvas all follow).
+
+   ## Load order and specificity — the part that is easy to get wrong
+
+   `bootstrap.min.css` loads BEFORE `variables.css` (see base.html /
+   login.html), and both define these on `:root`. Equal specificity, so
+   source order decides and this block wins.
+
+   That does NOT hold in dark mode. Bootstrap's own dark block is
+   `[data-bs-theme=dark]` (specificity 0,1,0), which outranks a bare `:root`
+   (0,1,0 — tie, but it appears later in *its* file for the attribute case)
+   and, more to the point, applies whenever the attribute is set. The
+   overrides therefore have to be repeated inside `:root[data-bs-theme="dark"]`
+   (0,2,0), which does outrank it. That block arrives with the carrier in D3.
+
+   ## --bs-body-bg maps to --surface-CARD, which looks wrong and is not
+
+   Upstream, `--bs-body-bg` is the default surface for **cards, modals,
+   dropdowns, popovers, offcanvas, tables, list-groups, pagination, accordions,
+   active nav-tabs, form-controls and form-selects** — twelve component
+   variables plus `.form-control` directly. Bootstrap conflates "the page" and
+   "a component surface" because its own defaults make both #fff.
+
+   SAM does not: the page is the warm off-white #f6f7f6, set explicitly on
+   `body` in dashboard.css, and all of those components are white. So in this
+   app `--bs-body-bg` already plays the card role. Pointing it at
+   `--surface-page` would tint every modal and dropdown — and, worse, would
+   make them track the page instead of the card in dark mode, which is the
+   opposite of what a raised surface should do.
+   ========================================================================= */
+:root {
+    --bs-body-bg:            var(--surface-card);
+    --bs-body-bg-rgb:        var(--surface-card-rgb);
+    --bs-body-color:         var(--text-primary);
+    --bs-body-color-rgb:     var(--text-primary-rgb);
+    --bs-border-color:       var(--border-default);
+    --bs-secondary-bg:       var(--surface-secondary);
+    --bs-secondary-bg-rgb:   var(--surface-secondary-rgb);
+    --bs-tertiary-bg:        var(--surface-tertiary);
+    --bs-tertiary-bg-rgb:    var(--surface-tertiary-rgb);
+    /* Links: Bootstrap's dark block lightens --bs-link-color to #6ea8fe on
+       its own, but our own link rules use --text-link. Bridging keeps stock
+       Bootstrap links and SAM links the same colour in BOTH themes instead
+       of two blues that only agree in light mode. */
+    --bs-link-color:         var(--text-link);
+    --bs-link-hover-color:   var(--text-title);
+}
+
+
+/* =========================================================================
+   DARK THEME — tier-2 overrides.
+
+   Set by the server onto <html data-bs-theme="dark"> from the `sam_theme`
+   cookie (webapp/utils/htmx.py read_theme(); the toggle is
+   static/js/theme-toggle.js). Rendering the attribute server-side, rather
+   than setting it from script, is what makes this flash-free by
+   construction: the theme is correct in the first byte of HTML.
+
+   `:root[data-bs-theme="dark"]` (specificity 0,2,0) rather than a bare
+   `[data-bs-theme=dark]` (0,1,0) — it has to outrank Bootstrap's own dark
+   block, which redefines the same --bs-* variables the tier-3 bridge above
+   points at tier 2. A bare `:root` would tie with Bootstrap's and lose
+   whenever the attribute is present.
+
+   INTENTIONALLY EMPTY at D3, and the app is deliberately half-broken in dark
+   mode as a result: Bootstrap's own dark block applies (body, tables, forms,
+   dropdowns), while SAM's hardcoded surfaces stay light. That is the point —
+   it makes the remaining work *inspectable* instead of reasoned about.
+   D4-D6 retire those surfaces onto tokens; D7 fills this block in.
+   ========================================================================= */
+:root[data-bs-theme="dark"] {
+    /* --- Surfaces ---
+       The elevation ladder INVERTS: a recess renders lighter, not darker.
+       That is Bootstrap's own dark convention (--bs-secondary-bg #343a40 sits
+       above --bs-body-bg #212529) and it is why these tokens are named for
+       their role rather than their brightness.
+
+       --surface-card is #1b2733 on purpose: it is already
+       Theme.DARK.legend_face / shade_toward / segment_edge in
+       webapp/dashboards/charts/theme.py. Charts sit inside cards, and PR 4's
+       blend targets have to match the surface they blend into. Picking the
+       value here, once, is what makes PR 4 mechanical. Do not drift it
+       without changing charts/theme.py in the same commit —
+       test_dark_card_matches_chart_blend_target pins the pair. */
+    --surface-page:      #14181d;
+    --surface-card:      #1b2733;
+    --surface-raised:    #222c38;
+    /* The header band goes dark with everything else. This is only safe
+       because `base.html` / `login.html` swap in `img/logo-ncar-reversed.png`
+       at the same time — a reversed lockup whose "NCAR" wordmark and rule are
+       lightened while the NSF seal and the wave disc are left exactly as the
+       brand ships them (both already read correctly on a dark ground).
+       Changing this value without changing that asset puts a navy wordmark on
+       a navy band. */
+    --surface-navbar:    #1a222c;
+    --surface-secondary: #2a3745;   /* stronger recess == lighter here */
+    --surface-tertiary:  #222d39;   /* gentler recess */
+
+    --surface-page-rgb:      20, 24, 29;
+    --surface-card-rgb:      27, 39, 51;
+    --surface-secondary-rgb: 42, 55, 69;
+    --surface-tertiary-rgb:  34, 45, 57;
+
+    /* The blue-tinted grouping surface keeps its tint rather than folding
+       into the neutral ramp — same distinction as in light mode. */
+    --surface-accent:       #1e2b3d;
+    --surface-accent-hover: #26364b;
+
+    /* --- Text --- */
+    --text-primary:     #e9ecef;
+    --text-primary-rgb: 233, 236, 239;
+    --text-secondary:   #adb5bd;
+
+    /* The brand tones, lightened. --text-link lands on --ncar-sky, which is
+       already the app's established "brand blue on a dark panel" — the navbar
+       dropdown has used it on the navy panel since long before dark mode. */
+    --text-heading:  #e8eef7;
+    --text-title:    #b8cde8;
+    --text-link:     #42c0ff;   /* == --ncar-sky */
+    --text-tertiary: #9aa4ae;
+
+    --border-default: #39414b;
+
+    /* --text-on-brand and --surface-on-brand are deliberately NOT redefined:
+       they are invariant. White on an NCAR-blue button is correct in both
+       themes. See their definitions above. */
+
+    /* --- Bootstrap bridge, repeated ---
+       Required, not redundant. Bootstrap's own `[data-bs-theme=dark]` block
+       redefines these same variables, and it would otherwise win: this
+       selector is `:root[data-bs-theme="dark"]` (specificity 0,2,0) precisely
+       so it outranks Bootstrap's bare attribute selector (0,1,0). Drop these
+       and cards/modals/tables silently revert to Bootstrap's grey #212529
+       ramp while the rest of the app uses the blue one. */
+    --bs-body-bg:          var(--surface-card);
+    --bs-body-bg-rgb:      var(--surface-card-rgb);
+    --bs-body-color:       var(--text-primary);
+    --bs-body-color-rgb:   var(--text-primary-rgb);
+    --bs-border-color:     var(--border-default);
+    --bs-secondary-bg:     var(--surface-secondary);
+    --bs-secondary-bg-rgb: var(--surface-secondary-rgb);
+    --bs-tertiary-bg:      var(--surface-tertiary);
+    --bs-tertiary-bg-rgb:  var(--surface-tertiary-rgb);
+    --bs-link-color:       var(--text-link);
+    --bs-link-hover-color: var(--ncar-cyan);
+
+    /* Shadows are near-invisible on a dark page — a black blur on near-black
+       reads as nothing, which loses every card and dropdown edge. Deepened
+       rather than removed so elevation still exists; the borders do the rest. */
+    --shadow-sm: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.45);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
 }

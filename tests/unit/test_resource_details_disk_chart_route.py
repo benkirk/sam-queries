@@ -23,11 +23,22 @@ _DISK_RESOURCE = 'Campaign_Store'
 @pytest.fixture
 def _sentinel_chart(monkeypatch):
     """Patch the SVG renderer so the route returns deterministic markup
-    without invoking matplotlib. Captures the metric it was called with."""
-    captured = {'metric': None}
+    without invoking matplotlib. Captures the arguments it was called with.
 
-    def _fake(timeseries, link_kind=None, metric='bytes'):
+    The double's signature is deliberately explicit rather than ``**kwargs``:
+    it is the only thing asserting that this route calls the chart the way the
+    chart expects. When the ``layout`` axis was threaded through, this fixture
+    failed loudly — and again when ``theme`` was, in PR 4. That is the
+    behaviour worth keeping: a ``**kwargs`` double would have swallowed both
+    and left the route free to stop forwarding either.
+    """
+    captured = {'metric': None, 'layout': None, 'theme': None}
+
+    def _fake(timeseries, link_kind=None, metric='bytes', layout='desktop',
+              theme='light'):
         captured['metric'] = metric
+        captured['layout'] = layout
+        captured['theme'] = theme
         return '<svg data-test="disk-chart"></svg>'
 
     monkeypatch.setattr(
@@ -57,6 +68,59 @@ class TestDiskUsageChartRoute:
         assert 'Data Volume' in html and 'File Count' in html
         assert _active_tab_label(html) == 'Data Volume'
         assert _sentinel_chart['metric'] == 'bytes'
+        assert _sentinel_chart['layout'] == 'desktop'
+        assert _sentinel_chart['theme'] == 'light'
+
+    def test_layout_reaches_the_chart(self, auth_client, active_project,
+                                      _sentinel_chart):
+        """Threading the axis to the chart layer is only half the job; the
+        route has to hand it over. Query string and cookie are both live
+        channels — fragments carry the param, full pages read the cookie."""
+        resp = auth_client.get(
+            _url(active_project.projcode, resource=_DISK_RESOURCE,
+                 layout='mobile'))
+        assert resp.status_code == 200
+        assert _sentinel_chart['layout'] == 'mobile'
+
+        auth_client.set_cookie('sam_layout', 'mobile', domain='localhost')
+        resp = auth_client.get(_url(active_project.projcode,
+                                    resource=_DISK_RESOURCE))
+        assert resp.status_code == 200
+        assert _sentinel_chart['layout'] == 'mobile'
+
+    def test_theme_reaches_the_chart(self, auth_client, active_project,
+                                     _sentinel_chart):
+        """The theme's own half of the same claim.
+
+        Only the cookie is asserted as a *live* channel: unlike ``layout``, no
+        JavaScript ever writes ``?theme=``, so the query string is a
+        hand-debugging affordance rather than transport. See
+        ``webapp/utils/htmx.py:read_theme``.
+        """
+        auth_client.set_cookie('sam_theme', 'dark', domain='localhost')
+        resp = auth_client.get(_url(active_project.projcode,
+                                    resource=_DISK_RESOURCE))
+        assert resp.status_code == 200
+        assert _sentinel_chart['theme'] == 'dark'
+
+    def test_bogus_theme_falls_back_to_light(self, auth_client, active_project,
+                                             _sentinel_chart):
+        """Lenient, never a 400 — same rule as the layout axis below."""
+        auth_client.set_cookie('sam_theme', 'sepia', domain='localhost')
+        resp = auth_client.get(_url(active_project.projcode,
+                                    resource=_DISK_RESOURCE))
+        assert resp.status_code == 200
+        assert _sentinel_chart['theme'] == 'light'
+
+    def test_bogus_layout_falls_back_to_desktop(self, auth_client,
+                                                active_project,
+                                                _sentinel_chart):
+        """Lenient, never a 400 — a stale replay must not break a card."""
+        resp = auth_client.get(
+            _url(active_project.projcode, resource=_DISK_RESOURCE,
+                 layout='sideways'))
+        assert resp.status_code == 200
+        assert _sentinel_chart['layout'] == 'desktop'
 
     def test_files_metric_tab_active(self, auth_client, active_project, _sentinel_chart):
         resp = auth_client.get(

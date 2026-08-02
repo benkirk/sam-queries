@@ -41,7 +41,7 @@
           {# Streamlined dates (skip the redundant single-queue tier). #}
           {% for d in q0.dates %}
             {% set djid = uid ~ '-d' ~ loop.index ~ '-jobs' %}
-            <tr class="table-light">
+            <tr class="table-subtle">
               <td class="ps-4 text-muted">
                 <small>{{ d.date }}</small>
                 <em class="ms-2">{{ q0.queue }}</em>
@@ -83,7 +83,7 @@
             {% if q.dates|length > 1 %}
               {% for d in q.dates %}
                 {% set djid = qid ~ '-d' ~ loop.index ~ '-jobs' %}
-                <tr class="collapse table-light" id="user-queue-dates-{{ qid }}">
+                <tr class="collapse table-subtle" id="user-queue-dates-{{ qid }}">
                   <td class="ps-5 text-muted">
                     <small>{{ d.date }}</small>
                     {% if jobs_machine %}{{ jobs_button(djid) }}{% endif %}

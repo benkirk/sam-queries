@@ -34,7 +34,7 @@
       <tbody>
         {% for sub in day.rows %}
           {% set jid = did ~ '-jobs' ~ loop.index %}
-          <tr class="table-light">
+          <tr class="table-subtle">
             <td class="ps-4 text-muted">
               <code>{{ sub.username }}</code> / <em>{{ sub.queue }}</em>
               {% if jobs_machine %}{{ jobs_button(jid) }}{% endif %}

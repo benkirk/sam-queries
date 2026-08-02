@@ -83,7 +83,7 @@
     </div>
     <div class="border rounded">
       <table class="table table-sm mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
           <tr>
             <th style="width:2.5rem;"></th>
             <th>Resource</th>
@@ -114,7 +114,7 @@
                           {% if c.is_open_ended %}text-muted{% else %}text-primary{% endif %}"></i>
                 <strong>{{ c.resource_name }}</strong>
                 {% if c.resource_type %}
-                <span class="badge bg-secondary bg-opacity-25 text-dark border small ms-1">
+                <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border small ms-1">
                   {{ c.resource_type }}
                 </span>
                 {% endif %}

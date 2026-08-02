@@ -76,7 +76,7 @@
        GID (fs_scans plugin ``group_id`` filter). #}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
           <tr>
             <th class="sortable-header" data-sort="text">{{ 'User' if _is_owner else 'Group' }}</th>
             <th class="sortable-header text-end sort-desc" data-sort="numeric">Size</th>
@@ -134,7 +134,7 @@
                    resolved name for the filter badge. Bound to
                    shown.bs.collapse (not click) so it fires under
                    nav-view-persistence restore too. #}
-                <div class="p-2 bg-light"
+                <div class="p-2 bg-body-tertiary"
                      id="{{ _rid }}"
                      hx-get="{{ dir_fragment_url }}?{{ _ent.drill }}={{ eid }}{% if not _is_owner and name %}&group_label={{ name | urlencode }}{% endif %}&resource={{ resource_name }}{% if scope %}&scope={{ scope }}{% endif %}{% if fileset %}&fileset={{ fileset }}{% endif %}&target_id={{ _rid }}&limit=20"
                      hx-trigger="shown.bs.collapse from:closest tr.collapse once"

@@ -55,10 +55,10 @@
     {% if project.organizations %}
     <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Organizations:</span>
-      <div class="stat-value text-dark text-detail">
+      <div class="stat-value text-body-emphasis text-detail">
         {% for po in project.organizations_current_first() %}
             <div class="mb-1">
-                <span class="badge bg-light {{ 'text-secondary' if not po.is_active else 'text-dark' }} border">{{ po.organization.acronym }}</span>
+                <span class="badge bg-body-tertiary {{ 'text-body-secondary' if not po.is_active else 'text-body-emphasis' }} border">{{ po.organization.acronym }}</span>
                 <span class="text-muted">{{ po.organization.name }}</span>
                 {%- if not po.is_active and po.end_date %}
                 <span class="text-muted small">— until {{ po.end_date | fmt_date }}</span>
@@ -88,10 +88,10 @@
       {% set _can_view_contracts = has_permission_any_facility(Permission.VIEW_CONTRACTS)
                                    if has_permission_any_facility is defined and Permission is defined
                                    else false %}
-      <div class="stat-value text-dark text-detail">
+      <div class="stat-value text-body-emphasis text-detail">
         {% for pc in project.contracts_current_first() %}
             <div class="mb-1">
-                <span class="badge bg-light text-dark border">{{ pc.contract.contract_source.contract_source }}</span>
+                <span class="badge bg-body-tertiary text-body-emphasis border">{{ pc.contract.contract_source.contract_source }}</span>
                 {% if _can_view_contracts %}
                 <a href="#" class="text-decoration-none text-reset"
                    title="View contract details"
@@ -107,7 +107,7 @@
                 <span class="text-muted">- {{ pc.contract.title }}</span>
                 {%- if not pc.contract.is_active %}
                   {%- if pc.contract.is_future %}
-                  <span class="badge bg-light text-secondary border fw-normal ms-1">starts {{ pc.contract.start_date | fmt_date }}</span>
+                  <span class="badge bg-body-tertiary text-body-secondary border fw-normal ms-1">starts {{ pc.contract.start_date | fmt_date }}</span>
                   {%- else %}
                   <span class="badge bg-secondary fw-normal ms-1">expired {{ pc.contract.end_date | fmt_date }}</span>
                   {%- endif %}
@@ -121,7 +121,7 @@
     {% if project.active_directories %}
     <div class="stat-item stat-item-block mt-2">
       <span class="stat-label d-block mb-1">Directories:</span>
-      <div class="stat-value text-dark text-detail">
+      <div class="stat-value text-body-emphasis text-detail">
         {% for dir in project.active_directories %}
             <div class="mb-1">
                 <span class="fas fa-folder text-warning me-1"></span>
@@ -202,7 +202,7 @@
                                 <div class="d-flex justify-content-between small mb-1">
                                     <span class="fw-semibold {% if not is_expired %}text-primary{% endif %}">{{ resource.allocated | fmt_number }}{% set _unit = resource.resource_type | alloc_unit(resource.allocated) %}{% if _unit %} {{ _unit }}{% endif %} allocated</span>
                                     {% if first.bar_state == 'active' and first.days_until_expiration is not none and first.days_until_expiration >= 0 %}
-                                        <span class="text-dark">{{ first.days_until_expiration }}d remaining</span>
+                                        <span class="text-body-emphasis">{{ first.days_until_expiration }}d remaining</span>
                                     {% elif first.bar_state == 'expired' %}
                                         <span class="text-muted">expired</span>
                                     {% elif first.bar_state == 'open-ended' %}
@@ -216,7 +216,7 @@
                                                         show_label=True) }}
                                     {% if first.bar_state == 'active' and resource.resource_type in ['HPC', 'DAV'] %}
                                     <div class="position-absolute"
-                                         style="left: {{ first.elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(33,37,41,0.55); z-index: 2; pointer-events: none;"
+                                         style="left: {{ first.elapsed_pct }}%; top: -2px; bottom: -2px; width: 2px; background: rgba(var(--text-primary-rgb),0.55); z-index: 2; pointer-events: none;"
                                          title="{{ first.elapsed_pct | fmt_pct }} of allocation period elapsed"></div>
                                     {% endif %}
                                 </div>
@@ -286,7 +286,7 @@
         </button>
     </h6>
     <div id="members-{{ unique_id }}" class="collapse">
-        <div class="members-container p-3 bg-light rounded"
+        <div class="members-container p-3 bg-body-tertiary rounded"
              id="htmx-members-{{ project.projcode }}"
              data-load-url="{{ url_for('project_members.members_fragment', projcode=project.projcode) }}"
              data-loaded="false">
@@ -358,7 +358,7 @@
                                 </span>
                             {% else %}
                                 {# Light info: 31-60 days #}
-                                <span class="badge bg-light text-dark ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
+                                <span class="badge bg-body-tertiary text-body-emphasis ms-2" title="Expires in {{ days }} days ({{ resource_list }})">
                                     <i class="fas fa-calendar"></i>
                                     {{ days }}d{% if count > 1 %} ({{ count }}){% endif %}
                                 </span>
@@ -433,7 +433,7 @@
                         </div>
                     </h6>
                     <div id="tree-{{ card_id }}" class="collapse">
-                        <div class="tree-container p-3 bg-light rounded"
+                        <div class="tree-container p-3 bg-body-tertiary rounded"
                              id="tree-container-{{ card_id }}"
                              data-load-url="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode, active_only=1) }}"
                              data-loaded="false">

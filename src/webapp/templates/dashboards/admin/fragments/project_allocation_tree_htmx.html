@@ -124,7 +124,7 @@
       {% if is_standalone %}
       {# ── Flat row — one per resource (no accordion, edit pencil at rest) ── #}
       <tbody>
-        <tr style="border-top: 1px solid #dee2e6;">
+        <tr style="border-top: 1px solid var(--border-default);">
 
           {# Col 1: resource name #}
           <td class="fw-semibold py-2" style="vertical-align:middle;">
@@ -182,7 +182,7 @@
       {# ── Resource header row ──────────────────────────────────────── #}
       <tbody>
         <tr class="table-secondary alloc-resource-header"
-            style="cursor:pointer; border-top: 2px solid #ced4da;"
+            style="cursor:pointer; border-top: 2px solid var(--border-default);"
             data-bs-toggle="collapse"
             data-bs-target="#{{ body_id }}"
             aria-expanded="false"
@@ -231,7 +231,7 @@
              The expanded tree rows below carry the explained badge. #}
           <td style="vertical-align:middle;">
             {% if root_alloc and root_alloc.is_inheriting %}
-            <span class="badge bg-secondary bg-opacity-25 text-dark border small">shared</span>
+            <span class="badge bg-secondary bg-opacity-25 text-body-emphasis border small">shared</span>
             {% endif %}
           </td>
         </tr>

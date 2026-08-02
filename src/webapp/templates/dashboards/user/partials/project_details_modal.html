@@ -54,7 +54,7 @@
                 </button>
             </h6>
             <div id="tree-modal" class="collapse">
-                <div class="tree-container p-3 bg-light rounded"
+                <div class="tree-container p-3 bg-body-tertiary rounded"
                      hx-get="{{ url_for('user_dashboard.tree_fragment', projcode=project.projcode, active_only=1) }}"
                      hx-trigger="show.bs.collapse from:#tree-modal once"
                      hx-swap="innerHTML">

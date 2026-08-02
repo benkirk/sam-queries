@@ -43,7 +43,7 @@
     Used by both tree macros below so the affordance stays identical. -#}
 {% macro shared_badge() -%}
 {{ term('shared', g_shared_alloc(), rich=True, title='Shared allocation',
-        extra_class='badge bg-secondary bg-opacity-25 text-dark border small') }}
+        extra_class='badge bg-secondary bg-opacity-25 text-body-emphasis border small') }}
 {%- endmacro %}
 
 {% macro render_project_tree(nodes,
@@ -58,9 +58,9 @@
 {%- set is_active = node.active if node.active is defined else true -%}
 {%- if not active_only or is_active -%}
 {%- set is_current = (node.projcode == current_projcode) -%}
-<li style="
-    {%- if is_current %}background:#fff3cd;font-weight:bold;border-left-color:#ffc107;{% endif %}
-    {%- if not is_active %}color:#6c757d;opacity:0.6;{% endif %}
+<li class="
+    {%- if is_current %}tree-node-current {% endif %}
+    {%- if not is_active %}tree-node-inactive{% endif %}
 ">
   {#
     Single flex row: [name col, grows] | [allocation col, fixed width]
@@ -194,14 +194,14 @@
 {%- set is_current = (node.projcode == current_projcode) -%}
 {%- set res = alloc_by_projcode.get(node.projcode) if alloc_by_projcode is not none else none -%}
 
-<tr style="
-  {%- if is_current %}background:#fff3cd;font-weight:bold;{% endif %}
-  {%- if not is_active %}opacity:0.6;{% endif %}
+<tr class="
+  {%- if is_current %}tree-node-current {% endif %}
+  {%- if not is_active %}tree-node-inactive{% endif %}
 ">
   {# ── Col 1: identity (carries all indentation) ────────────────────── #}
   <td style="
       padding-left: calc({{ depth }} * 1.25rem + 0.5rem);
-      {%- if depth > 0 %} border-left: 2px solid #dee2e6;{% endif %}
+      {%- if depth > 0 %} border-left: 2px solid var(--border-default);{% endif %}
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       vertical-align:middle;">
     {%- if is_current %}<i class="fas fa-arrow-right text-warning me-1"></i>{% endif -%}

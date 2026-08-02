@@ -38,7 +38,7 @@
     <div class="card-body p-0">
 
       {# ── Add form (hidden by default) ── #}
-      <div id="addOrgForm" style="display:none;" class="p-3 border-bottom bg-light">
+      <div id="addOrgForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_organization', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
               hx-swap="innerHTML"
@@ -67,7 +67,7 @@
       {# ── Table of active organizations ── #}
       {% if active_organizations %}
       <table class="table table-sm table-hover mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
           <tr>
             <th style="width:8em;">Acronym</th>
             <th>Name</th>
@@ -80,7 +80,7 @@
           {% for po in active_organizations %}
           <tr>
             <td>
-              <span class="badge bg-light text-dark border">{{ po.organization.acronym }}</span>
+              <span class="badge bg-body-tertiary text-body-emphasis border">{{ po.organization.acronym }}</span>
             </td>
             <td>{{ po.organization.name }}</td>
             <td class="text-muted small">{{ po.start_date | fmt_date }}</td>
@@ -128,7 +128,7 @@
     <div class="card-body p-0">
 
       {# ── Add form (hidden by default) ── #}
-      <div id="addContractForm" style="display:none;" class="p-3 border-bottom bg-light">
+      <div id="addContractForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_contract', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
               hx-swap="innerHTML"
@@ -157,7 +157,7 @@
       {# ── Table of contracts ── #}
       {% if contracts %}
       <table class="table table-sm table-hover mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
           <tr>
             <th style="width:12em;">Contract #</th>
             <th>Title</th>
@@ -223,7 +223,7 @@
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
-        <i class="fas fa-folder me-1 text-secondary"></i> Directories
+        <i class="fas fa-folder me-1 text-body-secondary"></i> Directories
       </span>
       {% if can_edit_governance %}
       <button class="btn  btn-primary"
@@ -236,7 +236,7 @@
     <div class="card-body p-0">
 
       {# ── Add form (hidden by default) ── #}
-      <div id="addDirForm" style="display:none;" class="p-3 border-bottom bg-light">
+      <div id="addDirForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
         {% if disk_roots %}
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_directory', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
@@ -289,7 +289,7 @@
       {# ── Table of active directories ── #}
       {% if active_directories %}
       <table class="table table-sm table-hover mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
           <tr>
             <th>Directory</th>
             <th style="width:9em;">Since</th>

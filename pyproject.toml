@@ -98,8 +98,7 @@ where = ["src"]
 source = ["src/sam", "src/system_status", "src/webapp"]
 omit = [
     "src/sam/queries/examples.py",
-    "src/webapp/utils/charts.py",
-    "src/webapp/utils/project_permissions.py",
+        "src/webapp/utils/project_permissions.py",
     "*/tests/*",
     "*/test_*.py",
     "*/__init__.py",

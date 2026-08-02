@@ -21,7 +21,7 @@ from sam.schemas.forms.user import (
 from webapp.extensions import db
 from webapp.api.helpers import parse_input_start_date, parse_input_end_date
 from webapp.utils.form_handler import FlattenedFieldErrors, FormError, HtmxFormHandler
-from webapp.utils.htmx import read_active_only
+from webapp.utils.htmx import read_active_only, read_layout, read_theme
 from sam.queries.dashboard import get_user_dashboard_data, get_resource_detail_data, get_project_dashboard_data
 from sam.queries.disk_usage import (
     build_disk_subtree,
@@ -934,7 +934,9 @@ def resource_details_usage_chart(project):
     named_series = [s for s in stacked['series'] if s['label'] != 'Others']
 
     if len(named_series) > 1:
-        svg = generate_usage_timeseries_stacked_by_user(stacked, metric=ctx.metric)
+        svg = generate_usage_timeseries_stacked_by_user(
+            stacked, metric=ctx.metric, layout=read_layout(),
+            theme=read_theme())
         has_data = True
         is_stacked = True
     else:
@@ -943,6 +945,7 @@ def resource_details_usage_chart(project):
             series or {'dates': [], 'values': []},
             link_to_day_rows=True,
             metric=ctx.metric,
+            layout=read_layout(), theme=read_theme(),
         )
         has_data = bool(series and series.get('values'))
         is_stacked = False
@@ -964,7 +967,7 @@ def resource_details_user_pie(project):
     """HTMX fragment: By User pie for the selected metric.
 
     Sibling of the Usage Trend fragment above — same window, same scope, same
-    metric pills. Wedge and legend clicks emit ``#usage-user-<username>``,
+    metric pills. Wedge and legend clicks emit ``#sam/user/<username>``,
     which svg-chart-links.js already routes to the Usage by User row in the
     same pane.
     """
@@ -977,7 +980,9 @@ def resource_details_user_pie(project):
         ctx.start_date,
         ctx.end_date,
     )
-    svg = generate_user_usage_pie_chart(user_breakdown, metric=ctx.metric)
+    svg = generate_user_usage_pie_chart(user_breakdown, metric=ctx.metric,
+                                        layout=read_layout(),
+                                        theme=read_theme())
 
     return render_template(
         'dashboards/user/partials/user_pie_chart.html',
@@ -1063,6 +1068,7 @@ def resource_details_disk_usage_chart(project):
     )
     chart_svg = generate_disk_usage_stacked_area(
         timeseries, link_kind=disk_link_kind, metric=metric,
+        layout=read_layout(), theme=read_theme(),
     )
 
     return render_template(

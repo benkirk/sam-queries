@@ -148,7 +148,7 @@
     {% if filters.owner_uid is not none or filters.owner_gid is not none or filters.leaves_only
           or filters.accessed_before_str or filters.accessed_after_str
           or filters.min_avg_size is not none or filters.max_avg_size is not none %}
-      <span class="badge bg-info-subtle text-dark border">
+      <span class="badge bg-info-subtle text-info-emphasis border">
         <i class="fas fa-filter me-1"></i>
         {%- if filters.owner_label %}{{ filters.owner_label }}
         {%- elif filters.owner_uid is not none %}uid {{ filters.owner_uid }}
@@ -172,7 +172,7 @@
   {% else %}
     <div class="table-responsive">
       <table class="table table-sm table-hover align-middle mb-0">
-        <thead class="table-light">
+        <thead class="table-subtle">
           <tr>
             {% for key, label, attr, numeric in _cols %}
               {% if key != 'dirs' or _show_dirs %}

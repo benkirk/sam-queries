@@ -11,14 +11,14 @@
    ========================================================================= */
 
 body {
-    background-color: var(--bg-light);
+    background-color: var(--surface-page);
     background-image: url('../img/UCAR-Waves-Lines-Only-66.png');
     background-position: 150% 0%;
     background-repeat: repeat-y;
     background-size: 53%;
     min-height: 100vh;
     font-family: var(--font-family-default);
-    color: var(--text-dark);
+    color: var(--text-primary);
 }
 
 /* ============================================================================
@@ -26,13 +26,13 @@ body {
    ========================================================================= */
 
 .navbar {
-    background-color: #fff;
+    background-color: var(--surface-navbar);
     padding-top: 0;
     padding-bottom: 0;
 }
 
 .navbar-light {
-    background-color: #fff;
+    background-color: var(--surface-navbar);
 }
 
 .navbar button {
@@ -80,13 +80,13 @@ body {
 }
 
 .navbar .site-name a {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     text-decoration: none;
 }
 
 .navbar .site-name a:hover,
 .navbar .site-name a:active {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 .site-name h1 {
@@ -98,24 +98,24 @@ body {
 }
 
 .site-name h1 a {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     text-decoration: none;
 }
 
 .site-name h1 a:hover {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 /* Nav links (desktop-only row — mobile navigation is the offcanvas drawer) */
 .navbar .nav-link {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     font-size: 1rem;
     line-height: 1.5rem;
 }
 
 .navbar .nav-link:hover,
 .navbar .nav-link:focus {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 .navbar .nav-item {
@@ -138,18 +138,53 @@ body {
 }
 
 .utility-menu .nav-link {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     font-weight: var(--font-weight-semi-bold);
     padding: 0;
 }
 
 .utility-menu .nav-link:hover {
-    color: var(--ncar-blue);
+    color: var(--text-link);
+}
+
+/* Theme toggle — the light/dark switch in the utility menu, the mobile
+   drawer and the login footer. A .btn-link that must not look like a link:
+   no underline, no focus ring inherited from .btn, and it sits beside the
+   user dropdown so it takes the same colour treatment. */
+.theme-toggle {
+    text-decoration: none;
+    padding: 0;
+    margin-right: 1rem;
+    border: 0;
+    line-height: inherit;
+}
+
+.theme-toggle:focus-visible {
+    outline: 2px solid var(--ncar-blue);
+    outline-offset: 2px;
+}
+
+.theme-toggle [data-theme-label] {
+    margin-left: 0.375rem;
+}
+
+/* In the drawer and the login footer the control is a standalone row, not a
+   navbar item, so it should not inherit .utility-menu's zero padding. */
+.mobile-nav-footer .theme-toggle,
+.login-footer .theme-toggle {
+    font-weight: var(--font-weight-semi-bold);
 }
 
 /* Nav row border */
 .navbar-wrapper.border-top {
-    border-top-color: #dee2e6 !important;
+    border-top-color: var(--border-default) !important;
+}
+
+/* The dropdown panels hanging off the navbar are already a navy brand surface
+   with white text, so they are correct in both themes and must NOT inherit
+   the dark theme's card surface. */
+:root[data-bs-theme="dark"] .navbar .nav-item.dropdown .dropdown-menu {
+    background-color: var(--ncar-navy);
 }
 
 .navbar .navbar-wrapper .container-lg {
@@ -221,7 +256,7 @@ body {
     }
 
     .navbar .nav-item.dropdown .dropdown-item {
-        color: #fff;
+        color: var(--text-on-brand);
         padding: 0.5rem 1rem;
         font-weight: 400;
         line-height: 1.313rem;
@@ -236,7 +271,7 @@ body {
 
     .navbar .nav-item.dropdown .dropdown-item.active {
         background-color: transparent;
-        color: #fff;
+        color: var(--text-on-brand);
         font-weight: var(--font-weight-semi-bold);
     }
 
@@ -271,7 +306,7 @@ body {
     .navbar .nav-link.active {
         border-bottom: 0.1875rem solid var(--ncar-blue);
         margin-bottom: -0.1875rem;
-        color: var(--ncar-space-blue);
+        color: var(--text-heading);
     }
 
     .navbar .site-name {
@@ -299,7 +334,7 @@ body {
 }
 
 .mobile-nav .offcanvas-title {
-    color: #fff;
+    color: var(--text-on-brand);
     font-size: 1rem;
 }
 
@@ -308,14 +343,14 @@ body {
 }
 
 .mobile-nav .accordion-button {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     font-weight: var(--font-weight-semi-bold);
     padding: 0.875rem 1rem;
 }
 
 .mobile-nav .accordion-button:not(.collapsed) {
     background: none;
-    color: var(--ncar-blue);
+    color: var(--text-link);
     box-shadow: none;
 }
 
@@ -326,24 +361,24 @@ body {
 .mobile-nav .mobile-nav-link {
     display: block;
     padding: 0.625rem 1rem 0.625rem 1.75rem;
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     text-decoration: none;
 }
 
 .mobile-nav .mobile-nav-link:hover,
 .mobile-nav .mobile-nav-link:focus {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 .mobile-nav .mobile-nav-link.active {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     font-weight: var(--font-weight-semi-bold);
     border-left: 3px solid var(--ncar-blue);
     background-color: rgba(var(--ncar-blue-rgb), 0.06);
 }
 
 .mobile-nav-footer a {
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 /* ============================================================================
@@ -360,7 +395,7 @@ body {
 }
 
 .sam-breadcrumbs .breadcrumb-item a {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     text-decoration: none;
 }
 
@@ -525,7 +560,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .main-content h1,
 .main-content h2 {
-    color: var(--ncar-navy);
+    color: var(--text-title);
 }
 
 .page-header {
@@ -535,7 +570,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .page-header p {
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
     font-size: 1rem;
 }
 
@@ -544,9 +579,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ========================================================================= */
 
 .accordion {
-    --bs-accordion-color: var(--ncar-space-blue);
-    --bs-accordion-btn-color: var(--ncar-space-blue);
-    --bs-accordion-active-color: #fff;
+    --bs-accordion-color: var(--text-heading);
+    --bs-accordion-btn-color: var(--text-heading);
+    --bs-accordion-active-color: var(--text-on-brand);
     --bs-accordion-active-bg: rgba(var(--ncar-blue-rgb), 0.1);
     --bs-accordion-btn-focus-border-color: var(--ncar-blue);
     --bs-accordion-btn-focus-box-shadow: 0 0 0 0.25rem rgba(var(--ncar-blue-rgb), 0.25);
@@ -556,9 +591,18 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-accordion-btn-active-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23fff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
 }
 
+/* The collapsed-state chevron is a data-URI SVG with `fill='%23011837'`
+   baked in — space blue, invisible on a dark card. A data URI cannot
+   reference a CSS variable, so the only options are a second URI or an SVG
+   filter; a second URI is the honest one. (The *expanded* chevron is already
+   white and sits on an --ncar-blue fill, so it is correct in both themes.) */
+:root[data-bs-theme="dark"] .accordion {
+    --bs-accordion-btn-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23e8eef7'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
 .accordion-button:not(.collapsed) {
     background-color: var(--ncar-blue);
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 /* ============================================================================
@@ -573,11 +617,11 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     --bs-card-border-radius: 0;
     --bs-card-inner-border-radius: 0;
     --bs-card-border-width: 0;
-    --bs-card-color: var(--ncar-space-blue);
-    --bs-card-bg: #fff;
+    --bs-card-color: var(--text-heading);
+    --bs-card-bg: var(--surface-card);
     --bs-card-cap-padding-y: 0.9375rem;
     --bs-card-cap-padding-x: 1.875rem;
-    --bs-card-cap-bg: #fff;
+    --bs-card-cap-bg: var(--surface-card);
     margin-bottom: 1.5rem;
 }
 
@@ -588,7 +632,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .inner-card > .card-header {
     padding: 0 !important;
     font-weight: var(--font-weight-semi-bold);
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
 }
 
 .inner-card > .card-header h5 {
@@ -596,7 +640,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-weight: 600;
     line-height: 1;
     text-transform: uppercase;
-    color: var(--ncar-navy);
+    color: var(--text-title);
 }
 
 .inner-card > .card-body {
@@ -617,7 +661,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .card-header h5 {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     font-weight: var(--font-weight-semi-bold);
     margin: 0;
 }
@@ -660,47 +704,47 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .btn-primary {
     --bs-btn-bg: var(--ncar-blue);
     --bs-btn-border-color: var(--ncar-blue);
-    --bs-btn-color: #fff;
+    --bs-btn-color: var(--text-on-brand);
     --bs-btn-hover-bg: transparent;
     --bs-btn-hover-border-color: var(--ncar-blue);
-    --bs-btn-hover-color: var(--ncar-blue);
+    --bs-btn-hover-color: var(--text-link);
     --bs-btn-active-bg: var(--ncar-blue);
     --bs-btn-active-border-color: var(--ncar-blue);
-    --bs-btn-active-color: #fff;
+    --bs-btn-active-color: var(--text-on-brand);
 }
 
 .btn-outline-primary {
-    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-color: var(--text-link);
     --bs-btn-border-color: var(--ncar-blue);
     --bs-btn-hover-bg: var(--ncar-blue);
     --bs-btn-hover-border-color: var(--ncar-blue);
-    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-color: var(--text-on-brand);
     --bs-btn-active-bg: var(--ncar-blue);
     --bs-btn-active-border-color: var(--ncar-blue);
-    --bs-btn-active-color: #fff;
+    --bs-btn-active-color: var(--text-on-brand);
 }
 
 .btn-outline-secondary {
-    --bs-btn-color: var(--ncar-navy);
+    --bs-btn-color: var(--text-title);
     --bs-btn-border-color: var(--ncar-navy);
     --bs-btn-hover-bg: var(--ncar-navy);
     --bs-btn-hover-border-color: var(--ncar-navy);
-    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-color: var(--text-on-brand);
 }
 
 /* Unity .btn-outline-white — for buttons on dark/navy backgrounds (e.g.
    inside .filter-sidebar). White outline, transparent fill; hover dims to
    a translucent white wash matching Unity's exact spec (not a full invert). */
 .btn-outline-white {
-    --bs-btn-color: #fff;
+    --bs-btn-color: var(--text-on-brand);
     --bs-btn-border-color: #fff;
     --bs-btn-bg: transparent;
     --bs-btn-hover-bg: rgba(255, 255, 255, 0.1);
     --bs-btn-hover-border-color: #fff;
-    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-color: var(--text-on-brand);
     --bs-btn-active-bg: rgba(255, 255, 255, 0.1);
     --bs-btn-active-border-color: #fff;
-    --bs-btn-active-color: #fff;
+    --bs-btn-active-color: var(--text-on-brand);
 }
 
 /* Unity-style :disabled — transparent fill, transparent 3px border (keeps
@@ -716,12 +760,12 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .btn-outline-secondary[disabled] {
     background-color: transparent !important;
     border-color: transparent !important;
-    color: var(--ncar-gray) !important;
+    color: var(--text-tertiary) !important;
     opacity: 1;
 }
 
 .btn-link {
-    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-color: var(--text-link);
     --bs-btn-hover-color: var(--ncar-sky);
     text-decoration: none;
 }
@@ -765,27 +809,27 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .btn-group .btn-outline-secondary {
     --bs-btn-bg: var(--ncar-blue);
     --bs-btn-border-color: var(--ncar-blue);
-    --bs-btn-color: #fff;
+    --bs-btn-color: var(--text-on-brand);
     --bs-btn-hover-bg: var(--ncar-navy);
     --bs-btn-hover-border-color: var(--ncar-navy);
-    --bs-btn-hover-color: #fff;
-    --bs-btn-active-bg: #fff;
+    --bs-btn-hover-color: var(--text-on-brand);
+    --bs-btn-active-bg: var(--surface-card);
     --bs-btn-active-border-color: var(--ncar-blue);
-    --bs-btn-active-color: var(--ncar-blue);
+    --bs-btn-active-color: var(--text-link);
 }
 
 .btn-group .btn-secondary,
 .btn-group .btn-secondary.active,
 .btn-group .btn-secondary:active {
-    --bs-btn-bg: #fff;
+    --bs-btn-bg: var(--surface-card);
     --bs-btn-border-color: var(--ncar-blue);
-    --bs-btn-color: var(--ncar-blue);
+    --bs-btn-color: var(--text-link);
     --bs-btn-hover-bg: rgba(var(--ncar-teal-rgb), 0.08);
     --bs-btn-hover-border-color: var(--ncar-blue);
-    --bs-btn-hover-color: var(--ncar-blue);
-    --bs-btn-active-bg: #fff;
+    --bs-btn-hover-color: var(--text-link);
+    --bs-btn-active-bg: var(--surface-card);
     --bs-btn-active-border-color: var(--ncar-blue);
-    --bs-btn-active-color: var(--ncar-blue);
+    --bs-btn-active-color: var(--text-link);
 }
 
 /* Unity-style focus ring on interactive button-like elements — upstream
@@ -803,14 +847,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ========================================================================= */
 
 .footer {
-    background: linear-gradient(135deg, var(--bg-gray-light) 0%, var(--bg-gray-medium) 100%);
+    background: linear-gradient(135deg, var(--surface-tertiary) 0%, var(--surface-secondary) 100%);
     padding: 24px 0;
     margin-top: 50px;
     border-top: 3px solid var(--ncar-blue);
 }
 
 .footer small {
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
     font-weight: var(--font-weight-semi-bold);
 }
 
@@ -821,7 +865,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .progress {
     height: 28px;
     border-radius: var(--radius-md);
-    background-color: var(--bg-gray-medium);
+    background-color: var(--surface-secondary);
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
@@ -831,6 +875,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     line-height: 28px;
     border-radius: var(--radius-md);
     transition: width var(--transition-base);
+}
+
+/* The percentage label sits ON the fill, and two of the four fills are light:
+ * white on --success-color measured 2.54:1 and on --warning-color 2.15:1.
+ * Theme-invariant (the fills are), so this was equally unreadable in light and
+ * is a declared legibility fix in both rather than a dark-mode repair — the
+ * browser sweep does not distinguish, and neither does a reader. Scoped to
+ * `.progress-bar` so the same utility classes keep white ink on badges. */
+.progress-bar.bg-success,
+.progress-bar.bg-warning {
+    color: var(--text-on-brand-dark);
 }
 
 /* Progress bar color variants */
@@ -879,7 +934,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .spinner-border-primary {
-    color: var(--ncar-blue) !important;
+    color: var(--text-link) !important;
 }
 
 .htmx-indicator {
@@ -899,16 +954,129 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ========================================================================= */
 
 .table {
-    color: var(--text-dark);
+    color: var(--text-primary);
 }
 
 .table thead th {
     border-bottom: 2px solid var(--ncar-blue);
-    color: var(--ncar-navy);
+    color: var(--text-title);
     font-weight: 700;
     text-transform: uppercase;
     font-size: 0.85rem;
     letter-spacing: 0.5px;
+}
+
+/* Theme-aware replacement for Bootstrap's .table-light.
+ *
+ * `.table-light` hardcodes `--bs-table-bg:#f8f9fa` and `--bs-table-color:#000`,
+ * and Bootstrap's `[data-bs-theme=dark]` block does NOT redefine
+ * `--bs-light-rgb` or any of the `.table-*` variants — so every one of them
+ * stays light on a dark page. There is no stock class that flips; a SAM class
+ * driven by tier-2 tokens is the only option that does.
+ *
+ * Values chosen to match `.table-light` exactly in light mode:
+ * `--surface-tertiary` IS #f8f9fa. The colour is `--text-primary` rather than
+ * Bootstrap's `#000`, matching the rest of the app's body copy.
+ *
+ * Used on `<thead>` (the common case), and on the `<tr>`/`<tfoot>` rows that
+ * want the same recessed treatment. */
+.table-subtle {
+    --bs-table-bg: var(--surface-tertiary);
+    --bs-table-color: var(--text-primary);
+    --bs-table-border-color: var(--border-default);
+    --bs-table-striped-bg: var(--surface-secondary);
+    --bs-table-striped-color: var(--text-primary);
+    --bs-table-active-bg: var(--surface-secondary);
+    --bs-table-active-color: var(--text-primary);
+    --bs-table-hover-bg: var(--surface-secondary);
+    --bs-table-hover-color: var(--text-primary);
+    color: var(--bs-table-color);
+    border-color: var(--bs-table-border-color);
+}
+
+/* The OTHER five contextual table variants, in dark mode only.
+ *
+ * `.table-subtle` above replaced `.table-light` and stopped there; the same
+ * defect applies verbatim to `.table-primary` / `-secondary` / `-info` /
+ * `-warning` / `-danger` / `-success`, which are used on 24 rows across 11
+ * templates. Both halves of the stock class bite, and they bite independently:
+ *
+ *   --bs-table-bg    a light tint. The `/admin/resources` nested rows
+ *                    (#e2e3e5) and the resource-details month row (#cfe2ff),
+ *                    which put a `.text-muted` chevron at 1.01:1.
+ *   --bs-table-color #000. Survives on its own wherever a SAM rule already
+ *                    supplies a dark background — that is the black "Total"
+ *                    row in the `/allocations/projects` facility table, whose
+ *                    <th> cells were already painting --surface-secondary.
+ *
+ * Deviation from the `.table-subtle` precedent, which migrated its call sites
+ * onto a SAM class: these keep the stock class name at the call site because
+ * the tint is load-bearing there in a way `.table-light` on a <thead> never
+ * was — project_directories_card.html marks an orphaned row `table-warning`
+ * *inside* a `table-secondary` table, and that reads at a glance. Overriding
+ * in a dark-only block also leaves light mode byte-identical by construction.
+ *
+ * `-secondary` is the group-header / subtotal row, so it takes SAM's recess
+ * (--surface-secondary, LIGHTER than the card — the dark ladder inverts)
+ * rather than Bootstrap's --bs-secondary-bg-subtle, which is #161719 and would
+ * make a header darker than the surface it sits on. The five that carry a hue
+ * take Bootstrap's `-bg-subtle` palette, which does retheme itself — the same
+ * lever status.css:17 uses for the status badges — because for those the hue
+ * IS the message. All six take --text-primary rather than the stock #000 or
+ * the `-text-emphasis` tint, matching .table-subtle and the app's body copy. */
+:root[data-bs-theme="dark"] .table-secondary {
+    --bs-table-bg: var(--surface-secondary);
+    --bs-table-striped-bg: var(--surface-raised);
+    --bs-table-active-bg: var(--surface-raised);
+    --bs-table-hover-bg: var(--surface-raised);
+}
+
+:root[data-bs-theme="dark"] .table-primary {
+    --bs-table-bg: var(--bs-primary-bg-subtle);
+    --bs-table-striped-bg: var(--bs-primary-bg-subtle);
+    --bs-table-active-bg: var(--bs-primary-border-subtle);
+    --bs-table-hover-bg: var(--bs-primary-border-subtle);
+}
+
+:root[data-bs-theme="dark"] .table-info {
+    --bs-table-bg: var(--bs-info-bg-subtle);
+    --bs-table-striped-bg: var(--bs-info-bg-subtle);
+    --bs-table-active-bg: var(--bs-info-border-subtle);
+    --bs-table-hover-bg: var(--bs-info-border-subtle);
+}
+
+:root[data-bs-theme="dark"] .table-warning {
+    --bs-table-bg: var(--bs-warning-bg-subtle);
+    --bs-table-striped-bg: var(--bs-warning-bg-subtle);
+    --bs-table-active-bg: var(--bs-warning-border-subtle);
+    --bs-table-hover-bg: var(--bs-warning-border-subtle);
+}
+
+:root[data-bs-theme="dark"] .table-success {
+    --bs-table-bg: var(--bs-success-bg-subtle);
+    --bs-table-striped-bg: var(--bs-success-bg-subtle);
+    --bs-table-active-bg: var(--bs-success-border-subtle);
+    --bs-table-hover-bg: var(--bs-success-border-subtle);
+}
+
+:root[data-bs-theme="dark"] .table-danger {
+    --bs-table-bg: var(--bs-danger-bg-subtle);
+    --bs-table-striped-bg: var(--bs-danger-bg-subtle);
+    --bs-table-active-bg: var(--bs-danger-border-subtle);
+    --bs-table-hover-bg: var(--bs-danger-border-subtle);
+}
+
+/* The colour half, shared. Separate from the per-variant blocks above so the
+ * one thing every variant gets wrong the same way is stated once. */
+:root[data-bs-theme="dark"] :is(.table-primary, .table-secondary, .table-success,
+                                .table-info, .table-warning, .table-danger) {
+    --bs-table-color: var(--text-primary);
+    --bs-table-striped-color: var(--text-primary);
+    --bs-table-active-color: var(--text-primary);
+    --bs-table-hover-color: var(--text-primary);
+    --bs-table-border-color: var(--border-default);
+    color: var(--bs-table-color);
+    border-color: var(--bs-table-border-color);
 }
 
 .table-hover tbody tr:hover {
@@ -916,12 +1084,12 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .table-bordered {
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-default);
 }
 
 .table-bordered th,
 .table-bordered td {
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--border-default);
 }
 
 .table-sm th,
@@ -942,8 +1110,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 /* Date-bounds group header row in resources table */
 .date-group-header td {
-    background-color: #f1f3f5;
-    border-top: 2px solid #dee2e6 !important;
+    background-color: var(--surface-tertiary);
+    border-top: 2px solid var(--border-default) !important;
 }
 
 /* ============================================================================
@@ -959,55 +1127,80 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     border: 0;
     border-radius: 0;
     box-shadow: none;
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     padding: 0.875rem 1rem;
 }
 
 .alert a,
 .alert button {
-    color: var(--ncar-space-blue);
+    color: var(--text-heading);
     text-decoration: underline;
     font-weight: var(--font-weight-semi-bold);
 }
 
 .alert a:hover,
 .alert button:hover {
-    color: var(--ncar-navy);
+    color: var(--text-title);
 }
 
 .alert-info {
     background-color: var(--ncar-blue);
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 .alert-info a,
 .alert-info button {
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
+/* The one alert whose fill is LIGHT, so it is the one that cannot take
+ * `--text-on-brand`. It used `--text-heading`, which is space-blue in light and
+ * near-white in dark — 1.77:1 on orange, found by the browser sweep on the
+ * /status outage banner. `--text-on-brand-dark` IS that space-blue, pinned
+ * invariant: light mode does not move, dark stops inheriting a flipped token
+ * onto a fill that never flips. */
 .alert-warning {
     background-color: var(--ncar-orange);
-    color: var(--ncar-space-blue);
+    color: var(--text-on-brand-dark);
+}
+
+.alert-warning a,
+.alert-warning button {
+    color: var(--text-on-brand-dark);
+}
+
+/* Descendants that set their own colour have the same problem one level down:
+ * `.text-muted` inside the outage banner resolved to rgba(222,226,230,.75),
+ * i.e. 1.39:1 on orange. Inheriting the alert's ink and de-emphasising with
+ * opacity keeps the "muted" intent without reintroducing a theme-dependent
+ * colour on an invariant fill.
+ *
+ * `!important` because Bootstrap's colour utilities carry it — a plain
+ * declaration here loses to `.text-muted` regardless of specificity, which is
+ * how the first pass at this silently did nothing. */
+.alert .text-muted {
+    color: inherit !important;
+    opacity: 0.8;
 }
 
 .alert-danger {
     background-color: var(--ncar-vermilion);
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 .alert-danger a,
 .alert-danger button {
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 .alert-success {
     background-color: #10b981;
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 .alert-success a,
 .alert-success button {
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 /* ============================================================================
@@ -1030,28 +1223,28 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .modal-header.bg-success,
 .modal-header.bg-primary {
     background-color: var(--ncar-blue) !important;
-    color: #fff;
+    color: var(--text-on-brand);
     border-bottom: none;
 }
 
 /* Edit variant — darker palette blue, subtle UX cue for modifying existing data. */
 .modal-header.bg-warning {
     background-color: var(--ncar-navy) !important;
-    color: #fff;
+    color: var(--text-on-brand);
     border-bottom: none;
 }
 
 /* Destructive confirmation (samConfirmModal, outage delete). */
 .modal-header.bg-danger {
     background-color: var(--ncar-vermilion) !important;
-    color: #fff;
+    color: var(--text-on-brand);
     border-bottom: none;
 }
 
 /* Neutral variant (one outage_modals case). */
 .modal-header.bg-secondary {
     background-color: var(--ncar-gray) !important;
-    color: #fff;
+    color: var(--text-on-brand);
     border-bottom: none;
 }
 
@@ -1082,14 +1275,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    active-state in time-range / date-range pickers stays Bootstrap-stock. */
 .modal-footer .btn-secondary {
     --bs-btn-bg: transparent;
-    --bs-btn-border-color: var(--ncar-gray-light);
-    --bs-btn-color: var(--ncar-navy);
+    --bs-btn-border-color: var(--border-default);
+    --bs-btn-color: var(--text-title);
     --bs-btn-hover-bg: var(--ncar-navy);
     --bs-btn-hover-border-color: var(--ncar-navy);
-    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-color: var(--text-on-brand);
     --bs-btn-active-bg: var(--ncar-navy);
     --bs-btn-active-border-color: var(--ncar-navy);
-    --bs-btn-active-color: #fff;
+    --bs-btn-active-color: var(--text-on-brand);
 }
 
 /* ============================================================================
@@ -1108,20 +1301,20 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    inactive treatment needs the explicit :not(.active) rules — mirroring
    how .nav-tabs is written. */
 .nav-pills {
-    --bs-nav-link-color: var(--ncar-blue);
-    --bs-nav-link-hover-color: var(--ncar-navy);
-    --bs-nav-pills-link-active-color: var(--ncar-blue);
-    --bs-nav-pills-link-active-bg: #fff;
+    --bs-nav-link-color: var(--text-link);
+    --bs-nav-link-hover-color: var(--text-title);
+    --bs-nav-pills-link-active-color: var(--text-link);
+    --bs-nav-pills-link-active-bg: var(--surface-card);
 }
 
 .nav-pills .nav-link:not(.active) {
     background-color: var(--ncar-blue);
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 .nav-pills .nav-link:not(.active):hover {
     background-color: var(--ncar-navy);
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 /* Counter badges sit inside pills whose background flips with state, so they
@@ -1132,13 +1325,13 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    !important. Callers therefore don't have to strip those utilities off
    badges they drop into a pill. */
 .nav-pills .nav-link:not(.active) .badge {
-    background-color: #fff !important;
-    color: var(--ncar-blue) !important;
+    background-color: var(--surface-on-brand) !important;
+    color: var(--text-link) !important;
 }
 
 .nav-pills .nav-link.active .badge {
     background-color: var(--ncar-blue) !important;
-    color: #fff !important;
+    color: var(--text-on-brand) !important;
 }
 
 .nav-tabs {
@@ -1157,7 +1350,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     flex-shrink: 0;
     font-size: 1rem !important;
     font-weight: 600;
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 /* When tabs are followed by tab-content, kill any mb-* utility margin so the
@@ -1179,9 +1372,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .nav-tabs .nav-link {
-    color: var(--ncar-blue);
+    color: var(--text-link);
     font-weight: var(--font-weight-semi-bold);
-    background-color: #fff;
+    background-color: var(--surface-card);
     border: none;
     border-radius: 0;
     padding: 1.125rem 1.875rem;
@@ -1190,25 +1383,25 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .nav-tabs .nav-link:not(.active) {
     background-color: var(--ncar-blue);
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 .nav-tabs .nav-link:not(.active):hover {
     background-color: var(--ncar-navy);
-    color: #fff;
+    color: var(--text-on-brand);
     border-color: transparent;
 }
 
 .nav-tabs .nav-link.active {
-    color: var(--ncar-blue);
-    background-color: #fff;
+    color: var(--text-link);
+    background-color: var(--surface-card);
     border: none;
 }
 
 /* Tab content panel — flat white surface attached to .nav-tabs above, matching
    Unity's seamless tab→panel transition. No borders — content just flows. */
 .tab-content {
-    background-color: #fff;
+    background-color: var(--surface-card);
     padding: 1.25rem;
 }
 
@@ -1230,8 +1423,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     row-gap: 0.375rem;
     align-items: baseline;
     padding: 0.625rem 0.875rem;
-    background-color: #fff;
-    border: 1px solid var(--border-color);
+    background-color: var(--surface-card);
+    border: 1px solid var(--border-default);
     border-bottom: 0;
 }
 
@@ -1242,7 +1435,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     font-weight: var(--font-weight-semi-bold);
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
 }
 
 .jobs-facet-values {
@@ -1262,9 +1455,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     align-items: baseline;
     gap: 0.375rem;
     padding: 0.125rem 0.5rem;
-    background-color: var(--bg-gray-light);
-    border: 1px solid var(--border-color);
-    color: var(--text-dark);
+    background-color: var(--surface-tertiary);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
     /* Both inherited from .btn until now: a bare <button> takes the
        system UI font and the default arrow cursor. */
     cursor: pointer;
@@ -1277,9 +1470,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .facet-chip:hover {
-    background-color: #fff;
+    background-color: var(--surface-raised);
     border-color: var(--ncar-blue);
-    color: var(--ncar-blue);
+    color: var(--text-link);
 }
 
 .facet-chip:focus-visible {
@@ -1291,14 +1484,14 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    chips doesn't jitter as the digits change. */
 .facet-chip-count {
     font-size: 0.75rem;
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
     font-variant-numeric: tabular-nums;
 }
 
 .facet-chip.is-active {
     background-color: var(--ncar-blue);
     border-color: var(--ncar-blue);
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 .facet-chip.is-active .facet-chip-count {
@@ -1329,7 +1522,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .filter-sidebar {
     background-color: var(--ncar-navy);
-    color: #fff;
+    color: var(--text-on-brand);
     padding: 1.5rem;
 }
 
@@ -1393,7 +1586,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .filter-sidebar-clear {
-    color: #fff;
+    color: var(--text-on-brand);
     font-size: 0.875rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -1407,7 +1600,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .filter-sidebar .form-label,
 .filter-sidebar .form-check-label {
-    color: #fff;
+    color: var(--text-on-brand);
 }
 
 .filter-sidebar .form-text {
@@ -1420,12 +1613,12 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .filter-sidebar input[type="search"],
 .filter-sidebar input[type="email"],
 .filter-sidebar input[type="number"] {
-    background-color: #fff;
-    color: var(--ncar-space-blue);
+    background-color: var(--surface-raised);
+    color: var(--text-heading);
 }
 
 .filter-sidebar input::placeholder {
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
 }
 
 /* fk-pickers embedded in a horizontal align-items-end filter row (jobs +
@@ -1470,9 +1663,9 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     cursor: pointer;
     user-select: none;
     padding: 16px;
-    background-color: var(--bg-light);
-    color: var(--ncar-blue);
-    border-bottom: 1px solid #dee2e6;
+    background-color: var(--surface-page);
+    color: var(--text-link);
+    border-bottom: 1px solid var(--border-default);
     transition: background-color var(--transition-base), color var(--transition-base);
 }
 
@@ -1481,7 +1674,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    the .text-primary utility class on the icon. */
 .project-card .card-header h5 i,
 .project-card .card-header .accordion-chevron {
-    color: var(--ncar-space-blue) !important;
+    color: var(--text-heading) !important;
 }
 
 /* Match Unity's .accordion-button: fixed 1rem font, semi-bold, single weight
@@ -1501,13 +1694,13 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    matching .nav-tabs.active and .btn-group .btn-secondary.active. */
 .project-card .card-header[aria-expanded="true"] {
     background-color: var(--ncar-blue);
-    color: #fff;
+    color: var(--text-on-brand);
     border-bottom-color: var(--ncar-gray-light);
 }
 
 .project-card .card-header[aria-expanded="true"] h5 i,
 .project-card .card-header[aria-expanded="true"] .accordion-chevron {
-    color: #fff !important;
+    color: var(--text-on-brand) !important;
 }
 
 /* Accordion chevron — reusable affordance for any collapsible header.
@@ -1531,7 +1724,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .project-stats-box {
-    background-color: var(--bg-gray-light);
+    background-color: var(--surface-tertiary);
     border-radius: 0;
     padding: 12px 16px;
     margin-bottom: 16px;
@@ -1565,7 +1758,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .project-stats-box h6 {
-    color: var(--ncar-navy);
+    color: var(--text-title);
     font-weight: 700;
     margin-bottom: 6px;
     font-size: 0.9rem;
@@ -1600,13 +1793,13 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .stat-label {
-    color: var(--ncar-gray);
+    color: var(--text-tertiary);
     font-weight: var(--font-weight-semi-bold);
 }
 
 .stat-value {
     font-weight: 700;
-    color: var(--ncar-navy);
+    color: var(--text-title);
 }
 
 /* ============================================================================
@@ -1628,21 +1821,66 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 .tree-list li {
     padding: 8px 12px;
     margin: 4px 0;
-    background: var(--bg-gray-light);
+    background: var(--surface-tertiary);
     border-left: 3px solid var(--ncar-blue);
     border-radius: var(--radius-sm);
     transition: all var(--transition-fast);
 }
 
 .tree-list li:hover {
-    background: var(--bg-gray-medium);
+    background: var(--surface-secondary);
     border-left-color: var(--ncar-navy);
     transform: translateX(2px);
 }
 
 .tree-list li strong {
-    color: var(--ncar-navy);
+    color: var(--text-title);
     font-weight: 700;
+}
+
+/* "You are here" in a project tree — the node whose projcode is the current
+ * scope, and the row form of the same thing in the disk fileset table.
+ *
+ * Was five copies of an inline `background: #fff3cd; border-left-color:
+ * #ffc107` across resource_details.html, resource_details_disk.html (twice)
+ * and shared/project_tree.html (twice). An inline literal is the one surface
+ * a stylesheet cannot reach, so in dark mode the outermost node stayed a
+ * bright pastel with --text-primary (#e9ecef) written on it.
+ *
+ * --bs-warning-bg-subtle IS #fff3cd in light — byte-identical to what the
+ * inline style painted — and #332701 in dark. It is one of the few Bootstrap
+ * families that rethemes itself (see status.css:17). The left border keeps
+ * --bs-warning, which is #ffc107 in both themes: it is the same gold as the
+ * `text-warning` arrow icon the templates put next to it, and a marker on a
+ * tinted ground is meant to stay put.
+ *
+ * The <tr> form sets --bs-table-bg rather than `background`, because
+ * Bootstrap paints every <td> opaquely over any row-level background —
+ * the trap already documented at components.css:14. */
+/* `.tree-list li` (0,1,1) sets the node background, so the bare class would
+ * lose to it on specificity and the current node would be indistinguishable —
+ * which is exactly what the first draft of this shipped. The second selector
+ * carries the tree case; the first carries anything outside a `.tree-list`. */
+.tree-node-current,
+.tree-list li.tree-node-current {
+    background: var(--bs-warning-bg-subtle);
+    border-left-color: var(--bs-warning);
+    font-weight: 700;
+}
+
+tr.tree-node-current {
+    --bs-table-bg: var(--bs-warning-bg-subtle);
+    --bs-table-color: var(--text-primary);
+    color: var(--bs-table-color);
+}
+
+/* The other half of the same inline block: a node whose project is inactive.
+ * `#6c757d` -> --text-secondary (#718096 light) is a declared shift; the 0.6
+ * opacity is carried over exactly rather than rounded to Bootstrap's
+ * `.opacity-50`, which would have moved light mode for no reason. */
+.tree-node-inactive {
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 
 /* ============================================================================
@@ -1678,13 +1916,13 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 .form-label {
     font-weight: 600;
-    color: var(--ncar-navy);
+    color: var(--text-title);
     margin-bottom: 0.5rem;
 }
 
 .input-group-text {
     background-color: var(--ncar-blue);
-    color: white;
+    color: var(--text-on-brand);
     border: none;
     font-weight: 600;
 }
@@ -1694,15 +1932,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    ========================================================================= */
 
 .text-ncar-navy {
-    color: var(--ncar-navy) !important;
+    color: var(--text-title) !important;
 }
 
 .text-ncar-blue {
-    color: var(--ncar-blue) !important;
+    color: var(--text-link) !important;
 }
 
 .text-muted-custom {
-    color: var(--ncar-gray) !important;
+    color: var(--text-tertiary) !important;
 }
 
 .border-ncar-blue {
@@ -1710,12 +1948,12 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 .bg-ncar-light {
-    background-color: var(--bg-light) !important;
+    background-color: var(--surface-page) !important;
 }
 
 /* Text color utilities for table cells */
 .text-primary {
-    color: var(--ncar-blue) !important;
+    color: var(--text-link) !important;
 }
 
 .text-success {
@@ -1789,6 +2027,81 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     width: 100%;
     max-width: 880px;
     height: auto;
+}
+
+/* Job-history charts. These use bare `d-flex justify-content-center` wrappers
+   rather than `.chart-container`, and had no CSS at all.
+
+   They do NOT overflow — a flex item shrinks below its intrinsic width by
+   default, so the page stays within the viewport. The bug is subtler: without
+   `height: auto` the box keeps the SVG's intrinsic `height` attribute while
+   flexbox shrinks its width, and the viewBox letterboxes the drawing inside
+   it. Measured at 390px, the jobs histogram's 2.50:1 figure rendered into a
+   277x446px box (0.62:1) — the chart drawn ~277x111 with ~335px of empty
+   space padded around it.
+
+   Matching `.chart-container svg` restores the aspect ratio. Note this does
+   NOT make the charts legible on a phone: an 18x5in figure scaled to ~350px
+   renders 9-11pt text at ~2px regardless. That needs a different figsize from
+   the server — the `layout` render axis, wired in the mobile pass. */
+.jobs-histogram-chart svg,
+.jobs-timeline-chart svg,
+.jobs-user-pie svg {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Chart gutters below desktop.
+   ------------------------------------------------------------------
+   The server renders a phone- or tablet-sized figure (see charts/layout.py),
+   which only pays off if the figure gets the width. Measured at a 375px
+   viewport on /status/derecho, it does not: the chart sits in a card inside a
+   card, and each `.card-body` takes 16px a side, so a 375px viewport hands the
+   chart 287px. The figure is then scaled DOWN to fit, undoing part of the
+   point.
+
+   Cards nest on several surfaces and un-nesting them is not a chart change,
+   so instead the chart bleeds back over its immediate card padding. 16px a
+   side, matching `.card-body` exactly — it lines the SVG up with the card
+   edge rather than pushing past it, so nothing can overflow. Charts are
+   self-contained rectangles with their own internal margins; unlike text they
+   do not need the gutter to read.
+
+   The two halves have different bands, which is measurement, not oversight:
+
+   - the **gutter** runs the whole non-desktop range. The nested card bodies
+     cost the same 32px at 768 as at 375, and it buys a real 5%: measured on
+     /status/derecho at a 768 viewport the chart's box goes 625 -> 657px and
+     its smallest label 9.0 -> 9.4px. Verified symmetric and non-overflowing at
+     both edges of the tablet band, and on /status/partition-history, which
+     nests one card body rather than two.
+   - `width: 100%` stays on phones only. It exists to *upscale* a figure
+     narrower than its card, and no tablet figure is: every one measured
+     renders at 100% of its card across the whole band under `max-width`
+     alone. Extending it would only reach the pies, whose tablet profile is
+     deliberately the desktop figure — it would blow them up, not fix them.
+     Desktop keeps `max-width` alone for the original reason: upscaling an
+     18in figure on a wide screen would just blur it. */
+@media (max-width: 1199.98px) {
+    .chart-container,
+    .jobs-histogram-chart,
+    .jobs-timeline-chart,
+    .jobs-user-pie,
+    .disk-entity-pie {
+        margin-left: -1rem;
+        margin-right: -1rem;
+    }
+}
+
+@media (max-width: 767.98px) {
+    .chart-container svg,
+    .jobs-histogram-chart svg,
+    .jobs-timeline-chart svg,
+    .jobs-user-pie svg {
+        width: 100%;
+    }
 }
 
 /* ============================================================================

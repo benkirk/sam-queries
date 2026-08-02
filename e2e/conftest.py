@@ -62,6 +62,16 @@ def dashboard_page_routes():
         '/admin/expirations/export',
         # JSON diagnostic endpoint.
         '/allocations/cache/status',
+        # htmx fragment, despite the rule not saying so — the view is
+        # `expirations_fragment` and it returns bare cards plus an OOB badge,
+        # with no <html> wrapper. The filters below key off the *rule*
+        # (`/htmx/`, `_fragment` suffix) and this one is spelled
+        # `/admin/expirations`, so it has to be named explicitly. Found by the
+        # dark-mode sweep: `assert_theme_applied` reported `data-bs-theme` was
+        # None here, which is exactly right for a fragment and impossible for a
+        # page. It was previously swept as a page and passed only because a
+        # fragment emits no console errors.
+        '/admin/expirations',
     }
     rows = json.loads(ROUTE_MAP.read_text())
     return sorted({
@@ -235,6 +245,40 @@ def expand_first_project_card(page):
     if pencil.count() == 0:
         pytest.skip(f'no editable allocation inside {target} in this dataset')
     return pencil
+
+
+#: Must match `webapp.utils.htmx.THEME_COOKIE`. Dark mode is rendered
+#: server-side from this cookie onto `<html data-bs-theme>`, so pinning it
+#: here is the whole of what a browser-tier theme switch needs — no clicking,
+#: no reload dance.
+THEME_COOKIE = 'sam_theme'
+THEMES = ('light', 'dark')
+
+
+def set_theme(page, base_url, theme):
+    """Pin the server-rendered theme for this page's browsing context.
+
+    Set on the context rather than by clicking the toggle: the toggle's own
+    behaviour is unit-tested (tests/unit/test_theme_transport.py), and driving
+    it here would add a reload to every parameterized case for no extra
+    coverage.
+    """
+    page.context.add_cookies(
+        [{'name': THEME_COOKIE, 'value': theme, 'url': base_url}])
+
+
+def assert_theme_applied(page, theme):
+    """The server really did render the theme we asked for.
+
+    Without this a theme-parameterized test can pass twice against the same
+    light page — the cookie is silently dropped and nothing complains.
+    """
+    actual = page.evaluate(
+        "document.documentElement.getAttribute('data-bs-theme')")
+    assert actual == theme, (
+        f'asked for {theme!r} but <html data-bs-theme> is {actual!r} — the '
+        f'{THEME_COOKIE} cookie is not reaching the server, so this test is '
+        f'not exercising what it claims to')
 
 
 def visit(page, url):
