@@ -2,10 +2,12 @@
 
 ## Context
 
-Legacy SAM (Java/Tomcat, deployed build **2.0.3**) is NCAR's site-side server for the XRAS
-allocation integration. The XRAS broker at ACCESS **pushes** allocation decisions to SAM
-(`POST /api/xras/v1/actions`) and **pulls** identity and request data from it
-(`GET /api/xras/v1/people*`, `/requests/*`). It is the last major legacy surface not yet ported.
+Legacy SAM (Java/Tomcat, deployed build **2.0.3**) is NCAR's site-side
+server for the XRAS allocation integration. The XRAS broker at
+https://admin-ncar.xras.org/ **pushes** allocation decisions to SAM
+(`POST /api/xras/v1/actions`) and **pulls** identity and request data
+from it (`GET /api/xras/v1/people*`, `/requests/*`). It is one of the remaining
+major legacy surfaces not yet ported.
 
 The port is a **drop-in replacement** — same URLs, same auth headers, same response bytes — with two
 deliberate improvements: **structured error responses** (422 carrying the real validation messages,
@@ -79,7 +81,7 @@ Only six distinct causes exist in 30 days:
 
 | Cause | count | share |
 |---|---:|---:|
-| `PI <name>-user-<token> is not in database` — unreconciled ACCESS placeholder identities | 37 | 55% |
+| `PI <name>-user-<token> is not in database` — unreconciled ARC (https://arc.ucar.edu/) placeholder identities | 37 | 55% |
 | `Could not determine Mnemonic code for internal PI via organization` | 16 | 24% |
 | `PI <user> is not an active user` | 6 | 9% |
 | `Cannot find contract for grant number "<n>"` | 4 | 6% |
@@ -139,7 +141,7 @@ bare `/v1/*` surface.
 - #7 accepts **only** `pi`; anything else is `NotFoundException` → 404.
 - #8 takes `@RequestBody String actionJson` and calls `new ObjectMapper().readValue(...)` itself — a
   second, unconfigured mapper. Parse failure → `RuntimeException` → 500.
-- The ACCESS spec documents `POST /v1/actions/<actionId>/<requestId>/<actionType>`, but **all 175
+- The ACCESS/XRAS spec documents `POST /v1/actions/<actionId>/<requestId>/<actionType>`, but **all 175
   real posts go to bare `/api/xras/v1/actions`**, the only form SAM maps. If the broker is ever
   corrected to match its own docs, every post 404s — **map both forms defensively.**
 - Spec endpoints SAM does not implement, and which are out of scope here: `GET /test_auth`,
