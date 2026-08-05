@@ -1,68 +1,56 @@
-# XRAS Integration Reimplementation (Python) — Plan
+# XRAS Integration Reimplementation (Python)
 
 ## Context
 
-Legacy SAM (Java/Tomcat, deployed build **2.0.3**) is the site-side server for NCAR's XRAS
+Legacy SAM (Java/Tomcat, deployed build **2.0.3**) is NCAR's site-side server for the XRAS
 allocation integration. The XRAS broker at ACCESS **pushes** allocation decisions to SAM
-(`POST /api/xras/v1/actions`) and **pulls** identity and request data from SAM
-(`GET /api/xras/v1/people*`, `/requests/*`). This is the last major legacy surface not yet ported
-to Python SAM.
+(`POST /api/xras/v1/actions`) and **pulls** identity and request data from it
+(`GET /api/xras/v1/people*`, `/requests/*`). It is the last major legacy surface not yet ported.
 
-Goal: a **drop-in replacement** — same URLs, same auth headers, same wire bytes — with the failure
-modes that make the current system expensive to operate fixed: **structured error responses**
-(422 with the real validation messages instead of a blanket 500 carrying an opaque timestamp), and a
-**DB-backed audit trail + admin dashboard** replacing the email-only, paste-JSON-to-replay workflow.
+The port is a **drop-in replacement** — same URLs, same auth headers, same response bytes — with two
+deliberate improvements: **structured error responses** (422 carrying the real validation messages,
+instead of a 500 carrying an opaque timestamp), and a **DB-backed audit trail with an admin UI**,
+replacing a workflow whose only record is an email and whose only replay mechanism is pasting JSON
+into a form.
 
-### Evidence base
-
-An earlier revision of this plan was written from static source reading alone. It has since been
-**verified and corrected on `sam-tomcat.ucar.edu`**, the live legacy host, with:
-
-- 30 days of access, application and XRAS-action logs (**2026-07-07 → 2026-08-05**; nothing older
-  exists — there are no archives),
-- read-only queries against the production database (`sam-sql.ucar.edu`, `hpc-reader`),
-- live HTTP probes of the running endpoint,
-- the deployed source at tag `2.0.3` (**not** the working tree, which is divergent).
-
-Everything below is measured unless explicitly marked as inference. Where the earlier revision was
-wrong, the correction is called out so the change is auditable.
+**Provenance.** Every number here is measured, not inferred. Sources: 30 days of access,
+application and XRAS-action logs on `sam-tomcat.ucar.edu` (**2026-07-07 → 2026-08-05**; retention is
+a hard 30 days with no archives), read-only queries against the production database
+(`sam-sql.ucar.edu`), live HTTP probes of the running endpoint, and the deployed source at tag
+`2.0.3`.
 
 ---
 
-## 1. The production system, measured
+## 1. What production actually does
 
-### 1.1 Traffic is small, narrow, and single-sourced
+### 1.1 Traffic — small, narrow, single-sourced
 
-| Endpoint | 30d hits | Status split | Latency (p50 / p95) | Body size |
+| Endpoint | 30d hits | Status split | Latency p50 / p95 | Body size |
 |---|---:|---|---|---|
 | `GET /api/xras/v1/people/{username}` | 3,058 | 2,128×200 / 930×404 | 95 ms / 107 ms | 87–274 B |
-| `POST /api/xras/v1/actions` | 175 | 108×200 / **67×500** | 383 ms / 1,130 ms | 41 B ok, 112 B error |
+| `POST /api/xras/v1/actions` | 175 | 108×200 / 67×500 | 383 ms / 1,130 ms | 41 B ok, 112 B error |
 | `GET /api/xras/v1/people?` | 30 | 30×200 | 1,123 ms / 1,272 ms | **3.81 MB** |
-| `GET /api/xras/v1/requests/request/{n}` | **1** | 1×200 | 7,679 ms | — |
+| `GET /api/xras/v1/requests/request/{n}` | 1 | 1×200 | 7,679 ms | — |
 | every other mapped endpoint | **0** | — | — | — |
 
-- **One caller, ever.** 100% of requests come from `18.223.62.77` (AWS us-east-2) with User-Agent
-  `Ruby` (bare `Net::HTTP` default). There is no long tail. Cutover is a single-party conversation,
-  and an IP allowlist would be complete access control for this surface.
-- **Peak burst is 24 requests/minute** (~0.4 rps), on 2026-07-23. The throughput bar is trivial.
+- **One caller, ever:** `18.223.62.77` (AWS us-east-2), User-Agent `Ruby` (bare `Net::HTTP`
+  default), 100% of requests. Cutover is a single-party conversation, and an IP allowlist would be
+  complete access control for this surface.
+- **Peak burst is 24 requests/minute** (~0.4 rps). The throughput bar is trivial; the latency bar is
+  not (§4.2).
 - `GET /people` is a **nightly cron at 03:00:5x MDT, 30 days out of 30**. Everything else follows a
   weekday/weekend human pattern (100–290/day vs 7–32/day).
 - The roster URL is literally `GET /api/xras/v1/people?` — a bare trailing `?`.
 
-> **Correction.** The earlier revision cited 3,547 / 158 / 30 / 3 hits from a different window and a
-> 27% POST failure rate. The measured failure rate is **38%**, and `requests/request/{n}` sees
-> **one** call per month, not three.
-
 > **Analysis trap.** `grep -i xras` over the access logs is dominated by **187,382** requests to
 > `/api/protected/amie/v1/task/AMIE/XRAS-*/create_project` on 2026-07-08–09 — an AMIE polling loop
-> stuck on 13 `create_project` tasks. That is 57× the entire real XRAS volume and is unrelated.
-> Filter on `/api/xras/`.
+> stuck on 13 tasks. That is 57× the entire real XRAS volume and is unrelated. Filter on
+> `/api/xras/`.
 
-### 1.2 Production action-type mix — recovered from the database
+### 1.2 Action mix
 
-`actionType` is **never written to any log** (verified: zero occurrences across `sam.log`,
-`sam-xras-actions.log`, `catalina.out`; it exists only as a Velocity variable in the notification
-emails). The distribution was recovered by correlating the 109 success lines in
+`actionType` is **never written to any log** — it exists only as a Velocity variable in the
+notification emails. The distribution below was recovered by correlating the 109 success lines in
 `sam-xras-actions.log` against `allocation_transaction.creation_time` (±60 s) and
 `project.creation_time`:
 
@@ -71,16 +59,15 @@ emails). The distribution was recovered by correlating the 109 success lines in
 | **Extension** (existing project) | 65 | **60%** | 213 `EXTENSION` rows — avg **3.3 allocations per post** |
 | **New** (project created) | 23 | 21% | 63 `NEW` rows — avg 2.7 allocations |
 | **Supplement** (existing project) | 16 | 15% | 24 `SUPPLEMENT` rows |
-| Update creating an allocation on an existing project | 3 | 3% | `NEW` ×2, `NEW`+`SUPPLEMENT` ×1 |
-| **Successful post that mutated nothing** | 2 | 2% | 0 rows |
+| Update adding an allocation to an existing project | 3 | 3% | `NEW` ×2, `NEW`+`SUPPLEMENT` ×1 |
+| Successful post that mutated nothing | 2 | 2% | 0 rows |
 | **Transfer** | **0** | — | — |
 | **Adjust** | **0** | — | — |
 
-### 1.3 Failure is concentrated in exactly one code path
+### 1.3 Failure is concentrated in one code path
 
-Of the 67 failures, 66 are raised by validators and extractors that **only run on the
-New/Renewal path**. The single exception is `Action end date before existing allocation end date
-for Derecho GPU` (the Extension handler).
+Of 67 failures, 66 come from validators and extractors that **only run on the New/Renewal path**.
+The exception is one `Action end date before existing allocation end date for Derecho GPU`.
 
 | Path | successes | failures | success rate |
 |---|---:|---:|---:|
@@ -88,54 +75,50 @@ for Derecho GPU` (the Extension handler).
 | Extension | 65 | 1 | 98.5% |
 | Supplement | 16 | 0 | 100% |
 
-Distinct failure causes over 30 days — only six exist:
+Only six distinct causes exist in 30 days:
 
 | Cause | count | share |
 |---|---:|---:|
-| `PI <name>-user-<token> is not in database` (unreconciled ACCESS placeholder identities) | 37 | 55% |
+| `PI <name>-user-<token> is not in database` — unreconciled ACCESS placeholder identities | 37 | 55% |
 | `Could not determine Mnemonic code for internal PI via organization` | 16 | 24% |
 | `PI <user> is not an active user` | 6 | 9% |
 | `Cannot find contract for grant number "<n>"` | 4 | 6% |
 | `Username <user> is missing` | 4 | 6% |
 | `Action end date before existing allocation end date for <resource>` | 1 | 1.5% |
 
-Five identities account for 39 of the 67 failures; `kquagraine-user-89o84` alone accounts for 17.
-**This is not a broad reliability problem** — it is a small set of unmapped identities reposted by
-hand, repeatedly, because XRAS does not auto-retry and the 500 body tells the operator nothing.
+Five identities account for 39 of the 67; `kquagraine-user-89o84` alone accounts for 17. This is not
+a broad reliability problem — it is a small set of unmapped identities reposted by hand, repeatedly,
+because XRAS does not auto-retry and the 500 body tells the operator nothing.
 
-**Planning consequence:** the highest-volume handler is nearly perfect and the lowest-volume-but-
-hardest one carries all the pain. Build `Extension` first to establish the pipeline on the easy
-path, then invest in `New`.
+**Planning consequence:** the highest-volume handler is nearly perfect and the hardest one carries
+all the pain. Build `Extension` first to establish the pipeline on the easy path, then invest in
+`New`.
 
-### 1.4 The manual-fallback path is dead code
+### 1.4 The manual-fallback path never fires
 
-`ManualFallbackActionPostService` logs only at `LOG.debug()`, which is suppressed
-(`XrasActionLogger` is pinned at INFO in the *active* config), so grepping for it proves nothing.
-Detected indirectly instead: access-log `POST /actions` 200s versus `EmailingActionPostService`
-INFO lines, per day. **Δ = 0 on every day with access-log coverage** (108 vs 109; the −1 falls on
-2026-07-06, which predates access-log retention). A fallback invocation would appear as a 200 with
-no INFO line. **Zero invocations in 30 days.**
+`ManualFallbackActionPostService` is reachable *only* via `catch (BadRequestException)` — i.e.
+`ProjectActionServiceSelector` finding no serviceable, which is what an `Adjustment` or `Advance`
+actionType would produce. (Note the selector's guard string is `"Adjust"`, not `"Adjustment"`, and
+there is no `"Advance"` serviceable at all.) It logs only at `LOG.debug()`, which is suppressed, so
+it cannot be grepped; detected instead by comparing access-log 200s against
+`EmailingActionPostService` INFO lines per day. **Δ = 0 on every day with coverage — zero
+invocations in 30 days.**
 
-It is reachable *only* via `catch (BadRequestException)` — i.e. `ProjectActionServiceSelector`
-finding no serviceable, which is what an `Adjustment` or `Advance` actionType would produce. Note
-the selector's guard string is `"Adjust"`, not `"Adjustment"`, and there is no `"Advance"`
-serviceable at all.
-
-> **Structural consequence.** On that path the broker still receives `200 {"message":"OK"}` for an
-> action SAM silently deferred to a human. **The legacy 200/500 split does not distinguish
-> "processed" from "quietly parked".** The new implementation must.
+Its structural consequence matters more than its usage: on that path the broker receives
+`200 {"message":"OK"}` for an action SAM silently deferred to a human. **The legacy 200/500 split
+does not distinguish "processed" from "quietly parked."** Ours must.
 
 ---
 
 ## 2. Wire contract
 
-### 2.1 Endpoint inventory (deployed 2.0.3)
+### 2.1 Endpoints
 
 `web.xml` maps a dedicated `DispatcherServlet` (`xrasRestApi`, context
 `classpath:spring/xras-rest-context.xml`) at **`/api/xras/*`**, plus a dedicated
-`XrasAuthenticationFilter` on the same pattern. All five controllers are `@RestController` and
-extend a shared `XrasController`. Effective path = `/api/xras` + the `@RequestMapping` value; there
-is no bare `/v1/*` surface.
+`XrasAuthenticationFilter` on the same pattern. All five controllers are `@RestController` extending
+a shared `XrasController`. Effective path = `/api/xras` + the `@RequestMapping` value; there is no
+bare `/v1/*` surface.
 
 | # | Method | Path | Response type |
 |---|---|---|---|
@@ -146,29 +129,26 @@ is no bare `/v1/*` surface.
 | 5 | GET | `/api/xras/v1/requests/role/{role}/{username}` | same |
 | 6 | GET | `/api/xras/v1/dates/requests/{requestNumbers}` | `ResponseWrapper{result: List<RequestDatesDTO>}` |
 | 7 | POST | `/api/xras/v1/roles/{requestNumber}/{role}/{username}` | empty body, 200 |
-| 8 | POST | `/api/xras/v1/actions` | `ResponseWrapper("OK")` → `{"message":"OK","result":null}` |
-
-Notes that matter for the port:
+| 8 | POST | `/api/xras/v1/actions` | `{"message":"OK","result":null}` |
 
 - **#1 and #2 are the only endpoints without the `{message, result}` envelope.** Any client
   description assuming a uniform wrapper is wrong for the highest-traffic endpoint on the surface.
-- #5's `{role}` path segment is the lowercase snake_case key, mapped
-  `pi→Pi`, `co_pi→CoPi`, `allocation_manager→AllocationManager`. An unrecognised role throws
-  `IllegalArgumentException` → **HTTP 500**, not 400.
+- #5's `{role}` segment is a lowercase snake_case key: `pi→Pi`, `co_pi→CoPi`,
+  `allocation_manager→AllocationManager`. An unrecognised role throws `IllegalArgumentException` →
+  500, not 400.
 - #7 accepts **only** `pi`; anything else is `NotFoundException` → 404.
-- #8 does not let Spring bind the body. It takes `@RequestBody String actionJson` and calls
-  `new ObjectMapper().readValue(actionJson, XrasAction.class)` itself — a second, unconfigured
-  mapper. Parse failure → `RuntimeException` → 500.
-- The upstream ACCESS spec documents `POST /v1/actions/<actionId>/<requestId>/<actionType>`, but
-  **all 175 real posts go to bare `/api/xras/v1/actions`**, the only form SAM maps. If the broker is
-  ever "corrected" to match its own docs, every post 404s. Worth mapping both forms defensively.
-- Endpoints the ACCESS spec defines that SAM **does not implement**: `GET /test_auth`,
-  `GET /v1/usage/by_month/…`, `DELETE /v1/roles/…` (so role *revocations* never reach SAM),
-  and the `/v1/users/…` family. These are known gaps, not part of this port.
+- #8 takes `@RequestBody String actionJson` and calls `new ObjectMapper().readValue(...)` itself — a
+  second, unconfigured mapper. Parse failure → `RuntimeException` → 500.
+- The ACCESS spec documents `POST /v1/actions/<actionId>/<requestId>/<actionType>`, but **all 175
+  real posts go to bare `/api/xras/v1/actions`**, the only form SAM maps. If the broker is ever
+  corrected to match its own docs, every post 404s — **map both forms defensively.**
+- Spec endpoints SAM does not implement, and which are out of scope here: `GET /test_auth`,
+  `GET /v1/usage/by_month/…`, `DELETE /v1/roles/…` (so role *revocations* never reach SAM), and the
+  `/v1/users/…` family.
 
 ### 2.2 Auth
 
-**Header translation** — `XrasAuthenticationFilter`, exact behaviour:
+**Header translation** — `XrasAuthenticationFilter`:
 
 1. If **neither** `XA-REQUESTER` nor `XA-API-KEY` is present → pass through untouched.
 2. Otherwise wrap the request in a case-insensitive mutable header map.
@@ -178,82 +158,73 @@ Notes that matter for the port:
    `Authorization` synthesized ⇒ 401.
 5. An explicit `Authorization` header always wins.
 
-**Authorization** — Spring Security chain for `/api/xras/**`: stateless, CSRF disabled, security
-headers disabled, `requires-channel="https"`, `use-expressions="false"`, `access="ROLE_XRAS"`
-(plain `RoleVoter`, so the authority string is literally `ROLE_XRAS`).
+**Authorization** — the `/api/xras/**` chain is stateless, CSRF disabled, security headers disabled,
+`requires-channel="https"`, `use-expressions="false"`, `access="ROLE_XRAS"` (plain `RoleVoter`, so
+the authority string is literally `ROLE_XRAS`).
 
-**Credential store** — `api_credentials` (`username`, `password` bcrypt, `enabled`) joined through
-`role_api_credentials` → `role`. Verified in production: row **`XRAS`** (id 2, `enabled=1`,
-`ROLE_XRAS`); a disabled `XRAS_OLD` (id 1) also exists. Note `api_credentials.username` is
-`varchar(11)`.
+**Credential store** — `api_credentials` (`username`, `password` bcrypt, `enabled`) joined via
+`role_api_credentials` → `role`. Production holds `XRAS` (id 2, enabled, `ROLE_XRAS`) and a disabled
+`XRAS_OLD` (id 1). `api_credentials.username` is `varchar(11)`.
 
-> **Correction.** The earlier revision said role `XRAS`. The literal authority is **`ROLE_XRAS`**.
-
-**401 response — byte-exact, verified live with `od -c`:**
+**401** — byte-exact, verified with `od -c`:
 
 ```
 Content-Type: application/json;charset=UTF-8
 Content-Length: 41
-(no WWW-Authenticate header — deliberate, see XrasAuthenticationEntryPoint javadoc)
+(no WWW-Authenticate header — deliberate, per XrasAuthenticationEntryPoint's javadoc)
 
 {\n  "message" : null,\n  "result" : null\n}
 ```
 
-Note the **space before the colon** — Jackson's `DefaultPrettyPrinter`. This body is returned for
+Note the **space before the colon** (Jackson's `DefaultPrettyPrinter`). This body is returned for
 **unmapped paths too** (`/api/xras/v1/test_auth` → 401, not 404), because the filter and security
 chain run before routing.
 
-**403** (valid credentials, missing `ROLE_XRAS`) falls through to Spring's default
-`AccessDeniedHandlerImpl` → `sendError(403)` → the **container's HTML page**, not JSON. Reproducing
-this is not worth it; return the JSON envelope with 403 and note the divergence.
+**403** — valid credentials without `ROLE_XRAS` produce **431 bytes of Tomcat HTML**, not JSON:
+Spring's default `AccessDeniedHandlerImpl` calls `sendError(403)` and `web.xml` declares no
+`<error-page>`. Verified live across `/people`, `/people/{u}`, `/requests/request/{n}` and
+`/dates/requests/{n}`. **Do not reproduce it** — return the JSON envelope with 403; no real client
+depends on an HTML body it has never received.
 
 ### 2.3 Response shapes
 
 **`PersonDTO`** (endpoints 1–2): `username, firstName, middleName, lastName, organization,
 academicStatus, phone, email` — all strings.
 
-**Null fields are omitted.** Source reading is ambiguous here: the POJOs carry the Jackson-1.x-era
-`@JsonSerialize(include = JsonSerialize.Inclusion.NON_NULL)`, which jackson-databind ≥2.9 no longer
-honors, and `pom.xml` at 2.0.3 pins **2.16.0** — which would mean nulls *are* emitted. Settled
-empirically against the nightly roster's actual byte count:
+**Null fields are omitted.** Confirmed by predicting the nightly roster's byte count from the
+database both ways: nulls-omitted predicts 3,845,112 B against an observed 3,839,790 B (0.14%,
+the residual explained by `IdentityServiceImpl.fixInternalOrg()` shortening `UCAR/NCAR:<acronym>`
+strings); nulls-emitted predicts 5,219,474 B, off by 36%.
 
-| Hypothesis | Predicted | Observed 2026-08-05 |
-|---|---:|---:|
-| nulls **omitted** | 3,845,112 B | **3,839,790 B** ✅ (0.14% off) |
-| nulls emitted | 5,219,474 B | 36% off |
-
-The −5 KB residual is explained by `IdentityServiceImpl.fixInternalOrg()` shortening
-`UCAR/NCAR:<acronym>` strings. **Omit nulls in the Python port**, and use roster byte size as the
-parity check.
-
-**`GET /people/{u}` 404**: `{"message":"username=<u> not found","result":null}`.
+**`GET /people/{u}` 404**: `{"message":"username=<u> not found","result":null}`, and its length is a
+closed form — `bytes = len(username) + 58`, exact across 981 production samples.
 
 **`GET /requests/request/{n}`** → `ResponseWrapper{message: null, result: {...}}`:
 
 ```
 projectIdLabel : null
-masters[]      : { requestNumber, requests[] }          # serialized as an ARRAY (getMasters() returns .values())
-  requests[]   : { requestType,                          # "New" for earliest begin per project, else "Renewal"
-                   requestBeginDate, requestEndDate,     # "yyyy-MM-dd" strings
+masters[]      : { requestNumber, requests[] }        # an ARRAY — getMasters() returns .values()
+  requests[]   : { requestType,                        # "New" for earliest begin per project, else "Renewal"
+                   requestBeginDate, requestEndDate,   # "yyyy-MM-dd" strings
                    allocationType, projectTitle, projectId,
-                   xrasActionIds,                        # never populated → null
+                   xrasActionIds,                      # never populated → null
                    fos[]         : { xrasFosTypeId, isPrimary: true },
-                   allocations[] : { actionType,         # never populated → null
+                   allocations[] : { actionType,       # never populated → null
                                      allocationBeginDate, allocationEndDate,
-                                     allocatedAmount,    # STRING, "%.1f"
-                                     remainingAmount,    # STRING, "%.1f"; HPC-only, omitted when null
+                                     allocatedAmount,  # STRING, "%.1f"
+                                     remainingAmount,  # STRING, "%.1f"; HPC-only, omitted when null
                                      resourceRepositoryKey,
                                      actions[] : { orderApplied,   # 1-based, assignment order
                                                    actionType, amount,   # STRING "%.1f"
                                                    endDate, dateApplied } } }
 ```
 
-Unknown request number → **200 with empty `masters`**. `RequestFactory` throws
-`IllegalStateException` (→ 500) when the `allocationIds` CSV on `xras_request` fails to reconcile
-against `xras_allocation`/`xras_action`, and `RequestDTO.getXrasFosTypeId()` NPEs on a null column.
+Unknown request number → **200 with empty `masters`**. `RequestFactory` throws `IllegalStateException`
+(→ 500) when the `allocationIds` CSV on `xras_request` fails to reconcile against
+`xras_allocation`/`xras_action`, and `RequestDTO.getXrasFosTypeId()` NPEs on a null column.
 
 **Dates are `yyyy-MM-dd` strings everywhere except `dates/requests`**, which returns
-`java.util.Date` with no date module configured ⇒ **epoch-millis integers**. Preserve that quirk.
+`java.util.Date` with no date module configured ⇒ **epoch-millis integers**. Preserve the quirk.
 
 ### 2.4 Inbound `POST /actions` payload
 
@@ -268,7 +239,7 @@ resources[] : actionResourceId(Integer) resourceRepositoryKey(Integer) awardedAm
 roles[]     : requestPeopleRoleId(Integer) roleType username beginDate endDate
               isAccountToBeCreated(forgiving bool) person{}
   person    : firstName middleName lastName email phone organization academicStatus isReconciled
-fos[]       : fosTypeId fosNum fosName fosAbbr isPrimary          # all STRING except isPrimary
+fos[]       : fosTypeId fosNum fosName fosAbbr isPrimary        # all STRING except isPrimary
 panels[]    : type name abbr isPrimary
 grants[]    : fundingAgency grantNumber programOfficerName programOfficerEmail piName title
               beginDate endDate awardedAmount awardedUnits percentageAward subAwardNumber
@@ -276,64 +247,55 @@ grants[]    : fundingAgency grantNumber programOfficerName programOfficerEmail p
 ```
 
 - `projcode` = `StringUtils.trimToNull(requestNumber)`.
-- **PI** = the first role with `roleType == "PI"` whose date window brackets `actionBeginDate`;
-  same rule for `"Allocation Manager"`.
-- `ForgivingBooleanDeserializer` is applied to **exactly one field**, `roles[].isAccountToBeCreated`:
-  `null→false`, integer→`!= 0`, `t/true/y/yes`→true, `f/false/n/no/""`→false, anything else is an
-  error. All other booleans use Jackson defaults.
+- **PI** = the first role with `roleType == "PI"` whose date window brackets `actionBeginDate`; the
+  same rule finds `"Allocation Manager"`.
+- `ForgivingBooleanDeserializer` applies to **exactly one field**, `roles[].isAccountToBeCreated`:
+  `null→false`, integer→`!= 0`, `t/true/y/yes`→true, `f/false/n/no/""`→false, anything else errors.
+  All other booleans use Jackson defaults.
 - **`isReconciled` and `isAccountToBeCreated` are inert** — parsed into the POJO and never read by
-  any business logic (verified by grep across `src/main/java`). A role meaning "provision this new
-  person" therefore produces a hard failure regardless of intent.
+  any business logic. A role meaning "provision this new person" therefore fails regardless of
+  intent.
 - Real payloads send `fos[].fosTypeId` and `awardPeriod` as **numbers** into **string** fields;
-  Jackson coerces. The Python schema must accept both.
+  Jackson coerces, and our schema must accept both.
 
-**Sample payloads.** Only one real payload exists in the repo:
+**Sample payloads.** The repo holds exactly one:
 `2.0.3:src/test/resources/xras/rest/request/createActionGood.json` (3,593 B). The two JSON *schema*
-files under `src/main/resources/json/xras/` are **stale** — they reference a Java package that no
-longer exists, and `Action.json` is missing `grants` entirely and models `fos[]` with only two
-fields. **Do not treat them as contract.**
+files under `src/main/resources/json/xras/` reference a Java package that no longer exists,
+`Action.json` is missing `grants` entirely and models `fos[]` with two fields — **they are not
+contract.** Richer real payloads exist only as `XRAS_post_action.json` attachments in the
+`hdt@ucar.edu` / `sweg-notify@ucar.edu` mailboxes; legacy emails the raw body on every action.
 
-### 2.5 Error mapping — legacy, and what we change
+### 2.5 Status codes
 
-Legacy has no `@ControllerAdvice`; all handling is six `@ExceptionHandler` methods on
-`XrasController`:
+Legacy handling is six `@ExceptionHandler` methods on `XrasController`; there is no
+`@ControllerAdvice`.
 
-| Exception | Legacy status | Legacy body |
+| Condition | Legacy | Ours |
 |---|---|---|
-| `IdentityNotFoundException` | 404 | `{"message":"username=x not found","result":null}` |
-| `NotFoundException` | 404 | `{"message":"…","result":null}` |
-| `BadRequestException` | 400 | `{"message":"…","result":null}` |
-| `BadStateException` | 403 | `{"message":"…","result":null}` |
-| `XrasException` | 500 | `{"message":"…","result":null}` |
-| **anything else** (incl. `ActionProcessingException`) | **500** | `{"message":"Unhandled SAM exception processing XRAS request (timestamp <epoch-ms>)","result":null}` |
-
-**The critical defect:** `ActionProcessingException.getErrorMessages()` holds the ordered list of
-real validation messages — and matches no typed handler, so it lands in the catch-all and **the
-messages are discarded from the HTTP response**. They go only to the log and the failure email.
-XRAS admins see the response body directly in their "Accounting Service Posts" panel, so today they
-read `Unhandled SAM exception … (timestamp 1785384269504)` where they could be reading
-`PI kquagraine-user-89o84 is not in database` and self-servicing.
-
-**Deliberate divergences in the Python port:**
-
-| Condition | Legacy | New |
-|---|---|---|
-| Malformed JSON body | 500 | **400** |
-| Validation failure (`ActionProcessingException` equivalent) | 500, opaque | **422** with the structured error list |
-| Unhandled action type | 200 + email, silently | **200 + audit row marked `manual` + email** |
-| Success | 200 `{"message":"OK","result":null}` | unchanged |
+| `/people/{u}` miss | 404 `{"message":"username=x not found","result":null}` | unchanged |
 | Unknown request number | 200, empty `masters` | unchanged |
-| `/people/{u}` miss | 404 | unchanged |
+| Success | 200 `{"message":"OK","result":null}` | unchanged |
+| Malformed JSON body | 500 | **400** |
+| Validation failure | 500, `{"message":"Unhandled SAM exception processing XRAS request (timestamp <epoch-ms>)","result":null}` | **422** with the structured error list |
+| Unhandled action type | 200 + email, no trace | **200 + audit row marked `manual` + email** |
+| Missing/bad credentials | 401 (41 B JSON) | unchanged |
+| Valid credentials, wrong role | 403 (Tomcat HTML) | 403 JSON envelope |
 
-Everything else stays byte-identical. The 4xx change should be confirmed with
-`allocations@access-ci.org` before the `POST /actions` cutover step — broker retry behaviour on 4xx
-is unknown, and this is the whole point of the change.
+**Why the 422 matters.** `ActionProcessingException.getErrorMessages()` holds the ordered list of
+real validation messages, but the exception matches no typed handler, so it lands in the catch-all
+and **the messages are dropped from the HTTP response** — they survive only in the log and the
+failure email. XRAS admins read the response body directly in their "Accounting Service Posts"
+panel, so today they see `Unhandled SAM exception … (timestamp 1785384269504)` where they could see
+`PI kquagraine-user-89o84 is not in database` and self-service the fix.
+
+Confirm the 4xx change with `allocations@access-ci.org` before the `POST /actions` cutover step —
+broker retry behaviour on 4xx is unknown.
 
 ---
 
-## 3. Action-processing semantics (legacy, to be reproduced)
+## 3. Action-processing semantics
 
-### 3.1 Selector — first match wins, in this order
+### 3.1 Selector — first match wins
 
 ```java
 selector.setServiceables(
@@ -357,7 +319,7 @@ selector.setServiceables(
 
 Assembly does **not** short-circuit: errors accumulate into an ordered `LinkedHashSet` on
 `ProcessingAction` via `observer.report(...)`, then `throwExceptionIfErrors()` raises once with the
-full list. Reproduce this — reporting all problems in one response is what lets an operator fix a
+full list. Reproduce this — reporting every problem in one response is what lets an operator fix a
 request in a single pass instead of five.
 
 ### 3.2 Allocation-type extractor — 11 ordered strategies, first non-null wins
@@ -382,8 +344,8 @@ alone: production `allocation_type` contains `Small` twice (panels `UNIV USS` an
 
 All null ⇒ `AttributeExtractionException("Unable to determine allocation type from action data")`.
 
-**Production frequency of the resulting types** (automated project creations, last 12 months) —
-use this to order test coverage:
+Production frequency of the resulting types (automated project creations, last 12 months) — order
+test coverage by this:
 
 | Type | n | | Type | n |
 |---|---:|---|---|---:|
@@ -393,9 +355,6 @@ use this to order test coverage:
 | `Classroom` | 52 | | `Explore ACCESS` | 10 |
 | | | | `External Project` | 4 |
 
-> **Correction.** The earlier revision's extractor summary omitted **CHAP** (the `Large` strategy),
-> which is the 5th most common type in production.
-
 A second use of the same resolution: `getAuthAtPanelMeeting()` returns `true` iff the resolved type
 is `CSL` or `CHAP`.
 
@@ -404,7 +363,7 @@ is `CSL` or `CHAP`.
 - **Mnemonic** — `opportunityName.startsWith("NCAR ")` → organization parentage at lab level
   (parentage size 0 → null; ≤3 → element 0; else element `len-3`); else external PI → institution
   (exact `findOneByDescription("<name>, <city>")`); else internal → organization (fuzzy
-  `code LIKE '%name%' OR description LIKE '%name%'` with `code` a `varchar(3)` — **broken; 150 of
+  `code LIKE '%name%' OR description LIKE '%name%'` with `code` a `varchar(3)` — **broken: 150 of
   171 active orgs match nothing**). `XrasAction.getMnemonicCode()` is hard-coded `null`, so the
   extractor always runs.
 - **Area of interest** — primary `fosNum` (first `isPrimary` entry, else first entry) →
@@ -432,26 +391,28 @@ is `CSL` or `CHAP`.
 
 ---
 
-## 4. Production data constraints
+## 4. Data and performance constraints
 
-| Fact | Measured | Consequence for the port |
+### 4.1 Production data facts
+
+| Fact | Measured | Consequence |
 |---|---|---|
-| `xras_user` has **no active/deleted filter** (only `login_type_id = 1`) | 28,253 rows, **22,039 inactive** | `/people` publishes every user who ever existed — kept bug-for-bug (§7 D2) |
-| `organization` null rate in `xras_user` | **79%** (22,311 rows) | consequence of the frozen `user_organization` |
+| `xras_user` has no active/deleted filter (only `login_type_id = 1`) | 28,253 rows, **22,039 inactive** | `/people` publishes every user who ever existed — reproduced bug-for-bug (§7) |
+| `organization` null rate in `xras_user` | **79%** (22,311 rows) | downstream of the frozen `user_organization` |
 | rows needing the `UCAR/NCAR:` fixup | 1,760 | port `UCAROrgNameQuery` faithfully |
-| **`user_organization` is frozen** | no rows created since **2026-07-09**; **4,563** active users have no current org; **2,092** rows point at `organization_id = 0` (dangling FK) | root cause of the 16 mnemonic failures. Out of scope to fix, but the port must report it as a reviewable 422, not an opaque 500 |
-| **Contract suffix collisions are live** | 3 cores collide **today**: `1049089` (`1049089` \| `PLR-1049089`), `1744587` (`OPP-` \| `PLR-`), `2146709` (`2146709` \| `AGS-2146709`) | legacy's `LIKE '%core'` + `uniqueResult()` ⇒ guaranteed `NonUniqueResultException` ⇒ 500 for any grant citing these. Resolve deterministically: exact match first, then unique suffix, else report |
+| **`user_organization` is frozen** | no rows created since 2026-07-09; **4,563** active users have no current org; **2,092** rows point at a dangling `organization_id = 0` | root cause of 24% of failures. Out of scope to fix, but the port must report it as a reviewable 422, not an opaque 500 |
+| **Contract suffix collisions are live** | 3 cores collide today: `1049089` (`1049089` \| `PLR-1049089`), `1744587` (`OPP-` \| `PLR-`), `2146709` (`2146709` \| `AGS-2146709`) | legacy's `LIKE '%core'` + `uniqueResult()` guarantees `NonUniqueResultException` → 500 for any grant citing these. Resolve deterministically: exact match, then unique suffix, else report |
 | `allocation_type` has duplicate names | `Small` ×2, `Education` ×2 | resolve by `(panel, type)` — matches `CLAUDE.md:819` |
 | `xras_resource_repository_key_resource` | **13 rows** | maps Derecho, Derecho GPU, Casper, Casper GPU, Campaign_Store, HPSS, CMIP AP + decommissioned kit. **Unmapped:** `GLADE user`, `GLADE work`, `Destor`, `Boreas`, `Gust`, `Gust GPU` — an award on any of these fails with `No resource found in SAM corresponding to key %s` |
-| `fos_aoi` (FOS → AreaOfInterest) | exists in prod, **18 rows** | already modelled as `FosAoi` (`src/sam/projects/areas.py:175`) and referenced by no query module. Legacy does **not** use it — it decodes `fosNum` as an id. Prefer `fos_aoi` in the port, falling back to legacy behaviour |
-| **GID allocation is live in legacy** | pool `99000–99999`, `nextGid = 99025`; `modified_time` matches the 2026-08-05 09:58:49 XRAS post to the second | legacy 2.0.3 allocates GIDs locally for XRAS projects (since 2026-07-16, `UMIT0083` = 99001). **`project.unix_gid` is NULL for 0 of 5,795 rows.** Never leave it NULL |
-| XRAS-created projects arrive `active = 0` | 21 of 23 have since been activated by hand | confirmed by design (`InactivateNewProject`); the success email is the human trigger |
-| XRAS allocation transactions | `user_id IS NULL`; comment `XrasAction Extension Request` (current) / `XRAS Extension Request` (pre-2025-10) | the actor convention to preserve — but see §6 Phase 3 |
-| `xras_request` fails under `ONLY_FULL_GROUP_BY` | prod `sql_mode` omits it, so the view works there (9,489 rows) | the offending clause is **`ORDER BY al.end_date`** alone — the SELECT list is safe via the `project_projcode_uk` unique index. Verified: removing the `ORDER BY` returns 9,489 rows under `sql_mode='ONLY_FULL_GROUP_BY'` |
-| Email recipients | `xras.actionpost.recipients=hdt@ucar.edu` (`2.0.3:app/env/sam.complete.properties:29`) | the deployed `/tomcat/tomcat-sam/var/sam.complete.properties` is 0600 and unreadable |
+| `fos_aoi` (FOS → AreaOfInterest) | exists in prod, **18 rows** | modelled as `FosAoi` (`src/sam/projects/areas.py:175`), referenced by no query module. Legacy does not use it — it decodes `fosNum` as an id. Prefer `fos_aoi`, falling back to legacy behaviour |
+| **GID allocation is live in legacy** | pool `99000–99999`, `nextGid = 99025`; `modified_time` matches the 2026-08-05 09:58:49 XRAS post to the second | legacy allocates GIDs locally for XRAS projects (since 2026-07-16, `UMIT0083` = 99001). **`project.unix_gid` is NULL for 0 of 5,795 rows** — never leave it NULL |
+| XRAS-created projects arrive `active = 0` | 21 of 23 have since been activated by hand | by design (`InactivateNewProject`); the success email is the human trigger |
+| XRAS allocation transactions | `user_id IS NULL`; comment `XrasAction Extension Request` (current) / `XRAS Extension Request` (pre-2025-10) | the actor convention to preserve — see Phase 3 |
+| Production `sql_mode` | `STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION` — **no `ONLY_FULL_GROUP_BY`** | views that work in prod can fail in the dev/test DB; test with `SET SESSION sql_mode='ONLY_FULL_GROUP_BY'` before trusting one |
+| Email recipients | `xras.actionpost.recipients=hdt@ucar.edu` (`2.0.3:app/env/sam.complete.properties:29`) | the deployed `var/sam.complete.properties` is 0600 and unreadable |
 | Feature flag | `XRAS_POST_ACTION=true` (`/tomcat/tomcat-sam/var/features.properties`) | — |
 
-### 4.1 Two performance landmines in the XRAS views
+### 4.2 The XRAS views are not all usable as-is
 
 Measured server-side against production with `SHOW PROFILES`:
 
@@ -467,24 +428,64 @@ Measured server-side against production with `SHOW PROFILES`:
 - **`xras_user` does not push down a username predicate.** Its `GROUP BY u.user_id` forces
   materialization of all 28,253 rows for every single-user lookup. Legacy is far faster end-to-end
   (95 ms p50) because `IdentityServiceImpl` uses the named query `identityServicePersons`
-  (`2.0.3:src/main/resources/hibernate/xras/namedQuery.xml`), **not the view**.
-  ⇒ **`GET /people/{username}` must query base tables with the filter applied.** Using
-  `XrasUserView` — as the earlier revision proposed — would be a ~10× latency regression.
+  (`2.0.3:src/main/resources/hibernate/xras/namedQuery.xml`), **not the view**. ⇒ **`GET
+  /people/{username}` must query base tables with the filter applied**; using `XrasUserView` would
+  be a ~10× latency regression.
 - **`xras_allocation` costs 6–8 s regardless of filter**, because `xras_hpc_allocation_amount`
-  aggregates `hpc_charge_summary` across *all* allocations before joining. This is why the one
-  `requests/request/{n}` call in 30 days took 7.7 s. ⇒ compute `remainingAmount` scoped to the
-  requested project.
+  aggregates `hpc_charge_summary` across *all* allocations before joining. This is why the single
+  `requests/request/{n}` call took 7.7 s. ⇒ compute `remainingAmount` scoped to the requested
+  project.
+- **`xras_request` fails under `ONLY_FULL_GROUP_BY`** (error 1055). The SELECT list is safe —
+  `GROUP BY p.projcode` is functionally determining via the `project_projcode_uk` unique index. The
+  sole offender is **`ORDER BY al.end_date`**, which names a different expression from the
+  `GROUP BY`'s `cast(al.end_date as date)`. Removing it returns all 9,489 rows under strict mode.
+  Fixing the view also un-skips `tests/integration/test_views.py:95-111`, whose bare
+  `except Exception` currently masks the failure (NRIT P2-63).
 
-### 4.2 Shared database ⇒ incremental cutover
+### 4.3 Shared database ⇒ incremental cutover
 
 `.env.example:14` sets `PROD_SAM_DB_SERVER=sam-sql.ucar.edu`: **both applications read and write the
 same production database.** A per-endpoint proxy cutover is therefore safe and reversible, with no
 data divergence between steps. `sam.ucar.edu` (128.117.225.232) is fronted by
 `prod-staticweb14/15.ucar.edu`, which can split on path prefix.
 
+### 4.4 Parity oracles
+
+**Access-log oracle — 30 days of real legacy output, no credential required.** `%b` and `%D` are
+recorded, so we have the byte count of every response legacy served in the window:
+
+| Oracle | Size | Strength |
+|---|---|---|
+| `GET /people/{u}` 200s | **385 usernames with a single stable byte count** over 30 days (29 more have two — their DB rows changed mid-window) | strong: any null-omission, org-fixup or missing-field bug shifts the count |
+| `GET /people/{u}` 404s | **563 distinct usernames**; size is the closed form `len(username) + 58`, exact across 981 samples | total; assert the formula, no fixture needed |
+| `GET /people` roster | **30 nightly points**, 3,807,879 → 3,839,790 B, rising ~1.3 KB/day | strong single-number regression check |
+| `GET /requests/request/{n}` | 1 point, ever | negligible |
+| `requests/user`, `requests/role`, `dates/requests` | **0** points | none |
+
+Corpus: 3,268 request records, 413 distinct 200-path usernames, 563 404-path usernames.
+
+**Credentialed oracle.** **Four of the six GET endpoints have no production oracle at all** — the
+decisive reason to provision a credential. Byte-exact comparison is also the only way to catch a
+length-preserving bug: swapped `firstName`/`lastName`, wrong field order, `"%.1f"` drift.
+
+Provisioning facts, verified against production:
+
+- `api_credentials`: `api_credentials_id` int unsigned **auto_increment**; `username`
+  **varchar(11)** UNIQUE (`idx_api_credentials_uniq`); `password` char(64) holding a **60-char
+  `$2a$` bcrypt**; `enabled` tinyint. Max id is 12.
+- `role_api_credentials`: auto_increment PK, UNIQUE `(role_id, api_credentials_id)`, FKs to both.
+  **`ROLE_XRAS` is `role_id = 10`.**
+- **No credential caching.** `<security:jdbc-user-service>` declares no `cache-ref` and no
+  `user-cache`/`UserCache` appears in any security config, so `JdbcDaoImpl` uses `NullUserCache`:
+  **a new row is live on the very next request, no Tomcat restart.**
+- `scripts/gen_api_key.py` mints bcrypt hashes but emits the library default **`$2b$`**. Every
+  existing row is `$2a$`, and older Spring Security `BCrypt` rejects `$2b$` — add a `--prefix 2a`
+  option (`bcrypt.gensalt(rounds=12, prefix=b'2a')`, verified round-trip with bcrypt 5.0.0 in the
+  repo's conda env).
+
 ---
 
-## 5. What already exists in Python SAM
+## 5. Building blocks in Python SAM
 
 Reuse these; do not rebuild. Line references verified against the current checkout.
 
@@ -492,19 +493,22 @@ Reuse these; do not rebuild. Line references verified against the current checko
 models in `src/sam/integration/xras_views.py` (`XrasUserView:23`, `XrasRoleView:50`,
 `XrasActionView:72`, `XrasAllocationView:97`, `XrasHpcAllocationAmountView:122`,
 `XrasRequestView:144`), exported from `src/sam/__init__.py:186-192`. Smoke tests at
-`tests/integration/test_views.py:31-111` — the two `xras_request` tests currently `pytest.skip`
-inside a bare `except Exception`, which must be removed once the view is fixed.
+`tests/integration/test_views.py:31-111`.
 
 **API recipe** — `src/webapp/api/v1/queue.py`, `wallclock_exemption.py`: module docstring naming the
 legacy endpoint, `bp = Blueprint(...)` immediately followed by `register_error_handlers(bp)`,
-`@bp.route` → `@login_or_token_required(...)` → `@cache.cached(...)`, query logic in
-`sam/queries/*`, and a `POST /refresh` with `@csrf.exempt`. Registered in `src/webapp/run.py`
-(imports `:29-41`, API register block `:405-417`).
+`@bp.route` → `@login_or_token_required(...)` → `@cache.cached(...)`, query logic in `sam/queries/*`,
+and a `POST /refresh` with `@csrf.exempt`. Registered in `src/webapp/run.py` (imports `:29-41`, API
+block `:405-417`). These are **legacy-compat blueprints** under `CLAUDE.md:199-203` — "DO NOT
+REFACTOR, response bytes must not change". The XRAS blueprint joins that class and its module
+docstring should say so.
 
 **Auth** — `login_or_token_required` (`src/webapp/utils/api_auth.py:169`), `ApiCredentials`
-(`src/sam/security/roles.py:65`) with `as_api_key_map` (`:91`) already resolving role **names**;
-`g.api_key_roles` populated at `api_auth.py:129`. `tests/factories/security.py:make_api_credentials(..., roles=())`
-already builds `Role` + `RoleApiCredentials` — no new factory needed.
+(`src/sam/security/roles.py:65`) with `as_api_key_map` (`:91`) already resolving role **names**, and
+`g.api_key_roles` populated at `api_auth.py:129` — but **no role enforcement exists anywhere yet**.
+The 401 helper `_auth_challenge` (`api_auth.py:48`) emits `{'error': …}` **with**
+`WWW-Authenticate`, and `register_error_handlers` (`src/webapp/api/helpers.py:16-42`) has **no 422 or
+500 handler** — XRAS therefore needs blueprint-local handlers rather than the shared ones.
 
 **Manage ops** — `management_transaction` (`src/sam/manage/transaction.py:12`),
 `log_allocation_transaction` (`src/sam/manage/allocations.py:69`), `create_allocation` (`:197`),
@@ -512,89 +516,132 @@ already builds `Role` + `RoleApiCredentials` — no new factory needed.
 `extend_project_allocations` (`src/sam/manage/extend.py:40`),
 `renew_project_allocations` (`src/sam/manage/renew.py:260`),
 `add_user_to_project` (`src/sam/manage/__init__.py:53`), `change_project_admin` (`:179`).
+⚠️ `create_allocation`, `exchange_allocations`, `extend_project_allocations` and
+`renew_project_allocations` are **not** re-exported from `sam.manage` — import from the submodules.
+
+Two of these do not mean what an XRAS handler needs:
+
+- `exchange_allocations` is strictly **1 source → 1 destination**, requires the **same resource**
+  (not the same project), and **raises** when `amount > source.amount` rather than clamping. Legacy
+  Transfer allows multiple destinations and clamps.
+- `extend_project_allocations` is **project-tree-scoped** (not per active account) and **silently
+  skips** shrinks, open-ended and inheriting allocations. Legacy Extension errors on a shrink.
 
 **Projects / lookups** — `Project.create` (`src/sam/projects/projects.py:233`),
 `next_projcode` (`:1698`), `GidAllocation.allocate_next_gid` (`src/sam/core/groups.py:292`),
 `MnemonicCode.build_lookup/resolve_for_institution/resolve_for_organization`
 (`src/sam/core/organizations.py:445/461/481`),
-`Contract.existing_by_number` (`src/sam/projects/contracts.py:249`),
-`ProjectContract.create` (`:468`), `FosAoi` (`src/sam/projects/areas.py:175`),
-`AllocationType` (`src/sam/accounting/allocations.py:483`).
+`Contract.existing_by_number` (`src/sam/projects/contracts.py:249` — bulk exact-match, the right
+primitive for grant resolution), `ProjectContract.create` (`:468`),
+`FosAoi` (`src/sam/projects/areas.py:175`), `AllocationType`
+(`src/sam/accounting/allocations.py:483`).
 
-**A working reference for the New handler already exists**:
+**A working reference for the New handler already exists:**
 `src/webapp/dashboards/admin/projects_routes.py:600-687` performs, inside one
 `management_transaction`, exactly the sequence the New handler needs —
 `next_projcode(..., allocate=True)` → `allocate_next_gid` → `Project.create` →
 `ProjectContract.create` → `ProjectOrganization.create`. **Port against that, not from scratch.**
 
-### 5.1 Corrections to the earlier revision of this plan
+**Parity harness** — `utils/parity/` already compares five legacy Systems Integration APIs against
+the deployed Python stack: `check_legacy_apis.py` (CLI: `--api`, `--format json`, exit codes
+0/1/2/130), `clients.py` (Basic-Auth session wrappers for both hosts), `comparators.py` (~40 rules
+returning `CheckResult`), `helpers.py`, `README.md`. Env: `SAM_LEGACY_USER`/`PASS`,
+`SAM_NEW_API_USER`/`PASS`. **XRAS is an `--api xras` extension of this, not a new script.**
+⚠️ Its five existing comparators are deliberately *tolerant* (one-directional subset checks, ±5% on
+usage, ±1 day on dates) to absorb DB-mirror lag. **XRAS has no such lag (§4.3), so its comparator
+demands byte-exact equality** — the strictest check in the harness.
 
-| Earlier claim | Reality |
-|---|---|
-| GID lives on the unmerged `gid_allocation` branch; New leaves `unix_gid` NULL | **Wrong.** `allocate_next_gid` is on `main` and already used by the admin create-project flow; the prod pool is seeded and in active use. `origin/gid_allocation` is stale. A NULL GID would violate a de-facto invariant (0 of 5,795 projects) |
-| Transfer → `exchange_allocations` | **Semantics differ.** It is strictly 1 source → 1 destination, requires the **same resource** (not same project), and **raises** when `amount > source.amount` rather than clamping |
-| Extension → `extend_project_allocations`, "error if it would shrink any" | It is **project-tree-scoped** (not per active account) and **silently skips** shrinks, open-ended and inheriting allocations |
-| `xras_action_log` DDL "in `sql/`" | `sql/` contains no DDL at all; `CLAUDE.md:38,808` say the SAM schema is not modified from the repo. Resolved in §7 D1 |
-| "find the existing webapp email utility" | **None exists.** Zero `MAIL_*`/`flask_mail`/`smtplib` hits under `src/webapp/` or `src/sam/`. The only mailer is `src/cli/notifications/email.py` (stdlib `smtplib` + Jinja2, hardcoded `Bcc: benkirk@ucar.edu` at `:127,:138`) |
-| legacy 401 shape via `register_error_handlers` | Incompatible: `src/webapp/api/helpers.py:16-42` emits `{'error': …}` and `_auth_challenge` (`api_auth.py:48`) adds `WWW-Authenticate`. There is also **no 422 or 500 handler**. XRAS needs blueprint-local handlers |
-| enforce role `XRAS` | Role name is `ROLE_XRAS`; enforcement exists **nowhere** today (`g.api_key_roles` has no consumers); `api_credentials.username` is `String(11)` |
-| `projects.py:1516`, `organizations.py:455,475`, `run.py:~402` | Now `:1698`, `:461,481`, `:405-417` |
-| manage ops importable from `sam.manage` | `create_allocation`, `exchange_allocations`, `extend_project_allocations`, `renew_project_allocations` are **not** re-exported — import from the submodules |
+**Allocations dashboard** — blueprint `allocations_dashboard`, `url_prefix='/allocations'`
+(`src/webapp/dashboards/allocations/blueprint.py:46`), registered at `src/webapp/run.py:398`. Unlike
+the admin dashboard it has **no sub-route modules** — all 1,132 lines are in one `blueprint.py`.
+Three tabs today: Projects, Transactions, Adjustments. The tab strip is the shared `page_tabs` macro
+(`templates/dashboards/fragments/page_tabs.html:20-36`) driven by a literal list in
+`templates/dashboards/allocations/base_allocations.html:21-25`; tabs are real routed `<a href>`s, so
+they are URL-addressable and deep-linkable. A **parallel** nav registry lives at
+`src/webapp/utils/nav.py:145-159` — `nav.py:9-12` states explicitly that both lists are maintained
+separately.
 
-Also newly relevant: the **legacy-compat blueprint policy** (`CLAUDE.md:199-203`) — "DO NOT REFACTOR,
-response bytes must not change". The XRAS blueprint joins that class and should say so in its module
-docstring. Adding an ORM model to `src/sam/__init__.py` **auto-registers a Flask-Admin view**, which
-gives a zero-cost first cut of the audit UI. `tests/unit/test_route_map_parity.py` pins dashboard
-routes to a snapshot — regenerate with `ROUTE_MAP_REGEN=1` when the admin tab lands.
+**Email** — there is none in the webapp: zero `MAIL_*` / `flask_mail` / `smtplib` hits under
+`src/webapp/` or `src/sam/`. The only mailer is `src/cli/notifications/email.py` (stdlib `smtplib` +
+Jinja2, with a hardcoded `Bcc: benkirk@ucar.edu` at `:127,:138`).
+
+**Testing** — `tests/factories/security.py:make_api_credentials(..., roles=())` already builds
+`Role` + `RoleApiCredentials`, so the `ROLE_XRAS` auth tests need no new factory. Adding an ORM model
+to `src/sam/__init__.py` **auto-registers a Flask-Admin view**.
 
 ---
 
-## 6. Implementation plan
+## 6. Implementation
 
-Ordered by **production volume × failure rate**, which is the main structural change from the
-earlier revision.
+Phases are ordered by **production volume × failure rate**.
 
 ### Phase 0 — Prerequisites (these gate everything)
 
-1. **Create `xras_action_log` in the production `sam` schema, out-of-band.** A deliberate one-time
-   exception to `CLAUDE.md:808` — the DDL goes through the normal DBA path and *then* the ORM
-   follows it, which is exactly the rule the repo states. Sequence: agree the DDL → create in prod →
-   add the model to `src/sam/integration/xras.py`, export from `src/sam/__init__.py` → add a
+1. **Create `xras_action_log` in the production `sam` schema, out-of-band.** `CLAUDE.md:38,808`
+   require that the database is the schema source of truth and the ORM follows it — so the DDL goes
+   through the normal DBA path *first*, and the model follows. Sequence: agree the DDL → create in
+   prod → add the model to `src/sam/integration/xras.py`, export from `src/sam/__init__.py` → add a
    `tests/integration/test_schema_validation.py` case → add a PII scrubbing rule to
    `containers/sam-sql-dev/anonymize_sam_db.py` → regenerate
    `containers/sam-sql-dev/backups/sam-obfuscated.sql.xz` so the test DB has the table.
-2. **SMTP from the k8s webapp.** Nothing exists. Either lift `EmailNotificationService` into
-   `src/sam/notifications/` (dropping the hardcoded `Bcc`) and give the webapp `MAIL_*` config, or
-   accept DB-only audit for v1. Legacy sends ~3 emails per action — `XrasActionLogger` lacks
-   `additivity="false"`, so every event also reaches the root `SMTPAppender` at
-   `sweg-notify@ucar.edu`. **The new system should send one.**
+2. **SMTP from the k8s webapp.** Lift `EmailNotificationService` into `src/sam/notifications/`,
+   drop the hardcoded `Bcc`, and give the webapp `MAIL_*` config — or accept DB-only audit for v1
+   and add email later. Legacy sends ~3 emails per action (`XrasActionLogger` lacks
+   `additivity="false"`, so every event also reaches the root `SMTPAppender`); **we send one.**
 3. **Role enforcement.** Add an XRAS-local `xras_api_required` wrapping the token path of
    `login_or_token_required` and asserting `'ROLE_XRAS' in g.api_key_roles`. Do **not** change
-   `login_or_token_required`'s existing behaviour — other consumers depend on it.
+   `login_or_token_required` itself — other consumers depend on its behaviour.
+4. **Provision the XRAS credential.** One row in each table; this is the credential the Python app
+   authenticates with at cutover, used for parity in the meantime:
+   ```sql
+   -- username is varchar(11) UNIQUE; ROLE_XRAS is role_id 10; hash must be $2a$, 60 chars
+   INSERT INTO api_credentials (username, password, enabled) VALUES ('samuel', '<$2a$ hash>', 1);
+   INSERT INTO role_api_credentials (role_id, api_credentials_id)
+     SELECT 10, api_credentials_id FROM api_credentials WHERE username = 'samuel';
+   ```
+   Generate the secret with `scripts/gen_api_key.py --username samuel --rounds 12` once it emits
+   `$2a$` (§4.4). No restart needed. Verify immediately — expect **200**, not 403:
+   ```bash
+   curl -sk -u samuel:<secret> -H 'Host: sam.ucar.edu' \
+        https://128.117.224.130:8443/api/xras/v1/people/benkirk
+   ```
+   Rollback is two `DELETE`s, child row first.
+   ⚠️ **`ROLE_XRAS` also permits `POST /actions`** — the security chain makes no method
+   distinction. Treat the secret as a production *write* credential.
+5. **Add `Permission.MANAGE_XRAS`** — Phase 4 needs it, but land it here so routes can be written
+   against it. All in `src/webapp/utils/rbac.py`:
+   - Add `MANAGE_XRAS = "manage_xras"` to the `Permission` enum's "System administration" block,
+     alongside `MANAGE_ROLES` / `MANAGE_SYSTEM_STATUS`.
+   - ⚠️ **It is auto-granted to nobody.** `ALL_VIEW`/`ALL_EDIT`/`ALL_CREATE`/`ALL_DELETE` are built
+     by `_perms_with_action('view'|'edit'|'create'|'delete')`, and `manage_` matches none of them.
+     Add it **explicitly** to `_ALLOCATION_ADMIN` (used by both the `nusd` and `csg` bundles), or the
+     tab's actions are invisible to everyone except `SYSTEM_ADMIN` holders and
+     `USER_PERMISSION_OVERRIDES` entries.
+   - Update `tests/unit/test_rbac.py` and any bundle-membership assertions.
 
 ### Phase 1 — Read endpoints (94% of traffic, zero write risk)
 
 New package `src/webapp/api/xras/` (`__init__.py`, `people.py`, `requests.py`), registered in
-`src/webapp/run.py` with `url_prefix='/api/xras/v1'`. Module docstring declares legacy-compat
-status. Blueprint-local error handlers reproduce the byte-exact legacy bodies (§2.2, §2.5).
+`src/webapp/run.py` with `url_prefix='/api/xras/v1'`. Blueprint-local error handlers reproduce the
+byte-exact legacy bodies of §2.2 and §2.5.
 
 1. **XA-header shim** — blueprint `before_request` implementing §2.2 exactly, including the
    "only one header ⇒ no synthesis, headers still stripped" case.
 2. **`GET /people/{username}` and `GET /people`** — highest volume, build first.
    - Query **base tables** in a new `src/sam/queries/xras.py`, porting the `identityServicePersons`
-     named query — **not** `XrasUserView` (§4.1).
+     named query — **not** `XrasUserView` (§4.2).
    - Bare object / bare array, no envelope. Omit null fields. 404 body
      `{"message":"username=<u> not found","result":null}`.
-   - Keep the `login_type_id = 1` filter and **no** active/deleted filter (§7 D2).
+   - Keep the `login_type_id = 1` filter and **no** active/deleted filter (§7).
    - Org fixup: `UCAR/NCAR:<acronym>` → parentage walk.
    - The 3.8 MB roster must not be materialized twice; budget ≤ 1.1 s.
 3. **`GET /requests/request/{n}`** — port `RequestFactory` assembly. Read `xras_request` (after the
    fix) and `xras_action`; compute `remainingAmount` with a **project-scoped** query rather than
-   touching `xras_allocation`/`xras_hpc_allocation_amount` wholesale (§4.1). `requestType` = "New"
-   for the earliest begin date per project, else "Renewal". Amounts are `"%.1f"` **strings**.
+   touching `xras_allocation` / `xras_hpc_allocation_amount` wholesale. `requestType` = "New" for
+   the earliest begin date per project, else "Renewal". Amounts are `"%.1f"` **strings**.
 4. **Spec-obligation reads** — `requests/user/{u}`, `requests/role/{r}/{u}` (lowercase
    `pi`/`co_pi`/`allocation_manager`; `co_pi` returns empty), `dates/requests/{list}`
-   (**epoch-millis**). Zero traffic, but they are contract obligations, not dead code.
+   (**epoch-millis**). Zero traffic, but they are contract obligations.
 5. **Fix the `xras_request` view** — drop `ORDER BY al.end_date`; un-skip
    `tests/integration/test_views.py:95-111` and delete the bare `except`.
 
@@ -602,31 +649,30 @@ status. Blueprint-local error handlers reproduce the byte-exact legacy bodies (�
 
 1. **`xras_action_log`**: `id`, `received_time`, `remote_actor`, `action_type`, `request_number`,
    `raw_payload`, `status` (`processed|manual|failed|replayed`), `error_messages`,
-   `projcode_result`, `processed_time`, `processed_by`. Payloads carry PII — the scrubbing rule from
-   Phase 0 must land before any snapshot regeneration.
+   `projcode_result`, `processed_time`, `processed_by`. Payloads carry PII — the Phase 0 scrubbing
+   rule must land before any snapshot regeneration.
 2. **`src/sam/schemas/forms/xras.py`** — `XrasActionSchema` plus nested
-   Resource/Role/Person/Fos/Panel/Grant schemas, with the legacy tolerances of §2.4:
-   `unknown=EXCLUDE`, absent strings → `""`, number-into-string coercion, and the forgiving boolean
-   for `isAccountToBeCreated` only. Export from `forms/__init__.py`.
+   Resource/Role/Person/Fos/Panel/Grant schemas with the §2.4 tolerances: `unknown=EXCLUDE`, absent
+   strings → `""`, number-into-string coercion, and the forgiving boolean for
+   `isAccountToBeCreated` only. Export from `forms/__init__.py`.
 3. **`POST /v1/actions`** — parse (400 on malformed JSON) → **persist the log row before dispatch**
-   → dispatch → 200 `{"message":"OK","result":null}` / 422 with the real error list / 500. Every
-   inbound action is persisted regardless of outcome, which is what makes replay possible.
+   → dispatch → 200 / 422 with the real error list / 500. Every inbound action is persisted
+   regardless of outcome; that is what makes replay possible.
 
 ### Phase 3 — Handlers, in production-frequency order
 
-All inside `management_transaction`; every allocation mutation through
-`log_allocation_transaction`.
+All inside `management_transaction`; every allocation mutation through `log_allocation_transaction`.
 
 **Solve the actor problem first.** Legacy writes `allocation_transaction.user_id = NULL` for XRAS;
 `log_allocation_transaction` requires a `user_id`. Either permit `None` for integration actors or
 mint a service user — decide once, because it affects every handler and every parity diff against
 legacy rows.
 
-1. **Extension (60% of posts, 98.5% success)** — build first, on the easy path. Legacy extends the
-   latest allocation of every **active account** to `actionEndDate` and **errors** if that would
-   shrink any; payload resources are ignored. `extend_project_allocations` is tree-scoped and
-   silently skips shrinks, so it is **not a drop-in** — add an account-scoped variant or a strict
-   mode. Expect ~3.3 allocations touched per action. Use comment `XrasAction Extension Request`.
+1. **Extension (60% of posts, 98.5% success)** — build first, on the easy path. Extend the latest
+   allocation of every **active account** to `actionEndDate`, erroring if that would shrink any;
+   payload resources are ignored. `extend_project_allocations` is tree-scoped and skips shrinks
+   silently (§5), so add an account-scoped variant or a strict mode. Expect ~3.3 allocations per
+   action. Use comment `XrasAction Extension Request`.
 2. **New (21% of posts, 30% success)** — the failure hot spot. Port against
    `projects_routes.py:600-687`: allocation-type extractor → mnemonic → AOI →
    `next_projcode(..., allocate=True)` → `allocate_next_gid` → `Project.create` → contracts →
@@ -636,44 +682,100 @@ legacy rows.
      `(panel, type)` pairs.
    - Mnemonic: reuse `MnemonicCode.resolve_for_institution/organization`. Surface failures as
      structured 422 errors, never an opaque 500.
-   - Contracts: use `Contract.existing_by_number` with an explicit policy for the 3 known ambiguous
-     cores (§4). Legacy hard-fails here where AMIE parks a human task — treat an unresolvable grant
-     as a **reviewable warning**, not a fatal error.
+   - Contracts: use `Contract.existing_by_number` with an explicit policy for the three known
+     ambiguous cores (§4.1). Legacy hard-fails where AMIE parks a human task — treat an unresolvable
+     grant as a **reviewable warning**, not a fatal error.
 3. **Supplement (15%, 100% success)** — create the allocation if none exists (start today, end =
    latest contract/allocation end), else supplement when `> 0`; log-warn on `≤ 0` rather than
-   legacy's silent drop.
+   dropping silently.
 4. **Update path (New/Renewal on an existing project, 3%)** — field updates, contracts, per-resource
    create/extend/supplement/adjust, and the `AUTO_DEFAULT_ALLOCATION_TRANSACTION` undo kludge
-   (compensating `UNDO AUTO/DEFAULT` adjustment; 33 such rows exist in the last 2 years). Must
-   tolerate the **no-op case** — 2 of 109 successful posts changed nothing.
-5. **Adjust** — implement. It is a Supplement variant reusing the same primitives, so the marginal
-   cost is small and it closes a spec obligation. Legacy silently drops negatives; we log-warn and
-   record them.
-6. **Transfer — defer** (§7 D3). Route to the manual-fallback path with an explicit audit row and
-   email. Legacy semantics, recorded so the deferred work is fully specified: 1 negative source +
-   ≥1 positive destinations, same project, Σ = 0, source clamped to available.
+   (compensating `UNDO AUTO/DEFAULT` adjustment; 33 such rows in the last two years). Must tolerate
+   the **no-op case** — 2 of 109 successful posts changed nothing.
+5. **Adjust** — a Supplement variant reusing the same primitives, so the marginal cost is small and
+   it closes a spec obligation. Log-warn and record negatives rather than dropping them.
+6. **Transfer** — route to the manual-fallback path with an explicit audit row and email (§7). Its
+   semantics, for whenever it is built: 1 negative source + ≥1 positive destinations, same project,
+   Σ = 0, source clamped to available.
 
-### Phase 4 — Admin surface
+### Phase 4 — XRAS as the 4th Allocations tab
 
-Ship the free Flask-Admin view first (a side effect of registering the model). Then an
-Integrations → XRAS tab modelled on the contracts pages
-(`src/webapp/dashboards/admin/contracts_routes.py` + `crud.py`'s `CrudSpec`): list with status
-filters, detail view (pretty payload + errors), **replay**, **activate project**, and a paste-JSON
-manual post for parity with legacy's `XRASPostBean`. Regenerate the route-map snapshot.
+Ship the free Flask-Admin view first as a stopgap. Then the real surface: a **4th tab on the
+Allocations dashboard**, beside Transactions and Adjustments — an XRAS action *is* an allocation
+transaction, and those tabs display the very rows it produces.
+
+**Copy the Transactions tab wholesale.** Same shape (append-only audit rows, filter bar, sortable
+paginated table, click-row-for-detail modal), and it will be the direct neighbour:
+
+| Concern | Follow | At |
+|---|---|---|
+| page route | `transactions()` | `src/webapp/dashboards/allocations/blueprint.py:284-292` |
+| shared page context | `_audit_page_context()` | `blueprint.py:254-281` |
+| filter/sort/page parsing | `_parse_audit_filters(args, sort_whitelist)` | `blueprint.py:719-784` |
+| lazy fragment route | `transactions_fragment()` | `blueprint.py:788-813` |
+| detail route | `transaction_details()` | `blueprint.py:856-883` |
+| filter bar / pagination / sort | `audit_filters`, `pagination`, `sort_link` macros | `templates/dashboards/fragments/` |
+| shared detail modal shell | `partials/audit_details_modal.html` | included by both audit tabs |
+| permission-gated write action | Adjustments' "Create" button + POST handler | `adjustments.html:8-18`, `blueprint.py:1088-1091` |
+
+**Six places a 4th tab touches, none optional:**
+
+1. **Tab strip** — add an entry to `page_tabs([...])` in
+   `templates/dashboards/allocations/base_allocations.html:21-25`, and update that file's docstring
+   at lines 2-3, which enumerates the pages.
+2. **Nav registry** — the `'allocations'` entry's `items` tuple in `src/webapp/utils/nav.py:145-159`.
+   ⚠️ This list is maintained separately from the tab strip (`nav.py:9-12`), so **both files need the
+   entry** — the easy one to miss. `tests/unit/test_nav.py:44-50` fails if the endpoint isn't a real
+   route.
+3. **Routes** — page + `*_fragment` + `*_details` in `allocations/blueprint.py`. Page and read
+   fragments gated `@login_required` +
+   `@require_permission_any_facility(Permission.VIEW_PROJECTS)`, matching the sibling tabs;
+   **replay** and **activate-project** gated `@require_permission(Permission.MANAGE_XRAS)`.
+   Facility-scope queries with `apply_facility_scope(...)` and `abort(403)` on out-of-scope detail
+   rows, as `transaction_details` does at `blueprint.py:874-877`.
+4. **Templates** — `templates/dashboards/allocations/xras.html` extending `base_allocations.html`,
+   plus `partials/xras_table.html` and `partials/xras_details_modal.html` (pretty-printed payload,
+   error list, status badge).
+5. **Route-map snapshot** — regenerate `tests/unit/snapshots/dashboard_route_map.json` with
+   `ROUTE_MAP_REGEN=1 pytest tests/unit/test_route_map_parity.py`.
+6. **Modal-contract fixtures** — `tests/unit/test_modal_shell_contract.py`: add `/allocations/xras`
+   to `PAGES_WITH_PROJECT_MODAL` (`:302-304`; anything extending `base_allocations.html` ships
+   `projectDetailsModal`), and `xras_table.html` to `HTMX_FRAGMENT_SHELL_DEPS` (`:220-227`) since it
+   opens `#auditDetailsModal`/`#projectDetailsModal`. Optionally extend the e2e page lists
+   (`e2e/test_console_sweep.py:86-90`, `e2e/test_dark_mode.py`).
+
 Then `sam-admin xras` (`--list-pending`, `--replay <id>`, `--validate-mapping`) following the
 three-module domain pattern in `src/cli/README.md:137-168`.
 
-### Phase 5 — Parity and staged cutover
+### Phase 5 — Parity and cutover
 
-1. **Golden tests.** The repo has exactly one real payload (§2.4). Richer real payloads exist only
-   as `XRAS_post_action.json` attachments in the `hdt@ucar.edu` / `sweg-notify@ucar.edu` mailboxes —
-   legacy emails the raw body on **every** action, success or failure. **Harvesting a handful of
-   those is the single cheapest way to de-risk Phase 3** and should happen before the handlers are
-   written.
-2. **Read parity script.** Diff normalized JSON, legacy vs new, for `/people` (all 28,253 rows),
-   `/people/{u}` over the 378 usernames that resolved and the 536 that 404'd in the last 30 days,
-   and `requests/request/{n}` over a project sample.
-3. **Staged, per-endpoint cutover** (enabled by §4.2):
+1. **Harvest real payloads** from the `hdt@ucar.edu` mailbox before writing Phase 3 handlers. It is
+   the cheapest de-risking available, and the only way to settle three open questions: the `roleType`
+   carried by stale placeholder entries, whether `isReconciled`/`isAccountToBeCreated` are populated
+   in practice, and the actual `beginDate`/`endDate` format — legacy compares them with
+   lexicographic `String.compareTo`, correct **only** for zero-padded ISO-8601.
+2. **GET parity** — add an `xras` comparator to `utils/parity/comparators.py`, an `XrasClient` to
+   `clients.py`, and `--api xras` to `check_legacy_apis.py`. New env `SAM_XRAS_USER` /
+   `SAM_XRAS_PASS`; the existing `SAM_LEGACY_*` account cannot reach `/api/xras/*`. Assert
+   **byte-exact equality** (§5).
+
+   | Endpoint | Comparison |
+   |---|---|
+   | `GET /people` | full-body byte equality; report size delta first, then first differing offset |
+   | `GET /people/{u}` | the 385 access-log-stable usernames plus a live sample |
+   | `GET /people/{u}` 404 | assert the closed form `len(username) + 58` **and** body equality |
+   | `GET /requests/request/{n}` | a project sample spanning New/Renewal and HPC/non-HPC, so `remainingAmount` presence *and* omission are exercised |
+   | `requests/user`, `requests/role`, `dates/requests` | byte equality on a small sample — their only validation |
+
+3. **Zero-credential regression checks** (§4.4) — the 404 closed form, the roster byte count
+   (~3.84 MB ±0.2%, +1.3 KB/day), and the 385 stable single-lookup sizes. Cheap, and they keep
+   working after legacy is decommissioned.
+4. **Golden corpus as pytest fixtures** — capture real legacy bytes once with the Phase 0
+   credential, then run names/emails/phones through the rules in
+   `containers/sam-sql-dev/anonymize_sam_db.py` before committing. ⚠️ Scrubbing must be
+   **length-preserving** wherever possible, or fixture byte counts stop matching the access-log
+   oracle; where it can't be, store the pre-scrub count as a separate assertion.
+5. **Staged, per-endpoint cutover** (§4.3):
 
    | Step | Move | Why here | Rollback signal |
    |---|---|---|---|
@@ -682,27 +784,29 @@ three-module domain pattern in `src/cli/README.md:137-168`.
    | 3 | `GET /requests/*` | ~1 call/month; near-zero blast radius | any 500 |
    | 4 | `POST /actions` | last: the only writing surface | `xras_action_log` shows a status the 30-day legacy corpus never produced |
 
-   Provision the `ROLE_XRAS` `api_credentials` row for the new app before step 1 (username column is
-   `varchar(11)`; legacy uses `XRAS`). Legacy stays hot at every step — a rollback is a proxy
-   change, not a data migration.
+   Legacy stays hot throughout; a rollback is a proxy change, not a data migration.
 
 ---
 
-## 7. Decisions taken
+## 7. Design decisions
 
-- **D1 — `xras_action_log` lives in the production `sam` schema**, DDL created out-of-band, ORM
-  follows. Recorded as a deliberate exception to the repo's no-schema-changes rule, with the
-  rationale that the audit trail is the core value of this project and belongs next to the data it
-  describes (it also earns a free Flask-Admin view and can be FK'd and joined).
-- **D2 — `GET /people` stays bug-for-bug**, inactive users included. XRAS's identity matching may
-  depend on resolving historical usernames, and a 404 where a 200 used to be is a change we cannot
-  observe from our side. A filter is a separate, later conversation with ACCESS; the roster
-  byte-diff is the parity guard in the meantime.
-- **D3 — `Adjust` implemented, `Transfer` deferred** to the manual-fallback path with an audit row.
+- **`xras_action_log` lives in the production `sam` schema**, created out-of-band with the ORM
+  following. The audit trail is the core value of this project and belongs next to the data it
+  describes, where it can be joined and FK'd — and it earns a Flask-Admin view for free.
+- **`GET /people` stays bug-for-bug**, inactive users included. XRAS's identity matching may depend
+  on resolving historical usernames, and a 404 where a 200 used to be is a change we cannot observe
+  from our side. A filter is a separate conversation with ACCESS; the roster byte-diff is the guard
+  meanwhile.
+- **`Adjust` is implemented; `Transfer` is deferred** to the manual-fallback path with an audit row.
   Transfer has zero traffic and `exchange_allocations` doesn't fit its semantics, so parity needs
-  new allocation machinery rather than an adapter. The audit log tells us the moment traffic
-  appears.
-- **D4 — staged per-endpoint cutover**, `/people/{u}` → roster → `/requests/*` → `POST /actions`.
+  new allocation machinery rather than an adapter. The audit log tells us the moment traffic appears.
+- **One permanent `ROLE_XRAS` credential** serves both the parity harness and the cutover. Accepted
+  risk: it also permits `POST /actions`, the same exposure the existing `XRAS` account carries.
+- **`Permission.MANAGE_XRAS`** gates replay and activate-project rather than reusing
+  `EDIT_ALLOCATIONS`, so it can be granted to whoever fields XRAS failures independently of general
+  allocation editing.
+- **Golden fixtures are scrubbed** through the existing anonymizer before being committed — the
+  repo does not ship real names, emails or phone numbers.
 
 ---
 
@@ -710,41 +814,36 @@ three-module domain pattern in `src/cli/README.md:137-168`.
 
 - **`pytest`**
   - `tests/api/test_xras_api.py` — XA-header shim including the one-header case; byte-exact 401
-    (including the space before the colon and the absent `WWW-Authenticate`); bare-array and
-    bare-object shapes; null omission; 404 body; action status codes 200/400/422.
+    (space before the colon, no `WWW-Authenticate`); bare-array and bare-object shapes; null
+    omission; 404 body and its closed-form length; action status codes 200/400/422.
   - `tests/unit/test_xras_actions.py` — each handler against factories, plus golden payloads.
   - `tests/integration/test_schema_validation.py` — the new `xras_action_log` table.
   - `tests/integration/test_views.py::TestXrasViews` — with the `xras_request` skip and its bare
     `except` removed.
+  - `tests/unit/test_nav.py test_route_map_parity.py test_modal_shell_contract.py test_rbac.py` —
+    all four pin fixtures that a new tab or permission invalidates.
+- **Live parity** — `python utils/parity/check_legacy_apis.py --api xras` (UCAR VPN,
+  `SAM_XRAS_USER`/`SAM_XRAS_PASS`). Exit 0 = byte-exact across all six GET endpoints.
 - **Manual** — `docker compose up webdev --watch`, then
-  `curl -H 'XA-REQUESTER: XRAS' -H 'XA-API-KEY: …' localhost:5050/api/xras/v1/people/benkirk`;
-  post a sample action; replay it from both the dashboard and the CLI.
-- **Roster byte-diff against legacy before cutover.** The null-omission and org-fixup rules make
-  total size a sensitive single-number regression check — expect ~3.84 MB ±0.2%.
+  `curl -H 'XA-REQUESTER: XRAS' -H 'XA-API-KEY: …' localhost:5050/api/xras/v1/people/benkirk`; post a
+  sample action; replay it from both the dashboard and the CLI.
 - **Latency budget**, from measured legacy: `/people/{u}` ≤ 100 ms p50; roster ≤ 1.2 s;
-  `POST /actions` ≤ 400 ms p50 (legacy's tail is inflated by synchronous SMTP, so the new one should
-  beat it).
+  `POST /actions` ≤ 400 ms p50 (legacy's tail is inflated by synchronous SMTP, so we should beat it).
 
 ---
 
-## 9. Residual risks
+## 9. Open risks
 
-- **The payload corpus is thin.** One real sample exists in the repo. Harvesting real payloads from
-  the notification mailbox (Phase 5.1) is also the only way to settle three questions left open by
-  earlier triage: the `roleType` carried by stale placeholder entries; whether `isReconciled` and
-  `isAccountToBeCreated` are populated in practice; and the actual `beginDate`/`endDate` format —
-  legacy compares them with lexicographic `String.compareTo`, which is correct **only** for
-  zero-padded ISO-8601.
-- **`user_organization` is still frozen** (nothing since 2026-07-09; 4,563 active users with no
-  current organization). It causes 24% of legacy's XRAS failures and is outside this project's
-  scope, but the port must surface it as a reviewable 422 — otherwise we ship the same invisible
-  failure with better plumbing.
+- **`user_organization` is frozen** (nothing since 2026-07-09; 4,563 active users with no current
+  organization), causing 24% of legacy's XRAS failures. Fixing it is outside this project, but the
+  port must surface it as a reviewable 422 — otherwise we ship the same invisible failure with
+  better plumbing.
 - **The 400/422 error-contract change needs confirmation from `allocations@access-ci.org`** before
   cutover step 4. Broker retry behaviour on 4xx is unknown.
+- **Six XRAS-relevant resources are unmapped** in `xras_resource_repository_key_resource` (§4.1). Add
+  a `sam-admin xras --validate-mapping` check and run it before cutover.
 - **Two legacy defects worth not reproducing.** `XrasAction.getUsernameByRoleType()` returns the
   first matching role and ignores duplicates — the ACCESS docs state a request must have exactly one
-  PI, so SAM should reject rather than pick-first (a mis-ordered array could otherwise mint a
-  project under the wrong human). And organization 158 "UCAR Community Programs" matches two
-  mnemonic codes (`CAR`, `UCP`), which throws for any PI in that organization.
-- **Six XRAS-relevant resources are unmapped** in `xras_resource_repository_key_resource`
-  (§4). Add a `sam-admin xras --validate-mapping` check and run it before cutover.
+  PI, so we should reject rather than pick-first (a mis-ordered array could otherwise mint a project
+  under the wrong human). And organization 158 "UCAR Community Programs" matches two mnemonic codes
+  (`CAR`, `UCP`), which throws for any PI in that organization.
