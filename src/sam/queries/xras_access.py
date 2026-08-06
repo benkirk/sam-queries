@@ -30,7 +30,7 @@ See `docs/plans/XRAS_REIMPLEMENTATION.md` section 4.2.
 
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 # `PersonDTO`'s Java field-declaration order, which is the JSON key order.
@@ -216,3 +216,181 @@ def get_person(session: Session, username: str) -> Optional[Dict[str, Any]]:
     rows = session.execute(_SQL_PEOPLE, {'username': username}).fetchall()
     people = _rows_to_people(session, rows)
     return people[0] if people else None
+
+
+# ---------------------------------------------------------------------------
+# The requests/* family
+#
+# Ports `projectsByRole`, `requestsByProjectCode`, `allocationsByProjectCode`,
+# `allocationTransactionsByProjectCode` and `requestDateRange`, all of which
+# legacy runs against the `xras_*` views. We go to base tables instead, for two
+# reasons:
+#
+#   - `xras_request` fails under `ONLY_FULL_GROUP_BY` (error 1055), which the
+#     dev and CI databases enable and production does not. Its `SELECT` list is
+#     safe; the sole offender is `ORDER BY al.end_date`, which names a different
+#     expression from the `GROUP BY`'s `cast(al.end_date as date)`. Ordering by
+#     the grouping expression itself is both legal and equivalent.
+#   - `xras_allocation` costs 6-8 s *regardless of filter*, because
+#     `xras_hpc_allocation_amount` aggregates `hpc_charge_summary` across ALL
+#     allocations before joining. Scoping that aggregate to the requested
+#     projects is the single biggest win available here, and it does not change
+#     a byte of output.
+#
+# The ORDER BYs below are not cosmetic — they are the array order of the
+# response, and `ORDER BY end_date` additionally decides which request is
+# labelled "New". See `docs/plans/XRAS_REIMPLEMENTATION.md` section 2.3.
+# ---------------------------------------------------------------------------
+
+#: `xras_role` is a UNION ALL over the two role columns on `project`. Note it
+#: emits only 'AllocationManager' and 'Pi' — there is no 'CoPi' branch, which is
+#: exactly why `/requests/role/co_pi/{u}` is a valid request that always returns
+#: an empty result rather than an error.
+_SQL_ROLES = text("""
+    SELECT p.projcode AS projectId, 'AllocationManager' AS role
+      FROM users u
+      JOIN project p ON u.user_id = p.project_admin_user_id
+     WHERE u.username = :username
+       AND (:role IS NULL OR 'AllocationManager' = :role)
+    UNION ALL
+    SELECT p.projcode AS projectId, 'Pi' AS role
+      FROM users u
+      JOIN project p ON u.user_id = p.project_lead_user_id
+     WHERE u.username = :username
+       AND (:role IS NULL OR 'Pi' = :role)
+""")
+
+#: One "request" is one (projcode, end-date) group — SAM has no request entity,
+#: so legacy derives one. `allocationIds` is the group's membership list.
+_SQL_REQUESTS = text("""
+    SELECT p.projcode AS projectId,
+           MIN(CAST(al.start_date AS DATE)) AS requestBeginDate,
+           CAST(al.end_date AS DATE)        AS requestEndDate,
+           GROUP_CONCAT(al.allocation_id)   AS allocationIds,
+           alt.allocation_type              AS allocationType,
+           p.title                          AS projectTitle,
+           p.area_of_interest_id            AS xrasFosTypeId
+      FROM project p
+      JOIN account ac         ON p.project_id = ac.project_id
+      JOIN allocation al      ON ac.account_id = al.account_id
+      JOIN allocation_type alt ON p.allocation_type_id = alt.allocation_type_id
+     WHERE p.projcode IN :projcodes
+     GROUP BY p.projcode, CAST(al.end_date AS DATE), alt.allocation_type,
+              p.title, p.area_of_interest_id
+     ORDER BY p.projcode, CAST(al.end_date AS DATE)
+""").bindparams(bindparam('projcodes', expanding=True))
+
+#: `remainingAmount` is HPC-only and comes from a LEFT JOIN, which is why it is
+#: absent from ~56% of allocations. The subquery is `xras_hpc_allocation_amount`
+#: with the project filter pushed inside it — the whole point of this module.
+_SQL_ALLOCATIONS = text("""
+    SELECT al.allocation_id AS allocationId,
+           p.projcode       AS projectId,
+           al.start_date    AS allocationBeginDate,
+           al.end_date      AS allocationEndDate,
+           al.amount        AS allocatedAmount,
+           hpc.remaining    AS remainingAmount,
+           xrrk.resource_repository_key AS resourceRepositoryKey
+      FROM project p
+      JOIN account ac    ON p.project_id = ac.project_id
+      LEFT JOIN xras_resource_repository_key_resource xrrk
+             ON ac.resource_id = xrrk.resource_id
+      JOIN allocation al ON ac.account_id = al.account_id
+      LEFT JOIN (
+           SELECT al2.allocation_id AS allocation_id,
+                  al2.amount - COALESCE(SUM(hcs.charges), 0) AS remaining
+             FROM allocation al2
+             JOIN account ac2   ON al2.account_id = ac2.account_id
+             JOIN project p2    ON ac2.project_id = p2.project_id
+             JOIN resources r   ON ac2.resource_id = r.resource_id
+             JOIN resource_type rt ON rt.resource_type_id = r.resource_type_id
+             LEFT JOIN hpc_charge_summary hcs
+                    ON hcs.account_id = ac2.account_id
+                   AND CAST(hcs.activity_date AS DATE) >= CAST(al2.start_date AS DATE)
+                   AND CAST(hcs.activity_date AS DATE) <= CAST(al2.end_date AS DATE)
+            WHERE rt.resource_type = 'HPC'
+              AND p2.projcode IN :projcodes
+            GROUP BY al2.allocation_id, al2.amount
+      ) hpc ON al.allocation_id = hpc.allocation_id
+     WHERE p.projcode IN :projcodes
+     ORDER BY al.start_date DESC
+""").bindparams(bindparam('projcodes', expanding=True))
+
+#: `dateApplied` order is what makes `orderApplied` (1..n) meaningful. The CASE
+#: has no ELSE, so an unmapped `transaction_type` yields NULL — which the
+#: `Action` DTO then omits, since it is NON_NULL.
+_SQL_ACTIONS = text("""
+    SELECT al.allocation_id AS allocationId,
+           p.projcode       AS projectId,
+           CASE altr.transaction_type
+                WHEN 'NEW'        THEN 'New'
+                WHEN 'TRANSFER'   THEN 'Transfer'
+                WHEN 'SUPPLEMENT' THEN 'Supplemental'
+                WHEN 'ADVANCE'    THEN 'Advance'
+                WHEN 'EXTENSION'  THEN 'Extension'
+                WHEN 'ADJUSTMENT' THEN 'Adjustment'
+           END                       AS actionType,
+           altr.transaction_amount   AS amount,
+           altr.alloc_end_date       AS endDate,
+           altr.creation_time        AS dateApplied
+      FROM project p
+      JOIN account ac    ON p.project_id = ac.project_id
+      JOIN allocation al ON ac.account_id = al.account_id
+      JOIN allocation_type alty ON p.allocation_type_id = alty.allocation_type_id
+      JOIN allocation_transaction altr ON altr.allocation_id = al.allocation_id
+     WHERE p.projcode IN :projcodes
+     ORDER BY altr.creation_time
+""").bindparams(bindparam('projcodes', expanding=True))
+
+#: `requestDateRange` — the whole-project span, collapsing the per-end-date
+#: grouping that `_SQL_REQUESTS` keeps. The inner join to `allocation_type` is
+#: the view's and is load-bearing: a project with no matching type yields no row.
+_SQL_REQUEST_DATES = text("""
+    SELECT p.projcode                   AS requestNumber,
+           MIN(CAST(al.start_date AS DATE)) AS requestBeginDate,
+           MAX(CAST(al.end_date AS DATE))   AS requestEndDate
+      FROM project p
+      JOIN account ac         ON p.project_id = ac.project_id
+      JOIN allocation al      ON ac.account_id = al.account_id
+      JOIN allocation_type alt ON p.allocation_type_id = alt.allocation_type_id
+     WHERE p.projcode IN :projcodes
+     GROUP BY p.projcode
+""").bindparams(bindparam('projcodes', expanding=True))
+
+
+def get_role_projcodes(
+    session: Session, username: str, role: Optional[str] = None,
+) -> List[str]:
+    """Projcodes where *username* holds *role* (or any role when None).
+
+    `role` is the mapped form — 'Pi', 'CoPi' or 'AllocationManager'. 'CoPi'
+    matches nothing by construction; see `_SQL_ROLES`.
+
+    Duplicates are possible and harmless (a user who is both lead and admin on
+    one project); the callers feed this into an `IN` clause.
+    """
+    rows = session.execute(
+        _SQL_ROLES, {'username': username, 'role': role}).fetchall()
+    return [row.projectId for row in rows]
+
+
+def get_request_rows(session: Session, projcodes) -> List[Any]:
+    """Derived request rows, ordered by projcode then end date."""
+    return session.execute(_SQL_REQUESTS, {'projcodes': list(projcodes)}).fetchall()
+
+
+def get_allocation_rows(session: Session, projcodes) -> List[Any]:
+    """Allocation rows with a project-scoped `remainingAmount`."""
+    return session.execute(
+        _SQL_ALLOCATIONS, {'projcodes': list(projcodes)}).fetchall()
+
+
+def get_action_rows(session: Session, projcodes) -> List[Any]:
+    """Allocation-transaction rows in `creation_time` order."""
+    return session.execute(_SQL_ACTIONS, {'projcodes': list(projcodes)}).fetchall()
+
+
+def get_request_dates(session: Session, projcodes) -> List[Any]:
+    """Whole-project begin/end span per projcode."""
+    return session.execute(
+        _SQL_REQUEST_DATES, {'projcodes': list(projcodes)}).fetchall()
