@@ -33,10 +33,33 @@ in the working tree are byte-identical to the deployed tag.
 |---|---|---|
 | **0** — Prerequisites | **partly done** | credential ✅, role enforcement ✅; `xras_action_log`, SMTP and `Permission.MANAGE_XRAS` still open |
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
-| **2** — Action ingestion + audit trail | ☐ to do | next |
-| **3** — Handlers | ☐ to do | Extension → New → Supplement → Update → Adjust; Transfer deferred |
-| **4** — XRAS as the 4th Allocations tab | ☐ to do | Flask-Admin view is the free stopgap |
+| **2** — Action ingestion + audit trail | ☐ to do | **Sprint A** — see [`XRAS_ACTION_INGESTION.md`](XRAS_ACTION_INGESTION.md) |
+| **3** — Handlers | ☐ to do | **Sprint A**, same handoff — Extension → Supplement → Adjust → Update → New; Transfer to manual fallback |
+| **4** — XRAS as the 4th Allocations tab | ☐ to do | **Sprint B**. Flask-Admin view is the free stopgap |
 | **5** — Parity and cutover | **partly done** | `--api xras` harness ✅; deployed-port run and the staged cutover still open |
+
+### Sprint map
+
+| Sprint | Contents | Gated on |
+|---|---|---|
+| **A** — Action ingestion + handlers | Phases 2 and 3 together: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions`, all six handler paths | mailbox payload harvest; a DBA ticket for the prod DDL |
+| **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `Permission.MANAGE_XRAS` | Sprint A populating the table |
+| **C** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | **deferrable** — see below |
+
+Three sequencing points that are easy to get wrong:
+
+- **The GET cutover is independent of Sprint A.** Phase 1 is finished; cutover steps 1–3 need
+  only a deploy to `samuel.k8s` and a green `--api xras` run. That moves 94% of the traffic off
+  legacy while Sprint A is still being written — do not queue it behind the POST work.
+- **Harvest real payloads first, not last.** Phase 5.1 lists it late, but it is the input to two
+  Sprint A deliverables: `XrasActionSchema` (seven nested schemas, the most likely thing to be
+  wrong) and the New handler (21% of posts at 30% success, against a repo holding exactly **one**
+  sample payload).
+- **SMTP can genuinely be deferred.** XRAS projects arrive `active = 0` and the success email is
+  the human activation trigger — but **legacy keeps sending those emails until `POST /actions`
+  cuts over**, which is cutover step 4, after both sprints. No notification gap opens during A or
+  B. The requirement is only that *some* path exists before step 4, and Sprint B's dashboard can
+  be it.
 
 ---
 
@@ -958,6 +981,10 @@ NRIT P2-63.
 
 ### Phase 2 — Action ingestion + audit trail ☐
 
+> **Sprint A.** The executable plan — DDL, how the new table reaches dev *and* CI without
+> regenerating the LFS snapshot, the schema base-class trap, and the running order — is in
+> [`XRAS_ACTION_INGESTION.md`](XRAS_ACTION_INGESTION.md). What follows is the contract summary.
+
 1. **`xras_action_log`**: `id`, `received_time`, `remote_actor`, `action_type`, `request_number`,
    `raw_payload`, `status` (`processed|manual|failed|replayed`), `error_messages`, `projcode_result`,
    `processed_time`, `processed_by`. Payloads carry PII — the Phase 0 scrubbing rule must land before
@@ -972,12 +999,23 @@ NRIT P2-63.
 
 ### Phase 3 — Handlers, in production-frequency order ☐
 
+> **Sprint A**, same handoff — [`XRAS_ACTION_INGESTION.md`](XRAS_ACTION_INGESTION.md), which
+> orders these easy-path-first (Extension → Supplement → Adjust → Update → **New last**) so the
+> pipeline is proven before the 30%-success path is attempted.
+
 All inside `management_transaction`; every allocation mutation through `log_allocation_transaction`.
 
-**Solve the actor problem first.** Legacy writes `allocation_transaction.user_id = NULL` for XRAS;
-`log_allocation_transaction` requires a `user_id`. Either permit `None` for integration actors or
-mint a service user — decide once, because it affects every handler and every parity diff against
-legacy rows.
+**The actor question, settled.** Legacy writes `allocation_transaction.user_id = NULL` for XRAS.
+`log_allocation_transaction` (`src/sam/manage/allocations.py:69`) declares `user_id: int`
+positionally, which looks like a blocker — but the column is **nullable**
+(`src/sam/accounting/allocations.py:232`) and nothing in the body validates or dereferences it, so
+passing `None` writes `NULL` today and matches legacy exactly. Widen the hint to `Optional[int]`,
+document that `None` means an integration actor, and settle it before the first handler: every
+handler and every parity diff against legacy rows depends on it.
+
+⚠️ `management_transaction` does **no** implicit audit logging — it is commit-on-success /
+rollback-on-error and nothing else. Audit rows exist because manage functions *explicitly* call
+`log_allocation_transaction`; the context manager only makes the write and its audit row atomic.
 
 1. **Extension (60% of posts, 98.5% success)** — build first, on the easy path. Extend the latest
    allocation of every **active account** to `actionEndDate`, erroring if that would shrink any;
