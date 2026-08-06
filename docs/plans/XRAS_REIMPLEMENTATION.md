@@ -145,7 +145,12 @@ bare `/v1/*` surface.
 - #5's `{role}` segment is a lowercase snake_case key: `pi→Pi`, `co_pi→CoPi`,
   `allocation_manager→AllocationManager`. An unrecognised role throws `IllegalArgumentException` →
   500, not 400.
-- #7 accepts **only** `pi`; anything else is `NotFoundException` → 404.
+- #7 accepts **only** `pi` (`equalsIgnoreCase`, so `PI`/`Pi` also match); anything else is
+  `NotFoundException` → 404. **It is not a roster endpoint** — it calls
+  `RoleService.setLeadUserRole(requestNumber, username)`, i.e. it *reassigns the project lead*.
+  There is no XRAS endpoint for adding a co-PI or an ordinary member. Rosters arrive whole, in
+  the `roles[]` array of `POST /actions` — see §3.5. (And the ACCESS spec's
+  `DELETE /v1/roles/…` is unimplemented, so revocations never reach SAM at all.)
 - #8 takes `@RequestBody String actionJson` and calls `new ObjectMapper().readValue(...)` itself — a
   second, unconfigured mapper. Parse failure → `RuntimeException` → 500.
 - The ACCESS/XRAS spec documents `POST /v1/actions/<actionId>/<requestId>/<actionType>`, but **all 175
@@ -364,7 +369,7 @@ selector.setServiceables(
 
 | # | Guard | Behaviour |
 |---|---|---|
-| 1 | `actionType == "New"` && project **not** exists | Create project: title/abstract, lead=PI, admin=AM, allocation type via extractor chain, AOI from primary `fosNum`, org from lead, non-exempt, generated projcode, allocated GID; contracts from `grants[]`; per resource create an allocation (start clamped ≥ resource commission date, end-of-day end); add all valid role users to accounts; **finally set the project inactive** — a human activates it, and the success email is the trigger |
+| 1 | `actionType == "New"` && project **not** exists | Create project: title/abstract, lead=PI, admin=AM, allocation type via extractor chain, AOI from primary `fosNum`, org from lead, non-exempt, generated projcode, allocated GID; contracts from `grants[]`; per resource create an allocation (start clamped ≥ resource commission date, end-of-day end); add **every** `roles[]` entry to the accounts, regardless of `roleType` (§3.5); **finally set the project inactive** — a human activates it, and the success email is the trigger |
 | 2 | `actionType ∈ {"New","Renewal"}` && project exists | Update fields (`active=true`); contracts; per resource: create allocation if none overlapping, extend if the end grows (**error** if it shrinks), undo an AUTO/DEFAULT canned allocation via a compensating `UNDO AUTO/DEFAULT` adjustment, then supplement (`>0`) or adjust (`<0`). `comments == "AUTO_DEFAULT_ALLOCATION_TRANSACTION"` ⇒ extension only |
 | 3 | `actionType == "Supplement"` && project exists | Per resource: create allocation if none (start today, end = latest contract/allocation end), else supplement when `>0`; `≤0` ignored with a warning |
 | 4 | `actionType == "Adjust"` && project exists | As Supplement; legacy silently drops negatives |
@@ -443,6 +448,49 @@ is `CSL` or `CHAP`.
 `Cannot find contract for grant number "%s" ("%s")` ·
 `Could not determine Mnemonic code for {internal PI via organization | external PI via institution}` ·
 `Could not produce affiliation data for PI %s` · `AreaOfInterest (FOS) id is not in database: %s`
+
+### 3.5 How the project roster is built — `roles[]` is roleType-agnostic
+
+The full membership of a new project arrives in **one place**: the `roles[]` array of
+`POST /actions`. Endpoint #7 plays no part (§2.1). Two *different* readings of that same array
+run, and confusing them is the easiest way to get this wrong:
+
+| Reading | Method | Filter | Result |
+|---|---|---|---|
+| **Role assignment** | `getPiUsername()` / `getAllocationManagerUsername()` | `roleType` **must** equal `PI` or `Allocation Manager`, plus a date window | project **lead** / project **admin** |
+| **Roster** | `getUsernames()` | **`roleType` is never examined** — date window only | **every** entry becomes a project member |
+
+`ActionRoleName` (`2.0.3:…/action/domain/model/ActionRoleName.java`) contains exactly two
+constants, `PI` and `ALLOCATION_MANAGER`. So a `Co-PI`, a `User`, or any unrecognised
+`roleType` is invisible to *role assignment* but is **still added to the project** — which is
+how XRAS delivers a lead + admin + N ordinary members in a single New action, as production
+does today.
+
+`AddUserToProjectActionCommandsFactory.create()` then fans the roster out **per resource** —
+one `AddUserToProjectCommand` for each entry in `resources[]`, each carrying every username.
+Invalid members are reported but do **not** abort: `reportInvalidUsernames()` emits
+`Username %s is missing` (no such user) or `Username %s is inactive` for each, and these
+accumulate through the observer like every other assembly error (§3.1).
+
+⚠️ **The two date filters are not the same, and the difference is a latent legacy bug.**
+
+```java
+// roster — getUsernames()
+if (roleBeginDate.compareTo(actionDate) > 0) continue;              // strictly excluded
+
+// role assignment — getUsernameByRoleType()
+if (roleBeginDate > actionDate && currDate <= roleBeginDate && currDate <= actionDate)
+    continue;                                                        // excluded only if ALSO future
+```
+
+A role whose `beginDate` is after `actionBeginDate` **but has since started** (`currDate >
+roleBeginDate`) is accepted as PI or Allocation Manager yet is **excluded from the roster** —
+so legacy makes that person the project lead without giving them an account on any resource.
+Decide deliberately whether to reproduce this; reporting it as a warning is probably better
+than either silently copying it or silently fixing it.
+
+Both filters compare dates with **lexicographic `String.compareTo`**, which is correct only for
+zero-padded ISO-8601 — one of the open questions Phase 5.1 resolves from real payloads.
 
 ---
 
@@ -1016,8 +1064,11 @@ three-module domain pattern in `src/cli/README.md:137-168`.
   cutover step 4. Broker retry behaviour on 4xx is unknown.
 - **Six XRAS-relevant resources are unmapped** in `xras_resource_repository_key_resource` (§4.1). Add
   a `sam-admin xras --validate-mapping` check and run it before cutover.
-- **Two legacy defects worth not reproducing.** `XrasAction.getUsernameByRoleType()` returns the
+- **Three legacy defects worth not reproducing.** `XrasAction.getUsernameByRoleType()` returns the
   first matching role and ignores duplicates — the ACCESS docs state a request must have exactly one
   PI, so we should reject rather than pick-first (a mis-ordered array could otherwise mint a project
-  under the wrong human). And organization 158 "UCAR Community Programs" matches two mnemonic codes
-  (`CAR`, `UCP`), which throws for any PI in that organization.
+  under the wrong human). Organization 158 "UCAR Community Programs" matches two mnemonic codes
+  (`CAR`, `UCP`), which throws for any PI in that organization. And the roster and role-assignment
+  readings of `roles[]` apply **different begin-date filters** (§3.5), so a PI whose role starts
+  after the action begin date but before today becomes project lead with no account on any
+  resource.
