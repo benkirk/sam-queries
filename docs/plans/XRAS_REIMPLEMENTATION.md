@@ -971,7 +971,45 @@ Phases are ordered by **production volume × failure rate**.
      `USER_PERMISSION_OVERRIDES` entries.
    - Update `tests/unit/test_rbac.py` and any bundle-membership assertions.
 
-### Phase 1 — Read endpoints (94% of traffic, zero write risk)
+### Phase 1 — Read endpoints (94% of traffic, zero write risk) — ✅ IMPLEMENTED
+
+> **Status 2026-08-06.** All six GET endpoints are implemented on branch
+> `xras_reimplementation` (PR #424). What shipped, and how it was verified:
+>
+> | | |
+> |---|---|
+> | `src/sam/queries/xras_access.py` | the five named queries, ported to base tables |
+> | `src/webapp/api/xras/` | `__init__` (blueprint, XA shim, `xras_api_required`, error handlers), `serialize.py`, `people.py`, `requests.py` |
+> | `src/webapp/utils/api_auth.py` | `roles=` / `deny=` on `login_or_token_required` (Phase 0.3) |
+> | `utils/parity/` | `XrasClient`, `compare_xras`, `--api xras`, `--xras-user` |
+> | `tests/api/test_xras_access.py` | 63 tests |
+>
+> **Structural validation** against the captured production corpus:
+> per-master structure identical **6/6** and **5/5** for `requests/user` and
+> `requests/role/pi` — every key name, key order and value type at every nesting
+> depth — and `requestType` agrees on **54/54, 53/53 and 16/16** requests. The
+> only difference is the declared `masters[]` ordering divergence. `co_pi`,
+> unknown-request and both `dates/requests` bodies match production's byte
+> counts exactly.
+>
+> **Latency**, against legacy's measured production numbers:
+>
+> | Endpoint | This port | Legacy |
+> |---|---:|---:|
+> | `/people/{u}` warm | **3.4–4.5 ms** | 95 ms p50 |
+> | `/people` roster (~3.84 MB) | **637 ms** | 1,123 ms p50 |
+> | `/requests/request/{n}` | **29 ms** | 6,100–7,300 ms |
+> | `/requests/user/{u}` | **18 ms** | 6,130 ms |
+> | `/dates/requests/{n}` | **2 ms** | ~400 ms |
+>
+> The `requests/*` speedup is the project-scoped `remainingAmount` aggregate
+> (item 3 below); the output bytes are unchanged.
+>
+> **Not yet done:** running the parity harness against the *deployed* port —
+> that needs `samuel.k8s` to carry this code, and it is the cutover gate. The
+> harness itself is verified end-to-end (13/13 checks, all six endpoints,
+> against production with both base URLs pointed at legacy).
+
 
 New package `src/webapp/api/xras/` (`__init__.py`, `people.py`, `requests.py`), registered in
 `src/webapp/run.py` with `url_prefix='/api/xras/v1'`. Blueprint-local error handlers reproduce the
@@ -1232,6 +1270,7 @@ three-module domain pattern in `src/cli/README.md:137-168`.
   | 2 | `requests/role/{bogus}` → **500** with the opaque timestamp body | **400** carrying a real `message` | `IllegalArgumentException` falling into the catch-all — a client error answered with a server error. Zero traffic. Same reasoning as the 422 decision in §2.5 |
   | 3 | `masters[]` in Java **`HashMap` bucket order** | sorted by projcode | See below |
   | 4 | roster order *incidental* (no `ORDER BY`) | explicit `ORDER BY u.user_id` | Reproduces observed output **and** makes it deterministic — strictly better than legacy |
+  | 5 | unmapped path under `/api/xras/v1` → **401** (41 B) unauthenticated, **404** (431 B Tomcat HTML) authenticated | Flask's own 404 (207 B HTML) in both cases | Legacy 401s because the filter and security chain run *before* routing. Flask routes first, so a blueprint `errorhandler(404)` never sees a routing miss. Reproducing it means a catch-all route that turns every typo into a 401 — worse to debug, for a case no client exercises. Measured 2026-08-06. |
 
   On #3: the order was reverse-engineered and **is** reproducible — emulating
   `String.hashCode()` plus `HashMap`'s spread-and-bucket walk matched all three
