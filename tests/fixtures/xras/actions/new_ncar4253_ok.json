@@ -1,0 +1,145 @@
+{
+  "actionId": 390916,
+  "actionType": "New",
+  "actionBeginDate": "2026-08-04",
+  "actionEndDate": "2027-08-31",
+  "requestId": 1446007,
+  "requestNumber": "NCAR4253",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Center for Land Surface Hazards (CLaSH)",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532220,
+  "opportunityName": "Small Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Small",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 906892,
+      "resourceRepositoryKey": 145576,
+      "awardedAmount": "2500.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 906890,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "1000000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 906888,
+      "resourceRepositoryKey": 145145,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 906886,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "10000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 572978,
+      "roleType": "PI",
+      "username": "user_00000007",
+      "beginDate": "2026-07-29",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given07",
+        "middleName": null,
+        "lastName": "Surname07",
+        "email": "user07@example.invalid",
+        "phone": "555-0106",
+        "organization": "UNIVERSITY OF CALIFORNIA AT IRVINE",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 572968,
+      "roleType": "Allocation Manager",
+      "username": "user_00000008",
+      "beginDate": "2026-07-29",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given08",
+        "middleName": null,
+        "lastName": "Surname08",
+        "email": "user08@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF CALIFORNIA SANTA BARBARA",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500032,
+      "fosNum": "30",
+      "fosName": "Regional Climate",
+      "fosAbbr": "Regional Climate",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500026,
+      "fosNum": "24",
+      "fosName": "Natural and Man-Made Hazard Mitigation",
+      "fosAbbr": "Natural and Man-Made Hazard Mitigation",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "EAR-2425607",
+      "programOfficerName": "Officer05",
+      "programOfficerEmail": "officer03@example.invalid",
+      "piName": "Officer06",
+      "title": "Center Operations: Center for Land Surface Hazards (CLaSH)",
+      "beginDate": "2025-10-01",
+      "endDate": "2030-09-30",
+      "awardedAmount": "6000000.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": null,
+        "fosNum": null,
+        "fosName": null,
+        "fosAbbr": null
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": [
+    {
+      "attributeSetId": 537622,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "opportunityAttributeId": 539637,
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms."
+    }
+  ]
+}

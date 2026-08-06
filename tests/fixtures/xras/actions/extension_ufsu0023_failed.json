@@ -1,0 +1,126 @@
+{
+  "actionId": 392184,
+  "actionType": "Extension",
+  "actionBeginDate": "2021-10-26",
+  "actionEndDate": "2027-09-30",
+  "requestId": 1207231,
+  "requestNumber": "UFSU0023",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Towards a Very Large Ensemble of Oceanic Simulations",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 531428,
+  "opportunityName": "University Large Request - Fall 2021",
+  "opportunityType": "Terminating",
+  "allocationType": "Large",
+  "awardDate": "2021-10-26",
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 152365,
+      "roleType": "PI",
+      "username": "user_00000003",
+      "beginDate": "2021-09-14",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given03",
+        "middleName": "M03",
+        "lastName": "Surname03",
+        "email": "user03@example.invalid",
+        "phone": "555-0102",
+        "organization": null,
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 152363,
+      "roleType": "Allocation Manager",
+      "username": "user_00000004",
+      "beginDate": "2021-09-14",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given04",
+        "middleName": null,
+        "lastName": "Surname04",
+        "email": "user04@example.invalid",
+        "phone": "555-0103",
+        "organization": "Fluid Numerics LLC",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500031,
+      "fosNum": "29",
+      "fosName": "Physical Oceanography",
+      "fosAbbr": "Physical Oceanography",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500012,
+      "fosNum": "10",
+      "fosName": "Environmental and Ocean Systems",
+      "fosAbbr": "Environmental and Ocean Systems",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500014,
+      "fosNum": "12",
+      "fosName": "Fluid Dynamics and Turbulence",
+      "fosAbbr": "Fluid Dynamics and Turbulence",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "External reviewers for CHAP",
+      "abbr": "CHAP External",
+      "isPrimary": false
+    },
+    {
+      "type": "Technical",
+      "name": "CISL HPC Allocation Panel",
+      "abbr": "CHAP",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "OCE-2123632",
+      "programOfficerName": "Officer03",
+      "programOfficerEmail": "officer02@example.invalid",
+      "piName": "Officer04",
+      "title": "Novel Ensemble Based North Atlantic Diagnostics",
+      "beginDate": "2021-09-01",
+      "endDate": "2027-08-31",
+      "awardedAmount": "870857.0",
+      "awardedUnits": "Dollars",
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": 500031,
+        "fosNum": "29",
+        "fosName": "Physical Oceanography",
+        "fosAbbr": "Physical Oceanography"
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}

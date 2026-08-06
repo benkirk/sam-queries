@@ -1,0 +1,134 @@
+{
+  "actionId": 388536,
+  "actionType": "New",
+  "actionBeginDate": "2026-07-28",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1445132,
+  "requestNumber": "NCAR4232",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Performing GEOS-Chem based OSSEs for a methane-based analytical inversion framework.",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532223,
+  "opportunityName": "Classroom Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Educational",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 901966,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "500000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 901964,
+      "resourceRepositoryKey": 145145,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 901962,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "5000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 901960,
+      "resourceRepositoryKey": 144552,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 572478,
+      "roleType": "PI",
+      "username": "placeholder05-user-00005",
+      "beginDate": "2026-07-28",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given05",
+        "middleName": null,
+        "lastName": "Surname05",
+        "email": "user05@example.invalid",
+        "phone": "555-0104",
+        "organization": "North Carolina State University - Incoming Graduate Student",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 568653,
+      "roleType": "User",
+      "username": "placeholder05-user-00005",
+      "beginDate": "2026-07-14",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given05",
+        "middleName": null,
+        "lastName": "Surname05",
+        "email": "user05@example.invalid",
+        "phone": "555-0104",
+        "organization": "North Carolina State University - Incoming Graduate Student",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 568652,
+      "roleType": "Allocation Manager",
+      "username": "user_00000006",
+      "beginDate": "2026-07-14",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given06",
+        "middleName": null,
+        "lastName": "Surname06",
+        "email": "user06@example.invalid",
+        "phone": "555-0105",
+        "organization": "NORTH CAROLINA STATE UNIVERSITY",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500006,
+      "fosNum": "4",
+      "fosName": "Atmospheric Chemistry",
+      "fosAbbr": "Atmospheric Chemistry",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": [
+    {
+      "attributeSetId": 537625,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "opportunityAttributeId": 539640,
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms."
+    }
+  ]
+}
