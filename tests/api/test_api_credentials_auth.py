@@ -246,3 +246,144 @@ class TestDecoratorsAcceptDbKey:
             _, status = view()
         assert status == 200
         assert captured == {"user": "legacyusr", "source": "db"}
+
+
+# ---------------------------------------------------------------------------
+# roles= / deny= on login_or_token_required
+# ---------------------------------------------------------------------------
+
+class TestRoleGatedTokenAuth:
+    """`roles=` turns g.api_key_roles from a logging breadcrumb into a gate.
+
+    The role names are free-text `role.name` values reached through
+    `role_api_credentials`; ROLE_XRAS is the first real consumer.
+    """
+
+    def _db_loader(self, monkeypatch, roles):
+        db_hash = bcrypt.hashpw(b"legacy-pw", bcrypt.gensalt(rounds=4)).decode()
+        monkeypatch.setattr(
+            api_auth, "_get_db_api_keys",
+            lambda: {"legacyusr": {"hash": db_hash, "roles": roles}},
+        )
+
+    def _view(self, **kwargs):
+        @api_auth.login_or_token_required(**kwargs)
+        def view():
+            return "ok", 200
+        return view
+
+    def _call(self, api_app, view, username="legacyusr", password="legacy-pw"):
+        headers = {} if username is None else {"Authorization": _basic(username, password)}
+        with api_app.test_request_context("/", headers=headers):
+            result = view()
+        return result if isinstance(result, tuple) else (result, 200)
+
+    def test_key_holding_the_role_is_admitted(self, api_app, monkeypatch):
+        self._db_loader(monkeypatch, roles=["ROLE_XRAS", "OTHER"])
+        _, status = self._call(api_app, self._view(roles=("ROLE_XRAS",)))
+        assert status == 200
+
+    def test_key_without_the_role_is_403(self, api_app, monkeypatch):
+        self._db_loader(monkeypatch, roles=["SOMETHING_ELSE"])
+        resp = self._call(api_app, self._view(roles=("ROLE_XRAS",)))
+        assert resp[1] == 403
+
+    def test_any_one_of_several_roles_suffices(self, api_app, monkeypatch):
+        self._db_loader(monkeypatch, roles=["ROLE_B"])
+        _, status = self._call(api_app, self._view(roles=("ROLE_A", "ROLE_B")))
+        assert status == 200
+
+    def test_bad_password_is_401_not_403(self, api_app, monkeypatch):
+        """Authn failure must not be reported as an authz failure."""
+        self._db_loader(monkeypatch, roles=["ROLE_XRAS"])
+        resp = self._call(api_app, self._view(roles=("ROLE_XRAS",)), password="wrong")
+        assert resp[1] == 401
+
+    def test_config_sourced_key_fails_closed(self, api_app, monkeypatch):
+        """Config keys always resolve with roles=[] — a role gate must reject them.
+
+        This is the documented `API_KEYS_SAMUEL` hazard: defining a key in config
+        that a roles-gated route expects silently locks that route out while
+        every other route keeps working.
+        """
+        self._db_loader(monkeypatch, roles=["ROLE_XRAS"])
+        resp = self._call(
+            api_app, self._view(roles=("ROLE_XRAS",)),
+            username="testuser", password="good-password",
+        )
+        assert resp[1] == 403
+
+    def test_session_path_is_closed_when_roles_given(self, api_app, monkeypatch):
+        """A browser session carries no API-key roles, so there is nothing that
+        could satisfy the gate — an unauthenticated request is a 401, and we never
+        reach the Flask-Login branch."""
+        self._db_loader(monkeypatch, roles=["ROLE_XRAS"])
+        resp = self._call(api_app, self._view(roles=("ROLE_XRAS",)), username=None)
+        assert resp[1] == 401
+
+    def test_deny_hook_owns_the_error_bodies(self, api_app, monkeypatch):
+        """`deny` lets a legacy-contract blueprint supply its own wire format."""
+        self._db_loader(monkeypatch, roles=["NOPE"])
+        seen = []
+
+        def deny(status, message):
+            seen.append((status, message))
+            return "custom", status
+
+        body, status = self._call(
+            api_app, self._view(roles=("ROLE_XRAS",), deny=deny))
+        assert (body, status) == ("custom", 403)
+        assert seen == [(403, 'Forbidden - insufficient permissions')]
+
+    def test_deny_hook_also_owns_401(self, api_app, monkeypatch):
+        self._db_loader(monkeypatch, roles=["ROLE_XRAS"])
+        body, status = self._call(
+            api_app,
+            self._view(roles=("ROLE_XRAS",), deny=lambda s, m: ("custom", s)),
+            password="wrong",
+        )
+        assert (body, status) == ("custom", 401)
+
+
+class TestRolesDefaultIsUnchanged:
+    """The 20 existing call sites pass only the positional `permission`.
+
+    These pin that omitting `roles`/`deny` leaves both the admit decision and the
+    error bytes exactly as they were.
+    """
+
+    def _db_loader(self, monkeypatch, roles):
+        db_hash = bcrypt.hashpw(b"legacy-pw", bcrypt.gensalt(rounds=4)).decode()
+        monkeypatch.setattr(
+            api_auth, "_get_db_api_keys",
+            lambda: {"legacyusr": {"hash": db_hash, "roles": roles}},
+        )
+
+    def test_roleless_key_still_admitted_without_the_gate(self, api_app, monkeypatch):
+        self._db_loader(monkeypatch, roles=[])
+
+        @api_auth.login_or_token_required(Permission.VIEW_RESOURCES)
+        def view():
+            return "ok", 200
+
+        with api_app.test_request_context(
+            "/", headers={"Authorization": _basic("legacyusr", "legacy-pw")}
+        ):
+            _, status = view()
+        assert status == 200
+
+    def test_401_body_and_header_unchanged(self, api_app, monkeypatch):
+        """Legacy-compat blueprints must keep byte-identical 401s."""
+        self._db_loader(monkeypatch, roles=[])
+
+        @api_auth.login_or_token_required(Permission.VIEW_RESOURCES)
+        def view():
+            return "ok", 200
+
+        with api_app.test_request_context(
+            "/", headers={"Authorization": _basic("legacyusr", "wrong")}
+        ):
+            body, status, headers = view()
+        assert status == 401
+        assert body.get_json() == {"error": "Invalid credentials"}
+        assert headers == {"WWW-Authenticate": 'Basic realm="SAM API"'}
