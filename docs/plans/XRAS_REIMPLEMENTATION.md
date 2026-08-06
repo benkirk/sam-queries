@@ -221,6 +221,20 @@ database both ways: nulls-omitted predicts 3,845,112 B against an observed 3,839
 the residual explained by `IdentityServiceImpl.fixInternalOrg()` shortening `UCAR/NCAR:<acronym>`
 strings); nulls-emitted predicts 5,219,474 B, off by 36%.
 
+**Roster row order is `users.user_id` ascending.** The `identityServicePersons` named
+query has **no `ORDER BY`**, so legacy's order is a MySQL artifact of `GROUP BY`.
+Confirmed two ways: production's first eight usernames
+(`bruceb robted fulker rodi kubo mbetsill clw remmel`) are byte-for-byte the first eight
+the local dev DB emits through the view, and both match `ORDER BY user_id` — **not**
+`ORDER BY username`. Our port should state it explicitly, which reproduces the observed
+3.8 MB and makes it deterministic rather than incidental.
+
+**There are two different 404 bodies, with different wording.** `/people/{u}` misses emit
+`username=<u> not found`; `/requests/user/{u}` and `/requests/role/{r}/{u}` also validate
+the username (`RequestServiceController.validateUser`) but emit `User <u> not found`.
+The role check runs **before** user validation, so an unrecognised `{role}` 500s even for
+a non-existent user.
+
 **`GET /people/{u}` 404**: `{"message":"username=<u> not found","result":null}`, and its length is a
 closed form — **`bytes = len(username) + 47`**.
 
@@ -248,33 +262,100 @@ masters[]      : { requestNumber, requests[] }        # an ARRAY — getMasters(
                    allocations[] : { actionType,       # ALWAYS ABSENT — never emitted
                                      allocationBeginDate, allocationEndDate,
                                      allocatedAmount,  # STRING, "%.1f"
-                                     remainingAmount,  # STRING, "%.1f"; omitted when null — 106/246
-                                     resourceRepositoryKey,  # INT; omitted when null — 174/246
+                                     remainingAmount,  # STRING, "%.1f"; omitted when null
+                                     resourceRepositoryKey,  # INT; omitted when null
                                      actions[] : { orderApplied,   # 1-based, assignment order
-                                                   actionType, amount,   # STRING "%.1f"
-                                                   endDate, dateApplied } } }
+                                                   actionType,
+                                                   amount,       # STRING "%.1f"; OMITTED when null
+                                                   endDate,      # OMITTED when null
+                                                   dateApplied } } }
 ```
+
+**Why the omission is per-DTO and not a global setting.** `xras-rest-context.xml` is
+`<mvc:annotation-driven/>` and nothing else — no `<mvc:message-converters>`, no
+`ObjectMapper` bean. So the mapper is Spring's stock build, whose inclusion is
+**`ALWAYS`**, and `NON_NULL` is applied **per class** by
+`@JsonSerialize(include=NON_NULL)`:
+
+| Class | Annotation | Behaviour |
+|---|---|---|
+| `ResponseWrapper` | none | **emits** `message: null` |
+| `AccountingRequestResponse` | none | **emits** `projectIdLabel: null` (nothing ever assigns it) |
+| `RequestMaster`, `FieldOfScience` | none | emit (no field is ever null in practice) |
+| `RequestDatesDTO` | none | **emits** — `requestEndDate` can legitimately be null |
+| `PersonDTO`, `Request`, `Allocation`, `Action` | `NON_NULL` | **omit** |
+
+A port that applies one global "drop nulls" pass is wrong in both directions. Note also
+that the empty string is **emitted**, not omitted — one roster email proves `"" ≠ null`.
 
 **Null omission applies to this response too, not just `PersonDTO`** — measured 2026-08-05 across
 65 request objects and 246 allocation objects from five live responses:
 
+Re-measured 2026-08-06 across the **full** captured corpus — 134 request, 555 allocation
+and 1,109 action objects from all seven `requests/*` probes:
+
 | Field | Present | Consequence |
 |---|---:|---|
-| `xrasActionIds` | **0 / 65** | never emit the key. A Python impl writing `"xrasActionIds": null` breaks byte parity on every response |
-| `allocations[].actionType` | **0 / 246** | same |
-| `resourceRepositoryKey` | **174 / 246** (71%) | ⚠️ an earlier draft listed this as always-present. It is omitted whenever null — 29% of real allocations |
-| `remainingAmount` | **106 / 246** (43%) | as documented: HPC-only, omitted when null |
+| `xrasActionIds` | **0 / 134** | never emit the key. A Python impl writing `"xrasActionIds": null` breaks byte parity on every response |
+| `allocations[].actionType` | **0 / 555** | same (also `xrasActionId`, `xrasActionResourceId` on both `Allocation` and `Action` — `RequestFactory` never sets them) |
+| `resourceRepositoryKey` | **376 / 555** (68%) | ⚠️ an earlier draft listed this as always-present. It is omitted whenever null — see §4.1, this *is* the unmapped-resource gap surfacing on the wire |
+| `remainingAmount` | **243 / 555** (44%) | as documented: HPC-only, omitted when null |
+| **`actions[].amount`** | **811 / 1109** (73%) | ⚠️ **an earlier draft listed this as always-present** |
+| **`actions[].endDate`** | **867 / 1109** (78%) | ⚠️ same |
 | every other field above | 100% | always emitted |
+
+> ⚠️ **Corrected 2026-08-06.** This table previously ended "every other field above —
+> 100% — always emitted", which is wrong for the two `actions[]` fields. Their presence
+> tracks `actionType`, because the underlying `allocation_transaction` columns are
+> populated per transaction kind:
+>
+> | `actionType` | n | `amount` | `endDate` |
+> |---|---:|---|---|
+> | `New` | 554 | ✓ | ✓ |
+> | `Extension` | 301 | ✗ (298/301) | ✓ |
+> | `Supplemental` | 174 | ✓ | ✗ |
+> | `Adjustment` | 78 | ✓ | ✗ (67/78) |
+> | `Transfer` | 2 | ✓ | mixed |
+>
+> Emitting them unconditionally breaks parity on **most** request responses — `Extension`
+> alone is 27% of all action objects.
 
 Unknown request number → **200 with empty `masters`** — confirmed live:
 `{"message":null,"result":{"projectIdLabel":null,"masters":[]}}`, 62 B. `RequestFactory` throws
 `IllegalStateException` (→ 500) when the `allocationIds` CSV on `xras_request` fails to reconcile
 against `xras_allocation`/`xras_action`, and `RequestDTO.getXrasFosTypeId()` NPEs on a null column.
 
-`requestType` **ties are broken by iteration order, not by date.** `UALB0006` carries three
-requests sharing the earliest `requestBeginDate` (2014-10-16) and exactly one is labelled `New`;
-the other two are `Renewal`. A port that recomputes "earliest wins" over a differently-ordered
-result set will label a different row `New`. Match legacy's ordering, or the diff is silent.
+**`requestType` is fully deterministic — and the rule is now known exactly.**
+`HibernateAccountingDao.setRequestTypes()` stamps every DTO `Renewal`, then per
+`projectId` keeps the row with the smallest `requestBeginDate` using a **strict**
+`earliest.getRequestBeginDate().after(dto.getRequestBeginDate())` comparison. A tie
+therefore leaves the incumbent, so **the first row in result-set order wins**, and that
+order is `xras_request`'s `ORDER BY al.end_date` **ascending**. In one sentence:
+
+> label everything `Renewal`; then, iterating in `end_date` ASC, the first row achieving
+> `min(requestBeginDate)` becomes `New`.
+
+Verified against both documented tie cases (`UALB0006`, three requests sharing
+2014-10-16; `NRAL0032`, two sharing 2022-05-02) and against all 20 masters in the
+captured corpus — exactly one `New` each.
+
+**Array ordering is data-derived in three places and a JDK artifact in the fourth.**
+`RequestFactory` preserves result-set order into `LinkedHashMap`s, so:
+
+| Array | Order | Source |
+|---|---|---|
+| `requests[]` within a master | `allocation.end_date` **ASC** | `xras_request` view's `ORDER BY` |
+| `allocations[]` within a request | `allocation.start_date` **DESC** | `xras_allocation` view's `ORDER BY` |
+| `actions[]` within an allocation | `allocation_transaction.creation_time` **ASC**, `orderApplied` = 1..n | `xras_action` view's `ORDER BY` |
+| **`masters[]`** | **Java `HashMap` bucket order over the projcode keys** | `AccountingRequestResponse.masters` is a `HashMap`; `getMasters()` returns `.values()` |
+
+The first three are reproduced byte-exactly. The fourth is **not** — see §7.
+
+⚠️ **Consequence for §4.2's proposed view fix:** `ORDER BY al.end_date` on `xras_request`
+is **load-bearing**. It sets both the `requests[]` array order (confirmed ascending in
+13 of 13 observed masters) and the `New`/`Renewal` tie-break. Dropping it, as Phase 1
+item 5 originally proposed, would silently reorder every `requests/*` response and move
+the `New` label.
 
 **Dates are `yyyy-MM-dd` strings everywhere except `dates/requests`**, which returns
 `java.util.Date` with no date module configured ⇒ **epoch-millis integers**. Preserve the quirk —
@@ -531,9 +612,32 @@ Measured server-side against production with `SHOW PROFILES`:
 - **`xras_user` does not push down a username predicate.** Its `GROUP BY u.user_id` forces
   materialization of all 28,253 rows for every single-user lookup. Legacy is far faster end-to-end
   (95 ms p50) because `IdentityServiceImpl` uses the named query `identityServicePersons`
-  (`2.0.3:src/main/resources/hibernate/xras/namedQuery.xml`), **not the view**. ⇒ **`GET
+  (`2.0.3:src/main/resources/hibernate/xras/namedQuery.xml:7-60`), **not the view**. ⇒ **`GET
   /people/{username}` must query base tables with the filter applied**; using `XrasUserView` would
   be a ~10× latency regression.
+
+  Measured on the local dev DB 2026-08-06, which quantifies exactly what the pushdown buys:
+
+  | Query | Duration |
+  |---|---:|
+  | `SELECT * FROM xras_user WHERE username='benkirk'` | **0.409 s** |
+  | the identical SQL with the predicate applied *inside* the grouped query | **0.0007 s** |
+
+  a **560×** difference, from one predicate moving across a `GROUP BY`.
+
+- ⚠️ **The named query and the view are NOT equivalent — port the named query.** This is
+  easy to miss because the ORM exposes the *view*, so the path of least resistance is the
+  wrong one. Two substantive differences:
+
+  | | `identityServicePersons` (what legacy serves) | `xras_user` view |
+  |---|---|---|
+  | username predicate | built in: `(:username IS NULL OR username = :username)` | none — callers filter on top |
+  | `email` | `ANY_VALUE(COALESCE(ea1, ea2, ea3, ea4))` — a **per-row** coalesce over the four join aliases | `COALESCE(MIN(ea1), MIN(ea2), MIN(ea3), MIN(ea4))` — a **per-tier** coalesce |
+  | `GROUP BY` | `u.username, firstName, u.middle_name, u.last_name, ac.description` | `u.user_id` |
+
+  For a user with several addresses the two email expressions can select **different
+  values**. Porting the view would therefore ship a silent data divergence that byte
+  parity would catch only if that user happened to be in the sample.
 - **`xras_allocation` costs 6–8 s regardless of filter**, because `xras_hpc_allocation_amount`
   aggregates `hpc_charge_summary` across *all* allocations before joining. This is why the single
   `requests/request/{n}` call took 7.7 s. ⇒ compute `remainingAmount` scoped to the requested
@@ -765,9 +869,52 @@ Phases are ordered by **production volume × failure rate**.
    with `.env` populating both, and `src/cli/notifications/email.py` is stdlib `smtplib` + Jinja2
    with no Flask coupling. This is a move plus a config wire-up, not a build. Legacy sends ~3 emails per action (`XrasActionLogger` lacks
    `additivity="false"`, so every event also reaches the root `SMTPAppender`); **we send one.**
-3. **Role enforcement.** Add an XRAS-local `xras_api_required` wrapping the token path of
-   `login_or_token_required` and asserting `'ROLE_XRAS' in g.api_key_roles`. Do **not** change
-   `login_or_token_required` itself — other consumers depend on its behaviour.
+3. **Role enforcement — extend `login_or_token_required`.**
+
+   > ⚠️ **Reversed 2026-08-06.** This step previously read "add an XRAS-local
+   > `xras_api_required` … do **not** change `login_or_token_required` itself — other
+   > consumers depend on its behaviour." That would have us reimplement the token path in
+   > a second place, and the premise does not survive contact with the code:
+   >
+   > - There are **20 real call sites** (`queue`, `wallclock_exemption`,
+   >   `directory_access`, `project_access`, `fstree_access`, `admin`), and every one
+   >   passes only the positional `permission`. Keyword-only parameters with defaults are
+   >   invisible to all of them.
+   > - **`g.api_key_roles` has no enforcement consumer anywhere in `src/`.** The module's
+   >   own docstrings call it "captured now but not yet enforced"
+   >   (`api_auth.py:124`) and "for a future permission gate, but those roles are NOT yet
+   >   enforced here" (`:180`). This *is* that gate. Building it privately for XRAS would
+   >   leave the documented TODO open indefinitely.
+
+   Two keyword-only, defaulted, purely additive parameters:
+
+   ```python
+   def login_or_token_required(permission=None, *, roles=None, deny=None):
+       """
+       roles: iterable of API-key role names (api_credentials → role_api_credentials).
+              The token caller must hold at least one. When given, the SESSION path is
+              closed — a browser session has no API-key roles by definition.
+       deny:  optional callable(status, message) -> response, for blueprints whose error
+              bodies are part of a fixed legacy wire contract. Defaults to today's exact
+              JSON shapes, so all existing call sites are byte-unchanged.
+       """
+   ```
+
+   `roles` closes the authz gap. `deny` exists because XRAS's denial *bodies* are
+   contract: its 401 is a byte-exact 41-byte pretty-printed literal with
+   `charset=UTF-8` and **no** `WWW-Authenticate`, where `_auth_challenge` emits
+   `{'error': …}` *with* that header (§2.2). The alternative — switching the decorator to
+   `abort()` so blueprint error handlers render it — would change the 401 bytes for the
+   existing legacy-compat blueprints, which `CLAUDE.md` forbids.
+
+   XRAS then needs no auth logic of its own, only an alias:
+   ```python
+   xras_api_required = partial(login_or_token_required,
+                               roles=('ROLE_XRAS',), deny=_xras_deny)
+   ```
+
+   Note `permission` still does not apply to token callers — unchanged and out of scope;
+   `roles` is the token-path analogue, not a fix for that.
 4. **Provision the XRAS credential — username `samuel`.** One row in each table. This is the
    credential the Python app authenticates with at cutover, and the parity harness's credential in
    the meantime. Generate it and the SQL together:
@@ -830,11 +977,23 @@ New package `src/webapp/api/xras/` (`__init__.py`, `people.py`, `requests.py`), 
 `src/webapp/run.py` with `url_prefix='/api/xras/v1'`. Blueprint-local error handlers reproduce the
 byte-exact legacy bodies of §2.2 and §2.5.
 
+**Serialization.** `jsonify` cannot be used here: Flask 3.1.3's `DefaultJSONProvider`
+sorts keys alphabetically, appends a trailing `\n`, and picks separators from
+`app.debug` — so `DevelopmentConfig` and `ProductionConfig` already emit different bytes
+from the same call. One helper owns the wire format
+(`json.dumps(payload, separators=(",", ":"), ensure_ascii=False, sort_keys=False)`), and
+the envelope is a flag on it, so `/people`'s bare shape (§2.1) is
+`envelope=False` rather than a separate code path. Raw UTF-8, not `\uXXXX`: the roster
+carries 78 non-ASCII bytes and zero escapes.
+
 1. **XA-header shim** — blueprint `before_request` implementing §2.2 exactly, including the
    "only one header ⇒ no synthesis, headers still stripped" case.
 2. **`GET /people/{username}` and `GET /people`** — highest volume, build first.
-   - Query **base tables** in a new `src/sam/queries/xras.py`, porting the `identityServicePersons`
-     named query — **not** `XrasUserView` (§4.2).
+   - Query **base tables** in a new `src/sam/queries/xras_access.py` (the `_access` suffix
+     matches the legacy-compat siblings `queue_access.py` / `wallclock_exemption_access.py`),
+     porting the `identityServicePersons` named query — **not** `XrasUserView`, which is
+     both slower *and* semantically different (§4.2).
+   - Order explicitly by `users.user_id` (§2.3).
    - Bare object / bare array, no envelope. Omit null fields. 404 body
      `{"message":"username=<u> not found","result":null}`.
    - Keep the `login_type_id = 1` filter and **no** active/deleted filter (§7).
@@ -847,8 +1006,21 @@ byte-exact legacy bodies of §2.2 and §2.5.
 4. **Spec-obligation reads** — `requests/user/{u}`, `requests/role/{r}/{u}` (lowercase
    `pi`/`co_pi`/`allocation_manager`; `co_pi` returns empty), `dates/requests/{list}`
    (**epoch-millis**). Zero traffic, but they are contract obligations.
-5. **Fix the `xras_request` view** — drop `ORDER BY al.end_date`; un-skip
-   `tests/integration/test_views.py:95-111` and delete the bare `except`.
+5. **~~Fix the `xras_request` view~~ — deferred out of Phase 1.**
+
+   > ⚠️ **Revised 2026-08-06.** This step read "drop `ORDER BY al.end_date`". That
+   > `ORDER BY` is **load-bearing** (§2.3): it sets the `requests[]` array order and the
+   > `New`/`Renewal` tie-break, so dropping it would silently change the wire output of
+   > every `requests/*` response.
+   >
+   > It is also unnecessary here. Phase 1 ports the *named queries* against base tables,
+   > so `ONLY_FULL_GROUP_BY` never bites us. And fixing it for real means three unrelated
+   > lead-times: a **DBA request** on production (the writer account has no DDL), plus a
+   > CI-snapshot regeneration before `tests/integration/test_views.py:95-111` can be
+   > un-skipped — with the blast radius that carries on fixture-dependent tests.
+   >
+   > Three lead-times to un-skip a test guarding code we do not use. Tracked as a
+   > standalone follow-up (NRIT P2-63), not a Phase 1 gate.
 
 ### Phase 2 — Action ingestion + audit trail
 
@@ -963,9 +1135,18 @@ three-module domain pattern in `src/cli/README.md:137-168`.
    `clients.py`, and `--api xras` to `check_legacy_apis.py`. Env `SAM_XRAS_USER` /
    `SAM_XRAS_PASS` (**provisioned 2026-08-05**, documented in `.env.example`); the existing
    `SAM_LEGACY_*` account cannot reach `/api/xras/*`. Assert **byte-exact equality** (§5).
-   The five mechanical edits are enumerated in `utils/parity/README.md`; note the argparse
-   `choices` tuple and the `all` expansion tuple are **separate** lists in `check_legacy_apis.py`
-   and both need the new name.
+   The five mechanical edits are: an `XrasClient` in `clients.py`; `compare_xras` in
+   `comparators.py`; the `comparators` import block in `check_legacy_apis.py`; a
+   `_fetch_xras` plus its dispatch branch; and **both** argparse lists — the `choices`
+   tuple (`:229`) and the `all` expansion tuple (`:291`) are **separate** and both need
+   the new name.
+   ⚠️ An earlier draft said these "are enumerated in `utils/parity/README.md`". They are
+   not — the README's "five" is the five compared APIs. The list above is reconstructed
+   from the source.
+   ⚠️ `_BaseClient._get` calls `resp.json()` and discards the raw bytes; a byte-exact
+   comparator needs a `_get_raw` returning `resp.content`. The tolerance primitives in
+   `helpers.py` (`within_tolerance`, `dates_within_one_day`, `subset_diff`) are the wrong
+   tool here for the same reason.
 
    | Endpoint | Comparison |
    |---|---|
@@ -1024,11 +1205,44 @@ three-module domain pattern in `src/cli/README.md:137-168`.
   sets `API_KEYS_SAMUEL`, the Python side silently stops consulting the row that legacy is still
   using, and the two stacks diverge on authentication alone. Today only `API_KEYS_COLLECTOR` is
   configured (`helm/values.yaml:253`), so nothing shadows `samuel` — keep it that way.
+
+  ⚠️ **Sharper than that, once `roles=` lands** (Phase 0.3): config-sourced identities are
+  returned with **`'roles': []`** (`api_auth.py:112`), unconditionally — config keys have
+  no role assignments to read. So setting `API_KEYS_SAMUEL` would not merely shadow the
+  DB row, it would make the `ROLE_XRAS` assertion **fail closed**: every XRAS request
+  would 403 while legacy kept serving the same credential happily. Worth an explicit test.
 - **`Permission.MANAGE_XRAS`** gates replay and activate-project rather than reusing
   `EDIT_ALLOCATIONS`, so it can be granted to whoever fields XRAS failures independently of general
   allocation editing.
 - **Golden fixtures are scrubbed** through the existing anonymizer before being committed — the
-  repo does not ship real names, emails or phone numbers.
+  repo does not ship real names, emails or phone numbers. **For Phase 1 we do not commit a
+  byte corpus at all:** the repo tests assert the *rules* (field order, the per-DTO null
+  policy, `"%.1f"`, epoch-millis, both 404 forms) against factory data, and real bytes are
+  compared live by the parity harness, where the data is real by construction and nothing
+  needs scrubbing. A scrubbed corpus is worth building only if the live harness proves
+  insufficient.
+
+- **Byte parity is pursued broadly, not irrationally.** Four deliberate divergences, each
+  chosen because legacy is emitting a *failure artifact* or a *JDK implementation detail*
+  rather than contract:
+
+  | # | Legacy | Ours | Why |
+  |---|---|---|---|
+  | 1 | 403 and authenticated-404 → **431 B of Tomcat HTML** | JSON envelope, correct status | A servlet-container artifact of a missing `<error-page>`; no client has received it on a real path |
+  | 2 | `requests/role/{bogus}` → **500** with the opaque timestamp body | **400** carrying a real `message` | `IllegalArgumentException` falling into the catch-all — a client error answered with a server error. Zero traffic. Same reasoning as the 422 decision in §2.5 |
+  | 3 | `masters[]` in Java **`HashMap` bucket order** | sorted by projcode | See below |
+  | 4 | roster order *incidental* (no `ORDER BY`) | explicit `ORDER BY u.user_id` | Reproduces observed output **and** makes it deterministic — strictly better than legacy |
+
+  On #3: the order was reverse-engineered and **is** reproducible — emulating
+  `String.hashCode()` plus `HashMap`'s spread-and-bucket walk matched all three
+  multi-master captures exactly, including one where the observed order is not insertion
+  order. It was rejected anyway. It is ~15 lines of JDK emulation that becomes
+  **untestable above 12 masters** (where `HashMap` resizes and the bucket walk changes)
+  without new probes, and it buys byte-parity only on `requests/user` and `requests/role`
+  — both **zero hits in 30 days**. `requests/request/{n}` always has exactly one master
+  and so is byte-exact either way. The parity comparator is byte-exact *within* each
+  master and order-insensitive across them; reversing this decision later is one helper
+  plus one comparator line.
 
 ---
 
