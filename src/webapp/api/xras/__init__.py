@@ -130,5 +130,6 @@ def _bad_request(error):
 # Route modules attach to `bp` on import, so they come last — `bp`,
 # `xras_api_required` and the serializer must all exist before they run.
 from . import people  # noqa: E402,F401
+from . import requests as _requests  # noqa: E402,F401
 
 __all__ = ['bp', 'xras_api_required', 'XRAS_ROLE']

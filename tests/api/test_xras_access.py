@@ -297,3 +297,248 @@ class TestGetRoster:
             'SELECT username FROM users WHERE login_type_id = 1 '
             'ORDER BY user_id LIMIT 25')).fetchall()]
         assert [p['username'] for p in body[:25]] == expected
+
+
+# ---------------------------------------------------------------------------
+# requests/* and dates/requests/*
+# ---------------------------------------------------------------------------
+
+def _first_projcode(xras_client):
+    """Take a projcode from the roster's own output so the tests survive an
+    obfuscated-snapshot refresh."""
+    body = json.loads(xras_client.get(
+        '/api/xras/v1/requests/user/benkirk', headers=_auth()).data)
+    masters = body['result']['masters']
+    if not masters:
+        pytest.skip('snapshot has no projects for benkirk')
+    return masters[0]['requestNumber']
+
+
+class TestRequestsEnvelope:
+    def test_result_is_wrapped_unlike_people(self, xras_client):
+        body = json.loads(xras_client.get(
+            '/api/xras/v1/requests/request/ZZZZ9999', headers=_auth()).data)
+        assert set(body) == {'message', 'result'}
+
+    def test_unknown_request_number_is_200_with_empty_masters(self, xras_client):
+        """Not a 404 — measured at exactly 62 bytes in production."""
+        resp = xras_client.get(
+            '/api/xras/v1/requests/request/ZZZZ9999', headers=_auth())
+        assert resp.status_code == 200
+        assert resp.data == (
+            b'{"message":null,"result":{"projectIdLabel":null,"masters":[]}}')
+        assert len(resp.data) == 62
+
+    def test_project_id_label_is_emitted_as_null(self, xras_client):
+        """`AccountingRequestResponse` carries no NON_NULL, and nothing in
+        legacy ever assigns this field."""
+        body = json.loads(xras_client.get(
+            f'/api/xras/v1/requests/request/{_first_projcode(xras_client)}',
+            headers=_auth()).data)
+        assert 'projectIdLabel' in body['result']
+        assert body['result']['projectIdLabel'] is None
+
+
+class TestRequestShape:
+    @pytest.fixture
+    def one_request(self, xras_client):
+        code = _first_projcode(xras_client)
+        body = json.loads(xras_client.get(
+            f'/api/xras/v1/requests/request/{code}', headers=_auth()).data)
+        return body['result']['masters'][0]
+
+    def test_master_key_order(self, one_request):
+        assert list(one_request) == ['requestNumber', 'requests']
+
+    def test_request_key_order_and_no_xras_action_ids(self, one_request):
+        """`xrasActionIds` is never set by RequestFactory, and `Request` is
+        NON_NULL — so the key must be absent, not null."""
+        for request in one_request['requests']:
+            assert list(request) == [
+                'requestType', 'requestBeginDate', 'requestEndDate',
+                'allocationType', 'projectTitle', 'projectId',
+                'fos', 'allocations',
+            ]
+
+    def test_fos_is_always_one_primary_element(self, one_request):
+        for request in one_request['requests']:
+            assert len(request['fos']) == 1
+            assert list(request['fos'][0]) == ['xrasFosTypeId', 'isPrimary']
+            assert request['fos'][0]['isPrimary'] is True
+
+    def test_allocation_key_order_is_a_subsequence(self, one_request):
+        """`actionType`, `xrasActionId` and `xrasActionResourceId` are never
+        emitted; `remainingAmount` and `resourceRepositoryKey` are optional."""
+        canonical = ['allocationBeginDate', 'allocationEndDate',
+                     'allocatedAmount', 'remainingAmount',
+                     'resourceRepositoryKey', 'actions']
+        for request in one_request['requests']:
+            for allocation in request['allocations']:
+                keys = list(allocation)
+                assert keys == [k for k in canonical if k in keys]
+                assert 'actionType' not in allocation
+
+    def test_action_key_order_is_a_subsequence(self, one_request):
+        """`amount` and `endDate` are OPTIONAL — measured 811/1109 and 867/1109
+        in production, tracking actionType."""
+        canonical = ['orderApplied', 'actionType', 'amount', 'endDate',
+                     'dateApplied']
+        for request in one_request['requests']:
+            for allocation in request['allocations']:
+                for action in allocation['actions']:
+                    keys = list(action)
+                    assert keys == [k for k in canonical if k in keys]
+
+    def test_order_applied_is_one_based_and_dense(self, one_request):
+        for request in one_request['requests']:
+            for allocation in request['allocations']:
+                orders = [a['orderApplied'] for a in allocation['actions']]
+                assert orders == list(range(1, len(orders) + 1))
+
+    def test_amounts_are_one_decimal_strings(self, one_request):
+        """`String.format("%.1f", ...)`, and a STRING in JSON, not a number."""
+        import re
+        one_dp = re.compile(r'^-?\d+\.\d$')
+        seen = 0
+        for request in one_request['requests']:
+            for allocation in request['allocations']:
+                for key in ('allocatedAmount', 'remainingAmount'):
+                    value = allocation.get(key)
+                    if value is None:
+                        continue
+                    assert isinstance(value, str), f'{key} is not a string'
+                    assert one_dp.match(value), f'{key}={value!r}'
+                    seen += 1
+                for action in allocation['actions']:
+                    if 'amount' in action:
+                        assert one_dp.match(action['amount'])
+                        seen += 1
+        assert seen, 'no amounts exercised'
+
+    def test_dates_are_yyyy_mm_dd_strings(self, one_request):
+        import re
+        iso = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+        for request in one_request['requests']:
+            assert iso.match(request['requestBeginDate'])
+            assert iso.match(request['requestEndDate'])
+
+
+class TestRequestOrdering:
+    @pytest.fixture
+    def master(self, xras_client):
+        code = _first_projcode(xras_client)
+        body = json.loads(xras_client.get(
+            f'/api/xras/v1/requests/request/{code}', headers=_auth()).data)
+        return body['result']['masters'][0]
+
+    def test_requests_are_ordered_by_end_date(self, master):
+        """`xras_request`'s ORDER BY is load-bearing: it sets this order AND
+        decides the New/Renewal tie-break."""
+        ends = [r['requestEndDate'] for r in master['requests']]
+        assert ends == sorted(ends)
+
+    def test_allocations_are_ordered_by_begin_date_descending(self, master):
+        for request in master['requests']:
+            begins = [a['allocationBeginDate'] for a in request['allocations']]
+            assert begins == sorted(begins, reverse=True)
+
+    def test_exactly_one_new_per_master(self, master):
+        types = [r['requestType'] for r in master['requests']]
+        assert types.count('New') == 1
+        assert set(types) <= {'New', 'Renewal'}
+
+    def test_new_is_the_earliest_begin_date_first_wins_on_a_tie(self, master):
+        """Java's comparison is a strict `.after()`, so a tie keeps the
+        incumbent — the first row in end-date order wins."""
+        earliest = min(r['requestBeginDate'] for r in master['requests'])
+        first = next(r for r in master['requests']
+                     if r['requestBeginDate'] == earliest)
+        assert first['requestType'] == 'New'
+        for other in master['requests']:
+            if other is not first:
+                assert other['requestType'] == 'Renewal'
+
+    def test_masters_are_sorted_by_projcode(self, xras_client):
+        """Deliberate divergence: legacy emits Java HashMap bucket order."""
+        body = json.loads(xras_client.get(
+            '/api/xras/v1/requests/user/benkirk', headers=_auth()).data)
+        codes = [m['requestNumber'] for m in body['result']['masters']]
+        assert codes == sorted(codes)
+
+
+class TestRequestsByRole:
+    def test_co_pi_is_valid_but_always_empty(self, xras_client):
+        """`xras_role` emits only 'Pi' and 'AllocationManager' — nothing ever
+        produces the 'CoPi' literal the controller maps to."""
+        resp = xras_client.get(
+            '/api/xras/v1/requests/role/co_pi/benkirk', headers=_auth())
+        assert resp.status_code == 200
+        assert json.loads(resp.data)['result']['masters'] == []
+
+    def test_role_segment_is_case_insensitive(self, xras_client):
+        lower = xras_client.get(
+            '/api/xras/v1/requests/role/pi/benkirk', headers=_auth())
+        upper = xras_client.get(
+            '/api/xras/v1/requests/role/PI/benkirk', headers=_auth())
+        assert lower.data == upper.data
+
+    def test_unknown_role_is_400_not_legacys_500(self, xras_client):
+        """Deliberate divergence: legacy's IllegalArgumentException lands in the
+        catch-all and produces a 500 carrying only an opaque timestamp."""
+        resp = xras_client.get(
+            '/api/xras/v1/requests/role/bogus/benkirk', headers=_auth())
+        assert resp.status_code == 400
+        assert json.loads(resp.data)['message'] == 'Invalid role bogus'
+
+    def test_role_is_checked_before_the_username(self, xras_client):
+        """Matching legacy's ordering — a bad role wins over a bad user."""
+        resp = xras_client.get(
+            '/api/xras/v1/requests/role/bogus/nosuchuser1', headers=_auth())
+        assert resp.status_code == 400
+
+    def test_unknown_user_404_uses_different_wording_than_people(
+            self, xras_client):
+        resp = xras_client.get(
+            '/api/xras/v1/requests/user/nosuchuser1', headers=_auth())
+        assert resp.status_code == 404
+        assert json.loads(resp.data)['message'] == 'User nosuchuser1 not found'
+
+
+class TestRequestDates:
+    def test_dates_are_epoch_millis_not_strings(self, xras_client):
+        """The only endpoint whose dates are not yyyy-MM-dd: its DTO holds a raw
+        java.util.Date and no date module is configured on the mapper."""
+        code = _first_projcode(xras_client)
+        body = json.loads(xras_client.get(
+            f'/api/xras/v1/dates/requests/{code}', headers=_auth()).data)
+        entry = body['result'][0]
+        assert list(entry) == [
+            'requestNumber', 'requestBeginDate', 'requestEndDate']
+        assert isinstance(entry['requestBeginDate'], int)
+
+    def test_millis_land_on_denver_midnight(self, xras_client):
+        """A fixed -6 offset would drift an hour for winter dates."""
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        code = _first_projcode(xras_client)
+        body = json.loads(xras_client.get(
+            f'/api/xras/v1/dates/requests/{code}', headers=_auth()).data)
+        for key in ('requestBeginDate', 'requestEndDate'):
+            millis = body['result'][0][key]
+            local = datetime.fromtimestamp(
+                millis / 1000, timezone.utc).astimezone(ZoneInfo('America/Denver'))
+            assert (local.hour, local.minute, local.second) == (0, 0, 0)
+
+    def test_comma_list_returns_one_entry_per_projcode(self, xras_client):
+        code = _first_projcode(xras_client)
+        body = json.loads(xras_client.get(
+            f'/api/xras/v1/dates/requests/{code},{code}', headers=_auth()).data)
+        assert [e['requestNumber'] for e in body['result']] == [code, code]
+
+    def test_whitespace_after_a_comma_is_not_trimmed(self, xras_client):
+        """Legacy's `split(",")` does not trim, so ` CODE` silently misses.
+        Reproduced — a client relying on it sees a shorter list, not an error."""
+        code = _first_projcode(xras_client)
+        body = json.loads(xras_client.get(
+            f'/api/xras/v1/dates/requests/{code}, {code}', headers=_auth()).data)
+        assert len(body['result']) == 1
