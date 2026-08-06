@@ -33,8 +33,8 @@ in the working tree are byte-identical to the deployed tag.
 |---|---|---|
 | **0** — Prerequisites | **partly done** | credential ✅, role enforcement ✅; `xras_action_log`, SMTP and `Permission.MANAGE_XRAS` still open |
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
-| **2** — Action ingestion + audit trail | ☐ to do | **Sprint A** — see [`XRAS_ACTION_INGESTION.md`](XRAS_ACTION_INGESTION.md) |
-| **3** — Handlers | ☐ to do | **Sprint A**, same handoff — Extension → Supplement → Adjust → Update → New; Transfer to manual fallback |
+| **2** — Action ingestion + audit trail | **partly done** | `xras_action_log` + `XrasActionSchema` + `POST /actions` in **capture mode** shipped; see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) |
+| **3** — Handlers | ☐ to do | **Sprint A** — Extension → Supplement → Adjust → Update → New; Transfer to manual fallback. Every type currently parks as `manual` |
 | **4** — XRAS as the 4th Allocations tab | ☐ to do | **Sprint B**. Flask-Admin view is the free stopgap |
 | **5** — Parity and cutover | **partly done** | `--api xras` harness ✅; deployed-port run and the staged cutover still open |
 
@@ -417,8 +417,21 @@ grants[]    : fundingAgency grantNumber programOfficerName programOfficerEmail p
 `2.0.3:src/test/resources/xras/rest/request/createActionGood.json` (3,593 B). The two JSON *schema*
 files under `src/main/resources/json/xras/` reference a Java package that no longer exists,
 `Action.json` is missing `grants` entirely and models `fos[]` with two fields — **they are not
-contract.** Richer real payloads exist only as `XRAS_post_action.json` attachments in the
-`hdt@ucar.edu` / `sweg-notify@ucar.edu` mailboxes; legacy emails the raw body on every action.
+contract.**
+
+Real payloads exist **only** as `XRAS_post_action.json` attachments in `hdt@ucar.edu`, which is
+the sole value of `xras.actionpost.recipients` (`2.0.3:app/env/sam.complete.properties:29`).
+`sweg-notify@ucar.edu` does **not** hold them: it is `sam.errormail.to`, the logback
+`SMTPAppender` (`app/env/logback.xml:6-14`), which mails buffered log *events* — stack traces,
+no attachment. And `actionJson` is never logged at any level, so no log-level change recovers a
+body either. Both the success and the failure mail carry the attachment
+(`EmailingActionPostService.sendSuccessEmail` / `sendErrorEmail`), so hdt holds ~108 successes
+plus 67 failures.
+
+**Four real payloads have since been harvested** (New and Extension, one success and one failure
+each) and live scrubbed in `tests/fixtures/xras/actions/`. They correct roughly twenty points of
+the shape inferred from the POJOs — see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) § *Track 0*, which
+is authoritative, and `tests/unit/test_xras_actions.py`, which enforces it.
 
 ### 2.5 Status codes
 
@@ -981,9 +994,11 @@ NRIT P2-63.
 
 ### Phase 2 — Action ingestion + audit trail ☐
 
-> **Sprint A.** The executable plan — DDL, how the new table reaches dev *and* CI without
-> regenerating the LFS snapshot, the schema base-class trap, and the running order — is in
-> [`XRAS_ACTION_INGESTION.md`](XRAS_ACTION_INGESTION.md). What follows is the contract summary.
+> **Sprint A.** The as-built record — the measured wire contract, the DDL, how the new table
+> reaches dev *and* CI without regenerating the LFS snapshot, and the capture-first running
+> order — is in [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md). The original handoff is retired to
+> [`implemented/XRAS_ACTION_INGESTION.md`](implemented/XRAS_ACTION_INGESTION.md). What follows
+> is the contract summary.
 
 1. **`xras_action_log`**: `id`, `received_time`, `remote_actor`, `action_type`, `request_number`,
    `raw_payload`, `status` (`processed|manual|failed|replayed`), `error_messages`, `projcode_result`,
@@ -999,9 +1014,10 @@ NRIT P2-63.
 
 ### Phase 3 — Handlers, in production-frequency order ☐
 
-> **Sprint A**, same handoff — [`XRAS_ACTION_INGESTION.md`](XRAS_ACTION_INGESTION.md), which
-> orders these easy-path-first (Extension → Supplement → Adjust → Update → **New last**) so the
-> pipeline is proven before the 30%-success path is attempted.
+> **Sprint A** — [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) orders these easy-path-first
+> (Extension → Supplement → Adjust → Update → **New last**) so the pipeline is proven before the
+> 30%-success path is attempted. Note the four harvested payloads now cover **New and Extension
+> at both outcomes**, so those two are unblocked; Supplement and Update have zero samples.
 
 All inside `management_transaction`; every allocation mutation through `log_allocation_transaction`.
 
@@ -1096,11 +1112,18 @@ three-module domain pattern in `src/cli/README.md:137-168`.
 
 ### Phase 5 — Parity and cutover
 
-1. ☐ **Harvest real payloads** from the `hdt@ucar.edu` mailbox before writing Phase 3 handlers. It is
-   the cheapest de-risking available, and the only way to settle three open questions: the `roleType`
-   carried by stale placeholder entries, whether `isReconciled`/`isAccountToBeCreated` are populated
-   in practice, and the actual `beginDate`/`endDate` format — legacy compares them with lexicographic
-   `String.compareTo`, correct **only** for zero-padded ISO-8601.
+1. ⚠️ **Harvest real payloads** from the `hdt@ucar.edu` mailbox (**not** `sweg-notify`, see §2.4).
+   Four are in hand — New and Extension, one success and one failure each — scrubbed into
+   `tests/fixtures/xras/actions/`. All three open questions are **closed**: the `roleType` on stale
+   placeholder entries is `'PI'`/`'User'` (full vocabulary `'PI'` / `'Allocation Manager'` /
+   `'User'`, space separated, and *not* the `Pi`/`CoPi`/`AllocationManager` keys of endpoint #5);
+   `isReconciled` is always `true` — including for the very identity SAM cannot find, so it must
+   stay inert — and `isAccountToBeCreated` always `false`; dates are zero-padded ISO-8601
+   **date-only**, so lexicographic `String.compareTo` is safe.
+
+   Still open, and the reason this is ⚠️ rather than ✅: **Supplement (15% of traffic) and Update
+   have zero samples**, and no co-PI has appeared, so its spelling is unknown. One bulk forward
+   from hdt closes all three — ask for successes as well as failures.
 
 2. ✅ **GET parity harness — `--api xras`.** `XrasClient` in `clients.py` (base-URL parameterised, so
    the same class serves both stacks), `compare_xras` in `comparators.py`, plus the import block, a

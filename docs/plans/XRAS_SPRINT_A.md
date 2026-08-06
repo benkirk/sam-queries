@@ -2,7 +2,8 @@
 
 ## Context
 
-`docs/plans/XRAS_ACTION_INGESTION.md` gates two deliverables — `XrasActionSchema` (seven nested
+`docs/plans/implemented/XRAS_ACTION_INGESTION.md` (the original handoff, since retired)
+gated two deliverables — `XrasActionSchema` (seven nested
 schemas) and the New handler (21% of posts, 30% success) — on harvesting real
 `XRAS_post_action.json` payloads, and tells you to pull them from `hdt@ucar.edu` /
 `sweg-notify@ucar.edu`. Today's forwarded "mnemonic code" errors turned out to be logger digests
@@ -182,17 +183,17 @@ Observed value space across the four, for anyone writing extractor tests:
 The false mail-path premise and the contract errors above are load-bearing for anyone else
 picking this up.
 
-- `docs/plans/XRAS_ACTION_INGESTION.md` §*Day one* item 1 — rewrite around the corrected mail
+- `docs/plans/XRAS_ACTION_INGESTION.md` §*Day one* item 1 — corrected, then **retired** to
+  `docs/plans/implemented/`. Rewritten around the corrected mail
   path, and replace "pull them" with the Track 3 ask. Fold corrections 1–19 into §*The schema*
   and §*The handlers*.
 - `docs/plans/XRAS_REIMPLEMENTATION.md` — fix the `hdt / sweg-notify` phrasing at `:421` (origin
   of the error); update §2.4 with corrections 5–11; add the `opportunityQA` / `requestGrantType` /
   `resourceQA` unknown-field list; split the §1.3 end-date row per correction 18; mark the three
   §3.5 / Phase 5.1 open questions **closed** per 1–4.
-- Note `~/codes/sam/src/main/resources/json/xras/Action.json` (the `jsonschema2pojo` source) as a
-  **stale** artifact — it targets the dead `presentation.rest.xras` package and lacks
-  `person` / `grants` / `requestShortTitle` / `isReconciled`. Evidence, not contract; the real
-  payloads supersede it.
+- ~~Note `json/xras/Action.json` as a stale artifact the doc misses.~~ **Retracted** — the doc
+  already covers it at `XRAS_REIMPLEMENTATION.md:415-420`, correctly calling the two
+  `jsonschema2pojo` sources "not contract". Nothing to add.
 
 ---
 
@@ -382,7 +383,7 @@ audit logging — it is six lines of commit/rollback; audit rows exist because m
 
 | Path | Change |
 |---|---|
-| `docs/plans/XRAS_ACTION_INGESTION.md`, `docs/plans/XRAS_REIMPLEMENTATION.md` | Track 1 corrections |
+| `docs/plans/implemented/XRAS_ACTION_INGESTION.md`, `docs/plans/XRAS_REIMPLEMENTATION.md` | Track 1 corrections; the handoff is retired |
 | `containers/sam-sql-dev/initdb.d/zz-90-xras_action_log.sql`, `.../Dockerfile` | table into dev + CI |
 | `src/sam/integration/xras.py`, `src/sam/__init__.py` | `XrasActionLog` model + export |
 | `src/sam/schemas/forms/xras.py`, `forms/__init__.py` | the seven schemas |
@@ -447,7 +448,27 @@ arrangement. Nathan Tolbert is out until Mon Aug 9; the thread opened today stay
 cutover conversation. Staging needs the DDL run by hand once —
 `infrastructure/scripts/init-rds.sh:14` restores the raw `.xz` with no initdb hook.
 
-**Two things worth surfacing separately, as decisions rather than ports:**
+**Follow-up found while building this: `compose.yaml` sets no `TZ`.**
+
+`helm/values.yaml:230` sets `TZ: "America/Denver"` for the deployed pod, with a comment noting
+it matches the SAM DB server (`sam-sql.ucar.edu` runs Mountain). **`compose.yaml` sets no `TZ`
+on any service**, so every container runs UTC — verified: `datetime.now()` inside `webdev`
+returns UTC and `time.tzname` is `('UTC', 'UTC')`, and the dev MySQL container's `NOW()` equals
+`UTC_TIMESTAMP()`.
+
+Blast radius is the whole app, not this table: **123 `datetime.now()` call sites** under `src/`,
+all of which mean naive-Mountain by convention (`sam.fmt.utcnow_naive` is the separate,
+correct UTC path for `system_status`). Consequences are a 6-hour offset in anything date-windowed
+— "today" flips six hours early — and a **dev/CI-vs-prod divergence**, since CI runs pytest
+inside the compose `webapp` container while prod runs Mountain.
+
+It is deliberately **not** fixed here: it touches every service, it is unrelated to XRAS, and
+correcting it could move date-sensitive expectations across the suite. That is its own change with
+its own full-suite run. What this sprint did instead was make `received_time` and `processed_time`
+come from the *same* clock, so they cannot invert regardless of the container's timezone
+(`test_both_timestamps_come_from_the_same_clock` is the guard).
+
+**Two more things worth surfacing separately, as decisions rather than ports:**
 
 - `opportunityQA` carries the End User Agreement acknowledgement (both New payloads answer "Click
   here to acknowledge and agree to the End User Agreement terms."), present on New actions and

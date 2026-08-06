@@ -29,31 +29,47 @@ only replay mechanism is pasting JSON into a form.
 Start both before writing any code. Neither blocks the other, and neither blocks the rest of
 the sprint.
 
-### 1. Harvest real payloads
+### 1. Harvest real payloads — ✅ DONE (4 payloads), and the mailbox premise was wrong
 
-**The repo contains exactly one sample action** —
-`2.0.3:src/test/resources/xras/rest/request/createActionGood.json`, 3,593 B, an `actionType:
-"New"` with 3 resources, 3 roles, 1 fos, 2 panels, 1 grant. Everything else about the payload
-shape is inferred from the Java POJOs.
+**Superseded by [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) § *Track 0*, which is authoritative for
+the measured wire contract.** Kept here because the correction matters more than the
+original instruction.
 
-Legacy emails the raw body on **every** action, so `hdt@ucar.edu` / `sweg-notify@ucar.edu`
-hold roughly 175 real payloads from the last 30 days as `XRAS_post_action.json` attachments.
-Pull them.
+**What this section used to say** was: legacy emails the raw body on every action, so
+`hdt@ucar.edu` / `sweg-notify@ucar.edu` hold ~175 payloads as `XRAS_post_action.json`
+attachments — pull them. **Half of that is false**, and the false half is the one anybody
+would try first:
 
-This gates two deliverables, which is why it is first:
+| Claim | Reality |
+|---|---|
+| `hdt` **and** `sweg-notify` hold the payloads | `xras.actionpost.recipients=hdt@ucar.edu` (`2.0.3:app/env/sam.complete.properties:29`) — **hdt only**. `sweg-notify` is `sam.errormail.to`, the logback `SMTPAppender` (`app/env/logback.xml:6-14`, subject `SAM logger: %logger`), which mails a buffered dump of log *events*: stack traces, no attachment, no `requestNumber`. |
+| — | **`actionJson` is never logged, at any level.** `ActionServiceController.handleAction` takes it as `@RequestBody String` and passes it straight to `EmailingActionPostService`, which only ever wraps it in an `EmailAttachment`. There is **no log-level flip that recovers a payload** — `XrasActionLogger` at DEBUG yields the rendered Velocity body, which carries only actionType / requestNumber / requestTitle / requestAbstract / the date pair. |
+| — | `XRASPostBean` (the operator paste-to-replay tool) persists nothing. |
+| — | **Success emails carry the attachment too** (`sendSuccessEmail` → `sendEmail(..., actionJson)`), so hdt holds the ~108 successes as well as the 67 failures. The successes are the only source of Extension/Supplement/Update payloads — ask for both. |
 
-- **`XrasActionSchema`** is seven nested schemas and is the single most likely thing to be
-  wrong. Validating it against real traffic beats validating it against one fixture.
-- **The New handler** is 21% of posts at a 30% success rate. Writing it against one sample is
-  how you ship the 70% failure rate again.
+**How it was actually solved:** Travis Fair (NUSD help desk) forwarded four real
+`XRAS_post_action.json` attachments from hdt — a 2×2 of New/Extension × failed/succeeded.
+They are scrubbed into `tests/fixtures/xras/actions/` by
+`scripts/xras/scrub_payload.py`, and `tests/unit/test_xras_actions.py` asserts the contract
+against them.
 
-It also settles the three open questions §3.5 and Phase 5.1 name: the `roleType` carried by
-stale ARC placeholder identities, whether `isReconciled` / `isAccountToBeCreated` are ever
-populated in practice, and the actual `beginDate` / `endDate` format — legacy compares those
-with lexicographic `String.compareTo`, which is correct **only** for zero-padded ISO-8601.
+**All three open questions are now closed** (details in `XRAS_SPRINT_A.md` § *Track 0*):
+
+- `roleType` on stale ARC placeholder identities → `'PI'` and `'User'`; the full observed
+  vocabulary is `'PI'` / `'Allocation Manager'` / `'User'`, **space separated**, and distinct
+  from the `Pi` / `CoPi` / `AllocationManager` keys used by `GET /v1/requests/role/...`.
+- `isReconciled` / `isAccountToBeCreated` → always `true` / always `false` in 9 sampled roles.
+  `isReconciled` is `true` even for the unreconciled ARC identity whose absence caused the
+  failure, so it is XRAS's reconciliation state and must stay inert.
+- `beginDate` / `endDate` format → zero-padded ISO-8601 **date-only** (`'2026-07-28'`) in every
+  date field, so legacy's lexicographic `String.compareTo` is safe.
+
+**Still gated on a bulk forward:** Supplement (15% of traffic) and Update have **zero**
+samples, and no co-PI role has appeared, so its spelling (`'Co-PI'` vs `'CoPi'`) is unknown.
 
 ⚠️ Scrub before committing anything as a fixture: real payloads carry names, emails and phone
-numbers (see `roles[].person`).
+numbers (`roles[].person`) plus grant-officer contacts (`grants[].programOfficerName/Email`,
+`piName`). Raw copies stay outside the repo.
 
 ### 2. Raise the prod DDL ticket
 
