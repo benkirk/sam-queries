@@ -179,8 +179,8 @@ from .summaries.archive_summaries import (
 )
 
 # 9. Integration and security
-# XRAS table model (actual table, not a view)
-from .integration.xras import XrasResourceRepositoryKeyResource
+# XRAS table models (actual tables, not views)
+from .integration.xras import XrasResourceRepositoryKeyResource, XrasActionLog
 
 # XRAS view models (read-only database views)
 from .integration.xras_views import (
@@ -251,7 +251,7 @@ __all__ = [
     'DiskChargeSummary', 'DiskChargeSummaryStatus',
     'ArchiveChargeSummary', 'ArchiveChargeSummaryStatus',
     # Integration
-    'XrasResourceRepositoryKeyResource',
+    'XrasResourceRepositoryKeyResource', 'XrasActionLog',
     'XrasUserView', 'XrasRoleView', 'XrasActionView',
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',
     # Security

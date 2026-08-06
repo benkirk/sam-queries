@@ -978,6 +978,50 @@ class SAMAnonymizer:
         print(f"[✓] Anonymized {count:,} {table_name} records")
         return count
 
+    def _table_exists(self, session: Session, table_name: str) -> bool:
+        """Whether *table_name* exists in the connected schema."""
+        result = session.execute(text(
+            "SELECT COUNT(*) FROM information_schema.tables "
+            "WHERE table_schema = DATABASE() AND table_name = :name"
+        ), {'name': table_name})
+        return bool(result.scalar())
+
+    def purge_xras_action_log(self, session: Session) -> int:
+        """
+        Empty xras_action_log — its raw_payload cannot be safely anonymized in place.
+
+        Each row stores a verbatim XRAS POST body, and that JSON carries real names,
+        emails, phone numbers and academic status under ``roles[].person``, plus
+        funding-agency program-officer contacts under ``grants[]``. Field-level
+        rewriting would have to parse the JSON, map every identity back through
+        ``original_username_to_user_id``, and stay correct as XRAS adds fields — and
+        the failure mode is a PII leak into a **public Git LFS blob**, because the
+        obfuscated dump is committed (see ``backups/sam-obfuscated.sql.xz``).
+
+        Deleting is both safer and free: this is an operational audit trail, not
+        reference data. Nothing in dev or CI reads historical rows — the tests that
+        exercise the table create their own (``tests/api/test_xras_access.py``), and
+        the committed real payloads live scrubbed in ``tests/fixtures/xras/actions/``.
+
+        Uses DELETE rather than TRUNCATE because the table carries a self-referential
+        FK (``replay_of_id``); TRUNCATE is refused on a table with FK constraints.
+        """
+        print("\n[*] Purging xras_action_log table...")
+
+        result = session.execute(text("SELECT COUNT(*) FROM xras_action_log"))
+        total = result.scalar()
+        print(f"  Found {total:,} audit rows (raw XRAS payloads — cannot be scrubbed in place)")
+
+        if not self.dry_run:
+            # Children first: replay rows reference the original they replay.
+            session.execute(text(
+                "DELETE FROM xras_action_log WHERE replay_of_id IS NOT NULL"))
+            session.execute(text("DELETE FROM xras_action_log"))
+            session.commit()
+
+        print(f"[✓] Purged {total:,} xras_action_log records")
+        return total
+
     def anonymize_all(self) -> Dict[str, int]:
         """
         Execute full anonymization workflow.
@@ -1028,6 +1072,18 @@ class SAMAnonymizer:
                 self.anonymize_activity_table(session, 'dav_activity', 'dav_activity_id')
                 self.anonymize_activity_table(session, 'disk_activity', 'disk_activity_id')
                 self.anonymize_activity_table(session, 'archive_activity', 'archive_activity_id')
+
+                # Tables whose contents are removed rather than rewritten.
+                print("\n" + "=" * 70)
+                print("Purging Un-anonymizable Tables")
+                print("=" * 70)
+                # Tolerate absence: xras_action_log does not exist in production yet
+                # (it needs a DBA to run the DDL — the prod writer holds no DDL grant),
+                # and a bootstrap against a source without it must not fail here.
+                if self._table_exists(session, 'xras_action_log'):
+                    self.purge_xras_action_log(session)
+                else:
+                    print("\n[!] xras_action_log not present in source — skipping")
 
                 if not self.dry_run:
                     print("\n[*] Committing all changes...")
