@@ -38,6 +38,7 @@ from webapp.api.v1.fstree_access import bp as api_fstree_access_bp
 from webapp.api.v1.queue import bp as api_queue_bp
 from webapp.api.v1.wallclock_exemption import bp as api_wallclock_exemption_bp
 from webapp.api.v1.admin import bp as api_admin_bp
+from webapp.api.xras import bp as api_xras_bp
 from webapp.config import get_webapp_config
 from webapp.logging_config import configure_logging
 
@@ -415,6 +416,9 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(api_queue_bp, url_prefix='/api/v1/queue')
     app.register_blueprint(api_wallclock_exemption_bp, url_prefix='/api/v1/wallclock_exemption')
     app.register_blueprint(api_admin_bp, url_prefix='/api/v1/admin')
+    # XRAS is the one API surface not under /api/v1 — the prefix is legacy's,
+    # mapped by web.xml to a dedicated DispatcherServlet at /api/xras/*.
+    app.register_blueprint(api_xras_bp, url_prefix='/api/xras/v1')
 
     # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
     import sam.fmt as fmt
