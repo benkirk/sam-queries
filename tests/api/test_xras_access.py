@@ -458,6 +458,23 @@ class TestRequestOrdering:
             if other is not first:
                 assert other['requestType'] == 'Renewal'
 
+    def test_repeated_calls_are_byte_identical(self, xras_client):
+        """Every ORDER BY on this surface must be a TOTAL order.
+
+        `xras_allocation`'s `ORDER BY al.start_date DESC` is not — one
+        production project has 11 allocations sharing a start_date — so without
+        a primary-key tiebreaker MySQL may return tied rows in any order and two
+        identical requests produce different bytes. That is a contract bug in
+        its own right, and it is how this was caught: CI failed on the
+        case-insensitivity check below while the same run passed locally.
+        """
+        code = _first_projcode(xras_client)
+        for path in (f'/api/xras/v1/requests/request/{code}',
+                     '/api/xras/v1/requests/user/benkirk'):
+            bodies = {xras_client.get(path, headers=_auth()).data
+                      for _ in range(6)}
+            assert len(bodies) == 1, f'{path} is not byte-stable across calls'
+
     def test_masters_are_sorted_by_projcode(self, xras_client):
         """Deliberate divergence: legacy emits Java HashMap bucket order."""
         body = json.loads(xras_client.get(

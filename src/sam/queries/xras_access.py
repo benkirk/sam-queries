@@ -240,6 +240,20 @@ def get_person(session: Session, username: str) -> Optional[Dict[str, Any]]:
 # The ORDER BYs below are not cosmetic — they are the array order of the
 # response, and `ORDER BY end_date` additionally decides which request is
 # labelled "New". See `docs/plans/XRAS_REIMPLEMENTATION.md` section 2.3.
+#
+# Each carries a primary-key tiebreaker that legacy does not have. Legacy's
+# `ORDER BY al.start_date DESC` is not a total order — one production project
+# has 11 allocations sharing a start_date — so MySQL is free to return tied
+# rows in any order, and *did*: two identical requests in CI produced different
+# bytes, which is what caught this. A tiebreaker makes our own output
+# reproducible, which an API contract requires regardless of parity.
+#
+# It does not make us match legacy on tied rows, because legacy's order there
+# is not derived from the data at all. Measured against production for
+# SCSG0001: of 15 request groups, the 6 with no tie match our order exactly,
+# and the 9 with a tie are arbitrary on legacy's side (neither ascending nor
+# descending allocation_id reproduces them). Same category as the `masters[]`
+# HashMap ordering, one level down — recorded as a divergence in section 7.
 # ---------------------------------------------------------------------------
 
 #: `xras_role` is a UNION ALL over the two role columns on `project`. Note it
@@ -313,7 +327,7 @@ _SQL_ALLOCATIONS = text("""
             GROUP BY al2.allocation_id, al2.amount
       ) hpc ON al.allocation_id = hpc.allocation_id
      WHERE p.projcode IN :projcodes
-     ORDER BY al.start_date DESC
+     ORDER BY al.start_date DESC, al.allocation_id
 """).bindparams(bindparam('projcodes', expanding=True))
 
 #: `dateApplied` order is what makes `orderApplied` (1..n) meaningful. The CASE
@@ -339,7 +353,7 @@ _SQL_ACTIONS = text("""
       JOIN allocation_type alty ON p.allocation_type_id = alty.allocation_type_id
       JOIN allocation_transaction altr ON altr.allocation_id = al.allocation_id
      WHERE p.projcode IN :projcodes
-     ORDER BY altr.creation_time
+     ORDER BY altr.creation_time, altr.allocation_transaction_id
 """).bindparams(bindparam('projcodes', expanding=True))
 
 #: `requestDateRange` — the whole-project span, collapsing the per-end-date

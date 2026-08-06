@@ -1135,18 +1135,50 @@ def _byte_check(name: str, legacy: bytes, new: bytes) -> CheckResult:
     )
 
 
+def _canonicalise_master(master: dict) -> dict:
+    """Sort the one array whose legacy order is not derived from the data.
+
+    `allocations[]` follows `xras_allocation`'s `ORDER BY al.start_date DESC`,
+    which is **not a total order** — one production project has 11 allocations
+    sharing a start_date. MySQL returns tied rows in whatever order it likes, so
+    legacy's own output is arbitrary there (measured against production for
+    SCSG0001: the 6 request groups with no tie match a deterministic order
+    exactly; the 9 with a tie match neither ascending nor descending
+    allocation_id). Our port adds a primary-key tiebreaker so its output is at
+    least reproducible.
+
+    Sorting both sides by the serialised allocation keeps the *content* check
+    exact — every field, value and key order still has to match — while
+    ignoring an order neither side can be held to. Same reasoning as the
+    `masters[]` relaxation, one level down.
+    """
+    import json
+
+    out = dict(master)
+    out['requests'] = [
+        {**request,
+         'allocations': sorted(
+             request.get('allocations', []),
+             key=lambda a: json.dumps(a, separators=(',', ':'),
+                                      ensure_ascii=False))}
+        for request in master.get('requests', [])
+    ]
+    return out
+
+
 def _masters_check(name: str, legacy: bytes, new: bytes) -> CheckResult:
     """Compare an `AccountingRequestResponse` master-by-master.
 
-    Byte-exact *within* each master; the master sequence itself is compared as
-    a set, because we sort where legacy hashes.
+    Byte-exact *within* each master, except for the two array orders legacy
+    does not derive from the data: the master sequence itself (Java `HashMap`
+    bucket order) and `allocations[]` under a `start_date` tie.
     """
     import json
 
     try:
-        lm = {m['requestNumber']: m
+        lm = {m['requestNumber']: _canonicalise_master(m)
               for m in json.loads(legacy)['result']['masters']}
-        nm = {m['requestNumber']: m
+        nm = {m['requestNumber']: _canonicalise_master(m)
               for m in json.loads(new)['result']['masters']}
     except (ValueError, KeyError, TypeError) as exc:
         return CheckResult(name=name, passed=False,

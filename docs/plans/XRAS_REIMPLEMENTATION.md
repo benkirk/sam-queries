@@ -1271,6 +1271,19 @@ three-module domain pattern in `src/cli/README.md:137-168`.
   | 3 | `masters[]` in Java **`HashMap` bucket order** | sorted by projcode | See below |
   | 4 | roster order *incidental* (no `ORDER BY`) | explicit `ORDER BY u.user_id` | Reproduces observed output **and** makes it deterministic — strictly better than legacy |
   | 5 | unmapped path under `/api/xras/v1` → **401** (41 B) unauthenticated, **404** (431 B Tomcat HTML) authenticated | Flask's own 404 (207 B HTML) in both cases | Legacy 401s because the filter and security chain run *before* routing. Flask routes first, so a blueprint `errorhandler(404)` never sees a routing miss. Reproducing it means a catch-all route that turns every typo into a 401 — worse to debug, for a case no client exercises. Measured 2026-08-06. |
+  | 6 | `allocations[]` order under a **`start_date` tie** is arbitrary | primary-key tiebreaker, so our output is reproducible | See below |
+
+  On #6: `xras_allocation`'s `ORDER BY al.start_date DESC` is **not a total
+  order** — SCSG0001 alone has 11 allocations sharing a start date — so MySQL
+  may return tied rows in any order. **Legacy's own responses are therefore not
+  guaranteed byte-stable**, and ours were not either until a primary-key
+  tiebreaker was added; the symptom was two identical requests returning
+  different bytes in CI. Measured against production for SCSG0001: of 15
+  request groups, the **6 with no tie match our deterministic order exactly**,
+  and the 9 with a tie match neither ascending nor descending `allocation_id` —
+  legacy's order there is not derived from the data at all. So the parity
+  comparator sorts `allocations[]` on both sides before comparing, exactly as
+  it does for `masters[]`; content is still compared byte-exact.
 
   On #3: the order was reverse-engineered and **is** reproducible — emulating
   `String.hashCode()` plus `HashMap`'s spread-and-bucket walk matched all three
