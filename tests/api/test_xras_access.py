@@ -232,7 +232,7 @@ class TestGetPerson:
         keys = list(json.loads(self._get(xras_client, 'benkirk').data))
         assert keys == [k for k in canonical if k in keys]
 
-    def test_null_fields_are_omitted_not_emitted(self, xras_client):
+    def test_null_fields_are_omitted_rather_than_emitted(self, xras_client):
         """PersonDTO carries @JsonSerialize(NON_NULL)."""
         raw = self._get(xras_client, 'benkirk').data.decode()
         assert 'null' not in raw
@@ -281,7 +281,7 @@ class TestGetRoster:
             keys = list(record)
             assert keys == [k for k in canonical if k in keys]
 
-    def test_no_raw_internal_org_strings_survive(self, xras_client):
+    def test_no_raw_internal_org_strings_survive_the_fixup(self, xras_client):
         """`fixInternalOrg` is applied unconditionally — production emits zero
         `UCAR/NCAR:` strings."""
         raw = xras_client.get('/api/xras/v1/people', headers=_auth()).data
@@ -329,7 +329,7 @@ class TestRequestsEnvelope:
             b'{"message":null,"result":{"projectIdLabel":null,"masters":[]}}')
         assert len(resp.data) == 62
 
-    def test_project_id_label_is_emitted_as_null(self, xras_client):
+    def test_project_id_label_is_emitted_as_an_explicit_null(self, xras_client):
         """`AccountingRequestResponse` carries no NON_NULL, and nothing in
         legacy ever assigns this field."""
         body = json.loads(xras_client.get(
@@ -482,7 +482,7 @@ class TestRequestsByRole:
             '/api/xras/v1/requests/role/PI/benkirk', headers=_auth())
         assert lower.data == upper.data
 
-    def test_unknown_role_is_400_not_legacys_500(self, xras_client):
+    def test_unknown_role_is_400_rather_than_legacys_500(self, xras_client):
         """Deliberate divergence: legacy's IllegalArgumentException lands in the
         catch-all and produces a 500 carrying only an opaque timestamp."""
         resp = xras_client.get(
@@ -490,7 +490,7 @@ class TestRequestsByRole:
         assert resp.status_code == 400
         assert json.loads(resp.data)['message'] == 'Invalid role bogus'
 
-    def test_role_is_checked_before_the_username(self, xras_client):
+    def test_role_is_validated_before_the_username(self, xras_client):
         """Matching legacy's ordering — a bad role wins over a bad user."""
         resp = xras_client.get(
             '/api/xras/v1/requests/role/bogus/nosuchuser1', headers=_auth())
