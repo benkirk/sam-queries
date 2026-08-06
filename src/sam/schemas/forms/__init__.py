@@ -233,6 +233,17 @@ from .operational import (
     AdminCreateWallclockExemptionForm,
     EditWallclockExemptionForm,
 )
+# XRAS action ingest — plain marshmallow, deliberately NOT HtmxFormSchema
+# (JSON body with five nested arrays; see the module docstring).
+from .xras import (
+    XrasActionSchema,
+    XrasActionResourceSchema,
+    XrasActionRoleSchema,
+    XrasActionPersonSchema,
+    XrasActionFosSchema,
+    XrasActionPanelSchema,
+    XrasActionGrantSchema,
+)
 
 __all__ = [
     'HtmxFormSchema',
@@ -309,4 +320,12 @@ __all__ = [
     'CreateWallclockExemptionForm',
     'AdminCreateWallclockExemptionForm',
     'EditWallclockExemptionForm',
+    # XRAS action ingest
+    'XrasActionSchema',
+    'XrasActionResourceSchema',
+    'XrasActionRoleSchema',
+    'XrasActionPersonSchema',
+    'XrasActionFosSchema',
+    'XrasActionPanelSchema',
+    'XrasActionGrantSchema',
 ]
