@@ -21,6 +21,13 @@ a hard 30 days with no archives), read-only queries against the production datab
 (`sam-sql.ucar.edu`), live HTTP probes of the running endpoint, and the deployed source at tag
 `2.0.3`.
 
+**Which legacy checkout to read.** `~/codes/sam` is currently on `project_structure_AI_docs`
+(`git describe` → `2.0.3-16-g8c07316f9`). **No checkout switch is needed:**
+`git diff 2.0.3..HEAD` over `src/main/java/edu/ucar/cisl/sam/xras`,
+`src/main/resources/spring` and `src/main/resources/hibernate/xras` is **empty** — the XRAS code,
+security config and named queries in the working tree are byte-identical to the deployed tag. The
+16 commits since `2.0.3` are documentation and investigation only.
+
 ---
 
 ## 1. What production actually does
@@ -178,9 +185,20 @@ Content-Length: 41
 {\n  "message" : null,\n  "result" : null\n}
 ```
 
-Note the **space before the colon** (Jackson's `DefaultPrettyPrinter`). This body is returned for
-**unmapped paths too** (`/api/xras/v1/test_auth` → 401, not 404), because the filter and security
-chain run before routing.
+Note the **space before the colon** (Jackson's `DefaultPrettyPrinter`) — and note that this is the
+*only* pretty-printed body on the surface; every 200 and the `/people/{u}` 404 are compact.
+
+This body is returned for **unmapped paths too** — but only while unauthenticated. Measured
+2026-08-05 at `/api/xras/v1/test_auth`:
+
+| Credentials | Response |
+|---|---|
+| none, or wrong | **401**, the 41 B JSON above — the filter and security chain run before routing |
+| valid `ROLE_XRAS` | **404, 431 B of Tomcat HTML** — auth succeeds, then routing fails, and `web.xml` declares no `<error-page>` |
+
+So the same 431-byte Tomcat error page that §2.2 describes for the 403 case also serves 404s. An
+earlier draft stated flatly that unmapped paths return "401, not 404"; that holds only for the
+unauthenticated case, which is the only one the access logs could show.
 
 **403** — valid credentials without `ROLE_XRAS` produce **431 bytes of Tomcat HTML**, not JSON:
 Spring's default `AccessDeniedHandlerImpl` calls `sendError(403)` and `web.xml` declares no
@@ -199,9 +217,20 @@ the residual explained by `IdentityServiceImpl.fixInternalOrg()` shortening `UCA
 strings); nulls-emitted predicts 5,219,474 B, off by 36%.
 
 **`GET /people/{u}` 404**: `{"message":"username=<u> not found","result":null}`, and its length is a
-closed form — `bytes = len(username) + 58`, exact across 981 production samples.
+closed form — **`bytes = len(username) + 47`**.
 
-**`GET /requests/request/{n}`** → `ResponseWrapper{message: null, result: {...}}`:
+> ⚠️ **Corrected 2026-08-05.** An earlier draft said `+ 58`, inferred from 981 access-log samples.
+> Measured directly against production with the `samuel` credential, the constant is **47**: exact
+> at username lengths 2, 5, 11, 15 and 25 (49, 52, 58, 62, 72 bytes). Counting the literal
+> `{"message":"username=` + `<u>` + ` not found","result":null}` gives 21 + n + 26 = n + 47, which
+> agrees. The `+58` figure is wrong by 11 and must not be used as a parity assertion.
+
+**`GET /requests/request/{n}`** → `ResponseWrapper{message: null, result: {...}}`. Note that
+`{requestNumber}` **is the projcode** — matching `projcode = trimToNull(requestNumber)` on the
+POST side (§2.4). The `xras_request` view has no `requestNumber` column at all; its identifying
+column is `projectId varchar(30)`, and `requestsByProjectCode`
+(`2.0.3:src/main/resources/hibernate/xras/namedQuery.xml:89`) keys on it. Do not build a separate
+request-number lookup.
 
 ```
 projectIdLabel : null
@@ -209,24 +238,48 @@ masters[]      : { requestNumber, requests[] }        # an ARRAY — getMasters(
   requests[]   : { requestType,                        # "New" for earliest begin per project, else "Renewal"
                    requestBeginDate, requestEndDate,   # "yyyy-MM-dd" strings
                    allocationType, projectTitle, projectId,
-                   xrasActionIds,                      # never populated → null
+                   xrasActionIds,                      # ALWAYS ABSENT — never emitted (see below)
                    fos[]         : { xrasFosTypeId, isPrimary: true },
-                   allocations[] : { actionType,       # never populated → null
+                   allocations[] : { actionType,       # ALWAYS ABSENT — never emitted
                                      allocationBeginDate, allocationEndDate,
                                      allocatedAmount,  # STRING, "%.1f"
-                                     remainingAmount,  # STRING, "%.1f"; HPC-only, omitted when null
-                                     resourceRepositoryKey,
+                                     remainingAmount,  # STRING, "%.1f"; omitted when null — 106/246
+                                     resourceRepositoryKey,  # INT; omitted when null — 174/246
                                      actions[] : { orderApplied,   # 1-based, assignment order
                                                    actionType, amount,   # STRING "%.1f"
                                                    endDate, dateApplied } } }
 ```
 
-Unknown request number → **200 with empty `masters`**. `RequestFactory` throws `IllegalStateException`
-(→ 500) when the `allocationIds` CSV on `xras_request` fails to reconcile against
-`xras_allocation`/`xras_action`, and `RequestDTO.getXrasFosTypeId()` NPEs on a null column.
+**Null omission applies to this response too, not just `PersonDTO`** — measured 2026-08-05 across
+65 request objects and 246 allocation objects from five live responses:
+
+| Field | Present | Consequence |
+|---|---:|---|
+| `xrasActionIds` | **0 / 65** | never emit the key. A Python impl writing `"xrasActionIds": null` breaks byte parity on every response |
+| `allocations[].actionType` | **0 / 246** | same |
+| `resourceRepositoryKey` | **174 / 246** (71%) | ⚠️ an earlier draft listed this as always-present. It is omitted whenever null — 29% of real allocations |
+| `remainingAmount` | **106 / 246** (43%) | as documented: HPC-only, omitted when null |
+| every other field above | 100% | always emitted |
+
+Unknown request number → **200 with empty `masters`** — confirmed live:
+`{"message":null,"result":{"projectIdLabel":null,"masters":[]}}`, 62 B. `RequestFactory` throws
+`IllegalStateException` (→ 500) when the `allocationIds` CSV on `xras_request` fails to reconcile
+against `xras_allocation`/`xras_action`, and `RequestDTO.getXrasFosTypeId()` NPEs on a null column.
+
+`requestType` **ties are broken by iteration order, not by date.** `UALB0006` carries three
+requests sharing the earliest `requestBeginDate` (2014-10-16) and exactly one is labelled `New`;
+the other two are `Renewal`. A port that recomputes "earliest wins" over a differently-ordered
+result set will label a different row `New`. Match legacy's ordering, or the diff is silent.
 
 **Dates are `yyyy-MM-dd` strings everywhere except `dates/requests`**, which returns
-`java.util.Date` with no date module configured ⇒ **epoch-millis integers**. Preserve the quirk.
+`java.util.Date` with no date module configured ⇒ **epoch-millis integers**. Preserve the quirk —
+**confirmed live 2026-08-05**, and the element key is the projcode under the name `requestNumber`:
+
+```json
+{"message":null,"result":[{"requestNumber":"UALB0006",
+                           "requestBeginDate":1413439200000,
+                           "requestEndDate":1853906400000}]}
+```
 
 ### 2.4 Inbound `POST /actions` payload
 
@@ -441,6 +494,11 @@ Measured server-side against production with `SHOW PROFILES`:
   `GROUP BY p.projcode` is functionally determining via the `project_projcode_uk` unique index. The
   sole offender is **`ORDER BY al.end_date`**, which names a different expression from the
   `GROUP BY`'s `cast(al.end_date as date)`. Removing it returns all 9,489 rows under strict mode.
+  **Reproduced on the local dev DB**, whose default `sql_mode` *does* include `ONLY_FULL_GROUP_BY`:
+  a bare `SELECT ... FROM xras_request GROUP BY projectId` errors, and the same statement after
+  `SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION'`
+  returns 9,489 rows. So this is not a latent prod-only risk — it fails today, locally, for anyone
+  who touches the view.
   Fixing the view also un-skips `tests/integration/test_views.py:95-111`, whose bare
   `except Exception` currently masks the failure (NRIT P2-63).
 
@@ -459,16 +517,55 @@ recorded, so we have the byte count of every response legacy served in the windo
 | Oracle | Size | Strength |
 |---|---|---|
 | `GET /people/{u}` 200s | **385 usernames with a single stable byte count** over 30 days (29 more have two — their DB rows changed mid-window) | strong: any null-omission, org-fixup or missing-field bug shifts the count |
-| `GET /people/{u}` 404s | **563 distinct usernames**; size is the closed form `len(username) + 58`, exact across 981 samples | total; assert the formula, no fixture needed |
+| `GET /people/{u}` 404s | **563 distinct usernames**; size is the closed form **`len(username) + 47`** (§2.3 — *not* `+58`, which this table previously carried) | total; assert the formula, no fixture needed |
 | `GET /people` roster | **30 nightly points**, 3,807,879 → 3,839,790 B, rising ~1.3 KB/day | strong single-number regression check |
 | `GET /requests/request/{n}` | 1 point, ever | negligible |
 | `requests/user`, `requests/role`, `dates/requests` | **0** points | none |
 
 Corpus: 3,268 request records, 413 distinct 200-path usernames, 563 404-path usernames.
 
-**Credentialed oracle.** **Four of the six GET endpoints have no production oracle at all** — the
+**Credentialed oracle.** Four of the six GET endpoints had no production oracle at all — the
 decisive reason to provision a credential. Byte-exact comparison is also the only way to catch a
 length-preserving bug: swapped `firstName`/`lastName`, wrong field order, `"%.1f"` drift.
+
+**Credential provisioned 2026-08-05** — `samuel`, `api_credentials_id = 14`, `ROLE_XRAS`, enabled,
+`$2a$12$` (§Phase 0.4). All six GET endpoints have now been observed. First-pass measurements,
+`https://sam.ucar.edu`, from a workstation (so timings include network RTT):
+
+| Endpoint | Status | Bytes | Elapsed |
+|---|---:|---:|---:|
+| `/people/{u}` (`benkirk`) | 200 | 170 | 0.50 s |
+| `/people/{u}` (miss) | 404 | `len(u) + 47` | 0.45 s |
+| `/people` roster | 200 | **3,837,666** | 2.03 s |
+| `/requests/request/{n}` | 200 | 899 – 8,768 | **6.1 – 7.3 s** |
+| `/requests/request/` unknown | 200 | 62 | 0.35 s |
+| `/requests/user/{u}` | 200 | 89,863 | 6.13 s |
+| `/requests/role/pi/{u}` | 200 | 89,049 | 6.21 s |
+| `/requests/role/co_pi/{u}` | 200 | 62 (empty) | 0.40 s |
+| `/requests/role/allocation_manager/{u}` | 200 | 31,110 | 6.10 s |
+| `/requests/role/{bogus}/{u}` | **500** | 101 | 0.39 s |
+| `/dates/requests/{n}` | 200 | 120 / 213 | 0.4 s |
+
+Confirmed against the plan as written: epoch-millis on `dates/requests`; `co_pi` empty; unknown
+request number → 200 with empty `masters`; unrecognised role → 500 carrying exactly the opaque
+`Unhandled SAM exception … (timestamp 1785978747040)` body that §2.5 replaces with a 422;
+`"%.1f"` amount strings; `requests/user` and `requests/role` share the `requests/request` envelope.
+
+Corrected by measurement: the 404 constant (§2.3), the omitted `xrasActionIds` /
+`actionType` / `resourceRepositoryKey` keys (§2.3), and unmapped-path behaviour when
+authenticated (§2.2).
+
+**The `requests/*` family costs 6–7 s per call** — direct confirmation of §4.2's finding that
+`xras_allocation` aggregates `hpc_charge_summary` across all allocations before filtering. Any
+port that reads those views naively inherits this; the ~1 call/month traffic is the only reason
+it has never mattered.
+
+**Roster corroboration** (28,259 people, one call): `organization` present on **21.0%** — the exact
+complement of §4.1's measured 79% null rate. Field order is a strict subsequence of
+`username, firstName, middleName, lastName, organization, academicStatus, phone, email` in
+**all 28,259** records, across 19 distinct observed key orders — so a fixed field order plus
+null-dropping reproduces the bytes. 1,753 rows carry the `UCAR/NCAR:` fixup and **zero** raw
+`UCAR/NCAR:` strings survive in the output, so `fixInternalOrg()` is applied unconditionally.
 
 Provisioning facts, verified against production:
 
@@ -479,11 +576,30 @@ Provisioning facts, verified against production:
   **`ROLE_XRAS` is `role_id = 10`.**
 - **No credential caching.** `<security:jdbc-user-service>` declares no `cache-ref` and no
   `user-cache`/`UserCache` appears in any security config, so `JdbcDaoImpl` uses `NullUserCache`:
-  **a new row is live on the very next request, no Tomcat restart.**
-- `scripts/gen_api_key.py` mints bcrypt hashes but emits the library default **`$2b$`**. Every
-  existing row is `$2a$`, and older Spring Security `BCrypt` rejects `$2b$` — add a `--prefix 2a`
-  option (`bcrypt.gensalt(rounds=12, prefix=b'2a')`, verified round-trip with bcrypt 5.0.0 in the
-  repo's conda env).
+  **a new row is live on the very next request, no Tomcat restart.** The Python side caches for
+  `API_KEYS_DB_TTL` (default 60 s).
+- The exact provider is the second `<security:authentication-provider>` in
+  `2.0.3:src/main/resources/spring/auth-saml-config.xml:36-50` (mirrored in
+  `auth-backdoor-config.xml:34-48`), with `<security:password-encoder hash="bcrypt"/>` at `:48`:
+  ```sql
+  -- users-by-username-query
+  SELECT username, password, enabled FROM api_credentials WHERE username=?
+  -- authorities-by-username-query  (returns role.name verbatim, no ROLE_ prefix added)
+  SELECT a.username, r.name FROM role r
+    JOIN role_api_credentials ra ON r.role_id = ra.role_id
+    JOIN api_credentials a ON a.api_credentials_id = ra.api_credentials_id
+   WHERE a.username=?
+  ```
+  `enabled` must be truthy or `JdbcDaoImpl` rejects the account before the password is checked.
+- `scripts/gen_api_key.py` emitted the library default **`$2b$`** and now takes
+  `--prefix {2a,2b}` (default `2b`), plus `--sql` to print the provisioning statements with the
+  hash already substituted and both PKs resolved at runtime. Prefer `$2a$` for
+  `api_credentials` rows: it is what all 12 existing rows use.
+  ⚠️ **Correction to an earlier draft of this document:** `$2b$` is *not* actually rejected.
+  The deployed stack is Spring Security **5.8.12** (`2.0.3:pom.xml:61`), whose
+  `BCryptPasswordEncoder.matches()` accepts `$2(a|y|b)?$`, and `helm/values.yaml:253` already
+  ships a working `$2b$` hash to the Python side. `$2a$` is a consistency choice, not a
+  correctness requirement — do not treat it as a blocker.
 
 ---
 
@@ -579,37 +695,76 @@ Phases are ordered by **production volume × failure rate**.
 
 ### Phase 0 — Prerequisites (these gate everything)
 
-1. **Create `xras_action_log` in the production `sam` schema, out-of-band.** `CLAUDE.md:38,808`
-   require that the database is the schema source of truth and the ORM follows it — so the DDL goes
-   through the normal DBA path *first*, and the model follows. Sequence: agree the DDL → create in
-   prod → add the model to `src/sam/integration/xras.py`, export from `src/sam/__init__.py` → add a
-   `tests/integration/test_schema_validation.py` case → add a PII scrubbing rule to
-   `containers/sam-sql-dev/anonymize_sam_db.py` → regenerate
-   `containers/sam-sql-dev/backups/sam-obfuscated.sql.xz` so the test DB has the table.
+1. **Create `xras_action_log`, dev first, production later.** `CLAUDE.md:38,808` require that the
+   database is the schema source of truth and the ORM follows it. That still holds — but it does
+   **not** mean production must be first, and production *cannot* be first: the prod writer account
+   holds `SELECT, INSERT, UPDATE, DELETE` and **no DDL** (`scripts/repair/RUNBOOK-missing-projects.md:36-38`),
+   so a `CREATE TABLE` there is a DBA request with its own lead time. Sequencing Phase 2 behind that
+   ticket buys nothing, because the table's shape is the thing under design.
+
+   Sequence: agree the DDL → **`CREATE TABLE` by hand on the local dev DB** → add the model to
+   `src/sam/integration/xras.py`, export from `src/sam/__init__.py` → add a
+   `tests/integration/test_schema_validation.py` case → **then** raise the prod DDL request and
+   backfill → add a PII scrubbing rule to `containers/sam-sql-dev/anonymize_sam_db.py` →
+   regenerate `containers/sam-sql-dev/backups/sam-obfuscated.sql.xz` so CI has the table.
+
+   ⚠️ The scrubbing rule must land **before** the next snapshot regeneration — `raw_payload`
+   carries PII — and regenerating that blob has its own blast radius on fixture-dependent tests.
 2. **SMTP from the k8s webapp.** Lift `EmailNotificationService` into `src/sam/notifications/`,
    drop the hardcoded `Bcc`, and give the webapp `MAIL_*` config — or accept DB-only audit for v1
-   and add email later. Legacy sends ~3 emails per action (`XrasActionLogger` lacks
+   and add email later. Smaller than §5 implies: `src/config.py:32,37` already defines
+   `MAIL_SERVER` (default `ndir.ucar.edu`) and `MAIL_DEFAULT_FROM` (default `sam-admin@ucar.edu`),
+   with `.env` populating both, and `src/cli/notifications/email.py` is stdlib `smtplib` + Jinja2
+   with no Flask coupling. This is a move plus a config wire-up, not a build. Legacy sends ~3 emails per action (`XrasActionLogger` lacks
    `additivity="false"`, so every event also reaches the root `SMTPAppender`); **we send one.**
 3. **Role enforcement.** Add an XRAS-local `xras_api_required` wrapping the token path of
    `login_or_token_required` and asserting `'ROLE_XRAS' in g.api_key_roles`. Do **not** change
    `login_or_token_required` itself — other consumers depend on its behaviour.
-4. **Provision the XRAS credential.** One row in each table; this is the credential the Python app
-   authenticates with at cutover, used for parity in the meantime:
-   ```sql
-   -- username is varchar(11) UNIQUE; ROLE_XRAS is role_id 10; hash must be $2a$, 60 chars
-   INSERT INTO api_credentials (username, password, enabled) VALUES ('samuel', '<$2a$ hash>', 1);
-   INSERT INTO role_api_credentials (role_id, api_credentials_id)
-     SELECT 10, api_credentials_id FROM api_credentials WHERE username = 'samuel';
-   ```
-   Generate the secret with `scripts/gen_api_key.py --username samuel --rounds 12` once it emits
-   `$2a$` (§4.4). No restart needed. Verify immediately — expect **200**, not 403:
+4. **Provision the XRAS credential — username `samuel`.** One row in each table. This is the
+   credential the Python app authenticates with at cutover, and the parity harness's credential in
+   the meantime. Generate it and the SQL together:
    ```bash
-   curl -sk -u samuel:<secret> -H 'Host: sam.ucar.edu' \
-        https://128.117.224.130:8443/api/xras/v1/people/benkirk
+   python scripts/gen_api_key.py --username samuel --rounds 12 --prefix 2a --sql
    ```
+   which emits, with the hash substituted (both PKs resolved at runtime — never hardcode
+   `role_id = 10`, it is an environment-specific auto-increment):
+   ```sql
+   START TRANSACTION;
+   INSERT INTO api_credentials (username, password, enabled)
+   VALUES ('samuel', '<$2a$12$… 60 chars>', 1);
+   INSERT INTO role_api_credentials (role_id, api_credentials_id)
+     SELECT r.role_id, ac.api_credentials_id FROM role r, api_credentials ac
+      WHERE r.name = 'ROLE_XRAS' AND ac.username = 'samuel';
+   -- verify one row, correct role, enabled — then COMMIT (else ROLLBACK)
+   SELECT ac.api_credentials_id, ac.username, ac.enabled, r.name FROM api_credentials ac
+     JOIN role_api_credentials rac USING (api_credentials_id)
+     JOIN role r USING (role_id) WHERE ac.username = 'samuel';
+   COMMIT;
+   ```
+   Requires a **writer** account: the `.env` `PROD_SAM_DB_*` credential is `hpc-reader`, whose
+   grants are `SELECT, SHOW VIEW ON sam.*` (verified live). Pass the password inline with `-p`;
+   `~/.my.cnf` overrides `MYSQL_PWD` (`scripts/repair/RUNBOOK-missing-projects.md:33-36`).
+
+   No restart needed. Verify immediately — expect **200**, not 403:
+   ```bash
+   curl -s -o /dev/null -w '%{http_code} %{size_download}B\n' \
+        -u samuel:"$SAM_XRAS_PASS" https://sam.ucar.edu/api/xras/v1/people/benkirk
+   ```
+   ⚠️ Use `https://sam.ucar.edu`, **not** `https://128.117.224.130:8443` with a `Host` override —
+   that address does not answer from a workstation, and the public name serves `/api/xras/*`
+   correctly (a bare unauthenticated GET there returns the byte-exact 41 B 401 of §2.2). This also
+   means the parity harness needs no `Host`-header or `verify=False` support, neither of which
+   `utils/parity/clients.py` has.
+
+   Seed the **same** row in the local dev DB: `api_credentials` there has 0 rows (the obfuscated
+   dump ships none), so the DB-backed key path has never been exercised against webdev. Local
+   `role` already carries `ROLE_XRAS`, so the SQL above applies verbatim. It is a dev seed, not a
+   migration — the next snapshot restore wipes it.
+
    Rollback is two `DELETE`s, child row first.
    ⚠️ **`ROLE_XRAS` also permits `POST /actions`** — the security chain makes no method
-   distinction. Treat the secret as a production *write* credential.
+   distinction. Treat the secret as a production *write* credential, and keep the `.env` holding
+   it at mode 600.
 5. **Add `Permission.MANAGE_XRAS`** — Phase 4 needs it, but land it here so routes can be written
    against it. All in `src/webapp/utils/rbac.py`:
    - Add `MANAGE_XRAS = "manage_xras"` to the `Permission` enum's "System administration" block,
@@ -757,15 +912,18 @@ three-module domain pattern in `src/cli/README.md:137-168`.
    in practice, and the actual `beginDate`/`endDate` format — legacy compares them with
    lexicographic `String.compareTo`, correct **only** for zero-padded ISO-8601.
 2. **GET parity** — add an `xras` comparator to `utils/parity/comparators.py`, an `XrasClient` to
-   `clients.py`, and `--api xras` to `check_legacy_apis.py`. New env `SAM_XRAS_USER` /
-   `SAM_XRAS_PASS`; the existing `SAM_LEGACY_*` account cannot reach `/api/xras/*`. Assert
-   **byte-exact equality** (§5).
+   `clients.py`, and `--api xras` to `check_legacy_apis.py`. Env `SAM_XRAS_USER` /
+   `SAM_XRAS_PASS` (**provisioned 2026-08-05**, documented in `.env.example`); the existing
+   `SAM_LEGACY_*` account cannot reach `/api/xras/*`. Assert **byte-exact equality** (§5).
+   The five mechanical edits are enumerated in `utils/parity/README.md`; note the argparse
+   `choices` tuple and the `all` expansion tuple are **separate** lists in `check_legacy_apis.py`
+   and both need the new name.
 
    | Endpoint | Comparison |
    |---|---|
    | `GET /people` | full-body byte equality; report size delta first, then first differing offset |
    | `GET /people/{u}` | the 385 access-log-stable usernames plus a live sample |
-   | `GET /people/{u}` 404 | assert the closed form `len(username) + 58` **and** body equality |
+   | `GET /people/{u}` 404 | assert the closed form `len(username) + 47` **and** body equality |
    | `GET /requests/request/{n}` | a project sample spanning New/Renewal and HPC/non-HPC, so `remainingAmount` presence *and* omission are exercised |
    | `requests/user`, `requests/role`, `dates/requests` | byte equality on a small sample — their only validation |
 
@@ -802,8 +960,22 @@ three-module domain pattern in `src/cli/README.md:137-168`.
 - **`Adjust` is implemented; `Transfer` is deferred** to the manual-fallback path with an audit row.
   Transfer has zero traffic and `exchange_allocations` doesn't fit its semantics, so parity needs
   new allocation machinery rather than an adapter. The audit log tells us the moment traffic appears.
-- **One permanent `ROLE_XRAS` credential** serves both the parity harness and the cutover. Accepted
-  risk: it also permits `POST /actions`, the same exposure the existing `XRAS` account carries.
+- **One permanent `ROLE_XRAS` credential (`samuel`)** serves both the parity harness and the
+  cutover. Accepted risk: it also permits `POST /actions`, the same exposure the existing `XRAS`
+  account carries.
+
+  This works because **both applications read the same `sam.api_credentials` table** — legacy Java
+  via `<security:jdbc-user-service>` (§2.2), the Python webapp via `ApiCredentials.as_api_key_map`
+  (`src/sam/security/roles.py:91`) behind `API_KEYS_DB_ENABLED`, default on. **A single INSERT
+  therefore makes one secret valid against both stacks simultaneously**, which is exactly what a
+  byte-for-byte comparator wants: same credential, two base URLs, no possibility that a difference
+  in what the two can *see* is mistaken for a difference in what they *render*.
+
+  ⚠️ One shadowing hazard: `_verify_api_key` checks `current_app.config['API_KEYS']` **first** and
+  never falls through to the DB on a miss (`src/webapp/utils/api_auth.py:110-113`). If anyone ever
+  sets `API_KEYS_SAMUEL`, the Python side silently stops consulting the row that legacy is still
+  using, and the two stacks diverge on authentication alone. Today only `API_KEYS_COLLECTOR` is
+  configured (`helm/values.yaml:253`), so nothing shadows `samuel` — keep it that way.
 - **`Permission.MANAGE_XRAS`** gates replay and activate-project rather than reusing
   `EDIT_ALLOCATIONS`, so it can be granted to whoever fields XRAS failures independently of general
   allocation editing.
