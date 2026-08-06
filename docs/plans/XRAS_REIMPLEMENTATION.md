@@ -35,7 +35,7 @@ in the working tree are byte-identical to the deployed tag.
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
 | **2** — Action ingestion + audit trail | **partly done** | `xras_action_log` + `XrasActionSchema` + `POST /actions` in **capture mode** shipped; see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) |
 | **3** — Handlers | ☐ to do | **Sprint A** — Extension → Supplement → Adjust → Update → New; Transfer to manual fallback. Every type currently parks as `manual` |
-| **4** — XRAS as the 4th Allocations tab | ☐ to do | **Sprint B**. Flask-Admin view is the free stopgap |
+| **4** — XRAS as the 4th Allocations tab | ☐ to do | **Sprint B** — see [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md); also settles the schema before the prod DDL ticket is filed. Flask-Admin view is the free stopgap |
 | **5** — Parity and cutover | **partly done** | `--api xras` harness ✅; deployed-port run and the staged cutover still open |
 
 ### Sprint map

@@ -2,7 +2,7 @@
 
 **Handoff doc.** Execution plan for the next XRAS sprint. The wire contract, the measured
 production data and the design decisions live in
-[`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md) — this document does not repeat them,
+[`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md) — this document does not repeat them,
 it tells you what to build and in what order. Section references like §2.4 point there.
 
 **Prior sprint:** Phase 1 (the six GET endpoints) is complete — PR #424.
@@ -31,7 +31,7 @@ the sprint.
 
 ### 1. Harvest real payloads — ✅ DONE (4 payloads), and the mailbox premise was wrong
 
-**Superseded by [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) § *Track 0*, which is authoritative for
+**Superseded by [`XRAS_SPRINT_A.md`](../XRAS_SPRINT_A.md) § *Track 0*, which is authoritative for
 the measured wire contract.** Kept here because the correction matters more than the
 original instruction.
 
@@ -71,13 +71,20 @@ samples, and no co-PI role has appeared, so its spelling (`'Co-PI'` vs `'CoPi'`)
 numbers (`roles[].person`) plus grant-officer contacts (`grants[].programOfficerName/Email`,
 `piName`). Raw copies stay outside the repo.
 
-### 2. Raise the prod DDL ticket
+### 2. Raise the prod DDL ticket — ⚠️ WITHDRAWN, do not do this
+
+**Superseded by [`XRAS_SPRINT_B.md`](../XRAS_SPRINT_B.md) § *The decision that reorders
+everything*.** Filing early was correct only if the schema was settled, and it was not:
+the table was designed from inference and nothing had rendered it. Amending the init
+script is free until production has the table, so the ticket is deliberately held until
+Sprint B's dashboard has exercised the schema. The background below is still accurate.
+
 
 `xras_action_log` does not exist in production and **we cannot create it** — the prod writer
 account holds `SELECT, INSERT, UPDATE, DELETE` and no DDL
 (`scripts/repair/RUNBOOK-missing-projects.md:36-38`). It is a DBA request with its own lead
 time, and it blocks nothing in this sprint because local dev and CI get the table another way
-(below). Agree the DDL first (§*The table*), then file it the same day.
+(below). Agree the DDL first (§*The table*) — but file it only after Sprint B.
 
 Alembic is not an option: `migrations/README.md` records `sam` as "not yet" managed — the
 only environment is `system_status`, and standing up `migrations/sam/` means stamping ~104
