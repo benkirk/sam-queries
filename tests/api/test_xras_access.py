@@ -18,6 +18,7 @@ is monkeypatched instead.
 
 import base64
 import json
+import pathlib
 
 import bcrypt
 import pytest
@@ -559,3 +560,327 @@ class TestRequestDates:
         body = json.loads(xras_client.get(
             f'/api/xras/v1/dates/requests/{code}, {code}', headers=_auth()).data)
         assert len(body['result']) == 1
+
+
+# ---------------------------------------------------------------------------
+# POST /api/xras/v1/actions — the capture slice
+# ---------------------------------------------------------------------------
+
+FIXTURE_DIR = (
+    pathlib.Path(__file__).parent.parent / 'fixtures' / 'xras' / 'actions'
+)
+ACTION_FIXTURES = sorted(p.name for p in FIXTURE_DIR.glob('*.json'))
+
+
+def _payload(name):
+    return (FIXTURE_DIR / name).read_text()
+
+
+@pytest.fixture
+def action_log(app, monkeypatch):
+    """Read and clean up the audit rows the route commits on its own connection.
+
+    The route deliberately commits **outside** ``db.session`` so the row survives a
+    handler rollback (see ``webapp/api/xras/actions.py``). That is exactly why the
+    suite's per-test SAVEPOINT cannot undo these writes: they land on a different
+    connection and are already committed, so they must be deleted explicitly or they
+    leak into the shared xdist database.
+
+    Rows are identified by **capturing the ids the route mints**, not by a
+    ``id > watermark`` range. Two reasons, both learned the hard way:
+
+    * A ``DELETE ... WHERE id > n`` predicate takes an open-ended gap lock up to the
+      supremum, which collides with every other worker's ``INSERT`` — a reliable
+      ``1213 Deadlock found`` under ``-n auto``. Deleting by primary key takes record
+      locks on exactly the rows involved.
+    * A watermark read on a table other workers are concurrently inserting into is
+      racy in the other direction too: this test would *see* their rows.
+    """
+    from sqlalchemy import delete, select
+    from sqlalchemy.orm import Session
+
+    from sam.integration.xras import XrasActionLog
+    from webapp.api.xras import actions as actions_module
+    from webapp.extensions import db
+
+    minted = []
+    original_record = actions_module._record
+
+    def _capturing_record(**kwargs):
+        log_id = original_record(**kwargs)
+        minted.append(log_id)
+        return log_id
+
+    monkeypatch.setattr(actions_module, '_record', _capturing_record)
+
+    class Reader:
+        """The rows this test's request(s) created, as detached plain dicts."""
+
+        def rows(self):
+            if not minted:
+                return []
+            with app.app_context(), Session(db.engine) as session:
+                found = session.execute(
+                    select(XrasActionLog)
+                    .where(XrasActionLog.xras_action_log_id.in_(minted))
+                    .order_by(XrasActionLog.xras_action_log_id)
+                ).scalars().all()
+                return [
+                    {
+                        'id': r.xras_action_log_id,
+                        'remote_actor': r.remote_actor,
+                        'status': r.status,
+                        'action_type': r.action_type,
+                        'request_number': r.request_number,
+                        'raw_payload': r.raw_payload,
+                        'error_messages': r.error_messages,
+                        'projcode_result': r.projcode_result,
+                        'processed_time': r.processed_time,
+                        'received_time': r.received_time,
+                    }
+                    for r in found
+                ]
+
+        def one(self):
+            rows = self.rows()
+            assert len(rows) == 1, f'expected exactly 1 audit row, got {len(rows)}'
+            return rows[0]
+
+    yield Reader()
+
+    if minted:
+        with app.app_context(), Session(db.engine) as session:
+            session.execute(
+                delete(XrasActionLog).where(
+                    XrasActionLog.xras_action_log_id.in_(minted))
+            )
+            session.commit()
+
+
+class TestPostActionsAuth:
+    """Auth on the write surface, which must match the read surface exactly."""
+
+    PATH = '/api/xras/v1/actions'
+
+    def test_no_credentials_is_the_byte_exact_401(self, xras_client):
+        resp = xras_client.post(self.PATH, data='{}',
+                                content_type='application/json')
+        assert resp.status_code == 401
+        assert resp.data.decode() == serialize.UNAUTHENTICATED_BODY
+        assert 'WWW-Authenticate' not in resp.headers
+
+    def test_valid_key_without_role_xras_is_403(self, xras_client):
+        resp = xras_client.post(self.PATH, data='{}',
+                                content_type='application/json',
+                                headers=_auth('nobody'))
+        assert resp.status_code == 403
+        assert resp.headers['Content-Type'].startswith('application/json')
+
+    def test_unauthenticated_post_writes_no_audit_row(self, xras_client, action_log):
+        """Auth runs before the view, so a rejected post must leave no trace."""
+        xras_client.post(self.PATH, data='{}', content_type='application/json')
+        assert action_log.rows() == []
+
+
+class TestPostActionsCapture:
+    """Capture mode: authenticate, parse, audit, return 200, dispatch nothing."""
+
+    PATH = '/api/xras/v1/actions'
+
+    @pytest.mark.parametrize('name', ACTION_FIXTURES)
+    def test_every_real_payload_is_accepted_and_audited(
+            self, xras_client, action_log, name):
+        """The four real production payloads, end to end through the route."""
+        resp = xras_client.post(self.PATH, data=_payload(name),
+                                content_type='application/json',
+                                headers=_auth())
+        assert resp.status_code == 200
+        assert json.loads(resp.data) == {'message': 'OK', 'result': None}
+
+        row = action_log.one()
+        expected = json.loads(_payload(name))
+        assert row['status'] == 'received'
+        assert row['action_type'] == expected['actionType']
+        assert row['request_number'] == expected['requestNumber']
+        assert row['remote_actor'] == 'samuel'
+        assert row['error_messages'] is None
+
+    def test_raw_payload_is_stored_verbatim(self, xras_client, action_log):
+        """Byte-for-byte, before parsing — that is what makes a row replayable."""
+        body = _payload('extension_ucub0166_ok.json')
+        xras_client.post(self.PATH, data=body,
+                         content_type='application/json', headers=_auth())
+        assert action_log.one()['raw_payload'] == body
+
+    def test_capture_mode_does_not_set_a_terminal_state(
+            self, xras_client, action_log):
+        """'received' is precisely true and distinct from 'manual'.
+
+        Operators query ``status='received'`` to see the capture backlog, so it must
+        not be conflated with "a human must handle this".
+        """
+        xras_client.post(self.PATH, data=_payload('new_ncar4253_ok.json'),
+                         content_type='application/json', headers=_auth())
+        row = action_log.one()
+        assert row['status'] == 'received'
+        assert row['processed_time'] is None
+        assert row['projcode_result'] is None
+
+    def test_the_spec_documented_url_form_also_works(self, xras_client, action_log):
+        """All real posts use the bare form, but the ACCESS spec documents this one.
+
+        If the broker is ever corrected to match its own docs, every post would 404.
+        """
+        resp = xras_client.post(
+            '/api/xras/v1/actions/388536/1445132/New',
+            data=_payload('new_ncar4232_failed.json'),
+            content_type='application/json', headers=_auth())
+        assert resp.status_code == 200
+        assert action_log.one()['request_number'] == 'NCAR4232'
+
+    def test_dispatch_marks_manual_when_capture_is_off(
+            self, app, xras_client, action_log):
+        """With capture off and no handlers registered, every type parks as 'manual'.
+
+        Legacy answers a bare 200 here too, but leaves no record that SAM quietly
+        deferred the action to a human — the distinction this table exists to make.
+        """
+        app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
+        try:
+            resp = xras_client.post(
+                self.PATH, data=_payload('extension_ufsu0023_failed.json'),
+                content_type='application/json', headers=_auth())
+        finally:
+            app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+
+        assert resp.status_code == 200
+        assert json.loads(resp.data) == {'message': 'OK', 'result': None}
+        row = action_log.one()
+        assert row['status'] == 'manual'
+        assert row['processed_time'] is not None
+
+    def test_both_timestamps_come_from_the_same_clock(
+            self, app, xras_client, action_log):
+        """``processed_time`` must not precede ``received_time``.
+
+        The column's ``DEFAULT CURRENT_TIMESTAMP`` resolves in the **MySQL server's**
+        timezone, which is UTC in the dev/CI container, while SAM's convention is
+        naive-Mountain and ``_finish`` uses ``datetime.now()``. Letting the default
+        supply ``received_time`` therefore put it 6 hours ahead of ``processed_time``
+        — a processed row that looked like it completed before it arrived. Both now
+        come from the app clock; this is the guard.
+        """
+        from datetime import datetime, timedelta
+
+        before = datetime.now()
+        app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
+        try:
+            xras_client.post(
+                self.PATH, data=_payload('extension_ucub0166_ok.json'),
+                content_type='application/json', headers=_auth())
+        finally:
+            app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+        after = datetime.now()
+
+        row = action_log.one()
+        assert row['received_time'] <= row['processed_time']
+        # And both sit inside the window the request actually spanned, which a
+        # UTC-defaulted timestamp would miss by hours.
+        margin = timedelta(minutes=5)
+        assert before - margin <= row['received_time'] <= after + margin
+
+
+class TestPostActionsErrors:
+    """The status-code split that is this project's headline improvement.
+
+    Legacy answers 500 with an opaque timestamp for a malformed body *and* for a
+    failed validation, and 200 for an action it silently parked. All four are
+    distinguished here.
+    """
+
+    PATH = '/api/xras/v1/actions'
+
+    def test_malformed_json_is_400_not_500(self, xras_client, action_log):
+        resp = xras_client.post(self.PATH, data='{"actionType": ',
+                                content_type='application/json', headers=_auth())
+        assert resp.status_code == 400
+        body = json.loads(resp.data)
+        assert body['result']['errors'][0].startswith('Malformed JSON body')
+
+    def test_malformed_json_still_writes_a_row_with_null_action_type(
+            self, xras_client, action_log):
+        """The case the audit trail matters most for: we cannot even name the action."""
+        xras_client.post(self.PATH, data='not json at all',
+                         content_type='application/json', headers=_auth())
+        row = action_log.one()
+        assert row['status'] == 'failed'
+        assert row['action_type'] is None
+        assert row['request_number'] is None
+        assert row['raw_payload'] == 'not json at all'
+        assert 'Malformed JSON body' in row['error_messages']
+
+    def test_a_json_array_body_is_400(self, xras_client, action_log):
+        resp = xras_client.post(self.PATH, data='[1, 2, 3]',
+                                content_type='application/json', headers=_auth())
+        assert resp.status_code == 400
+        assert 'Expected a JSON object' in action_log.one()['error_messages']
+
+    def test_schema_rejection_is_422_carrying_an_ordered_list(
+            self, xras_client, action_log):
+        """A bool in a String-declared field is the one thing the schema rejects.
+
+        Everything else about the payload is tolerated by design, so this is the
+        available proof that the 422 path reports rather than swallows.
+        """
+        body = json.dumps({'actionType': 'New', 'requestNumber': 'NCAR9999',
+                           'awardPeriod': True})
+        resp = xras_client.post(self.PATH, data=body,
+                                content_type='application/json', headers=_auth())
+        assert resp.status_code == 422
+        payload = json.loads(resp.data)
+        assert payload['message'] == '1 error processing action'
+        assert payload['result']['errors'] == ['awardPeriod: Not a valid string.']
+
+        row = action_log.one()
+        assert row['status'] == 'failed'
+        assert row['action_type'] == 'New'
+        assert row['request_number'] == 'NCAR9999'
+        assert row['error_messages'] == 'awardPeriod: Not a valid string.'
+
+    def test_error_messages_accumulate_rather_than_short_circuit(
+            self, xras_client, action_log):
+        """Legacy gathers every problem into one ordered list and raises once.
+
+        Reporting all of them lets an operator fix a request in one pass instead of
+        five, which is the whole point of the 422 body.
+        """
+        body = json.dumps({
+            'awardPeriod': True,
+            'fos': [{'fosTypeId': True}],
+            'resources': [{'awardedAmount': True}],
+        })
+        resp = xras_client.post(self.PATH, data=body,
+                                content_type='application/json', headers=_auth())
+        assert resp.status_code == 422
+        errors = json.loads(resp.data)['result']['errors']
+        assert len(errors) == 3
+        assert sorted(errors) == [
+            'awardPeriod: Not a valid string.',
+            'fos.0.fosTypeId: Not a valid string.',
+            'resources.0.awardedAmount: Not a valid string.',
+        ]
+        assert action_log.one()['error_messages'].count('\n') == 2
+
+    def test_an_empty_object_body_is_accepted_and_audited(
+            self, xras_client, action_log):
+        """Structurally valid but empty: not a 400, and not a schema rejection.
+
+        The schema must get out of the way so the *handlers* can report what is
+        missing into the accumulated 422 list.
+        """
+        resp = xras_client.post(self.PATH, data='{}',
+                                content_type='application/json', headers=_auth())
+        assert resp.status_code == 200
+        row = action_log.one()
+        assert row['status'] == 'received'
+        assert row['action_type'] is None

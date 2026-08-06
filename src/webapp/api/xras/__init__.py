@@ -127,9 +127,30 @@ def _bad_request(error):
     return xras_response(message=getattr(error, 'description', None), status=400)
 
 
+@bp.errorhandler(422)
+def _unprocessable(error):
+    """422 is new with ``POST /actions`` — legacy 500s where we report the error list.
+
+    The shared ``webapp.api.helpers.register_error_handlers`` has no 422 or 500
+    handler, so these are blueprint-local like the two above.
+    """
+    return xras_response(message=getattr(error, 'description', None), status=422)
+
+
+@bp.errorhandler(500)
+def _server_error(error):
+    """Keep an unexpected failure inside the envelope rather than leaking HTML.
+
+    Legacy answers 431 bytes of Tomcat HTML here because ``web.xml`` declares no
+    ``<error-page>``; §7 records not reproducing that as a deliberate divergence.
+    """
+    return xras_response(message='Internal error processing request', status=500)
+
+
 # Route modules attach to `bp` on import, so they come last — `bp`,
 # `xras_api_required` and the serializer must all exist before they run.
 from . import people  # noqa: E402,F401
 from . import requests as _requests  # noqa: E402,F401
+from . import actions as _actions  # noqa: E402,F401
 
 __all__ = ['bp', 'xras_api_required', 'XRAS_ROLE']
