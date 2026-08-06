@@ -61,10 +61,35 @@ class XrasActionLog(Base):
     diverge exactly on the New path, where a projcode is minted — which is what
     makes both worth storing.
 
-    ``raw_payload`` is ``Text`` rather than ``JSON`` deliberately: no SAM model
-    uses ``Column(JSON)``, every payload-ish column in this schema is ``Text``,
-    and ``sam/base.py`` does not export ``JSON``. Observed real bodies are
-    2.8–7.3 KB, so 64 KB is ample headroom.
+    ``raw_payload`` is ``Text`` rather than MySQL ``JSON``, and **not** merely
+    because the rest of this old schema is. Two measured reasons, either of which
+    is sufficient (verified against MySQL 9.7; MySQL 8 behaves the same):
+
+    1. **A ``JSON`` column cannot store a malformed body.**
+       ``INSERT ... VALUES ('{"actionType": ')`` fails with ``ERROR 3140 Invalid
+       JSON text``. Auditing unparseable payloads is the whole point of the 400
+       path — legacy's failure mode is a 500 with an opaque timestamp and no
+       record of what arrived — so the one row we most need to write is the one
+       ``JSON`` refuses.
+    2. **``JSON`` is not byte-preserving, and this column is defined as the body
+       verbatim, before parsing.** MySQL parses to a normalised binary form and
+       re-serialises on read: it re-sorts keys by length-then-bytewise, inserts
+       whitespace, and *silently collapses duplicate keys*. Round-tripping a real
+       payload reordered all 23 top-level keys and grew it 2,213 → 2,375 bytes.
+       That destroys the audit record's fidelity, its value as a replay source,
+       and its value as a harvested fixture — the key order on the wire is what
+       reveals Jackson's ``@JsonPropertyOrder``.
+
+    Nothing is given up: deep ad-hoc querying still works over ``Text`` via
+    ``JSON_EXTRACT(raw_payload, '$.roles[0].roleType')`` guarded by
+    ``JSON_VALID(raw_payload)``, and every field worth filtering on
+    (``action_type``, ``request_number``, ``status``, ``projcode_result``) is
+    already a real, indexed column. The only thing a ``JSON`` column would add is
+    a *functional index* on a nested path; if that is ever needed, add a nullable
+    ``payload_json JSON`` alongside — populated only when parsing succeeded —
+    which is additive and backfillable rather than a migration.
+
+    Observed real bodies are 2.8–7.3 KB, so ``Text``'s 64 KB is ample headroom.
     """
     __tablename__ = 'xras_action_log'
 
