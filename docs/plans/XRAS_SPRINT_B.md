@@ -262,22 +262,33 @@ sprint is the reason it stays optional.
 
 ## Out of scope
 
-**The handlers (Phase 3).** They are the next sprint, and they are partly sample-blocked:
+**The handlers (Phase 3).** They are the next sprint. **They are no longer sample-blocked** — a
+second forward from Travis Fair and Haris Brka (2026-08-07) took the corpus from 4 to 8:
 
 | Handler | Share | Samples in hand |
 |---|---:|---|
 | Extension | 60% | ✅ one success + one failure |
-| New | 21% | ✅ one success + one failure |
-| Supplement | 15% | ❌ **zero** |
-| Update | 3% | ❌ **zero** |
-| Adjust / Transfer | 0% | ❌ zero (Transfer routes to manual regardless, §5) |
+| New | 21% | ✅ two successes + one failure |
+| Supplement | 15% | ✅ two successes |
+| Update | 3% | ✅ one (`new_uwis0071_existing_ok.json`) |
+| Adjustment | 0% | ✅ one — the manual-fallback case |
+| Transfer | 0% | ❌ zero (routes to manual regardless, §5) |
+
+Two corrections that batch forced, both carried into `XRAS_REIMPLEMENTATION.md`:
+
+- **"Update" is not an `actionType`.** It is the handler legacy selects for `New` or `Renewal`
+  when the project already exists, so New and Update are one dispatch decision.
+- **XRAS sends `Adjustment`, legacy compares against `Adjust`** — so legacy's Adjustment handler
+  has never fired (defect 4, §9). SAM treats the spellings as synonyms via
+  `XRAS_ACTION_TYPE_ALIASES`; the audit column still stores the wire value verbatim.
 
 Also out: SMTP (above), the GET cutover steps 1-3 (independent — Phase 1 is done and can
 deploy in parallel), and the `POST /actions` cutover itself, which additionally needs the
 400/422 error-contract change confirmed with `allocations@access-ci.org` (§9).
 
 Still open on the wire contract: **no co-PI role has ever appeared in a sampled payload**,
-so whether `roleType` is `'Co-PI'` or `'CoPi'` is unknown. One bulk forward closes it.
+so whether `roleType` is `'Co-PI'` or `'CoPi'` is unknown — still true across all eight.
+`Transfer`, `Renewal` and `Advance` also remain unsampled. One bulk forward closes them.
 
 ---
 

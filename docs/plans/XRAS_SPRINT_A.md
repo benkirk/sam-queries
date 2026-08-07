@@ -311,25 +311,60 @@ them outside the working tree or in a gitignored path.
   `user_id → obfuscated`, so it cannot translate a real username forward. Take *shape* from the
   payload and *identity* from the test DB: a `--retarget` mode swapping usernames/projcodes onto
   known snapshot entities (`benkirk` survives the anonymizer — use it) or onto factory-built rows.
-- Commit the four scrubbed fixtures to `tests/fixtures/xras/actions/` under the names above, and
+- Commit the scrubbed fixtures to `tests/fixtures/xras/actions/` under the names above, and
   add the `raw_payload` PII rule to `containers/sam-sql-dev/anonymize_sam_db.py` **before** anyone
   next runs `make bootstrap`.
+- **Scrub the whole corpus in one run, not incrementally.** The `Pseudonymizer` is shared across a
+  run precisely so one human appearing in two payloads gets one pseudonym, and it numbers in
+  first-seen order over the *sorted* input set. Scrubbing a later batch on its own restarts the
+  numbering, so `Given01` would name different people in different fixtures. This is not
+  hypothetical: the UWIS0064 PI is also the UWIS0071 PI, under two usernames. Keep every raw
+  payload staged so the whole set can be re-scrubbed when the corpus grows.
 
-### 3b. Ask Travis for the bulk forward (one email)
+### 3b. Ask Travis for the bulk forward (one email) — ✅ PARTLY DONE
 
-Four payloads settle the *shape*; they cannot settle the *distribution*, and three gaps remain
-that only volume closes: the co-PI `roleType` spelling (finding 2), a **Supplement** payload
-(15% of traffic, zero samples), and an **Update** payload (the `AUTO_DEFAULT_ALLOCATION_TRANSACTION`
-undo kludge). Reply to Travis Fair (cc Mea Trahan) asking for a bulk forward from `hdt@ucar.edu`,
+Four payloads settle the *shape*; they cannot settle the *distribution*. Travis Fair and Haris
+Brka forwarded ten `sweg-notify` messages on 2026-08-05..07; four were duplicates of the
+committed fixtures and **four were new**. The corpus is now **8**:
+
+| fixture | actionType | closes |
+|---|---|---|
+| `supplement_ucub0182_ok.json` | Supplement | the Supplement gap (1 of 2) |
+| `supplement_ubrn0027_ok.json` | Supplement | the Supplement gap (2 of 2) |
+| `adjustment_uwis0064_manual.json` | **Adjustment** | the Adjust gap **and** the spelling defect |
+| `new_uwis0071_existing_ok.json` | New | **the Update path** — see below |
+
+Two of the three named gaps are closed, and one of them was mis-stated:
+
+- **Supplement — closed.** Two success payloads. Both carry a non-empty `resources[]`, unlike
+  Extension, and `awardedAmount` is the *increment*: legacy's
+  `SupplementProjectAllocationActionCommandsFactory` passes `getTransactionAmount(resource)`
+  straight into `command.supplementAmount(...)`. A resource with no existing allocation gets one
+  **created** instead, dated today → latest contract (else allocation) end date.
+- **Update — closed, and it is not an `actionType`.** There is no `actionType: "Update"` on the
+  wire; legacy's declared vocabulary (`action/domain/model/Action.java:6`) is `New, Extension,
+  Supplement, Transfer, Renewal, Adjustment, Advance`. "Update" is a *handler*, selected by the
+  **pair** `(actionType, does the project exist)` —
+  `UpdateProjectActionService.isServiceable` is `(New || Renewal) && exists(projcode)`, against
+  `AddProjectActionService`'s `New && !exists`. `new_uwis0071_existing_ok.json` is exactly that
+  case, confirmed independently by its notification subject ("Existing XRAS project updated",
+  which `formatSuccessSubject` emits iff `requestNumber.equals(projcode)`).
+- **co-PI `roleType` — still open.** Every sampled role across all eight payloads is `PI`,
+  `Allocation Manager` or `User`.
+
+Still worth the bulk forward for the remainder — `Transfer`, `Renewal` and `Advance` also have
+zero samples. Reply to Travis Fair (cc Mea Trahan) asking for a bulk forward from `hdt@ucar.edu`,
 30–60 days, successes as well as failures:
 
 ```
 subject:("Failed to add or update XRAS project" OR "New XRAS project added"
-         OR "Existing XRAS project updated") has:attachment
+         OR "Existing XRAS project updated" OR "New XRAS post action") has:attachment
 ```
 
-That is ~175 payloads. **Supplement and Update are now the handlers gated on this batch** — New
-and Extension each have a success and a failure sample in hand, which is enough to build them.
+(The fourth clause is new: the manual-fallback mailer uses a different subject
+(`ManualFallbackActionPostService`), which is how the Adjustment payload nearly went unnoticed.)
+That is ~175 payloads. **No handler is sample-blocked any more** except Transfer, which routes to
+manual regardless.
 
 ### 3c. Offline synthesizer (bridges the gap, no human in the loop)
 
@@ -355,8 +390,8 @@ and Extension each have a success and a failure sample in hand, which is enough 
 
 ## Then the handlers (order unchanged, gating changed)
 
-Extension (60%, 98.5%) → Supplement (15%) → Adjust → Update → New (21%, 30%) → Transfer to
-manual, per the doc. Three changes:
+Extension (60%, 98.5%) → Supplement (15%) → Adjustment → Update → New (21%, 30%) → Transfer to
+manual, per the doc. Four changes:
 
 - Each handler flips its slice out of capture mode as it lands, so `POST /actions` stays
   continuously deployable.
@@ -367,9 +402,29 @@ manual, per the doc. Three changes:
 - **New is buildable now, not gated.** NCAR4253 → UCIR0072 is a complete success path (projcode
   generation, one NSF grant, two FoS, mnemonic resolved from an institution) and NCAR4232 is the
   dominant 55% failure mode (unreconciled ARC PI, duplicate username across roles, no grants).
-  That covers both ends. **Supplement and Update are the ones now gated on 3b** — zero samples
-  each. If the batch slips, ship New/Extension/Adjust and leave those two in capture mode; legacy
-  keeps handling them until cutover step 4.
+  That covers both ends.
+- **Supplement and Update are no longer gated** (3b). Two Supplement samples, and UWIS0071 for
+  Update. Note what "Update" means: it is `New`/`Renewal` **against an existing project**, so the
+  New and Update handlers are one dispatch decision, not two — resolve the projcode against the
+  database first, then branch. `actionType` alone cannot tell them apart.
+
+Dispatch is on the **pair**, not on `actionType` alone. Legacy's selector chain in order
+(`ProjectActionServiceSelector` returns the first serviceable, else `BadRequestException`):
+
+| service | selector |
+|---|---|
+| `AddProjectActionService` | `New` **and not** `exists(projcode)` |
+| `UpdateProjectActionService` | (`New` **or** `Renewal`) **and** `exists` |
+| `ExtendProjectActionService` | `Extension` and `exists` |
+| `SupplementProjectActionService` | `Supplement` and `exists` |
+| `TransferAllocationActionService` | `Transfer` and `exists` |
+| `AdjustProjectActionService` | `Adjust` and `exists` — **never fires**, see defect 4 |
+
+⚠️ **The Adjustment handler must accept both spellings.** XRAS sends `Adjustment`; legacy
+compares against `Adjust`, so its handler is dead code and every Adjustment reaches the manual
+mailer. Nothing has shipped, so SAM treats them as synonyms —
+`sam.queries.xras_actions.XRAS_ACTION_TYPE_ALIASES` is the single source of that mapping, and the
+audit column still records what actually arrived.
 
 Settle the actor question before the first handler: `log_allocation_transaction`
 (`src/sam/manage/allocations.py:69`) declares `user_id: int` but the column is nullable

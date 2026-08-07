@@ -8,12 +8,12 @@ JSON body rather than convenience. The right family is the plain-``marshmallow``
 input schemas in :mod:`sam.schemas.charges` (``BaseChargeSummaryInputSchema``), with
 ``unknown = EXCLUDE`` set explicitly.
 
-Written against four real production payloads (see
+Written against eight real production payloads (see
 ``tests/fixtures/xras/actions/``), not against the Java POJOs alone. The tolerances
 below are measured, and each one is load-bearing:
 
-1. **Absent scalars arrive as JSON ``null``, never ``""``.** Across all four payloads
-   and ~200 scalar fields there is not a single empty string. XRAS always sends the
+1. **Absent scalars arrive as JSON ``null``, never ``""``.** Across all eight payloads
+   and ~400 scalar fields there is not a single empty string. XRAS always sends the
    key, so the Java ``private String x = ""`` initialisers never fire on real traffic.
    Hence ``allow_none=True`` almost everywhere; ``load_default`` is the defensive belt.
 2. **Ints arrive in String-declared fields.** ``awardPeriod`` is ``12`` and
@@ -24,11 +24,16 @@ below are measured, and each one is load-bearing:
    (a GRFP fellowship), so it must not be treated as missing.
 4. **Unknown fields are on the wire.** ``requestGrantType``, ``opportunityQA`` and
    ``resources[].resourceQA`` are sent by XRAS and declared by no POJO, so legacy
-   discards them. ``unknown = EXCLUDE`` reproduces that. Note ``opportunityQA`` carries
-   the End User Agreement acknowledgement, which SAM currently throws away.
+   discards them. ``unknown = EXCLUDE`` reproduces that. ``opportunityQA`` carries the
+   NWSC End User Agreement acknowledgement — including HTML in ``attributeSetName`` —
+   which SAM currently throws away. It is non-empty on **all three** ``New`` payloads
+   and empty on all five Extension / Supplement / Adjustment ones: the acknowledgement
+   is collected once, when the request is created, not on every subsequent action.
 5. **The forgiving boolean is one field only** — ``roles[].isAccountToBeCreated``.
-   Observed as a real ``false`` in all nine sampled roles, never null and never a
-   string, so the coercion is purely defensive. Do not generalise it.
+   Observed ``false`` in every sampled role but one, and ``true`` in that one
+   (``new_uwis0071_existing_ok.json``, on the incoming NCAR username of a PI who
+   changed institution mid-request). Never null and never a string, so the *coercion*
+   is still defensive even though both values now occur. Do not generalise it.
 
 ⚠️  ``isReconciled`` and ``isAccountToBeCreated`` are **inert** in legacy: parsed and
 never read by any business logic. Parse them — they are contract — but do not wire
@@ -191,6 +196,20 @@ class XrasActionRoleSchema(_XrasBase):
     The same ``username`` can appear under two roles in one payload (observed: a PI
     who is also a ``User``, with distinct ``requestPeopleRoleId``), so consumers that
     add every role to the accounts must dedupe.
+
+    ⚠️  **``roleType`` is not unique within a payload, and only the date window
+    separates the duplicates.** ``new_uwis0071_existing_ok.json`` carries *two* ``PI``
+    entries for the same human under two usernames — one closed
+    (``beginDate`` 2026-07-27, ``endDate`` 2026-08-04) and one open
+    (``beginDate`` 2026-08-05, ``endDate`` null) — because the PI changed institution
+    mid-request. ``person.organization`` differs between them
+    (``'UNIVERSITY OF WISCONSIN AT MADISON'`` vs ``'NCAR/EDECD'``), so the mnemonic
+    extractor gets a different input depending on which is chosen, and array order is
+    not the answer: the open entry happens to be first here, but nothing guarantees
+    that. **A resolver must filter on the date window, not pick the first match** —
+    this payload is the measured case that legacy's pick-first
+    ``getUsernameByRoleType()`` resolves wrongly (defect 1 in
+    ``docs/plans/XRAS_REIMPLEMENTATION.md`` § 9).
     """
 
     requestPeopleRoleId = _opt_int()
@@ -215,6 +234,19 @@ class XrasActionResourceSchema(_XrasBase):
     Note this array is **empty on Extension actions** — observed on both the success
     and the failure — so an Extension handler cannot derive its target resources from
     the payload. Its only input is ``actionEndDate`` against existing allocations.
+    **Supplement is the opposite**: both sampled Supplements carry a populated array
+    (2 and 3 entries), and it is the handler's whole input.
+
+    On Supplement, ``awardedAmount`` is the **increment, not the new total** — legacy's
+    ``SupplementProjectAllocationActionCommandsFactory`` passes
+    ``getTransactionAmount(resource)`` straight into ``command.supplementAmount(...)``,
+    where ``getTransactionAmount`` is ``Float.valueOf(awardedAmount)``. When the
+    project has no allocation for that resource yet, legacy **creates** one instead of
+    supplementing, dating it from today to the latest contract (else allocation) end
+    date. Beware the path that reaches that decision: legacy tests
+    ``getTransactionAmount(resource) > 0`` on a ``Float`` that is ``null`` whenever
+    ``awardedAmount`` is blank, which unboxes to an NPE. Do not reproduce — a missing
+    amount belongs in the accumulated 422 list.
     """
 
     actionResourceId = _opt_int()
@@ -265,15 +297,44 @@ class XrasActionSchema(_XrasBase):
     """The ``POST /api/xras/v1/actions`` body.
 
     ``requestNumber`` is the **projcode** for an action against an existing project
-    (Extension, Supplement, Update) and a request token for New (``NCAR####`` at
-    this site) — confirmed by
-    legacy's ``formatSuccessSubject``, which picks its "Existing XRAS project updated"
-    wording precisely when ``requestNumber.equals(projcode)``. So the action selector
-    resolves the project by treating this value as a projcode.
+    (Extension, Supplement, Adjustment) and a request token (``NCAR####`` at this
+    site) for a New action that mints one — confirmed by legacy's
+    ``formatSuccessSubject``, which picks its "Existing XRAS project updated" wording
+    precisely when ``requestNumber.equals(projcode)``. So the action selector resolves
+    the project by treating this value as a projcode.
 
-    ``requestType`` is **not** ``actionType`` and is useless for dispatch: all four
-    sampled payloads carry ``requestType: 'New'``, including both Extensions. Only
-    ``actionType`` selects a handler.
+    ⚠️  **``New`` does not imply a request token.** ``new_uwis0071_existing_ok.json``
+    is an ``actionType: 'New'`` whose ``requestNumber`` is the projcode ``UWIS0071``
+    of a project that already existed — legacy emitted the "Existing XRAS project
+    updated" subject for it. Only the database can tell the two apart.
+
+    ``requestType`` is **not** ``actionType`` and is useless for dispatch: all eight
+    sampled payloads carry ``requestType: 'New'``, including both Extensions, both
+    Supplements and the Adjustment. Only ``actionType`` selects a handler — and even
+    that is not enough on its own. Legacy dispatches on the **pair**
+    ``(actionType, does the project exist)``:
+
+    =====================================  ===============================================
+    service                                selector
+    =====================================  ===============================================
+    ``AddProjectActionService``            ``New`` and **not** ``exists(projcode)``
+    ``UpdateProjectActionService``         (``New`` or ``Renewal``) and ``exists``
+    ``ExtendProjectActionService``         ``Extension`` and ``exists``
+    ``SupplementProjectActionService``     ``Supplement`` and ``exists``
+    ``TransferAllocationActionService``    ``Transfer`` and ``exists``
+    ``AdjustProjectActionService``         ``Adjust`` and ``exists`` — **unreachable**
+    =====================================  ===============================================
+
+    So "Update" is a *handler*, never an ``actionType``; and the last row never fires
+    because XRAS sends ``Adjustment`` while legacy compares against ``Adjust``. See
+    ``sam.queries.xras_actions.XRAS_ACTION_TYPE_ALIASES``.
+
+    ``allocationType`` (``Small``, ``Large``, ``Educational``, ``Exploratory``,
+    ``Data Analysis`` observed) is **inert on this path**, like ``isReconciled``:
+    legacy reads it only on the GET side (``RequestDTO`` / ``Request`` /
+    ``RequestFactory``). Its vocabulary does not match SAM's ``allocation_type``
+    table, where ``Small`` is not even unique, so do not build a mapping from it
+    without deciding to.
 
     Dates are zero-padded ISO-8601 date-only strings (``'2026-07-28'``) in every date
     field. They are loaded as strings rather than ``fields.Date`` on purpose: legacy

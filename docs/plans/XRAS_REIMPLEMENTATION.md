@@ -34,7 +34,7 @@ in the working tree are byte-identical to the deployed tag.
 | **0** — Prerequisites | **partly done** | credential ✅, role enforcement ✅; `xras_action_log`, SMTP and `Permission.MANAGE_XRAS` still open |
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
 | **2** — Action ingestion + audit trail | **partly done** | `xras_action_log` + `XrasActionSchema` + `POST /actions` in **capture mode** shipped; see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) |
-| **3** — Handlers | ☐ to do | **Sprint A** — Extension → Supplement → Adjust → Update → New; Transfer to manual fallback. Every type currently parks as `manual` |
+| **3** — Handlers | ☐ to do | **Sprint A** — Extension → Supplement → Adjustment → Update → New; Transfer to manual fallback. Every type currently parks as `manual`. **No longer sample-blocked** (corpus is 8; see `XRAS_SPRINT_A.md` § 3b) |
 | **4** — XRAS as the 4th Allocations tab | ☐ to do | **Sprint B** — see [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md); also settles the schema before the prod DDL ticket is filed. Flask-Admin view is the free stopgap |
 | **5** — Parity and cutover | **partly done** | `--api xras` harness ✅; deployed-port run and the staged cutover still open |
 
@@ -104,7 +104,7 @@ notification emails. The distribution below was recovered by correlating the 109
 | Update adding an allocation to an existing project | 3 | 3% | `NEW` ×2, `NEW`+`SUPPLEMENT` ×1 |
 | Successful post that mutated nothing | 2 | 2% | 0 rows |
 | **Transfer** | **0** | — | — |
-| **Adjust** | **0** | — | — |
+| **Adjustment** | **0** | — | — (none *in this window* — one was observed 2026-08-05, § 1.4) |
 
 ### 1.3 Failure is concentrated in one code path
 
@@ -136,15 +136,27 @@ because XRAS does not auto-retry and the 500 body tells the operator nothing.
 all the pain. Build `Extension` first to establish the pipeline on the easy path, then invest in
 `New`.
 
-### 1.4 The manual-fallback path never fires
+### 1.4 The manual-fallback path fires rarely — but it does fire
 
 `ManualFallbackActionPostService` is reachable *only* via `catch (BadRequestException)` — i.e.
 `ProjectActionServiceSelector` finding no serviceable, which is what an `Adjustment` or `Advance`
-actionType would produce. (Note the selector's guard string is `"Adjust"`, not `"Adjustment"`, and
-there is no `"Advance"` serviceable at all.) It logs only at `LOG.debug()`, which is suppressed, so
-it cannot be grepped; detected instead by comparing access-log 200s against
-`EmailingActionPostService` INFO lines per day. **Δ = 0 on every day with coverage — zero
-invocations in 30 days.**
+actionType produces. (The selector's guard string is `"Adjust"`, not `"Adjustment"` — **legacy
+defect 4**, § 9 — and there is no `"Advance"` serviceable at all.) It logs only at `LOG.debug()`,
+which is suppressed, so it cannot be grepped; detected instead by comparing access-log 200s
+against `EmailingActionPostService` INFO lines per day. **Δ = 0 on every day with coverage — zero
+invocations in the measured 30-day window.**
+
+⚠️ **Corrected 2026-08-07: that is a sampling artifact, not the true rate.** On 2026-08-05 this
+path fired for an `Adjustment` on UWIS0064, forwarded by Travis Fair and now committed as
+`tests/fixtures/xras/actions/adjustment_uwis0064_manual.json`. Its subject line
+(`"New XRAS post action (Adjustment request for UWIS0064)"`) is `formatSubject` in this very
+class, so the provenance is unambiguous. Two consequences:
+
+- The measured window simply contained no Adjustment. The rate is low, not zero, and **§ 1.2's
+  `Adjust: 0` row means "none in those 30 days"**, not "never happens".
+- The harvest query in `XRAS_SPRINT_A.md` § 3b missed this path for the same reason: it matched
+  only the three `EmailingActionPostService` subjects. Manual-fallback payloads carry a fourth,
+  and they are the *only* record of the action types SAM does not service.
 
 Its structural consequence matters more than its usage: on that path the broker receives
 `200 {"message":"OK"}` for an action SAM silently deferred to a human. **The legacy 200/500 split
@@ -481,7 +493,7 @@ selector.setServiceables(
 | 1 | `actionType == "New"` && project **not** exists | Create project: title/abstract, lead=PI, admin=AM, allocation type via extractor chain, AOI from primary `fosNum`, org from lead, non-exempt, generated projcode, allocated GID; contracts from `grants[]`; per resource create an allocation (start clamped ≥ resource commission date, end-of-day end); add **every** `roles[]` entry to the accounts, regardless of `roleType` (§3.5); **finally set the project inactive** — a human activates it, and the success email is the trigger |
 | 2 | `actionType ∈ {"New","Renewal"}` && project exists | Update fields (`active=true`); contracts; per resource: create allocation if none overlapping, extend if the end grows (**error** if it shrinks), undo an AUTO/DEFAULT canned allocation via a compensating `UNDO AUTO/DEFAULT` adjustment, then supplement (`>0`) or adjust (`<0`). `comments == "AUTO_DEFAULT_ALLOCATION_TRANSACTION"` ⇒ extension only |
 | 3 | `actionType == "Supplement"` && project exists | Per resource: create allocation if none (start today, end = latest contract/allocation end), else supplement when `>0`; `≤0` ignored with a warning |
-| 4 | `actionType == "Adjust"` && project exists | As Supplement; legacy silently drops negatives |
+| 4 | `actionType == "Adjust"` && project exists | As Supplement; legacy silently drops negatives. ⚠️ **Unreachable in legacy** — XRAS sends `"Adjustment"`, so this row has never executed (defect 4, § 9). SAM accepts both spellings |
 | 5 | `actionType == "Transfer"` && project exists | 1 negative source + ≥1 positive destinations, same project, Σ = 0, source clamped to available |
 | 6 | `actionType == "Extension"` && project exists | **Ignores payload resources**; extends the latest allocation of **every active account** to `actionEndDate`; **errors** if that would shrink any |
 | — | no match | `BadRequestException` → swallowed → manual-fallback email → **200** |
@@ -1015,9 +1027,12 @@ NRIT P2-63.
 ### Phase 3 — Handlers, in production-frequency order ☐
 
 > **Sprint A** — [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) orders these easy-path-first
-> (Extension → Supplement → Adjust → Update → **New last**) so the pipeline is proven before the
-> 30%-success path is attempted. Note the four harvested payloads now cover **New and Extension
-> at both outcomes**, so those two are unblocked; Supplement and Update have zero samples.
+> (Extension → Supplement → Adjustment → Update → **New last**) so the pipeline is proven before
+> the 30%-success path is attempted. The eight harvested payloads cover **New at both outcomes,
+> Extension at both outcomes, Supplement ×2 and Adjustment ×1**, so no handler is sample-blocked.
+> Two caveats on that order: "Update" is `New`/`Renewal` against an existing project, so it and
+> New are one dispatch decision rather than two; and Adjustment has no known-good production
+> outcome to compare against, because legacy has never once serviced one (defect 4, § 9).
 
 All inside `management_transaction`; every allocation mutation through `log_allocation_transaction`.
 
@@ -1113,17 +1128,29 @@ three-module domain pattern in `src/cli/README.md:137-168`.
 ### Phase 5 — Parity and cutover
 
 1. ⚠️ **Harvest real payloads** from the `hdt@ucar.edu` mailbox (**not** `sweg-notify`, see §2.4).
-   Four are in hand — New and Extension, one success and one failure each — scrubbed into
-   `tests/fixtures/xras/actions/`. All three open questions are **closed**: the `roleType` on stale
-   placeholder entries is `'PI'`/`'User'` (full vocabulary `'PI'` / `'Allocation Manager'` /
-   `'User'`, space separated, and *not* the `Pi`/`CoPi`/`AllocationManager` keys of endpoint #5);
-   `isReconciled` is always `true` — including for the very identity SAM cannot find, so it must
-   stay inert — and `isAccountToBeCreated` always `false`; dates are zero-padded ISO-8601
-   **date-only**, so lexicographic `String.compareTo` is safe.
+   **Eight** are in hand, scrubbed into `tests/fixtures/xras/actions/`: New ×3 (two success, one
+   failure), Extension ×2 (one of each), Supplement ×2, Adjustment ×1. All three original open
+   questions are **closed**: the `roleType` on stale placeholder entries is `'PI'`/`'User'` (full
+   vocabulary `'PI'` / `'Allocation Manager'` / `'User'`, space separated, and *not* the
+   `Pi`/`CoPi`/`AllocationManager` keys of endpoint #5); `isReconciled` is always `true` —
+   including for the very identity SAM cannot find, so it must stay inert; dates are zero-padded
+   ISO-8601 **date-only**, so lexicographic `String.compareTo` is safe.
 
-   Still open, and the reason this is ⚠️ rather than ✅: **Supplement (15% of traffic) and Update
-   have zero samples**, and no co-PI has appeared, so its spelling is unknown. One bulk forward
-   from hdt closes all three — ask for successes as well as failures.
+   Corrected by the second batch (2026-08-07):
+
+   - `isAccountToBeCreated` is **not** always `false` — UWIS0071 carries a `true`.
+   - There is **no `actionType` of "Update"**. Legacy's vocabulary is `New, Extension, Supplement,
+     Transfer, Renewal, Adjustment, Advance` (`action/domain/model/Action.java:6`), and "Update"
+     is a handler selected by `(New | Renewal) && project exists`. **Supplement and Update both
+     have samples now**, so neither handler is gated.
+   - `allocationType` has a wider vocabulary than sampled (`Exploratory`, `Data Analysis` on top
+     of `Small`/`Large`/`Educational`) and matches no `allocation_type` row in SAM. It is inert on
+     this path — legacy reads it only on the GET side — so this is a trap, not a blocker.
+
+   Still open, and the reason this is ⚠️ rather than ✅: **no co-PI has appeared** in any of the
+   eight, so its spelling is still unknown, and `Transfer` / `Renewal` / `Advance` have zero
+   samples. One bulk forward from hdt closes all four — ask for successes as well as failures,
+   and include the manual-fallback subject (§ 1.4).
 
 2. ✅ **GET parity harness — `--api xras`.** `XrasClient` in `clients.py` (base-URL parameterised, so
    the same class serves both stacks), `compare_xras` in `comparators.py`, plus the import block, a
@@ -1290,10 +1317,32 @@ content is still checked byte-exact while an order neither side can be held to i
   `sam-admin xras --validate-mapping` and run it before cutover. Note this also moves bytes:
   `resourceRepositoryKey` is omitted when unmapped (§2.3), so closing a gap legitimately changes a
   `requests/*` response.
-- **Three legacy defects worth not reproducing.** `XrasAction.getUsernameByRoleType()` returns the
-  first matching role and ignores duplicates — the ACCESS docs state a request must have exactly one
-  PI, so we should reject rather than pick-first (a mis-ordered array could otherwise mint a project
-  under the wrong human). Organization 158 "UCAR Community Programs" matches two mnemonic codes
-  (`CAR`, `UCP`), which throws for any PI in that organization. And the roster and role-assignment
-  readings of `roles[]` apply **different begin-date filters** (§3.5), so a PI whose role starts after
-  the action begin date but before today becomes project lead with no account on any resource.
+- **Four legacy defects worth not reproducing.**
+
+  1. `XrasAction.getUsernameByRoleType()` returns the first matching role and ignores duplicates —
+     the ACCESS docs state a request must have exactly one PI, so we should reject rather than
+     pick-first (a mis-ordered array could otherwise mint a project under the wrong human).
+     **Now measured, not hypothetical:** `new_uwis0071_existing_ok.json` carries *two* `PI` roles
+     for one human whose institution changed mid-request — one on a closed window
+     (`2026-07-27`..`2026-08-04`, `organization: 'UNIVERSITY OF WISCONSIN AT MADISON'`) and one
+     open (`2026-08-05`.., `organization: 'NCAR/EDECD'`). Since `organization` is the mnemonic
+     extractor's input, the two choices resolve to *different facilities*. Rejecting outright is
+     wrong here — this is legitimate traffic — so the rule is **filter on the date window**, and
+     reject only if that still leaves more than one.
+  2. Organization 158 "UCAR Community Programs" matches two mnemonic codes (`CAR`, `UCP`), which
+     throws for any PI in that organization.
+  3. The roster and role-assignment readings of `roles[]` apply **different begin-date filters**
+     (§3.5), so a PI whose role starts after the action begin date but before today becomes
+     project lead with no account on any resource.
+  4. **`AdjustProjectActionService` is dead code.** Its `isServiceable` tests
+     `getActionType().equals("Adjust")`, but XRAS sends `"Adjustment"` (measured — see
+     `adjustment_uwis0064_manual.json`, and legacy's own vocabulary comment agrees). The two never
+     match, so no Adjustment has ever been serviced; every one falls through to the manual mailer
+     (§ 1.4). **Deliberate divergence:** nothing has shipped on the SAM side, so
+     `sam.queries.xras_actions.XRAS_ACTION_TYPE_ALIASES` maps `Adjust → Adjustment` and both
+     spellings select the same handler and the same filter bucket. `xras_action_log.action_type`
+     still stores what arrived verbatim, so the audit trail records the wire, not our
+     normalisation. Blast radius is small and one-directional: an action type that previously did
+     nothing but email a human would begin to be serviced once the Adjustment handler lands, which
+     is the point — but it means **the Adjustment handler is the one to review hardest**, since it
+     has no known-good production outcome to compare against.
