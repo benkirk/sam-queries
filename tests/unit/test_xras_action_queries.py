@@ -281,3 +281,75 @@ class TestPendingActivation:
             project = make_project(session, active=False)
             _action(session, request_number=project.projcode)
         assert len(get_xras_pending_activation(session, limit=2)) == 2
+
+
+class TestActionTypeRollup:
+    """``by_action_type`` — the marginal the facet chips need."""
+
+    def test_counts_by_action_type(self, session):
+        _action(session, action_type='Extension')
+        _action(session, action_type='Extension')
+        _action(session, action_type='New')
+        summary = summarize_xras_actions(session)
+        assert summary['by_action_type']['Extension'] >= 2
+        assert summary['by_action_type']['New'] >= 1
+
+    def test_null_action_type_keeps_its_bucket(self, session):
+        """A body that would not parse has no action type. Dropping it here would
+        stop by_action_type reconciling with total — callers rendering it as a
+        *filter* skip None themselves, because IS NULL is not expressible."""
+        _action(session, action_type=None, status='failed', http_status=400)
+        summary = summarize_xras_actions(session)
+        assert None in summary['by_action_type']
+        assert sum(summary['by_action_type'].values()) == summary['total']
+
+    def test_reconciles_with_by_status(self, session):
+        _action(session, status='failed', action_type='New')
+        _action(session, status='manual', action_type='Extension')
+        summary = summarize_xras_actions(session)
+        assert (sum(summary['by_action_type'].values())
+                == sum(summary['by_status'].values())
+                == summary['total'])
+
+    def test_request_number_narrows_the_rollup(self, session):
+        """The one table filter the summary used to ignore."""
+        _action(session, request_number='UCUB0166')
+        _action(session, request_number='UFSU0023')
+        scoped = summarize_xras_actions(session, request_number='UCUB0166')
+        assert scoped['total'] >= 1
+        assert scoped['total'] < summarize_xras_actions(session)['total']
+
+
+class TestFacetSelfExclusion:
+    """The property that makes the chips switchers rather than dead ends.
+
+    A dimension's rollup must omit its OWN filter. Scope it by itself and every
+    unselected value reads zero the moment one is picked, so there is no way to
+    move between values without first clearing the filter.
+    """
+
+    def test_omitting_status_keeps_other_statuses_visible(self, session):
+        _action(session, status='failed', action_type='New')
+        _action(session, status='manual', action_type='New')
+
+        # How the route builds the STATUS facet: action_type applied, status not.
+        facet = summarize_xras_actions(session, action_type='New')
+        assert facet['by_status']['failed'] >= 1
+        assert facet['by_status']['manual'] >= 1
+
+    def test_scoping_a_dimension_by_itself_is_the_dead_end(self, session):
+        """Pins the failure mode, so a refactor that reintroduces it is caught."""
+        _action(session, status='failed')
+        _action(session, status='manual')
+        self_scoped = summarize_xras_actions(session, status='failed')
+        assert self_scoped['by_status']['failed'] >= 1
+        assert self_scoped['by_status']['manual'] == 0     # <- the dead end
+
+    def test_omitting_action_type_keeps_other_types_visible(self, session):
+        _action(session, status='failed', action_type='New')
+        _action(session, status='failed', action_type='Extension')
+
+        # How the route builds the ACTION TYPE facet: status applied, type not.
+        facet = summarize_xras_actions(session, status='failed')
+        assert facet['by_action_type'].get('New', 0) >= 1
+        assert facet['by_action_type'].get('Extension', 0) >= 1

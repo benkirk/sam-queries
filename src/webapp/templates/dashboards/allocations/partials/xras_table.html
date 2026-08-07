@@ -2,6 +2,7 @@
 {% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {#
   XRAS action-log HTMX fragment.
 
@@ -27,18 +28,30 @@
   reads as broken.
 #}
 
-{# Summary strip: scoped to the CURRENT filter, so it describes what is on screen
-   rather than the whole table. Statuses render even at zero — an absent bucket
-   reads as "not measured" rather than "none". #}
-<div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+{# Facet strip — clickable. A chip writes its value into the filter form and
+   re-submits it, so the whole fragment (chips included) re-renders with new
+   counts and new active states. Clicking the active chip clears that filter.
+
+   The counts come from SELF-EXCLUDING rollups (see xras_fragment): each
+   dimension's chips ignore its own filter, so they stay a way to move between
+   values rather than collapsing to zeros as soon as one is picked.
+
+   The headline count is `total` — the table's real filtered row count. It is
+   deliberately NOT either facet's total: with each facet unscoped in one
+   dimension, neither of those is the number of rows on screen. #}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-1 small">
     <span class="text-muted">Showing</span>
-    <strong>{{ summary.total | fmt_number }}</strong>
-    <span class="text-muted">action{{ '' if summary.total == 1 else 's' }}:</span>
-    {% for state, count in summary.by_status.items() %}
-    <span class="{% if not count %}opacity-50{% endif %}">
-        {{ status_badge(state) }} <strong>{{ count | fmt_number }}</strong>
-    </span>
-    {% endfor %}
+    <strong>{{ total | fmt_number }}</strong>
+    <span class="text-muted">action{{ '' if total == 1 else 's' }}</span>
+</div>
+
+<div class="facet-grid mb-2">
+    {# Both lists are shaped in the route — ordering and the NULL drop are data
+       decisions, not layout ones, and display code here takes ready dicts. #}
+    {{ facet_row('Status', status_facets,
+                 form_id, 'status', filters.status or [], badge=True) }}
+    {{ facet_row('Action type', action_type_facets,
+                 form_id, 'action_type', filters.action_type or []) }}
 </div>
 
 {# The id is the htmx.onLoad marker admin-cards.js gates chevron wiring on —

@@ -1,0 +1,63 @@
+{#
+  Generic facet-chip row: live value counts that double as filter controls.
+
+  Generalised from dashboards/user/partials/_jobs_facet_chips.html, which is
+  still the jobs explorer's own (its dimension list and NULL-handling are
+  jobs-shaped). This carries the parts that are not: the chip markup, the
+  active/clear semantics, and the two-column grid.
+
+  A chip click writes its value into the named field of a filter form and
+  re-submits it — data-action "set-filter-submit" in static/js/actions.js,
+  CSP-clean, no inline handlers. The active chip is marked and clicking it
+  CLEARS the filter (empty data-value), so it doubles as its own clear button.
+
+  ⚠️  The caller must compute counts with SELF-EXCLUSION — a dimension's rollup
+  must omit its own filter. Scope a dimension by itself and every unselected
+  value reads 0 the moment one is picked, which turns the strip from a switcher
+  into a dead end. See blueprint.py::xras_fragment.
+
+  ⚠️  Values that cannot round-trip through the form must not become chips. A
+  NULL is a real count but not a filterable value (there is no way to say
+  "IS NULL" in a text input or a select), so callers pass only expressible
+  values — the jobs macro does the same via rejectattr('value','none').
+
+  Args:
+    label    — dimension name shown in the label column
+    values   — [{'value': str, 'count': int}], already ordered and filtered
+    form_id  — id of the filter form to write into and submit
+    field    — the form control's name; must match a control in that form
+    active   — list/set of currently-selected values for this dimension
+    badge    — when true, render each value through status_badge() instead of
+               a plain text span, preserving a colour vocabulary the rows below
+               already use. Chips get .has-badge so the CSS can mark selection
+               with a ring rather than a fill that would overwrite the colour.
+#}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+
+{% macro facet_row(label, values, form_id, field, active=[], badge=False) %}
+{% if values %}
+<div class="facet-grid-label">{{ label }}</div>
+<div class="facet-grid-values">
+    {% for row in values %}
+    {% set is_active = row.value in active %}
+    <button type="button"
+            class="facet-chip{{ ' has-badge' if badge }}{{ ' is-active' if is_active }}{{ ' opacity-50' if not row.count and not is_active }}"
+            data-action="set-filter-submit"
+            data-form-id="{{ form_id }}"
+            data-field="{{ field }}"
+            data-value="{{ '' if is_active else row.value }}"
+            title="{{ 'Clear this filter' if is_active else 'Filter by ' ~ label ~ ' ' ~ row.value }}">
+        {% if badge %}
+        {# tooltip=False: the chip's own title already says what clicking does,
+           and a live Bootstrap tooltip whose trigger htmx removes mid-transition
+           throws. See the note on status_badge. #}
+        {{ status_badge(row.value, tooltip=False) }}
+        {% else %}
+        <span class="facet-chip-value">{{ row.value }}</span>
+        {% endif %}
+        <span class="facet-chip-count">{{ row.count | fmt_number }}</span>
+    </button>
+    {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}

@@ -18,6 +18,8 @@ contains the bytes at all. A template-only gate would leave the PII sitting in
 the HTML for anyone who opened view-source.
 """
 
+import re
+
 import pytest
 
 from webapp.utils.rbac import Permission
@@ -194,3 +196,141 @@ class TestNavigation:
         resp = auth_client.get('/allocations/transactions')
         assert resp.status_code == 200
         assert b'/allocations/xras' not in resp.data
+
+
+class TestFacetChips:
+    """The summary strip's chips are filter controls, not decoration.
+
+    They looked clickable before they were — the affordance mismatch is what
+    prompted the feature — so these pin the wiring the click depends on.
+    """
+
+    def _chips(self, html, field):
+        """Every chip button for one dimension, as (value, data-value) pairs."""
+        pattern = (r'data-action="set-filter-submit"[^>]*?'
+                   r'data-form-id="([^"]*)"[^>]*?'
+                   r'data-field="([^"]*)"[^>]*?'
+                   r'data-value="([^"]*)"')
+        return [(m.group(1), m.group(3))
+                for m in re.finditer(pattern, html, re.S)
+                if m.group(2) == field]
+
+    def test_status_chips_are_wired_to_the_filter_form(self, auth_client):
+        html = auth_client.get('/allocations/xras_fragment').data.decode()
+        chips = self._chips(html, 'status')
+        # One per status in the fixed vocabulary.
+        assert len(chips) == 5
+        # Every chip writes into the form the filter panel actually renders.
+        assert {form_id for form_id, _ in chips} == {'xras-filters'}
+        assert {value for _, value in chips} == {
+            'received', 'processed', 'manual', 'failed', 'replayed'}
+
+    def test_action_type_chips_are_wired(self, auth_client, committed_action):
+        html = auth_client.get('/allocations/xras_fragment').data.decode()
+        chips = self._chips(html, 'action_type')
+        assert ('xras-filters', 'Extension') in chips
+
+    def test_the_active_chip_clears_rather_than_reapplying(self, auth_client):
+        """An empty data-value is how set-filter-submit clears a filter, so the
+        selected chip doubles as its own clear button."""
+        html = auth_client.get(
+            '/allocations/xras_fragment?status=failed').data.decode()
+        chips = dict((v, f) for f, v in self._chips(html, 'status'))
+        # 'failed' is selected, so its chip carries the CLEAR value...
+        assert '' in [v for _, v in self._chips(html, 'status')]
+        # ...and is marked active.
+        assert 'is-active' in html
+
+    def test_status_chips_keep_their_colour_coding(self, auth_client):
+        """has-badge is what tells the CSS to mark selection with a ring rather
+        than a fill that would paint over the status palette."""
+        html = auth_client.get('/allocations/xras_fragment').data.decode()
+        assert 'facet-chip has-badge' in html
+
+    def test_chips_are_buttons_not_links(self, auth_client):
+        """They mutate a form; a bare href would be a lie to assistive tech and
+        would navigate on middle-click."""
+        html = auth_client.get('/allocations/xras_fragment').data.decode()
+        for m in re.finditer(r'<(\w+)[^>]*data-action="set-filter-submit"', html):
+            assert m.group(1) == 'button'
+
+
+class TestFacetSelfExclusion:
+    """A dimension's chips must ignore its own filter, or they collapse to zeros
+    the moment one is picked and stop being a way to switch between values."""
+
+    def _counts(self, html, field):
+        """{value: count} scraped from one dimension's chips."""
+        out = {}
+        for m in re.finditer(
+                r'data-field="' + field + r'"[^>]*?data-value="([^"]*)"'
+                r'.*?facet-chip-count">([\d,]+)<', html, re.S):
+            out[m.group(1)] = int(m.group(2).replace(',', ''))
+        return out
+
+    def test_other_statuses_stay_countable_while_one_is_selected(
+            self, auth_client, committed_action):
+        """The regression that would silently turn the chips back into dead
+        ends. committed_action is a 'received' row, so filtering to a DIFFERENT
+        status must still show it."""
+        html = auth_client.get(
+            '/allocations/xras_fragment?status=failed').data.decode()
+        counts = self._counts(html, 'status')
+        # The active chip's value is '' (its clear affordance), so 'received'
+        # here is an unselected chip — and it must not read zero.
+        assert counts.get('received', 0) >= 1, (
+            'status facet was scoped by its own filter — the chips are dead ends')
+
+    def test_the_headline_count_is_the_table_total_not_a_facet_total(
+            self, auth_client, committed_action):
+        """With each facet unscoped in one dimension, neither facet total is the
+        number of rows on screen."""
+        html = auth_client.get(
+            '/allocations/xras_fragment?status=failed').data.decode()
+        shown = int(re.search(r'Showing\s*</span>\s*<strong>([\d,]+)</strong>',
+                              html).group(1).replace(',', ''))
+        counts = self._counts(html, 'status')
+        # The 'received' row exists but is filtered out of the table.
+        assert counts.get('received', 0) >= 1
+        assert shown < sum(counts.values())
+
+
+class TestDefaultWindowUpperBound:
+    """The default window is unbounded above, and that is load-bearing.
+
+    `received_time` is a MySQL DATETIME with second resolution, and MySQL
+    **rounds** fractional seconds rather than truncating. A row written at
+    10:10:24.894 is therefore stored as 10:10:25 — *after* an `end_date` captured
+    microseconds earlier in the same request. With a `datetime.now()` upper
+    bound, an action that arrived moments ago is missing from the log until the
+    clock ticks past it, which is the exact question this page exists to answer.
+    """
+
+    def test_default_window_has_no_upper_bound(self):
+        from werkzeug.datastructures import MultiDict
+
+        from webapp.dashboards.allocations.blueprint import _parse_xras_filters
+
+        filters, _, _ = _parse_xras_filters(MultiDict())
+        assert filters['start_date'] is not None, 'still a 30-day lower bound'
+        assert filters['end_date'] is None
+
+    def test_a_row_written_this_instant_is_visible(self, auth_client,
+                                                   committed_action):
+        """The regression, end to end: the fixture commits a row and the very
+        next request must show it. This failed before the fix roughly whenever
+        the write landed on a sub-second >= .5."""
+        html = auth_client.get('/allocations/xras_fragment').data.decode()
+        assert 'UCUB0166' in html
+
+    def test_an_explicit_end_date_still_bounds(self):
+        """Unbounded is the DEFAULT, not the behaviour — an explicit To date is
+        still honoured, normalised to the end of that day."""
+        from werkzeug.datastructures import MultiDict
+
+        from webapp.dashboards.allocations.blueprint import _parse_xras_filters
+
+        filters, _, _ = _parse_xras_filters(
+            MultiDict([('end_date', '2026-01-15')]))
+        assert filters['end_date'].strftime('%Y-%m-%d %H:%M:%S') \
+            == '2026-01-15 23:59:59'

@@ -351,12 +351,13 @@ def summarize_xras_actions(
     *,
     action_type: Optional[Union[str, List[str]]] = None,
     status: Optional[Union[str, List[str]]] = None,
+    request_number: Optional[Union[str, List[str]]] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
 ) -> Dict[str, Any]:
-    """Roll the log up by status and by (status, action_type).
+    """Roll the log up by status, by action type, and by the two together.
 
-    One function serves the page's summary strip and ``sam-admin xras --summary``,
+    One function serves the page's facet chips and ``sam-admin xras --summary``,
     so the two can never disagree about what "12 failed" means.
 
     **Every status in ``XRAS_ACTION_STATUSES`` appears in ``by_status``, including
@@ -366,8 +367,23 @@ def summarize_xras_actions(
     enumerating the 5x6 cross product would be noise, since most cells are
     structurally impossible.
 
+    ``by_action_type`` **keeps its ``None`` key**, which is a real bucket: a body
+    that would not parse has no action type, and dropping it here would stop
+    ``by_action_type`` reconciling with ``total``. Callers rendering it as a
+    *filter* control must skip ``None`` themselves — "action_type IS NULL" is not
+    expressible through the filter form — the same rule the jobs facet strip
+    applies via ``rejectattr('value', 'none')``.
+
+    On **faceting**: to use this for chips that double as switchers, call it once
+    per dimension with that dimension's own filter omitted. Otherwise filtering to
+    ``status='failed'`` drives every other status count to zero and the chips
+    become dead ends rather than a way to move between statuses. See
+    ``webapp/dashboards/allocations/blueprint.py::xras_fragment``.
+
     Returns:
-        ``{'total': int, 'by_status': {status: count},
+        ``{'total': int,
+           'by_status': {status: count},
+           'by_action_type': {action_type|None: count},
            'by_type': [{'status', 'action_type', 'count'}, ...]}``
     """
     query = _apply_action_filters(
@@ -379,7 +395,7 @@ def summarize_xras_actions(
         action_log_id=None,
         action_type=action_type,
         status=status,
-        request_number=None,
+        request_number=request_number,
         projcode=None,
         remote_actor=None,
         processed_by=None,
@@ -392,6 +408,7 @@ def summarize_xras_actions(
     ).group_by(XrasActionLog.status, XrasActionLog.action_type)
 
     by_status = {s: 0 for s in XRAS_ACTION_STATUSES}
+    by_action_type: Dict[Optional[str], int] = {}
     by_type: List[Dict[str, Any]] = []
     total = 0
 
@@ -400,6 +417,7 @@ def summarize_xras_actions(
         # A status outside the vocabulary would be a bug, not a filter miss — surface
         # it rather than dropping it on the floor.
         by_status[row_status] = by_status.get(row_status, 0) + n
+        by_action_type[row_type] = by_action_type.get(row_type, 0) + n
         by_type.append({
             'status': row_status,
             'action_type': row_type,
@@ -407,7 +425,12 @@ def summarize_xras_actions(
         })
 
     by_type.sort(key=lambda r: (-r['count'], r['status'], r['action_type'] or ''))
-    return {'total': total, 'by_status': by_status, 'by_type': by_type}
+    return {
+        'total': total,
+        'by_status': by_status,
+        'by_action_type': by_action_type,
+        'by_type': by_type,
+    }
 
 
 def get_xras_pending_activation(

@@ -1195,7 +1195,17 @@ def _parse_xras_filters(request_args):
     if 'start_date' not in request_args and 'end_date' not in request_args:
         start_date = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
                       - timedelta(days=30))
-        end_date = datetime.now()
+        # Deliberately UNBOUNDED above, where the sibling audit pages use
+        # datetime.now(). There are no future rows, so an upper bound buys
+        # nothing — and a sub-second one actively loses the newest row.
+        # `received_time` is a MySQL DATETIME with second resolution and MySQL
+        # ROUNDS rather than truncates, so a row written at 10:10:24.894 is
+        # stored as 10:10:25 and lands *after* an end_date captured microseconds
+        # earlier in the same request. On an audit surface whose whole job is
+        # answering "did my action get recorded?", the row most worth seeing is
+        # the one that just arrived. (_parse_audit_filters above still has the
+        # sub-second bound; same latent bug, left alone as pre-existing.)
+        end_date = None
     else:
         try:
             start_date = (datetime.strptime(start_date_str, '%Y-%m-%d')
@@ -1286,17 +1296,46 @@ def xras_fragment():
         offset=offset, limit=page['per_page'],
     )
     total = count_recent_xras_actions(db.session, **filters)
-    # Scoped to the same filters as the table, so the strip describes what the
-    # operator is looking at rather than the whole table.
-    summary = summarize_xras_actions(
-        db.session,
-        action_type=filters['action_type'], status=filters['status'],
+    # Facet counts, computed with SELF-EXCLUSION: each dimension's rollup omits
+    # its OWN filter while honouring every other one.
+    #
+    # This is what makes the chips switchers rather than dead ends. Scoping a
+    # dimension by itself drives every unselected value to zero the moment one is
+    # picked — click "failed" and the other four statuses all read 0, so there is
+    # no way to move to another status without first clearing the filter. The
+    # jobs explorer's facet strip learned the same lesson (service.jobs_facets
+    # passes self_exclude).
+    #
+    # Two GROUP BY queries instead of one; both are served by the
+    # (status, action_type) triage index.
+    _facet_common = dict(
+        request_number=filters['request_number'],
         start_date=filters['start_date'], end_date=filters['end_date'],
+    )
+    status_facet = summarize_xras_actions(
+        db.session, action_type=filters['action_type'], **_facet_common)
+    type_facet = summarize_xras_actions(
+        db.session, status=filters['status'], **_facet_common)
+
+    # Every status renders, including at zero — the vocabulary is fixed at five
+    # and an absent bucket would read as "not measured" rather than "none".
+    status_facets = [{'value': s, 'count': status_facet['by_status'].get(s, 0)}
+                     for s in XRAS_ACTION_STATUSES]
+
+    # A NULL action_type is a real count — a body that would not parse has none —
+    # but it is not a filterable value: there is no way to express "IS NULL"
+    # through the form's multi-select. Dropped rather than rendered as a chip
+    # that cannot work, the same rule the jobs facet strip applies.
+    action_type_facets = sorted(
+        ({'value': t, 'count': n}
+         for t, n in type_facet['by_action_type'].items() if t),
+        key=lambda r: (-r['count'], r['value']),
     )
 
     return render_template(
         'dashboards/allocations/partials/xras_table.html',
-        rows=rows, total=total, summary=summary,
+        rows=rows, total=total,
+        status_facets=status_facets, action_type_facets=action_type_facets,
         page=page, sort=sort, filters=filters,
         fragment_url=url_for('allocations_dashboard.xras_fragment'),
         target_id=_XRAS_FRAGMENT_TARGET,
