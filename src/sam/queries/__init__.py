@@ -110,9 +110,11 @@ from .allocations import (
 from .xras_actions import (
     XRAS_ACTION_SORT_COLUMNS,
     XRAS_ACTION_STATUSES,
+    XRAS_ACTION_TYPE_ALIASES,
     XRAS_ACTION_TYPES,
     XRAS_REQUEST_TOKEN_EXAMPLE,
     XRAS_REQUEST_TOKEN_PREFIXES,
+    canonical_action_type,
     count_recent_xras_actions,
     count_xras_dismissed_pending,
     get_latest_xras_action_id,
@@ -255,9 +257,11 @@ __all__ = [
     # XRAS action log
     'XRAS_ACTION_SORT_COLUMNS',
     'XRAS_ACTION_STATUSES',
+    'XRAS_ACTION_TYPE_ALIASES',
     'XRAS_ACTION_TYPES',
     'XRAS_REQUEST_TOKEN_EXAMPLE',
     'XRAS_REQUEST_TOKEN_PREFIXES',
+    'canonical_action_type',
     'get_recent_xras_actions',
     'count_recent_xras_actions',
     'summarize_xras_actions',

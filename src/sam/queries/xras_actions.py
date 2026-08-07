@@ -39,12 +39,69 @@ from sam.projects.projects import Project
 #: It is listed because the UI must render it, not because it has been observed.
 XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'replayed')
 
-#: Action types seen on the wire, for the filter dropdown. Deliberately *not* a
-#: constraint — ``XrasActionSchema`` applies no enum to ``actionType`` (no co-PI
-#: role has ever been sampled, and the Supplement/Update spellings are unconfirmed),
-#: so an unrecognised type must still list and still filter. Callers union this with
-#: whatever ``DISTINCT action_type`` actually holds.
-XRAS_ACTION_TYPES = ('New', 'Extension', 'Supplement', 'Update', 'Adjust', 'Transfer')
+#: Action types on the wire, for the filter dropdown. This is legacy's own declared
+#: vocabulary (``action/domain/model/Action.java``: ``// New, Extension, Supplement,
+#: Transfer, Renewal, Adjustment, Advance``), corrected against real payloads.
+#:
+#: ⚠️  There is **no ``actionType`` of "Update"**. "Update" is a *handler*, not a
+#: type: legacy dispatches on the pair ``(actionType, does the project exist)``, and
+#: ``UpdateProjectActionService`` fires on ``New`` or ``Renewal`` when the projcode
+#: already exists (``AddProjectActionService`` takes ``New`` when it does not). The
+#: ``new_uwis0071_existing_ok.json`` fixture is that case. An earlier version of this
+#: tuple listed ``'Update'`` and ``'Adjust'``, neither of which XRAS has ever sent.
+#:
+#: Deliberately *not* a constraint — ``XrasActionSchema`` applies no enum to
+#: ``actionType`` (no co-PI role has ever been sampled, and Transfer / Renewal /
+#: Advance still have zero samples), so an unrecognised type must still list and
+#: still filter. Callers union this with whatever ``DISTINCT action_type`` holds.
+XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
+                     'Transfer', 'Adjustment', 'Advance')
+
+#: Wire spellings that mean the same handler, ``alias -> canonical``.
+#:
+#: XRAS sends ``actionType: "Adjustment"`` (measured — see
+#: ``adjustment_uwis0064_manual.json``), but legacy's
+#: ``AdjustProjectActionService.isServiceable`` tests ``equals("Adjust")``. The two
+#: never match, so that handler has never once fired and every Adjustment falls
+#: through ``ProjectActionServiceSelector`` to the manual-email fallback. Nothing has
+#: shipped here yet, so SAM accepts **both** spellings rather than reproducing the
+#: mismatch (see ``docs/plans/XRAS_REIMPLEMENTATION.md`` § 9, legacy defect 4).
+#:
+#: This is a **read-side** concern only. ``xras_action_log.action_type`` always
+#: records what actually arrived, verbatim — the audit trail's whole job.
+XRAS_ACTION_TYPE_ALIASES = {'Adjust': 'Adjustment'}
+
+
+def canonical_action_type(value: Optional[str]) -> Optional[str]:
+    """Fold an alias spelling onto its canonical one. ``None`` and unknowns pass through."""
+    return XRAS_ACTION_TYPE_ALIASES.get(value, value)
+
+
+def expand_action_types(value):
+    """Widen an action-type filter to cover every spelling of the types requested.
+
+    Filtering for ``'Adjustment'`` must return rows recorded as ``'Adjust'`` too,
+    since they are the same action (see :data:`XRAS_ACTION_TYPE_ALIASES`). Symmetric
+    by construction — each request is canonicalised *before* it is expanded, so
+    asking by either spelling yields both. Accepts a scalar, an iterable or ``None``,
+    and preserves that shape so it can sit directly in front of the ``_in`` helper.
+    """
+    if value is None:
+        return None
+
+    scalar = isinstance(value, str)
+    requested = [value] if scalar else list(value)
+
+    widened = []
+    for wanted in requested:
+        canonical = canonical_action_type(wanted)
+        for spelling in (canonical, *(a for a, c in XRAS_ACTION_TYPE_ALIASES.items()
+                                      if c == canonical)):
+            if spelling not in widened:
+                widened.append(spelling)
+
+    # A single type with no aliases stays a scalar so the emitted SQL is unchanged.
+    return widened[0] if scalar and len(widened) == 1 else widened
 
 #: The local XRAS request-number token family — what XRAS sends as
 #: ``requestNumber`` for a New action, before any projcode exists. At NCAR these
@@ -129,7 +186,9 @@ def _apply_action_filters(
 
     for clause in (
         _in(XrasActionLog.xras_action_log_id, action_log_id),
-        _in(XrasActionLog.action_type, action_type),
+        # Widened here, once, so the list query, the count and the summary rollup
+        # cannot disagree about what "Adjustment" selects.
+        _in(XrasActionLog.action_type, expand_action_types(action_type)),
         _in(XrasActionLog.status, status),
         _in(XrasActionLog.request_number, request_number),
         _in(XrasActionLog.projcode_result, projcode),
@@ -188,9 +247,15 @@ def get_recent_xras_actions(
     Args:
         action_log_id: primary key(s) — the single-row lookup behind the detail modal.
         action_type: ``'New'`` / ``'Extension'`` / … (see ``XRAS_ACTION_TYPES``).
+            Alias spellings are folded in, so ``'Adjustment'`` also selects rows
+            recorded as ``'Adjust'`` (``XRAS_ACTION_TYPE_ALIASES``).
         status: one or more of ``XRAS_ACTION_STATUSES``.
         request_number: XRAS request number, which *is* the projcode for actions
-            against an existing project and a request token for New.
+            against an existing project and a request token for a New action that
+            mints one. Note ``New`` does **not** imply a token: a New action against
+            an existing project carries that project's projcode (measured — see
+            ``new_uwis0071_existing_ok.json``), which is exactly the case legacy
+            routes to ``UpdateProjectActionService``.
         projcode: filter on ``projcode_result`` — the minted projcode, which
             diverges from ``request_number`` exactly on the New path.
         http_status: 200 / 400 / 422. ``status='failed'`` covers both 400 and 422,
@@ -227,7 +292,9 @@ def get_recent_xras_actions(
 
     The two ``*_is_project`` flags exist because **``request_number`` is not always
     a projcode**: it is one for actions against an existing project, and a request
-    token (``NCAR####`` at this site) for New. A UI that linked every
+    token (``NCAR####`` at this site) for a New action that mints one — and only the
+    database can tell those apart, since ``actionType`` alone cannot (a New action
+    against an existing project sends a projcode). A UI that linked every
     ``request_number`` to a project page would send an operator to a 404 on exactly the 21% of traffic
     that matters most. Resolved in one extra ``IN`` query per page rather than a
     join, so it costs one round trip bounded by ``limit``.
@@ -448,21 +515,24 @@ def summarize_xras_actions(
 
     by_status = {s: 0 for s in XRAS_ACTION_STATUSES}
     by_action_type: Dict[Optional[str], int] = {}
-    by_type: List[Dict[str, Any]] = []
     total = 0
 
+    merged_pairs: Dict[Any, int] = {}
     for row_status, row_type, n in query.all():
         total += n
         # A status outside the vocabulary would be a bug, not a filter miss — surface
         # it rather than dropping it on the floor.
         by_status[row_status] = by_status.get(row_status, 0) + n
+        # Alias spellings are one logical type, so they are one bucket and one chip —
+        # otherwise 'Adjust' and 'Adjustment' render as two chips that filter
+        # identically. GROUP BY runs on the raw column; folding happens here.
+        row_type = canonical_action_type(row_type)
         by_action_type[row_type] = by_action_type.get(row_type, 0) + n
-        by_type.append({
-            'status': row_status,
-            'action_type': row_type,
-            'count': n,
-        })
+        key = (row_status, row_type)
+        merged_pairs[key] = merged_pairs.get(key, 0) + n
 
+    by_type = [{'status': s, 'action_type': t, 'count': n}
+               for (s, t), n in merged_pairs.items()]
     by_type.sort(key=lambda r: (-r['count'], r['status'], r['action_type'] or ''))
     return {
         'total': total,

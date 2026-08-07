@@ -42,6 +42,7 @@ from sam.queries.xras_actions import (
     XRAS_ACTION_STATUSES,
     XRAS_ACTION_TYPES,
     XRAS_REQUEST_TOKEN_EXAMPLE,
+    canonical_action_type,
     count_recent_xras_actions,
     count_xras_dismissed_pending,
     get_latest_xras_action_id,
@@ -1261,13 +1262,18 @@ def _parse_xras_filters(request_args):
 def _xras_action_types():
     """Filter vocabulary: the known types plus anything actually in the table.
 
-    ``XrasActionSchema`` applies no enum to ``actionType`` on purpose — the
-    Supplement/Update spellings are unconfirmed and no co-PI role has ever been
+    ``XrasActionSchema`` applies no enum to ``actionType`` on purpose — Transfer,
+    Renewal and Advance still have zero samples and no co-PI role has ever been
     sampled — so a type we have never seen must still be filterable rather than
     invisible. Union, don't replace.
+
+    Observed values are folded onto their canonical spelling first, so an alias pair
+    offers **one** entry: ``Adjust`` and ``Adjustment`` are the same action and
+    filtering on either returns both (``XRAS_ACTION_TYPE_ALIASES``). Two chips that
+    filter identically would read as two distinct action types.
     """
     observed = {
-        row.action_type for row in
+        canonical_action_type(row.action_type) for row in
         db.session.query(XrasActionLog.action_type)
         .filter(XrasActionLog.action_type.isnot(None))
         .distinct().all()

@@ -22,6 +22,7 @@ from sam.queries.xras_actions import (
     XRAS_ACTION_STATUSES,
     XRAS_REQUEST_TOKEN_EXAMPLE,
     XRAS_REQUEST_TOKEN_PREFIXES,
+    canonical_action_type,
     count_recent_xras_actions,
     count_xras_dismissed_pending,
     get_latest_xras_action_id,
@@ -648,6 +649,74 @@ class TestActionTypeRollup:
         scoped = summarize_xras_actions(session, request_number='UCUB0166')
         assert scoped['total'] >= 1
         assert scoped['total'] < summarize_xras_actions(session)['total']
+
+
+class TestActionTypeAliases:
+    """``Adjust`` and ``Adjustment`` are one action, so they are one chip and one filter.
+
+    XRAS sends ``Adjustment``; legacy's ``AdjustProjectActionService`` compares against
+    ``Adjust`` and therefore never fires. Nothing has shipped here, so SAM accepts both
+    spellings rather than reproducing the mismatch. The stored column keeps whatever
+    arrived — folding is strictly read-side.
+    """
+
+    def test_canonical_and_alias_fold_onto_one_value(self):
+        assert canonical_action_type('Adjust') == 'Adjustment'
+        assert canonical_action_type('Adjustment') == 'Adjustment'
+        # Unknown types and None pass through untouched — the vocabulary is open.
+        assert canonical_action_type('Transfer') == 'Transfer'
+        assert canonical_action_type(None) is None
+
+    @pytest.mark.parametrize('asked', ['Adjustment', 'Adjust'])
+    def test_either_spelling_selects_both_rows(self, session, asked):
+        """Symmetric: asking by either spelling returns rows stored under both."""
+        _action(session, action_type='Adjustment', request_number='UWIS0064')
+        _action(session, action_type='Adjust', request_number='UWIS0065')
+
+        rows = get_recent_xras_actions(session, action_type=asked)
+        found = {r['request_number'] for r in rows}
+        assert {'UWIS0064', 'UWIS0065'} <= found
+        assert count_recent_xras_actions(session, action_type=asked) == len(rows)
+
+    def test_a_non_aliased_type_is_unaffected(self, session):
+        """The widening must not leak across types."""
+        _action(session, action_type='Adjustment', request_number='UWIS0064')
+        _action(session, action_type='New', request_number='NCAR4253')
+        rows = get_recent_xras_actions(session, action_type='New')
+        assert {r['request_number'] for r in rows} == {'NCAR4253'}
+
+    def test_rollup_merges_the_two_spellings_into_one_bucket(self, session):
+        """Two chips that filter identically would read as two distinct action types."""
+        _action(session, action_type='Adjustment', request_number='UWIS0064')
+        _action(session, action_type='Adjust', request_number='UWIS0065')
+
+        summary = summarize_xras_actions(session)
+        assert summary['by_action_type']['Adjustment'] >= 2
+        assert 'Adjust' not in summary['by_action_type']
+        # ...and the merge must not double-count or lose a row.
+        assert sum(summary['by_action_type'].values()) == summary['total']
+
+    def test_by_type_pairs_merge_too(self, session):
+        """``by_type`` is the (status, action_type) cross product — one row per pair."""
+        _action(session, action_type='Adjustment', status='manual',
+                request_number='UWIS0064')
+        _action(session, action_type='Adjust', status='manual',
+                request_number='UWIS0065')
+
+        summary = summarize_xras_actions(session)
+        pairs = [r for r in summary['by_type']
+                 if r['action_type'] == 'Adjustment' and r['status'] == 'manual']
+        assert len(pairs) == 1
+        assert pairs[0]['count'] >= 2
+        assert not [r for r in summary['by_type'] if r['action_type'] == 'Adjust']
+        assert sum(r['count'] for r in summary['by_type']) == summary['total']
+
+    def test_the_stored_column_is_never_rewritten(self, session):
+        """Audit fidelity: the row records the spelling XRAS actually sent."""
+        _action(session, action_type='Adjust', request_number='UWIS0065')
+        row = next(r for r in get_recent_xras_actions(session)
+                   if r['request_number'] == 'UWIS0065')
+        assert row['action_type'] == 'Adjust'
 
 
 class TestFacetSelfExclusion:
