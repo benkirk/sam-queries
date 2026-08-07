@@ -341,16 +341,23 @@ amending after seeding would have meant seeding twice. `zz-90-xras_action_log.sq
 | **Widen `remote_actor` to hold a username** | **No.** A replay row keeps the *original's* `remote_actor` — the bytes still originated at XRAS — and records the human in `processed_by` (`varchar(35)`, `users.username` width, already present). `remote_actor` stays `varchar(11)` and stays honest about meaning "which API credential posted these bytes". |
 | **A `status` ENUM instead of `varchar(16)`** | **No.** The rest of this schema uses `varchar` for such columns, and the five values are still moving — `processed` is unvalidated until handlers land. An ENUM change is a DBA ticket; a string is not. |
 
-### Pending — a second table, decided but not yet written
+### Applied — the second table
 
-**`xras_activation_event`** joins this ticket. The pending-activation card is
-read-only and fully derived today; giving it Notify / Activate / Dismiss /
-Comments needs state SAM records nowhere, and a second DBA request costs another
-round of external lead time — so the schema was settled while the design was
-fresh, ahead of the feature.
+**`xras_activation_event`** is now built, not merely decided. The pending-activation
+card was read-only and fully derived; giving it Notify / Activate / Dismiss /
+Comments needed state SAM recorded nowhere, and a second DBA request costs another
+round of external lead time — so the schema was settled while the design was fresh
+and then implemented in the same PR, which is what proved the shape before
+production commits to it.
 
 Full DDL, the rejected alternatives, and the timestamp rule that makes it both the
 anti-spam and the re-open mechanism: **[`XRAS_SPRINT_B_FOLLOWUP.md`](XRAS_SPRINT_B_FOLLOWUP.md)**.
+
+One change from the DDL recorded there, made while building:
+
+| # | Change | Reason |
+|---|---|---|
+| 4 | **`event_type` vocabulary gained a fifth value, `restored`** | Undo for a dismissal. The hide rule made a dismissed project invisible until a new XRAS action arrived, which can be never — leaving Flask-Admin (off in prod) or a DBA as the only recovery from a misclick. In an append-only table the undo is a *superseding event*, not a DELETE, so the mistake and its correction both stay on the record. **Free**: the column is a bare `VARCHAR(16)` with no `ENUM` and no `CHECK` by design, so the application constant is the only enforcement point and a fifth value costs no DDL. The hide rule gains one term: `latest('dismissed') > MAX(latest_action, latest('restored'))`. |
 
 ⚠️ **The ticket carries both init scripts** — `zz-90-xras_action_log.sql` and
 `zz-91-xras_activation_event.sql`. Filing only the first is the mistake this
@@ -592,7 +599,73 @@ template links only what resolves.
   config), and app construction prints diagnostics to stdout, which is the CLI's result
   channel.
 
-### 10. Filter macro: a sibling, not an extension
+### 10. The activation worklist — deviations from `XRAS_SPRINT_B_FOLLOWUP.md`
+
+That handoff doc is input, not contract. Six departures, each deliberate:
+
+1. **Notify is record-only, and says so in a dialog.** The doc recommended a
+   `mailto:` (confirm before building); Ben chose neither `mailto:` nor SMTP. The
+   button does the entire timestamp half — which is what the badge, the staleness
+   rule and "Notify again" derive from — and answers with an explicit
+   **"Email delivery is not implemented"** modal listing the recipients, rather
+   than a success toast that would imply mail moved. **SMTP is a separate
+   follow-on PR**; when it lands the same button sends server-side and the schema
+   does not change.
+2. **`Project.reactivate()`, not a symmetric `update()`.** The doc floated making
+   `update()` stamp `inactivate_time` on `active=False` and clear it on
+   `active=True`. That is actively wrong here: the admin Details tab loads with
+   `partial=True`, and a partial load **skips `load_default` entirely** (verified
+   against the installed marshmallow), so `active` reaches the update dict only
+   when the checkbox is *checked*. A symmetric `update()` would therefore clear
+   `inactivate_time` on every save of any already-active project — destroying a
+   historical stamp on an unrelated edit — while the stamping half never fired
+   from the web at all. The CLI assigns the column directly and Flask-Admin
+   bypasses `update()`, so it would not have been an invariant either.
+   `test_update_active_true_leaves_the_stamp_alone` is the guard rail.
+3. **A fifth event type, `restored`, plus a "Show dismissed" toggle** — see
+   § *Schema deltas*. ⚠️ The toggle lives in `xras.html`, **outside**
+   `#alloc-xras-pending`: the card fragment renders a table *or* an empty state,
+   so a toggle inside it would vanish exactly when every row was dismissed, which
+   is the one case it exists for. The container carries
+   `hx-include="#xras-pending-controls"` so `refreshXrasTab` preserves it.
+4. **`sam/schemas/forms/xras_activation.py` is its own module.** `forms/xras.py`
+   is the one module in that package that is deliberately *not* `HtmxFormSchema`,
+   with a 39-line docstring explaining why. Putting a snake_case form schema there
+   would put two families with opposite base classes and opposite empty-string
+   semantics behind one name.
+5. **Writes run inside `management_transaction`** — the opposite of `replay.py`
+   one screen away, and each route docstring says so. A replay's audit row must
+   survive a handler rollback ("we received this even though processing it blew
+   up"); an activation event is the inverse — it records a *decision*, and since
+   the card's state is derived from these events, an `activated` row that outlived
+   its own effect would make the card lie.
+6. **`xras_history` is gated on `MANAGE_XRAS`, not `VIEW_XRAS`.** Its timeline
+   surfaces `notified_to` — project lead/admin contact detail, the same category
+   the raw-payload gate exists for. Recipients are likewise fetched in the *route*
+   only for `MANAGE_XRAS`, so a `VIEW_XRAS` response never carries an address.
+
+**Two defects only the browser pass caught**, both invisible to the unit tier and
+both worth knowing:
+
+- **`fmt_ago` takes a `timedelta`, not a `datetime`.** Passing a timestamp raises
+  `AttributeError: 'datetime.datetime' object has no attribute 'total_seconds'`
+  *at render time*. The unit tier could not see it — the pending-fragment render
+  test runs against a snapshot with no activation events, so the badge that calls
+  the filter never drew. Ages are now computed in the query layer as deltas
+  (`notified_age`, and `age` per timeline event) rather than subtracting in Jinja.
+  Note a just-written event can read *slightly negative*: `creation_time` carries
+  microseconds and MySQL DATETIME **rounds** rather than truncating, so the row
+  can land up to ~0.5 s ahead of a `datetime.now()` taken moments later.
+  `fmt.ago` clamps at zero, and a test pins the tolerance.
+- **`{% from ... import %}` without `with context` silently swallows form errors.**
+  The `form_fields.html` macros read `field_errors` and `form` out of the template
+  context; a plain import gives them neither, so a rejected submission re-rendered
+  looking untouched — no message, no preserved input. Every other call site in the
+  repo already says `with context`. The regression test asserts on the *rendered*
+  `invalid-feedback` block, because matching the word "required" alone is a false
+  positive: `required=True` puts a literal `required` attribute on the textarea.
+
+### 11. Filter macro: a sibling, not an extension
 
 `xras_filters` is a new macro rather than four more optional parameters on
 `audit_filters`. The two share the panel chrome **verbatim** — the same

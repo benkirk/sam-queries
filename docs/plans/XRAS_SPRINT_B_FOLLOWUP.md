@@ -4,8 +4,25 @@
 [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md); the wire contract and production data live
 in [`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md).
 
-**Status: schema decided, nothing built.** This document exists because one
-decision could not wait — see below — and the rest deliberately could.
+> **Status: BUILT.** Both halves shipped together on PR #424 — the table *and*
+> the feature, so the schema was proven by something that renders before
+> production commits to it. What actually landed, and the six deliberate
+> departures from this document, are recorded in
+> [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) § *Deviations* item 10 and
+> § *Schema deltas*. **Read those first** — three sections below are now
+> superseded:
+>
+> | Section here | What actually happened |
+> |---|---|
+> | § *Notify, with SMTP still deferred* (recommends `mailto:`) | **Record-only + a "not implemented" dialog.** No `mailto:`. SMTP is a separate follow-on PR. |
+> | § *The schema* (four event types) | **Five** — `restored` was added as the undo for a dismissal. Free: the column has no `ENUM`/`CHECK`. |
+> | § *The card* trap 3 (`inactivate_time`) | Solved with a narrow `Project.reactivate()`, **not** by widening `Project.update`. |
+>
+> The § *The rule that does the real work* paragraph survives intact and is still
+> the thing most worth preserving — with one extra term for `restored`.
+
+This document exists because one decision could not wait — see below — and the
+rest deliberately could.
 
 ---
 
