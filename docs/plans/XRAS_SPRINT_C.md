@@ -45,10 +45,13 @@ Neither is code. Both have external lead time. Start them the day this sprint st
    must be in place before the next snapshot regeneration — `raw_payload` is a verbatim
    POST body full of PII and the obfuscated dump is a committed public LFS blob.
 
-   Landing this alone is worth doing on its own: it lets production posts be **recorded**
-   while this sprint is still being written, and every recorded post is a harvested
-   payload from the authoritative source. That is the cheapest remaining way to close the
-   corpus gaps in § *What the corpus still does not cover*.
+   ⚠️ **Filing early buys lead time, not payloads.** An earlier draft of this section
+   claimed the ticket alone would start capturing production posts. It will not: XRAS
+   posts to legacy's URL, and nothing reaches this endpoint until XRAS repoints — which
+   *is* the cutover. The table arrives empty and stays empty until then. Growing the
+   corpus beforehand would need a dual-post arrangement, and that is **ruled out**. The
+   corpus is 8 for the duration of this sprint; see § *What the corpus still does not
+   cover* and the synthetic follow-on.
 
 2. **Confirm the 400/422 contract change with `allocations@access-ci.org`** (§ 2.5).
    Legacy answers 200/500; this port answers 400 for a malformed body and 422 with the
@@ -96,8 +99,10 @@ produced a manual-fallback email. **This handler is the one to review hardest**:
 the only one that will begin servicing traffic a human has always handled, with no
 production outcome to diff against.
 
-Flip each handler's slice out of capture mode as it lands, so `POST /actions` stays
-continuously deployable.
+Flip each handler's slice out of capture mode as it lands. That keeps `POST /actions`
+continuously deployable and lets each handler be exercised in isolation locally — but
+note it is a *development* sequence, not a rollout one: all six ship enabled in a
+single deploy (§ *Enablement*).
 
 ---
 
@@ -278,12 +283,22 @@ is omitted when unmapped.
 
 ⚠️ **`XRAS_ACTIONS_CAPTURE_ONLY` is a global boolean** (`src/webapp/config.py:62`) and is
 set in **neither** `helm/values.yaml` nor `compose.yaml` — production runs on the code
-default. Flipping it today would enable all six paths at once, which is the opposite of
-the rollout this sprint is built around.
+default. Both it and the new allowlist need a helm entry.
 
-Add per-type enablement (an allowlist, e.g. `XRAS_ACTIONS_ENABLED=Extension,Supplement`)
-and a `helm/values.yaml` entry. Keep the global kill switch: it is the single safety
-interlock, and **replay honours it deliberately** — a replay that dispatched while
+Add per-type enablement (`XRAS_ACTIONS_ENABLED`, default all) and keep the global kill
+switch.
+
+**What the allowlist is for, given the deployment shape.** Cutover is a single repoint
+and **all six handlers go live at once** — so the allowlist is *not* a rollout
+mechanism. Its job is triage: when one action type misbehaves in the week after
+cutover, it can be parked back on the manual-fallback path — which is what legacy does
+with an unserviceable action anyway — by config, without a code deploy. Sized for a
+3am decision, not a release plan.
+
+During development it does double duty: it is how a handler is exercised in isolation
+on the local stack while the others still park.
+
+**Replay honours the capture flag deliberately** — a replay that dispatched while
 capture was on would re-apply an action legacy has already applied, a double-apply
 against live allocations one click away with no undo (`XRAS_SPRINT_B.md` § *Deviations*
 item 3).

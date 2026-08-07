@@ -58,9 +58,15 @@ in parallel, not after:
 - **The DBA ticket** for `xras_action_log` + `xras_activation_event` (one ticket, both
   init scripts — `containers/sam-sql-dev/initdb.d/zz-90-*.sql` and `zz-91-*.sql`), plus
   the manual run on staging, whose `init-rds.sh` has no initdb hook. It is unblocked:
-  Sprint B's definition-of-done condition for filing it is met. Landing it alone turns
-  every production post into a harvested payload, which is the cheapest way to close the
-  remaining corpus gaps.
+  Sprint B's definition-of-done condition for filing it is met. Nothing can be captured
+  or cut over until it lands, and it is the only item here with a third party's
+  schedule attached.
+
+  ⚠️ **Landing it does not, by itself, start capturing anything.** XRAS posts to
+  legacy's URL; nothing reaches this endpoint until XRAS repoints, and that repoint
+  *is* the cutover. An early ticket buys lead time, not payloads. Growing the corpus
+  ahead of cutover would need a dual-post arrangement, which is **ruled out** — see
+  § 6 Phase 5.5.
 - **Confirming the 400/422 contract change with `allocations@access-ci.org`** (§ 2.5).
   Broker retry behaviour on 4xx is unknown, and it is the riskiest open unknown on the
   cutover path. It is an email, not code.
@@ -713,12 +719,23 @@ functionally determining via the `project_projcode_uk` unique index. The sole of
 load-bearing (§2.3). Ordering by the grouping expression itself is both legal and equivalent, which
 is what the port does. Repairing the view proper is a deferred follow-up (§6, Phase 1 deferred).
 
-### 4.3 Shared database ⇒ incremental cutover
+### 4.3 Shared database ⇒ a reversible cutover, but no A/B
 
 `.env.example:14` sets `PROD_SAM_DB_SERVER=sam-sql.ucar.edu`: **both applications read and write the
-same production database.** A per-endpoint proxy cutover is therefore safe and reversible, with no
-data divergence between steps. `sam.ucar.edu` (128.117.225.232) is fronted by
-`prod-staticweb14/15.ucar.edu`, which can split on path prefix.
+same production database.** Two consequences pull in opposite directions, and both matter:
+
+- **Cutover is reversible with no data migration.** Whichever stack serves a request, it reads and
+  writes the same rows, so pointing traffic back at legacy leaves nothing stranded.
+- **A live A/B parity run is impossible.** Running both stacks against the same action would apply
+  it *twice*. So the write path can only be verified by replaying a corpus against a test database
+  and diffing the result (§ 6 Phase 5 item 6) — never by comparing two live stacks, the way the
+  GET surface is compared.
+
+⚠️ This section previously concluded that a **per-endpoint proxy cutover** was available, on the
+grounds that `sam.ucar.edu` (128.117.225.232) is fronted by `prod-staticweb14/15.ucar.edu`, which
+can split on path prefix. **That is not the mechanism being used.** The new stack is a separate
+host — `sam.hpc.ucar.edu` — and cutover is XRAS repointing one base URL, which moves every
+endpoint at once. See § 6 Phase 5 item 5.
 
 ### 4.4 Parity oracles
 
@@ -1230,38 +1247,48 @@ three-module domain pattern in `src/cli/README.md:137-168`.
    **length-preserving** wherever possible, or fixture byte counts stop matching the access-log
    oracle; where it can't be, store the pre-scrub count as a separate assertion.
 
-5. ☐ **Staged, per-endpoint cutover** (§4.3):
+5. ☐ **Cutover — one repoint, not a staged proxy split.**
 
-   | Step | Move | Why here | Rollback signal |
-   |---|---|---|---|
-   | 1 | `GET /people/{username}` | 94% of traffic, read-only, cheap | 404 rate departs from the ~30% baseline; p50 > 100 ms |
-   | 2 | `GET /people` (roster) | one call/day at 03:00 — a full day of observation per attempt | roster size departs from ~3.84 MB ±0.2% |
-   | 3 | `GET /requests/*` | ~1 call/month; near-zero blast radius | any 500 |
-   | 4 | `POST /actions` | last: the only writing surface | `xras_action_log` shows a status the 30-day legacy corpus never produced |
+   ⚠️ **This section previously described a per-endpoint cutover driven by a path-prefix split on
+   `prod-staticweb14/15.ucar.edu`. That is not the mechanism.** The two stacks are separate hosts —
+   legacy at `sam.ucar.edu`, this app at `sam.hpc.ucar.edu` (a CNAME to `samuel.k8s.ucar.edu`,
+   same ingress and cert) — and cutover is **XRAS changing one base URL**. That has three
+   consequences the staged model got wrong:
 
-   Legacy stays hot throughout; a rollback is a proxy change, not a data migration. **The gate for
-   step 1 is `--api xras` run against the deployed port**, which needs this code on `samuel.k8s`.
+   - **The six GETs and `POST /actions` move together.** There is no step ordering to choose;
+     XRAS holds one base URL, not seven.
+   - **Rollback is not unilateral.** It is another repoint, which means another round-trip with
+     ACCESS rather than a proxy flip we control. Budget for that when deciding what "ready" means.
+   - **There is no observation window.** Nothing about the new stack is exercised by production
+     traffic until *all* of it is. Pre-cutover verification is therefore the only verification,
+     which is why the replay-and-diff oracle (item 6) is a deliverable rather than a nicety.
 
-   **What step 4 requires, in full.** Steps 1–3 need only a deploy and a green harness run. Step 4
-   is the one with a prerequisite chain, and it is longer than "the handlers":
+   Dual-post — XRAS posting to both stacks, ours in capture mode — would have restored an
+   observation window and grown the payload corpus. **It is ruled out**; do not re-propose it.
+
+   **The ordered prerequisite chain.** All of it precedes the single repoint:
 
    | # | Prerequisite | Lead time |
    |---|---|---|
    | 1 | `xras_action_log` + `xras_activation_event` in production, and run by hand on staging | **external** — DBA ticket, unblocked, file it now |
    | 2 | The 400/422 contract confirmed with `allocations@access-ci.org` — broker retry behaviour on 4xx is unknown | **external** — an email, start it in the same week |
-   | 3 | Phase 3 handlers for the types being enabled | Sprint C |
-   | 4 | **Per-handler enablement.** `XRAS_ACTIONS_CAPTURE_ONLY` is a global boolean and is set in neither `helm/values.yaml` nor `compose.yaml`, so production runs on the code default. Enabling one action type at a time — which is the whole shape of this rollout — needs an allowlist and a helm entry | Sprint C, small |
-   | 5 | The replay-and-diff oracle (item 6 below) — there is no other way to verify a write path | Sprint C |
+   | 3 | Phase 3 handlers, all six paths | Sprint C |
+   | 4 | **Per-type enablement.** `XRAS_ACTIONS_CAPTURE_ONLY` is a global boolean set in neither `helm/values.yaml` nor `compose.yaml`, so production runs on the code default. Under a single repoint this is not a rollout mechanism — it is the **triage lever** that lets one misbehaving action type be parked on the manual path by config, without a redeploy | Sprint C, small |
+   | 5 | The replay-and-diff oracle (item 6) — there is no other way to verify a write path | Sprint C |
    | 6 | `sam-admin xras --validate-mapping` run — the 11 unmapped active resources (§ 9) | Sprint C, small |
    | 7 | *Some* notification path for the `active = 0` activation trigger | ✅ Sprint B's card |
+   | 8 | `--api xras` against the **deployed** `sam.hpc.ucar.edu`, using our own `samuel` credential | after deploy, before the repoint |
 
-   Note what is **not** on that list: SMTP, and a complete handler set. Enabling Extension alone —
-   60% of posts at a 98.5% legacy success rate — is a legitimate step 4a.
+   Note what is **not** on that list: SMTP. Legacy keeps mailing until the repoint, and Sprint B's
+   pending-activation card is the accepted substitute trigger.
 
-   **A separate, cheaper gate worth crossing first:** prerequisite 1 alone lets production posts
-   arrive and be *recorded*. Capture mode is exactly that state, and it converts every real post
-   into a harvested payload from the authoritative source — which is the cheapest remaining way to
-   close the corpus gaps in item 1 above.
+   Sequence: Sprint C merged → deployed to `samuel.k8s` → DBA applies both tables → item 8's
+   parity run → item 2's confirmation → **XRAS repoints** → a triage week with the operator page
+   and `sam-admin xras --summary` as the watch surface.
+
+   The § 4.4 rollback signals still apply as *health* signals during that week — the ~30% 404
+   baseline, the ~3.84 MB ±0.2% roster size, and any `xras_action_log` status the 30-day legacy
+   corpus never produced — they simply no longer gate a per-endpoint advance.
 
 6. ☐ **The POST-side oracle — replay the corpus and diff DB state.** There is no parity harness for
    writes and there cannot be a live A/B one: both stacks share one production database (§4.3), so

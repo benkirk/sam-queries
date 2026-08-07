@@ -396,7 +396,9 @@ Extension (60%, 98.5%) → Supplement (15%) → Adjustment → Update → New (2
 manual, per the doc. Four changes:
 
 - Each handler flips its slice out of capture mode as it lands, so `POST /actions` stays
-  continuously deployable.
+  continuously deployable. ⚠️ That is a *development* sequence. The deployment decided later
+  is a single repoint with **all six enabled at once** — see [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md)
+  § *Enablement*, where the allowlist is a triage lever rather than a rollout mechanism.
 - **Extension has both a passing and a failing real payload on day one.** UFSU0023 exercises the
   shrink case `extend_project_allocations` silently skips (correction 19) — the strict/account-
   scoped variant the doc asks for — and UCUB0166 is the success it must not break. With
@@ -507,6 +509,12 @@ Parked per today's decision: asking XRAS for their own post records, and a captu
 arrangement. Nathan Tolbert is out until Mon Aug 9; the thread opened today stays useful for the
 cutover conversation. Staging needs the DDL run by hand once —
 `infrastructure/scripts/init-rds.sh:14` restores the raw `.xz` with no initdb hook.
+
+> **Update — dual-post is now ruled out, not parked.** The stacks are separate hosts
+> (`sam.ucar.edu` vs `sam.hpc.ucar.edu`) and cutover is XRAS repointing one base URL, so
+> there is no arrangement under which both receive the same post. The corpus therefore
+> stays at 8 through Sprint C, and branch coverage comes from a synthetic corpus instead
+> — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md) § *Enablement* and the synthetic follow-on.
 
 **Follow-up found while building this: `compose.yaml` sets no `TZ`.**
 
