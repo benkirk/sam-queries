@@ -9,7 +9,8 @@ Every assertion below encodes a fact measured from those payloads, and each one
 contradicted the shape inferred from the Java POJOs alone. If one of these fails after
 a schema edit, the schema is wrong, not the test.
 
-Corpus (2x2 over the two handlers that matter):
+Corpus — the original 2x2 over New x Extension, plus the four that closed the
+Supplement, Update and Adjustment gaps:
 
 ===============================  ==========  ==========================================
 fixture                          actionType  why it is here
@@ -18,10 +19,28 @@ new_ncar4232_failed.json         New         55% failure mode: unreconciled ARC 
                                              same username under two roleTypes,
                                              ``grants: []``
 new_ncar4253_ok.json             New         full success path; minted projcode UCIR0072
+new_uwis0071_existing_ok.json    New         **the Update path** — New against a project
+                                             that already exists, so ``requestNumber``
+                                             is a projcode. Two ``PI`` roles separated
+                                             only by date window, one human under two
+                                             usernames with the organization changing,
+                                             and the only ``isAccountToBeCreated: true``
 extension_ufsu0023_failed.json   Extension   shrink rejected; null PI organization
 extension_ucub0166_ok.json       Extension   success; null AM organization,
                                              all-null ``primaryFos``, ``'0.0'`` grant
+supplement_ucub0182_ok.json      Supplement  non-empty ``resources``, unlike Extension;
+                                             ``allocationType: 'Exploratory'``
+supplement_ubrn0027_ok.json      Supplement  one human holding PI *and* Allocation
+                                             Manager under one username;
+                                             ``allocationType: 'Data Analysis'``
+adjustment_uwis0064_manual.json  Adjustment  the spelling legacy never matches — its
+                                             ``AdjustProjectActionService`` tests
+                                             ``"Adjust"``, so this fell through to the
+                                             manual-email fallback
 ===============================  ==========  ==========================================
+
+Still unsampled, and therefore still unknown: ``Transfer``, ``Renewal``, ``Advance``,
+and the co-PI ``roleType`` spelling.
 """
 
 import json
@@ -48,7 +67,7 @@ def load_schema(name):
 
 def test_corpus_is_present():
     """Guard against a silently empty parametrization."""
-    assert len(ALL_FIXTURES) == 4, ALL_FIXTURES
+    assert len(ALL_FIXTURES) == 8, ALL_FIXTURES
 
 
 # ---------------------------------------------------------------------------
@@ -59,7 +78,7 @@ def test_corpus_is_present():
 def test_every_real_payload_loads(name):
     """The headline assertion: the schema accepts real production bytes."""
     data = load_schema(name)
-    assert data['actionType'] in ('New', 'Extension')
+    assert data['actionType'] in ('New', 'Extension', 'Supplement', 'Adjustment')
     assert data['requestNumber']
 
 
@@ -67,8 +86,8 @@ def test_every_real_payload_loads(name):
 def test_no_empty_strings_in_the_corpus(name):
     """Absent scalars arrive as ``null``, never ``""``.
 
-    This is the measured fact that inverts the doc's tolerance emphasis: across four
-    payloads and ~200 scalar fields there is not one empty string, so the Java
+    This is the measured fact that inverts the doc's tolerance emphasis: across eight
+    payloads and ~400 scalar fields there is not one empty string, so the Java
     ``= ""`` field initialisers never fire on real traffic and ``allow_none`` — not
     empty-string handling — is what the schema actually needs.
     """
@@ -137,10 +156,14 @@ def test_dates_are_zero_padded_iso_date_only(name):
 def test_request_type_is_not_action_type(name):
     """``requestType`` is useless for dispatch and must not be mistaken for the selector.
 
-    All four payloads carry ``requestType: 'New'`` — including both Extensions.
+    All eight payloads carry ``requestType: 'New'`` — including both Extensions, both
+    Supplements and the Adjustment.
     """
     data = load_schema(name)
     assert data['requestType'] == 'New'
+    # ...and it disagrees with actionType on 3 of the 8, which is the whole point.
+    if data['actionType'] != 'New':
+        assert data['requestType'] != data['actionType']
 
 
 # ---------------------------------------------------------------------------
@@ -233,11 +256,27 @@ def test_is_reconciled_is_true_even_for_an_identity_sam_cannot_find():
     assert pi['person']['isReconciled'] is True
 
 
-def test_is_account_to_be_created_is_false_everywhere_observed():
-    """Never null, never a string, never true across all 9 sampled roles."""
+def test_is_account_to_be_created_is_observed_both_ways():
+    """Never null and never a string — but no longer always ``false``.
+
+    The four-payload corpus saw only ``false``, which made the coercion look purely
+    defensive. UWIS0071 carries the first ``true``: the PI changed institution
+    mid-request, and the incoming NCAR username has no account yet. Both values are
+    real, so a handler must not assume either.
+    """
+    observed = set()
     for name in ALL_FIXTURES:
         for role in load_schema(name)['roles']:
-            assert role['isAccountToBeCreated'] is False
+            value = role['isAccountToBeCreated']
+            assert value is True or value is False, (name, value)
+            observed.add(value)
+    assert observed == {True, False}
+
+    truths = [r for r in load_schema('new_uwis0071_existing_ok.json')['roles']
+              if r['isAccountToBeCreated']]
+    assert len(truths) == 1
+    assert truths[0]['roleType'] == 'PI'
+    assert truths[0]['person']['organization'] == 'NCAR/EDECD'
 
 
 @pytest.mark.parametrize('value,expected', [
@@ -318,6 +357,130 @@ def test_extension_carries_no_resources(name):
 ])
 def test_new_carries_resources(name):
     assert len(load_schema(name)['resources']) == 4
+
+
+@pytest.mark.parametrize('name,count', [
+    ('supplement_ucub0182_ok.json', 2),
+    ('supplement_ubrn0027_ok.json', 3),
+])
+def test_supplement_carries_resources_unlike_extension(name, count):
+    """Supplement is the mirror image of Extension, and that drives handler design.
+
+    Extension's array is empty, so its only input is ``actionEndDate``. Supplement's
+    is populated and *is* the input. Legacy passes each ``awardedAmount`` straight
+    into ``command.supplementAmount(...)``, so it is the **increment, not the new
+    total** — and a resource with no existing allocation gets one created rather than
+    supplemented.
+    """
+    resources = load_schema(name)['resources']
+    assert len(resources) == count
+    for resource in resources:
+        assert resource['resourceRepositoryKey'] is not None
+        # Float-formatted strings here too, so Decimal conversion is the handler's job.
+        assert float(resource['awardedAmount']) > 0
+
+
+def test_adjustment_is_the_spelling_on_the_wire():
+    """``'Adjustment'``, not ``'Adjust'`` — and that difference is a live legacy defect.
+
+    ``AdjustProjectActionService.isServiceable`` tests ``equals("Adjust")``, which no
+    payload can satisfy, so the handler has never fired and every Adjustment falls
+    through to the manual-email fallback. SAM treats the two as synonyms instead; see
+    ``sam.queries.xras_actions.XRAS_ACTION_TYPE_ALIASES``.
+    """
+    data = load_schema('adjustment_uwis0064_manual.json')
+    assert data['actionType'] == 'Adjustment'
+    assert data['requestNumber'] == 'UWIS0064'
+
+
+def test_new_action_can_name_an_existing_project():
+    """``actionType: 'New'`` does **not** imply a request token — this is the Update path.
+
+    Legacy dispatches on the pair ``(actionType, does the project exist)``:
+    ``AddProjectActionService`` takes ``New`` when the projcode does not exist,
+    ``UpdateProjectActionService`` takes ``New`` or ``Renewal`` when it does. So
+    ``New`` alone cannot tell a handler which one it is, and ``requestNumber`` is a
+    projcode here rather than an ``NCAR####`` token — which is why the resolver has
+    to ask the database.
+    """
+    data = load_schema('new_uwis0071_existing_ok.json')
+    assert data['actionType'] == 'New'
+    assert data['requestNumber'] == 'UWIS0071'
+    assert not data['requestNumber'].startswith('NCAR')
+
+
+def test_role_type_is_not_unique_and_only_dates_separate_the_duplicates():
+    """Two open-ended ``PI`` entries would be ambiguous; the date window disambiguates.
+
+    UWIS0071's PI changed institution mid-request, so the payload carries the old
+    username on a *closed* window and the new one on an open window. A pick-first
+    resolver — legacy's ``getUsernameByRoleType()`` — has no basis for its choice, and
+    the two entries disagree about ``organization``, which is the mnemonic extractor's
+    input. This is the measured case behind that defect.
+    """
+    roles = load_schema('new_uwis0071_existing_ok.json')['roles']
+    pis = [r for r in roles if r['roleType'] == 'PI']
+    assert len(pis) == 2
+
+    closed = [r for r in pis if r['endDate'] is not None]
+    open_ = [r for r in pis if r['endDate'] is None]
+    assert len(closed) == 1 and len(open_) == 1
+
+    # Non-overlapping, contiguous windows — the closed one ends the day before.
+    assert closed[0]['endDate'] < open_[0]['beginDate']
+    # Two usernames, and the organization differs between them.
+    assert closed[0]['username'] != open_[0]['username']
+    assert closed[0]['person']['organization'] != open_[0]['person']['organization']
+    assert open_[0]['person']['organization'] == 'NCAR/EDECD'
+
+
+def test_one_person_can_hold_pi_and_manager_under_one_username():
+    """UBRN0027's PI *is* its Allocation Manager, same username, distinct role ids.
+
+    Distinct from ``test_same_username_can_hold_two_roles`` (a PI who is also a
+    ``User``): this is the two *lead* roles collapsing onto one human, so a handler
+    resolving "the PI" and "the manager" separately gets the same person twice.
+    """
+    roles = load_schema('supplement_ubrn0027_ok.json')['roles']
+    assert {r['roleType'] for r in roles} == {'PI', 'Allocation Manager'}
+    assert len({r['username'] for r in roles}) == 1
+    assert len({r['requestPeopleRoleId'] for r in roles}) == 2
+
+
+def test_opportunity_qa_is_populated_only_on_new_actions():
+    """The End User Agreement acknowledgement is collected once, at request creation.
+
+    Non-empty on all three ``New`` payloads and empty on every Extension, Supplement
+    and Adjustment. It is undeclared by any POJO and dropped by ``EXCLUDE``, so SAM
+    throws the acknowledgement away — recorded here because that is a product
+    decision, not an accident.
+    """
+    by_type = {}
+    for name in ALL_FIXTURES:
+        raw = load_fixture(name)
+        by_type.setdefault(raw['actionType'], []).append(len(raw['opportunityQA']))
+
+    assert all(n > 0 for n in by_type['New']), by_type
+    assert len(by_type['New']) == 3
+    for action_type in ('Extension', 'Supplement', 'Adjustment'):
+        assert by_type[action_type] == [0] * len(by_type[action_type]), by_type
+
+    # HTML in the wire text, which is one more reason not to render it blindly.
+    qa = load_fixture('new_uwis0071_existing_ok.json')['opportunityQA'][0]
+    assert '<a href=' in qa['attributeSetName']
+
+
+def test_allocation_type_vocabulary_does_not_match_sams_table():
+    """Observed spellings are XRAS's own and are inert on the action-post path.
+
+    Legacy reads ``allocationType`` only on the GET side, never here — so the fact
+    that ``Exploratory`` / ``Data Analysis`` / ``Educational`` / ``Large`` appear in
+    no SAM ``allocation_type`` row is not a blocker. It is a trap: a handler that
+    tried to map this field would find no match, and ``Small`` is not even unique in
+    that table.
+    """
+    observed = {load_schema(n)['allocationType'] for n in ALL_FIXTURES}
+    assert observed == {'Small', 'Large', 'Educational', 'Exploratory', 'Data Analysis'}
 
 
 def test_educational_allocation_has_no_grants():

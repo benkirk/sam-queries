@@ -1,0 +1,121 @@
+{
+  "actionId": 392027,
+  "actionType": "Adjustment",
+  "actionBeginDate": "2021-08-15",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1424680,
+  "requestNumber": "UWIS0064",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Modeling the Effects of Smoke Aerosols from Wildfire Emissions on Severe Weather Outbreaks",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532220,
+  "opportunityName": "Small Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Small",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 907350,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "1000000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 907348,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "10000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 476595,
+      "roleType": "Allocation Manager",
+      "username": "user_00000001",
+      "beginDate": "2025-08-06",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given01",
+        "middleName": null,
+        "lastName": "Surname01",
+        "email": "user01@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF WISCONSIN AT MADISON",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 476594,
+      "roleType": "PI",
+      "username": "user_00000002",
+      "beginDate": "2025-08-06",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given02",
+        "middleName": null,
+        "lastName": "Surname02",
+        "email": "user02@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF WISCONSIN AT MADISON",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500003,
+      "fosNum": "1",
+      "fosName": "Advanced Scientific Computing",
+      "fosAbbr": "Advanced Scientific Computing",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500025,
+      "fosNum": "23",
+      "fosName": "Mesoscale Meteorology",
+      "fosAbbr": "Mesoscale Meteorology",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "DGE-2137424",
+      "programOfficerName": "Officer01",
+      "programOfficerEmail": "officer01@example.invalid",
+      "piName": "Officer02",
+      "title": "Graduate Research Fellowship Program (GRFP)",
+      "beginDate": "2024-09-04",
+      "endDate": "2027-08-31",
+      "awardedAmount": "0.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": 500003,
+        "fosNum": "1",
+        "fosName": "Advanced Scientific Computing",
+        "fosAbbr": "Advanced Scientific Computing"
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}
