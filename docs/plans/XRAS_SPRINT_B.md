@@ -341,6 +341,21 @@ amending after seeding would have meant seeding twice. `zz-90-xras_action_log.sq
 | **Widen `remote_actor` to hold a username** | **No.** A replay row keeps the *original's* `remote_actor` — the bytes still originated at XRAS — and records the human in `processed_by` (`varchar(35)`, `users.username` width, already present). `remote_actor` stays `varchar(11)` and stays honest about meaning "which API credential posted these bytes". |
 | **A `status` ENUM instead of `varchar(16)`** | **No.** The rest of this schema uses `varchar` for such columns, and the five values are still moving — `processed` is unvalidated until handlers land. An ENUM change is a DBA ticket; a string is not. |
 
+### Pending — a second table, decided but not yet written
+
+**`xras_activation_event`** joins this ticket. The pending-activation card is
+read-only and fully derived today; giving it Notify / Activate / Dismiss /
+Comments needs state SAM records nowhere, and a second DBA request costs another
+round of external lead time — so the schema was settled while the design was
+fresh, ahead of the feature.
+
+Full DDL, the rejected alternatives, and the timestamp rule that makes it both the
+anti-spam and the re-open mechanism: **[`XRAS_SPRINT_B_FOLLOWUP.md`](XRAS_SPRINT_B_FOLLOWUP.md)**.
+
+⚠️ **The ticket carries both init scripts** — `zz-90-xras_action_log.sql` and
+`zz-91-xras_activation_event.sql`. Filing only the first is the mistake this
+section exists to prevent.
+
 ### Not a schema delta, but found while doing this
 
 **`make docker-build` never rebuilt `mysql-test`.** The target was `docker compose build`
