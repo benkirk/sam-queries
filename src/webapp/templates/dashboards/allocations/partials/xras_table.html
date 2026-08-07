@@ -138,7 +138,12 @@
                 <td class="cursor-pointer small" {{ collapse_toggle(errors_id) }}>
                     <i class="fas fa-chevron-right small text-muted me-1 xras-collapse-icon"
                        style="transition: transform 0.2s;"></i>
-                    <span class="text-danger">
+                    {# text-danger-emphasis, NOT text-danger: the latter is the
+                       saturated brand red, which measures 3.35:1 against the dark
+                       card (--surface-card #1b2733) and fails WCAG AA. The
+                       -emphasis token is theme-aware and measures 6.00:1 dark /
+                       7.9:1 light. Measured in the browser, not eyeballed. #}
+                    <span class="text-danger-emphasis">
                         {{ r.errors | length }} error{{ '' if r.errors | length == 1 else 's' }}
                     </span>
                     <span class="text-muted ms-1"

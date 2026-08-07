@@ -1337,8 +1337,10 @@ def xras_action_details(action_id: int):
     )
     if not rows:
         # A bare string, not abort(404): this lands in a modal body, where a 404
-        # error page would be worse than useless.
-        return '<p class="text-danger mb-0">Action not found.</p>'
+        # error page would be worse than useless. text-danger-emphasis rather
+        # than text-danger — the saturated brand red fails WCAG AA on the dark
+        # card (3.35:1 measured); the -emphasis token is theme-aware.
+        return '<p class="text-danger-emphasis mb-0">Action not found.</p>'
     return render_template(
         'dashboards/allocations/partials/xras_action_details_modal.html',
         r=rows[0], may_see_payload=may_see_payload,
