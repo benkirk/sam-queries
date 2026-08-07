@@ -156,6 +156,154 @@ class XrasActionLog(Base):
                 f"request_number={self.request_number!r}, status={self.status!r})>")
 
 
+#: The write vocabulary for ``xras_activation_event.event_type``, and the ONLY
+#: enforcement point in the system — the DDL declares a bare ``VARCHAR(16)`` with
+#: no ENUM and no CHECK, deliberately (an ENUM change is a DBA ticket; a string is
+#: not). Validated in :meth:`XrasActivationEvent.create`.
+#:
+#: Kept here on the model module rather than beside ``XRAS_ACTION_STATUSES`` in
+#: ``sam.queries.xras_actions``: that one is a UI *filter* vocabulary, this one is
+#: the *write* vocabulary. A typo'd event type would otherwise never match the
+#: derive rule and simply vanish, which is the failure mode worth making loud.
+XRAS_ACTIVATION_EVENT_TYPES = (
+    'notified',    # an operator asserted they handed the project off
+    'dismissed',   # should not be activated via XRAS; hides the row
+    'activated',   # the project was activated from the card
+    'comment',     # a free note on the worklist row
+    'restored',    # supersedes a dismissal — undo, appended rather than deleted
+)
+
+
+#----------------------------------------------------------------------------
+class XrasActivationEvent(Base, SessionMixin):
+    """One operator action on the XRAS pending-activation card.
+
+    This is an actual database TABLE (not a view).
+
+    XRAS projects arrive ``active = 0`` by design and a human activates them. The
+    card that lists them stands in for the success email legacy sends and SAM has
+    no mailer for; this table is the state behind its Notify / Activate / Dismiss
+    / Comment actions.
+
+    **Append-only: state is DERIVED, never stored.** There is no ``notified``
+    boolean and no ``UNIQUE(project_id)``. Current state is a timestamp
+    comparison against the most recent XRAS action naming the project::
+
+        hidden from the card  iff  latest('dismissed')
+                                       > MAX(latest_action, latest('restored'))
+        "marked notified"     iff  latest('notified')  > latest_action
+
+    That single rule is both the anti-spam mechanism and the re-open mechanism,
+    with no episode table and no scheduled cleanup: a dismissed project reappears
+    when a new Extension arrives (new information — look again), while a notified
+    one stays quiet until something actually changes. A boolean gets both wrong,
+    and "notified 3 times, last by benkirk" comes free. See
+    ``docs/plans/XRAS_SPRINT_B_FOLLOWUP.md`` § *The rule that does the real work*.
+
+    **Why a new table rather than columns on ``xras_action_log``.** The card is
+    keyed on *project*, and several actions can name the same project — the
+    pending query already dedupes to the most recent. Notify state parked on
+    "whichever action was latest when the operator clicked" disappears the moment
+    a new action arrives, and the card re-notifies. That is precisely the spam
+    this design prevents.
+
+    What it *does* copy from ``XrasActionLog``: the rule that an operator action
+    is recorded as a **new row, never an edit of an existing one** (see
+    ``webapp/api/xras/replay.py`` §2), and ``created_by`` at ``varchar(35)``,
+    ``users.username`` width, meaning "the human who clicked".
+
+    ``xras_action_log_id`` is **provenance only** — which action prompted this.
+    ``project_id`` is the key, because the card is project-scoped and therefore
+    survives the action log's blind spots.
+    """
+    __tablename__ = 'xras_activation_event'
+
+    __table_args__ = (
+        # Serves every "latest event for this project" read, which is every read
+        # the derive rule makes.
+        Index('xras_activation_event_project', 'project_id', 'creation_time'),
+        Index('xras_activation_event_type', 'event_type', 'creation_time'),
+        Index('xras_activation_event_action_fk', 'xras_action_log_id'),
+    )
+
+    xras_activation_event_id = Column(Integer, primary_key=True, autoincrement=True)
+
+    project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+
+    #: One of :data:`XRAS_ACTIVATION_EVENT_TYPES`.
+    event_type = Column(String(16), nullable=False)
+
+    #: Required for 'comment' and 'dismissed'; unused by the one-click actions.
+    comment = Column(Text)
+
+    #: Who was actually told. Recorded rather than derived because the project
+    #: lead can change: "the current lead" and "who we notified" are different
+    #: questions, and only the second one is an audit answer.
+    notified_to = Column(Text)
+
+    #: Provenance only — see the class docstring.
+    xras_action_log_id = Column(
+        Integer, ForeignKey('xras_action_log.xras_action_log_id'))
+
+    created_by = Column(String(35), nullable=False)
+
+    #: Stamped from the *app* clock, never a DB default. ``TimestampMixin`` is
+    #: deliberately not used: its ``server_default=CURRENT_TIMESTAMP`` resolves in
+    #: the MySQL server's timezone (UTC in the containers) while SAM's convention
+    #: is naive-Mountain, and MySQL rounds fractional seconds rather than
+    #: truncating. ``XrasActionLog`` makes the same choice for the same reason.
+    creation_time = Column(DateTime, nullable=False)
+
+    project = relationship('Project')
+    xras_action = relationship('XrasActionLog')
+
+    @classmethod
+    def create(cls, session, *, project_id, event_type, created_by,
+               comment=None, notified_to=None, xras_action_log_id=None):
+        """Append one operator event. There is no ``update()`` — this log is
+        append-only, and an undo is a superseding ``restored`` row.
+
+        Args:
+            session:            the session to add to.
+            project_id:         FK to the project the operator acted on.
+            event_type:         one of :data:`XRAS_ACTIVATION_EVENT_TYPES`.
+            created_by:         ``users.username`` of the human who clicked.
+            comment:            required for 'comment' / 'dismissed'.
+            notified_to:        the recipients the operator was handed, as text.
+            xras_action_log_id: provenance — the action that prompted this.
+
+        Raises:
+            ValueError: on an unknown ``event_type``. The column is a bare
+                ``VARCHAR`` by design, so this is the only thing standing between
+                a typo and an event that silently never matches the derive rule.
+        """
+        if event_type not in XRAS_ACTIVATION_EVENT_TYPES:
+            raise ValueError(
+                f"unknown xras_activation_event.event_type {event_type!r}; "
+                f"expected one of {', '.join(XRAS_ACTIVATION_EVENT_TYPES)}")
+
+        event = cls(
+            project_id=project_id,
+            event_type=event_type,
+            comment=comment,
+            notified_to=notified_to,
+            xras_action_log_id=xras_action_log_id,
+            created_by=created_by[:35],
+            creation_time=datetime.now(),
+        )
+        session.add(event)
+        session.flush()
+        return event
+
+    def __str__(self):
+        return f"{self.event_type} on project {self.project_id} by {self.created_by}"
+
+    def __repr__(self):
+        return (f"<XrasActivationEvent(id={self.xras_activation_event_id}, "
+                f"project_id={self.project_id}, event_type={self.event_type!r}, "
+                f"created_by={self.created_by!r})>")
+
+
 # ============================================================================
 # End of module
 # ============================================================================

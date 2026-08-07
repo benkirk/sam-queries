@@ -1022,6 +1022,37 @@ class SAMAnonymizer:
         print(f"[✓] Purged {total:,} xras_action_log records")
         return total
 
+    def purge_xras_activation_event(self, session: Session) -> int:
+        """
+        Empty xras_activation_event — it carries contact PII and free operator text.
+
+        ``notified_to`` stores the real addresses an operator was handed (project
+        lead and admin, name plus email), and ``comment`` is unconstrained prose
+        that routinely names people. Neither can be rewritten in place with any
+        confidence, and the failure mode is a PII leak into a **public Git LFS
+        blob**, because the obfuscated dump is committed (see
+        ``backups/sam-obfuscated.sql.xz``).
+
+        Deleting is both safer and free: this is an operational worklist, not
+        reference data. Nothing in dev or CI reads historical rows — the tests
+        that exercise the table create their own.
+
+        ⚠️ Must run BEFORE ``purge_xras_action_log``: ``xras_action_log_id`` is an
+        FK to that table, so emptying the parent first fails with `1451`.
+        """
+        print("\n[*] Purging xras_activation_event table...")
+
+        result = session.execute(text("SELECT COUNT(*) FROM xras_activation_event"))
+        total = result.scalar()
+        print(f"  Found {total:,} operator events (contact PII — cannot be scrubbed in place)")
+
+        if not self.dry_run:
+            session.execute(text("DELETE FROM xras_activation_event"))
+            session.commit()
+
+        print(f"[✓] Purged {total:,} xras_activation_event records")
+        return total
+
     def anonymize_all(self) -> Dict[str, int]:
         """
         Execute full anonymization workflow.
@@ -1077,9 +1108,20 @@ class SAMAnonymizer:
                 print("\n" + "=" * 70)
                 print("Purging Un-anonymizable Tables")
                 print("=" * 70)
-                # Tolerate absence: xras_action_log does not exist in production yet
-                # (it needs a DBA to run the DDL — the prod writer holds no DDL grant),
-                # and a bootstrap against a source without it must not fail here.
+                # Tolerate absence: neither xras table exists in production yet
+                # (they need a DBA to run the DDL — the prod writer holds no DDL
+                # grant), and a bootstrap against a source without them must not
+                # fail here.
+                #
+                # ⚠️ ORDER IS LOAD-BEARING. xras_activation_event.xras_action_log_id
+                # is an FK to xras_action_log, so the child must be emptied FIRST
+                # or purge_xras_action_log fails with `1451 Cannot delete or update
+                # a parent row`.
+                if self._table_exists(session, 'xras_activation_event'):
+                    self.purge_xras_activation_event(session)
+                else:
+                    print("\n[!] xras_activation_event not present in source — skipping")
+
                 if self._table_exists(session, 'xras_action_log'):
                     self.purge_xras_action_log(session)
                 else:

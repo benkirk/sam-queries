@@ -180,7 +180,12 @@ from .summaries.archive_summaries import (
 
 # 9. Integration and security
 # XRAS table models (actual tables, not views)
-from .integration.xras import XrasResourceRepositoryKeyResource, XrasActionLog
+from .integration.xras import (
+    XrasResourceRepositoryKeyResource,
+    XrasActionLog,
+    XrasActivationEvent,
+    XRAS_ACTIVATION_EVENT_TYPES,
+)
 
 # XRAS view models (read-only database views)
 from .integration.xras_views import (
@@ -252,6 +257,7 @@ __all__ = [
     'ArchiveChargeSummary', 'ArchiveChargeSummaryStatus',
     # Integration
     'XrasResourceRepositoryKeyResource', 'XrasActionLog',
+    'XrasActivationEvent', 'XRAS_ACTIVATION_EVENT_TYPES',
     'XrasUserView', 'XrasRoleView', 'XrasActionView',
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',
     # Security
