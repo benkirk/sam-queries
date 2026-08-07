@@ -8,9 +8,41 @@
 {# Pending activation sits ABOVE the log: it is the actionable thing, the log is
    the reference. Loads independently of the table so a slow log query never
    delays the one card an operator might need to act on. #}
+
+{# ⚠️  This toggle MUST live out here, OUTSIDE #alloc-xras-pending, for two
+   reasons and the first is the whole point of the feature:
+
+   1. The card fragment renders a table OR an empty state. If every pending row
+      has been dismissed, a toggle living inside the fragment vanishes along with
+      the table — and the rows it exists to recover become unreachable, which is
+      exactly the black hole it was added to prevent.
+   2. The container below re-fetches a BARE hx-get on refreshXrasTab, which would
+      drop ?include_dismissed on every write. hx-include on the container is what
+      makes the toggle survive a refresh. #}
+{% if has_permission(Permission.MANAGE_XRAS) %}
+<form id="xras-pending-controls" class="mb-2"
+      hx-get="{{ url_for('allocations_dashboard.xras_pending_fragment') }}"
+      hx-target="#alloc-xras-pending"
+      hx-swap="innerHTML"
+      hx-trigger="change"
+      hx-include="#xras-pending-controls">
+    <div class="form-check form-switch small">
+        {# Absent means OFF — htmx omits an unchecked checkbox entirely, which is
+           how "hide dismissed" arrives (CLAUDE.md §10). #}
+        <input class="form-check-input" type="checkbox" role="switch"
+               id="xras-show-dismissed" name="include_dismissed" value="1"
+               {% if include_dismissed %}checked{% endif %}>
+        <label class="form-check-label text-muted" for="xras-show-dismissed">
+            Show dismissed
+        </label>
+    </div>
+</form>
+{% endif %}
+
 <div id="alloc-xras-pending"
      hx-get="{{ url_for('allocations_dashboard.xras_pending_fragment') }}"
      hx-trigger="load, refreshXrasTab from:body"
+     hx-include="#xras-pending-controls"
      hx-swap="innerHTML"></div>
 
 <div class="filter-sidebar mb-3">

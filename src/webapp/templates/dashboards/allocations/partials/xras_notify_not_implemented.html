@@ -1,0 +1,69 @@
+{#
+  "Not implemented" dialog for the Notify button — rendered into
+  #auditDetailsModalBody.
+
+  Context:
+    project      the Project the operator acted on
+    people       [{'name','email','role'}] — recomputed server-side at click time
+    recorded_at  the creation_time of the notified event just written
+
+  ⚠️  THIS DIALOG IS THE FEATURE, not a placeholder to delete later.
+
+  SAM has no mailer — there is no MAIL_* / flask_mail / smtplib wiring under
+  src/webapp/ at all, and standing one up is its own follow-on change. The button
+  still does the entire timestamp half, because that is what the card's badge, the
+  staleness rule and "Mark notified again" are derived from. What it must NOT do is
+  answer with a success toast, which would read as "mail sent".
+
+  So: say plainly that nothing was sent, hand over the addresses, and confirm what
+  was recorded. When SMTP lands, this template is replaced by a real send and the
+  schema does not change.
+#}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Notify — not implemented
+</h5>
+
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="fas fa-triangle-exclamation mt-1"></i>
+    <div>
+        <strong>Email delivery is not implemented.</strong>
+        <div>No mail was sent. Send it yourself, to:</div>
+    </div>
+</div>
+
+{% if people %}
+<ul class="list-unstyled mb-3">
+    {% for p in people %}
+    <li class="mb-1">
+        <code class="user-select-all">{{ p.email }}</code>
+        <span class="text-muted small">— {{ p.name }} ({{ p.role }})</span>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="text-danger-emphasis">
+    <i class="fas fa-circle-exclamation"></i>
+    No lead or admin email address is on file for this project — you will need to
+    find a recipient another way.
+</p>
+{% endif %}
+
+<div class="project-stats-box">
+    <div class="stat-item">
+        <span class="text-muted">Recorded against</span>
+        <strong>{{ project.projcode }}</strong>
+    </div>
+    <div class="stat-item">
+        <span class="text-muted">At</span>
+        <strong>{{ recorded_at | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</strong>
+    </div>
+    <div class="stat-item">
+        <span class="text-muted">By</span>
+        <strong>{{ current_user.username }}</strong>
+    </div>
+</div>
+
+<p class="text-muted small mt-3 mb-0">
+    The card now shows this project as notified. That records only that an operator
+    <em>initiated</em> the handoff — you are accountable for actually sending it.
+</p>

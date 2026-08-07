@@ -231,8 +231,16 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # transactions and adjustments tables above.
     'dashboards/allocations/partials/xras_action_details_modal.html': [
         'auditDetailsModalBody'],
+    # The pending card's action buttons open the shared audit modal for the
+    # notify notice, the dismiss form and the activation history. Same shell,
+    # same single host page (xras.html includes partials/audit_details_modal.html).
     'dashboards/allocations/partials/xras_pending_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],
+    'dashboards/allocations/partials/xras_pending_event_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_pending_history_modal.html': [
+        'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_table.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],

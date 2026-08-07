@@ -233,6 +233,11 @@ from .operational import (
     AdminCreateWallclockExemptionForm,
     EditWallclockExemptionForm,
 )
+# XRAS pending-activation worklist — operator form posts, a normal HtmxFormSchema.
+# Its own module precisely so it is not confused with the block below.
+from .xras_activation import (
+    XrasActivationEventForm,
+)
 # XRAS action ingest — plain marshmallow, deliberately NOT HtmxFormSchema
 # (JSON body with five nested arrays; see the module docstring).
 from .xras import (
@@ -321,6 +326,7 @@ __all__ = [
     'AdminCreateWallclockExemptionForm',
     'EditWallclockExemptionForm',
     # XRAS action ingest
+    'XrasActivationEventForm',
     'XrasActionSchema',
     'XrasActionResourceSchema',
     'XrasActionRoleSchema',

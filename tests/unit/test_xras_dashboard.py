@@ -334,3 +334,194 @@ class TestDefaultWindowUpperBound:
             MultiDict([('end_date', '2026-01-15')]))
         assert filters['end_date'].strftime('%Y-%m-%d %H:%M:%S') \
             == '2026-01-15 23:59:59'
+
+
+# ===========================================================================
+# The activation worklist — Notify / Activate / Dismiss / Restore / Comment
+# ===========================================================================
+
+#: Every write route on the pending card, plus the two modal-body GETs. All
+#: require MANAGE_XRAS — including the history GET, because its timeline
+#: surfaces ``notified_to`` (project lead/admin contact detail), which is the
+#: same category of data the raw-payload gate exists for.
+_ACTIVATION_WRITE_PATHS = [
+    ('POST', '/allocations/xras_notify/1'),
+    ('POST', '/allocations/xras_activate/1'),
+    ('POST', '/allocations/xras_dismiss/1'),
+    ('POST', '/allocations/xras_restore/1'),
+    ('POST', '/allocations/xras_comment/1'),
+    ('GET', '/allocations/xras_dismiss_form/1'),
+    ('GET', '/allocations/xras_history/1'),
+]
+
+
+@pytest.fixture
+def no_governance_client(auth_client, monkeypatch):
+    """`benkirk` with MANAGE_XRAS but *without* EDIT_PROJECTS.
+
+    The exact shape Activate must refuse: holding the XRAS management permission
+    is not enough to flip `project.active`, which is a GOVERNANCE_FIELD.
+    """
+    from webapp.utils import rbac
+
+    real = rbac.get_user_permissions
+
+    def _without_edit_projects(user):
+        return {p for p in real(user) if p is not Permission.EDIT_PROJECTS}
+
+    monkeypatch.setattr(rbac, 'get_user_permissions', _without_edit_projects)
+    return auth_client
+
+
+class TestActivationRouteGating:
+
+    @pytest.mark.parametrize('method,path', _ACTIVATION_WRITE_PATHS)
+    def test_denied_without_any_xras_permission(self, non_admin_client,
+                                                method, path):
+        resp = getattr(non_admin_client, method.lower())(path)
+        assert resp.status_code == 403
+
+    @pytest.mark.parametrize('method,path', _ACTIVATION_WRITE_PATHS)
+    def test_denied_with_view_but_not_manage(self, view_only_client,
+                                             method, path):
+        """VIEW_XRAS buys the card. Every action on it, and the history that
+        carries contact details, needs MANAGE_XRAS."""
+        resp = getattr(view_only_client, method.lower())(path)
+        assert resp.status_code == 403
+
+    @pytest.mark.parametrize('method,path', _ACTIVATION_WRITE_PATHS)
+    def test_requires_login(self, client, method, path):
+        resp = getattr(client, method.lower())(path)
+        assert resp.status_code in (302, 401)
+
+
+class TestActivateGovernanceGate:
+    """`active` is a GOVERNANCE_FIELD: MANAGE_XRAS alone must not flip it.
+
+    `can_edit_project_governance` is flat EDIT_PROJECTS with **no** steward
+    override, so a project lead cannot activate their own project either. That is
+    why this is an in-body check rather than `require_project_permission`, which
+    means "X OR project lead/admin" and would be strictly too permissive.
+    """
+
+    def test_manage_xras_without_edit_projects_is_403(self, no_governance_client,
+                                                      active_project):
+        resp = no_governance_client.post(
+            f'/allocations/xras_activate/{active_project.project_id}')
+        assert resp.status_code == 403
+
+    def test_the_403_outranks_the_already_active_shortcut(
+            self, no_governance_client, active_project):
+        """A permission failure must not be masked by the idempotency
+        early-return — `active_project` is active, so an ordering slip would
+        answer 200 'already active' to someone who may not activate anything."""
+        resp = no_governance_client.post(
+            f'/allocations/xras_activate/{active_project.project_id}')
+        assert resp.status_code == 403
+        assert b'already active' not in resp.data
+
+
+class TestActivationMissingProject:
+    """A project id that does not resolve. These land in a modal body or a toast,
+    so the answer must be a message rather than a 404 error page."""
+
+    @pytest.mark.parametrize('path', [
+        '/allocations/xras_notify/999999999',
+        '/allocations/xras_activate/999999999',
+        '/allocations/xras_dismiss/999999999',
+        '/allocations/xras_restore/999999999',
+        '/allocations/xras_comment/999999999',
+    ])
+    def test_write_routes_report_not_found(self, auth_client, path):
+        resp = auth_client.post(path)
+        assert resp.status_code == 404
+        assert b'not found' in resp.data.lower()
+
+    @pytest.mark.parametrize('path', [
+        '/allocations/xras_dismiss_form/999999999',
+        '/allocations/xras_history/999999999',
+    ])
+    def test_modal_bodies_report_not_found_inline(self, auth_client, path):
+        resp = auth_client.get(path)
+        assert resp.status_code == 200
+        assert b'Project not found' in resp.data
+
+
+class TestActivationModalBodies:
+
+    def test_history_renders_for_a_real_project(self, auth_client,
+                                                active_project):
+        resp = auth_client.get(
+            f'/allocations/xras_history/{active_project.project_id}')
+        assert resp.status_code == 200
+        assert b'Activation history' in resp.data
+        # An untouched project has no events, and says so rather than rendering
+        # an empty list that reads as a loading failure.
+        assert b'Nothing has been recorded' in resp.data
+        assert b'Add a comment' in resp.data
+
+    def test_dismiss_form_renders_and_states_it_is_reversible(
+            self, auth_client, active_project):
+        resp = auth_client.get(
+            f'/allocations/xras_dismiss_form/{active_project.project_id}')
+        assert resp.status_code == 200
+        assert b'Reason' in resp.data
+        assert b'not permanent' in resp.data
+
+    @pytest.mark.parametrize('endpoint', ['xras_comment', 'xras_dismiss'])
+    def test_a_blank_note_is_rejected_with_a_VISIBLE_error(
+            self, auth_client, active_project, endpoint):
+        """`_strip_empty_strings` drops '' but not '   ' — the post_load guard is
+        what stops a whitespace-only note passing `Length(min=1)`.
+
+        ⚠️  Asserting on the *rendered* error, not merely on a re-render.
+        The field macros read `field_errors` out of the template context, and a
+        `{% from ... import %}` without `with context` gives them none — so the
+        form comes back looking untouched and the rejection is completely silent.
+        That is exactly what happened here, and only a browser pass caught it.
+        Matching the word "required" alone is NOT enough: `required=True` puts a
+        literal `required` attribute on the textarea, so that assertion passes
+        against a form with no error rendered at all.
+        """
+        resp = auth_client.post(
+            f'/allocations/{endpoint}/{active_project.project_id}',
+            data={'comment': '   '})
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert 'invalid-feedback' in html, 'no field-error block rendered'
+        assert 'This field is required.' in html
+
+
+class TestPendingCardGating:
+    """Contact details are fetched in the ROUTE only for MANAGE_XRAS, so a
+    VIEW-only response cannot leak them through view-source."""
+
+    def test_view_only_card_has_no_actions_column(self, view_only_client):
+        resp = view_only_client.get('/allocations/xras_pending_fragment')
+        assert resp.status_code == 200
+        assert b'Recipients' not in resp.data
+        assert b'xras_notify' not in resp.data
+        assert b'xras_activate' not in resp.data
+
+    def test_view_only_user_cannot_force_dismissed_rows(self, view_only_client):
+        """`include_dismissed` is ANDed with MANAGE_XRAS in the route — a
+        hand-typed query param must not reveal the hidden set."""
+        resp = view_only_client.get(
+            '/allocations/xras_pending_fragment?include_dismissed=1')
+        assert resp.status_code == 200
+        assert b'Restore' not in resp.data
+
+    def test_manage_user_gets_the_show_dismissed_toggle_on_the_page(
+            self, auth_client):
+        """The toggle lives on the PAGE, outside the fragment: if every pending
+        row were dismissed, a toggle inside the fragment would vanish with the
+        table and the rows would be unrecoverable."""
+        resp = auth_client.get('/allocations/xras')
+        assert resp.status_code == 200
+        assert b'include_dismissed' in resp.data
+        assert b'Show dismissed' in resp.data
+
+    def test_view_only_user_does_not_get_the_toggle(self, view_only_client):
+        resp = view_only_client.get('/allocations/xras')
+        assert resp.status_code == 200
+        assert b'Show dismissed' not in resp.data
