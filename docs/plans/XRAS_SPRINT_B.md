@@ -25,6 +25,13 @@ and the reason this sprint comes before the handlers.
 
 ## The decision that reorders everything: hold the DBA ticket
 
+> **The hold is over.** This sprint is done and § *Schema deltas* is closed, which is
+> exactly the condition § *Definition of done* item 3 set. **File the ticket now, with
+> both init scripts** — `zz-90-xras_action_log.sql` and `zz-91-xras_activation_event.sql`
+> — and run them by hand on staging. The reasoning below is kept because it is why the
+> ticket carries two tables instead of one, and why the DDL it carries was amended four
+> times before it left.
+
 `xras_action_log` does not exist in production. The prod writer holds
 `SELECT, INSERT, UPDATE, DELETE` and **no DDL**
 (`scripts/repair/RUNBOOK-missing-projects.md:36-38`), and Alembic manages only
@@ -362,7 +369,7 @@ and then implemented in the same PR, which is what proved the shape before
 production commits to it.
 
 Full DDL, the rejected alternatives, and the timestamp rule that makes it both the
-anti-spam and the re-open mechanism: **[`XRAS_SPRINT_B_FOLLOWUP.md`](XRAS_SPRINT_B_FOLLOWUP.md)**.
+anti-spam and the re-open mechanism: **[`implemented/XRAS_SPRINT_B_FOLLOWUP.md`](implemented/XRAS_SPRINT_B_FOLLOWUP.md)**.
 
 One change from the DDL recorded there, made while building:
 

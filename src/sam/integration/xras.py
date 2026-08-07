@@ -198,7 +198,7 @@ class XrasActivationEvent(Base, SessionMixin):
     when a new Extension arrives (new information — look again), while a notified
     one stays quiet until something actually changes. A boolean gets both wrong,
     and "notified 3 times, last by benkirk" comes free. See
-    ``docs/plans/XRAS_SPRINT_B_FOLLOWUP.md`` § *The rule that does the real work*.
+    ``docs/plans/implemented/XRAS_SPRINT_B_FOLLOWUP.md`` § *The rule that does the real work*.
 
     **Why a new table rather than columns on ``xras_action_log``.** The card is
     keyed on *project*, and several actions can name the same project — the

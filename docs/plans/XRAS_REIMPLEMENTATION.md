@@ -31,35 +31,57 @@ in the working tree are byte-identical to the deployed tag.
 
 | Phase | State | Notes |
 |---|---|---|
-| **0** — Prerequisites | **partly done** | credential ✅, role enforcement ✅; `xras_action_log`, SMTP and `Permission.MANAGE_XRAS` still open |
+| **0** — Prerequisites | **partly done** | credential ✅, role enforcement ✅, `VIEW_XRAS` + `MANAGE_XRAS` ✅ (Sprint B). `xras_action_log` and `xras_activation_event` exist in **dev and CI only** — the prod DDL is one DBA ticket, now unblocked. SMTP still open |
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
-| **2** — Action ingestion + audit trail | **partly done** | `xras_action_log` + `XrasActionSchema` + `POST /actions` in **capture mode** shipped; see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) |
-| **3** — Handlers | ☐ to do | **Sprint A** — Extension → Supplement → Adjustment → Update → New; Transfer to manual fallback. Every type currently parks as `manual`. **No longer sample-blocked** (corpus is 8; see `XRAS_SPRINT_A.md` § 3b) |
-| **4** — XRAS as the 4th Allocations tab | ☐ to do | **Sprint B** — see [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md); also settles the schema before the prod DDL ticket is filed. Flask-Admin view is the free stopgap |
-| **5** — Parity and cutover | **partly done** | `--api xras` harness ✅; deployed-port run and the staged cutover still open |
+| **2** — Action ingestion + audit trail | ✅ **done, capture-only** | `xras_action_log` + `XrasActionSchema` + `POST /actions` shipped behind `XRAS_ACTIONS_CAPTURE_ONLY`; see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md). Dispatch is Phase 3 |
+| **3** — Handlers | ☐ to do | **Sprint C** — see [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Extension → Supplement → Adjustment → Update → New; Transfer to manual fallback. Every type currently parks as `manual`. **No longer sample-blocked** (corpus is 8; see `XRAS_SPRINT_A.md` § 3b) |
+| **4** — XRAS as the 4th Allocations tab | ✅ **done** | **Sprint B** — see [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md). Tab, replay, `sam-admin xras`, the activation worklist; and it settled `xras_activation_event` so one DBA ticket carries both tables |
+| **5** — Parity and cutover | **partly done** | `--api xras` harness ✅. **Next gate: run it against the deployed port** — that is cutover step 1, and it needs only a deploy to `samuel.k8s`, not Phase 3 |
 
 ### Sprint map
 
-| Sprint | Contents | Gated on |
+Listed in execution order. **Sprint A was scoped as ingestion *and* handlers; the
+handlers slipped out of it** — the payload harvest turned out to be the sprint, and
+shipping capture-only was what made the harvest possible at all. Sprint C picks them
+up, which pushes SMTP to D.
+
+| Sprint | Contents | State |
 |---|---|---|
-| **A** — Action ingestion + handlers | Phases 2 and 3 together: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions`, all six handler paths | mailbox payload harvest; a DBA ticket for the prod DDL |
-| **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `Permission.MANAGE_XRAS` | Sprint A populating the table |
-| **C** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | **deferrable** — see below |
+| **A** — Action ingestion | Phase 2: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions` in capture mode | ✅ shipped — [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) |
+| **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) |
+| **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ☐ next — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Not sample-blocked; not DDL-blocked |
+| **D** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | ☐ **deferrable** — see below |
+
+Two things run on external lead time and are **not** gated on any sprint. Start them
+in parallel, not after:
+
+- **The DBA ticket** for `xras_action_log` + `xras_activation_event` (one ticket, both
+  init scripts — `containers/sam-sql-dev/initdb.d/zz-90-*.sql` and `zz-91-*.sql`), plus
+  the manual run on staging, whose `init-rds.sh` has no initdb hook. It is unblocked:
+  Sprint B's definition-of-done condition for filing it is met. Landing it alone turns
+  every production post into a harvested payload, which is the cheapest way to close the
+  remaining corpus gaps.
+- **Confirming the 400/422 contract change with `allocations@access-ci.org`** (§ 2.5).
+  Broker retry behaviour on 4xx is unknown, and it is the riskiest open unknown on the
+  cutover path. It is an email, not code.
 
 Three sequencing points that are easy to get wrong:
 
-- **The GET cutover is independent of Sprint A.** Phase 1 is finished; cutover steps 1–3 need
+- **The GET cutover is independent of the POST work.** Phase 1 is finished; cutover steps 1–3 need
   only a deploy to `samuel.k8s` and a green `--api xras` run. That moves 94% of the traffic off
-  legacy while Sprint A is still being written — do not queue it behind the POST work.
-- **Harvest real payloads first, not last.** Phase 5.1 lists it late, but it is the input to two
+  legacy while Sprint C is still being written — do not queue it behind the handlers.
+- **Harvest real payloads first, not last.** Phase 5.1 lists it late, but it was the input to two
   Sprint A deliverables: `XrasActionSchema` (seven nested schemas, the most likely thing to be
-  wrong) and the New handler (21% of posts at 30% success, against a repo holding exactly **one**
-  sample payload).
+  wrong) and the New handler (21% of posts at 30% success, against a repo that then held exactly
+  **one** sample payload). Borne out — the harvest *was* Sprint A, and it corrected about twenty
+  points of the inferred contract. The corpus is now 8 and nothing is sample-blocked, but the
+  principle still applies to what remains unsampled (co-PI `roleType`, `Transfer`, `Renewal`,
+  `Advance`), and production capture is now the cheapest way to get it.
 - **SMTP can genuinely be deferred.** XRAS projects arrive `active = 0` and the success email is
   the human activation trigger — but **legacy keeps sending those emails until `POST /actions`
-  cuts over**, which is cutover step 4, after both sprints. No notification gap opens during A or
-  B. The requirement is only that *some* path exists before step 4, and Sprint B's dashboard can
-  be it.
+  cuts over**, which is cutover step 4, after Sprint C. No notification gap opens before then.
+  The requirement is only that *some* path exists before step 4, and Sprint B's pending-activation
+  card is it.
 
 ---
 
@@ -853,7 +875,10 @@ Phases are ordered by **production volume × failure rate**.
 
 ### Phase 0 — Prerequisites
 
-1. ☐ **Create `xras_action_log`, dev first, production later.** The database is the schema source of
+1. ⚠️ **Create `xras_action_log`, dev first, production later.** Dev and CI ✅ (a tracked,
+   self-retiring `initdb.d` script rather than the by-hand `CREATE TABLE` this sequence
+   assumed); **production still open, and it is the one item on external lead time.**
+   The database is the schema source of
    truth and the ORM follows it — but that does **not** mean production must be first, and it
    *cannot* be: the prod writer account holds `SELECT, INSERT, UPDATE, DELETE` and **no DDL**
    (`scripts/repair/RUNBOOK-missing-projects.md:36-38`), so a `CREATE TABLE` there is a DBA request
@@ -867,7 +892,14 @@ Phases are ordered by **production volume × failure rate**.
    `containers/sam-sql-dev/backups/sam-obfuscated.sql.xz` so CI has the table.
 
    ⚠️ The scrubbing rule must land **before** the next snapshot regeneration — `raw_payload` carries
-   PII — and regenerating that blob has its own blast radius on fixture-dependent tests.
+   PII — and regenerating that blob has its own blast radius on fixture-dependent tests. (The rule
+   is written: `purge_xras_action_log` in `anonymize_sam_db.py` **purges** rather than scrubs, since
+   a verbatim POST body cannot be safely obfuscated field-by-field.)
+
+   ⚠️ **The ticket carries two tables, not one.** Sprint B added `xras_activation_event`
+   (`zz-91-xras_activation_event.sql`) and deliberately settled its DDL before filing, because a
+   second request costs another round of the same lead time. Staging needs both run by hand once —
+   `infrastructure/scripts/init-rds.sh` restores the raw `.xz` with no initdb hook.
 
 2. ☐ **SMTP from the k8s webapp.** Lift `EmailNotificationService` into `src/sam/notifications/`,
    drop the hardcoded `Bcc`, and give the webapp `MAIL_*` config — or accept DB-only audit for v1 and
@@ -940,8 +972,11 @@ Phases are ordered by **production volume × failure rate**.
    ⚠️ **`ROLE_XRAS` also permits `POST /actions`** — the security chain makes no method distinction.
    Treat the secret as a production *write* credential, and keep the `.env` holding it at mode 600.
 
-5. ☐ **Add `Permission.MANAGE_XRAS`** — Phase 4 needs it, but land it early so routes can be written
-   against it. All in `src/webapp/utils/rbac.py`:
+5. ✅ **Add `Permission.MANAGE_XRAS`** — shipped in Sprint B, as a **pair**: `VIEW_XRAS` (the page,
+   table, filters and error lists; swept into `ALL_VIEW`) and `MANAGE_XRAS` (the raw payload panel,
+   replay, and every worklist action; auto-granted to nobody, so added explicitly to
+   `_ALLOCATION_ADMIN`). The split is on *what the data is*, not read-vs-write, and neither is in
+   `USER_FACILITY_PERMISSIONS` — an XRAS action is not facility-scopable. The original note:
    - Add `MANAGE_XRAS = "manage_xras"` to the `Permission` enum's "System administration" block,
      alongside `MANAGE_ROLES` / `MANAGE_SYSTEM_STATUS`.
    - ⚠️ **It is auto-granted to nobody.** `ALL_VIEW`/`ALL_EDIT`/`ALL_CREATE`/`ALL_DELETE` are built by
@@ -1004,7 +1039,7 @@ on production (the writer account has no DDL), plus a CI-snapshot regeneration b
 fixture-dependent tests. Three lead-times to un-skip a test guarding code we do not use. Tracked as
 NRIT P2-63.
 
-### Phase 2 — Action ingestion + audit trail ☐
+### Phase 2 — Action ingestion + audit trail ✅ DONE (capture-only)
 
 > **Sprint A.** The as-built record — the measured wire contract, the DDL, how the new table
 > reaches dev *and* CI without regenerating the LFS snapshot, and the capture-first running
@@ -1026,7 +1061,8 @@ NRIT P2-63.
 
 ### Phase 3 — Handlers, in production-frequency order ☐
 
-> **Sprint A** — [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) orders these easy-path-first
+> **Sprint C** — the cold-start handoff is [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md); this section is
+> the contract it implements. The order is easy-path-first
 > (Extension → Supplement → Adjustment → Update → **New last**) so the pipeline is proven before
 > the 30%-success path is attempted. The eight harvested payloads cover **New at both outcomes,
 > Extension at both outcomes, Supplement ×2 and Adjustment ×1**, so no handler is sample-blocked.
@@ -1078,7 +1114,12 @@ rollback-on-error and nothing else. Audit rows exist because manage functions *e
    semantics, for whenever it is built: 1 negative source + ≥1 positive destinations, same project,
    Σ = 0, source clamped to available.
 
-### Phase 4 — XRAS as the 4th Allocations tab ☐
+### Phase 4 — XRAS as the 4th Allocations tab ✅ DONE
+
+> **Sprint B.** The as-built record — 12 routes, the replay interlock, the `VIEW_XRAS`/`MANAGE_XRAS`
+> split, `xras_activation_event` and the pending-activation worklist, and 11 numbered deviations
+> from this section — is [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md). What follows is the design it was
+> built from, kept because its "six places a 4th tab touches" list is the reusable part.
 
 Ship the free Flask-Admin view first as a stopgap. Then the real surface: a **4th tab on the
 Allocations dashboard**, beside Transactions and Adjustments — an XRAS action *is* an allocation
@@ -1200,6 +1241,35 @@ three-module domain pattern in `src/cli/README.md:137-168`.
 
    Legacy stays hot throughout; a rollback is a proxy change, not a data migration. **The gate for
    step 1 is `--api xras` run against the deployed port**, which needs this code on `samuel.k8s`.
+
+   **What step 4 requires, in full.** Steps 1–3 need only a deploy and a green harness run. Step 4
+   is the one with a prerequisite chain, and it is longer than "the handlers":
+
+   | # | Prerequisite | Lead time |
+   |---|---|---|
+   | 1 | `xras_action_log` + `xras_activation_event` in production, and run by hand on staging | **external** — DBA ticket, unblocked, file it now |
+   | 2 | The 400/422 contract confirmed with `allocations@access-ci.org` — broker retry behaviour on 4xx is unknown | **external** — an email, start it in the same week |
+   | 3 | Phase 3 handlers for the types being enabled | Sprint C |
+   | 4 | **Per-handler enablement.** `XRAS_ACTIONS_CAPTURE_ONLY` is a global boolean and is set in neither `helm/values.yaml` nor `compose.yaml`, so production runs on the code default. Enabling one action type at a time — which is the whole shape of this rollout — needs an allowlist and a helm entry | Sprint C, small |
+   | 5 | The replay-and-diff oracle (item 6 below) — there is no other way to verify a write path | Sprint C |
+   | 6 | `sam-admin xras --validate-mapping` run — the 11 unmapped active resources (§ 9) | Sprint C, small |
+   | 7 | *Some* notification path for the `active = 0` activation trigger | ✅ Sprint B's card |
+
+   Note what is **not** on that list: SMTP, and a complete handler set. Enabling Extension alone —
+   60% of posts at a 98.5% legacy success rate — is a legitimate step 4a.
+
+   **A separate, cheaper gate worth crossing first:** prerequisite 1 alone lets production posts
+   arrive and be *recorded*. Capture mode is exactly that state, and it converts every real post
+   into a harvested payload from the authoritative source — which is the cheapest remaining way to
+   close the corpus gaps in item 1 above.
+
+6. ☐ **The POST-side oracle — replay the corpus and diff DB state.** There is no parity harness for
+   writes and there cannot be a live A/B one: both stacks share one production database (§4.3), so
+   "run both and compare" would apply every action twice. The only viable check is to replay the
+   corpus against a test DB and diff the resulting rows against what legacy did for the same action
+   — the §1.2 action-mix correlation is the oracle, and UFSU0023 and NCAR4232 have known-correct
+   legacy outcomes with exact error strings to diff a 422 against. `utils/parity/` is GET-only today
+   (`XrasClient` has no `post_action`). Build this **with** the first handler, not after it.
 
 ---
 

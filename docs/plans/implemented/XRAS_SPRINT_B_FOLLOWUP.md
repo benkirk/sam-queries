@@ -1,14 +1,14 @@
 # XRAS Sprint B follow-up — the activation worklist
 
 **Handoff doc.** Written for a cold start. Sprint B's as-built record is
-[`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md); the wire contract and production data live
-in [`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md).
+[`XRAS_SPRINT_B.md`](../XRAS_SPRINT_B.md); the wire contract and production data live
+in [`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md).
 
 > **Status: BUILT.** Both halves shipped together on PR #424 — the table *and*
 > the feature, so the schema was proven by something that renders before
 > production commits to it. What actually landed, and the six deliberate
 > departures from this document, are recorded in
-> [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) § *Deviations* item 10 and
+> [`XRAS_SPRINT_B.md`](../XRAS_SPRINT_B.md) § *Deviations* item 10 and
 > § *Schema deltas*. **Read those first** — three sections below are now
 > superseded:
 >
@@ -176,7 +176,7 @@ class XrasActivationEvent(Base, SessionMixin):
     """One operator action on the XRAS pending-activation card.
 
     Append-only: state is DERIVED, never stored. See the module docs and
-    docs/plans/XRAS_SPRINT_B_FOLLOWUP.md for why, and for the timestamp rule
+    docs/plans/implemented/XRAS_SPRINT_B_FOLLOWUP.md for why, and for the timestamp rule
     that makes this both the anti-spam and the re-open mechanism.
     """
     __tablename__ = 'xras_activation_event'

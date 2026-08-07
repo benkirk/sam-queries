@@ -349,7 +349,7 @@ class TestActivationDeriveRule:
     """The whole reason there is no ``notified`` boolean.
 
     Each test here is one row of the behaviour table in
-    ``docs/plans/XRAS_SPRINT_B_FOLLOWUP.md`` § *The rule that does the real work*.
+    ``docs/plans/implemented/XRAS_SPRINT_B_FOLLOWUP.md`` § *The rule that does the real work*.
     A stored boolean gets the first three wrong.
     """
 

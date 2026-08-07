@@ -211,10 +211,12 @@ real bytes.
    tracked post-restore init script: `containers/sam-sql-dev/initdb.d/zz-90-xras_action_log.sql`
    plus a `COPY` in that image's `Dockerfile` — `mysql` and `mysql-test` build from the same
    image, so one change serves both, and `IF NOT EXISTS` makes it self-retiring. File the DBA DDL
-   ticket **— superseded, do not file it yet**, see
-   [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) § *The decision that reorders everything*: the
-   schema has never been rendered by a UI and amending the init script is free until the
-   ticket lands. Background unchanged: the prod writer has no DDL
+   ticket **— was held through Sprint B, and is now unblocked.** The hold is recorded in
+   [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) § *The decision that reorders everything*: the schema had
+   never been rendered by a UI, and amending the init script was free until the ticket landed.
+   Sprint B rendered it and amended it three times, so **file it now — with both init scripts,
+   `zz-90-xras_action_log.sql` and `zz-91-xras_activation_event.sql`**, and remember that staging
+   needs them run by hand once. Background unchanged: the prod writer has no DDL
    (`scripts/repair/RUNBOOK-missing-projects.md:36-38`) and Alembic does not manage `sam`.
 2. **ORM model** in `src/sam/integration/xras.py` beside `XrasResourceRepositoryKeyResource`
    (match its `from ..base import *` and banner conventions), exported from `src/sam/__init__.py`'s
