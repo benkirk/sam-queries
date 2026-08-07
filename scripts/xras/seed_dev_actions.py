@@ -62,16 +62,26 @@ FIXTURE_DIR = (pathlib.Path(__file__).resolve().parents[2]
 #: creating one there.
 _LOCAL_HOSTS = {'127.0.0.1', 'localhost', '::1', 'mysql', 'samuel-mysql'}
 
-#: Bodies that exercise the two error paths. Both are deliberately minimal — the
-#: interesting thing is the status code and the audit row, not the payload.
-_ERROR_BODIES = [
-    ('malformed JSON -> 400', '{"actionType": '),
-    # A bool in a String-declared field is the one thing XrasActionSchema rejects;
-    # everything else about the wire format is tolerated by design.
-    ('schema rejection -> 422',
-     json.dumps({'actionType': 'New', 'requestNumber': 'NCAR9999',
-                 'awardPeriod': True})),
-]
+
+def _error_bodies():
+    """Bodies that exercise the two error paths.
+
+    Both are deliberately minimal — the interesting thing is the status code and
+    the audit row, not the payload. The request number comes from the site's token
+    family rather than a bare literal, so a re-user's seeded rows look like their
+    own traffic.
+    """
+    from sam.queries.xras_actions import XRAS_REQUEST_TOKEN_EXAMPLE
+
+    return [
+        ('malformed JSON -> 400', '{"actionType": '),
+        # A bool in a String-declared field is the one thing XrasActionSchema
+        # rejects; everything else about the wire format is tolerated by design.
+        ('schema rejection -> 422',
+         json.dumps({'actionType': 'New',
+                     'requestNumber': XRAS_REQUEST_TOKEN_EXAMPLE,
+                     'awardPeriod': True})),
+    ]
 
 
 def _db_url(args):
@@ -230,7 +240,7 @@ def main(argv=None):
     if args.errors:
         print('posting error-path bodies ...')
         codes += [post(http, url, body, username, password, label)
-                  for label, body in _ERROR_BODIES]
+                  for label, body in _error_bodies()]
 
     unexpected = [c for c in codes if c not in (200, 400, 422)]
     if unexpected:

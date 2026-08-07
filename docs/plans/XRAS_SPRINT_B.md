@@ -366,6 +366,58 @@ is now correct, but only because `make docker-build` changed. Verify with
 
 ---
 
+## Porting notes — what another site would have to change
+
+Asked during review: is the `NCAR####` "not a project yet" placeholder hardcoded?
+**No.** An audit of `src/` found *zero* behavioural coupling to the pattern — no
+regex, no `startswith`, no `LIKE 'NCAR%'`, no validator, no generator. Every
+mention was a docstring, plus one `placeholder=` attribute.
+
+The reason matters, because it constrains any future "improvement":
+`get_recent_xras_actions` decides whether a `request_number` is a projcode by
+**asking the database** (`_annotate_project_existence`, one `IN` query per page),
+and it has to. Measured against real data, projcodes are `AAAA####`
+(`UCUB0166`, `UBOI0007`, `NACD0009`) and `NCAR4232` is the *same eight-character
+shape* — so no prefix or shape rule can separate a request token from a projcode,
+and a site holding a projcode beginning `NCAR` would have it misclassified
+outright. `test_a_projcode_shaped_like_a_request_token_is_still_a_project` fails
+against any prefix-matching implementation; that is its whole job.
+
+What *is* named, in `sam/queries/xras_actions.py` beside the other vocabulary
+constants:
+
+```python
+XRAS_REQUEST_TOKEN_PREFIXES = ('NCAR',)   # a family; startswith takes a tuple
+XRAS_REQUEST_TOKEN_EXAMPLE  = 'NCAR4253'
+```
+
+**Display only.** They drive the filter box's placeholder, the seed script's
+sample body, and one triage distinction the DB lookup cannot make on its own:
+an unresolvable request number that *looks like* a token is a New action whose
+project does not exist yet (normal), while one that does not is an Extension
+naming a projcode SAM has never had — deleted, renamed, or a mis-sent payload,
+and worth a second look. Those two used to render identically.
+
+### The real site-locks are elsewhere, and they are not in Sprint B's code
+
+Recording, not fixing — this is Phase 1 territory and its own change. The
+`/api/xras/v1/people` roster in **`sam/queries/xras_access.py`** is markedly more
+site-bound than anything above:
+
+| Where | What |
+|---|---|
+| `:76`, `:111-117`, `:174-175` | `'UCAR/NCAR:'` sentinel + `_PRIMARY_ORG_NAMES` + the parentage walk hardcode UCAR's organisational hierarchy |
+| `:93,95` | `AND NOT (ea1.email_address LIKE '%ucar.edu%')` — a site's mail domain buried in raw SQL, and **not currently flagged as site-specific anywhere** |
+| `:68-73` | `'Ucar Office'` / `'External Office'` phone-type literals |
+| `:102` | `WHERE u.login_type_id = 1` — a magic reference-data id (documented at `:51` as deliberate legacy fidelity) |
+
+Portable as-is, for the record: `XRAS_ROLE = 'ROLE_XRAS'` is the XRAS *protocol's*
+authority string rather than a site value; `remote_actor` is derived from
+`api_credentials.username` at request time, never hardcoded; and resource mapping
+is table-driven through `xras_resource_repository_key_resource`.
+
+---
+
 ## Deviations from this plan, as built
 
 Recorded per the house rule that a plan is input, not contract. Each of these was a

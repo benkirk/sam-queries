@@ -42,6 +42,28 @@ XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'replayed')
 #: whatever ``DISTINCT action_type`` actually holds.
 XRAS_ACTION_TYPES = ('New', 'Extension', 'Supplement', 'Update', 'Adjust', 'Transfer')
 
+#: The local XRAS request-number token family — what XRAS sends as
+#: ``requestNumber`` for a New action, before any projcode exists. At NCAR these
+#: look like ``NCAR4253``. A different site re-points these two names and nothing
+#: else; ``startswith`` takes a tuple, so a family of prefixes costs nothing.
+#:
+#: ⚠️  **DISPLAY ONLY. These must never decide whether a request number is a
+#: projcode.** :func:`_annotate_project_existence` asks the *database*, and has
+#: to: a token is projcode-**shaped**. Measured against real data, projcodes are
+#: ``AAAA####`` (``UCUB0166``, ``UBOI0007``, ``NACD0009``) and ``NCAR4232`` is the
+#: same eight-character shape, so no prefix or shape rule can tell them apart —
+#: and a site holding a projcode that begins ``NCAR`` would have it misclassified
+#: outright. ``test_a_projcode_shaped_like_a_request_token_is_still_a_project``
+#: exists to fail the moment someone "simplifies" that lookup into a match.
+#:
+#: What they are legitimately for: telling an *unresolvable but expected* request
+#: number (a New action whose project does not exist yet — normal) apart from an
+#: *unrecognised* one (an Extension naming a projcode that is not in SAM — a
+#: deleted or renamed project, or a mis-sent payload), and seeding the filter
+#: box's example.
+XRAS_REQUEST_TOKEN_PREFIXES = ('NCAR',)
+XRAS_REQUEST_TOKEN_EXAMPLE = 'NCAR4253'
+
 #: URL-facing sort key -> column. Mirrors ``ALLOCATION_TRANSACTION_SORT_COLUMNS``
 #: in ``queries/allocations.py``: the dashboard whitelists ``sort_by`` against this
 #: dict's keys and the query re-validates below (defence in depth — a raw column
@@ -164,7 +186,7 @@ def get_recent_xras_actions(
         action_type: ``'New'`` / ``'Extension'`` / … (see ``XRAS_ACTION_TYPES``).
         status: one or more of ``XRAS_ACTION_STATUSES``.
         request_number: XRAS request number, which *is* the projcode for actions
-            against an existing project and an ``NCAR####`` token for New.
+            against an existing project and a request token for New.
         projcode: filter on ``projcode_result`` — the minted projcode, which
             diverges from ``request_number`` exactly on the New path.
         http_status: 200 / 400 / 422. ``status='failed'`` covers both 400 and 422,
@@ -194,12 +216,15 @@ def get_recent_xras_actions(
         - ``replay_of_id``, ``replay_count`` (how many replays this row has spawned)
         - ``request_is_project`` / ``result_is_project`` — whether that code
           actually resolves to a row in ``project`` (see below)
+        - ``request_is_token`` — whether ``request_number`` looks like one of the
+          site's request tokens (``XRAS_REQUEST_TOKEN_PREFIXES``). A display hint
+          only; it takes no part in the ``*_is_project`` decision.
         - ``raw_payload`` only when ``include_payload=True``
 
     The two ``*_is_project`` flags exist because **``request_number`` is not always
-    a projcode**: it is one for actions against an existing project, and an
-    ``NCAR####`` request token for New. A UI that linked every ``request_number``
-    to a project page would send an operator to a 404 on exactly the 21% of traffic
+    a projcode**: it is one for actions against an existing project, and a request
+    token (``NCAR####`` at this site) for New. A UI that linked every
+    ``request_number`` to a project page would send an operator to a 404 on exactly the 21% of traffic
     that matters most. Resolved in one extra ``IN`` query per page rather than a
     join, so it costs one round trip bounded by ``limit``.
     """
@@ -279,17 +304,27 @@ def get_recent_xras_actions(
 
 
 def _annotate_project_existence(session, rows):
-    """Set ``request_is_project`` / ``result_is_project`` on each row, in one query.
+    """Set ``request_is_project`` / ``result_is_project`` / ``request_is_token``.
 
-    ``request_number`` is a projcode for Extension/Supplement/Update and an
-    ``NCAR####`` token for New, and nothing in the row distinguishes them — the
-    only way to know is to ask whether a project by that name exists. Done for the
-    whole page at once; a per-row lookup would be N+1 on the one table most likely
-    to grow.
+    ``request_number`` is a projcode for Extension/Supplement/Update and a request
+    token for New (``NCAR####`` at this site — see
+    ``XRAS_REQUEST_TOKEN_PREFIXES``), and **nothing in the row distinguishes
+    them**: the two are the same shape. The only way to know is to ask whether a
+    project by that name exists, which is what this does — once for the whole
+    page, because a per-row lookup would be N+1 on the table most likely to grow.
+
+    ``request_is_token`` is a *separate*, weaker signal and is **not** part of
+    that decision. It only says the value looks like one of the site's request
+    tokens, which is what lets a caller tell "no project yet, as expected for a
+    New action" apart from "names a projcode SAM does not have" — the second is
+    worth an operator's attention and the first is not.
     """
     for item in rows:
         item['request_is_project'] = False
         item['result_is_project'] = False
+        item['request_is_token'] = bool(
+            item['request_number']
+            and item['request_number'].startswith(XRAS_REQUEST_TOKEN_PREFIXES))
     if not rows:
         return
 

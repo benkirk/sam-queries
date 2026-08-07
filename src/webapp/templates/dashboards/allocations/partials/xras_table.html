@@ -93,10 +93,14 @@
                     {% endif %}
                 </td>
                 <td>
-                    {# Only link when the code really is a projcode. On the New
-                       path request_number is an NCAR#### request token, and
-                       linking it would send the operator to a 404 on precisely
-                       the 21% of traffic with the worst failure rate. #}
+                    {# Three states, because "not a project" means two different
+                       things. On the New path request_number is a request token
+                       (NCAR#### here — XRAS_REQUEST_TOKEN_PREFIXES) and having no
+                       project yet is the normal, expected case. On every other
+                       path it IS a projcode, so failing to resolve means the
+                       project is gone, renamed, or the payload was mis-sent —
+                       which is worth an operator's attention. Linking either one
+                       blindly would 404 on the 21% of traffic that fails most. #}
                     {% if r.request_number and r.request_is_project %}
                     <button class="btn btn-link p-0"
                             title="View project details"
@@ -107,9 +111,14 @@
                             data-stop-propagation>
                         <strong>{{ r.request_number }}</strong>
                     </button>
-                    {% elif r.request_number %}
-                    <span title="XRAS request number — not a SAM project code">
+                    {% elif r.request_number and r.request_is_token %}
+                    <span title="XRAS request number — no project exists yet, which is normal for a New action">
                         {{ r.request_number }}
+                    </span>
+                    {% elif r.request_number %}
+                    <span class="text-warning-emphasis"
+                          title="Not a SAM project, and not a recognised XRAS request number — the project may have been deleted or renamed">
+                        <i class="fas fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
                     </span>
                     {% else %}
                     <span class="text-muted">—</span>

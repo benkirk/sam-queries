@@ -36,6 +36,7 @@ from sam.queries.xras_actions import (
     XRAS_ACTION_SORT_COLUMNS,
     XRAS_ACTION_STATUSES,
     XRAS_ACTION_TYPES,
+    XRAS_REQUEST_TOKEN_EXAMPLE,
     count_recent_xras_actions,
     get_recent_xras_actions,
     get_xras_pending_activation,
@@ -1278,6 +1279,9 @@ def xras():
         xras_end_date=end_date.strftime('%Y-%m-%d'),
         all_statuses=list(XRAS_ACTION_STATUSES),
         all_action_types=_xras_action_types(),
+        # Site-specific, so it lives with the token family rather than in the
+        # template — see XRAS_REQUEST_TOKEN_PREFIXES.
+        request_example=XRAS_REQUEST_TOKEN_EXAMPLE,
     )
 
 

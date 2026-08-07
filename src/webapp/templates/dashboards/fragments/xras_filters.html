@@ -27,11 +27,16 @@
     request_number - initial request-number / projcode filter
     all_statuses      / selected_statuses    - status vocabulary + selection
     all_action_types  / selected_action_types - action-type vocabulary + selection
+    request_example   - a sample request number for the input's placeholder.
+                        Site-specific (NCAR#### here), so it comes from
+                        sam.queries.xras_actions.XRAS_REQUEST_TOKEN_EXAMPLE
+                        rather than being baked in here.
 #}
 {% macro xras_filters(form_id, fragment_url, target_id,
                       start_date='', end_date='', request_number='',
                       all_statuses=[], selected_statuses=[],
-                      all_action_types=[], selected_action_types=[]) %}
+                      all_action_types=[], selected_action_types=[],
+                      request_example='') %}
 <form id="{{ form_id }}"
       hx-get="{{ fragment_url }}"
       hx-target="#{{ target_id }}"
@@ -74,7 +79,8 @@
             <label class="form-label"><strong>Request #</strong></label>
             <input type="text" class="form-control"
                    name="request_number" value="{{ request_number or '' }}"
-                   placeholder="e.g. NCAR4253" style="width:160px;">
+                   placeholder="{{ ('e.g. ' ~ request_example) if request_example }}"
+                   style="width:160px;">
         </div>
 
         {% if all_statuses %}

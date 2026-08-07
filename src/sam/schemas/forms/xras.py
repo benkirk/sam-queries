@@ -265,7 +265,8 @@ class XrasActionSchema(_XrasBase):
     """The ``POST /api/xras/v1/actions`` body.
 
     ``requestNumber`` is the **projcode** for an action against an existing project
-    (Extension, Supplement, Update) and an ``NCAR####`` token for New — confirmed by
+    (Extension, Supplement, Update) and a request token for New (``NCAR####`` at
+    this site) — confirmed by
     legacy's ``formatSuccessSubject``, which picks its "Existing XRAS project updated"
     wording precisely when ``requestNumber.equals(projcode)``. So the action selector
     resolves the project by treating this value as a projcode.

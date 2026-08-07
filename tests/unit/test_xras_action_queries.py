@@ -14,6 +14,8 @@ from sam.integration.xras import XrasActionLog
 from sam.queries.xras_actions import (
     XRAS_ACTION_SORT_COLUMNS,
     XRAS_ACTION_STATUSES,
+    XRAS_REQUEST_TOKEN_EXAMPLE,
+    XRAS_REQUEST_TOKEN_PREFIXES,
     count_recent_xras_actions,
     get_recent_xras_actions,
     get_xras_pending_activation,
@@ -353,3 +355,70 @@ class TestFacetSelfExclusion:
         facet = summarize_xras_actions(session, status='failed')
         assert facet['by_action_type'].get('New', 0) >= 1
         assert facet['by_action_type'].get('Extension', 0) >= 1
+
+
+class TestRequestTokenDiscriminator:
+    """The projcode discriminator must ask the DATABASE, never the string.
+
+    This is the portability guard. `request_number` is a projcode for
+    Extension/Supplement/Update and a site request token for New — and the two are
+    the SAME SHAPE. Measured against real data, projcodes are `AAAA####`
+    (`UCUB0166`, `UBOI0007`, `NACD0009`); `NCAR4232` is also eight characters in
+    that shape. So no prefix or shape rule can separate them, and "simplifying"
+    `_annotate_project_existence` into a `startswith` would be a portability bug
+    AND wrong at NCAR.
+    """
+
+    def test_a_projcode_shaped_like_a_request_token_is_still_a_project(self, session):
+        """The one that fails against any prefix-matching implementation.
+
+        A project whose projcode legitimately begins with the token prefix must
+        still resolve as a project. A `startswith(XRAS_REQUEST_TOKEN_PREFIXES)`
+        rule would call this a request token and refuse to link it.
+        """
+        prefix = XRAS_REQUEST_TOKEN_PREFIXES[0]
+        projcode = f'{prefix}0001'
+        make_project(session, projcode=projcode)
+        row = _action(session, request_number=projcode, action_type='New')
+
+        got = get_recent_xras_actions(session, action_log_id=row.xras_action_log_id)
+        assert got[0]['request_is_project'] is True
+        # It looks like a token AND is a real project — both flags are true, and
+        # the *_is_project one is the one that decides the link.
+        assert got[0]['request_is_token'] is True
+
+    def test_a_token_with_no_project_is_not_a_project(self, session):
+        row = _action(session, request_number=f'{XRAS_REQUEST_TOKEN_PREFIXES[0]}999999',
+                      action_type='New')
+        got = get_recent_xras_actions(session, action_log_id=row.xras_action_log_id)
+        assert got[0]['request_is_project'] is False
+        assert got[0]['request_is_token'] is True
+
+    def test_a_non_token_with_no_project_is_flagged_as_neither(self, session):
+        """The state worth an operator's attention: an Extension naming a projcode
+        SAM does not have — deleted, renamed, or a mis-sent payload."""
+        row = _action(session, request_number='ZZZZ9999', action_type='Extension')
+        got = get_recent_xras_actions(session, action_log_id=row.xras_action_log_id)
+        assert got[0]['request_is_project'] is False
+        assert got[0]['request_is_token'] is False
+
+    def test_a_real_projcode_is_a_project_and_not_a_token(self, session, active_project):
+        row = _action(session, request_number=active_project.projcode,
+                      action_type='Extension')
+        got = get_recent_xras_actions(session, action_log_id=row.xras_action_log_id)
+        assert got[0]['request_is_project'] is True
+        assert got[0]['request_is_token'] is False
+
+    def test_a_null_request_number_is_neither(self, session):
+        row = _action(session, request_number=None, action_type=None)
+        got = get_recent_xras_actions(session, action_log_id=row.xras_action_log_id)
+        assert got[0]['request_is_project'] is False
+        assert got[0]['request_is_token'] is False
+
+    def test_the_token_family_is_a_tuple_so_a_site_can_list_several(self):
+        """`startswith` takes a tuple — a site with more than one token form
+        re-points this one name and nothing else."""
+        assert isinstance(XRAS_REQUEST_TOKEN_PREFIXES, tuple)
+        assert XRAS_REQUEST_TOKEN_PREFIXES, 'at least one prefix'
+        assert XRAS_REQUEST_TOKEN_EXAMPLE.startswith(XRAS_REQUEST_TOKEN_PREFIXES), (
+            'the example must be a member of the family it illustrates')

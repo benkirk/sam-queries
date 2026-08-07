@@ -57,9 +57,10 @@ class XrasActionLog(Base):
 
     ``request_number`` vs ``projcode_result``: XRAS sends ``requestNumber`` as the
     **projcode** for actions against an existing project (Extension, Supplement,
-    Update) and as an ``NCAR####`` token for New. The two columns therefore
-    diverge exactly on the New path, where a projcode is minted — which is what
-    makes both worth storing.
+    Update) and as a request token for New (``NCAR####`` here — the family is
+    named by ``sam.queries.xras_actions.XRAS_REQUEST_TOKEN_PREFIXES``). The two
+    columns therefore diverge exactly on the New path, where a projcode is
+    minted — which is what makes both worth storing.
 
     ``raw_payload`` is ``Text`` rather than MySQL ``JSON``, and **not** merely
     because the rest of this old schema is. Two measured reasons, either of which
