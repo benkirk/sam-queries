@@ -64,38 +64,74 @@ from .serialize import xras_response
 #: against a ``DataError`` turning an audit write into a 500, not an expected case.
 _ACTOR_WIDTH = 11
 
+#: ``xras_action_log.action_type`` / ``.request_number`` widths. Unlike the actor,
+#: these are read off the *raw* payload dict on the 422 path — before the schema has
+#: had a chance to reject them — so they are genuinely untrusted here.
+_ACTION_TYPE_WIDTH = 32
+_REQUEST_NUMBER_WIDTH = 30
+
+
+def _fit(value, width):
+    """Coerce an untrusted payload value to a column-safe string, or ``None``.
+
+    XRAS sends absent scalars as JSON ``null``, so ``None`` stays ``None`` — a
+    NULL ``action_type`` is meaningful ("we could not parse the body"). Anything
+    else is stringified and truncated rather than allowed to raise: an audit write
+    that 500s is the one failure mode this table cannot afford.
+    """
+    if value is None:
+        return None
+    return str(value)[:width]
+
 
 def _record(*, status, raw_payload, action_type=None, request_number=None,
-            error_messages=None):
+            error_messages=None, http_status=None, remote_actor=None,
+            replay_of_id=None, processed_by=None):
     """Write one audit row on a private connection and commit. Returns its id.
 
     Deliberately does **not** use ``db.session``: this row must outlive a rollback of
     whatever transaction the handler runs in. Returns the id rather than the instance
     because the instance detaches when the session closes.
+
+    ``remote_actor`` / ``replay_of_id`` / ``processed_by`` exist for the replay path
+    (``webapp/api/xras/replay.py``), which deliberately routes through *this* helper
+    rather than its own insert: ``tests/api/test_xras_access.py``'s ``action_log``
+    fixture captures rows by monkeypatching this function, so a second insert helper
+    would leak committed rows into the shared xdist database.
     """
     with Session(db.engine) as session:
         row = XrasActionLog(
-            # Set from the APP clock, not the column's CURRENT_TIMESTAMP default.
-            # That default resolves in the MySQL server's timezone, which is UTC in
-            # the dev/CI container while SAM's convention is naive-Mountain — so a
-            # server-defaulted received_time lands 6 hours ahead of the
-            # datetime.now() that _finish() writes to processed_time, making a
-            # processed row look like it completed before it arrived. The DDL keeps
-            # its default as a safety net for rows inserted by hand in SQL.
+            # Set from the APP clock. The DDL carries NO `DEFAULT CURRENT_TIMESTAMP`
+            # any more, and that removal is deliberate: the default resolves in the
+            # MySQL server's timezone, which is UTC in the dev/CI container while
+            # SAM's convention is naive-Mountain — so a server-defaulted
+            # received_time landed 6 hours ahead of the datetime.now() that
+            # _finish() writes to processed_time, making a processed row look like
+            # it completed before it arrived. With no default, a hand-written INSERT
+            # that forgets the column fails loudly instead of lying quietly.
             received_time=datetime.now(),
-            remote_actor=(get_auth_actor() or 'unknown')[:_ACTOR_WIDTH],
+            remote_actor=(remote_actor or get_auth_actor()
+                          or 'unknown')[:_ACTOR_WIDTH],
             status=status,
             raw_payload=raw_payload,
-            action_type=action_type,
-            request_number=request_number,
+            # Width guards, same reasoning as _ACTOR_WIDTH: on the 422 path these
+            # come straight off an *unvalidated* payload dict, so an over-long or
+            # non-string actionType would turn the audit write into a 500 — losing
+            # precisely the row this table exists to keep.
+            action_type=_fit(action_type, _ACTION_TYPE_WIDTH),
+            request_number=_fit(request_number, _REQUEST_NUMBER_WIDTH),
             error_messages='\n'.join(error_messages) if error_messages else None,
+            http_status=http_status,
+            replay_of_id=replay_of_id,
+            processed_by=processed_by,
         )
         session.add(row)
         session.commit()
         return row.xras_action_log_id
 
 
-def _finish(log_id, *, status, projcode_result=None, error_messages=None):
+def _finish(log_id, *, status, projcode_result=None, error_messages=None,
+            http_status=None):
     """Update an existing audit row to its terminal state, again on its own connection."""
     with Session(db.engine) as session:
         row = session.get(XrasActionLog, log_id)
@@ -107,6 +143,8 @@ def _finish(log_id, *, status, projcode_result=None, error_messages=None):
             row.projcode_result = projcode_result
         if error_messages:
             row.error_messages = '\n'.join(error_messages)
+        if http_status is not None:
+            row.http_status = http_status
         session.commit()
 
 
@@ -175,28 +213,29 @@ def post_action(action_id=None, request_id=None, action_type=None):
         # Legacy 500s here (an unconfigured ObjectMapper inside a RuntimeException).
         # A malformed body is the client's error, so 400 — and it still gets a row,
         # with action_type NULL because we genuinely do not know it.
-        _record(status='failed', raw_payload=raw_payload,
+        _record(status='failed', raw_payload=raw_payload, http_status=400,
                 error_messages=[f'Malformed JSON body: {exc}'])
         return _errors([f'Malformed JSON body: {exc}'], 400)
 
     if not isinstance(parsed, dict):
         message = f'Expected a JSON object, got {type(parsed).__name__}'
-        _record(status='failed', raw_payload=raw_payload, error_messages=[message])
+        _record(status='failed', raw_payload=raw_payload, http_status=400,
+                error_messages=[message])
         return _errors([message], 400)
 
     try:
         action = XrasActionSchema().load(parsed)
     except ValidationError as exc:
         lines = _flatten(exc.messages)
-        _record(status='failed', raw_payload=raw_payload,
+        _record(status='failed', raw_payload=raw_payload, http_status=422,
                 action_type=parsed.get('actionType'),
                 request_number=parsed.get('requestNumber'),
                 error_messages=lines)
         return _errors(lines, 422)
 
     # The row lands here — before dispatch, so a handler that explodes leaves a
-    # replayable record behind.
-    log_id = _record(status='received', raw_payload=raw_payload,
+    # replayable record behind. http_status is 200 unless dispatch changes it.
+    log_id = _record(status='received', raw_payload=raw_payload, http_status=200,
                      action_type=action.get('actionType'),
                      request_number=action.get('requestNumber'))
 

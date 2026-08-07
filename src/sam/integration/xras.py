@@ -96,15 +96,26 @@ class XrasActionLog(Base):
     __table_args__ = (
         Index('xras_action_log_received', 'received_time'),
         Index('xras_action_log_status', 'status'),
+        # The triage axis — "failed New actions" is the 55% failure cohort and the
+        # table's default filter. The status-only index above is kept for the
+        # status-only rollups (the page's summary strip, ``sam-admin xras --summary``).
+        Index('xras_action_log_triage', 'status', 'action_type'),
         Index('xras_action_log_request', 'request_number'),
         Index('xras_action_log_replay_fk', 'replay_of_id'),
     )
 
     xras_action_log_id = Column(Integer, primary_key=True, autoincrement=True)
-    received_time = Column(DateTime, nullable=False,
-                           server_default=text('CURRENT_TIMESTAMP'))
 
-    #: ``api_credentials.username`` of the caller — 'XRAS' in production.
+    #: Always stamped from the *app* clock, never a DB default — see the note in
+    #: ``webapp/api/xras/actions.py::_record``. The DDL deliberately carries no
+    #: ``DEFAULT CURRENT_TIMESTAMP``: it resolves in the MySQL server's timezone
+    #: (UTC in the containers) while SAM's convention is naive-Mountain, which put
+    #: ``received_time`` six hours ahead of ``processed_time``.
+    received_time = Column(DateTime, nullable=False)
+
+    #: ``api_credentials.username`` of the caller — 'XRAS' in production. A replay
+    #: row inherits the *original's* actor, because the bytes still originated at
+    #: XRAS; the human who clicked Replay is recorded in ``processed_by``.
     remote_actor = Column(String(11), nullable=False)
 
     #: NULL when the body could not be parsed, in which case we do not know it.
@@ -115,6 +126,12 @@ class XrasActionLog(Base):
 
     #: received | processed | manual | failed | replayed
     status = Column(String(16), nullable=False)
+
+    #: The HTTP code we answered: 200, 400 or 422. ``status='failed'`` covers both a
+    #: malformed body (400) and a schema rejection (422) — an operator triaging the
+    #: log needs to tell those apart, and it stops being derivable from ``status``
+    #: the moment handlers add their own validation failures.
+    http_status = Column(Integer)
 
     #: The ordered error list, one message per line — the same list the 422 carries.
     error_messages = Column(Text)

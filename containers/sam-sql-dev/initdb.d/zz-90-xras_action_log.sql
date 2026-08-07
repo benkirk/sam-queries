@@ -39,13 +39,28 @@ USE `sam`;
 
 CREATE TABLE IF NOT EXISTS xras_action_log (
     xras_action_log_id  INT UNSIGNED NOT NULL AUTO_INCREMENT,
-    received_time       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    remote_actor        VARCHAR(11)  NOT NULL,  -- api_credentials.username width
+    -- Deliberately NO `DEFAULT CURRENT_TIMESTAMP`. That default resolves in the
+    -- MySQL *server's* timezone (UTC in these containers) while SAM's convention
+    -- is naive-Mountain, so a server-defaulted received_time lands 6 hours ahead
+    -- of the datetime.now() written to processed_time — making a processed row
+    -- look like it completed before it arrived. The app always sets this column
+    -- from its own clock (webapp/api/xras/actions.py::_record); dropping the
+    -- default is what stops the bug being re-introduced by hand-written SQL.
+    received_time       DATETIME     NOT NULL,
+    remote_actor        VARCHAR(11)  NOT NULL,  -- api_credentials.username width.
+                                                 -- On a replay row this stays the
+                                                 -- ORIGINAL actor: the bytes still
+                                                 -- came from XRAS. The human who
+                                                 -- clicked goes in processed_by.
     action_type         VARCHAR(32),             -- NULL when the payload won't parse
     request_number      VARCHAR(30),             -- projcode for existing projects,
                                                  -- NCAR#### for New; project.projcode width
     raw_payload         TEXT         NOT NULL,   -- the body, verbatim, before parsing
     status              VARCHAR(16)  NOT NULL,   -- received|processed|manual|failed|replayed
+    http_status         SMALLINT UNSIGNED,       -- the code we answered: 200|400|422.
+                                                 -- status='failed' covers BOTH a malformed
+                                                 -- body (400) and a schema rejection (422),
+                                                 -- and triage needs to tell them apart.
     error_messages      TEXT,                    -- the ordered list, one per line
     projcode_result     VARCHAR(30),             -- diverges from request_number on the New path
     processed_time      DATETIME,
@@ -54,6 +69,10 @@ CREATE TABLE IF NOT EXISTS xras_action_log (
     PRIMARY KEY (xras_action_log_id),
     KEY xras_action_log_received (received_time),
     KEY xras_action_log_status   (status),
+    -- The triage axis: "failed New actions" is the 55% failure cohort, and it is
+    -- the table's default filter. The standalone status index above is kept for
+    -- the status-only rollups (the summary strip, the CLI's --summary).
+    KEY xras_action_log_triage   (status, action_type),
     KEY xras_action_log_request  (request_number),
     KEY xras_action_log_replay_fk (replay_of_id),
     CONSTRAINT xras_action_log_replay_fk

@@ -174,7 +174,14 @@ validate_user_proj_usage: ## Reconcile + benchmark get_user_proj_usage against l
 	    python3 scripts/validate_user_proj_usage.py
 
 docker-build: ## Build docker containers
-	@docker compose build
+	@# `--profile test` is required for symmetry with docker-up below, which
+	@# starts mysql-test. Without it `docker compose build` silently skips every
+	@# profile-gated service, so mysql-test keeps running whatever image it was
+	@# last built from — even after `down -v`, which only drops the volume, not
+	@# the image. That is invisible until a schema change lands in
+	@# containers/sam-sql-dev/initdb.d/ and appears in `mysql` but not
+	@# `mysql-test`, i.e. everywhere except where pytest looks.
+	@docker compose --profile test build
 
 docker-up: ## Start docker containers (waits until every service reports healthy)
 	@# `--wait` blocks until every service with a healthcheck is healthy and
