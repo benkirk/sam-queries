@@ -106,6 +106,17 @@ from .allocations import (
     get_allocation_summary_with_usage,
 )
 
+# XRAS action log (POST /api/xras/v1/actions audit trail)
+from .xras_actions import (
+    XRAS_ACTION_SORT_COLUMNS,
+    XRAS_ACTION_STATUSES,
+    XRAS_ACTION_TYPES,
+    count_recent_xras_actions,
+    get_recent_xras_actions,
+    get_xras_pending_activation,
+    summarize_xras_actions,
+)
+
 # Usage cache
 from .usage_cache import (
     cached_allocation_usage,
@@ -235,6 +246,14 @@ __all__ = [
     'get_allocation_summary_by_facility',
     'get_allocation_summary',
     'get_allocation_summary_with_usage',
+    # XRAS action log
+    'XRAS_ACTION_SORT_COLUMNS',
+    'XRAS_ACTION_STATUSES',
+    'XRAS_ACTION_TYPES',
+    'get_recent_xras_actions',
+    'count_recent_xras_actions',
+    'summarize_xras_actions',
+    'get_xras_pending_activation',
     # Usage cache
     'cached_allocation_usage',
     'purge_usage_cache',
