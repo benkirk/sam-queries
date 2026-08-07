@@ -11,6 +11,10 @@ Functions:
     count_recent_xras_actions: matching row count for the same filters
     summarize_xras_actions: rollup by status x action_type
     get_xras_pending_activation: XRAS-touched projects awaiting activation
+    count_xras_dismissed_pending: how many of those are hidden by a dismissal
+    get_latest_xras_action_id: provenance resolver for an activation event
+    get_xras_activation_events: the append-only timeline for one project
+    get_xras_pending_recipients: lead/admin addresses for the notify handoff
 
 Every function returns plain dicts rather than ORM instances. Display code —
 Jinja templates and the CLI's ``rich`` renderers alike — takes dicts only, and
@@ -24,7 +28,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from sam.integration.xras import XrasActionLog
+from sam.integration.xras import XrasActionLog, XrasActivationEvent
 from sam.projects.projects import Project
 
 #: The five values ``xras_action_log.status`` may take, in lifecycle order.
@@ -468,10 +472,48 @@ def summarize_xras_actions(
     }
 
 
+def _activation_state(
+    session: Session,
+    project_ids: List[int],
+) -> Dict[int, Dict[str, Any]]:
+    """Latest event of each type, plus the comment count, per project.
+
+    One grouped query over ``xras_activation_event`` for the whole page, joined
+    in memory by the caller — not N+1, and not a correlated subquery per row.
+    The ``(project_id, creation_time)`` index serves it.
+
+    Ties on ``creation_time`` break by id descending: the column is DATETIME with
+    one-second resolution, and two events a second apart in the same click burst
+    are entirely possible.
+    """
+    if not project_ids:
+        return {}
+
+    rows = (
+        session.query(XrasActivationEvent)
+        .filter(XrasActivationEvent.project_id.in_(project_ids))
+        .order_by(XrasActivationEvent.creation_time.asc(),
+                  XrasActivationEvent.xras_activation_event_id.asc())
+        .all()
+    )
+
+    state: Dict[int, Dict[str, Any]] = {}
+    for event in rows:
+        # Ascending order means a later row simply overwrites an earlier one, so
+        # what survives per key is the latest.
+        per_project = state.setdefault(event.project_id, {'comment_count': 0})
+        if event.event_type == 'comment':
+            per_project['comment_count'] += 1
+        else:
+            per_project[event.event_type] = event
+    return state
+
+
 def get_xras_pending_activation(
     session: Session,
     *,
     limit: Optional[int] = None,
+    include_dismissed: bool = False,
 ) -> List[Dict[str, Any]]:
     """Projects an XRAS action touched that are still inactive.
 
@@ -497,10 +539,35 @@ def get_xras_pending_activation(
     empty card must not be read as "nothing pending" until SAM has been the system
     of record for a while.
 
+    **Derived operator state.** Rows also carry the current state of the worklist,
+    computed from ``xras_activation_event`` rather than stored. Nothing here is a
+    boolean column; every state is a timestamp compared against ``received_time``,
+    which is already the most recent action naming the project::
+
+        hidden from the card  iff  latest('dismissed')
+                                       > MAX(received_time, latest('restored'))
+        "marked notified"     iff  latest('notified')  > received_time
+
+    That single rule is both the anti-spam mechanism and the re-open mechanism: a
+    dismissed project **reappears** when a new Extension arrives (new information
+    — the operator should look again), while a notified one stays quiet until
+    something actually changes, and goes stale the moment it does. A stored
+    boolean gets both wrong. See ``sam.integration.xras.XrasActivationEvent``.
+
+    Args:
+        session: the session to query.
+        limit: display cap, applied after sorting, in Python.
+        include_dismissed: when True, hidden rows are returned too, flagged
+            ``dismissed=True``. The card's "Show dismissed" toggle needs this —
+            without it a dismissal is unrecoverable until a new action arrives,
+            which may be never.
+
     Returns:
         A list of dicts with ``projcode``, ``project_id``, ``title``,
         ``action_log_id``, ``action_type``, ``received_time``, ``status`` —
-        one per project, carrying its most recent XRAS action.
+        one per project, carrying its most recent XRAS action — plus the derived
+        ``dismissed``, ``dismissed_time``, ``dismissed_by``, ``notified_time``,
+        ``notified_by``, ``notified_stale`` and ``comment_count``.
     """
     # Both columns are projcode-shaped and either may name the project, so gather
     # candidates from each. A UNION in SQL would need the same OR-join anyway, and
@@ -532,6 +599,162 @@ def get_xras_pending_activation(
                 'status': action.status,
             }
 
-    pending = sorted(candidates.values(),
-                     key=lambda r: r['received_time'], reverse=True)
+    state = _activation_state(session, [c['project_id'] for c in candidates.values()])
+
+    pending: List[Dict[str, Any]] = []
+    for row in candidates.values():
+        events = state.get(row['project_id'], {})
+        dismissed_ev = events.get('dismissed')
+        restored_ev = events.get('restored')
+        notified_ev = events.get('notified')
+
+        # A dismissal is superseded by whichever came later: a fresh XRAS action
+        # (new information) or an explicit Restore (the operator undoing it).
+        supersedes = row['received_time']
+        if restored_ev is not None and restored_ev.creation_time > supersedes:
+            supersedes = restored_ev.creation_time
+        is_dismissed = (dismissed_ev is not None
+                        and dismissed_ev.creation_time > supersedes)
+
+        if is_dismissed and not include_dismissed:
+            continue
+
+        # Ages are computed here, as timedeltas, because ``fmt_ago`` takes an
+        # elapsed delta rather than a timestamp. Doing the subtraction in the
+        # template would put `datetime.now()` in Jinja, where it is untestable.
+        now = datetime.now()
+        row.update({
+            'dismissed': is_dismissed,
+            'dismissed_time': dismissed_ev.creation_time if is_dismissed else None,
+            'dismissed_by': dismissed_ev.created_by if is_dismissed else None,
+            'dismissed_reason': dismissed_ev.comment if is_dismissed else None,
+            'notified_time': notified_ev.creation_time if notified_ev else None,
+            'notified_age': (now - notified_ev.creation_time) if notified_ev else None,
+            'notified_by': notified_ev.created_by if notified_ev else None,
+            # Stale means "we told them, then the situation changed" — the button
+            # becomes "Mark notified again" rather than staying quiet.
+            'notified_stale': (notified_ev is not None
+                               and notified_ev.creation_time <= row['received_time']),
+            'comment_count': events.get('comment_count', 0),
+        })
+        pending.append(row)
+
+    pending.sort(key=lambda r: r['received_time'], reverse=True)
     return pending[:limit] if limit is not None else pending
+
+
+def count_xras_dismissed_pending(session: Session) -> int:
+    """How many pending rows are currently hidden by a dismissal.
+
+    Feeds the card's empty state and its "Show dismissed" toggle. Without a
+    truthful count, "no rows" reads as "all clear" when it may mean "all
+    dismissed" — the same honesty problem the empty-state copy already solves for
+    capture mode.
+    """
+    return sum(1 for row in get_xras_pending_activation(
+        session, include_dismissed=True) if row['dismissed'])
+
+
+def get_latest_xras_action_id(
+    session: Session,
+    project_id: int,
+) -> Optional[int]:
+    """The most recent ``xras_action_log`` row naming *project_id*, or None.
+
+    Provenance for ``xras_activation_event.xras_action_log_id``. Lives here
+    rather than in a route because it reuses the ``projcode_result`` OR
+    ``request_number`` join, which is the subtlest logic in this feature and must
+    not be re-spelled anywhere else.
+    """
+    project = session.get(Project, project_id)
+    if project is None:
+        return None
+
+    row = (
+        session.query(XrasActionLog)
+        .filter((XrasActionLog.projcode_result == project.projcode)
+                | (XrasActionLog.request_number == project.projcode))
+        .order_by(XrasActionLog.received_time.desc(),
+                  XrasActionLog.xras_action_log_id.desc())
+        .first()
+    )
+    return row.xras_action_log_id if row else None
+
+
+def get_xras_activation_events(
+    session: Session,
+    project_id: int,
+) -> List[Dict[str, Any]]:
+    """The append-only operator timeline for one project, newest first.
+
+    ⚠️ Rows carry ``notified_to`` — project lead and admin contact details. The
+    caller must gate this on ``Permission.MANAGE_XRAS``, the same authority that
+    gates the raw payload, not on ``VIEW_XRAS``.
+    """
+    rows = (
+        session.query(XrasActivationEvent)
+        .filter(XrasActivationEvent.project_id == project_id)
+        .order_by(XrasActivationEvent.creation_time.desc(),
+                  XrasActivationEvent.xras_activation_event_id.desc())
+        .all()
+    )
+    now = datetime.now()
+    return [{
+        'event_id': r.xras_activation_event_id,
+        'event_type': r.event_type,
+        'comment': r.comment,
+        'notified_to': r.notified_to,
+        'action_log_id': r.xras_action_log_id,
+        'created_by': r.created_by,
+        'creation_time': r.creation_time,
+        # ``fmt_ago`` takes an elapsed timedelta, not a timestamp.
+        'age': now - r.creation_time,
+    } for r in rows]
+
+
+def get_xras_pending_recipients(
+    session: Session,
+    project_ids: List[int],
+) -> Dict[int, List[Dict[str, str]]]:
+    """Lead and admin contact details for the notify handoff, per project.
+
+    ⚠️ **Deliberately not folded into** :func:`get_xras_pending_activation`.
+    Doing so would push contact PII into every caller of that function, including
+    the ``VIEW_XRAS`` render of the card. Keeping it separate lets the route ask
+    for addresses only when the viewer holds ``MANAGE_XRAS``, so a view-source
+    cannot leak what the page chose not to draw — the same route-level (not
+    template-level) gate the raw-payload panel uses.
+
+    Returns:
+        ``{project_id: [{'name': ..., 'email': ..., 'role': 'lead'|'admin'}]}``.
+        A project with neither on file maps to an empty list; the caller decides
+        whether that blocks anything (it does not — an operator may have reached
+        them out of band).
+    """
+    if not project_ids:
+        return {}
+
+    projects = (
+        session.query(Project)
+        .filter(Project.project_id.in_(project_ids))
+        .all()
+    )
+
+    recipients: Dict[int, List[Dict[str, str]]] = {}
+    for project in projects:
+        people = []
+        seen = set()
+        for role, user in (('lead', project.lead), ('admin', project.admin)):
+            if user is None:
+                continue
+            email = user.primary_email
+            if not email or email in seen:
+                continue
+            seen.add(email)
+            people.append({
+                'name': user.full_name or user.username,
+                'email': email,
+                'role': role,
+            })
+        recipients[project.project_id] = people
+    return recipients

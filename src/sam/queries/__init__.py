@@ -114,8 +114,12 @@ from .xras_actions import (
     XRAS_REQUEST_TOKEN_EXAMPLE,
     XRAS_REQUEST_TOKEN_PREFIXES,
     count_recent_xras_actions,
+    count_xras_dismissed_pending,
+    get_latest_xras_action_id,
     get_recent_xras_actions,
+    get_xras_activation_events,
     get_xras_pending_activation,
+    get_xras_pending_recipients,
     summarize_xras_actions,
 )
 
@@ -258,6 +262,10 @@ __all__ = [
     'count_recent_xras_actions',
     'summarize_xras_actions',
     'get_xras_pending_activation',
+    'count_xras_dismissed_pending',
+    'get_latest_xras_action_id',
+    'get_xras_activation_events',
+    'get_xras_pending_recipients',
     # Usage cache
     'cached_allocation_usage',
     'purge_usage_cache',

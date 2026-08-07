@@ -8,17 +8,27 @@ to the HTTP tier, whose handlers read through Flask-SQLAlchemy's own connection)
 from datetime import datetime, timedelta
 
 import pytest
+from factories.core import make_user
 from factories.projects import make_project
 
-from sam.integration.xras import XrasActionLog
+from sam.core.users import EmailAddress
+from sam.integration.xras import (
+    XRAS_ACTIVATION_EVENT_TYPES,
+    XrasActionLog,
+    XrasActivationEvent,
+)
 from sam.queries.xras_actions import (
     XRAS_ACTION_SORT_COLUMNS,
     XRAS_ACTION_STATUSES,
     XRAS_REQUEST_TOKEN_EXAMPLE,
     XRAS_REQUEST_TOKEN_PREFIXES,
     count_recent_xras_actions,
+    count_xras_dismissed_pending,
+    get_latest_xras_action_id,
     get_recent_xras_actions,
+    get_xras_activation_events,
     get_xras_pending_activation,
+    get_xras_pending_recipients,
     summarize_xras_actions,
 )
 
@@ -43,6 +53,45 @@ def _action(session, *, status='received', action_type='Extension',
     session.add(row)
     session.flush()
     return row
+
+
+def _event(session, project, event_type, *, when=None, by='benkirk',
+           comment=None, notified_to=None):
+    """Append an activation event, overriding creation_time where a test needs
+    to place it relative to an action. ``create()`` always stamps *now*, which is
+    right for production and useless for testing an ordering rule."""
+    event = XrasActivationEvent.create(
+        session, project_id=project.project_id, event_type=event_type,
+        created_by=by, comment=comment, notified_to=notified_to,
+    )
+    if when is not None:
+        event.creation_time = when
+        session.flush()
+    return event
+
+
+def _email(session, user, address, *, is_primary=True):
+    """Attach an address — ``make_user`` builds none, so a factory lead has no
+    ``primary_email`` until a test says so.
+
+    ``User.email_addresses`` is ``lazy='selectin'``, so a user already in the
+    identity map carries an eagerly-loaded (empty) collection that adding a row
+    does not invalidate. Expire it, or the address is invisible to anything that
+    reaches the user through a relationship.
+    """
+    row = EmailAddress(email_address=address, user_id=user.user_id,
+                       is_primary=is_primary, active=True)
+    session.add(row)
+    session.flush()
+    session.expire(user, ['email_addresses'])
+    return row
+
+
+def _pending_row(session, project, **kwargs):
+    """The one pending row for *project*, or None if it is hidden."""
+    rows = [p for p in get_xras_pending_activation(session, **kwargs)
+            if p['projcode'] == project.projcode]
+    return rows[0] if rows else None
 
 
 class TestErrorSplitting:
@@ -284,6 +333,285 @@ class TestPendingActivation:
             _action(session, request_number=project.projcode)
         assert len(get_xras_pending_activation(session, limit=2)) == 2
 
+    def test_a_project_with_no_events_reports_clean_derived_state(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode)
+        row = _pending_row(session, project)
+        assert row['dismissed'] is False
+        assert row['notified_time'] is None
+        assert row['notified_by'] is None
+        assert row['notified_stale'] is False
+        assert row['comment_count'] == 0
+
+
+class TestActivationDeriveRule:
+    """The whole reason there is no ``notified`` boolean.
+
+    Each test here is one row of the behaviour table in
+    ``docs/plans/XRAS_SPRINT_B_FOLLOWUP.md`` § *The rule that does the real work*.
+    A stored boolean gets the first three wrong.
+    """
+
+    def test_dismissing_hides_the_row(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=2))
+        _event(session, project, 'dismissed', comment='duplicate request')
+
+        assert _pending_row(session, project) is None
+
+    def test_a_dismissed_row_is_visible_when_asked_for(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=2))
+        _event(session, project, 'dismissed', comment='duplicate request')
+
+        row = _pending_row(session, project, include_dismissed=True)
+        assert row is not None
+        assert row['dismissed'] is True
+        assert row['dismissed_by'] == 'benkirk'
+        assert row['dismissed_reason'] == 'duplicate request'
+
+    def test_a_new_action_reopens_a_dismissed_project(self, session):
+        """New information — the operator should look again. This is the case a
+        boolean gets most wrong: it would stay hidden forever."""
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode, action_type='New',
+                received_time=datetime.now() - timedelta(days=5))
+        _event(session, project, 'dismissed',
+               when=datetime.now() - timedelta(days=4))
+        # An Extension arrives after the dismissal.
+        _action(session, request_number=project.projcode, action_type='Extension',
+                received_time=datetime.now())
+
+        row = _pending_row(session, project)
+        assert row is not None
+        assert row['dismissed'] is False
+        assert row['action_type'] == 'Extension'
+
+    def test_restoring_reopens_a_dismissed_project(self, session):
+        """Undo in an append-only table is a superseding event, not a DELETE."""
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=5))
+        _event(session, project, 'dismissed',
+               when=datetime.now() - timedelta(days=4))
+        assert _pending_row(session, project) is None
+
+        _event(session, project, 'restored', when=datetime.now())
+
+        row = _pending_row(session, project)
+        assert row is not None
+        assert row['dismissed'] is False
+
+    def test_a_dismissal_after_a_restore_hides_it_again(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=5))
+        _event(session, project, 'dismissed',
+               when=datetime.now() - timedelta(days=4))
+        _event(session, project, 'restored',
+               when=datetime.now() - timedelta(days=3))
+        _event(session, project, 'dismissed',
+               when=datetime.now() - timedelta(days=2))
+
+        assert _pending_row(session, project) is None
+
+    def test_notifying_with_nothing_new_is_not_stale(self, session):
+        """Nobody is mailed twice about the same thing."""
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=2))
+        _event(session, project, 'notified', notified_to='Ben <benkirk@ucar.edu>')
+
+        row = _pending_row(session, project)
+        assert row['notified_time'] is not None
+        assert row['notified_by'] == 'benkirk'
+        assert row['notified_stale'] is False
+
+    def test_a_new_action_makes_a_notification_stale(self, session):
+        """The situation changed; telling them again is appropriate."""
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode, action_type='New',
+                received_time=datetime.now() - timedelta(days=5))
+        _event(session, project, 'notified',
+               when=datetime.now() - timedelta(days=4))
+        _action(session, request_number=project.projcode, action_type='Extension',
+                received_time=datetime.now())
+
+        row = _pending_row(session, project)
+        assert row['notified_time'] is not None
+        assert row['notified_stale'] is True
+
+    def test_the_latest_notification_wins(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=5))
+        _event(session, project, 'notified', by='someone',
+               when=datetime.now() - timedelta(days=3))
+        _event(session, project, 'notified', by='benkirk',
+               when=datetime.now() - timedelta(days=1))
+
+        row = _pending_row(session, project)
+        assert row['notified_by'] == 'benkirk'
+
+    def test_comment_count_counts_every_comment(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=2))
+        for text in ('first', 'second', 'third'):
+            _event(session, project, 'comment', comment=text)
+        # Non-comment events must not inflate it.
+        _event(session, project, 'notified')
+
+        assert _pending_row(session, project)['comment_count'] == 3
+
+    def test_activated_events_do_not_hide_a_still_inactive_project(self, session):
+        """An 'activated' row whose effect did not land must not make the card
+        lie. Only 'dismissed' hides."""
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=2))
+        _event(session, project, 'activated')
+
+        assert _pending_row(session, project) is not None
+
+
+class TestDismissedCount:
+    def test_counts_only_hidden_rows(self, session):
+        hidden = make_project(session, active=False)
+        _action(session, request_number=hidden.projcode,
+                received_time=datetime.now() - timedelta(days=2))
+        _event(session, hidden, 'dismissed')
+
+        visible = make_project(session, active=False)
+        _action(session, request_number=visible.projcode)
+
+        before = count_xras_dismissed_pending(session)
+        assert before >= 1
+
+        # Restoring removes it from the hidden count.
+        _event(session, hidden, 'restored')
+        assert count_xras_dismissed_pending(session) == before - 1
+
+
+class TestActivationEventModel:
+    def test_create_rejects_an_unknown_event_type(self, session):
+        project = make_project(session, active=False)
+        with pytest.raises(ValueError, match='unknown'):
+            XrasActivationEvent.create(
+                session, project_id=project.project_id,
+                event_type='notifed',        # the typo this guard exists for
+                created_by='benkirk')
+
+    def test_create_stamps_creation_time_from_the_app_clock(self, session):
+        project = make_project(session, active=False)
+        before = datetime.now()
+        event = XrasActivationEvent.create(
+            session, project_id=project.project_id, event_type='comment',
+            created_by='benkirk', comment='hello')
+        assert before <= event.creation_time <= datetime.now()
+
+    def test_created_by_is_truncated_to_the_username_width(self, session):
+        project = make_project(session, active=False)
+        event = XrasActivationEvent.create(
+            session, project_id=project.project_id, event_type='comment',
+            created_by='x' * 80, comment='hello')
+        assert len(event.created_by) == 35
+
+    def test_the_restored_type_is_in_the_vocabulary(self, session):
+        # The undo mechanism is a fifth value, added because the DDL carries no
+        # ENUM/CHECK and therefore no second DBA ticket.
+        assert 'restored' in XRAS_ACTIVATION_EVENT_TYPES
+
+
+class TestActivationTimeline:
+    def test_events_come_back_newest_first(self, session):
+        project = make_project(session, active=False)
+        _event(session, project, 'comment', comment='oldest',
+               when=datetime.now() - timedelta(days=3))
+        _event(session, project, 'notified',
+               when=datetime.now() - timedelta(days=2))
+        _event(session, project, 'comment', comment='newest',
+               when=datetime.now() - timedelta(days=1))
+
+        events = get_xras_activation_events(session, project.project_id)
+        assert [e['event_type'] for e in events] == ['comment', 'notified', 'comment']
+        assert events[0]['comment'] == 'newest'
+
+    def test_a_project_with_no_events_is_an_empty_list(self, session):
+        project = make_project(session, active=False)
+        assert get_xras_activation_events(session, project.project_id) == []
+
+
+class TestActionProvenance:
+    def test_resolves_the_latest_action_naming_the_project(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=5))
+        newest = _action(session, request_number=project.projcode,
+                         received_time=datetime.now())
+
+        got = get_latest_xras_action_id(session, project.project_id)
+        assert got == newest.xras_action_log_id
+
+    def test_matches_projcode_result_as_well_as_request_number(self, session):
+        project = make_project(session, active=False)
+        row = _action(session, action_type='New', request_number='NCAR9999',
+                      projcode_result=project.projcode)
+        assert get_latest_xras_action_id(
+            session, project.project_id) == row.xras_action_log_id
+
+    def test_an_untouched_project_has_no_provenance(self, session):
+        project = make_project(session, active=False)
+        assert get_latest_xras_action_id(session, project.project_id) is None
+
+    def test_a_missing_project_is_none_not_an_error(self, session):
+        assert get_latest_xras_action_id(session, 999_999_999) is None
+
+
+class TestNotifyRecipients:
+    def test_lead_is_returned_with_an_address(self, session):
+        project = make_project(session, active=False)
+        _email(session, project.lead, 'lead@example.edu')
+
+        people = get_xras_pending_recipients(
+            session, [project.project_id])[project.project_id]
+        assert [p['role'] for p in people] == ['lead']
+        assert people[0]['email'] == 'lead@example.edu'
+
+    def test_lead_and_admin_are_both_returned(self, session):
+        project = make_project(session, active=False)
+        _email(session, project.lead, 'lead@example.edu')
+        admin = make_user(session)
+        _email(session, admin, 'admin@example.edu')
+        project.project_admin_user_id = admin.user_id
+        session.flush()
+
+        people = get_xras_pending_recipients(
+            session, [project.project_id])[project.project_id]
+        assert [p['role'] for p in people] == ['lead', 'admin']
+
+    def test_a_lead_who_is_also_admin_is_not_listed_twice(self, session):
+        project = make_project(session, active=False)
+        _email(session, project.lead, 'lead@example.edu')
+        project.project_admin_user_id = project.project_lead_user_id
+        session.flush()
+
+        people = get_xras_pending_recipients(
+            session, [project.project_id])[project.project_id]
+        assert len(people) == 1
+
+    def test_a_lead_with_no_address_on_file_is_an_empty_list(self, session):
+        """Not an error, and not a blocker: the operator may have reached them
+        out of band. The card renders a warning instead of hiding the button."""
+        project = make_project(session, active=False)
+        got = get_xras_pending_recipients(session, [project.project_id])
+        assert got[project.project_id] == []
+
+    def test_no_project_ids_is_an_empty_dict_not_a_full_scan(self, session):
+        assert get_xras_pending_recipients(session, []) == {}
+
 
 class TestActionTypeRollup:
     """``by_action_type`` — the marginal the facet chips need."""
@@ -422,3 +750,57 @@ class TestRequestTokenDiscriminator:
         assert XRAS_REQUEST_TOKEN_PREFIXES, 'at least one prefix'
         assert XRAS_REQUEST_TOKEN_EXAMPLE.startswith(XRAS_REQUEST_TOKEN_PREFIXES), (
             'the example must be a member of the family it illustrates')
+
+
+class TestAgesAreDeltasNotTimestamps:
+    """``fmt_ago`` takes an elapsed ``timedelta``; handing it a ``datetime``
+    raises ``AttributeError: 'datetime.datetime' object has no attribute
+    'total_seconds'`` at render time.
+
+    The unit tier could not catch that on its own — the pending-fragment render
+    test runs against a snapshot with no activation events, so the badge that
+    calls the filter never drew. These pin the shape the templates rely on.
+    """
+
+    def test_notified_age_is_a_timedelta(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=2))
+        _event(session, project, 'notified', when=datetime.now() - timedelta(hours=3))
+
+        row = _pending_row(session, project)
+        assert isinstance(row['notified_age'], timedelta)
+        assert 2 < row['notified_age'].total_seconds() / 3600 < 4
+
+    def test_a_just_written_event_can_read_slightly_negative(self, session):
+        """Not a bug, and worth pinning so nobody "fixes" it into a crash.
+
+        ``creation_time`` is stamped from the app clock with microseconds, and
+        MySQL DATETIME **rounds** fractional seconds rather than truncating — so
+        a row written at 10:10:24.894 is stored as 10:10:25, which is *ahead* of
+        a ``datetime.now()`` taken moments later. The age is therefore allowed to
+        be a small negative delta. ``fmt.ago`` clamps at zero
+        (``max(delta.total_seconds(), 0)``) and renders "less than a minute".
+        """
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode,
+                received_time=datetime.now() - timedelta(days=2))
+        _event(session, project, 'notified')
+
+        age = _pending_row(session, project)['notified_age']
+        assert isinstance(age, timedelta)
+        assert age.total_seconds() > -1.0, 'more than rounding — a real inversion'
+
+    def test_notified_age_is_none_when_never_notified(self, session):
+        project = make_project(session, active=False)
+        _action(session, request_number=project.projcode)
+        assert _pending_row(session, project)['notified_age'] is None
+
+    def test_every_timeline_event_carries_an_age_delta(self, session):
+        project = make_project(session, active=False)
+        _event(session, project, 'comment', comment='note')
+        _event(session, project, 'notified')
+
+        events = get_xras_activation_events(session, project.project_id)
+        assert events
+        assert all(isinstance(e['age'], timedelta) for e in events)
