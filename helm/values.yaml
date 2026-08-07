@@ -281,8 +281,6 @@ webapp:
     FS_SCAN_PG_PORT: "5432"
     FS_SCAN_PG_DB: "campaign"
     FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:destor"
-    # disable creating projects until ID system transition & GID pool
-    CREATE_PROJECTS_ENABLED: "0"
 
   # system_status DB credentials (injected as STATUS_DB_USERNAME / STATUS_DB_PASSWORD).
   # MUST be a non-superuser role — connecting as the postgres SUPERUSER causes
