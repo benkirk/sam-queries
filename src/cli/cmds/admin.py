@@ -23,6 +23,7 @@ from cli.project.commands import (
 from cli.accounting.commands import AccountingAdminCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
 from cli.contracts.commands import ContractsAuditCommand
+from cli.xras.commands import XrasCommand
 
 # Default base URL for the running webapp (matches the systems-integration
 # shell client, scripts/apis/systems_integration_apis.sh).
@@ -660,6 +661,90 @@ def cache(ctx: Context, refresh: bool, category, base_url):
         table.add_row(cat, str(count))
     ctx.console.print(table)
     sys.exit(EXIT_SUCCESS)
+
+
+@cli.command()
+@click.option('--show', 'action_id', type=int, default=None,
+              help='[detail] Show one action by id')
+@click.option('--payload', 'show_payload', is_flag=True,
+              help='[detail] Include the raw payload (requires --show; contains PII)')
+@click.option('--replay', type=int, default=None,
+              help='[write] Re-submit a stored payload as a new, linked audit row')
+@click.option('--summary', is_flag=True,
+              help='[rollup] Counts by status and action type')
+@click.option('--status', multiple=True,
+              type=click.Choice(['received', 'processed', 'manual',
+                                 'failed', 'replayed']),
+              help='[list/rollup] Filter by status (repeatable)')
+@click.option('--type', 'action_type', multiple=True,
+              help='[list/rollup] Filter by action type, e.g. New (repeatable)')
+@click.option('--request', 'request_number', type=str, default=None,
+              help='[list] Filter by XRAS request number / projcode')
+@click.option('--last', type=str, default=None,
+              help='[list/rollup] Time window, e.g. 7d, 24h, 2w (default: all time)')
+@click.option('--limit', type=int, default=50, show_default=True,
+              help='[list] Maximum rows to return')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@pass_context
+def xras(ctx: Context, action_id, show_payload, replay, summary, status,
+         action_type, request_number, last, limit, verbose):
+    """Inspect and replay the XRAS action log.
+
+    \b
+    Reads xras_action_log — the audit trail written by POST /api/xras/v1/actions.
+    Every post lands there before dispatch, so a request that fails is still
+    recorded and still replayable.
+
+    \b
+    Modes:
+      (default)    list recent actions
+      --show ID    one action in full, with its replay lineage
+      --summary    counts by status, and by status x action type
+      --replay ID  re-submit that action's stored bytes
+
+    \b
+    Replay honours XRAS_ACTIONS_CAPTURE_ONLY. While capture mode is on — which it
+    is until the POST cutover — legacy SAM is still applying these actions, so a
+    replay re-validates the stored payload and records the outcome WITHOUT
+    dispatching. That is deliberate: dispatching would double-apply an action
+    legacy has already performed.
+
+    \b
+    Examples:
+      sam-admin xras --last 7d
+      sam-admin xras --status failed --type Extension
+      sam-admin xras --show 42 --payload
+      sam-admin xras --summary --last 30d
+      sam-admin xras --replay 42
+      sam-admin --format json xras --summary | jq .by_status
+    """
+    if verbose:
+        ctx.verbose = True
+
+    if show_payload and action_id is None:
+        ctx.console.print('Error: --payload requires --show', style='bold red')
+        sys.exit(EXIT_ERROR)
+
+    # Writes have no JSON contract: the envelope is for consumers reading state,
+    # and a machine-readable success receipt for a side-effecting command invites
+    # scripting a write loop that no one reviewed. Same rule as src/cli/README.md.
+    if replay is not None and ctx.output_format == 'json':
+        import json
+        click.echo(json.dumps({'error': 'json_unsupported_for_writes'},
+                              indent=2, sort_keys=False))
+        sys.exit(EXIT_ERROR)
+
+    sys.exit(XrasCommand(ctx).execute(
+        action_id=action_id,
+        show_payload=show_payload,
+        replay=replay,
+        summary=summary,
+        status=status,
+        action_type=action_type,
+        request_number=request_number,
+        last=last,
+        limit=limit,
+    ))
 
 
 if __name__ == '__main__':
