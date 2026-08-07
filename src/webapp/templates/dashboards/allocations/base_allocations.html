@@ -22,6 +22,8 @@
     {'endpoint': 'allocations_dashboard.projects',     'label': 'Projects',     'icon': 'fas fa-folder-open'},
     {'endpoint': 'allocations_dashboard.transactions', 'label': 'Transactions', 'icon': 'fas fa-exchange-alt'},
     {'endpoint': 'allocations_dashboard.adjustments',  'label': 'Adjustments',  'icon': 'fas fa-balance-scale'},
+    {'endpoint': 'allocations_dashboard.xras',         'label': 'XRAS',         'icon': 'fas fa-plug',
+     'visible': has_permission(Permission.VIEW_XRAS)},
 ]) }}
 
 {% block alloc_content %}{% endblock %}

@@ -1,0 +1,197 @@
+{% from 'dashboards/fragments/pagination.html' import pagination %}
+{% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{#
+  XRAS action-log HTMX fragment.
+
+  Context:
+    rows, total, summary, page, sort, filters
+    fragment_url, target_id, form_id, sortable_columns
+
+  ⚠️  WHERE THE COLLAPSE TOGGLE GOES, AND WHY IT IS NOT ON THE <tr>
+
+  Bootstrap registers its collapse data-api with EventHandler.on(document, ...),
+  which runs in the CAPTURE phase. Capture descends document -> row -> button, so
+  a data-bs-toggle="collapse" on the <tr> has ALREADY fired before any handler on
+  a nested button executes — `data-stop-propagation` is powerless against it by
+  construction (see dashboards/fragments/collapse.html for the full write-up).
+
+  This table has three interactive things inside its rows: the Request # and
+  Result project-modal buttons, the details button, and the replay button. So the
+  toggle lives on the Errors <td> ALONE. That cell is also the best affordance:
+  the error list is what an operator is triaging, and "3 errors ⌄" says what will
+  happen when you click it.
+
+  Rows with no errors get no toggle at all — a chevron that expands to nothing
+  reads as broken.
+#}
+
+{# Summary strip: scoped to the CURRENT filter, so it describes what is on screen
+   rather than the whole table. Statuses render even at zero — an absent bucket
+   reads as "not measured" rather than "none". #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
+    <span class="text-muted">Showing</span>
+    <strong>{{ summary.total | fmt_number }}</strong>
+    <span class="text-muted">action{{ '' if summary.total == 1 else 's' }}:</span>
+    {% for state, count in summary.by_status.items() %}
+    <span class="{% if not count %}opacity-50{% endif %}">
+        {{ status_badge(state) }} <strong>{{ count | fmt_number }}</strong>
+    </span>
+    {% endfor %}
+</div>
+
+{# The id is the htmx.onLoad marker admin-cards.js gates chevron wiring on —
+   same mechanism as #contractsTable. #}
+<div id="xrasActionsTable">
+    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+        <thead class="table-subtle">
+            <tr>
+                <th style="white-space:nowrap;">{{ sort_link('received_time', 'Received') }}</th>
+                <th style="width:120px;">{{ sort_link('action_type', 'Type') }}</th>
+                <th style="width:130px;">{{ sort_link('request_number', 'Request #') }}</th>
+                <th style="width:150px;">{{ sort_link('status', 'Status') }}</th>
+                <th style="width:130px;">{{ sort_link('projcode_result', 'Result') }}</th>
+                <th style="width:99%;">Errors</th>
+                <th class="text-end" style="white-space:nowrap;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            {% set errors_id = 'xras-errors-' ~ r.action_log_id %}
+            <tr>
+                {# Column shows the date; the tooltip carries the time of day, which
+                   is what separates six actions posted in the same second. #}
+                <td style="white-space:nowrap;"
+                    title="{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
+                    {% if r.replay_of_id %}
+                    <i class="fas fa-redo text-muted me-1"
+                       title="Replay of action #{{ r.replay_of_id }}"></i>
+                    {% endif %}
+                    {{ r.received_time | fmt_date }}
+                </td>
+                <td>
+                    {% if r.action_type %}
+                    <span class="badge bg-secondary">{{ r.action_type }}</span>
+                    {% else %}
+                    {# NULL action_type is meaningful: the body would not parse, so
+                       we genuinely do not know what was being asked for. #}
+                    <span class="text-muted" title="Body could not be parsed">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {# Only link when the code really is a projcode. On the New
+                       path request_number is an NCAR#### request token, and
+                       linking it would send the operator to a 404 on precisely
+                       the 21% of traffic with the worst failure rate. #}
+                    {% if r.request_number and r.request_is_project %}
+                    <button class="btn btn-link p-0"
+                            title="View project details"
+                            data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                            hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.request_number) }}"
+                            hx-target="#projectDetailsModalBody"
+                            hx-swap="innerHTML"
+                            data-stop-propagation>
+                        <strong>{{ r.request_number }}</strong>
+                    </button>
+                    {% elif r.request_number %}
+                    <span title="XRAS request number — not a SAM project code">
+                        {{ r.request_number }}
+                    </span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                    {{ status_badge(r.status) }}
+                    {% if r.http_status %}
+                    {# 400 vs 422 both live under status='failed'; the code is the
+                       only thing that separates "unparseable" from "rejected". #}
+                    <span class="text-muted small ms-1">{{ r.http_status }}</span>
+                    {% endif %}
+                    {% if r.replay_count %}
+                    <span class="badge bg-secondary ms-1"
+                          title="Replayed {{ r.replay_count }} time{{ '' if r.replay_count == 1 else 's' }}">
+                        <i class="fas fa-redo"></i> {{ r.replay_count }}
+                    </span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if r.projcode_result and r.result_is_project %}
+                    <button class="btn btn-link p-0"
+                            title="View project details"
+                            data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                            hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode_result) }}"
+                            hx-target="#projectDetailsModalBody"
+                            hx-swap="innerHTML"
+                            data-stop-propagation>
+                        <strong>{{ r.projcode_result }}</strong>
+                    </button>
+                    {% elif r.projcode_result %}
+                    <span title="Project not found in SAM">{{ r.projcode_result }}</span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                {# THE toggle cell — the only one. See the header note. #}
+                {% if r.errors %}
+                <td class="cursor-pointer small" {{ collapse_toggle(errors_id) }}>
+                    <i class="fas fa-chevron-right small text-muted me-1 xras-collapse-icon"
+                       style="transition: transform 0.2s;"></i>
+                    <span class="text-danger">
+                        {{ r.errors | length }} error{{ '' if r.errors | length == 1 else 's' }}
+                    </span>
+                    <span class="text-muted ms-1"
+                          style="display:inline-block; max-width:38ch; overflow:hidden;
+                                 text-overflow:ellipsis; white-space:nowrap;
+                                 vertical-align:bottom;">{{ r.errors[0] }}</span>
+                </td>
+                {% else %}
+                <td class="text-muted small">—</td>
+                {% endif %}
+                <td class="text-end text-nowrap">
+                    <button class="btn btn-sm btn-outline-secondary"
+                            title="View action details"
+                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                            hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.action_log_id) }}"
+                            hx-target="#auditDetailsModalBody"
+                            hx-swap="innerHTML">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                    {% if has_permission(Permission.MANAGE_XRAS) %}
+                    <button class="btn btn-sm btn-outline-secondary"
+                            title="Replay this action"
+                            hx-post="{{ url_for('allocations_dashboard.xras_replay', action_id=r.action_log_id) }}"
+                            hx-confirm="Re-submit the stored payload for action #{{ r.action_log_id }}? This writes a new, linked audit row."
+                            hx-swap="none">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% if r.errors %}
+            <tr class="collapse" id="{{ errors_id }}">
+                <td colspan="7" class="bg-body-tertiary">
+                    {# The ordered list IS the wire contract — this is verbatim what
+                       XRAS was told in the 422 body, in the order it was told. #}
+                    <ol class="mb-0 small">
+                        {% for e in r.errors %}
+                        <li><code>{{ e }}</code></li>
+                        {% endfor %}
+                    </ol>
+                </td>
+            </tr>
+            {% endif %}
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    <i class="fas fa-inbox"></i>
+                    No XRAS actions match the current filter.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {{ pagination(page, total, fragment_url, target_id, form_id, sort) }}
+</div>

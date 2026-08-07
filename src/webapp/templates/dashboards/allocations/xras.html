@@ -1,0 +1,43 @@
+{% extends 'dashboards/allocations/base_allocations.html' %}
+{% from 'dashboards/fragments/xras_filters.html' import xras_filters %}
+
+{% block title %}XRAS Action Log - SAM{% endblock %}
+
+{% block alloc_content %}
+
+{# Pending activation sits ABOVE the log: it is the actionable thing, the log is
+   the reference. Loads independently of the table so a slow log query never
+   delays the one card an operator might need to act on. #}
+<div id="alloc-xras-pending"
+     hx-get="{{ url_for('allocations_dashboard.xras_pending_fragment') }}"
+     hx-trigger="load, refreshXrasTab from:body"
+     hx-swap="innerHTML"></div>
+
+<div class="filter-sidebar mb-3">
+    {{ xras_filters(
+        form_id='xras-filters',
+        fragment_url=url_for('allocations_dashboard.xras_fragment'),
+        target_id='alloc-xras-fragment',
+        start_date=xras_start_date, end_date=xras_end_date,
+        all_statuses=all_statuses, selected_statuses=[],
+        all_action_types=all_action_types, selected_action_types=[]) }}
+</div>
+
+{# data-refresh-url: read by dashboard-init.js on refreshXrasTab (fired by the
+   replay route's HX-Trigger), so a replay re-renders the table it came from. #}
+<div id="alloc-xras-fragment"
+     data-refresh-url="{{ url_for('allocations_dashboard.xras_fragment') }}"
+     hx-get="{{ url_for('allocations_dashboard.xras_fragment') }}"
+     hx-trigger="load"
+     hx-include="#xras-filters"
+     hx-swap="innerHTML">
+    <div class="text-center text-muted py-4">
+        <div class="spinner-border text-primary" role="status">
+            <span class="sr-only">Loading…</span>
+        </div>
+    </div>
+</div>
+
+{% include 'dashboards/allocations/partials/audit_details_modal.html' %}
+
+{% endblock %}

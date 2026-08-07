@@ -7,7 +7,9 @@
       {{ status_badge('locked', extra='ms-1') }}
       {{ status_badge('expired', extra='ms-1', small=True) }}
 
-  Known states (case-insensitive): active, inactive, locked, expired, open-ended.
+  Known states (case-insensitive): active, inactive, locked, expired, open-ended,
+  plus the five xras_action_log states (received, processed, manual, failed,
+  replayed) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
   Unknown states fall back to bg-secondary with the raw label rendered.
 #}
 
@@ -17,6 +19,11 @@
     'locked':     'bg-warning text-dark',
     'expired':    'bg-secondary',
     'open-ended': 'bg-info text-dark',
+    'received':   'bg-info text-dark',
+    'processed':  'bg-success',
+    'manual':     'bg-warning text-dark',
+    'failed':     'bg-danger',
+    'replayed':   'bg-secondary',
 } -%}
 {%- set _STATUS_LABELS = {
     'active':     'Active',
@@ -24,6 +31,11 @@
     'locked':     'Locked',
     'expired':    'Expired',
     'open-ended': 'Open-ended',
+    'received':   'Received',
+    'processed':  'Processed',
+    'manual':     'Manual',
+    'failed':     'Failed',
+    'replayed':   'Replayed',
 } -%}
 {# Hover explanations — applied as a Bootstrap tooltip (tooltip-init.js) so the
    badge is self-documenting wherever it appears. #}
@@ -33,6 +45,11 @@
     'locked':     'Frozen: no further charging or changes until unlocked.',
     'expired':    'Allocation period has ended.',
     'open-ended': 'No end date — runs indefinitely.',
+    'received':   'Captured and audited. Not dispatched — SAM is recording XRAS actions while legacy still applies them.',
+    'processed':  'A handler applied this action successfully.',
+    'manual':     'Parked for a human: no handler services this action type.',
+    'failed':     'Rejected. See the error list for what XRAS was told.',
+    'replayed':   'An operator re-submitted the stored payload; it was re-validated but not dispatched.',
 } -%}
 
 

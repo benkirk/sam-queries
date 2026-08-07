@@ -1,0 +1,114 @@
+{#
+  Filter bar for the XRAS action log (Allocations > XRAS).
+
+  A sibling of `audit_filters.html` rather than an extension of it. The two share
+  the panel chrome verbatim — same .filter-sidebar-* header, same collapse
+  behaviour, same "Clear filters" reset, same control styling — but not a single
+  field: audit_filters offers Project / Responsible user / Resources / Facilities,
+  none of which an XRAS action has. An action arrives before we know its facility,
+  and a malformed body has no project at all.
+
+  Folding both field sets into one macro would mean ten optional parameters and a
+  body that is mostly {% if %}, for two callers that never overlap. Same reasoning
+  as the "an entity needing more than the spec expresses stays bespoke" rule in
+  dashboards/admin/crud.py.
+
+  NOTE the panel-chrome block below is now copy-pasted in five places
+  (audit_filters, institution_filters, jobs_filters, _disk_scans_dir_filters, here).
+  It is a fair candidate for a `filter_panel_shell` macro — but extracting it is a
+  five-template refactor and does not belong in a feature change.
+
+  Parameters:
+    form_id        - unique id for this form (e.g. "xras-filters")
+    fragment_url   - HTMX endpoint to GET on submit
+    target_id      - id of the fragment container (innerHTML swap)
+    start_date     - initial YYYY-MM-DD string
+    end_date       - initial YYYY-MM-DD string
+    request_number - initial request-number / projcode filter
+    all_statuses      / selected_statuses    - status vocabulary + selection
+    all_action_types  / selected_action_types - action-type vocabulary + selection
+#}
+{% macro xras_filters(form_id, fragment_url, target_id,
+                      start_date='', end_date='', request_number='',
+                      all_statuses=[], selected_statuses=[],
+                      all_action_types=[], selected_action_types=[]) %}
+<form id="{{ form_id }}"
+      hx-get="{{ fragment_url }}"
+      hx-target="#{{ target_id }}"
+      hx-swap="innerHTML"
+      hx-trigger="submit">
+    <div class="filter-sidebar-header">
+        <h2 class="filter-sidebar-title">
+            <button class="filter-sidebar-toggle" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
+                    aria-expanded="true" aria-controls="{{ form_id }}-fields">
+                Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
+            </button>
+        </h2>
+        {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
+           form and re-triggers its htmx submit — no inline onclick. #}
+        <a class="filter-sidebar-clear" style="cursor: pointer;"
+           data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
+    </div>
+
+    {# Collapsed by default on phones (dashboard-init.js strips .show below
+       md). data-no-persist: the responsive default owns the initial state. #}
+    <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
+    <div class="d-flex flex-wrap align-items-start gap-3">
+
+        <div>
+            <label class="form-label"><strong>From</strong></label>
+            <input type="date" class="form-control"
+                   name="start_date" value="{{ start_date }}"
+                   style="width:150px;">
+        </div>
+
+        <div>
+            <label class="form-label"><strong>To</strong></label>
+            <input type="date" class="form-control"
+                   name="end_date" value="{{ end_date }}"
+                   style="width:150px;">
+        </div>
+
+        <div>
+            <label class="form-label"><strong>Request #</strong></label>
+            <input type="text" class="form-control"
+                   name="request_number" value="{{ request_number or '' }}"
+                   placeholder="e.g. NCAR4253" style="width:160px;">
+        </div>
+
+        {% if all_statuses %}
+        <div>
+            <label class="form-label"><strong>Status</strong></label>
+            <select class="form-control"
+                    name="status" multiple size="{{ [all_statuses|length, 5]|min }}"
+                    style="width:150px;">
+                {% for s in all_statuses %}
+                <option value="{{ s }}"
+                    {% if s in selected_statuses %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+        </div>
+        {% endif %}
+
+        {% if all_action_types %}
+        <div>
+            <label class="form-label"><strong>Action type</strong></label>
+            <select class="form-control"
+                    name="action_type" multiple size="{{ [all_action_types|length, 5]|min }}"
+                    style="width:160px;">
+                {% for t in all_action_types %}
+                <option value="{{ t }}"
+                    {% if t in selected_action_types %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+            </select>
+            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
+    </div>
+    </div>
+</form>
+{% endmacro %}

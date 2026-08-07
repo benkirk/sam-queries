@@ -225,6 +225,17 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/allocations/partials/transactions_table.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],
+    # The XRAS trio loads only into dashboards/allocations/xras.html, which
+    # includes partials/audit_details_modal.html itself and inherits
+    # #projectDetailsModal from base_allocations.html — same arrangement as the
+    # transactions and adjustments tables above.
+    'dashboards/allocations/partials/xras_action_details_modal.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_pending_card.html': [
+        'projectDetailsModal', 'projectDetailsModalBody'],
+    'dashboards/allocations/partials/xras_table.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
+        'projectDetailsModal', 'projectDetailsModalBody'],
     'dashboards/fragments/contract_bits.html': [
         'nsfProgramContractsModalBody', 'userDetailsModalBody'],
     'dashboards/fragments/user_rows.html': [
@@ -302,6 +313,7 @@ PAGES_WITH_PROJECT_MODAL = {
     '/allocations/projects': 'dashboards/allocations/projects.html',
     '/allocations/transactions': 'dashboards/allocations/transactions.html',
     '/allocations/adjustments': 'dashboards/allocations/adjustments.html',
+    '/allocations/xras': 'dashboards/allocations/xras.html',
     '/status/derecho': 'dashboards/status/derecho_page.html',
     '/status/casper': 'dashboards/status/casper_page.html',
     '/status/jupyterhub': 'dashboards/status/jupyterhub_page.html',

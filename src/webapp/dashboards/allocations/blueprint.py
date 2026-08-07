@@ -5,15 +5,21 @@ Provides drill-down allocation dashboard showing allocation summaries
 grouped hierarchically by Resource → Facility → Allocation Type → Projects.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify
+from flask import (
+    Blueprint, render_template, request, flash, redirect, url_for, jsonify,
+    current_app,
+)
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.htmx import (
-    handle_htmx_form_post, read_layout, read_theme, register_typeahead,
+    handle_htmx_form_post, htmx_not_found, htmx_success_message, read_layout,
+    read_theme, register_typeahead,
 )
+from webapp.api.xras.replay import replay_action
+from sam.integration.xras import XrasActionLog
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
     count_recent_allocation_transactions,
@@ -26,14 +32,23 @@ from sam.queries.charges import (
     count_recent_charge_adjustments,
     get_recent_charge_adjustments,
 )
+from sam.queries.xras_actions import (
+    XRAS_ACTION_SORT_COLUMNS,
+    XRAS_ACTION_STATUSES,
+    XRAS_ACTION_TYPES,
+    count_recent_xras_actions,
+    get_recent_xras_actions,
+    get_xras_pending_activation,
+    summarize_xras_actions,
+)
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
 from sam.schemas.forms import CreateChargeAdjustmentForm
 from flask import abort
 from webapp.utils.rbac import (
-    apply_facility_scope, filter_rows_by_facility, require_permission,
-    require_permission_any_facility, user_facility_scope, Permission,
-    allowed_facility_names as _allowed_facility_names,
+    apply_facility_scope, filter_rows_by_facility, has_permission,
+    require_permission, require_permission_any_facility, user_facility_scope,
+    Permission, allowed_facility_names as _allowed_facility_names,
 )
 from webapp.api.access_control import require_project_access
 from sam.resources.resources import Resource
@@ -1129,4 +1144,222 @@ def htmx_create_adjustment():
         success_message='Charge adjustment saved.',
         error_prefix='Error creating adjustment',
         context_fn=_create_adjustment_form_context,
+    )
+
+
+# ============================================================================
+# XRAS action log — the operator surface for POST /api/xras/v1/actions
+#
+# Gating, and why it is two permissions:
+#   VIEW_XRAS    the page, the table, the filters, the error lists. Swept into
+#                ALL_VIEW by name, so every operator bundle already has it.
+#   MANAGE_XRAS  the raw-payload panel and the replay button. The payload is the
+#                request body verbatim and carries participant names, emails,
+#                phones and grant-officer contacts.
+#
+# Plain require_permission(), NOT require_permission_any_facility(): an XRAS
+# action is not facility-scopable. It arrives before we know its facility (a New
+# action has no project yet) and a malformed body has none at all — there is
+# nothing to intersect a scope against. See the note in rbac.py's
+# USER_FACILITY_PERMISSIONS.
+# ============================================================================
+
+_XRAS_FRAGMENT_TARGET = 'alloc-xras-fragment'
+_XRAS_FORM_ID = 'xras-filters'
+
+
+def _parse_xras_filters(request_args):
+    """Parse filter + sort + pagination params for the XRAS fragment.
+
+    Deliberately a sibling of ``_parse_audit_filters`` rather than a
+    generalisation of it. The sort/page halves are identical by convention (that
+    is what makes the shared ``sort_link`` / ``pagination`` macros work), but the
+    filter halves have nothing in common — projcode/resource/username/facility
+    versus status/action-type/request-number. Merging them would mean a parameter
+    for every field either page has.
+
+    Returns ``(filters, sort, page)`` with the same shapes ``_parse_audit_filters``
+    returns, because the table fragment renders through the same macros.
+
+    Default 30-day window is applied iff **neither** ``start_date`` nor
+    ``end_date`` appears in the query string — explicitly empty bounds mean
+    "all time", which is a different intent from "I have not chosen".
+    """
+    statuses = request_args.getlist('status') or None
+    action_types = request_args.getlist('action_type') or None
+    request_number = (request_args.get('request_number') or '').strip() or None
+
+    start_date_str = (request_args.get('start_date') or '').strip()
+    end_date_str = (request_args.get('end_date') or '').strip()
+
+    if 'start_date' not in request_args and 'end_date' not in request_args:
+        start_date = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                      - timedelta(days=30))
+        end_date = datetime.now()
+    else:
+        try:
+            start_date = (datetime.strptime(start_date_str, '%Y-%m-%d')
+                          if start_date_str else None)
+        except ValueError:
+            start_date = None
+        try:
+            end_date = (datetime.strptime(end_date_str, '%Y-%m-%d')
+                        .replace(hour=23, minute=59, second=59)
+                        if end_date_str else None)
+        except ValueError:
+            end_date = None
+
+    filters = {
+        'status': statuses,
+        'action_type': action_types,
+        'request_number': request_number,
+        'start_date': start_date,
+        'end_date': end_date,
+    }
+
+    sort_by = request_args.get('sort_by') or None
+    if sort_by and sort_by not in XRAS_ACTION_SORT_COLUMNS:
+        sort_by = None
+    sort_dir = request_args.get('sort_dir', 'desc')
+    if sort_dir not in ('asc', 'desc'):
+        sort_dir = 'desc'
+
+    try:
+        page_n = max(1, int(request_args.get('page', 1)))
+    except (TypeError, ValueError):
+        page_n = 1
+    try:
+        per_page = int(request_args.get('per_page', 50))
+    except (TypeError, ValueError):
+        per_page = 50
+    per_page = max(10, min(per_page, 200))
+
+    return filters, {'sort_by': sort_by, 'sort_dir': sort_dir}, \
+           {'n': page_n, 'per_page': per_page}
+
+
+def _xras_action_types():
+    """Filter vocabulary: the known types plus anything actually in the table.
+
+    ``XrasActionSchema`` applies no enum to ``actionType`` on purpose — the
+    Supplement/Update spellings are unconfirmed and no co-PI role has ever been
+    sampled — so a type we have never seen must still be filterable rather than
+    invisible. Union, don't replace.
+    """
+    observed = {
+        row.action_type for row in
+        db.session.query(XrasActionLog.action_type)
+        .filter(XrasActionLog.action_type.isnot(None))
+        .distinct().all()
+    }
+    return sorted(set(XRAS_ACTION_TYPES) | observed)
+
+
+@bp.route('/xras')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras():
+    """XRAS action-log page: the operator surface for the ingest endpoint."""
+    end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date = end_date - timedelta(days=30)
+    return render_template(
+        'dashboards/allocations/xras.html',
+        xras_start_date=start_date.strftime('%Y-%m-%d'),
+        xras_end_date=end_date.strftime('%Y-%m-%d'),
+        all_statuses=list(XRAS_ACTION_STATUSES),
+        all_action_types=_xras_action_types(),
+    )
+
+
+@bp.route('/xras_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_fragment():
+    """HTMX fragment: sortable, paginated table of XRAS actions."""
+    filters, sort, page = _parse_xras_filters(request.args)
+    offset = (page['n'] - 1) * page['per_page']
+
+    rows = get_recent_xras_actions(
+        db.session,
+        **filters,
+        sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
+        offset=offset, limit=page['per_page'],
+    )
+    total = count_recent_xras_actions(db.session, **filters)
+    # Scoped to the same filters as the table, so the strip describes what the
+    # operator is looking at rather than the whole table.
+    summary = summarize_xras_actions(
+        db.session,
+        action_type=filters['action_type'], status=filters['status'],
+        start_date=filters['start_date'], end_date=filters['end_date'],
+    )
+
+    return render_template(
+        'dashboards/allocations/partials/xras_table.html',
+        rows=rows, total=total, summary=summary,
+        page=page, sort=sort, filters=filters,
+        fragment_url=url_for('allocations_dashboard.xras_fragment'),
+        target_id=_XRAS_FRAGMENT_TARGET,
+        form_id=_XRAS_FORM_ID,
+        sortable_columns=sorted(XRAS_ACTION_SORT_COLUMNS),
+    )
+
+
+@bp.route('/xras_pending_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_pending_fragment():
+    """HTMX fragment: XRAS-touched projects still awaiting activation.
+
+    Stands in for the success email legacy sends and SAM has no mailer for — which
+    is what keeps SMTP deferred rather than a prerequisite for the POST cutover.
+    See ``get_xras_pending_activation`` for what this can and cannot see.
+    """
+    return render_template(
+        'dashboards/allocations/partials/xras_pending_card.html',
+        pending=get_xras_pending_activation(db.session),
+    )
+
+
+@bp.route('/xras_action_details/<int:action_id>')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_action_details(action_id: int):
+    """HTMX fragment: full detail for a single XRAS action.
+
+    ``include_payload`` is gated on MANAGE_XRAS at the *query* level, not just in
+    the template: an operator without it never has the PII in their response body
+    at all, so a view-source cannot leak what the page chose not to draw.
+    """
+    may_see_payload = has_permission(current_user, Permission.MANAGE_XRAS)
+    rows = get_recent_xras_actions(
+        db.session, action_log_id=action_id, include_payload=may_see_payload,
+    )
+    if not rows:
+        # A bare string, not abort(404): this lands in a modal body, where a 404
+        # error page would be worse than useless.
+        return '<p class="text-danger mb-0">Action not found.</p>'
+    return render_template(
+        'dashboards/allocations/partials/xras_action_details_modal.html',
+        r=rows[0], may_see_payload=may_see_payload,
+    )
+
+
+@bp.route('/xras_replay/<int:action_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_replay(action_id: int):
+    """Re-submit a stored payload's bytes as a new, linked audit row."""
+    try:
+        new_id = replay_action(action_id, actor=current_user.username)
+    except LookupError:
+        return htmx_not_found('Action')
+    except Exception as exc:                       # pragma: no cover - defensive
+        current_app.logger.exception('XRAS replay failed for id=%s', action_id)
+        return (f'<div class="alert alert-danger mb-0">Replay failed: {exc}</div>', 500)
+
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Replayed action #{action_id}.',
+        detail=f'Recorded as action #{new_id}.',
     )

@@ -1435,6 +1435,41 @@
     ]
   ],
   [
+    "allocations_dashboard.xras",
+    "/allocations/xras",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_action_details",
+    "/allocations/xras_action_details/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_fragment",
+    "/allocations/xras_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_pending_fragment",
+    "/allocations/xras_pending_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_replay",
+    "/allocations/xras_replay/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "disk_scans.access_history_fragment",
     "/dashboards/user/disk-scans/<projcode>/access-history",
     [

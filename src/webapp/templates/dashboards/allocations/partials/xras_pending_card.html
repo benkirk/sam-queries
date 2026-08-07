@@ -1,0 +1,83 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{#
+  Pending-activation card — the notification stand-in.
+
+  XRAS projects arrive `active = 0` by design and a human activates them. Legacy's
+  trigger for that human is its success email; SAM has no mailer at all, and this
+  card is what keeps SMTP deferred rather than a prerequisite for the POST cutover.
+
+  The empty state below is doing real work: this card can only see projects the
+  xras_action_log knows about (there is no provenance marker on `project` — see
+  get_xras_pending_activation), so "nothing here" must not be read as "nothing
+  pending" while SAM is still in capture mode. Say so, rather than showing a
+  cheerful checkmark that means something it doesn't.
+#}
+{% if pending %}
+<div class="card mb-3 border-warning">
+    <div class="card-header d-flex align-items-center gap-2">
+        <i class="fas fa-hourglass-half text-warning"></i>
+        <strong>Pending activation</strong>
+        <span class="badge bg-warning text-dark">{{ pending | length | fmt_number }}</span>
+        <span class="text-muted small ms-auto">
+            XRAS projects arrive inactive by design — a human activates them.
+        </span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-subtle">
+                <tr>
+                    <th style="width:130px;">Project</th>
+                    <th style="width:99%;">Title</th>
+                    <th style="width:120px;">Last action</th>
+                    <th style="width:150px;">Status</th>
+                    <th style="white-space:nowrap;">Received</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in pending %}
+                <tr>
+                    <td>
+                        <button class="btn btn-link p-0"
+                                title="View project details"
+                                data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                                hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=p.projcode) }}"
+                                hx-target="#projectDetailsModalBody"
+                                hx-swap="innerHTML">
+                            <strong>{{ p.projcode }}</strong>
+                        </button>
+                    </td>
+                    <td class="small" style="overflow:hidden; text-overflow:ellipsis;
+                                             white-space:nowrap; max-width:0;"
+                        title="{{ p.title or '' }}">{{ p.title or '—' }}</td>
+                    <td>
+                        {% if p.action_type %}
+                        <span class="badge bg-secondary">{{ p.action_type }}</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ status_badge(p.status) }}</td>
+                    <td style="white-space:nowrap;"
+                        title="{{ p.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
+                        {{ p.received_time | fmt_date }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-light border small d-flex align-items-start gap-2 mb-3">
+    <i class="fas fa-hourglass-half text-muted mt-1"></i>
+    <div>
+        <strong>No XRAS projects awaiting activation.</strong>
+        <div class="text-muted">
+            This lists projects named by an action in the log that are still
+            inactive. It only sees projects <em>this</em> log knows about — while
+            <code>POST /actions</code> is in capture mode and legacy is still the
+            system of record, an empty list here does not mean nothing is pending.
+        </div>
+    </div>
+</div>
+{% endif %}

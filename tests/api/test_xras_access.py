@@ -637,6 +637,12 @@ def action_log(app, monkeypatch):
                         'projcode_result': r.projcode_result,
                         'processed_time': r.processed_time,
                         'received_time': r.received_time,
+                        # Sprint B columns. http_status separates the two things
+                        # status='failed' conflates (400 vs 422); processed_by and
+                        # replay_of_id are the replay chain.
+                        'http_status': r.http_status,
+                        'processed_by': r.processed_by,
+                        'replay_of_id': r.replay_of_id,
                     }
                     for r in found
                 ]
@@ -646,14 +652,34 @@ def action_log(app, monkeypatch):
             assert len(rows) == 1, f'expected exactly 1 audit row, got {len(rows)}'
             return rows[0]
 
+        def by_id(self, log_id):
+            for row in self.rows():
+                if row['id'] == log_id:
+                    return row
+            raise AssertionError(f'no captured audit row with id={log_id}')
+
     yield Reader()
 
     if minted:
         with app.app_context(), Session(db.engine) as session:
-            session.execute(
-                delete(XrasActionLog).where(
-                    XrasActionLog.xras_action_log_id.in_(minted))
-            )
+            # DESCENDING id, one PK-targeted DELETE each — NOT a single
+            # `IN (...)`, which is what this used to be.
+            #
+            # `replay_of_id` is a self-FK, so once a test replays an action the
+            # minted set contains both a parent and its child. A single statement
+            # gives InnoDB no ordering guarantee and it fails with
+            # `1451 Cannot delete or update a parent row`. Descending id is
+            # provably safe here: a replay is always inserted after the row it
+            # replays, so a child's id always exceeds its parent's — deleting high
+            # to low removes every child before its parent, to any chain depth.
+            #
+            # Still by primary key, per the note above: a range predicate would
+            # take an open-ended gap lock and deadlock against concurrent inserts.
+            for log_id in sorted(minted, reverse=True):
+                session.execute(
+                    delete(XrasActionLog).where(
+                        XrasActionLog.xras_action_log_id == log_id)
+                )
             session.commit()
 
 
@@ -884,3 +910,255 @@ class TestPostActionsErrors:
         row = action_log.one()
         assert row['status'] == 'received'
         assert row['action_type'] is None
+
+
+class TestReplay:
+    """``webapp.api.xras.replay.replay_action`` — the operator's re-submit path.
+
+    Exercised at the function level rather than through the dashboard route: the
+    route is a five-line wrapper whose interesting behaviour is the permission
+    gate (covered in ``tests/unit/test_xras_dashboard.py``), while everything that
+    can actually go wrong lives here.
+
+    Every row these tests create is minted through ``actions._record``, so the
+    ``action_log`` fixture captures and deletes them. That is not incidental —
+    ``replay.py`` calls ``actions._record`` through the *module attribute* for
+    exactly this reason. A ``from .actions import _record`` would bind at import
+    time, sail past the fixture's monkeypatch, and leak committed rows into the
+    shared xdist database.
+    """
+
+    def _seed(self, xras_client, name='extension_ucub0166_ok.json'):
+        """Post a real payload and return the id of the row it created."""
+        resp = xras_client.post(
+            '/api/xras/v1/actions', data=_payload(name),
+            content_type='application/json', headers=_auth())
+        assert resp.status_code == 200
+        return resp.get_json()  # body is {'message': 'OK', 'result': None}
+
+    def test_replay_writes_a_new_linked_row(self, app, xras_client, action_log):
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='benkirk')
+
+        assert new_id != original['id'], 'replay must create a row, not edit one'
+        replayed = action_log.by_id(new_id)
+        assert replayed['replay_of_id'] == original['id']
+        assert replayed['processed_by'] == 'benkirk'
+
+    def test_replay_preserves_the_payload_byte_for_byte(
+            self, app, xras_client, action_log):
+        """``raw_payload`` is byte-exact on purpose — a re-serialisation would
+        silently make the replay a different request from the one that arrived."""
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='benkirk')
+
+        assert action_log.by_id(new_id)['raw_payload'] == original['raw_payload']
+
+    def test_replay_inherits_the_original_remote_actor(
+            self, app, xras_client, action_log):
+        """The bytes still originated at XRAS, so ``remote_actor`` stays theirs.
+
+        The human goes in ``processed_by`` — which is also the only column wide
+        enough for a username (``remote_actor`` is varchar(11))."""
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='benkirk')
+
+        assert action_log.by_id(new_id)['remote_actor'] == original['remote_actor']
+
+    def test_replay_does_not_stamp_the_original(self, app, xras_client, action_log):
+        """Marking the parent 'replayed' would destroy its own outcome, which IS
+        the audit record. "Has been replayed" is derived from the relationship."""
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            replay_action(original['id'], actor='benkirk')
+
+        after = action_log.by_id(original['id'])
+        assert after['status'] == original['status'] == 'received'
+        assert after['processed_by'] is None
+        assert after['replay_of_id'] is None
+
+    def test_replay_lands_replayed_under_capture_mode(
+            self, app, xras_client, action_log):
+        """Capture mode is on because legacy is still applying these actions, so a
+        dispatching replay would double-apply. It re-validates instead."""
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='benkirk')
+
+        row = action_log.by_id(new_id)
+        assert row['status'] == 'replayed'
+        assert row['processed_time'] is not None
+
+    def test_replay_dispatches_when_capture_is_off(
+            self, app, xras_client, action_log):
+        """With the kill switch off a replay behaves exactly like a fresh post —
+        which today means the manual-fallback path, since no handler is registered."""
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
+        try:
+            with app.app_context():
+                new_id = replay_action(original['id'], actor='benkirk')
+        finally:
+            app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+
+        assert action_log.by_id(new_id)['status'] == 'manual'
+
+    def test_replaying_a_rejected_payload_fails_again(
+            self, app, xras_client, action_log):
+        """A replay must be able to FAIL, and fail the same way.
+
+        This is the regression check the feature buys while capture mode is on: a
+        payload harvested months ago is re-validated against today's schema code.
+        """
+        from webapp.api.xras.replay import replay_action
+
+        resp = xras_client.post(
+            '/api/xras/v1/actions',
+            data=json.dumps({'actionType': 'New', 'requestNumber': 'NCAR9999',
+                             'awardPeriod': True}),
+            content_type='application/json', headers=_auth())
+        assert resp.status_code == 422
+        original = action_log.one()
+        assert original['status'] == 'failed'
+
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='benkirk')
+
+        row = action_log.by_id(new_id)
+        assert row['status'] == 'failed'
+        assert row['http_status'] == 422
+        assert row['error_messages'] == 'awardPeriod: Not a valid string.'
+        assert row['replay_of_id'] == original['id']
+
+    def test_replaying_a_malformed_body_records_a_400(
+            self, app, xras_client, action_log):
+        from webapp.api.xras.replay import replay_action
+
+        resp = xras_client.post('/api/xras/v1/actions', data='{"actionType": ',
+                                content_type='application/json', headers=_auth())
+        assert resp.status_code == 400
+        original = action_log.one()
+
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='benkirk')
+
+        row = action_log.by_id(new_id)
+        assert row['status'] == 'failed'
+        assert row['http_status'] == 400
+        assert row['action_type'] is None
+
+    def test_replaying_a_replay_chains_rather_than_flattening(
+            self, app, xras_client, action_log):
+        """``replay_of_id`` points at whatever was replayed, so the lineage stays a
+        tree. Collapsing it to the root would lose who replayed what, when."""
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            first = replay_action(original['id'], actor='benkirk')
+            second = replay_action(first, actor='mcjones')
+
+        assert action_log.by_id(first)['replay_of_id'] == original['id']
+        assert action_log.by_id(second)['replay_of_id'] == first
+        assert action_log.by_id(second)['processed_by'] == 'mcjones'
+
+    def test_replaying_a_missing_id_raises_lookup_error(self, app, action_log):
+        from webapp.api.xras.replay import replay_action
+
+        with app.app_context():
+            with pytest.raises(LookupError):
+                replay_action(999_999_999, actor='benkirk')
+
+    def test_a_long_actor_name_is_truncated_not_a_dataerror(
+            self, app, xras_client, action_log):
+        """``processed_by`` is varchar(35). An over-long actor must not turn an
+        audit write into a 500 — the row is the whole point."""
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='x' * 80)
+
+        assert action_log.by_id(new_id)['processed_by'] == 'x' * 35
+
+
+class TestHttpStatusColumn:
+    """``http_status`` — added in Sprint B because ``status='failed'`` conflates a
+    malformed body (400) with a schema rejection (422), and triage needs both."""
+
+    def test_capture_records_200(self, xras_client, action_log):
+        xras_client.post('/api/xras/v1/actions',
+                         data=_payload('new_ncar4253_ok.json'),
+                         content_type='application/json', headers=_auth())
+        assert action_log.one()['http_status'] == 200
+
+    def test_malformed_body_records_400(self, xras_client, action_log):
+        xras_client.post('/api/xras/v1/actions', data='not json at all',
+                         content_type='application/json', headers=_auth())
+        row = action_log.one()
+        assert row['status'] == 'failed' and row['http_status'] == 400
+
+    def test_schema_rejection_records_422(self, xras_client, action_log):
+        xras_client.post(
+            '/api/xras/v1/actions',
+            data=json.dumps({'actionType': 'New', 'awardPeriod': True}),
+            content_type='application/json', headers=_auth())
+        row = action_log.one()
+        assert row['status'] == 'failed' and row['http_status'] == 422
+
+    def test_the_two_failures_are_distinguishable(self, xras_client, action_log):
+        """The point of the column, stated as a test: both are status='failed'."""
+        xras_client.post('/api/xras/v1/actions', data='{oops',
+                         content_type='application/json', headers=_auth())
+        xras_client.post(
+            '/api/xras/v1/actions',
+            data=json.dumps({'actionType': 'New', 'awardPeriod': True}),
+            content_type='application/json', headers=_auth())
+
+        rows = action_log.rows()
+        assert len(rows) == 2
+        assert {r['status'] for r in rows} == {'failed'}
+        assert sorted(r['http_status'] for r in rows) == [400, 422]
+
+    def test_an_over_long_action_type_does_not_break_the_audit_write(
+            self, xras_client, action_log):
+        """``action_type`` is varchar(32) and on the 422 path it comes straight off
+        an UNVALIDATED payload dict. It must be truncated, not allowed to raise."""
+        resp = xras_client.post(
+            '/api/xras/v1/actions',
+            data=json.dumps({'actionType': 'N' * 200, 'awardPeriod': True}),
+            content_type='application/json', headers=_auth())
+        assert resp.status_code == 422
+        assert action_log.one()['action_type'] == 'N' * 32
