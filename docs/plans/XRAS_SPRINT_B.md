@@ -313,6 +313,232 @@ so whether `roleType` is `'Co-PI'` or `'CoPi'` is unknown. One bulk forward clos
 
 ---
 
+## Schema deltas
+
+**This section is the deliverable.** When the sprint ends it becomes the DDL in the DBA
+ticket. Every entry is either a change that was made or a change that was deliberately
+*not* made, with the reason — a considered "no" is as load-bearing as a "yes", because the
+next person will otherwise re-open it.
+
+Amended **up front**, not at the end: the table was empty and re-seeding is a curl loop, so
+amending after seeding would have meant seeding twice. `zz-90-xras_action_log.sql` and
+`XrasActionLog` moved in the same commit; `test_schema_validation.py` is green (21 passed).
+
+### Applied
+
+| # | Change | Reason |
+|---|---|---|
+| 1 | **`http_status SMALLINT UNSIGNED` added** | `status='failed'` covers both a malformed body (400) and a schema rejection (422). Triage needs to tell them apart, it is a filter axis on the operator page, and it stops being derivable from `status` the moment handlers add their own validation failures. Set on all four route paths. |
+| 2 | **`KEY xras_action_log_triage (status, action_type)` added** | The natural triage axis and the table's default filter — "failed New actions" *is* the 55% failure cohort (§1.3). The standalone `status` index is **kept**, not replaced: the summary strip and `sam-admin xras --summary` group by status alone. |
+| 3 | **`received_time DEFAULT CURRENT_TIMESTAMP` dropped** | The default resolves in the *MySQL server's* timezone (UTC in the containers) while SAM is naive-Mountain — exactly the 6-hour inversion Sprint A fixed by stamping from the app clock. Keeping it as a "safety net" was backwards: it made a hand-written `INSERT` that forgets the column lie quietly instead of failing loudly. |
+
+### Considered and deliberately declined
+
+| Candidate | Decision |
+|---|---|
+| **Restructure `error_messages`** (child table / JSON, per-field or retryable flags) | **No.** The 422 body is a flat, ordered list of strings and that list *is* the wire contract — XRAS admins read it directly. Per-error structure would invent a shape XRAS never sends, and the ordering (which legacy gets from a `LinkedHashSet`) is the only structure that carries meaning. Rendered as a `<ul>` by splitting on `\n`. |
+| **A column recording what a handler changed** (e.g. a link to `allocation_transaction`) | **Deferred, with the escape hatch named.** Nothing writes it yet, and designing the link before any handler exists is designing against nothing — it would encode a guess about handler shape at exactly the moment we have least information. The out is the same one the `XrasActionLog` docstring already names for `payload_json`: a nullable additive column, backfillable from `raw_payload` + `projcode_result`, not a migration. Revisit in the handler sprint, when there is a real write to point at. |
+| **Widen `remote_actor` to hold a username** | **No.** A replay row keeps the *original's* `remote_actor` — the bytes still originated at XRAS — and records the human in `processed_by` (`varchar(35)`, `users.username` width, already present). `remote_actor` stays `varchar(11)` and stays honest about meaning "which API credential posted these bytes". |
+| **A `status` ENUM instead of `varchar(16)`** | **No.** The rest of this schema uses `varchar` for such columns, and the five values are still moving — `processed` is unvalidated until handlers land. An ENUM change is a DBA ticket; a string is not. |
+
+### Not a schema delta, but found while doing this
+
+**`make docker-build` never rebuilt `mysql-test`.** The target was `docker compose build`
+with no `--profile test`, while `docker-up` *does* pass it — so the profile-gated
+`mysql-test` service started from whatever image it was last built from (here: one from
+July 11, predating `initdb.d/` entirely). `down -v` does not help; it drops the volume, not
+the image.
+
+The failure mode is nasty because it is silent and asymmetric: the amended DDL appeared in
+`mysql` and not in `mysql-test`, i.e. everywhere *except* where pytest looks. **Fixed in the
+`Makefile`** — `docker-build` now passes `--profile test`, so build and up are symmetric.
+
+This also corrects the recipe in § *The decision that reorders everything* above, which
+cannot work as written on a machine whose `mysql-test` image predates the change:
+
+```bash
+docker compose --profile test down -v && make docker-build && make docker-up
+```
+
+is now correct, but only because `make docker-build` changed. Verify with
+`docker compose exec mysql-test ls /docker-entrypoint-initdb.d/` if in doubt — the
+`zz-90-` file must be present in **both** containers.
+
+---
+
+## Deviations from this plan, as built
+
+Recorded per the house rule that a plan is input, not contract. Each of these was a
+deliberate departure, not a slip.
+
+### 1. Two permissions, not one
+
+The plan asked whether viewing needs `MANAGE_XRAS` at all. Answer: **`VIEW_XRAS` +
+`MANAGE_XRAS`**, split on *what the data is* rather than on read-vs-write:
+
+| | Covers |
+|---|---|
+| `VIEW_XRAS` | the page, the table, the filters, the error lists |
+| `MANAGE_XRAS` | the **raw payload** and the replay button |
+
+The payload is the request body verbatim and carries participant names, emails, phone
+numbers and grant-officer contacts. Gating it with the audit view would have handed PII
+to everyone holding `ALL_VIEW`; gating the whole page behind `MANAGE_XRAS` would have
+hidden an audit surface from the people who read every other audit table.
+
+Two consequences worth knowing:
+
+- **`VIEW_XRAS` is deliberately swept into `ALL_VIEW`** (the aggregates prefix-match
+  `p.value`), so `nusd`, `csg`, `ssg` and `mcjones` get the page for free. That is the
+  intent, not an accident.
+- **The payload gate is enforced in the route, not only the template.** A
+  `VIEW_XRAS`-only response never contains `raw_payload` at all, because the route only
+  asks the query layer for it when the viewer holds `MANAGE_XRAS`. A template-only gate
+  leaves the bytes in the HTML for anyone who opens view-source.
+  `test_view_only_user_gets_the_locked_notice_and_no_bytes` pins it.
+
+Nothing was added to `USER_FACILITY_PERMISSIONS`, with the reason written in a comment
+there: an XRAS action is **not facility-scopable**. It arrives before we know its
+facility (a New action has no project yet, only a `requestNumber`) and a malformed body
+has none at all. Routes therefore use plain `require_permission`, so a facility-scoped
+manager gets a clean 403 rather than a partial, misleading view.
+
+### 2. Seeding is not replay, so Unit 3 did not have to come first
+
+The plan argued replay must be built first because "seeding *is* replay". It is not —
+seeding posts fixture payloads through the capture endpoint, which is a **fresh post**
+and needs no new code. Order actually built: schema → permissions → queries → page →
+replay → CLI.
+
+What seeding *did* need was a credential, which the plan missed entirely — see item 6.
+
+### 3. Replay honours `XRAS_ACTIONS_CAPTURE_ONLY` instead of bypassing it
+
+The plan said replay of anything currently lands in `manual`, implying replay dispatches
+regardless of capture mode. **Rejected**, and this is the most consequential deviation.
+
+Capture mode is on because **legacy is still the system of record** until cutover step 4
+— it is already applying these actions. A replay that dispatched while capture was on
+would apply an action legacy has already applied: a double-apply against live
+allocations, one button click away, with no undo.
+
+So under capture mode a replay re-parses and re-validates the stored bytes against the
+*current* schema code and lands `replayed` (or `failed`, with a fresh error list). That
+is not a consolation prize — it is a **regression check of the schema against the
+harvested corpus**, which is what the corpus exists for, and it is exactly what
+`sam-admin xras --replay 6` demonstrated by re-rejecting a payload that had failed
+validation weeks earlier. With `XRAS_ACTIONS_CAPTURE_ONLY=0` replay dispatches and lands
+`processed` / `manual` / `failed` like a fresh post.
+
+The kill switch stays the single safety interlock; a replay-specific override would mean
+two things to reason about and one of them would eventually be wrong.
+
+**The original row is never stamped.** Setting the parent's status to `replayed` would
+destroy its own outcome, which *is* the audit record. "Has been replayed" is derived from
+the `replays` relationship, which was already first-class.
+
+### 4. `nav.py` also needs the tab
+
+The plan listed only `page_tabs` in `base_allocations.html`. `src/webapp/utils/nav.py`
+is a second, independent registry driving the navbar dropdown, the mobile offcanvas and
+breadcrumbs. Both were updated, each with its own visibility predicate.
+
+### 5. The row-detail interaction, and the trap under it
+
+Errors expand **inline**; a separate button opens the shared audit modal. The load-bearing
+detail: **the collapse toggle is on the Errors `<td>` alone, never the `<tr>`.**
+
+Bootstrap registers its collapse data-api with `EventHandler.on(document, …)`, which runs
+in the **capture** phase — so a row-level toggle fires *before* any nested button's
+handler, and `data-stop-propagation` is powerless against it by construction. This row
+carries four interactive controls (two project-modal buttons, details, replay), so a
+`<tr>` toggle would have swallowed every one of them. Rows with no errors get no toggle
+at all, because a chevron that expands to nothing reads as broken.
+
+### 6. Two things the plan did not know about
+
+**`make docker-build` never rebuilt `mysql-test`** — see § *Schema deltas*. Fixed in the
+`Makefile`. This one is nasty because it is silent and asymmetric: the amended DDL
+appeared in `mysql` and not in `mysql-test`, i.e. everywhere except where pytest looks.
+
+**The day-one seeding recipe cannot work as written.** `POST /actions` authenticates
+against `api_credentials` rows carrying `ROLE_XRAS`, and the obfuscated snapshot ships
+that table **empty** — credentials are scrubbed, correctly. Config-based `API_KEYS_*`
+cannot substitute: a config-sourced key resolves to `roles=[]` and `xras_api_required`
+demands `ROLE_XRAS`, so it authenticates and then 403s. The curl loop in § *Day one*
+therefore returns 401 on a fresh stack.
+
+Packaged as **`scripts/xras/seed_dev_actions.py`**, which provisions the credential
+idempotently and then posts:
+
+```bash
+source etc/config_env.sh
+docker compose up webdev --watch          # in another terminal
+python scripts/xras/seed_dev_actions.py --errors --pending-demo
+```
+
+`--errors` also posts a malformed body (400) and a rejected one (422), so four of the
+five states exist without hand-crafting anything. `--pending-demo` deactivates one
+XRAS-touched project so the pending-activation card has a row — both real Extension
+payloads name projects that are `active = 1` in the snapshot, so the card is correctly,
+but unhelpfully, empty otherwise.
+
+### 7. The pending-activation card cannot retro-discover legacy XRAS projects
+
+**There is no provenance marker on `project`.** Nothing in `sam/projects/` records where
+a project came from, and `XrasActionView` is an *outbound* reporting view derived from
+allocations, not a record of inbound posts. So the card's rule is necessarily "a project
+named by some `xras_action_log` row — via `projcode_result` or `request_number` — that is
+currently inactive".
+
+It therefore sees only projects **this log** knows about: empty today, growing as the log
+grows, and never retroactively covering the 23 historical XRAS projects legacy created.
+The empty state says so in as many words, because "no rows" must not read as "all clear"
+while capture mode is on.
+
+### 8. `request_number` is not always a projcode, and the UI has to know
+
+`request_number` is the projcode for Extension/Supplement/Update and an `NCAR####` token
+for New. Linking every one of them to a project modal would 404 on precisely the 21% of
+traffic with the worst failure rate. `get_recent_xras_actions` therefore resolves
+`request_is_project` / `result_is_project` in one extra `IN` query per page, and the
+template links only what resolves.
+
+### 9. Small fixes made along the way
+
+- **`_record` width guards.** On the 422 path `action_type` / `request_number` come
+  straight off an *unvalidated* payload dict, so an over-long or non-string value would
+  turn the audit write into a 500 — losing precisely the row the table exists to keep.
+  Now coerced and truncated (`_fit`).
+- **`replay.py` imports `actions` as a module, not by name.** `from .actions import
+  _record` binds at import time and would sail straight past the `action_log` fixture's
+  monkeypatch, leaking committed rows into the shared xdist database. Every call goes
+  through the module attribute.
+- **The `action_log` fixture teardown deletes in descending id order**, one PK-targeted
+  statement each. `replay_of_id` is a self-FK, so a single `IN (...)` delete gives InnoDB
+  no ordering guarantee and fails with `1451 Cannot delete or update a parent row`. A
+  replay is always inserted after the row it replays, so descending id removes every
+  child before its parent, to any chain depth — while staying PK-targeted, because a
+  range predicate would gap-lock and deadlock under `-n auto`.
+- **The CLI redirects `create_app()`'s startup chatter to stderr.** `--replay` needs a
+  Flask app context (`_record` commits on its own connection; `_capture_only` reads app
+  config), and app construction prints diagnostics to stdout, which is the CLI's result
+  channel.
+
+### 10. Filter macro: a sibling, not an extension
+
+`xras_filters` is a new macro rather than four more optional parameters on
+`audit_filters`. The two share the panel chrome **verbatim** — the same
+`.filter-sidebar-*` header, collapse behaviour, `form-reset-submit` reset and control
+styling — but not one field: `audit_filters` offers Project / Responsible user /
+Resources / Facilities, none of which an XRAS action has.
+
+That chrome block is now copy-pasted in **five** places. It is a fair candidate for a
+`filter_panel_shell` macro; extracting it is a five-template refactor and was
+deliberately left out of a feature change.
+
+---
+
 ## Cold-start orientation
 
 What Sprint A left you, and where:
