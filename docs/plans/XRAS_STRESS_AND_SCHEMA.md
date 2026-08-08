@@ -1,5 +1,13 @@
 # XRAS stress — and the schema questions it has to answer before the DBA ticket
 
+> ✅ **Built.** `tests/stress/`, 17 scenarios behind `-m stress`, on
+> `xras_reimplementation` (PR #424). **The verdicts are in
+> [`## Verdicts`](#verdicts) at the end — that section is the deliverable.**
+>
+> Headline: the stress work found a **live correctness bug** before it found any
+> schema gap. `resolve_resource` read `resources[].key`, a field XRAS has never sent —
+> see [`## The bug the framing found`](#the-bug-the-framing-found).
+
 **Handoff doc.** Written for a cold start. Every claim carries a `file:line` or a
 measurement; re-verify rather than trust.
 
@@ -227,3 +235,264 @@ is a verbatim POST body full of PII and the obfuscated dump is a committed publi
 6. A written verdict per candidate column in this file.
 7. The leak check returns 0 after a full stress run.
 8. A `## Deviations` section — this document is input, not contract.
+
+---
+
+## The bug the framing found
+
+Before any schema gap, the stress work found a live correctness bug — and it found it
+for exactly the reason this document argued for driving scenarios through the **route**.
+
+`resolve_resource` read `resources[].key`. **No XRAS payload has ever carried that
+field.** All six resource-bearing corpus fixtures send `resourceRepositoryKey`, the
+schema declares it under that name, and unknown keys are dropped on load. So through
+the real pipeline the key was always `None`, and every resource on every Supplement,
+Adjustment, New and Update reported
+
+```
+No resource found in SAM corresponding to key
+```
+
+with nothing after it. Roughly **36% of production traffic** — Supplement is currently
+100% successful in legacy — failing on day one of an abrupt cutover, with an error
+message that does not say what is wrong.
+
+**Why a whole sprint of tests missed it.** Every test built its own `resources[]`
+entries as `{'key': ...}` — five handler modules, the error-coverage matrix, the seam
+test, and most of all the oracle's `_retarget`, whose docstring reads *"Shape
+untouched"* while replacing the one field that mattered. The corpus was loaded through
+the real schema and then had its resources overwritten with the invented shape. Every
+layer that could have caught it substituted the wrong shape first.
+
+**The fix is the check, not the field name.**
+`tests/unit/test_xras_wire_vocabulary.py` asserts that every wire field name the
+handlers read is a field some XRAS schema declares — an AST walk over `get_field(...)`
+and `self.get(...)` literals against the union of all seven schemas. It named the bug on
+first run: `{'key': ['_fields.py:159']}`. Same shape as the error-string coverage
+matrix: declare the vocabulary, then prove code and declaration agree.
+
+---
+
+## Verdicts
+
+Each candidate confirmed or dropped against evidence produced by the tier, not against
+the argument that proposed it.
+
+### ✅ `action_id INT UNSIGNED NULL` — **recommend**, with an index
+
+`test_repeat_post_supplement` posts the same action three times and gets three rows that
+are **identical in every column an operator can filter on**. `actionId` was on the wire
+of all three and survives only as bytes inside `raw_payload`, so telling a duplicate
+from a legitimate second award means parsing JSON out of a `TEXT` column.
+
+The cost side is measured rather than asserted, and it is asymmetric:
+
+| handler | share of traffic | a double post costs |
+|---|---|---|
+| Extension | 60% | **nothing** — the equal-end-date skip writes no row |
+| Supplement | 15% | **a full increment** — 250,000 posted three times leaves 750,000 added |
+
+XRAS owns the retry, so nothing *needs* this today. That is an argument about
+prevention, and this column is about **detection** — which is the thing triage week
+will actually want, and the thing no code change can add afterwards without a second
+ticket. It is also the precondition for any future remediation path: `replay.py`
+already names its absence as the reason replay can never dispatch.
+
+### ✅ `service VARCHAR(16) NULL` — **recommend**
+
+`test_a_disabled_park_and_an_unmatched_park_are_byte_identical` asserts the equality
+directly, over the six columns the dashboard filters on. Four causes park an action —
+nothing matched, the type is disabled by the triage lever, no handler is registered,
+Transfer by design — and only Transfer is distinguishable, and only because it owns a
+dedicated `action_type`.
+
+The lever case is the sharp one: an operator who narrows `XRAS_ACTIONS_ENABLED` at 3am
+and then cannot confirm from the table that it took effect is flying blind during the
+incident the lever exists for.
+
+`DispatchResult` has carried `service` since Sprint C. Nothing but the column is missing.
+
+### ✅ `outcome_reason VARCHAR(255) NULL` — **recommend**
+
+`NOT_IMPLEMENTED_REASON` in `handlers/transfer.py` is 200 characters written
+specifically *"for whoever reads it at 3am with no context: what happened, that it was
+intended, and what to do."* It reaches the app log and stops. k8s app logs are
+ephemeral — see the durable-audit decision — so within days the row is all that is left.
+
+**Not** folded into `error_messages`, which means "the 422 body XRAS received" and is a
+wire contract. Overloading it would corrupt the one column an XRAS administrator reads
+directly.
+
+### ❌ `warnings TEXT NULL` — **decline**, revisit after triage week
+
+Three pieces of evidence, and they point the same way:
+
+1. **It is already durable enough.** `roster.py` logs each defect-3 disagreement as it
+   is found, and C.1a added a second log line in `_dispatch` carrying them against
+   `log_id` — the handle an operator actually has.
+2. **The type is wrong to fossilise.** `DispatchResult.warnings` carries bare
+   **usernames**, not sentences (`roster.py` returns `tuple(sorted(assigned - members))`).
+   A column would freeze "tuple of something" into the schema before anyone has decided
+   whether the roster renders the sentence or the consumer does.
+3. **Zero observed instances.** No corpus payload triggers it and no production
+   evidence exists, because the condition is legacy's defect 3 and legacy leaves no
+   record of it.
+
+If triage week shows operators reaching for it, `outcome_reason` above is a reasonable
+home for a rendered summary and costs nothing extra at that point.
+
+### ➖ `raw_payload` / `error_messages` — **no schema change**, fixed in code
+
+Both were unbounded into `TEXT` (65,535 bytes). Under `STRICT_TRANS_TABLES` — confirmed
+on — an oversized value does not truncate, it raises `1406 Data too long`. **Reproduced
+live before the guard existed**: the INSERT failed and the audit row was lost entirely,
+which is the one failure this table cannot afford.
+
+Which path can reach an oversized error list took the corrected wire field name to see:
+
+| path | ratio | reachable? |
+|---|---|---|
+| Supplement | **1.00×** | no — a failed key resolution `continue`s before the amount is read, so one message per resource against an entry of near-identical length; the body hits its limit first |
+| New | **1.79×** | **yes** — `_plan_allocations` calls `resolve_resource` *and* `transaction_amount` unconditionally, so one resource yields two messages. 59,090 bytes of body → 105,999 of messages |
+
+Widening the columns to `MEDIUMTEXT` was considered and rejected: it moves the cliff
+rather than removing it, and the guard is needed at *any* width. Both measurements are
+pinned in `scenarios.json` and the contrast is its own test.
+
+### ➖ `http_status` — **no ticket**, ORM corrected
+
+`Integer` in the ORM against `SMALLINT UNSIGNED` in the DDL. Harmless in MySQL, but the
+kind of drift that makes a width guard computed from the ORM quietly wrong. Now
+`SmallInteger`, pinned by a test that compares every declared width against the live DDL.
+
+---
+
+## The correlation query is confirmed — and the Sprint C note about it was wrong
+
+DoD item 4. Sprint C declined the `xras_action_log` → `allocation_transaction` link
+column on the grounds that the relationship is one-to-many, and replaced it with a
+correlation keyed on `user_id IS NULL` + `processed_time ± 60s`. That note said *"no
+production pair has ever been observed"*.
+
+Measured against the snapshot:
+
+| | |
+|---|---|
+| integration-written rows (`user_id IS NULL`) | **24,825** |
+| distinct `(projcode, minute)` buckets | **10,347** |
+| ambiguous buckets — same project, same minute, >1 distinct comment | **12** |
+
+So ambiguous pairs **do** exist. But all twelve are from **2015–2016**, every one a
+blank-comment row beside a hand-typed one (`ev134500`, `WRAP 06-2016`, `CHAP`) — manual
+writes from the pre-XRAS era, not two XRAS actions colliding.
+
+Scoped to XRAS's own rows:
+
+| | |
+|---|---|
+| XRAS-written rows | **1,416**, 2025-10-23 → 2026-07-17 |
+| `(projcode, minute)` buckets | **451** |
+| ambiguous | **0** |
+
+**The query holds**, and the twelve legacy buckets are unreachable through it by
+construction: `processed_time` comes from `xras_action_log`, whose earliest row is
+2025-10. The decision to decline the link column stands, and its escape hatch — a
+`xras_action_transaction` join table rather than a single column — stays available.
+
+---
+
+## `sam-admin xras --validate-mapping` — gaps filed, not clean
+
+DoD item 5. Run against the test snapshot:
+
+- **13 mapping rows.**
+- **11 active resources XRAS cannot name** — `Gust`, `Gust GPU`, `GLADE user`,
+  `GLADE work`, `Boreas`, `Destor`, `HPC_Futures_Lab`, `Laramie`, `Quasar`, `hpc`,
+  `hpc-dev`. An award citing any of them fails with `No resource found in SAM
+  corresponding to key %s` — a **data** fix, not a code one.
+- **6 mappings pointing at decommissioned resources** — Cheyenne, GLADE fs1, Geyser
+  Caldera, HPSS, Janus, Yellowstone. Harmless, misleading in triage.
+
+⚠️ Adding a mapping also **changes GET response bytes**, so these close *before* the
+parity run, not after. Filed as a known gap rather than fixed here: it is a data
+decision for whoever owns the resource catalogue, and the error string an operator sees
+now names the key correctly — which, before the wire-field fix, it did not.
+
+---
+
+## Deviations
+
+### Scope 3 — the combinatorial payload generator — not built
+
+`scripts/xras/synthesize_payload.py` was to read the **dev clone** (port 3306, real prod
+sample) and substitute real referents into scrubbed fixtures.
+
+Not built, deliberately, and the reason is that its premise was overtaken. Its purpose
+was to reach shapes the corpus does not cover; the ones that mattered —
+oversize/amplification, repeat posts, the four parks, `Renewal`, `Advance`, `Co-PI` —
+were all reachable from **synthetic** payloads with no PII and no clone dependency, and
+are now in `tests/stress/`. What the generator would have added over those is the
+*ambiguous-contract* and *mnemonic-collision* classes, which are extractor concerns
+already covered by `test_xras_extractors.py` and `test_xras_error_coverage.py`.
+
+Against that, the cost is real: output that is PII by construction, a gitignored
+directory, a standing rule that nothing derived from 3306 is ever committed, and a
+generator whose own correctness nobody checks. Worth building **if** triage week
+produces a failure class the synthetic scenarios cannot reproduce — not before.
+
+### The `error_messages` amplification finding moved mid-flight
+
+The original estimate was ~1.35× on the Supplement path, which would have made the
+oversize scenario a Supplement. That was computed against `{'key': ...}` — the field
+name that turned out not to exist. With the real field, `resourceRepositoryKey` is long
+enough that Supplement measures **1.00×** and cannot reach the condition at all; the
+reachable path is New, at 1.79×, for a structural reason (both resolvers called
+unconditionally). The scenario is a New, and the Supplement contrast is its own test so
+the finding cannot silently rot.
+
+### Route scenarios cannot use factories
+
+Discovered by a scenario that quietly became a different scenario: the route reads
+Flask-SQLAlchemy's `db.session` on its own connection and sees only **committed** rows,
+so a factory-made project is invisible and every dispatch parks as "no service matched".
+Route scenarios use committed snapshot projects; the questions that need exact values —
+the double-post arithmetic — are asked at `dispatch_action` with factories instead. Both
+fixtures say so at the point of use.
+
+### `action_log` was promoted rather than copied
+
+It moved to `tests/xras_audit.py`, imported by both `tests/api/` and `tests/stress/`.
+Its two hazards — the gap-lock deadlock and the self-FK delete order — are exactly the
+kind that must not drift between two copies.
+
+### One scenario is green *because* the gap exists
+
+`test_a_disabled_park_and_an_unmatched_park_are_byte_identical` asserts an equality that
+documents a deficiency. It must go **red** the day `service` lands, at which point it
+becomes the test that proves the column works. Flagged in the test itself, because a
+green assertion that encodes a problem is easy to mistake for a good result.
+
+---
+
+## Definition of done — as built
+
+| # | | |
+|---|---|---|
+| 1 | `pytest -m stress` runs every scenario in `scenarios.json` | ✅ 17 scenarios; a test with no manifest entry fails loudly |
+| 2 | Every scenario asserts on the `xras_action_log` row | ✅ except the three deliberately asked at handler level, which say why |
+| 3 | Untriageable scenarios listed as schema evidence | ✅ via the manifest's `verdict` field |
+| 4 | The correlation query confirmed | ✅ and the Sprint C note corrected — 12 ambiguous buckets exist, all pre-XRAS |
+| 5 | `--validate-mapping` clean or filed | ✅ filed: 11 unmapped active resources, 6 decommissioned mappings |
+| 6 | A written verdict per candidate column | ✅ 3 recommended, 1 declined, 2 closed in code |
+| 7 | Leak check returns 0 after a full stress run | ✅ `allocation_transaction`, `xras_action_log` and `project` all 0, under `-n auto` |
+| 8 | A `## Deviations` section | ✅ above |
+
+**The ticket now carries three columns**: `action_id`, `service`, `outcome_reason`.
+Into **both** init scripts — `containers/sam-sql-dev/initdb.d/zz-90-*.sql` and
+`zz-91-*.sql` — one ticket, as Sprint B established. Staging needs both run by hand:
+`infrastructure/scripts/init-rds.sh` restores the raw `.xz` with no initdb hook.
+
+⚠️ Before the next snapshot regeneration, confirm `purge_xras_action_log` in
+`containers/sam-sql-dev/anonymize_sam_db.py` covers the three new columns. `action_id`
+is not PII; `outcome_reason` is free text written by SAM and should be safe; check
+rather than assume.

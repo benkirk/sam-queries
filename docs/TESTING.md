@@ -42,7 +42,18 @@ pytest --cov=src --cov-report=html --cov-fail-under=60
 # Performance regression tests (serial, ~26s)
 make perf
 # or: pytest -m perf -n 0 -v
+
+# XRAS stress scenarios (~5s) — audit-row triage, oversize payloads,
+# repeat posts, and the wire shapes the corpus never sampled
+pytest -m stress
 ```
+
+Both `perf` and `stress` are gated **off** by default via `addopts`
+(`-m "not perf and not stress"`) and run only when asked for. Each has a
+declaration file next to it that the tests read — `tests/perf/baselines.json`
+for query-count limits, `tests/stress/scenarios.json` for what each scenario
+expects the `xras_action_log` row to say. A stress test with no manifest entry
+fails rather than running unspecified.
 
 If `SAM_TEST_DB_URL` is unset or points at anything other than
 `127.0.0.1:3307`, pytest aborts with `REFUSING TO RUN tests against
