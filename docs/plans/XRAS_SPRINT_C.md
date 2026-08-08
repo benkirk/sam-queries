@@ -1175,12 +1175,24 @@ modules. Each imports it by name, so patching one would silently let the others 
 past the per-test SAVEPOINT onto the shared xdist database — the hazard that already
 bit once in commit 5.
 
-**`--validate-mapping` is built** and reproduces the documented gap exactly: the same 11
+**`--validate-mapping` is built** and reproduces the documented set exactly: the same 11
 active unmapped resources, plus 6 mappings pointing at decommissioned kit (Cheyenne,
-GLADE fs1, Geyser_Caldera, HPSS, Janus, Yellowstone). It exits `EXIT_NOT_FOUND` on an
-active gap so it can gate a deploy script, and `EXIT_SUCCESS` on a merely-stale mapping,
-which is untidy rather than broken. A test pins the documented set, so closing a gap
-fails loudly — that is the signal the parity run needs repeating.
+GLADE fs1, Geyser_Caldera, HPSS, Janus, Yellowstone).
+
+⚠️ **Its premise was wrong, and it has since been corrected.** Sprint C treated an
+unmapped active resource as a gap and exited `EXIT_NOT_FOUND` on one *"so it can gate a
+deploy script"*. It cannot: **not every internal resource is offered for allocation
+through XRAS**, so most of those 11 have no mapping by design and the command would have
+failed every run, forever — a gate that is always red is not a gate.
+
+It now exits non-zero only on a **dangling key** (a mapping row pointing at no resource),
+which is the one genuinely broken state. The unmapped list is a *diagnostic*: it matters
+when a resource that **should** be allocatable appears in it, and only a human can tell
+those two cases apart. See `XRAS_STRESS_AND_SCHEMA.md` § *--validate-mapping*.
+
+A test pins the documented set, so a change to it still fails loudly — that remains the
+signal a parity run needs repeating, because `resourceRepositoryKey` is omitted when
+unmapped and adding one moves GET response bytes.
 
 **`--dir` is built** on `scripts/xras/seed_dev_actions.py`, and prints a loud warning
 when pointed anywhere but the committed fixtures: an arbitrary directory is unscrubbed,

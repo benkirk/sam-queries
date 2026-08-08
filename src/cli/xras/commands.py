@@ -38,19 +38,30 @@ class XrasCommand(BaseCommand):
     # -- modes ------------------------------------------------------------
 
     def _validate_mapping(self) -> int:
-        """Pre-cutover gate: report resources XRAS cannot name.
+        """Report the state of ``xras_resource_repository_key_resource``.
 
-        Exits ``EXIT_NOT_FOUND`` when an **active** resource is unmapped, so the
-        check can gate a deploy script rather than only inform a human. A
-        decommissioned mapping is reported but does not fail the run — it is
-        untidy, not broken.
+        ⚠️ **An unmapped active resource is NOT a failure**, and this used to say
+        otherwise. Not every internal resource is offered for allocation through
+        XRAS, so most of the unmapped ones have no mapping *by design* — 11 of them,
+        stably, across snapshot refreshes. Exiting non-zero on that made the command
+        unusable as the deploy gate its own docstring claimed it could be: it would
+        have failed every time, forever.
+
+        What it is instead: a **diagnostic**. If a resource that *should* be
+        allocatable through XRAS appears in the unmapped list, that is the data fix
+        behind ``No resource found in SAM corresponding to key %s`` — and a human
+        reading the list is the only thing that can tell the two cases apart.
+
+        Non-zero is reserved for the one genuinely broken state: a **dangling key**,
+        a mapping row pointing at a resource row that does not exist. A
+        decommissioned mapping is reported and does not fail — untidy, not broken.
         """
         payload = builders.build_mapping_report(self.session)
         if self.ctx.output_format == 'json':
             output_json(payload)
         else:
             display.display_mapping_report(self.ctx, payload)
-        return EXIT_NOT_FOUND if payload['unmapped_active'] else EXIT_SUCCESS
+        return EXIT_NOT_FOUND if payload['dangling_keys'] else EXIT_SUCCESS
 
     def _list(self, filters, limit) -> int:
         payload = builders.build_action_list(self.session, filters=filters,

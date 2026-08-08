@@ -130,7 +130,7 @@ Referents the clone is known to hold (verified during Sprint C planning):
 | three colliding contract cores — `1049089`/`PLR-1049089`, `OPP-1744587`/`PLR-1744587`, `2146709`/`AGS-2146709` | the `ambiguous_contract` divergence; legacy 500s here |
 | organization 158, "UCAR Community Programs" | matches two mnemonics — legacy defect 2 |
 | 341 `mnemonic_code` rows vs ~171 active orgs | the broken `varchar(3)` fuzzy match — the 24% failure class |
-| 13 `xras_resource_repository_key_resource` rows, 11 active resources unmapped | `no_resource_for_key`; run `sam-admin xras --validate-mapping` |
+| 13 `xras_resource_repository_key_resource` rows, 11 active resources unmapped | `no_resource_for_key`. ⚠️ Later established as **expected** — those resources are not offered through XRAS |
 
 Shapes to push: many resources on one action; deep allocation trees; several error classes
 at once; boundary dates; a payload sized toward the `TEXT` ceiling.
@@ -403,22 +403,28 @@ construction: `processed_time` comes from `xras_action_log`, whose earliest row 
 
 ---
 
-## `sam-admin xras --validate-mapping` — gaps filed, not clean
+## `sam-admin xras --validate-mapping` — clean, once "clean" is defined correctly
 
-DoD item 5. Run against the test snapshot:
+DoD item 5, and the answer is **not a gap** — which took asking rather than measuring.
 
-- **13 mapping rows.**
-- **11 active resources XRAS cannot name** — `Gust`, `Gust GPU`, `GLADE user`,
-  `GLADE work`, `Boreas`, `Destor`, `HPC_Futures_Lab`, `Laramie`, `Quasar`, `hpc`,
-  `hpc-dev`. An award citing any of them fails with `No resource found in SAM
-  corresponding to key %s` — a **data** fix, not a code one.
-- **6 mappings pointing at decommissioned resources** — Cheyenne, GLADE fs1, Geyser
-  Caldera, HPSS, Janus, Yellowstone. Harmless, misleading in triage.
+Run against the test snapshot: 13 mapping rows, 11 active resources with no mapping
+(`Gust`, `Gust GPU`, `GLADE user`, `GLADE work`, `Boreas`, `Destor`,
+`HPC_Futures_Lab`, `Laramie`, `Quasar`, `hpc`, `hpc-dev`), 6 mappings pointing at
+decommissioned kit.
 
-⚠️ Adding a mapping also **changes GET response bytes**, so these close *before* the
-parity run, not after. Filed as a known gap rather than fixed here: it is a data
-decision for whoever owns the resource catalogue, and the error string an operator sees
-now names the key correctly — which, before the wire-field fix, it did not.
+⚠️ **The 11 are expected. Not every internal resource is offered for allocation
+through XRAS**, so most of them have no mapping *by design* — this document previously
+recorded them as an open data gap and a pre-cutover gate, and that was wrong. Corrected
+on Ben's confirmation, 2026-08-08.
+
+So what is `--validate-mapping` for? The **opposite** case: a resource that *should* be
+allocatable through XRAS showing up in that list. That is the data fix behind
+`No resource found in SAM corresponding to key %s`, and the report is how you find it —
+it is a diagnostic, not a checklist item to clear to zero.
+
+The byte-ordering note still holds *if* a mapping is ever added: `resourceRepositoryKey`
+is omitted when unmapped, so adding one changes GET response bytes and must precede a
+parity run. It is no longer a gate, because nothing is queued to be added.
 
 ---
 
@@ -484,7 +490,7 @@ green assertion that encodes a problem is easy to mistake for a good result.
 | 2 | Every scenario asserts on the `xras_action_log` row | ✅ except the three deliberately asked at handler level, which say why |
 | 3 | Untriageable scenarios listed as schema evidence | ✅ via the manifest's `verdict` field |
 | 4 | The correlation query confirmed | ✅ and the Sprint C note corrected — 12 ambiguous buckets exist, all pre-XRAS |
-| 5 | `--validate-mapping` clean or filed | ✅ filed: 11 unmapped active resources, 6 decommissioned mappings |
+| 5 | `--validate-mapping` clean or filed | ✅ **not a gap** — the 11 unmapped resources are not offered through XRAS by design; the report is a diagnostic, not a gate |
 | 6 | A written verdict per candidate column | ✅ 3 recommended, 1 declined, 2 closed in code |
 | 7 | Leak check returns 0 after a full stress run | ✅ `allocation_transaction`, `xras_action_log` and `project` all 0, under `-n auto` |
 | 8 | A `## Deviations` section | ✅ above |

@@ -172,15 +172,20 @@ def display_mapping_report(ctx, payload) -> None:
 
     unmapped = payload['unmapped_active']
     if unmapped:
-        table = Table(title='Active resources XRAS cannot name', title_style='bold red')
+        table = Table(title='Active resources not offered through XRAS',
+                      title_style='bold')
         table.add_column('Resource', style='yellow')
         for name in unmapped:
             table.add_row(name)
         ctx.console.print(table)
         ctx.console.print(
-            '[dim]An award citing one of these fails with "No resource found in SAM '
-            'corresponding to key %s". Adding a mapping also CHANGES GET response '
-            'bytes, so close these before the parity run, not after.[/dim]')
+            '[dim]Expected, not a gap: not every internal resource is offered for '
+            'allocation through XRAS, so most of these have no mapping by design. '
+            'This list is a diagnostic for the opposite case — if an award cites a '
+            'resource that SHOULD be allocatable and it appears here, that is the '
+            'data fix behind "No resource found in SAM corresponding to key %s".\n'
+            'Adding a mapping changes GET response bytes (resourceRepositoryKey is '
+            'omitted when unmapped), so do it before a parity run, not after.[/dim]')
     else:
         ctx.console.print('[green]Every active resource is mapped.[/green]')
 

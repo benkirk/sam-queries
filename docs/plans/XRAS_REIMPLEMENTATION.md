@@ -36,7 +36,7 @@ in the working tree are byte-identical to the deployed tag.
 | **2** — Action ingestion + audit trail | ✅ **done, capture-only** | `xras_action_log` + `XrasActionSchema` + `POST /actions` shipped behind `XRAS_ACTIONS_CAPTURE_ONLY`; see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md). Dispatch is Phase 3 |
 | **3** — Handlers | ✅ **done** | **Sprint C** — see [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). All six services registered: Extension, Supplement, Adjustment, New, Update; Transfer is a *registered* handler that parks with a reason. Behind `XRAS_ACTIONS_CAPTURE_ONLY`, which flips **only at cutover** |
 | **4** — XRAS as the 4th Allocations tab | ✅ **done** | **Sprint B** — see [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md). Tab, replay, `sam-admin xras`, the activation worklist; and it settled `xras_activation_event` so one DBA ticket carries both tables |
-| **5** — Parity and cutover | **partly done** | `--api xras` harness ✅, and `sam-admin xras --validate-mapping` ✅ (run it **before** parity — closing a mapping gap moves GET response bytes). **Next gate: run parity against the deployed port** — cutover step 1, needs only a deploy to `samuel.k8s` |
+| **5** — Parity and cutover | **partly done** | `--api xras` harness ✅, `sam-admin xras --validate-mapping` ✅ (a diagnostic, not a gate — see § *What is left*). **Next gate: merge and deploy, then run parity against the deployed host.** Sequence and commands: [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) |
 
 ### Sprint map
 
@@ -52,7 +52,8 @@ up, which pushes SMTP to D.
 | **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
 | **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ✅ shipped — [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md) § *Deviations*. Suite 5,213 → **5,223** |
 | **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **3 columns built** — the ticket is a transcription of `zz-90` |
-| **D** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | ☐ **deferrable** — see below |
+| **D** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | ☐ **deferrable** — see below. Not on the cutover chain |
+| **Cutover** | The five remaining gates, none of them code | ☐ — [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) |
 
 **Both follow-ups are done, and the DBA ticket is a transcription rather than a
 design question.** Three columns — `action_id`, `service`, `outcome_reason` — are
@@ -69,11 +70,23 @@ production traffic on day one: the handlers read `resources[].key`, a field XRAS
 never sent. It is fixed, and the systemic check that would have caught it —
 `tests/unit/test_xras_wire_vocabulary.py` — is now a gate.
 
-**What is left before cutover is not code.** Four gates, in order: (1) the DBA ticket for
-both tables; (2) `--validate-mapping` clean, *then* `--api xras` against the deployed
-host; (3) the 400/422 contract confirmed with `allocations@access-ci.org`; (4) XRAS
-repoints its base URL — which is the cutover, and the moment
-`XRAS_ACTIONS_CAPTURE_ONLY` flips to `0`.
+**What is left before cutover is not code.** Five gates, in order:
+
+1. **Merge and deploy** — PR #424 → `staging` → a second PR to `main` → CIRRUS/k8s.
+   Nothing else can start: gate 3 needs a deployed host.
+2. **The DBA ticket** for both tables, prod and staging.
+3. **`--api xras` against the deployed `sam.hpc.ucar.edu`**, on our own `samuel`
+   credential.
+4. **The 400/422 contract confirmed** with `allocations@access-ci.org`.
+5. **XRAS repoints its base URL** — the cutover, and the moment
+   `XRAS_ACTIONS_CAPTURE_ONLY` flips to `"0"` in `helm/values.yaml`.
+
+The step-by-step form, with the commands and the traps, is
+[`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md).
+
+⚠️ `--validate-mapping` is **not** on this list. It used to be, on the reading that the
+11 unmapped active resources were a data gap. They are not: those resources are not
+offered for allocation through XRAS.
 
 Two things run on external lead time and are **not** gated on any sprint. Start them
 in parallel, not after:
@@ -1315,9 +1328,9 @@ three-module domain pattern in `src/cli/README.md:137-168`.
    | 1 | `xras_action_log` + `xras_activation_event` in production, and run by hand on staging | **external** — DBA ticket, unblocked, file it now |
    | 2 | The 400/422 contract confirmed with `allocations@access-ci.org` — broker retry behaviour on 4xx is unknown | **external** — an email, start it in the same week |
    | 3 | Phase 3 handlers, all six paths | Sprint C |
-   | 4 | **Per-type enablement.** `XRAS_ACTIONS_CAPTURE_ONLY` is a global boolean set in neither `helm/values.yaml` nor `compose.yaml`, so production runs on the code default. Under a single repoint this is not a rollout mechanism — it is the **triage lever** that lets one misbehaving action type be parked on the manual path by config, without a redeploy | Sprint C, small |
+   | 4 | ✅ **Per-type enablement.** Sprint C added `XRAS_ACTIONS_CAPTURE_ONLY: "1"` and `XRAS_ACTIONS_ENABLED: "all"` to `helm/values.yaml:291,295`. Under a single repoint this is not a rollout mechanism — it is the **triage lever** that parks one misbehaving action type on the manual path by config, without a revert. ⚠️ It also means the cutover flip is a one-line helm values change plus a deploy, on a known path | ✅ Sprint C |
    | 5 | The replay-and-diff oracle (item 6) — there is no other way to verify a write path | Sprint C |
-   | 6 | `sam-admin xras --validate-mapping` run — the 11 unmapped active resources (§ 9) | Sprint C, small |
+   | 6 | ✅ `sam-admin xras --validate-mapping` built and run. ⚠️ The 11 unmapped active resources are **expected** — not every internal resource is offered through XRAS. The report is a diagnostic for the opposite case, not a gate to clear | ✅ Sprint C |
    | 7 | *Some* notification path for the `active = 0` activation trigger | ✅ Sprint B's card |
    | 8 | `--api xras` against the **deployed** `sam.hpc.ucar.edu`, using our own `samuel` credential | after deploy, before the repoint |
 
@@ -1449,7 +1462,10 @@ content is still checked byte-exact while an order neither side can be held to i
   plumbing.
 - **The 400/422 error-contract change needs confirmation from `allocations@access-ci.org`** before
   cutover step 4. Broker retry behaviour on 4xx is unknown.
-- **11 active SAM resources are unmapped** in `xras_resource_repository_key_resource` (§4.1). The
+- **11 active SAM resources have no mapping** in `xras_resource_repository_key_resource` (§4.1).
+  ⚠️ **Expected, not a gap** — not every internal resource is offered for allocation through
+  XRAS. Retained below as the description of the *mechanism*, which still matters for the case
+  where a genuinely allocatable resource is missing. The
   question that actually matters is which of those gaps XRAS can exercise — a SAM resource with no
   mapping row only fails if XRAS holds a repository key for it, which is knowable from
   `xras_allocation`'s historical keys plus an ACCESS-side conversation. Add
