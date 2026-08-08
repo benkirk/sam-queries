@@ -268,6 +268,24 @@ def update_end_date_before_existing(resource_name: str) -> str:
     return f'Action end date before existing allocation end date for {resource_name}'
 
 
+def allocation_end_before_commission(end_date: str, resource_name: str) -> str:
+    """`DefaultAddAllocationToProjectCommand:63` — an ``IllegalStateException``, so in
+    legacy it is **not** observer-reported and becomes a 500 with no diagnostic.
+
+    ⚠️ Reproduced with its typo: **no space** before the parenthesis in
+    ``resource(%s)``. Legacy never shows this string to an XRAS admin — it escapes as
+    an exception — so reproducing the bytes buys nothing on the wire. It is kept
+    anyway, because the moment it *does* reach someone it should read the way the
+    source says it reads, and inventing a nicer string here would make this the one
+    message that cannot be traced back to a line of Java.
+
+    The Add handler reports it instead of raising, which is the divergence: same
+    refusal, one an operator can act on.
+    """
+    return (f'End date of allocation ({end_date}) must be after commission date '
+            f'of resource({resource_name}).')
+
+
 def adjustment_would_go_negative(resource_name: str, current: float,
                                  amount: float) -> str:
     """**Not a legacy string** — legacy has no guard here at all.

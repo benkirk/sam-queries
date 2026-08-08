@@ -420,6 +420,52 @@ Allocation dates use the **action's own** begin/end (unlike Supplement), end
 EOD-clamped. Commission clamping happens downstream in the command: an early start is
 **silently clamped forward**; an end at-or-before commission is **fatal**.
 
+#### As built
+
+`src/sam/xras/handlers/new.py`. Ported against the admin create-project route rather
+than the Java, per the plan — `next_projcode(allocate=True)` → `allocate_next_gid` →
+`Project.create` → `ProjectContract.create` / `ProjectOrganization.create`.
+
+**Everything is resolved and reported before anything is written**, so the seven
+distinct failure classes an XRAS admin can hit arrive in one 422 rather than one per
+resubmission. Both scarce resources — the projcode counter and the GID pool — are drawn
+**inside** the transaction, after `raise_if_any()`, so a rejected action consumes
+neither. Tested.
+
+Two divergences:
+
+1. **An end date at or before the resource's commission date reports instead of
+   raising.** Legacy throws `IllegalStateException` from
+   `DefaultAddAllocationToProjectCommand`, which is not observer-reported and becomes a
+   500 with no diagnostic. Same refusal, one an operator can act on. The string keeps
+   its missing space before `(`.
+2. **Projcode/GID exhaustion raises `XrasProjectCreationFailed`, not
+   `XrasActionRejected`.** Nothing about the *request* is wrong, so a 422 telling XRAS
+   to fix its payload would be a lie. Both conditions need a human with database
+   access, not a resubmission.
+
+The early-start commission clamp stays **silent**, as legacy's is, and is isolated in
+the handler rather than pushed into `create_allocation` — the operator-facing flows
+should keep rejecting a bad start rather than quietly moving it.
+
+⚠️ **Two concurrency findings from the test suite, both worth keeping.**
+
+The first is a property of the handler, not of the tests: `allocate_next_gid` takes
+`with_for_update()` on the lowest-`startGid` block and the handler then holds that row
+lock across `Project.create`, whose `_ns_place_in_tree` issues a **table-wide**
+`UPDATE project SET tree_left = …` to shift siblings. Twelve xdist workers doing that
+concurrently deadlock reliably. In production this is a non-issue — one webapp process,
+one action at a time — but it is worth knowing that the New path holds a global lock for
+the duration of a project creation. The tests stub the pool; `test_gid_allocation.py`
+still covers it for real.
+
+The second was mine: the fixture used a fixed `mnemonic_code.description`, which carries
+a unique index, so every worker inserted the same value concurrently — a second
+deadlock, surfacing as a fixture error rather than a test failure. The soft-link pair is
+now worker-unique. **Any future fixture that seeds a soft link needs the same
+treatment**, because the org name and the mnemonic description must be *equal* to link
+and *unique* to insert.
+
 ### Update
 
 Per resource, and a single resource can emit **three** commands in this order:
