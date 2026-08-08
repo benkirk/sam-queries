@@ -313,6 +313,48 @@ return null;                                   // <= 0 silently dropped
   `requested_amount` NULL, comment = normalized `resources[].comments` or NULL,
   `auth_at_panel_mtg` per the CSL/CHAP rule, dates NULL, `user_id` NULL.
 
+#### As built
+
+`src/sam/xras/handlers/supplement.py`, plus two new primitives in
+`sam/manage/allocations.py`.
+
+**`supplement_allocation()` — the additive primitive that did not exist.** Only
+`update_allocation(amount=…)` was available, and it *sets*. Confirmed against the
+production row shape: all 3,203 integration-written SUPPLEMENT rows carry NULL
+`alloc_start_date` and `alloc_end_date`, 2,752 carry NULL `requested_amount`, zero are
+`propagated`, and 1,264 carry `auth_at_panel_mtg` — so that flag is not vestigial.
+
+**`log_integration_transaction()` — one place for the integration row shape.** After
+Extension it was clear three handlers would each need to un-snapshot the same columns.
+It delegates to `log_allocation_transaction` (keeping one insert site, one
+`LEGACY_TYPE_MAP` translation, one place a future audit hook would go) and then states
+every informational column explicitly as a keyword. `extend_account_allocation` was
+refactored onto it in the same commit, so there is one implementation rather than two
+that drift.
+
+**A structural asymmetry with Extension worth naming.** Extension ignores `resources[]`
+and filters accounts hard; Supplement walks `resources[]` and looks accounts up
+**unfiltered** (`Project.getAccount(name)` scans all of them). So a supplement lands on
+an account whose resource is decommissioned or whose project is inactive, where an
+extension would skip it. Both behaviours are legacy's and both are tested.
+
+**The name join is safe, and now provably so.** `Account.isForResource` matches on
+resource *name*, case-insensitively — which could pick the wrong account if two
+resources differed only by case. They cannot: `resources_name_unique_idx` is a unique
+index on a case-insensitive collation, so the database refuses the second row. Asserted
+in a test, because the whole argument for keeping legacy's name join rests on it.
+
+Kept bug-for-bug: the create branch derives its window from **today** plus the latest
+non-past contract (else allocation) end, and **never reads `actionBeginDate` or
+`actionEndDate`** — a Supplement that creates an allocation gets dates XRAS did not ask
+for. Reproduced because the alternative is inventing a policy, and 100% of Supplement
+traffic succeeds under the current rule. Non-positive amounts are still dropped
+silently, but now with a `logger.warning` so triage can see them.
+
+Divergence: the blank/unparseable `awardedAmount` NPE is guarded, keeping
+`Awarded amount missing` in the 422 where legacy loses every accumulated diagnostic to
+a bare `NullPointerException`.
+
 ### Adjustment
 
 A near-verbatim copy of Supplement with `buildAdjustAllocationCommand` swapped in —

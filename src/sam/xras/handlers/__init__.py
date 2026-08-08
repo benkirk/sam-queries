@@ -19,5 +19,6 @@ None of them opens a transaction until validation has passed — see
 """
 
 from . import extension  # noqa: F401  — imported for its registration side effect
+from . import supplement  # noqa: F401
 
-__all__ = ['extension']
+__all__ = ['extension', 'supplement']

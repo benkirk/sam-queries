@@ -42,6 +42,7 @@ from sam.projects.projects import Project
 from sam.manage.allocations import (
     detach_allocation,
     log_allocation_transaction,
+    log_integration_transaction,
     validate_allocation_dates,
 )
 from sam.manage.renew import find_source_alloc_at
@@ -237,28 +238,15 @@ def extend_account_allocation(
         if node.end_date == new_end:
             continue                      # legacy's early return in doExtend
         node.end_date = new_end
-        txn = log_allocation_transaction(
-            session,
-            node,
-            user_id,
-            AllocationTransactionType.EXTENSION,
+        # `log_integration_transaction` rather than `log_allocation_transaction`: the
+        # latter snapshots the allocation's state into every row, and for EXTENSION the
+        # table's convention is that only `alloc_end_date` is meaningful. See that
+        # function for the measurement (20,603 of 20,618 production rows).
+        log_integration_transaction(
+            session, node, AllocationTransactionType.EXTENSION,
             comment=comment,
+            alloc_end_date=new_end,
         )
-        # The helper snapshots the allocation's current state into every row it
-        # writes. For EXTENSION that snapshot is informational — legacy replay
-        # (`DateBoundedAllocationAmount`) and `replay_amount` both ignore the amount
-        # columns on this type — and the table's own convention is to leave them NULL:
-        # 20,603 of 20,618 production EXTENSION rows carry NULL `transaction_amount`,
-        # `requested_amount` and `alloc_start_date`, including 10,489 that legacy's
-        # XRAS integration did not write. Only `alloc_end_date` is meaningful.
-        #
-        # Nulled here rather than in `log_allocation_transaction` on purpose: fixing it
-        # there would also change the operator-facing Extend Allocation flow's audit
-        # output, which is a wider blast radius than this integration should take. That
-        # remains a reasonable follow-up — the measurement above is the argument for it.
-        txn.transaction_amount = None
-        txn.requested_amount = None
-        txn.alloc_start_date = None
         modified.append(node)
 
     session.flush()
