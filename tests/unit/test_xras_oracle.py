@@ -21,7 +21,7 @@ choose — so it covers the three seams nothing else does:
 
 What it is not
 --------------
-Eight payloads reach roughly 6 of the 33 error strings and 5 of the 11 allocation-type
+Eight payloads reach roughly 6 of the 34 error strings and 5 of the 11 allocation-type
 strategies. It is a regression harness, not a proof, and it **cannot falsify the wire
 contract** — a payload we chose validates a reading we already hold. Real payloads did
 the falsifying, in Sprint A. The synthetic error-path fixtures cover the branches this

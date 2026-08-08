@@ -3,9 +3,10 @@
 **Handoff doc.** Written for a cold start. Every claim carries a `file:line` or a
 measurement; re-verify rather than trust.
 
-**Companion:** [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md). Neither blocks the
-other. Doing the refactor first gives this work **one** `management_transaction` patch
-point instead of five; if the ticket cannot wait, start here and absorb that.
+**Companion:** [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md) — ✅ **shipped**, so
+this work inherits **one** `management_transaction` patch point instead of five, held
+there by `tests/unit/test_xras_transaction_seam.py`. Two of the gaps below moved while it
+landed; they are marked inline.
 
 **Prior work:** Sprint C ([`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md)) — all six handlers, the
 oracle, and a coverage matrix over all 34 error strings.
@@ -32,7 +33,7 @@ triage week.
 | Gap | Evidence |
 |---|---|
 | **No `action_id` column** | The wire carries `actionId` and `requestId` (`src/sam/schemas/forms/xras.py:346,351`) and neither is a column. They survive only as bytes inside `raw_payload`; the sole consumer anywhere is a log interpolation at `sam/xras/roster.py:299`. `webapp/api/xras/replay.py:44-53` names this absence as the reason replay can never dispatch: *"a replay that applied would race a resend with no idempotency key between them"* |
-| **No `service` / `reason` column** | `DispatchResult` carries both (`sam/xras/dispatch.py:114-118`) and `actions.py:237` discards them — `_finish(log_id, status='manual')`, nothing else. `actions.py:219-220` states the gap outright in a comment. k8s app logs are ephemeral (see the durable-audit memory), so the distinction is lost within days |
+| **No `service` / `reason` column** | `DispatchResult` carries both and the audit row still holds neither. ⚠️ **Partly closed by C.1a**: `_finish` now records `projcode_result` on the manual arm too, so a parked Transfer names its project. `service` and `reason` remain log-only, and k8s app logs are ephemeral (see the durable-audit memory), so the distinction is still lost within days |
 | **`error_messages` is unguarded** | `TEXT` (64 KB), written as an unbounded `'\n'.join(...)` at `actions.py:135` and `:157`. Under strict mode an oversized value **fails the audit write** — precisely the failure `_fit()` exists to prevent for `action_type` / `request_number` (`actions.py:86-97,133-134`). The audit write is the one thing this table cannot afford to lose |
 
 ### The four parking causes are byte-identical today
@@ -54,10 +55,8 @@ type.
 
 ### Smaller findings, same audit
 
-- `projcode_result` has **no `_fit()` guard** — `actions.py:231` passes
-  `result.projcode` straight through into a `varchar(30)`. Safe in practice (handler
-  projcodes come from `project.projcode`, also `varchar(30)`; Transfer's comes from
-  `requestNumber`, capped at 30 by the schema) but unguarded on principle.
+- ~~`projcode_result` has **no `_fit()` guard**~~ ✅ **closed by C.1a** — the guard moved
+  into `_finish` itself, so both terminal arms are covered.
 - `processed_by`'s `[:35]` slice lives in `replay.py:125,133,145,153`, **not** in
   `_record` itself.
 - `http_status` is `Integer` in the ORM (`sam/integration/xras.py:135`) and
@@ -86,8 +85,9 @@ Write these as questions an operator asks at 3am, and let the failures name the 
 - "What did it change?" → answerable via the § 1.2 correlation query recorded in
   `XRAS_SPRINT_C.md` § *Revisit, now that handlers exist*. **Confirm that query works
   under stress**, because declining the link column rests on it.
-- "Was anything odd but non-fatal?" → currently unanswerable; `DispatchResult.warnings` is
-  discarded (`actions.py:222-241`). → `warnings`
+- "Was anything odd but non-fatal?" → ⚠️ **half-closed by C.1a.** `DispatchResult.warnings`
+  used to be discarded entirely; `_dispatch` now logs it against `log_id`. Still not in the
+  row, so still unanswerable from the table alone. → `warnings`
 
 ### 2. Repeat-post / idempotency
 
@@ -157,6 +157,11 @@ the Adjustment payload nearly went unnoticed), or production capture after cutov
   parametrized fixture the way `tests/perf/conftest.py:17-25` does. Each scenario declares
   its expected outcome — `processed` / `manual` / 422-with-exact-strings — **and what the
   audit row must say**.
+- ✅ **One patch point.** `management_transaction` is imported only by
+  `sam/xras/handlers/base.py`, and `tests/unit/test_xras_transaction_seam.py` enforces
+  that with a runtime globals scan plus a `session.commit` spy. Patch `base`, not the
+  handler modules — and note the spy pattern, which catches a commit reached by *any*
+  route and is the right shape for a harness that writes to the shared database.
 - ⚠️ **Scenarios run through the HTTP route, not `dispatch_action`.** The audit row is the
   thing under test, and it is written by `_record` / `_finish` on their own connection,
   outside the handler transaction (`actions.py:99-160`). That means the per-test SAVEPOINT
@@ -188,11 +193,11 @@ Each to be confirmed or dropped by the evidence, then written up.
 **Code-side fixes regardless of the ticket**, all in `webapp/api/xras/actions.py`:
 
 1. Bound the `error_messages` join (`:135`, `:157`) — an oversized value currently **fails
-   the audit write**.
-2. `_fit()` on `projcode_result` (`:231`).
+   the audit write**. ⚠️ Still the most consequential item here.
+2. ~~`_fit()` on `projcode_result`~~ ✅ done in C.1a, inside `_finish`.
 3. `http_status` → `SmallInteger` in the ORM to match the DDL.
 4. Move `processed_by`'s width slice into `_record` rather than four call sites in
-   `replay.py`.
+   `replay.py` — the same shape as item 2, so follow that fix.
 
 ---
 
