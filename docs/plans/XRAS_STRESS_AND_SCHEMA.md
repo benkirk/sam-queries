@@ -1,8 +1,10 @@
 # XRAS stress — and the schema questions it has to answer before the DBA ticket
 
-> ✅ **Built.** `tests/stress/`, 17 scenarios behind `-m stress`, on
-> `xras_reimplementation` (PR #424). **The verdicts are in
-> [`## Verdicts`](#verdicts) at the end — that section is the deliverable.**
+> ✅ **Built, and the columns have landed.** `tests/stress/`, 17 scenarios behind
+> `-m stress`, on `xras_reimplementation` (PR #424). The verdicts are in
+> [`## Verdicts`](#verdicts); **`action_id`, `service` and `outcome_reason` are now
+> in `zz-90`, the ORM, the route and the query layer.** The DBA ticket is a
+> transcription of that DDL — nothing about it is still open.
 >
 > Headline: the stress work found a **live correctness bug** before it found any
 > schema gap. `resolve_resource` read `resources[].key`, a field XRAS has never sent —
@@ -278,7 +280,7 @@ matrix: declare the vocabulary, then prove code and declaration agree.
 Each candidate confirmed or dropped against evidence produced by the tier, not against
 the argument that proposed it.
 
-### ✅ `action_id INT UNSIGNED NULL` — **recommend**, with an index
+### ✅ `action_id INT UNSIGNED NULL` — **built**, with an index
 
 `test_repeat_post_supplement` posts the same action three times and gets three rows that
 are **identical in every column an operator can filter on**. `actionId` was on the wire
@@ -298,7 +300,7 @@ will actually want, and the thing no code change can add afterwards without a se
 ticket. It is also the precondition for any future remediation path: `replay.py`
 already names its absence as the reason replay can never dispatch.
 
-### ✅ `service VARCHAR(16) NULL` — **recommend**
+### ✅ `service VARCHAR(16) NULL` — **built**
 
 `test_a_disabled_park_and_an_unmatched_park_are_byte_identical` asserts the equality
 directly, over the six columns the dashboard filters on. Four causes park an action —
@@ -312,7 +314,7 @@ incident the lever exists for.
 
 `DispatchResult` has carried `service` since Sprint C. Nothing but the column is missing.
 
-### ✅ `outcome_reason VARCHAR(255) NULL` — **recommend**
+### ✅ `outcome_reason VARCHAR(255) NULL` — **built**
 
 `NOT_IMPLEMENTED_REASON` in `handlers/transfer.py` is 200 characters written
 specifically *"for whoever reads it at 3am with no context: what happened, that it was
@@ -487,12 +489,70 @@ green assertion that encodes a problem is easy to mistake for a good result.
 | 7 | Leak check returns 0 after a full stress run | ✅ `allocation_transaction`, `xras_action_log` and `project` all 0, under `-n auto` |
 | 8 | A `## Deviations` section | ✅ above |
 
-**The ticket now carries three columns**: `action_id`, `service`, `outcome_reason`.
-Into **both** init scripts — `containers/sam-sql-dev/initdb.d/zz-90-*.sql` and
-`zz-91-*.sql` — one ticket, as Sprint B established. Staging needs both run by hand:
-`infrastructure/scripts/init-rds.sh` restores the raw `.xz` with no initdb hook.
+**The ticket carries three columns**, and they are **already written** into
+`containers/sam-sql-dev/initdb.d/zz-90-*.sql`, the ORM, `_record`/`_finish` and the
+query layer:
+
+```sql
+ALTER TABLE xras_action_log
+  ADD COLUMN action_id      INT UNSIGNED  NULL AFTER request_number,
+  ADD COLUMN service        VARCHAR(16)   NULL AFTER action_id,
+  ADD COLUMN outcome_reason VARCHAR(255)  NULL AFTER service,
+  ADD KEY xras_action_log_action (action_id);
+```
+
+That statement **is** the ticket — it was applied verbatim to both local containers,
+and the init script was separately replayed into a scratch database and its
+`information_schema` output diffed against the result. Identical, column order and
+index included.
+
+⚠️ `zz-90` is `CREATE TABLE IF NOT EXISTS`, so it only reaches **fresh** containers.
+A running dev/test container needs the `ALTER` above, or
+`docker compose --profile test down -v && make docker-build && make docker-up`.
+CI needs neither: init scripts run *after* the snapshot restore, which is how this
+table reached dev and CI in the first place — no LFS blob regeneration.
+
+Staging still needs it run by hand: `infrastructure/scripts/init-rds.sh` restores the
+raw `.xz` with no initdb hook. `zz-91` (`xras_activation_event`) is unchanged and
+still ships in the same ticket, as Sprint B established.
 
 ⚠️ Before the next snapshot regeneration, confirm `purge_xras_action_log` in
 `containers/sam-sql-dev/anonymize_sam_db.py` covers the three new columns. `action_id`
-is not PII; `outcome_reason` is free text written by SAM and should be safe; check
-rather than assume.
+is not PII; `service` is a closed vocabulary; `outcome_reason` is free text written by
+SAM rather than by XRAS and should be safe — check rather than assume.
+
+---
+
+## The dev-clone census — the cheap thing that replaced the generator
+
+Read-only, run against port 3306 after the verdicts were written, to test whether the
+referent figures the plan rests on had moved. **They had not.** Nothing here is
+committed beyond these aggregates.
+
+| | plan said | measured | |
+|---|---|---|---|
+| `mnemonic_code` rows | 341 | **341** | unchanged |
+| active organizations | ~171 | **171** | unchanged |
+| colliding contract cores | 3 — `1049089`, `1744587`, `2146709` | **3, exactly those** | unchanged |
+| `xras_resource_repository_key_resource` rows | 13 | **13** | unchanged |
+| active resources with no mapping | 11 | **11** | unchanged |
+
+Two figures the plan never had:
+
+- **153 of 171 active organizations (89%) have no mnemonic soft link**, and 1,104 of
+  1,381 institutions (80%). This is the root of the 24% New-action failure class, and
+  it is wide open. ⚠️ Do not read 89% as a failure *rate* — most organizations never
+  appear as a PI's affiliation on XRAS traffic. It is a coverage figure, and the fix
+  is data, not code.
+- **A single project can hold 22 accounts** (mean 3.11; 72 projects above 10). That is
+  the upper bound on how many allocations one Extension touches — the corpus average
+  is 3.3 transactions per Extension. The handler loops linearly so there is no
+  combinatorial risk, but it is the widest real fan-out and the stress tier does not
+  currently exercise it.
+
+**This is what the generator would have been for**, and it took a handful of `SELECT`s
+rather than a script, a gitignored output directory and a standing PII rule. Every
+class it would have sampled is either unchanged or already covered by a dedicated
+test — `test_ambiguous_contract`, `test_mnemonic_internal_failed`,
+`test_mnemonic_external_failed`, `test_no_affiliation_for_pi`, all driving real
+dispatch. Re-run the census after a `make clone` if the figures ever matter again.

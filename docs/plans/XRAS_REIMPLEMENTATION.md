@@ -51,14 +51,18 @@ up, which pushes SMTP to D.
 | **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) |
 | **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
 | **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ✅ shipped — [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md) § *Deviations*. Suite 5,213 → **5,223** |
-| **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **the DBA ticket now carries 3 columns** |
+| **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **3 columns built** — the ticket is a transcription of `zz-90` |
 | **D** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | ☐ **deferrable** — see below |
 
-**Both follow-ups are done, and the DBA ticket is unblocked.** It carries three
-columns — `action_id`, `service`, `outcome_reason` — each with written evidence in
-[`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. A fourth
-candidate (`warnings`) was declined with reasons, and two more gaps were closed in code
-rather than schema.
+**Both follow-ups are done, and the DBA ticket is a transcription rather than a
+design question.** Three columns — `action_id`, `service`, `outcome_reason` — are
+built end to end: `zz-90`, the ORM, `_record`/`_finish` and the query layer, each with
+written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md)
+§ *Verdicts*. A fourth candidate (`warnings`) was declined with reasons, and two more
+gaps were closed in code rather than schema.
+
+⚠️ `zz-90` only reaches **fresh** containers. A running dev/test container needs the
+`ALTER` recorded in that doc, or a `down -v` rebuild. CI needs neither.
 
 ⚠️ C.1b also found a **live correctness bug** that would have failed roughly 36% of
 production traffic on day one: the handlers read `resources[].key`, a field XRAS has
