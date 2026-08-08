@@ -816,6 +816,124 @@ class TestPostActionsCapture:
         assert before - margin <= row['received_time'] <= after + margin
 
 
+class TestDispatchArms:
+    """The three terminal states the route maps, with a stub handler standing in.
+
+    No real handler is registered yet, so ``processed`` and ``failed`` are unreachable
+    from a live post — but the route code that maps them ships now, and code that
+    cannot be exercised is code that has never run. A stub proves the wiring: the audit
+    row transitions, the status code, and the 422 body carrying the accumulated list.
+    """
+
+    PATH = '/api/xras/v1/actions'
+
+    @pytest.fixture
+    def dispatching(self, app):
+        """Capture off, with a clean handler registry restored afterwards."""
+        from sam.xras import dispatch
+
+        saved_handlers = dict(dispatch._HANDLERS)
+        dispatch._HANDLERS.clear()
+        app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
+        try:
+            yield dispatch
+        finally:
+            app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+            app.config.pop('XRAS_ACTIONS_ENABLED', None)
+            dispatch._HANDLERS.clear()
+            dispatch._HANDLERS.update(saved_handlers)
+
+    def test_a_processed_action_records_its_projcode_and_answers_200(
+            self, xras_client, action_log, dispatching):
+        """The status this table has never once held."""
+        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+            status='processed', service='extend', projcode='UCUB0166'))
+
+        resp = xras_client.post(
+            self.PATH, data=_payload('extension_ucub0166_ok.json'),
+            content_type='application/json', headers=_auth())
+
+        assert resp.status_code == 200
+        row = action_log.one()
+        assert row['status'] == 'processed'
+        assert row['projcode_result'] == 'UCUB0166'
+        assert row['processed_time'] is not None
+
+    def test_a_rejected_action_is_422_carrying_the_ordered_error_list(
+            self, xras_client, action_log, dispatching):
+        """The headline deliverable — XRAS admins read this body directly. It is the
+        accumulated list, in order, not a summary."""
+        from sam.xras.errors import ActionErrors
+
+        def rejecting(session, action):
+            errs = ActionErrors()
+            errs.report('Missing title')
+            errs.report('PI jdoe is not in database')
+            errs.raise_if_any()
+
+        dispatching.register('extend', rejecting)
+        resp = xras_client.post(
+            self.PATH, data=_payload('extension_ucub0166_ok.json'),
+            content_type='application/json', headers=_auth())
+
+        assert resp.status_code == 422
+        body = json.loads(resp.data)
+        assert body['result']['errors'] == [
+            'Missing title', 'PI jdoe is not in database']
+        assert body['message'] == '2 errors processing action'
+
+        row = action_log.one()
+        assert row['status'] == 'failed'
+        assert row['http_status'] == 422
+        assert row['error_messages'] == 'Missing title\nPI jdoe is not in database'
+
+    def test_a_disabled_action_type_parks_as_manual_without_running_the_handler(
+            self, app, xras_client, action_log, dispatching):
+        """The triage lever, end to end. An operator narrowing ``XRAS_ACTIONS_ENABLED``
+        at 3am must get an audited ``manual`` row, not a dropped action."""
+        ran = []
+        dispatching.register('extend', lambda s, a: ran.append(1) or
+                             dispatching.DispatchResult(status='processed',
+                                                        service='extend'))
+        app.config['XRAS_ACTIONS_ENABLED'] = 'Supplement'
+
+        resp = xras_client.post(
+            self.PATH, data=_payload('extension_ucub0166_ok.json'),
+            content_type='application/json', headers=_auth())
+
+        assert resp.status_code == 200
+        assert ran == []
+        assert action_log.one()['status'] == 'manual'
+
+    def test_an_enabled_action_type_still_dispatches(
+            self, app, xras_client, action_log, dispatching):
+        """The other half of the lever: narrowing it must not disable everything."""
+        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+            status='processed', service='extend', projcode='UCUB0166'))
+        app.config['XRAS_ACTIONS_ENABLED'] = 'Extension,Supplement'
+
+        xras_client.post(self.PATH, data=_payload('extension_ucub0166_ok.json'),
+                         content_type='application/json', headers=_auth())
+        assert action_log.one()['status'] == 'processed'
+
+    def test_capture_mode_outranks_an_enabled_type(
+            self, app, xras_client, action_log, dispatching):
+        """The interlock is not the lever. While legacy is still the system of record,
+        no allowlist setting may cause a dispatch — a double-apply against live
+        allocations has no undo."""
+        ran = []
+        dispatching.register('extend', lambda s, a: ran.append(1) or
+                             dispatching.DispatchResult(status='processed',
+                                                        service='extend'))
+        app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+        app.config['XRAS_ACTIONS_ENABLED'] = 'all'
+
+        xras_client.post(self.PATH, data=_payload('extension_ucub0166_ok.json'),
+                         content_type='application/json', headers=_auth())
+        assert ran == []
+        assert action_log.one()['status'] == 'received'
+
+
 class TestPostActionsErrors:
     """The status-code split that is this project's headline improvement.
 

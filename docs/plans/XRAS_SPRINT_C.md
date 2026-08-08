@@ -150,6 +150,45 @@ Accept **both** `Adjust` and `Adjustment`. The alias already exists for the quer
 `XRAS_ACTION_TYPE_ALIASES` and `canonical_action_type()`,
 `src/sam/queries/xras_actions.py:72` — reuse it rather than adding a second spelling map.
 
+### As built
+
+`src/sam/xras/dispatch.py`. `dispatch_action(session, action, *, enabled)` returns a
+frozen `DispatchResult(status, service, projcode, reason, warnings)` or raises
+`XrasActionRejected`. The 422 path is deliberately **not** a result value: assemble →
+check once → execute means a rejection happens before any transaction opens, so it is
+an exception the route maps.
+
+Both seams are wired — `actions.py`'s hardcoded `_finish(status='manual')` is gone, and
+`replay.py` goes through the same dispatcher. Handlers register with
+`register(service, handler)`; **the registry ships empty**, so every action still parks
+as `manual` exactly as before. That is what lets commits 5–10 land one handler each
+without touching the route again.
+
+`DispatchResult.service` is recorded even on the `manual` arm. "Nothing matched" and
+"the handler is disabled" and "the handler is not built yet" are indistinguishable in
+`xras_action_log` otherwise, and they call for three different responses at 3am.
+
+**Corpus dispatch, verified against the snapshot.** Five of the eight projcodes are
+present in the obfuscated test database, so these are real lookups:
+
+| Payload | `actionType` | Project in snapshot | → |
+|---|---|---|---|
+| `extension_ucub0166_ok` / `extension_ufsu0023_failed` | Extension | ✅ | `extend` |
+| `supplement_ubrn0027_ok` / `supplement_ucub0182_ok` | Supplement | ✅ | `supplement` |
+| `adjustment_uwis0064_manual` | Adjustment | ✅ | `adjust` — **a service legacy could never reach** |
+| `new_ncar4232_failed` / `new_ncar4253_ok` | New | ✗ (request token) | `add` |
+| `new_uwis0071_existing_ok` | New | ✗ here, ✅ in prod | `add` here, `update` there |
+
+That last row is trap 2, and it is tested by *creating* the project mid-test and
+re-dispatching the same payload: one payload, two answers, the only variable being
+whether the row exists.
+
+⚠️ **The existence check must not filter on `active`.** XRAS-created projects arrive
+`active = 0` by design (`InactivateNewProject`), so an active-only check would route a
+re-posted New action to the **Add** handler and mint a second project for the same
+request. `Project.get_by_projcode` does not filter, which is why it is the right
+callable here.
+
 ---
 
 ## Per-handler semantics, from the Java
@@ -794,12 +833,27 @@ is omitted when unmapped.
 
 ## Enablement
 
-⚠️ **`XRAS_ACTIONS_CAPTURE_ONLY` is a global boolean** (`src/webapp/config.py:62`) and is
-set in **neither** `helm/values.yaml` nor `compose.yaml` — production runs on the code
-default. Both it and the new allowlist need a helm entry.
+~~⚠️ `XRAS_ACTIONS_CAPTURE_ONLY` is set in neither `helm/values.yaml` nor
+`compose.yaml`~~ — **done.** Both flags now carry helm entries with the reasoning
+inline: `XRAS_ACTIONS_CAPTURE_ONLY: "1"` (the interlock, flipped only in step with the
+repoint) and `XRAS_ACTIONS_ENABLED: "all"` (the lever). `compose.yaml` names no feature
+flags at all — they arrive via `.env` — so it is not a target.
 
-Add per-type enablement (`XRAS_ACTIONS_ENABLED`, default all) and keep the global kill
-switch.
+`XRAS_ACTIONS_ENABLED` accepts `all` (default), `none`, or a comma-separated list in
+either Adjust spelling. **An unknown token is logged and dropped**, which fails safe in
+the direction that matters: a typo like `Extention` leaves Extension *disabled*, so its
+actions park as `manual` for a human rather than being written by a handler nobody
+meant to enable. Refusing to start would be worse — this is the lever reached for
+during an incident and it must not be able to take the app down.
+
+**It keys on action type, not handler.** That is what the operator has in hand:
+`xras_action_log.action_type` is the column they are reading when they decide to pull
+it. The consequence, tested and accepted: disabling `New` disables *both* the Add and
+the Update handler. "Stop processing New actions" is the thing being asked for.
+
+**The two flags are not the same flag**, and a test pins the precedence:
+`XRAS_ACTIONS_CAPTURE_ONLY` outranks any allowlist setting. While legacy is the system
+of record, no value of `XRAS_ACTIONS_ENABLED` may cause a dispatch.
 
 **What the allowlist is for, given the deployment shape.** Cutover is a single repoint
 and **all six handlers go live at once** — so the allowlist is *not* a rollout

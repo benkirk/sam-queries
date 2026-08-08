@@ -46,6 +46,8 @@ from sqlalchemy.orm import Session
 
 from sam.integration.xras import XrasActionLog
 from sam.schemas.forms import XrasActionSchema
+from sam.xras.dispatch import dispatch_action
+from sam.xras.errors import XrasActionRejected
 from webapp.extensions import db
 
 #: Imported as a MODULE, not as names. ``from .actions import _record`` would bind
@@ -149,11 +151,30 @@ def replay_action(log_id, *, actor):
             new_id, log_id, actor, action.get('actionType'))
         return new_id
 
-    # Capture is off: behave exactly like a fresh post. No handler is registered yet,
-    # so everything still takes the manual-fallback path — that arm becomes live as
-    # each handler lands, with no change here.
+    # Capture is off: behave exactly like a fresh post, through the same dispatcher and
+    # the same audit-row transitions. The only difference is the return value — a
+    # replay yields the new row's id to its caller, where a post yields an HTTP
+    # response — so this cannot simply call `actions._dispatch`.
+    try:
+        result = dispatch_action(db.session, action,
+                                 enabled=actions._enabled_action_types())
+    except XrasActionRejected as exc:
+        actions._finish(new_id, status='failed', error_messages=exc.messages,
+                        http_status=422)
+        current_app.logger.warning(
+            'XRAS replay rejected: id=%s replay_of=%s by=%s errors=%d',
+            new_id, log_id, actor, len(exc.messages))
+        return new_id
+
+    if result.status == 'processed':
+        actions._finish(new_id, status='processed', projcode_result=result.projcode)
+        current_app.logger.info(
+            'XRAS replay processed: id=%s replay_of=%s by=%s service=%s projcode=%s',
+            new_id, log_id, actor, result.service, result.projcode)
+        return new_id
+
     actions._finish(new_id, status='manual')
     current_app.logger.warning(
-        'XRAS replay has no serviceable handler: id=%s replay_of=%s by=%s type=%s',
-        new_id, log_id, actor, action.get('actionType'))
+        'XRAS replay parked for a human: id=%s replay_of=%s by=%s service=%s reason=%s',
+        new_id, log_id, actor, result.service, result.reason)
     return new_id

@@ -1,10 +1,15 @@
 """``POST /api/xras/v1/actions`` — the only writing surface on the XRAS integration.
 
-This slice ships the endpoint **capture-only**: it authenticates, parses, audits and
-returns 200, dispatching nothing. That is deliberate and it is the point — the audit
-row is what turns every subsequent production post into a harvested payload, so it
-wants to be in front of the handlers rather than behind them. Handlers are enabled one
-at a time by ``XRAS_ACTIONS_CAPTURE_ONLY``.
+The endpoint authenticates, parses, audits, and then dispatches — unless
+``XRAS_ACTIONS_CAPTURE_ONLY`` is on, which it is by default. The audit row is written
+*in front of* dispatch rather than behind it, which is what turns every production post
+into a harvested payload and what makes replay possible when a handler explodes.
+
+Two flags gate dispatch and they are not the same flag. ``XRAS_ACTIONS_CAPTURE_ONLY``
+is the interlock — while legacy is still the system of record, dispatching would apply
+an action it has already applied. ``XRAS_ACTIONS_ENABLED`` is the per-type triage
+lever, checked inside :mod:`sam.xras.dispatch`; see that module for why it keys on
+action type.
 
 Order of operations, and the part that is not negotiable
 --------------------------------------------------------
@@ -52,6 +57,8 @@ from sqlalchemy.orm import Session
 
 from sam.integration.xras import XrasActionLog
 from sam.schemas.forms import XrasActionSchema
+from sam.xras.dispatch import dispatch_action, parse_enabled_action_types
+from sam.xras.errors import XrasActionRejected
 from webapp.extensions import csrf, db
 from webapp.utils.api_auth import get_auth_actor
 
@@ -181,6 +188,54 @@ def _capture_only():
     return current_app.config.get('XRAS_ACTIONS_CAPTURE_ONLY', True)
 
 
+def _enabled_action_types():
+    """Which action types may be dispatched — the triage lever, not a rollout switch.
+
+    Read here rather than in ``sam.xras.dispatch`` because nothing under ``sam/``
+    imports Flask. See that module's docstring for why this keys on action type and
+    why an unknown token fails safe.
+    """
+    return parse_enabled_action_types(
+        current_app.config.get('XRAS_ACTIONS_ENABLED'))
+
+
+def _dispatch(log_id, action):
+    """Run the dispatcher and close out the audit row. Returns the HTTP response.
+
+    The three terminal states, and the reason each is what it is:
+
+    - ``XrasActionRejected`` → ``failed`` + **422** carrying the accumulated, ordered
+      error list. Nothing was written: the handler contract is assemble → check once →
+      execute, so a rejection happens before any transaction opens.
+    - ``processed`` → 200, with ``projcode_result`` recorded. This is the status that
+      has never once existed in this table.
+    - ``manual`` → 200. Legacy's ``catch (BadRequestException)`` arm, except that
+      legacy answers a bare 200 and leaves no trace that SAM quietly parked the action.
+      The ``reason`` is logged because "nothing matched" and "the type is disabled"
+      look identical in the table otherwise.
+    """
+    try:
+        result = dispatch_action(db.session, action,
+                                 enabled=_enabled_action_types())
+    except XrasActionRejected as exc:
+        _finish(log_id, status='failed', error_messages=exc.messages,
+                http_status=422)
+        return _errors(exc.messages, 422)
+
+    if result.status == 'processed':
+        _finish(log_id, status='processed', projcode_result=result.projcode)
+        current_app.logger.info(
+            'XRAS action processed: id=%s service=%s projcode=%s',
+            log_id, result.service, result.projcode)
+        return xras_response(message='OK')
+
+    _finish(log_id, status='manual')
+    current_app.logger.warning(
+        'XRAS action parked for a human: id=%s service=%s reason=%s',
+        log_id, result.service, result.reason)
+    return xras_response(message='OK')
+
+
 @bp.route('/actions', methods=['POST'])
 @bp.route('/actions/<int:action_id>/<int:request_id>/<action_type>', methods=['POST'])
 @csrf.exempt
@@ -248,11 +303,4 @@ def post_action(action_id=None, request_id=None, action_type=None):
             log_id, action.get('actionType'), action.get('requestNumber'))
         return xras_response(message='OK')
 
-    # No handler is registered yet, so every action type takes the manual-fallback
-    # path. This is legacy's `catch (BadRequestException)` branch — except that legacy
-    # answers a bare 200 there, leaving no trace that SAM quietly parked the action.
-    _finish(log_id, status='manual')
-    current_app.logger.warning(
-        'XRAS action has no serviceable handler: id=%s type=%s request=%s',
-        log_id, action.get('actionType'), action.get('requestNumber'))
-    return xras_response(message='OK')
+    return _dispatch(log_id, action)

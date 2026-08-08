@@ -61,6 +61,16 @@ class SAMWebappConfig(SAMConfig):
     # payloads in the meantime. Flip OFF per handler as each one lands.
     XRAS_ACTIONS_CAPTURE_ONLY = os.getenv('XRAS_ACTIONS_CAPTURE_ONLY', '1').lower() in ('1', 'true', 'yes')
 
+    # Per-type triage lever for POST /api/xras/v1/actions. NOT a rollout mechanism —
+    # all six handlers ship enabled in one deploy, because XRAS repoints its base URL
+    # once and every action type arrives at the same moment. This exists so a
+    # misbehaving payload class can be parked by config instead of by revert: a
+    # disabled type takes the manual-fallback path, audited and visible, and a human
+    # applies it. 'all' (the default), 'none', or a comma-separated list of action
+    # types — 'Extension,Supplement'. An unknown token is logged and dropped, which
+    # leaves that type DISABLED rather than enabling something nobody meant to.
+    XRAS_ACTIONS_ENABLED = os.getenv('XRAS_ACTIONS_ENABLED', 'all')
+
     # OIDC configuration (active when AUTH_PROVIDER='oidc')
     OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
     OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')
