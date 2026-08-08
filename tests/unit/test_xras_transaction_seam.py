@@ -136,7 +136,7 @@ class TestPatchingTheSeamIsSufficient:
         result = dispatch_action(session, {
             'actionType': 'Supplement', 'requestNumber': project.projcode,
             'allocationType': 'Small',
-            'resources': [{'key': mapped_resource.xras_key,
+            'resources': [{'resourceRepositoryKey': mapped_resource.xras_key,
                            'awardedAmount': '250000', 'comments': None}],
             'roles': []})
 
@@ -164,8 +164,8 @@ class TestPatchingTheSeamIsSufficient:
             dispatch_action(session, {
                 'actionType': 'Supplement', 'requestNumber': project.projcode,
                 'allocationType': 'Small',
-                'resources': [{'key': 999_996, 'awardedAmount': '250000',
-                               'comments': None}],
+                'resources': [{'resourceRepositoryKey': 999_996,
+                               'awardedAmount': '250000', 'comments': None}],
                 'roles': []})
 
         assert recording == []

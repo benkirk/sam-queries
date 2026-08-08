@@ -142,11 +142,25 @@ def resource_comment(wire_resource) -> Optional[str]:
 
 
 def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Resource]:
-    """``resources[].key`` → a SAM resource, via ``xras_resource_repository_key_resource``.
+    """``resources[].resourceRepositoryKey`` → a SAM resource, via
+    ``xras_resource_repository_key_resource``.
 
     Reports ``No resource found in SAM corresponding to key %s`` — the *key* variant.
     The roster path has its own string naming the resource **name** instead; both can
     fire for one action, which is why they are separate builders.
+
+    ⚠️ **The field is ``resourceRepositoryKey``, not ``key``.** This read said ``key``
+    for an entire sprint. No XRAS payload has ever carried that field — all six
+    resource-bearing corpus fixtures send ``resourceRepositoryKey``, the schema declares
+    it under that name, and unknown keys are dropped on load — so through the real
+    pipeline the key was always ``None`` and every resource on every Supplement,
+    Adjustment, New and Update reported ``No resource found in SAM corresponding to
+    key `` with nothing after it.
+
+    It survived because every test built its own ``resources[]`` entries as
+    ``{'key': ...}``, including the oracle's re-targeting helper. The name is now
+    pinned by ``tests/unit/test_xras_wire_vocabulary.py``, which checks the whole
+    read-vocabulary against the schema rather than this one field.
 
     ⚠️ Only **13** mapping rows exist and 11 active SAM resources have none, so this is
     a live failure mode rather than a defensive branch. An award citing Derecho's GPU
@@ -156,7 +170,7 @@ def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Res
     unmapped key reports twice and collapses to one line in the accumulator. That is
     the dedup working as designed, and it is why the container is a set.
     """
-    key = get_field(wire_resource, 'key')
+    key = get_field(wire_resource, 'resourceRepositoryKey')
     row = None
     if key is not None:
         row = (session.query(XrasResourceRepositoryKeyResource)

@@ -166,7 +166,12 @@ def new_action(pi, *resources, **overrides):
 
 
 def wire_resource(key, amount='250000', comments=None):
-    return {'key': key, 'awardedAmount': amount, 'comments': comments}
+    # ⚠️ ``resourceRepositoryKey`` is the field XRAS actually sends. This helper
+    # said ``key`` for a whole sprint, which is how the handlers came to read a
+    # field no payload has ever carried. See
+    # ``tests/unit/test_xras_wire_vocabulary.py``.
+    return {'resourceRepositoryKey': key, 'awardedAmount': amount,
+            'comments': comments}
 
 
 def project_with_allocation(session, resource, *, end=datetime(2033, 7, 31),

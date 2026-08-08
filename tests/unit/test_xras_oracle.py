@@ -128,7 +128,14 @@ def _project_with_allocations(session, resources, *, amount=1_000_000.0,
 
 
 def _retarget(action, *, projcode=None, pi=None, resources=None, amount='250000'):
-    """Point a real payload at referents that exist. Shape untouched."""
+    """Point a real payload at referents that exist. Shape untouched.
+
+    ⚠️ "Shape untouched" was not true of ``resources``: this rebuilt each entry as
+    ``{'key': ...}`` while the wire — and every corpus fixture — sends
+    ``resourceRepositoryKey``. So the one helper whose job was to preserve the real
+    shape was replacing the field that mattered, which is a large part of why the
+    handler read the wrong name for a whole sprint. Keep the wire names here.
+    """
     action = dict(action)
     if projcode is not None:
         action['requestNumber'] = projcode
@@ -137,7 +144,8 @@ def _retarget(action, *, projcode=None, pi=None, resources=None, amount='250000'
                             'beginDate': '2019-01-01', 'endDate': None}]
     if resources is not None:
         action['resources'] = [
-            {'key': r.xras_key, 'awardedAmount': amount, 'comments': None}
+            {'resourceRepositoryKey': r.xras_key, 'awardedAmount': amount,
+             'comments': None}
             for r in resources]
     return action
 

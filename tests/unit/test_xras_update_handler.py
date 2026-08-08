@@ -91,7 +91,12 @@ def existing(session, mapped_resource):
 
 
 def wire_resource(key, amount='250000', comments=None):
-    return {'key': key, 'awardedAmount': amount, 'comments': comments}
+    # ⚠️ ``resourceRepositoryKey`` is the field XRAS actually sends. This helper
+    # said ``key`` for a whole sprint, which is how the handlers came to read a
+    # field no payload has ever carried. See
+    # ``tests/unit/test_xras_wire_vocabulary.py``.
+    return {'resourceRepositoryKey': key, 'awardedAmount': amount,
+            'comments': comments}
 
 
 def action_for(existing, *resources, **overrides):
