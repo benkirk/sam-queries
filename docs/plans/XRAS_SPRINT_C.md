@@ -565,6 +565,60 @@ one command per `resources[]` entry, each carrying every username. ⚠️ With
 `resources: []` — **both Extensions in the corpus** — zero add-user commands are
 produced even though the roster is non-empty.
 
+### As built
+
+`src/sam/xras/roster.py`. `resolve_roster()` returns a frozen `Roster`
+(`pi_username`, `admin_username`, `member_usernames`, `warnings`) and reports into
+`ActionErrors` in legacy's order: PI → Allocation Manager → members. The three
+predicates are separately callable and **pure** — `roster_usernames()`,
+`role_candidates()`, `role_assignment_disagreements()` — so the date arithmetic is
+tested without a session, which matters because the corpus usernames were scrubbed
+independently of the obfuscated snapshot and resolve to no rows.
+
+`today` is an injectable argument, not a call to `datetime.now()`. The role-assignment
+rule reads the current date, so a test that let it float would pass or fail depending
+on when it ran.
+
+**Corpus roster shapes**, computed and pinned:
+
+| Payload | Members | Note |
+|---|---:|---|
+| `adjustment_uwis0064_manual` | **0** | ⚠️ defect 3, live — see below |
+| `extension_ucub0166_ok` / `extension_ufsu0023_failed` | 2 | but `resources: []`, so nothing consumes them |
+| `new_ncar4232_failed` | 2 | 3 roles, 2 distinct humans, one of them a `User` |
+| `new_ncar4253_ok` / `supplement_ucub0182_ok` | 2 | |
+| `new_uwis0071_existing_ok` | 1 | 3 roles: one PI expired, the other two are one human |
+| `supplement_ubrn0027_ok` | 1 | PI and Allocation Manager are the same person |
+
+Two facts worth having before the cutover, both asserted: **no corpus payload names an
+ambiguous role** (so none would be rejected by the defect-1 rule), and **every corpus
+payload names a PI** (so `Missing pi role` is reserved for a genuinely malformed
+request).
+
+**Defect 3 is live in the corpus, not hypothetical.** `adjustment_uwis0064_manual`
+carries roles beginning 2025-08-06 against an `actionBeginDate` of 2021-08-15. The
+roster excludes both people; both role assignments resolve. Legacy would set a lead and
+an admin on a project neither has an account on. Carried as a `Roster.warning` and a
+`logger.warning`, not repaired — it is the only evidence anyone has that this occurs.
+
+The asymmetry that makes the disagreement one-directional is asserted over a grid of
+begin/end/action/today combinations rather than argued: role assignment's begin-date
+exclusion is the roster's conjoined with two further conditions, so
+`members ⊆ assigned` always.
+
+Two divergences beyond the plan's list:
+
+1. **`_wire_str` treats absent as JSON null**, the same rule
+   `sam.xras.extractors._clean` uses. Java's `XrasRole` defaults every string to `""`,
+   so an *absent* `endDate` compares less than any real date and Java skips the role
+   entirely. All eight corpus payloads send `endDate` as JSON `null`, never absent and
+   never `""`, so the observed wire is unaffected — and "no end date" plainly means
+   current. `username` and `roleType` keep the `""` reading, because
+   `Username␣␣is missing` is the exact bytes legacy emits for a role with no person.
+2. **`User.is_active` is `active AND NOT locked`**; Java's `isActive()` is `active`
+   alone. House rule § 5 says use the hybrid. Measured: production has **zero** locked
+   users out of 28,371, so the divergence is unobservable today.
+
 ---
 
 ## Legacy defect 5 — the AUTO/DEFAULT undo has never fired
@@ -695,6 +749,7 @@ legacy message; both appear only where legacy emitted **nothing at all**.
 | String | Covers | What legacy does |
 |---|---|---|
 | `Ambiguous contract for grant number "%s" ("%s"): matches %s` | two contracts share a ≥6-digit core | `uniqueResult()` raises `NonUniqueResultException`, which is not an `AttributeExtractionException` → escapes the observer → **500, no diagnostic** |
+| `Multiple %s roles are in range for this action: %s` | two current `PI` or `Allocation Manager` roles | `getUsernameByRoleType` returns the **first** survivor and discards the rest, so array order decides who leads the project (defect 1) |
 
 And one legacy string reused in a place legacy does not emit it:
 

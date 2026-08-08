@@ -166,6 +166,22 @@ def manager_not_active(username: str) -> str:
 # -- Roster -- action/command/AddUserToProjectActionCommandsFactory
 
 
+def ambiguous_role(role_type: str, usernames: Iterable[str]) -> str:
+    """**Not a legacy string** — legacy resolves this case by coin flip instead.
+
+    ``getUsernameByRoleType`` (`XrasAction:267`) returns the **first** entry surviving
+    the date filter and discards the rest, so when a payload names two current PIs it
+    is *array order* that decides who leads the project. That is legacy defect 1.
+
+    We filter on the same date window and reject only when more than one still
+    survives. Rejecting costs an operator one round trip; guessing wrong assigns a
+    project to the wrong principal investigator and nobody finds out. The candidates
+    are named because the fix is upstream, in XRAS.
+    """
+    listed = ', '.join(usernames)
+    return f'Multiple {role_type} roles are in range for this action: {listed}'
+
+
 def username_missing(username: str) -> str:
     """`AddUserToProjectActionCommandsFactory:55`."""
     return f'Username {username} is missing'
