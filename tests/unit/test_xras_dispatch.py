@@ -415,7 +415,7 @@ class TestWhichHandlersExist:
     """
 
     #: Services with a handler today. Grows one entry per commit through the sprint.
-    BUILT = {'extend', 'supplement'}
+    BUILT = {'extend', 'supplement', 'adjust'}
 
     def test_the_inventory_is_current(self):
         import sam.xras.handlers  # noqa: F401  — registers on import

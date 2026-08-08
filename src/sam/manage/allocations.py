@@ -1168,3 +1168,59 @@ def supplement_allocation(
 
     session.flush()
     return modified
+
+
+def adjust_allocation(
+    session: Session,
+    allocation: Allocation,
+    *,
+    amount: float,
+    comment: Optional[str] = None,
+) -> List[Allocation]:
+    """Apply a signed correction to an allocation and its child subtree.
+
+    The sibling of :func:`supplement_allocation`, and structurally near-identical —
+    legacy's ``AdjustProjectAllocationActionCommandsFactory`` is a near-verbatim copy of
+    the supplement one. Two differences, both real:
+
+    * ``ADJUSTMENT`` rather than ``SUPPLEMENT``. Both replay as
+      ``addAmount(transaction_amount)``, so the arithmetic is the same; the type is what
+      an operator filters on.
+    * **No ``auth_at_panel_mtg``.** ``buildAdjustAllocationCommand`` never sets it,
+      where the supplement one does.
+
+    ⚠️ **``amount`` may be negative, and that is the point.** Legacy gates its adjust
+    factory on ``> 0`` — the same copy-pasted guard as supplement — which silently drops
+    the one thing an adjustment exists to do. Combined with legacy defect 4 (it tests
+    ``"Adjust"`` while the wire says ``"Adjustment"``) that handler has never serviced a
+    single action, so nothing depends on the guard. Callers gate as they see fit; this
+    primitive does not.
+
+    It does **not** guard the resulting amount either — that is the handler's decision,
+    because "may this allocation go negative" is a policy question and this is a
+    mechanism. Legacy's ``verifyValidateState`` checks only the end date, so it has no
+    such guard anywhere.
+
+    Runs inside the caller's ``management_transaction()`` — does NOT commit.
+
+    Returns:
+        Every node modified, root first.
+    """
+    if allocation.is_inheriting:
+        detach_allocation(session, allocation.allocation_id, None)
+
+    modified: List[Allocation] = []
+    subtree: List[Allocation] = []
+    allocation._walk_tree(lambda node: subtree.append(node))
+
+    for node in subtree:
+        node.amount = float(node.amount or 0.0) + float(amount)
+        log_integration_transaction(
+            session, node, AllocationTransactionType.ADJUSTMENT,
+            comment=comment,
+            transaction_amount=float(amount),
+        )
+        modified.append(node)
+
+    session.flush()
+    return modified

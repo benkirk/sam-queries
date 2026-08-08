@@ -361,6 +361,36 @@ A near-verbatim copy of Supplement with `buildAdjustAllocationCommand` swapped i
 **including the `> 0` guard**, which means legacy's adjust handler silently drops
 negatives, the one thing an adjustment is for. Combined with defect 4 (it tests
 `"Adjust"` while the wire says `"Adjustment"`) it has never serviced a single action.
+
+#### As built
+
+`src/sam/xras/handlers/adjustment.py` + `adjust_allocation()` in
+`sam/manage/allocations.py`. The per-resource pieces are **imported** from
+`supplement.py` rather than copied — same key resolution, amount parsing, unfiltered
+account lookup and create branch. Three things differ, all from the Java: the
+transaction type, the absence of `auth_at_panel_mtg` (`buildAdjustAllocationCommand`
+never sets it), and the sign.
+
+⚠️ **This is the one handler with no production outcome to diff against.** Everything
+in it is reasoned from the source rather than confirmed against behaviour. Two
+divergences carry the risk:
+
+1. **Negatives are honoured** — the `> 0` gate is removed. Nothing depends on it,
+   because nothing has ever run.
+2. **An adjustment that would take an allocation below zero is rejected**, via one
+   added string. Legacy has no such guard (`verifyValidateState` checks only the end
+   date) but legacy also never applies one. A below-zero `amount` makes every
+   `remaining = allocated − used` nonsense; the guard can only reject, never corrupt;
+   and a rejected Adjustment goes to a human, which is where 100% of them go today.
+   Reducing an allocation to **exactly** zero is allowed — an award withdrawn is a real
+   case.
+
+⚠️ **Formatting note that is not cosmetic.** The new string uses `,.2f`, not `g`. With
+`g`'s six significant digits an adjustment of **-1,000,001** against an allocation of
+1,000,000 rendered as `-1e+06` — a message asserting that a number *equal* to the
+balance would take it below zero. Caught by a test; pinned by another. `sam.fmt` is
+also wrong here: it compacts above 100,000 (`68.6M`), which is right for a dashboard
+and wrong for a value someone must reconcile against a wire payload.
 We accept both spellings **and** honour negatives. Row shape: `ADJUSTMENT`, signed
 `transaction_amount`, everything else NULL.
 
@@ -889,6 +919,7 @@ legacy message; both appear only where legacy emitted **nothing at all**.
 |---|---|---|
 | `Ambiguous contract for grant number "%s" ("%s"): matches %s` | two contracts share a ≥6-digit core | `uniqueResult()` raises `NonUniqueResultException`, which is not an `AttributeExtractionException` → escapes the observer → **500, no diagnostic** |
 | `Multiple %s roles are in range for this action: %s` | two current `PI` or `Allocation Manager` roles | `getUsernameByRoleType` returns the **first** survivor and discards the rest, so array order decides who leads the project (defect 1) |
+| `Adjustment of %s for %s would take the allocation below zero (currently %s)` | a negative Adjustment larger than the allocation | `verifyValidateState` checks only the end date, so nothing stops it — but nothing has ever hit it either, because that handler has never serviced an action |
 
 And one legacy string reused in a place legacy does not emit it:
 

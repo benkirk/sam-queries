@@ -268,6 +268,32 @@ def update_end_date_before_existing(resource_name: str) -> str:
     return f'Action end date before existing allocation end date for {resource_name}'
 
 
+def adjustment_would_go_negative(resource_name: str, current: float,
+                                 amount: float) -> str:
+    """**Not a legacy string** — legacy has no guard here at all.
+
+    ``Allocation.verifyValidateState()`` checks only the end date, so a negative
+    adjustment larger than the allocation would drive ``amount`` below zero and every
+    downstream ``remaining = allocated − used`` becomes nonsense. Nothing has ever hit
+    it because ``AdjustProjectActionService`` has never serviced an action (defect 4,
+    plus a copy-pasted ``> 0`` gate that drops the negatives an adjustment is *for*).
+
+    This port makes that handler live, so the guard arrives with it. It can only
+    reject, never corrupt — and a rejected Adjustment goes to a human, which is where
+    100% of them go today.
+
+    ⚠️ ``,.2f`` rather than ``g``, and the difference is not cosmetic: ``g`` carries six
+    significant digits, so an adjustment of **-1,000,001** against an allocation of
+    1,000,000 rendered as ``-1e+06`` — a message stating that a number *equal* to the
+    balance would take it below zero. The operator has to be able to see which number is
+    which. Not ``sam.fmt`` either: that compacts above 100,000 (``68.6M``), which is
+    right for a dashboard and wrong for a value someone must reconcile against a wire
+    payload.
+    """
+    return (f'Adjustment of {amount:,.2f} for {resource_name} would take the '
+            f'allocation below zero (currently {current:,.2f})')
+
+
 def all_end_dates_null_or_past(projcode: str) -> str:
     """`SupplementProjectAllocationActionCommandsFactory:73`, duplicated verbatim at
     `AdjustProjectAllocationActionCommandsFactory:72`. Square brackets, no period."""
