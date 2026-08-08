@@ -281,8 +281,6 @@ webapp:
     FS_SCAN_PG_PORT: "5432"
     FS_SCAN_PG_DB: "campaign"
     FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:destor"
-    # disable creating projects until ID system transition & GID pool
-    CREATE_PROJECTS_ENABLED: "0"
     # XRAS action ingestion. CAPTURE_ONLY is the safety interlock: while it is "1" the
     # endpoint authenticates, parses and audits every post but dispatches nothing,
     # because legacy SAM at sam.ucar.edu is still the system of record. It flips to "0"
