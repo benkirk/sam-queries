@@ -1180,10 +1180,41 @@ with an unserviceable action anyway — by config, without a code deploy. Sized 
 During development it does double duty: it is how a handler is exercised in isolation
 on the local stack while the others still park.
 
-**Replay honours the capture flag deliberately** — a replay that dispatched while
-capture was on would re-apply an action legacy has already applied, a double-apply
-against live allocations one click away with no undo (`XRAS_SPRINT_B.md` § *Deviations*
-item 3).
+### Replay is decoupled from the flag — a reversal, with the premise that changed
+
+~~Replay honours the capture flag~~ — **superseded. Replay now *never* dispatches.**
+
+Sprint B tied the two together and argued: *"The kill switch stays the single safety
+interlock. A second, replay-specific override would mean two things to reason about and
+one of them would eventually be wrong."* That was right while nothing dispatched at all.
+With handlers live the conclusion inverts: coupling them means **the flag that turns on
+production ingestion is the same flag that arms the replay button**. At cutover
+`XRAS_ACTIONS_CAPTURE_ONLY` flips off and a replay silently becomes a live re-apply.
+
+And a replay of a **successful** action is a double-apply on four of the six handlers:
+
+| Handler | Replaying a success |
+|---|---|
+| Supplement, Adjustment | **additive** — a replayed 250,000-hour supplement becomes 500,000 |
+| New | does **not** re-create the project; it now exists, so `(New, exists)` → **Update** → supplements the allocation it just created |
+| Update | applies the whole per-resource decision again |
+| Extension | near-idempotent, and only because of the equal-end-date skip |
+| Transfer | parks, as always |
+
+**XRAS owns the retry.** A failed post is parked on their side and re-sent from there
+once the data is fixed, so a replay that applied would race a resend with no idempotency
+key between them — `actionId` is in every payload but is not a column, only bytes inside
+`raw_payload`.
+
+What remains is the half that was always the valuable one: replay re-parses and
+re-validates stored bytes against the **current** schema code, writes nothing, and
+records `replayed`. That is a permanent regression check of today's code against the
+harvested corpus.
+
+Two tests guard it: one asserts `replayed` with capture **off** and the real handler
+registry live, one asserts both flag settings give the same outcome. If a production
+remediation path is ever wanted it needs the idempotency key and an agreement with XRAS
+about who owns resend — not a flag flip.
 
 ---
 

@@ -1159,17 +1159,23 @@ class TestReplay:
         assert row['status'] == 'replayed'
         assert row['processed_time'] is not None
 
-    def test_replay_dispatches_when_capture_is_off(
-            self, app, xras_client, action_log, no_handlers):
-        """With the kill switch off a replay behaves exactly like a fresh post — here,
-        the manual-fallback path, because ``no_handlers`` empties the registry.
+    def test_replay_never_dispatches_even_with_capture_off(
+            self, app, xras_client, action_log):
+        """⚠️ The guard on the reversal, and the reason it exists.
 
-        That fixture is not decoration. Without it this test dispatches the **real**
-        Extension handler against whatever project the seed payload names, and
-        ``management_transaction`` commits the result into the shared xdist database.
-        It is the same hazard as ``test_dispatch_marks_manual_when_capture_is_off``,
-        and it is easy to reintroduce: any capture-off test that is not specifically
-        about a handler needs this fixture.
+        Replay used to be tied to ``XRAS_ACTIONS_CAPTURE_ONLY`` — so the flag that
+        turns on production ingestion was also the flag that armed this button. At
+        cutover it flips off, and a replay would silently become a live re-apply.
+
+        That is not a theoretical risk: a replay of a *successful* action is a
+        double-apply on four of the six handlers. Supplement and Adjustment are
+        additive, so a replayed 250,000-hour supplement becomes 500,000; and a
+        replayed **New** does not re-create the project — the project now exists, so
+        ``(New, exists)`` routes it to **Update**, which supplements the allocation it
+        just created.
+
+        Note this test deliberately does **not** take ``no_handlers``: the real
+        registry is live, and the assertion is that it still writes nothing.
         """
         from webapp.api.xras.replay import replay_action
 
@@ -1183,7 +1189,25 @@ class TestReplay:
         finally:
             app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
 
-        assert action_log.by_id(new_id)['status'] == 'manual'
+        assert action_log.by_id(new_id)['status'] == 'replayed'
+        assert action_log.by_id(new_id)['projcode_result'] is None
+
+    def test_replay_lands_replayed_regardless_of_the_flag(
+            self, app, xras_client, action_log):
+        """Both settings, same outcome — the coupling is gone, not merely inverted."""
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+
+        for capture_only in (True, False):
+            app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = capture_only
+            try:
+                with app.app_context():
+                    new_id = replay_action(original['id'], actor='benkirk')
+            finally:
+                app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+            assert action_log.by_id(new_id)['status'] == 'replayed', capture_only
 
     def test_replaying_a_rejected_payload_fails_again(
             self, app, xras_client, action_log):

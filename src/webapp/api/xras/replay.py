@@ -21,21 +21,36 @@ destroys the parent's own outcome — which is the audit record. "Has this been 
 is derived instead from the ``replays`` relationship being non-empty; the relationship
 is already first-class, so nothing needs to be denormalised onto the parent.
 
-**3. Replay honours ``XRAS_ACTIONS_CAPTURE_ONLY``.**
-This is the one that matters. Capture mode is on because **legacy is still the system
-of record** until cutover step 4 — it is already applying these actions. A replay that
-dispatched while capture was on would apply an action legacy has already applied: a
-double-apply against live allocations, one button click away, with no undo.
+**3. Replay NEVER dispatches. It re-validates, always.**
 
-So under capture mode a replay re-parses and re-validates the stored bytes against the
-*current* schema code and records the outcome as ``replayed`` (or ``failed``, with a
-fresh error list). That is not a consolation prize: it is a regression check of the
-schema against the harvested corpus, which is what the corpus is *for*. Once
-``XRAS_ACTIONS_CAPTURE_ONLY=0``, replay dispatches and lands ``processed`` / ``manual``
-/ ``failed`` exactly like a fresh post.
+⚠️ **This reverses a Sprint B decision, and the premise is what changed.** That version
+tied replay to ``XRAS_ACTIONS_CAPTURE_ONLY`` and argued: *"The kill switch stays the
+single safety interlock. A second, replay-specific override would mean two things to
+reason about and one of them would eventually be wrong."* That was correct while nothing
+dispatched at all. With handlers live the conclusion inverts — coupling them means **the
+flag that turns on production ingestion is the same flag that arms this button**. At
+cutover, capture-only flips off and a replay silently becomes a live re-apply. Nobody
+would choose that; it is just what the wiring would do.
 
-The kill switch stays the single safety interlock. A second, replay-specific override
-would mean two things to reason about and one of them would eventually be wrong.
+**And a replay of a *successful* action is a double-apply on four of the six handlers.**
+Supplement and Adjustment are additive by definition, so replaying a 250,000-hour
+supplement makes it 500,000. Worse, replaying a successful **New** does not re-create the
+project — the project now exists, so ``(New, exists)`` routes it to **Update**, which
+supplements the allocation it just created. Only Extension is near-idempotent, and only
+because of its equal-end-date skip.
+
+XRAS owns the retry. A post that fails is parked on *their* side and re-sent from there
+once the underlying data is fixed, so a replay that applied would race a resend with no
+idempotency key between them — ``actionId`` exists in every payload but is not a column,
+only bytes inside ``raw_payload``.
+
+What remains is the half that was always the valuable one: replay re-parses and
+re-validates stored bytes against the **current** schema code and records ``replayed``
+(or ``failed``, with a fresh error list). That is a regression check of today's code
+against the harvested corpus, it writes nothing, and it stays useful permanently.
+
+If a production remediation path is ever wanted, it needs that idempotency key and an
+agreement with XRAS about who owns resend — not a flag flip here.
 """
 
 import json
@@ -46,8 +61,6 @@ from sqlalchemy.orm import Session
 
 from sam.integration.xras import XrasActionLog
 from sam.schemas.forms import XrasActionSchema
-from sam.xras.dispatch import dispatch_action
-from sam.xras.errors import XrasActionRejected
 from webapp.extensions import db
 
 #: Imported as a MODULE, not as names. ``from .actions import _record`` would bind
@@ -140,41 +153,16 @@ def replay_action(log_id, *, actor):
         replay_of_id=log_id, processed_by=actor[:_PROCESSED_BY_WIDTH],
     )
 
-    if actions._capture_only():
-        # Re-validated, deliberately not dispatched — see the module docstring on
-        # why this is not an oversight. 'replayed' is precisely true and is
-        # distinguishable from 'received' (which means "arrived from XRAS and is
-        # awaiting cutover") and from 'manual' ("a human must apply this").
-        actions._finish(new_id, status='replayed')
-        current_app.logger.info(
-            'XRAS action replayed (no dispatch): id=%s replay_of=%s by=%s type=%s',
-            new_id, log_id, actor, action.get('actionType'))
-        return new_id
-
-    # Capture is off: behave exactly like a fresh post, through the same dispatcher and
-    # the same audit-row transitions. The only difference is the return value — a
-    # replay yields the new row's id to its caller, where a post yields an HTTP
-    # response — so this cannot simply call `actions._dispatch`.
-    try:
-        result = dispatch_action(db.session, action,
-                                 enabled=actions._enabled_action_types())
-    except XrasActionRejected as exc:
-        actions._finish(new_id, status='failed', error_messages=exc.messages,
-                        http_status=422)
-        current_app.logger.warning(
-            'XRAS replay rejected: id=%s replay_of=%s by=%s errors=%d',
-            new_id, log_id, actor, len(exc.messages))
-        return new_id
-
-    if result.status == 'processed':
-        actions._finish(new_id, status='processed', projcode_result=result.projcode)
-        current_app.logger.info(
-            'XRAS replay processed: id=%s replay_of=%s by=%s service=%s projcode=%s',
-            new_id, log_id, actor, result.service, result.projcode)
-        return new_id
-
-    actions._finish(new_id, status='manual')
-    current_app.logger.warning(
-        'XRAS replay parked for a human: id=%s replay_of=%s by=%s service=%s reason=%s',
-        new_id, log_id, actor, result.service, result.reason)
+    # Re-validated, never dispatched — see the module docstring. 'replayed' is
+    # precisely true and is distinguishable from 'received' ("arrived from XRAS,
+    # awaiting cutover") and from 'manual' ("a human must apply this").
+    #
+    # Note there is no `if capture_only:` here any more, and its absence is the
+    # point: this arm is unconditional, so no config change can turn a replay into
+    # a write. See the docstring for why that is now the safer contract.
+    actions._finish(new_id, status='replayed')
+    current_app.logger.info(
+        'XRAS action re-validated (replay never dispatches): '
+        'id=%s replay_of=%s by=%s type=%s',
+        new_id, log_id, actor, action.get('actionType'))
     return new_id
