@@ -488,6 +488,39 @@ to undo it), and it **never actually updates lead or admin** — the guard compa
 fetched user's username against the lookup key, which is always equal, and
 `setLeadUser` is missing braces so only its first statement is guarded.
 
+#### As built
+
+`src/sam/xras/handlers/update.py`. Assembler order **UpdateProject → AddContract →
+UpdateAllocation×N → AddUser×N** — no mnemonic (the projcode exists) and, critically,
+**no inactivation step**, which is the source of bug 1.
+
+Three legacy bugs, three different treatments:
+
+| Bug | Treatment |
+|---|---|
+| Silently re-activates an inactive project | **Not ported.** `active` is simply absent from the `Project.update` call, and a warning fires. An XRAS project is inactive because a human has not approved it; approving it as a side effect of a Supplement is wrong |
+| Never updates lead or admin | **Fixed.** Plainly a bug — an always-true guard plus missing braces |
+| `UNDO AUTO/DEFAULT` compensating adjustment | **Not ported.** Detected and warned, with the log line naming defect 5. Zero UNDO rows in production, either spelling |
+
+The **contingent-resource** short-circuit *is* ported: wire `resources[].comments ==
+"AUTO_DEFAULT_ALLOCATION_TRANSACTION"` means "move the date, leave the amount". It
+compares `.name()` on both sides and genuinely works, unlike the undo — the two are
+easy to conflate and a test pins that the marker is the `.name()` spelling, not
+`AUTO/DEFAULT`.
+
+Two things a reader will otherwise get wrong:
+
+* **The shrink error is not Extension's string.** Update interpolates a *resource name*
+  and omits the word "is"; Extension interpolates a *date* and includes it. Which one
+  an operator sees is how they tell which path rejected them.
+* **Update-driven extends carry the resource comment**, not
+  `XrasAction Extension Request`.
+
+`is_allocation_overlapping` keeps legacy's "either date null → no overlap" behaviour,
+which routes the resource to ADD. Legacy then dereferences the same null on the
+commission clamp and throws; unreachable here because assembly reports the bad date
+first, but the guard stays explicit rather than implied.
+
 ---
 
 ## Samples in hand
