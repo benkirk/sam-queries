@@ -81,7 +81,12 @@ in parallel, not after:
 - **The DBA ticket** for `xras_action_log` + `xras_activation_event` (one ticket, both
   init scripts — `containers/sam-sql-dev/initdb.d/zz-90-*.sql` and `zz-91-*.sql`), plus
   the manual run on staging, whose `init-rds.sh` has no initdb hook. It is unblocked:
-  Sprint B's definition-of-done condition for filing it is met. Nothing can be captured
+  Sprint B's definition-of-done condition for filing it is met.
+
+  ⚠️ **`zz-90` grew three columns in C.1b** — `action_id`, `service`, `outcome_reason` —
+  each with written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md)
+  § *Verdicts*. They are built end to end and the ticket is a transcription of the
+  current file, not a design question. File the file, not an older copy of it. Nothing can be captured
   or cut over until it lands, and it is the only item here with a third party's
   schedule attached.
 

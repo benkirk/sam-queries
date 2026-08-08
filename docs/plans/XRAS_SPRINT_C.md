@@ -8,6 +8,23 @@
 > plan, kept because the reasoning is still the best explanation of *why* — but where the
 > two disagree, **the As-built text and § Deviations are correct**.
 >
+> ⚠️ **Two follow-ups have since superseded parts of this document. Read them before
+> trusting a code detail here.**
+>
+> - [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md) (C.1a) rebuilt the handlers
+>   on an `ActionHandler` base class. **Every `handle_*` function described below is now
+>   a two-line shim over a handler class**, the shared helpers moved to
+>   `handlers/_fields.py` and `handlers/_allocations.py`, `_get` became
+>   `sam.xras.wire.get_field`, and `management_transaction` has one import site rather
+>   than five. It also fixed six defects this sprint shipped — including an Adjustment
+>   that computed the panel-authorisation flag and never applied it.
+> - [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) (C.1b) found that
+>   `resolve_resource` read `resources[].key` — **a field XRAS has never sent**, and one
+>   this repo's own wire documentation names correctly as `resourceRepositoryKey`
+>   (`XRAS_REIMPLEMENTATION.md` § 3.1). Every Supplement, Adjustment, New and Update
+>   described below would have failed on the real wire. It also added three
+>   `xras_action_log` columns: `action_id`, `service`, `outcome_reason`.
+>
 > | Commit | |
 > |---|---|
 > | 1 | error vocabulary + integration actor |

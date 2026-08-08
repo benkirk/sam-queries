@@ -444,8 +444,8 @@ for project, allocation, resource_name, days_remaining in get_projects_by_alloca
 ## Testing
 
 Suite size, timings, and tier breakdown live in **`docs/TESTING.md`** — keep
-counts there, not here. Currently ~3,100 collected tests in ~1.5 min under
-xdist.
+counts there, not here. Currently 5,309 collected (5,270 in the default run,
+~90 s under xdist); `perf` and `stress` are gated off by default.
 
 ```bash
 # One-time setup: isolated test container + URL
@@ -462,8 +462,12 @@ pytest -n 0                                 # force serial
   (`join_transaction_mode="create_savepoint"`) — xdist workers share one DB
   safely. **Safety guard**: `tests/conftest.py` refuses any database other
   than the allowlisted mysql-test container (host port 3307).
-- **pytest.ini gates**: `-m "not perf"` (perf suite runs only on request),
-  `--maxfail=5`, 300 s per-test timeout, `-n auto`.
+- **pytest.ini gates**: `-m "not perf and not stress"` — both tiers run only on
+  request (`pytest -m perf -n 0`, `pytest -m stress`) — plus `--maxfail=5`,
+  300 s per-test timeout, `-n auto`. Each gated tier owns a declaration file the
+  tests check themselves against: `tests/perf/baselines.json` for query-count
+  limits, `tests/stress/scenarios.json` for what each scenario expects the
+  `xras_action_log` row to say.
 - **Route handlers use Flask-SQLAlchemy's `db.session`** (its own connection) —
   they only see committed snapshot rows, and route-level writes would COMMIT.
   House convention: HTTP-layer tests cover auth/validation/404/render smoke;
