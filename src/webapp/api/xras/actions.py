@@ -86,6 +86,81 @@ _REQUEST_NUMBER_WIDTH = 30
 #: crosses the same trust boundary as the two above — Transfer's comes straight from
 #: ``requestNumber`` — and an audit write that 500s is what ``_fit`` exists to prevent.
 _PROJCODE_RESULT_WIDTH = 30
+#: ``xras_action_log.processed_by`` is ``varchar(35)`` — ``users.username`` width. The
+#: slice lives here rather than at the four ``replay.py`` call sites that used to carry
+#: it: a width guard belongs next to the column it guards, or the fifth caller misses it.
+_PROCESSED_BY_WIDTH = 35
+
+#: ``raw_payload`` and ``error_messages`` are ``TEXT`` — 65,535 **bytes**, not
+#: characters, and the column is utf8mb3.
+#:
+#: ⚠️ Under ``STRICT_TRANS_TABLES`` an oversized value does **not** truncate, it raises
+#: ``1406 Data too long`` — so an unbounded write here loses the audit row entirely.
+#: That is measured, not theoretical: ``tests/stress/test_audit_row_survives.py``
+#: reproduced it against the test container before this guard existed.
+_TEXT_WIDTH = 65_535
+
+#: Room reserved for the truncation marker itself, which must always fit.
+_TRUNCATION_MARGIN = 512
+
+
+def _truncate_bytes(text, width):
+    """Cut *text* to *width* encoded bytes without splitting a character."""
+    encoded = text.encode('utf-8')
+    if len(encoded) <= width:
+        return text, False
+    return encoded[:width].decode('utf-8', errors='ignore'), True
+
+
+def _fit_payload(raw_payload):
+    """Bound ``raw_payload``, announcing the cut. Returns ``(text, was_truncated)``.
+
+    ⚠️ A truncated payload is **not replayable** — the bytes are no longer valid JSON,
+    and replay reads them back through the schema. The marker says so in the stored
+    value itself, because an operator deciding whether to click Replay sees the payload
+    long before they see any documentation.
+
+    Truncating rather than refusing to record is the lesser evil in both directions:
+    the row survives, and the caller is separately told the action was rejected, so
+    nothing is silently applied against a payload we could not keep.
+    """
+    text, truncated = _truncate_bytes(raw_payload, _TEXT_WIDTH - _TRUNCATION_MARGIN)
+    if not truncated:
+        return text, False
+    original = len(raw_payload.encode('utf-8'))
+    return (f'{text}\n\n[TRUNCATED — original body was {original:,} bytes, exceeding '
+            f'the {_TEXT_WIDTH:,}-byte raw_payload column. THIS PAYLOAD CANNOT BE '
+            f'REPLAYED. Ask XRAS to resend.]'), True
+
+
+def _fit_error_messages(messages):
+    """Join the ordered error list, bounded, cutting on **message** boundaries.
+
+    Not a byte slice: half a message is worse than a missing one, because it reads as
+    a complete diagnostic. Whatever is dropped is counted in a final line, so a short
+    list never passes for a complete one.
+
+    Reachable in practice — the amplification runs the wrong way. One unmapped resource
+    costs ~38 bytes of payload and yields ~52 bytes of message, so a legal body well
+    inside its own column can produce an error list that is not.
+    """
+    if not messages:
+        return None
+    budget = _TEXT_WIDTH - _TRUNCATION_MARGIN
+    kept, used = [], 0
+    for message in messages:
+        cost = len(message.encode('utf-8')) + 1
+        if used + cost > budget:
+            break
+        kept.append(message)
+        used += cost
+    if len(kept) == len(messages):
+        return '\n'.join(messages)
+    dropped = len(messages) - len(kept)
+    kept.append(f'[… and {dropped:,} more message(s), truncated to fit the '
+                f'{_TEXT_WIDTH:,}-byte error_messages column. The 422 response '
+                f'carried the complete list.]')
+    return '\n'.join(kept)
 
 
 def _fit(value, width):
@@ -130,17 +205,17 @@ def _record(*, status, raw_payload, action_type=None, request_number=None,
             remote_actor=(remote_actor or get_auth_actor()
                           or 'unknown')[:_ACTOR_WIDTH],
             status=status,
-            raw_payload=raw_payload,
+            raw_payload=_fit_payload(raw_payload)[0],
             # Width guards, same reasoning as _ACTOR_WIDTH: on the 422 path these
             # come straight off an *unvalidated* payload dict, so an over-long or
             # non-string actionType would turn the audit write into a 500 — losing
             # precisely the row this table exists to keep.
             action_type=_fit(action_type, _ACTION_TYPE_WIDTH),
             request_number=_fit(request_number, _REQUEST_NUMBER_WIDTH),
-            error_messages='\n'.join(error_messages) if error_messages else None,
+            error_messages=_fit_error_messages(error_messages),
             http_status=http_status,
             replay_of_id=replay_of_id,
-            processed_by=processed_by,
+            processed_by=_fit(processed_by, _PROCESSED_BY_WIDTH),
         )
         session.add(row)
         session.commit()
@@ -159,7 +234,7 @@ def _finish(log_id, *, status, projcode_result=None, error_messages=None,
         if projcode_result is not None:
             row.projcode_result = _fit(projcode_result, _PROJCODE_RESULT_WIDTH)
         if error_messages:
-            row.error_messages = '\n'.join(error_messages)
+            row.error_messages = _fit_error_messages(error_messages)
         if http_status is not None:
             row.http_status = http_status
         session.commit()
@@ -287,6 +362,26 @@ def post_action(action_id=None, request_id=None, action_type=None):
     # request.get_data() rather than request.get_json(): the raw bytes are what the
     # audit row must store, verbatim, before anything interprets them.
     raw_payload = request.get_data(as_text=True)
+
+    if len(raw_payload.encode('utf-8')) > _TEXT_WIDTH - _TRUNCATION_MARGIN:
+        # A body we cannot store is a body we cannot audit or replay. Applying it
+        # anyway would write allocations against a record that does not survive, so
+        # this refuses and says why — in the 422 list, which is where an XRAS admin
+        # reads it. The row is still written, with the payload truncated and marked.
+        #
+        # 422 rather than 413: the response envelope is a wire contract and the error
+        # list is the part XRAS's panel renders. A status code their panel does not
+        # expect would be an unreadable rejection.
+        #
+        # Cannot bite normal traffic — the largest payload ever observed is 4,819
+        # bytes, roughly 13x under the limit.
+        message = (
+            f'Payload is {len(raw_payload.encode("utf-8")):,} bytes, which exceeds '
+            f'the {_TEXT_WIDTH:,}-byte limit SAM can record. The action was not '
+            f'applied. Please split the request or contact CISL.')
+        _record(status='failed', raw_payload=raw_payload, http_status=422,
+                error_messages=[message])
+        return _errors([message], 422)
 
     try:
         parsed = json.loads(raw_payload)

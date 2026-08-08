@@ -71,9 +71,6 @@ from webapp.extensions import db
 #: through the module attribute so the patch is honoured.
 from . import actions
 
-#: ``xras_action_log.processed_by`` is ``varchar(35)`` (``users.username`` width).
-_PROCESSED_BY_WIDTH = 35
-
 
 def _load_original(log_id):
     """Fetch the row being replayed, on its own connection.
@@ -122,7 +119,7 @@ def replay_action(log_id, *, actor):
         return actions._record(
             status='failed', raw_payload=raw_payload, http_status=400,
             error_messages=[message], remote_actor=original['remote_actor'],
-            replay_of_id=log_id, processed_by=actor[:_PROCESSED_BY_WIDTH],
+            replay_of_id=log_id, processed_by=actor,
         )
 
     if not isinstance(parsed, dict):
@@ -130,7 +127,7 @@ def replay_action(log_id, *, actor):
         return actions._record(
             status='failed', raw_payload=raw_payload, http_status=400,
             error_messages=[message], remote_actor=original['remote_actor'],
-            replay_of_id=log_id, processed_by=actor[:_PROCESSED_BY_WIDTH],
+            replay_of_id=log_id, processed_by=actor,
         )
 
     try:
@@ -142,7 +139,7 @@ def replay_action(log_id, *, actor):
             action_type=parsed.get('actionType'),
             request_number=parsed.get('requestNumber'),
             error_messages=lines, remote_actor=original['remote_actor'],
-            replay_of_id=log_id, processed_by=actor[:_PROCESSED_BY_WIDTH],
+            replay_of_id=log_id, processed_by=actor,
         )
 
     new_id = actions._record(
@@ -150,7 +147,7 @@ def replay_action(log_id, *, actor):
         action_type=action.get('actionType'),
         request_number=action.get('requestNumber'),
         remote_actor=original['remote_actor'],
-        replay_of_id=log_id, processed_by=actor[:_PROCESSED_BY_WIDTH],
+        replay_of_id=log_id, processed_by=actor,
     )
 
     # Re-validated, never dispatched — see the module docstring. 'replayed' is

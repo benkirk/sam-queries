@@ -128,11 +128,15 @@ class XrasActionLog(Base):
     #: received | processed | manual | failed | replayed
     status = Column(String(16), nullable=False)
 
-    #: The HTTP code we answered: 200, 400 or 422. ``status='failed'`` covers both a
-    #: malformed body (400) and a schema rejection (422) — an operator triaging the
-    #: log needs to tell those apart, and it stops being derivable from ``status``
-    #: the moment handlers add their own validation failures.
-    http_status = Column(Integer)
+    #: The HTTP code we answered: 200, 400 or 422. ``status='failed'`` covers a
+    #: malformed body (400), a schema rejection (422), a handler rejection (422) and
+    #: an oversized body (422) — an operator triaging the log needs to tell those
+    #: apart, and it stops being derivable from ``status``.
+    #:
+    #: ``SmallInteger`` to match the DDL's ``SMALLINT UNSIGNED``. It was ``Integer``,
+    #: which is harmless in MySQL but is the kind of drift that makes a guard computed
+    #: from the ORM quietly wrong — pinned by ``tests/stress/test_audit_row_survives.py``.
+    http_status = Column(SmallInteger)
 
     #: The ordered error list, one message per line — the same list the 422 carries.
     error_messages = Column(Text)
