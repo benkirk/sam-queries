@@ -50,7 +50,14 @@ up, which pushes SMTP to D.
 | **A** — Action ingestion | Phase 2: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions` in capture mode | ✅ shipped — [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) |
 | **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) |
 | **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
+| **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ☐ next — [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md). No external dependency |
+| **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ☐ next — [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md). ⚠️ Has the DBA-ticket clock on it |
 | **D** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | ☐ **deferrable** — see below |
+
+**C.1a and C.1b do not block each other.** Doing the refactor first gives the stress
+harness one `management_transaction` patch point instead of five; doing stress first
+answers the schema questions sooner. **If the DBA ticket is the long pole, start with
+C.1b** — it is the only work whose findings change what the ticket must carry.
 
 **What is left before cutover is not code.** Four gates, in order: (1) the DBA ticket for
 both tables; (2) `--validate-mapping` clean, *then* `--api xras` against the deployed
