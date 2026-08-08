@@ -34,9 +34,9 @@ in the working tree are byte-identical to the deployed tag.
 | **0** — Prerequisites | **partly done** | credential ✅, role enforcement ✅, `VIEW_XRAS` + `MANAGE_XRAS` ✅ (Sprint B). `xras_action_log` and `xras_activation_event` exist in **dev and CI only** — the prod DDL is one DBA ticket, now unblocked. SMTP still open |
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
 | **2** — Action ingestion + audit trail | ✅ **done, capture-only** | `xras_action_log` + `XrasActionSchema` + `POST /actions` shipped behind `XRAS_ACTIONS_CAPTURE_ONLY`; see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md). Dispatch is Phase 3 |
-| **3** — Handlers | ☐ to do | **Sprint C** — see [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Extension → Supplement → Adjustment → Update → New; Transfer to manual fallback. Every type currently parks as `manual`. **No longer sample-blocked** (corpus is 8; see `XRAS_SPRINT_A.md` § 3b) |
+| **3** — Handlers | ✅ **done** | **Sprint C** — see [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). All six services registered: Extension, Supplement, Adjustment, New, Update; Transfer is a *registered* handler that parks with a reason. Behind `XRAS_ACTIONS_CAPTURE_ONLY`, which flips **only at cutover** |
 | **4** — XRAS as the 4th Allocations tab | ✅ **done** | **Sprint B** — see [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md). Tab, replay, `sam-admin xras`, the activation worklist; and it settled `xras_activation_event` so one DBA ticket carries both tables |
-| **5** — Parity and cutover | **partly done** | `--api xras` harness ✅. **Next gate: run it against the deployed port** — that is cutover step 1, and it needs only a deploy to `samuel.k8s`, not Phase 3 |
+| **5** — Parity and cutover | **partly done** | `--api xras` harness ✅, and `sam-admin xras --validate-mapping` ✅ (run it **before** parity — closing a mapping gap moves GET response bytes). **Next gate: run parity against the deployed port** — cutover step 1, needs only a deploy to `samuel.k8s` |
 
 ### Sprint map
 
@@ -49,8 +49,14 @@ up, which pushes SMTP to D.
 |---|---|---|
 | **A** — Action ingestion | Phase 2: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions` in capture mode | ✅ shipped — [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) |
 | **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) |
-| **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ☐ next — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Not sample-blocked; not DDL-blocked |
+| **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
 | **D** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | ☐ **deferrable** — see below |
+
+**What is left before cutover is not code.** Four gates, in order: (1) the DBA ticket for
+both tables; (2) `--validate-mapping` clean, *then* `--api xras` against the deployed
+host; (3) the 400/422 contract confirmed with `allocations@access-ci.org`; (4) XRAS
+repoints its base URL — which is the cutover, and the moment
+`XRAS_ACTIONS_CAPTURE_ONLY` flips to `0`.
 
 Two things run on external lead time and are **not** gated on any sprint. Start them
 in parallel, not after:

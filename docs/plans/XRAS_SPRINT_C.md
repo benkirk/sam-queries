@@ -1,5 +1,25 @@
 # XRAS Sprint C — the handlers, and the oracle that proves them
 
+> **STATUS: shipped.** All six services are registered, the dispatcher is wired into
+> both seams, and every error string is exercised or declared unreachable. Suite at
+> **5,213 passed** (baseline 4,708 at sprint start). Each major section now carries an
+> **As built** subsection recording what the code does and where it diverged; § *Deviations*
+> at the end is the consolidated list. The prose above those subsections is the original
+> plan, kept because the reasoning is still the best explanation of *why* — but where the
+> two disagree, **the As-built text and § Deviations are correct**.
+>
+> | Commit | |
+> |---|---|
+> | 1 | error vocabulary + integration actor |
+> | 2–3 | extractors, roster |
+> | 4 | dispatcher + triage lever |
+> | 5–10 | Extension, Supplement, Adjustment, New, Update, Transfer |
+> | 11a–c | oracle + mapping gate, error-coverage matrix, replay decoupling |
+> | 12 | this record |
+>
+> **What remains before cutover is not code** — the four gates in § *Run these in
+> parallel* and § *Deferred to deploy time*.
+
 **Handoff doc.** Written for a cold start: you should be able to execute this without
 the session that produced it. The wire contract, the measured production data and the
 design decisions live in [`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md) — §
@@ -29,6 +49,11 @@ And one thing that is not a handler: **the oracle**. There is no parity harness 
 write path and there cannot be a live one — both stacks share a single production
 database, so "run both and compare" would apply every action twice. Build the
 replay-and-diff check *with* the first handler. A handler with no oracle is not done.
+
+**As built**, the "one at a time" sequencing needed no configuration at all: the handler
+registry ships empty and each handler registers itself on import, so an unbuilt service
+takes the manual arm unchanged. The per-type flag stayed what § *Enablement* says it is —
+a triage lever for after cutover, not a rollout mechanism.
 
 ---
 
@@ -1218,14 +1243,47 @@ about who owns resend — not a flag flip.
 
 ---
 
-## Revisit, now that handlers exist
+## Revisit, now that handlers exist — DECIDED: still declined, for a better reason
 
 The one schema column Sprint B declined **with the escape hatch named**: a link from
-`xras_action_log` to what a handler changed (e.g. an `allocation_transaction` reference).
-It was declined because nothing wrote anything yet. It is a nullable additive column,
-backfillable from `raw_payload` + `projcode_result` — not a migration — but adding it
-after the DBA ticket lands costs another ticket. Decide during this sprint, not after.
-See `XRAS_SPRINT_B.md` § *Schema deltas* → *Considered and deliberately declined*.
+`xras_action_log` to what a handler changed. It was declined because nothing wrote
+anything yet. Handlers now write, so the decision is due — DoD item 6, and it must land
+before the DBA ticket.
+
+**Decision: decline again.** The reason has changed and is now structural rather than
+provisional: **the relationship is one-to-many.** A single Extension writes an average of
+**3.3** `allocation_transaction` rows (§ 1.2); New writes 2.7; an Update can write three
+for a single resource. A nullable FK column on `xras_action_log` cannot express that, so
+the column as scoped was the *wrong shape*, not merely premature. Representing it
+properly needs either a join table — a new table, a larger ticket — or a column on
+`allocation_transaction`, which is a hot table that **legacy Java also writes to**, and
+that is a materially bigger blast radius than this sprint should take days before
+cutover.
+
+**What replaces it** is the same correlation that built § 1.2, and it is precise enough
+because of a convention this sprint deliberately preserved:
+
+```sql
+-- everything one action wrote
+SELECT t.* FROM allocation_transaction t
+  JOIN allocation a  USING (allocation_id)
+  JOIN account    ac USING (account_id)
+  JOIN project    p  USING (project_id)
+ WHERE p.projcode = :projcode_result          -- from xras_action_log
+   AND t.user_id IS NULL                      -- the integration-actor convention
+   AND t.creation_time BETWEEN :processed_time - INTERVAL 60 SECOND
+                           AND :processed_time + INTERVAL 60 SECOND;
+```
+
+`user_id IS NULL` is what makes this work: only integrations write it (25,048 rows), and
+`processed_time` bounds the window to seconds. Two XRAS actions against the *same*
+project inside the same minute would be ambiguous — no production pair has ever been
+observed, and triage week is when we would find out.
+
+⚠️ **The escape hatch, stated so it stays available:** if the correlation proves
+insufficient during triage week, the right shape is a **join table**
+(`xras_action_transaction`), not the single column Sprint B declined. Reopening it costs
+a DBA ticket either way; choosing the wrong shape to save one would cost two.
 
 ---
 
@@ -1267,17 +1325,103 @@ operator can act on is worth more than one that looks like success.
 
 ---
 
-## Definition of done
+## Definition of done — as shipped
 
-1. The dispatcher exists, and each enabled handler writes `status='processed'` with
-   `projcode_result` set. `_finish(status='processed', …)` is already written and has
-   never had a caller.
-2. Every enabled handler has a replay-and-diff test against its fixture, and the
-   allocation-replay invariant is asserted.
-3. `Optional[int]` widened on `log_allocation_transaction`, documented.
-4. Per-type enablement plus a `helm/values.yaml` entry; the global kill switch retained.
-5. § 3.4's error strings verified against the Java source.
-6. The `xras_action_log` → `allocation_transaction` column decided (build or decline in
-   writing) **before** the DBA ticket is applied.
-7. A `## Deviations` section in this file recording where the repo's patterns won over
-   this plan — as Sprint B did. This document is input, not contract.
+| # | Item | Status |
+|---|---|---|
+| 1 | Dispatcher exists; each handler writes `status='processed'` with `projcode_result` | ✅ `sam/xras/dispatch.py`; `_finish(status='processed', …)` finally has callers |
+| 2 | Every handler has a replay-and-diff test; the allocation-replay invariant asserted | ✅ per handler, plus the cross-handler sweep in `test_xras_oracle.py` |
+| 3 | `Optional[int]` on `log_allocation_transaction`, documented | ✅ commit 1 |
+| 4 | Per-type enablement + `helm/values.yaml`; global kill switch retained | ✅ `XRAS_ACTIONS_ENABLED`; both flags now in helm, neither was before |
+| 5 | § 3.4's error strings verified against the Java source | ✅ 34 builders, each citing its emitter; § 3.4 was wrong in seven places and is marked superseded |
+| 6 | The `xras_action_log` → `allocation_transaction` column decided in writing **before** the DBA ticket | ✅ declined — see § *Revisit, now that handlers exist* |
+| 7 | A `## Deviations` section recording where the repo's patterns won over this plan | ✅ below |
+
+---
+
+## Deviations
+
+This document is input, not contract. Where the repo, the Java, or the data disagreed
+with it, the repo/Java/data won and the disagreement is recorded here.
+
+### Where the plan was wrong
+
+| Plan said | Reality | Where |
+|---|---|---|
+| Prefer `fos_aoi` over legacy's id decode for FOS→AOI | **Wrong, and silently so.** The id spaces are disjoint: `fos_aoi.fos_id` holds 5-digit AMIE/XSEDE codes, XRAS sends `1`–`40` = the `area_of_interest` **primary key** space. Routing through the mapping table would file every XRAS project under the wrong research area with no error | commit 2; `XRAS_REIMPLEMENTATION.md` § *Data* corrected |
+| `allocationType` is inert on the POST path | **Wrong.** It is the first input to the eleven-strategy chain, read three different ways. A Sprint A test docstring said otherwise and is corrected | commit 2 |
+| The `UNDO AUTO/DEFAULT` compensation must be ported ("33 rows in two years") | **Dead code.** Writers use `.name()`, the detector compares `.getValue()`; production holds **zero** UNDO rows of either spelling. The 33 rows are what the *writer* produces | legacy defect 5 |
+| ~15 hand-written synthetic fixtures for the high-value branches | Replaced by a **checked coverage matrix**: all 34 builders exercised or declared unreachable with a reason, asserted against the module. A fixture pile decays silently; a declaration cannot | commit 11b |
+| Replay honours `XRAS_ACTIONS_CAPTURE_ONLY` (Sprint B) | **Reversed.** Coupling them means the flag enabling production ingestion also arms the replay button. Replay now never dispatches | commit 11c |
+
+### Where legacy was wrong, and we diverged
+
+| Legacy | Here | Why |
+|---|---|---|
+| Blank `awardedAmount` unboxes a null `Float` → NPE inside assembly, destroying every accumulated diagnostic | Guard; keep `Awarded amount missing` in the 422 | The diagnostic is the entire point of the 422 |
+| Adjust drops negatives (`> 0` guard) and never fires anyway (defect 4) | Negatives honoured; both spellings dispatch | The purpose of the action type |
+| Nothing stops an adjustment taking an allocation below zero | Rejected, with one added string | Makes `remaining = allocated − used` nonsense; can only reject, never corrupt |
+| `getUsernameByRoleType` takes the first on duplicate PI (defect 1) | Date-window filter, reject if >1 survives | Array order deciding who leads a project is a coin flip |
+| Roster and role-assignment disagree on begin dates (defect 3) | Both ported; **warn** on disagreement | Silently fixing it removes the only evidence it occurs |
+| Update silently re-activates an inactive project | Not ported; warn | Inactive means a human has not approved it |
+| Update never updates lead/admin (always-true guard + missing braces) | Fixed | Plainly a bug |
+| `disinherit()` severs the parent link with no audit row (zero DETACH rows in production) | `detach_allocation`, which writes one | SAM's audit trail is the product |
+| Contract suffix collision → `NonUniqueResultException` → 500, no diagnostic | Exact → unique suffix → report, naming the candidates | Three cores collide in production today |
+| `UserLabStrategy` returns null silently when a lab has no soft link | Report the internal-organization string | A projcode cannot be minted without a code |
+| An end date at/before commissioning raises `IllegalStateException` → 500 | Report it | Same refusal, one an operator can act on |
+
+### Where SAM's conventions won over faithfulness
+
+- **`!creationTime.after(now)` is not ported.** It compares two clocks that are not the
+  same clock — `creation_time` resolves in MySQL's timezone (UTC in dev/CI), `now` is
+  naive-Mountain. Measured: **six hours** apart. Honouring it would make an Extension
+  posted within six hours of a New silently skip the account it should extend.
+- **`User.is_active` is `active AND NOT locked`**; Java's is `active` alone. House rule
+  § 5. Unobservable — production has zero locked users of 28,371.
+- **`Account.is_active` is deliberately *not* used** in the Extension handler: SAM's
+  hybrid there means "not deleted", legacy means active-project-and-commissioned-resource.
+  The one place the house rule gives the wrong answer, composed explicitly instead.
+- **The roster deduplicates**; legacy does not.
+- **Absent is treated as JSON null throughout.** Jackson defaults every wire string to
+  `""` and behaves differently on absent vs null; marshmallow gives `None` for both. One
+  rule, stated once, rather than an accident per field.
+
+### Structural choices not in the plan
+
+- **`log_integration_transaction`** — after Extension it was clear three handlers would
+  each need to un-snapshot the same columns. One helper, one insert site, one place the
+  `LEGACY_TYPE_MAP` translation lives. `extend_account_allocation` was refactored onto it
+  in the same commit rather than leaving two implementations to drift.
+- **Transfer is a *registered* handler returning `manual`**, not an absent one. An
+  unregistered service reports `no handler is registered`, which reads like a bug; this
+  records a decision on the audit row.
+- **Commit 11 split into 11a/11b/11c** (oracle / coverage matrix / replay decoupling) —
+  three different concerns that the plan bundled.
+- **The per-handler enablement dance was unnecessary.** The plan expected each handler to
+  be flipped out of capture mode as it landed; an empty handler registry gave the same
+  isolation with no config involved.
+
+### Testing hazards discovered, and now guarded
+
+1. **A registered handler commits.** `management_transaction` runs on the route's own
+   connection, *outside* the suite's per-test SAVEPOINT. The first run after registering
+   the Extension handler leaked three EXTENSION rows and three mutated `end_date`s into
+   the shared test database — found, repaired, verified. Guards: unit tests patch
+   `management_transaction` (in **all five** handler modules, since each imports it by
+   name), and API tests not about a handler take `no_handlers`.
+2. **A fixed `mnemonic_code.description` deadlocks under xdist.** It carries a unique
+   index, so twelve workers inserting the same value contend on duplicate-key gap locks.
+   The org name and the mnemonic description must be *equal* to soft-link and *unique* to
+   insert — any future fixture seeding one needs both.
+3. **`allocate_next_gid` holds a global lock across a project creation.** It takes
+   `with_for_update()` on the lowest block, and `Project.create`'s `_ns_place_in_tree`
+   then issues a table-wide sibling shift. A non-issue in production — one process, one
+   action at a time — but it deadlocks a parallel suite, so the New tests stub the pool.
+
+### Unreachable by construction
+
+`no_resource_for_name` is the one legacy string this port structurally cannot emit. It is
+the **roster** path's resource lookup: legacy fans the roster out per `resources[]` entry
+and resolves each by name, while SAM's `add_user_to_project` is project-scoped and adds a
+member to every account at once. The allocation path's key variant fires instead. Declared
+and tested as unreachable rather than left as a silent gap.
