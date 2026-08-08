@@ -405,15 +405,28 @@ class TestDispatchAction:
         assert seen['action'] is payload
 
 
-class TestNothingIsRegisteredYet:
-    """Commit 4 is plumbing: the behaviour it replaces was a hardcoded
-    ``_finish(status='manual')``, and with an empty registry it stays exactly that."""
+class TestWhichHandlersExist:
+    """Importing ``sam.xras.handlers`` is the only wiring, so this is the inventory.
 
-    def test_the_registry_ships_empty(self):
-        assert dispatch.registered_services() == frozenset()
+    Update the expected set as each handler lands. It is asserted rather than left
+    implicit because a handler that silently failed to register would route live
+    traffic to the manual fallback while every test calling it directly still passed —
+    a ``manual`` row looks plausible, which is exactly what makes it dangerous.
+    """
+
+    #: Services with a handler today. Grows one entry per commit through the sprint.
+    BUILT = {'extend'}
+
+    def test_the_inventory_is_current(self):
+        import sam.xras.handlers  # noqa: F401  — registers on import
+        assert dispatch.registered_services() == self.BUILT
 
     @pytest.mark.parametrize('name', sorted(p.name for p in FIXTURE_DIR.glob('*.json')))
-    def test_every_corpus_payload_still_parks_as_manual(self, session, name):
+    def test_a_payload_whose_service_is_unbuilt_still_parks_as_manual(
+            self, session, clean_registry, name):
+        """With the registry emptied, every corpus payload takes the manual arm — and
+        names the handler it wanted, which is the distinction that saves triage time."""
         result = dispatch_action(session, load_fixture(name))
         assert result.status == 'manual'
-        assert result.service is not None, 'but it should know which handler it wants'
+        assert result.service is not None
+        assert 'no handler is registered' in result.reason

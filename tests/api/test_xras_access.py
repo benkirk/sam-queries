@@ -577,6 +577,28 @@ def _payload(name):
 
 
 @pytest.fixture
+def no_handlers():
+    """Empty the dispatcher's handler registry for the duration of one test.
+
+    Needed by any capture-off test that is *not* about a handler's behaviour. A
+    registered handler writes through ``management_transaction``, which **commits** —
+    on the route's own connection, outside the suite's per-test SAVEPOINT — so it would
+    leak rows into the shared xdist database. House convention (CLAUDE.md § Testing)
+    puts happy-path writes at the model layer for exactly this reason; the HTTP tier
+    covers auth, validation, status codes and the audit-row transitions.
+
+    Restores whatever was registered, so ordering between tests stays irrelevant.
+    """
+    from sam.xras import dispatch
+
+    saved = dict(dispatch._HANDLERS)
+    dispatch._HANDLERS.clear()
+    yield
+    dispatch._HANDLERS.clear()
+    dispatch._HANDLERS.update(saved)
+
+
+@pytest.fixture
 def action_log(app, monkeypatch):
     """Read and clean up the audit rows the route commits on its own connection.
 
@@ -765,11 +787,17 @@ class TestPostActionsCapture:
         assert action_log.one()['request_number'] == 'NCAR4232'
 
     def test_dispatch_marks_manual_when_capture_is_off(
-            self, app, xras_client, action_log):
-        """With capture off and no handlers registered, every type parks as 'manual'.
+            self, app, xras_client, action_log, no_handlers):
+        """With capture off and no handler for the service, the action parks as 'manual'.
 
         Legacy answers a bare 200 here too, but leaves no record that SAM quietly
         deferred the action to a human — the distinction this table exists to make.
+
+        ``no_handlers`` empties the registry for the duration. Two reasons, and the
+        second is the one that bites: a real handler would **commit** through
+        ``management_transaction``, leaking rows into the shared xdist database; and
+        the outcome would depend on whatever end dates the obfuscated snapshot happens
+        to hold, which is not what this test is about.
         """
         app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
         try:
@@ -786,7 +814,7 @@ class TestPostActionsCapture:
         assert row['processed_time'] is not None
 
     def test_both_timestamps_come_from_the_same_clock(
-            self, app, xras_client, action_log):
+            self, app, xras_client, action_log, no_handlers):
         """``processed_time`` must not precede ``received_time``.
 
         The column's ``DEFAULT CURRENT_TIMESTAMP`` resolves in the **MySQL server's**
@@ -1132,9 +1160,17 @@ class TestReplay:
         assert row['processed_time'] is not None
 
     def test_replay_dispatches_when_capture_is_off(
-            self, app, xras_client, action_log):
-        """With the kill switch off a replay behaves exactly like a fresh post —
-        which today means the manual-fallback path, since no handler is registered."""
+            self, app, xras_client, action_log, no_handlers):
+        """With the kill switch off a replay behaves exactly like a fresh post — here,
+        the manual-fallback path, because ``no_handlers`` empties the registry.
+
+        That fixture is not decoration. Without it this test dispatches the **real**
+        Extension handler against whatever project the seed payload names, and
+        ``management_transaction`` commits the result into the shared xdist database.
+        It is the same hazard as ``test_dispatch_marks_manual_when_capture_is_off``,
+        and it is easy to reintroduce: any capture-off test that is not specifically
+        about a handler needs this fixture.
+        """
         from webapp.api.xras.replay import replay_action
 
         self._seed(xras_client)

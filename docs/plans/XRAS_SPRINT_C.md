@@ -230,6 +230,64 @@ project.getAccounts().stream()
   / `requested_amount` / `alloc_start_date` **NULL**, `user_id` NULL, `propagated`
   false.
 
+#### As built
+
+`src/sam/xras/handlers/extension.py` + `extend_account_allocation` in
+`sam/manage/extend.py`. Registered via `sam/xras/handlers/__init__.py`, which
+`webapp/api/xras/actions.py` imports for the side effect.
+
+**The assembler composes one factory, so the Extension path validates almost nothing.**
+`ExtendProjectAssembler` wires only `ExtendProjectAllocationActionCommandsFactory` — no
+project factory, no roster factory. So an Extension can emit **none** of `Missing
+title`, `Missing pi role`, `PI %s is not in database` or `Username %s is missing`. Its
+entire input is `actionEndDate`. Worth stating because the corpus makes it look
+otherwise: both Extensions carry a populated `roles[]` that nothing reads. This is
+stronger than the § *roster* note about `resources: []` producing zero add-user
+commands — the factory is never constructed at all.
+
+**Three findings that changed the implementation:**
+
+1. ⚠️ **`!creationTime.after(now)` is not ported.** It compares two clocks that are not
+   the same clock: `account.creation_time` carries `server_default=CURRENT_TIMESTAMP`
+   and resolves in the **MySQL server's** timezone (UTC in dev/CI) while `now` is
+   naive-Mountain. Measured against the test container the same second: `NOW()` = 12:45,
+   `datetime.now()` = 06:45 — **six hours**. The conjunct can only ever *exclude*, so
+   honouring it under skew makes an Extension posted within six hours of a New silently
+   skip the account it should extend, report `processed`, and write nothing. Dropping it
+   is a no-op wherever the clocks agree. Same family as the `received_time` default this
+   repo already removed for the same reason.
+2. **The NULL row shape is the table's convention, not just legacy's.** Of the 10,504
+   EXTENSION rows *not* written by the XRAS/AMIE integrations, **10,489 also carry NULL**
+   `transaction_amount`, `requested_amount` and `alloc_start_date` — 20,603 of 20,618
+   rows overall. So this is not "bug-compatibility", it is the column convention.
+   `log_allocation_transaction` snapshots those columns unconditionally, so
+   `extend_account_allocation` nulls them on the row it just wrote. Deliberately *not*
+   fixed in the helper: that would also change the operator-facing Extend Allocation
+   flow's audit output. Reasonable follow-up; the measurement above is the argument.
+3. **`Allocation.extend_allocation` could not be reused** — it writes the snapshot
+   shape, sets `propagated` on child nodes (production has **zero** propagated XRAS
+   rows), has no equal-end-date skip, and takes a non-optional `user_id`.
+
+**`Account.is_active` is the wrong predicate here** and this is the case where the
+house rule (§ 5) gives the wrong answer: SAM's hybrid on that model is `SoftDeleteMixin`
+("not deleted"), while legacy means `project.isActive() && resource.isCommissioned(now)`.
+Composed explicitly from the other models' documented predicates, with the soft-delete
+check kept *as well* — a declared divergence, unobservable (zero deleted accounts of
+17,989), but extending a deleted account would be wrong regardless.
+
+**Detach writes an audit row; legacy's `disinherit()` does not.** Production holds
+**zero** DETACH rows against 2,390 inheriting allocations. Routed through
+`detach_allocation`, which emits `transaction_type='ADJUSTMENT'` with a `[DETACH]` tag
+and `transaction_amount = 0.0`. Declared divergence — SAM's audit trail is the product.
+
+**Testing hazard, recorded because it bit once.** A registered handler commits through
+`management_transaction` on the route's own connection, *outside* the suite's per-test
+SAVEPOINT. The first run after registering this handler leaked three EXTENSION rows and
+three mutated `end_date`s into the shared test database (found, repaired, verified).
+Two guards now exist: unit tests patch `management_transaction` to flush instead of
+commit, and API tests that are not about a handler take the `no_handlers` fixture. **Any
+capture-off API test added from here needs that fixture.**
+
 ### Supplement
 
 Per requested resource; existing allocation looked up via `Project.getAccount(name)`

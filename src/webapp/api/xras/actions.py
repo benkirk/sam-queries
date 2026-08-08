@@ -59,6 +59,11 @@ from sam.integration.xras import XrasActionLog
 from sam.schemas.forms import XrasActionSchema
 from sam.xras.dispatch import dispatch_action, parse_enabled_action_types
 from sam.xras.errors import XrasActionRejected
+# Imported for its side effect: every handler module registers itself with the
+# dispatcher at import time. Without this the registry is empty and every action
+# takes the manual-fallback arm — which fails quietly, as a plausible-looking
+# 'manual' row rather than an error.
+import sam.xras.handlers  # noqa: F401
 from webapp.extensions import csrf, db
 from webapp.utils.api_auth import get_auth_actor
 
