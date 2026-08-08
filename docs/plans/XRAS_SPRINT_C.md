@@ -613,6 +613,25 @@ route, `src/webapp/dashboards/admin/projects_routes.py:600-687`, runs
    is one negative source to N positive destinations summing to zero with the source
    clamped to available. Transfer routes to manual this sprint.
 
+   **As built** — `src/sam/xras/handlers/transfer.py` is a *registered* handler that
+   returns `manual` with a reason, not an absent one. The difference matters at 3am:
+   an unregistered service reports `no handler is registered for 'transfer'`, which
+   reads like something is broken, while this records that the action was recognised
+   and deliberately deferred, and that legacy does service it. A test pins that the two
+   messages do not read the same.
+
+   Three reasons it is not built, in order of weight: **zero production traffic** in the
+   175 measured posts and none in the corpus, so there is no payload to port against and
+   no outcome to diff against; the one primitive that looks like a fit is a different
+   operation sharing a name; and it is the only action type that moves allocation
+   **between projects**, so a wrong implementation is wrong in two places at once and
+   the error is a real balance rather than a date.
+
+   All five Transfer error strings are implemented and pinned regardless — including
+   `Transfer requires one source resource (negative amount)`, the third arity string
+   missing from § 3.4 — so a future implementation starts from verified bytes. The
+   query to watch is `status='manual' AND action_type='Transfer'`.
+
 ---
 
 ## Allocation-type resolution — eleven strategies, first non-null wins

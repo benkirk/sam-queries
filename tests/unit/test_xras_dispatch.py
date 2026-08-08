@@ -415,7 +415,7 @@ class TestWhichHandlersExist:
     """
 
     #: Services with a handler today. Grows one entry per commit through the sprint.
-    BUILT = {'extend', 'supplement', 'adjust', 'add'}
+    BUILT = {'extend', 'supplement', 'adjust', 'add', 'update', 'transfer'}
 
     def test_the_inventory_is_current(self):
         import sam.xras.handlers  # noqa: F401  — registers on import
@@ -430,3 +430,47 @@ class TestWhichHandlersExist:
         assert result.status == 'manual'
         assert result.service is not None
         assert 'no handler is registered' in result.reason
+
+
+class TestTransferIsDeliberatelyManual:
+    """The sixth service is registered but does not apply anything.
+
+    Registering a handler that returns ``manual`` is not the same as leaving the
+    service unbuilt: the reason lands on the audit row, so an operator triaging the
+    parked action learns it was recognised and intentionally deferred rather than
+    guessing whether something is broken.
+    """
+
+    def test_it_is_registered(self):
+        import sam.xras.handlers  # noqa: F401
+        assert 'transfer' in dispatch.registered_services()
+
+    def test_it_parks_the_action_and_says_why(self, session):
+        import sam.xras.handlers  # noqa: F401
+        from factories import make_project
+        project = make_project(session)
+
+        result = dispatch_action(session, act('Transfer', project.projcode))
+        assert result.status == 'manual'
+        assert result.service == 'transfer'
+        assert 'deliberately not serviced' in result.reason
+        assert 'Legacy SAM does service it' in result.reason
+
+    def test_the_reason_distinguishes_it_from_an_unbuilt_handler(self, session,
+                                                                 clean_registry):
+        """An unregistered service says "no handler is registered"; this one explains
+        a decision. The two must not read the same."""
+        from factories import make_project
+        project = make_project(session)
+        unbuilt = dispatch_action(session, act('Transfer', project.projcode))
+        assert 'no handler is registered' in unbuilt.reason
+
+    def test_the_transfer_vocabulary_is_complete_even_though_it_is_unbuilt(self):
+        """All five strings are implemented and pinned, so a future implementation
+        starts from verified bytes rather than re-reading the Java."""
+        from sam.xras import errors as e
+        assert e.transfer_one_source_only()
+        assert e.transfer_requires_source()
+        assert e.transfer_requires_destination()
+        assert e.transfer_source_has_no_allocation('P', 'R')
+        assert e.transfer_credit_exceeds_debit(1.0, 2.0)

@@ -23,5 +23,6 @@ from . import supplement  # noqa: F401
 from . import adjustment  # noqa: F401
 from . import new  # noqa: F401
 from . import update  # noqa: F401
+from . import transfer  # noqa: F401
 
-__all__ = ['extension', 'supplement', 'adjustment', 'new', 'update']
+__all__ = ['extension', 'supplement', 'adjustment', 'new', 'update', 'transfer']
