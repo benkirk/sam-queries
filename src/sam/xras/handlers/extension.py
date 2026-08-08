@@ -34,19 +34,16 @@ from typing import List
 
 from sam.accounting.allocations import Allocation
 from sam.manage.extend import extend_account_allocation
-from sam.manage.transaction import management_transaction
-from sam.projects.projects import Project
 
 from .. import errors as e
 from ..dispatch import DispatchResult, register
-from ..errors import ActionErrors
-from ..wire import get_field
 from ._allocations import account_is_active, effective_end_date, latest_allocation
 from ._fields import parse_action_end_date
+from .base import ActionHandler
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['handle_extension', 'EXTENSION_COMMENT']
+__all__ = ['ExtensionHandler', 'handle_extension', 'EXTENSION_COMMENT']
 
 #: ``transaction_comment`` on every row this handler writes.
 #:
@@ -60,24 +57,26 @@ __all__ = ['handle_extension', 'EXTENSION_COMMENT']
 EXTENSION_COMMENT = 'XrasAction Extension Request'
 
 
-def handle_extension(session, action) -> DispatchResult:
-    """Extend the latest allocation of every active account on the project.
+class ExtensionHandler(ActionHandler):
+    """Extend the latest allocation of every active account on the project."""
 
-    Raises:
-        XrasActionRejected: the new end date is missing, unparseable, or would
-            shrink at least one account's allocation. Nothing is written.
-    """
-    projcode = (get_field(action, 'requestNumber') or '').strip()
-    project = Project.get_by_projcode(session, projcode)
-    errs = ActionErrors()
+    service = 'extend'
 
-    new_end = parse_action_end_date(action, errs)
+    def assemble(self) -> None:
+        """Examine every account, report everything, write nothing.
 
-    # Assemble: examine every account, report everything, write nothing.
-    targets: List[Allocation] = []
-    now = datetime.now()
-    if project is not None and new_end is not None:
-        for account in project.accounts:
+        Raises nothing itself: one un-extendable account reports and the loop carries
+        on, so a second bad account reports too. ``run()``'s ``raise_if_any()`` then
+        aborts the whole action, which is why the 422 is worth reading.
+        """
+        self.new_end = parse_action_end_date(self.action, self.errors)
+
+        self.targets: List[Allocation] = []
+        now = datetime.now()
+        if self.project is None or self.new_end is None:
+            return
+
+        for account in self.project.accounts:
             if not account_is_active(account, now):
                 continue
             if not account.allocations:              # Account.hasAllocations()
@@ -87,37 +86,45 @@ def handle_extension(session, action) -> DispatchResult:
                 continue
 
             existing_end = effective_end_date(allocation)
-            if existing_end is not None and new_end < existing_end:
+            if existing_end is not None and self.new_end < existing_end:
                 # Legacy drops *this* allocation and carries on, so a second bad
-                # account reports too — then the accumulated error aborts everything.
-                errs.report(e.extension_end_date_before_existing(
+                # account reports too.
+                self.errors.report(e.extension_end_date_before_existing(
                     existing_end.strftime('%Y-%m-%d')))
                 continue
-            targets.append(allocation)
+            self.targets.append(allocation)
 
-    # Check once. Nothing above opened a transaction.
-    errs.raise_if_any()
-
-    # Execute.
-    extended: List[Allocation] = []
-    with management_transaction(session):
-        for allocation in targets:
-            extended.extend(extend_account_allocation(
-                session, allocation,
-                new_end=new_end,
+    def execute(self) -> None:
+        self.extended: List[Allocation] = []
+        for allocation in self.targets:
+            self.extended.extend(extend_account_allocation(
+                self.session, allocation,
+                new_end=self.new_end,
                 comment=EXTENSION_COMMENT,
             ))
 
-    if not extended:
-        # Every target was already at the requested end date. Legacy reports success
-        # here too — its `doExtend` returns early per node and the action still
-        # completes — and this is a candidate explanation for the "2 successful posts
-        # that mutated nothing" in § 1.2 of the reference doc.
-        logger.info(
-            'XRAS extension for %s changed nothing: %d account(s) already end %s',
-            projcode, len(targets), new_end.strftime('%Y-%m-%d'))
+    def result(self, **overrides) -> DispatchResult:
+        """⚠️ The log below fires **after** the commit, and must keep doing so.
 
-    return DispatchResult(status='processed', service='extend', projcode=projcode)
+        It reports that a successful action changed nothing. Moving it into
+        ``execute()`` would fire it before the transaction closed, so a run that then
+        failed to commit would still have claimed it completed.
+        """
+        if not self.extended:
+            # Every target was already at the requested end date. Legacy reports
+            # success here too — its `doExtend` returns early per node and the action
+            # still completes — and this is a candidate explanation for the "2
+            # successful posts that mutated nothing" in § 1.2 of the reference doc.
+            logger.info(
+                'XRAS extension for %s changed nothing: %d account(s) already end %s',
+                self.projcode, len(self.targets),
+                self.new_end.strftime('%Y-%m-%d'))
+        return super().result(**overrides)
+
+
+def handle_extension(session, action) -> DispatchResult:
+    """The registry's contract: ``(session, action) -> DispatchResult``."""
+    return ExtensionHandler(session, action).run()
 
 
 register('extend', handle_extension)

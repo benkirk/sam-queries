@@ -41,25 +41,17 @@ from sam.core.groups import GidAllocation, NoAvailableGidError
 from sam.core.organizations import ProjectOrganization
 from sam.core.users import User
 from sam.manage import add_user_to_project
-from sam.manage.allocations import create_allocation
-from sam.manage.transaction import management_transaction
 from sam.projects.contracts import ProjectContract
 from sam.projects.projects import Project, ProjcodeExhaustedError, next_projcode
 
 from ..dispatch import DispatchResult, register
-from ..errors import ActionErrors
 from ..extractors import (
     resolve_allocation_type,
     resolve_area_of_interest,
     resolve_mnemonic_code,
 )
 from ..roster import resolve_roster
-from ..wire import get_field
-from ._allocations import (
-    auth_at_panel_meeting,
-    create_window_from_action_dates,
-    mark_panel_authorised,
-)
+from ._allocations import auth_at_panel_meeting, create_window_from_action_dates
 from ._fields import (
     abstract,
     parse_action_begin_date,
@@ -70,10 +62,11 @@ from ._fields import (
     title,
     transaction_amount,
 )
+from .base import ActionHandler
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['handle_new']
+__all__ = ['NewHandler', 'handle_new']
 
 
 class XrasProjectCreationFailed(RuntimeError):
@@ -95,137 +88,144 @@ class XrasProjectCreationFailed(RuntimeError):
     """
 
 
-def _plan_allocations(session, action, errs: ActionErrors) -> List[tuple]:
-    """One allocation per ``resources[]`` entry, using the **action's own** dates.
+class NewHandler(ActionHandler):
+    """Create a project, its contracts, allocations and members — then inactivate it."""
 
-    ⚠️ The contrast with Supplement matters: that handler derives its create-branch
-    window from *today* and the project's history, while New uses ``actionBeginDate``
-    and ``actionEndDate``. Same table, two different date policies, both legacy's, and
-    both now named — ``create_window_from_action_dates`` is this one.
+    service = 'add'
 
-    ⚠️ Both dates are parsed **above** the loop, so date errors precede resource errors
-    in the 422 body. That order is asserted across ten test modules.
-    """
-    begin = parse_action_begin_date(action, errs)
-    end = parse_action_end_date(action, errs)
+    def assemble(self) -> None:
+        """Resolve everything and report everything, before a projcode is drawn.
 
-    planned: List[tuple] = []
-    for wire_resource in get_field(action, 'resources') or ():
-        resource = resolve_resource(session, wire_resource, errs)
-        amount = transaction_amount(wire_resource, errs)
-        if resource is None or amount is None or begin is None or end is None:
-            continue
-        window = create_window_from_action_dates(resource, begin, end, errs)
-        if window is None:
-            continue
-        start, alloc_end = window
-        planned.append((resource, amount, start, alloc_end,
-                        resource_comment(wire_resource)))
-    return planned
+        ⚠️ ``self.project`` is always ``None`` here, by dispatch invariant: this
+        handler is selected only when no project of that name exists. The project this
+        action creates lives on :attr:`created_project`, deliberately under a different
+        name — see ``ActionHandler.project``.
+        """
+        self.title = title(self.action, self.errors)
+        self.roster = resolve_roster(self.session, self.action, self.errors)
+        self.aoi = resolve_area_of_interest(self.session, self.action, self.errors)
+        self.allocation_type = resolve_allocation_type(
+            self.session, self.action, self.errors)
+        self.mnemonic = resolve_mnemonic_code(
+            self.session, self.action, self.errors,
+            pi_username=self.roster.pi_username)
+        self.contracts = plan_contracts(self.session, self.action, self.errors)
+        self.allocations = self._plan_allocations()
+        self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
+        self.lead = (User.get_by_username(self.session, self.roster.pi_username)
+                     if self.roster.pi_username else None)
+        self.admin = (User.get_by_username(self.session, self.roster.admin_username)
+                      if self.roster.admin_username else None)
+        self.members = [User.get_by_username(self.session, name)
+                        for name in self.roster.member_usernames]
+        self.warnings = self.roster.warnings
 
-def handle_new(session, action) -> DispatchResult:
-    """Create a project, its contracts, allocations and members — then inactivate it.
+    def _plan_allocations(self):
+        """One allocation per ``resources[]`` entry, using the **action's own** dates.
 
-    Raises:
-        XrasActionRejected: anything the assembly reported. Nothing is written; the
-            projcode counter and the GID pool are untouched, because both are drawn
-            **inside** the transaction.
-    """
-    errs = ActionErrors()
+        ⚠️ The contrast with Supplement matters: that handler derives its create-branch
+        window from *today* and the project's history, while New uses ``actionBeginDate``
+        and ``actionEndDate``. Same table, two different date policies, both legacy's,
+        and both now named — ``create_window_from_action_dates`` is this one.
 
-    # ---- assemble: everything is resolved and reported before anything is written.
-    project_title = title(action, errs)
-    roster = resolve_roster(session, action, errs)
-    aoi = resolve_area_of_interest(session, action, errs)
-    allocation_type = resolve_allocation_type(session, action, errs)
-    mnemonic = resolve_mnemonic_code(session, action, errs,
-                                     pi_username=roster.pi_username)
-    contracts = plan_contracts(session, action, errs)
-    allocations = _plan_allocations(session, action, errs)
-    auth = auth_at_panel_meeting(session, action)
+        ⚠️ Both dates are parsed **above** the loop, so date errors precede resource
+        errors in the 422 body. That order is asserted across ten test modules.
+        """
+        begin = parse_action_begin_date(self.action, self.errors)
+        end = parse_action_end_date(self.action, self.errors)
 
-    lead = (User.get_by_username(session, roster.pi_username)
-            if roster.pi_username else None)
-    admin = (User.get_by_username(session, roster.admin_username)
-             if roster.admin_username else None)
-    members = [User.get_by_username(session, name)
-               for name in roster.member_usernames]
+        planned: List[tuple] = []
+        for wire_resource in self.get('resources') or ():
+            resource = resolve_resource(self.session, wire_resource, self.errors)
+            amount = transaction_amount(wire_resource, self.errors)
+            if resource is None or amount is None or begin is None or end is None:
+                continue
+            window = create_window_from_action_dates(
+                resource, begin, end, self.errors)
+            if window is None:
+                continue
+            start, alloc_end = window
+            planned.append((resource, amount, start, alloc_end,
+                            resource_comment(wire_resource)))
+        return planned
 
-    errs.raise_if_any()
+    def execute(self) -> None:
+        """In the order ``AddProjectAssembler`` marks "important!!".
 
-    # ---- execute, in the order AddProjectAssembler marks "important!!".
-    with management_transaction(session):
-        facility_id = allocation_type.panel.facility_id
+        ⚠️ ``self.lead`` is dereferenced without a guard. That is safe **only** because
+        assembly reported ``Missing pi role`` / ``PI %s is not in database`` and
+        ``raise_if_any()`` has already fired. The invariant now spans two methods; do
+        not weaken the roster reporting without revisiting this line.
+        """
+        assert self.lead is not None, 'assemble() must reject a roster with no PI'
+
+        facility_id = self.allocation_type.panel.facility_id
         try:
             projcode = next_projcode(
-                session, facility_id=facility_id,
-                mnemonic_code_id=mnemonic.mnemonic_code_id, allocate=True)
+                self.session, facility_id=facility_id,
+                mnemonic_code_id=self.mnemonic.mnemonic_code_id, allocate=True)
         except (ValueError, ProjcodeExhaustedError) as exc:
             raise XrasProjectCreationFailed(
                 f'Could not generate a project code: {exc}') from exc
+        self.projcode_result = projcode
 
         try:
-            unix_gid = GidAllocation.allocate_next_gid(session)
+            unix_gid = GidAllocation.allocate_next_gid(self.session)
         except NoAvailableGidError as exc:
             raise XrasProjectCreationFailed(
                 'GID pool is exhausted — no Unix GID could be allocated') from exc
 
         # 1. The project, created ACTIVE. Steps 2-4 depend on it.
         project = Project.create(
-            session,
+            self.session,
             projcode=projcode,
-            title=project_title,
-            abstract=abstract(action),
-            project_lead_user_id=lead.user_id,
-            project_admin_user_id=admin.user_id if admin else None,
-            area_of_interest_id=aoi.area_of_interest_id,
-            allocation_type_id=allocation_type.allocation_type_id,
+            title=self.title,
+            abstract=abstract(self.action),
+            project_lead_user_id=self.lead.user_id,
+            project_admin_user_id=self.admin.user_id if self.admin else None,
+            area_of_interest_id=self.aoi.area_of_interest_id,
+            allocation_type_id=self.allocation_type.allocation_type_id,
             unix_gid=unix_gid,
             # ChargeType.NONEXEMPT, always — legacy's getChargeType() is a constant.
             charging_exempt=False,
         )
+        self.created_project = project
 
         # The lead's organization, mirroring the admin create-project flow.
-        organization = _lead_organization(lead)
+        organization = _lead_organization(self.lead)
         if organization is not None:
             ProjectOrganization.create(
-                session, project_id=project.project_id,
+                self.session, project_id=project.project_id,
                 organization_id=organization.organization_id)
 
         # 2. Contracts.
-        for contract in contracts:
-            ProjectContract.create(session, project_id=project.project_id,
+        for contract in self.contracts:
+            ProjectContract.create(self.session, project_id=project.project_id,
                                    contract_id=contract.contract_id)
 
         # 3. Allocations — these create the accounts step 4 needs.
-        for resource, amount, start, end, comment in allocations:
-            created = create_allocation(
-                session,
-                project_id=project.project_id,
-                resource_id=resource.resource_id,
-                amount=amount,
-                start_date=start,
-                end_date=end,
-                user_id=None,
-                comment=comment,
-            )
-            if auth:
-                mark_panel_authorised(session, created)
+        for resource, amount, start, end, comment in self.allocations:
+            self.create_allocation_for(
+                project, resource, amount=amount, start=start, end=end,
+                comment=comment, panel_authorised=self.panel_authorised)
 
         # 4. Members. Skipped entirely when there are no accounts —
         # `add_user_to_project` raises rather than no-ops, and an Educational
         # allocation with `resources: []` is a real shape.
-        if allocations:
-            for member in members:
+        if self.allocations:
+            for member in self.members:
                 if member is not None:
-                    add_user_to_project(session, project.project_id, member.user_id)
+                    add_user_to_project(self.session, project.project_id,
+                                        member.user_id)
 
         # 5. Inactivate, last. See the module docstring for why it cannot move.
         project.update(active=False)
 
-    return DispatchResult(status='processed', service='add', projcode=projcode,
-                          warnings=roster.warnings)
+
+def handle_new(session, action) -> DispatchResult:
+    """The registry's contract: ``(session, action) -> DispatchResult``."""
+    return NewHandler(session, action).run()
 
 
 def _lead_organization(lead: User):

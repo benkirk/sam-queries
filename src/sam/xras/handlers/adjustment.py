@@ -45,137 +45,116 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Adjustment*.
 """
 
 import logging
-from typing import List, Tuple
+from typing import List
 
-from sam.manage.allocations import adjust_allocation, create_allocation
-from sam.manage.transaction import management_transaction
-from sam.projects.projects import Project
+from sam.manage.allocations import adjust_allocation
 
 from .. import errors as e
 from ..dispatch import DispatchResult, register
-from ..errors import ActionErrors
-from ..wire import get_field
 from ._allocations import (
     account_for_resource,
     auth_at_panel_meeting,
     create_window_from_project_history,
     latest_allocation,
-    mark_panel_authorised,
 )
 from ._fields import resolve_resource, resource_comment, transaction_amount
+from .base import ActionHandler
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['handle_adjustment']
+__all__ = ['AdjustmentHandler', 'handle_adjustment']
 
 
-def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]]:
-    """Assemble, reporting everything. Returns ``(adjustments, creations)``.
+class AdjustmentHandler(ActionHandler):
+    """Apply a signed correction to each requested resource's allocation."""
 
-    Structurally Supplement's ``_plan`` with the sign gate replaced and two guards
-    added — the create branch's non-positive refusal and the below-zero one.
+    service = 'adjust'
 
-    ⚠️ This function used to argue for its own existence: *"the two differ in three
-    places and a shared function with three flags reads worse than two functions that
-    each say what they do"*. The count was wrong (four behavioural differences, not
-    three) and so was the conclusion — the thirty duplicated lines are where the
-    ``auth`` flag went missing for an entire sprint. See
-    ``docs/plans/XRAS_HANDLER_REFACTOR.md``.
-    """
-    projcode = (get_field(action, 'requestNumber') or '').strip()
-    project = Project.get_by_projcode(session, projcode)
-    if project is None:                              # pragma: no cover - dispatcher checked
-        return [], []
+    def assemble(self) -> None:
+        """Supplement's assembly with the sign gate replaced and two guards added:
+        the create branch's non-positive refusal and the below-zero one.
 
-    auth = auth_at_panel_meeting(session, action)
-    adjustments: List[tuple] = []
-    creations: List[tuple] = []
+        ⚠️ This used to be a separate ``_plan`` arguing for its own existence — *"the
+        two differ in three places and a shared function with three flags reads worse
+        than two functions that each say what they do"*. The count was wrong (four,
+        not three) and so was the conclusion: the duplicated thirty lines are where
+        the panel-authorisation flag went missing for an entire sprint. What actually
+        needed naming was the shared **create policy**, not the whole planner.
+        """
+        self.adjustments: List[tuple] = []
+        self.creations: List[tuple] = []
+        if self.project is None:                     # pragma: no cover - dispatcher checked
+            return
 
-    for wire_resource in get_field(action, 'resources') or ():
-        resource = resolve_resource(session, wire_resource, errs)
-        if resource is None:
-            continue
+        self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
-        account = account_for_resource(project, resource)
-        allocation = latest_allocation(account) if account is not None else None
-        amount = transaction_amount(wire_resource, errs)
-
-        if allocation is None:
-            # Create branch, identical to Supplement's — same named policy, so the two
-            # cannot drift the way they did when each carried its own thirty lines.
-            window = create_window_from_project_history(project, projcode, errs)
-            if window is None:
+        for wire_resource in self.get('resources') or ():
+            resource = resolve_resource(self.session, wire_resource, self.errors)
+            if resource is None:
                 continue
+
+            account = account_for_resource(self.project, resource)
+            allocation = latest_allocation(account) if account is not None else None
+            amount = transaction_amount(wire_resource, self.errors)
+
+            if allocation is None:
+                # Create branch, identical to Supplement's — same named policy, so the
+                # two cannot drift the way they did when each carried its own copy.
+                window = create_window_from_project_history(
+                    self.project, self.projcode, self.errors)
+                if window is None:
+                    continue
+                if amount is None:
+                    continue
+                if amount <= 0:
+                    # There is nothing to create. Legacy would build the add command
+                    # with a non-positive amount and fail downstream on
+                    # `Allocation.create`'s `amount > 0` validation; reporting is the
+                    # legible version of that.
+                    #
+                    # ⚠️ This guard is Adjustment's alone. Supplement has no equivalent
+                    # and must not gain one here — that would turn a Supplement crash
+                    # into a 422, which is a behaviour change nobody asked for.
+                    self.errors.report(e.adjustment_would_go_negative(
+                        resource.resource_name, 0.0, amount))
+                    continue
+                start, end = window
+                self.creations.append((resource, amount,
+                                       resource_comment(wire_resource), start, end))
+                continue
+
             if amount is None:
                 continue
-            if amount <= 0:
-                # There is nothing to create. Legacy would build the add command with a
-                # non-positive amount and fail downstream on `Allocation.create`'s
-                # `amount > 0` validation; reporting is the legible version of that.
-                errs.report(e.adjustment_would_go_negative(
-                    resource.resource_name, 0.0, amount))
+            if amount == 0:
+                logger.warning(
+                    'XRAS adjustment for %s on %s is zero; nothing to apply',
+                    self.projcode, resource.resource_name)
                 continue
-            start, end = window
-            creations.append((resource, amount, resource_comment(wire_resource),
-                              start, end, auth))
-            continue
 
-        if amount is None:
-            continue
-        if amount == 0:
-            logger.warning(
-                'XRAS adjustment for %s on %s is zero; nothing to apply',
-                projcode, resource.resource_name)
-            continue
+            current = float(allocation.amount or 0.0)
+            if current + amount < 0:
+                self.errors.report(e.adjustment_would_go_negative(
+                    resource.resource_name, current, amount))
+                continue
 
-        current = float(allocation.amount or 0.0)
-        if current + amount < 0:
-            errs.report(e.adjustment_would_go_negative(
-                resource.resource_name, current, amount))
-            continue
+            self.adjustments.append((allocation, amount,
+                                     resource_comment(wire_resource)))
 
-        adjustments.append((allocation, amount, resource_comment(wire_resource)))
-
-    return adjustments, creations
+    def execute(self) -> None:
+        for allocation, amount, comment in self.adjustments:
+            # ⚠️ No `auth_at_panel_mtg` here, and that is not an omission:
+            # `buildAdjustAllocationCommand` never sets it where the supplement one
+            # does. The CREATE rows below *do* get it — see the module docstring.
+            adjust_allocation(self.session, allocation, amount=amount, comment=comment)
+        for resource, amount, comment, start, end in self.creations:
+            self.create_allocation_for(
+                self.project, resource, amount=amount, start=start, end=end,
+                comment=comment, panel_authorised=self.panel_authorised)
 
 
 def handle_adjustment(session, action) -> DispatchResult:
-    """Apply a signed correction to each requested resource's allocation.
-
-    Raises:
-        XrasActionRejected: an unmapped resource key, a missing or unparseable amount,
-            a create branch with no usable end date, or an adjustment that would take
-            an allocation below zero. Nothing is written.
-    """
-    projcode = (get_field(action, 'requestNumber') or '').strip()
-    errs = ActionErrors()
-    adjustments, creations = _plan(session, action, errs)
-
-    errs.raise_if_any()
-
-    project = Project.get_by_projcode(session, projcode)
-    with management_transaction(session):
-        for allocation, amount, comment in adjustments:
-            adjust_allocation(session, allocation, amount=amount, comment=comment)
-        for resource, amount, comment, start, end, auth in creations:
-            created = create_allocation(
-                session,
-                project_id=project.project_id,
-                resource_id=resource.resource_id,
-                amount=amount,
-                start_date=start,
-                end_date=end,
-                user_id=None,
-                comment=comment,
-            )
-            if auth:
-                # ⚠️ The CREATE row is marked; the ADJUSTMENT row is not. Two different
-                # legacy commands: `buildAddAllocationCommand` (copied verbatim from
-                # the supplement factory) calls `.authAtPanelMeeting(...)`,
-                # `buildAdjustAllocationCommand` does not. The asymmetry is the Java's.
-                mark_panel_authorised(session, created)
-
-    return DispatchResult(status='processed', service='adjust', projcode=projcode)
+    """The registry's contract: ``(session, action) -> DispatchResult``."""
+    return AdjustmentHandler(session, action).run()
 
 
 register('adjust', handle_adjustment)

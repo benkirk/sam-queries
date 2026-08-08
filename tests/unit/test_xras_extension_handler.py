@@ -69,17 +69,24 @@ def committing(session, monkeypatch):
     would release it and leak rows into the shared xdist database. Patching the
     context manager to flush instead keeps every assertion below true (the rows
     exist, and are visible on this session) while leaving the rollback intact.
+
+    ⚠️ **One patch point, and that is new.** This used to name a handler module, and
+    every test that drove more than one handler had to patch five of them — a missed
+    one commits for real while the assertions still pass, which is the silent version
+    of this failure and has already leaked rows once. ``management_transaction`` is now
+    imported only by ``sam.xras.handlers.base``, and
+    ``tests/unit/test_xras_transaction_seam.py`` enforces that.
     """
     from contextlib import contextmanager
 
-    import sam.xras.handlers.extension as handler
+    import sam.xras.handlers.base as base
 
     @contextmanager
     def flushing(sess):
         yield sess
         sess.flush()
 
-    monkeypatch.setattr(handler, 'management_transaction', flushing)
+    monkeypatch.setattr(base, 'management_transaction', flushing)
     return session
 
 

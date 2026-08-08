@@ -30,118 +30,94 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Supplement*.
 """
 
 import logging
-from typing import List, Tuple
+from typing import List
 
-from sam.manage.allocations import create_allocation, supplement_allocation
-from sam.manage.transaction import management_transaction
-from sam.projects.projects import Project
+from sam.manage.allocations import supplement_allocation
 
 from ..dispatch import DispatchResult, register
-from ..errors import ActionErrors
-from ..wire import get_field
 from ._allocations import (
     account_for_resource,
     auth_at_panel_meeting,
     create_window_from_project_history,
     latest_allocation,
-    mark_panel_authorised,
 )
 from ._fields import resolve_resource, resource_comment, transaction_amount
+from .base import ActionHandler
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['handle_supplement']
+__all__ = ['SupplementHandler', 'handle_supplement']
 
 
-def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]]:
-    """Assemble, reporting everything. Returns ``(supplements, creations)``.
+class SupplementHandler(ActionHandler):
+    """Add to each requested resource's allocation, creating it where there is none."""
 
-    Pure: examines the whole ``resources[]`` array and writes nothing, so one bad
-    resource still lets the rest report their own problems before the single
-    ``raise_if_any()``.
-    """
-    projcode = (get_field(action, 'requestNumber') or '').strip()
-    project = Project.get_by_projcode(session, projcode)
-    if project is None:                              # pragma: no cover - dispatcher checked
-        return [], []
+    service = 'supplement'
 
-    auth = auth_at_panel_meeting(session, action)
-    supplements: List[tuple] = []
-    creations: List[tuple] = []
+    def assemble(self) -> None:
+        """Examine the whole ``resources[]`` array and write nothing, so one bad
+        resource still lets the rest report their own problems before the single
+        ``raise_if_any()``."""
+        self.supplements: List[tuple] = []
+        self.creations: List[tuple] = []
+        if self.project is None:                     # pragma: no cover - dispatcher checked
+            return
 
-    for wire_resource in get_field(action, 'resources') or ():
-        resource = resolve_resource(session, wire_resource, errs)
-        if resource is None:
-            continue
+        # ⚠️ During assembly, deliberately — see ActionHandler's docstring.
+        self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
-        account = account_for_resource(project, resource)
-        allocation = latest_allocation(account) if account is not None else None
-        amount = transaction_amount(wire_resource, errs)
-
-        if allocation is None:
-            # Create branch. Note the amount is still required — legacy passes it
-            # straight into the add command, where a null would fail validation.
-            window = create_window_from_project_history(project, projcode, errs)
-            if window is None:
+        for wire_resource in self.get('resources') or ():
+            resource = resolve_resource(self.session, wire_resource, self.errors)
+            if resource is None:
                 continue
+
+            account = account_for_resource(self.project, resource)
+            allocation = latest_allocation(account) if account is not None else None
+            amount = transaction_amount(wire_resource, self.errors)
+
+            if allocation is None:
+                # Create branch. Note the amount is still required — legacy passes it
+                # straight into the add command, where a null would fail validation.
+                window = create_window_from_project_history(
+                    self.project, self.projcode, self.errors)
+                if window is None:
+                    continue
+                if amount is None:
+                    continue
+                start, end = window
+                self.creations.append((resource, amount,
+                                       resource_comment(wire_resource), start, end))
+                continue
+
             if amount is None:
                 continue
-            start, end = window
-            creations.append((resource, amount, resource_comment(wire_resource),
-                              start, end, auth))
-            continue
+            if amount <= 0:
+                # Legacy drops these silently — `return null` with no report. Logged
+                # rather than reported, so the action still succeeds as it does today,
+                # but the drop is visible to whoever is triaging.
+                logger.warning(
+                    'XRAS supplement for %s on %s has a non-positive amount (%s); '
+                    'legacy drops it silently and so do we',
+                    self.projcode, resource.resource_name, amount)
+                continue
 
-        if amount is None:
-            continue
-        if amount <= 0:
-            # Legacy drops these silently — `return null` with no report. Logged
-            # rather than reported, so the action still succeeds as it does today,
-            # but the drop is visible to whoever is triaging.
-            logger.warning(
-                'XRAS supplement for %s on %s has a non-positive amount (%s); '
-                'legacy drops it silently and so do we',
-                projcode, resource.resource_name, amount)
-            continue
+            self.supplements.append((allocation, amount,
+                                     resource_comment(wire_resource)))
 
-        supplements.append((allocation, amount, resource_comment(wire_resource),
-                            auth))
-
-    return supplements, creations
+    def execute(self) -> None:
+        for allocation, amount, comment in self.supplements:
+            supplement_allocation(self.session, allocation, amount=amount,
+                                  comment=comment,
+                                  auth_at_panel_mtg=self.panel_authorised)
+        for resource, amount, comment, start, end in self.creations:
+            self.create_allocation_for(
+                self.project, resource, amount=amount, start=start, end=end,
+                comment=comment, panel_authorised=self.panel_authorised)
 
 
 def handle_supplement(session, action) -> DispatchResult:
-    """Add to each requested resource's allocation, creating it where there is none.
-
-    Raises:
-        XrasActionRejected: an unmapped resource key, a missing or unparseable amount,
-            or a create branch with no usable end date. Nothing is written.
-    """
-    projcode = (get_field(action, 'requestNumber') or '').strip()
-    errs = ActionErrors()
-    supplements, creations = _plan(session, action, errs)
-
-    errs.raise_if_any()
-
-    project = Project.get_by_projcode(session, projcode)
-    with management_transaction(session):
-        for allocation, amount, comment, auth in supplements:
-            supplement_allocation(session, allocation, amount=amount,
-                                  comment=comment, auth_at_panel_mtg=auth)
-        for resource, amount, comment, start, end, auth in creations:
-            created = create_allocation(
-                session,
-                project_id=project.project_id,
-                resource_id=resource.resource_id,
-                amount=amount,
-                start_date=start,
-                end_date=end,
-                user_id=None,
-                comment=comment,
-            )
-            if auth:
-                mark_panel_authorised(session, created)
-
-    return DispatchResult(status='processed', service='supplement', projcode=projcode)
+    """The registry's contract: ``(session, action) -> DispatchResult``."""
+    return SupplementHandler(session, action).run()
 
 
 register('supplement', handle_supplement)

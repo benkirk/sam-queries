@@ -95,21 +95,17 @@ def public_builders():
 
 @pytest.fixture
 def committing(session, monkeypatch):
+    """Flush instead of commit — see the Extension handler tests for why this exists."""
     from contextlib import contextmanager
 
-    import sam.xras.handlers.adjustment as adjustment
-    import sam.xras.handlers.extension as extension
-    import sam.xras.handlers.new as new
-    import sam.xras.handlers.supplement as supplement
-    import sam.xras.handlers.update as update
+    import sam.xras.handlers.base as base
 
     @contextmanager
     def flushing(sess):
         yield sess
         sess.flush()
 
-    for module in (extension, supplement, adjustment, new, update):
-        monkeypatch.setattr(module, 'management_transaction', flushing)
+    monkeypatch.setattr(base, 'management_transaction', flushing)
     return session
 
 
