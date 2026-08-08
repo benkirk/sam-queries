@@ -81,6 +81,11 @@ _ACTOR_WIDTH = 11
 #: had a chance to reject them — so they are genuinely untrusted here.
 _ACTION_TYPE_WIDTH = 32
 _REQUEST_NUMBER_WIDTH = 30
+#: ``projcode_result`` is ``varchar(30)``. Handler projcodes come from
+#: ``project.projcode`` (also ``varchar(30)``) so this cannot bite today, but the value
+#: crosses the same trust boundary as the two above — Transfer's comes straight from
+#: ``requestNumber`` — and an audit write that 500s is what ``_fit`` exists to prevent.
+_PROJCODE_RESULT_WIDTH = 30
 
 
 def _fit(value, width):
@@ -152,7 +157,7 @@ def _finish(log_id, *, status, projcode_result=None, error_messages=None,
         row.status = status
         row.processed_time = datetime.now()
         if projcode_result is not None:
-            row.projcode_result = projcode_result
+            row.projcode_result = _fit(projcode_result, _PROJCODE_RESULT_WIDTH)
         if error_messages:
             row.error_messages = '\n'.join(error_messages)
         if http_status is not None:
@@ -218,6 +223,11 @@ def _dispatch(log_id, action):
       legacy answers a bare 200 and leaves no trace that SAM quietly parked the action.
       The ``reason`` is logged because "nothing matched" and "the type is disabled"
       look identical in the table otherwise.
+
+    ``projcode_result`` is recorded on **both** terminal arms. On the manual arm the
+    dispatcher-level parks carry no projcode and correctly leave the column NULL; the
+    one handler that parks by design (Transfer) does carry one, and a row that cannot
+    say which project it is about defeats its own triage query.
     """
     try:
         result = dispatch_action(db.session, action,
@@ -227,6 +237,17 @@ def _dispatch(log_id, action):
                 http_status=422)
         return _errors(exc.messages, 422)
 
+    if result.warnings:
+        # Non-fatal disagreements the action survived — today, only the legacy defect-3
+        # roster/role split. `sam.xras.roster` already logs each one, but against
+        # `actionId`; `log_id` is the handle an operator actually has, and only the
+        # route knows it. Whether these earn a column of their own is deferred to
+        # `docs/plans/XRAS_STRESS_AND_SCHEMA.md`.
+        current_app.logger.warning(
+            'XRAS action completed with %d warning(s): id=%s service=%s — %s',
+            len(result.warnings), log_id, result.service,
+            '; '.join(result.warnings))
+
     if result.status == 'processed':
         _finish(log_id, status='processed', projcode_result=result.projcode)
         current_app.logger.info(
@@ -234,10 +255,10 @@ def _dispatch(log_id, action):
             log_id, result.service, result.projcode)
         return xras_response(message='OK')
 
-    _finish(log_id, status='manual')
+    _finish(log_id, status='manual', projcode_result=result.projcode)
     current_app.logger.warning(
-        'XRAS action parked for a human: id=%s service=%s reason=%s',
-        log_id, result.service, result.reason)
+        'XRAS action parked for a human: id=%s service=%s projcode=%s reason=%s',
+        log_id, result.service, result.projcode, result.reason)
     return xras_response(message='OK')
 
 

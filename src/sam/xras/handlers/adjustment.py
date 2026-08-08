@@ -29,8 +29,15 @@ Three consequences:
 
 Otherwise the shape is Supplement's, and the per-resource pieces are imported from it
 rather than copied: same resource-key resolution, same amount parsing, same unfiltered
-account lookup, same create branch. The differences are the transaction type, the
-absence of ``auth_at_panel_mtg``, and the sign.
+account lookup, same create branch. The differences are the transaction type and the
+sign.
+
+⚠️ **``auth_at_panel_mtg`` splits by command, not by handler.** The ADJUSTMENT row does
+not carry it — ``buildAdjustAllocationCommand`` never calls ``.authAtPanelMeeting(...)``
+— but the CREATE row this handler can also write does, because
+``buildAddAllocationCommand`` is the copy taken verbatim from the supplement factory and
+that one does. Getting this half-right is what the original port did: the flag was
+computed, carried through the creations tuple, unpacked, and then never applied.
 
 Verified against ``~/codes/sam`` at tag 2.0.3
 (``AdjustProjectAllocationActionCommandsFactory``, ``Allocation.adjust``).
@@ -39,7 +46,7 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Adjustment*.
 
 import logging
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from sam.base import normalize_end_date
 from sam.manage.allocations import adjust_allocation, create_allocation
@@ -51,6 +58,7 @@ from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
 from .extension import _get, latest_allocation
 from .supplement import (
+    _mark_panel_authorised,
     account_for_resource,
     auth_at_panel_meeting,
     new_allocation_end_date,
@@ -67,11 +75,15 @@ __all__ = ['handle_adjustment']
 def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]]:
     """Assemble, reporting everything. Returns ``(adjustments, creations)``.
 
-    Structurally Supplement's ``_plan`` with the sign gate removed and the below-zero
-    guard added. Kept as its own function rather than parameterising the supplement one:
-    the two differ in three places and a shared function with three flags reads worse
-    than two functions that each say what they do — and this one carries risk the other
-    does not.
+    Structurally Supplement's ``_plan`` with the sign gate replaced and two guards
+    added — the create branch's non-positive refusal and the below-zero one.
+
+    ⚠️ This function used to argue for its own existence: *"the two differ in three
+    places and a shared function with three flags reads worse than two functions that
+    each say what they do"*. The count was wrong (four behavioural differences, not
+    three) and so was the conclusion — the thirty duplicated lines are where the
+    ``auth`` flag went missing for an entire sprint. See
+    ``docs/plans/XRAS_HANDLER_REFACTOR.md``.
     """
     projcode = (_get(action, 'requestNumber') or '').strip()
     project = Project.get_by_projcode(session, projcode)
@@ -150,7 +162,7 @@ def handle_adjustment(session, action) -> DispatchResult:
         for allocation, amount, comment in adjustments:
             adjust_allocation(session, allocation, amount=amount, comment=comment)
         for resource, amount, comment, start, end, auth in creations:
-            create_allocation(
+            created = create_allocation(
                 session,
                 project_id=project.project_id,
                 resource_id=resource.resource_id,
@@ -160,6 +172,12 @@ def handle_adjustment(session, action) -> DispatchResult:
                 user_id=None,
                 comment=comment,
             )
+            if auth:
+                # ⚠️ The CREATE row is marked; the ADJUSTMENT row is not. Two different
+                # legacy commands: `buildAddAllocationCommand` (copied verbatim from
+                # the supplement factory) calls `.authAtPanelMeeting(...)`,
+                # `buildAdjustAllocationCommand` does not. The asymmetry is the Java's.
+                _mark_panel_authorised(session, created)
 
     return DispatchResult(status='processed', service='adjust', projcode=projcode)
 

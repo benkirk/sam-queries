@@ -140,7 +140,7 @@ def _is_auto_default_allocation(allocation: Allocation) -> bool:
             and latest.transaction_amount == allocation.amount)
 
 
-def _plan_resource(session, project, wire_resource, action, errs, *,
+def _plan_resource(session, project, wire_resource, errs, *,
                    start, end, auth):
     """The per-resource decision. Returns a list of ``(kind, …)`` tuples, in order."""
     resource = resolve_resource(session, wire_resource, errs)
@@ -226,7 +226,7 @@ def handle_update(session, action) -> DispatchResult:
     if project is not None:
         for wire_resource in _get(action, 'resources') or ():
             planned.extend(_plan_resource(
-                session, project, wire_resource, action, errs,
+                session, project, wire_resource, errs,
                 start=start, end=end, auth=auth))
 
     lead = (User.get_by_username(session, roster.pi_username)

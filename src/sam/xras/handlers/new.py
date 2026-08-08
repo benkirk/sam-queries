@@ -36,7 +36,7 @@ against the Java, per the plan. See ``docs/plans/XRAS_SPRINT_C.md`` § *New*.
 
 import logging
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from sam.core.groups import GidAllocation, NoAvailableGidError
 from sam.core.organizations import ProjectOrganization
@@ -72,6 +72,25 @@ __all__ = ['handle_new', 'parse_action_begin_date', 'clamp_start_to_commission']
 #: ``project.title`` is ``varchar(255)``; legacy truncates with
 #: ``StringUtil.cleanText(requestTitle, 255)``.
 _TITLE_WIDTH = 255
+
+
+class XrasProjectCreationFailed(RuntimeError):
+    """Exhausted projcode counter or GID pool — an operational failure, not a payload one.
+
+    Deliberately **not** an :class:`~sam.xras.errors.XrasActionRejected`: nothing about
+    the request is wrong, so a 422 telling XRAS to fix its payload would be a lie. It
+    propagates and the route's error handling records it, which is the honest outcome —
+    and both conditions need a human with database access, not a resubmission.
+
+    ⚠️ It lives **here** rather than in :mod:`sam.xras.errors`, where it would read as a
+    sibling of :class:`~sam.xras.errors.XrasActionRejected`. That module is the *error
+    string vocabulary*, and two tests enumerate its public callables to prove every
+    builder is exported and declared — ``tests/unit/test_xras_errors.py`` and
+    ``test_xras_error_coverage.py``, both excluding the two existing classes by name. A
+    class is callable, so moving this one there would enrol it in the 34-builder matrix
+    and fail both gates. Raised below by :func:`handle_new`; defined above it so the
+    reference reads forward.
+    """
 
 
 def parse_action_begin_date(action, errs: ActionErrors) -> Optional[datetime]:
@@ -277,16 +296,6 @@ def handle_new(session, action) -> DispatchResult:
 
     return DispatchResult(status='processed', service='add', projcode=projcode,
                           warnings=roster.warnings)
-
-
-class XrasProjectCreationFailed(RuntimeError):
-    """Exhausted projcode counter or GID pool — an operational failure, not a payload one.
-
-    Deliberately **not** an :class:`~sam.xras.errors.XrasActionRejected`: nothing about
-    the request is wrong, so a 422 telling XRAS to fix its payload would be a lie. It
-    propagates and the route's error handling records it, which is the honest outcome —
-    and both conditions need a human with database access, not a resubmission.
-    """
 
 
 def _lead_organization(lead: User):

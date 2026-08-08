@@ -44,7 +44,7 @@ from sam.resources.resources import Resource
 from .. import errors as e
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
-from ..extractors import resolve_allocation_type, select_allocation_type_parms
+from ..extractors import select_allocation_type_parms
 from ..roster import normalize_username
 from .extension import _get, effective_end_date, latest_allocation
 

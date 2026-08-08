@@ -887,6 +887,70 @@ class TestDispatchArms:
         assert row['projcode_result'] == 'UCUB0166'
         assert row['processed_time'] is not None
 
+    def test_a_parked_action_records_the_projcode_the_handler_returned(
+            self, xras_client, action_log, dispatching):
+        """The manual arm gets ``projcode_result`` too — Transfer is the live case.
+
+        ``handlers/transfer.py`` parks deliberately and sets ``DispatchResult.projcode``
+        so an operator can see *which project*. The route used to call
+        ``_finish(log_id, status='manual')`` with nothing else, so the projcode reached
+        the ephemeral app log and nowhere else — which defeats the module docstring's
+        own promise that the triage query is ``status='manual' AND action_type=...``.
+        """
+        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+            status='manual', service='extend', projcode='UCUB0166',
+            reason='parked on purpose'))
+
+        resp = xras_client.post(
+            self.PATH, data=_payload('extension_ucub0166_ok.json'),
+            content_type='application/json', headers=_auth())
+
+        assert resp.status_code == 200
+        row = action_log.one()
+        assert row['status'] == 'manual'
+        assert row['projcode_result'] == 'UCUB0166'
+
+    def test_a_parked_action_with_no_projcode_leaves_the_column_null(
+            self, xras_client, action_log, dispatching, app):
+        """The three dispatcher-level parking arms carry no projcode, and must not
+        invent one — ``no service matches`` is not a statement about a project."""
+        app.config['XRAS_ACTIONS_ENABLED'] = 'Supplement'
+        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+            status='processed', service='extend', projcode='UCUB0166'))
+
+        xras_client.post(self.PATH, data=_payload('extension_ucub0166_ok.json'),
+                         content_type='application/json', headers=_auth())
+
+        row = action_log.one()
+        assert row['status'] == 'manual'
+        assert row['projcode_result'] is None
+
+    def test_dispatch_warnings_reach_the_log_against_the_row_id(
+            self, xras_client, action_log, dispatching, caplog):
+        """``DispatchResult.warnings`` had no reader at all.
+
+        Sprint C built the legacy-defect-3 roster disagreement deliberately, on the
+        grounds that it is the only evidence anyone has that the situation occurs — and
+        then ``_dispatch`` dropped the field on the floor. ``roster.py`` does log each
+        disagreement, but against ``actionId``; correlating it to the audit row needs
+        ``log_id``, which only the route has.
+
+        Where warnings ultimately *belong* is a schema question — see
+        ``docs/plans/XRAS_STRESS_AND_SCHEMA.md``'s ``warnings`` column candidate. This
+        pins only that they stop vanishing.
+        """
+        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+            status='processed', service='extend', projcode='UCUB0166',
+            warnings=('jdoe', 'asmith')))
+
+        with caplog.at_level('WARNING'):
+            xras_client.post(self.PATH, data=_payload('extension_ucub0166_ok.json'),
+                             content_type='application/json', headers=_auth())
+
+        log_id = action_log.one()['id']
+        assert f'id={log_id}' in caplog.text
+        assert 'jdoe' in caplog.text and 'asmith' in caplog.text
+
     def test_a_rejected_action_is_422_carrying_the_ordered_error_list(
             self, xras_client, action_log, dispatching):
         """The headline deliverable — XRAS admins read this body directly. It is the

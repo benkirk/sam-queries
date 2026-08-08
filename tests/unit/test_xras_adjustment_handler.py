@@ -41,9 +41,17 @@ def wire_resource(key, amount='250000', comments=None):
     return {'key': key, 'awardedAmount': amount, 'comments': comments}
 
 
-def action_for(projcode, *resources, action_type='Adjustment'):
+def action_for(projcode, *resources, action_type='Adjustment',
+               allocation_type='Small'):
+    """``allocationType`` defaults to ``'Small'``, which is **not** panel-authorised.
+
+    That default is load-bearing for every test below that does not name one — see
+    ``TestTheRowShape.test_auth_at_panel_mtg_is_not_set``. ``'Large'`` resolves through
+    ``LargeStrategy`` to the ``CHAP`` type and *is* panel-authorised.
+    """
     return {'actionType': action_type, 'requestNumber': projcode,
-            'allocationType': 'Small', 'resources': list(resources), 'roles': []}
+            'allocationType': allocation_type, 'resources': list(resources),
+            'roles': []}
 
 
 def txns_for(session, allocation):
@@ -322,6 +330,57 @@ class TestSharedWithSupplement:
         created = (session.query(Allocation).join(Allocation.account)
                    .filter_by(project_id=project.project_id).one())
         assert created.amount == pytest.approx(400_000.0)
+
+    def test_a_panel_authorised_create_sets_the_flag(self, committing,
+                                                     mapped_resource, session):
+        """The create branch is Supplement's, so it must mark the CREATE row too.
+
+        ⚠️ Do not read this against ``test_auth_at_panel_mtg_is_not_set``, which is
+        about a *different command*. Legacy's adjust factory is a near-verbatim copy of
+        the supplement one: ``buildAdjustAllocationCommand`` never calls
+        ``.authAtPanelMeeting(...)`` — hence the ADJUSTMENT row's bare flag — but
+        ``buildAddAllocationCommand``, which the copy also carries, does.
+
+        The bug this pins: ``auth`` was computed, threaded through the creations tuple
+        and unpacked, and then never applied. It was invisible because every other
+        Adjustment test uses the default ``allocationType='Small'``, which is not
+        panel-authorised, so the flag was ``False`` either way.
+        """
+        from factories import make_contract, make_project, make_project_contract
+        from sam.accounting.allocations import Allocation
+        project = make_project(session)
+        make_project_contract(session, project=project, contract=make_contract(
+            session, end_date=datetime(2031, 6, 30)))
+        session.refresh(project)
+
+        handle_adjustment(committing, action_for(
+            project.projcode, wire_resource(mapped_resource.xras_key, '400000'),
+            allocation_type='Large'))
+
+        created = (session.query(Allocation).join(Allocation.account)
+                   .filter_by(project_id=project.project_id).one())
+        row = [t for t in txns_for(session, created)
+               if t.transaction_type == AllocationTransactionType.NEW][0]
+        assert row.auth_at_panel_mtg is True
+
+    def test_a_non_panel_type_leaves_the_created_row_unmarked(
+            self, committing, mapped_resource, session):
+        """The other half of the pair — the flag tracks the type, not the branch."""
+        from factories import make_contract, make_project, make_project_contract
+        from sam.accounting.allocations import Allocation
+        project = make_project(session)
+        make_project_contract(session, project=project, contract=make_contract(
+            session, end_date=datetime(2031, 6, 30)))
+        session.refresh(project)
+
+        handle_adjustment(committing, action_for(
+            project.projcode, wire_resource(mapped_resource.xras_key, '400000')))
+
+        created = (session.query(Allocation).join(Allocation.account)
+                   .filter_by(project_id=project.project_id).one())
+        row = [t for t in txns_for(session, created)
+               if t.transaction_type == AllocationTransactionType.NEW][0]
+        assert not row.auth_at_panel_mtg
 
     def test_a_negative_create_is_rejected_rather_than_attempted(
             self, committing, mapped_resource, session):
