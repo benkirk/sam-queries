@@ -113,3 +113,54 @@ def _describe_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
         'start_date':     filters.get('start_date'),
         'end_date':       filters.get('end_date'),
     }
+
+
+def build_mapping_report(session) -> dict:
+    """Which SAM resources XRAS can and cannot name.
+
+    ``xras_resource_repository_key_resource`` maps an XRAS ``resourceRepositoryKey``
+    to a SAM resource, and it is the join behind two different things:
+
+    * on the **write** side, an unmapped key is
+      ``No resource found in SAM corresponding to key %s`` — the action fails.
+    * on the **read** side, ``resourceRepositoryKey`` is simply *omitted* from the
+      GET payloads when a resource has no row, so **closing a gap moves response
+      bytes**. That is why this is a pre-cutover check and not a post-cutover one:
+      adding a mapping after the parity run invalidates it.
+
+    Reports three groups, because they need different actions: active resources with
+    no mapping (the ones that break awards), mapping rows pointing at decommissioned
+    kit (harmless but misleading), and rows whose resource has vanished entirely
+    (a broken FK, which should be impossible).
+    """
+    from sam.integration.xras import XrasResourceRepositoryKeyResource
+    from sam.resources.resources import Resource
+
+    rows = session.query(XrasResourceRepositoryKeyResource).all()
+    by_resource_id = {r.resource_id: r for r in rows}
+
+    unmapped_active, mapped_decommissioned, dangling = [], [], []
+
+    for resource in session.query(Resource).all():
+        row = by_resource_id.get(resource.resource_id)
+        commissioned = resource.is_commissioned_at()
+        if row is None:
+            if commissioned:
+                unmapped_active.append(resource.resource_name)
+        elif not commissioned:
+            mapped_decommissioned.append(
+                {'key': row.resource_repository_key,
+                 'resource': resource.resource_name})
+
+    for row in rows:
+        if row.resource is None:
+            dangling.append(row.resource_repository_key)
+
+    return {
+        'kind': 'xras_resource_mapping',
+        'mapped': len(rows),
+        'unmapped_active': sorted(unmapped_active),
+        'mapped_decommissioned': sorted(mapped_decommissioned,
+                                        key=lambda d: d['resource']),
+        'dangling_keys': sorted(dangling),
+    }

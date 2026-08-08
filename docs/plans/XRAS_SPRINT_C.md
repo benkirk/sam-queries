@@ -1058,6 +1058,54 @@ run. 11 active SAM resources are unmapped in `xras_resource_repository_key_resou
 Laramie, Quasar); closing a gap **moves response bytes**, because `resourceRepositoryKey`
 is omitted when unmapped.
 
+### As built
+
+`tests/unit/test_xras_oracle.py`. Starts from the **bytes on disk**, loads them through
+`XrasActionSchema`, and lets the *dispatcher* choose — covering the three seams no
+handler suite can:
+
+1. **bytes → schema → dispatcher → handler → rows** in one pass;
+2. the **§ 1.2 action-mix correlation** as per-post row-shape claims (Extension writes
+   one `EXTENSION` per touched allocation — the shape behind "3.3 allocations per post";
+   Supplement one per *requested resource*; New one allocation per resource), including
+   § 1.2's *"2 successful posts that mutated nothing"*, reproduced via the
+   equal-end-date skip;
+3. the **replay invariant swept over every allocation an action touched**, asserted as a
+   *delta* rather than against `amount` — the factories seed no `NEW` row, so absolute
+   equality would test the fixtures rather than the handler.
+
+Referents are substituted, never sampled: the corpus usernames and most projcodes were
+scrubbed independently of the snapshot. **The wire shape stays the real bytes**; only
+`requestNumber` / `roles[]` / `resources[]` move.
+
+Two things the run itself taught:
+
+* **UCUB0166's `actionEndDate` is 2026-12-31 exactly**, so seeding an allocation with
+  that end made the extension a legitimate **no-op** — the equal-end-date skip firing
+  correctly, and a test expecting three rows failing for the right reason. The seed
+  default now precedes every corpus end date, with a note, because the coincidence is
+  easy to reintroduce.
+* **`new_ncar4253_ok.json` carries `grants: ['EAR-2425607']`**, so the New path's
+  contract resolution is exercised end to end — and the action *fails* without that
+  contract. Not a fixture detail: a New action whose grant SAM does not hold is one of
+  the measured production failure classes.
+
+The `committing` fixture patches `management_transaction` in **all five** handler
+modules. Each imports it by name, so patching one would silently let the others commit
+past the per-test SAVEPOINT onto the shared xdist database — the hazard that already
+bit once in commit 5.
+
+**`--validate-mapping` is built** and reproduces the documented gap exactly: the same 11
+active unmapped resources, plus 6 mappings pointing at decommissioned kit (Cheyenne,
+GLADE fs1, Geyser_Caldera, HPSS, Janus, Yellowstone). It exits `EXIT_NOT_FOUND` on an
+active gap so it can gate a deploy script, and `EXIT_SUCCESS` on a merely-stale mapping,
+which is untidy rather than broken. A test pins the documented set, so closing a gap
+fails loudly — that is the signal the parity run needs repeating.
+
+**`--dir` is built** on `scripts/xras/seed_dev_actions.py`, and prints a loud warning
+when pointed anywhere but the committed fixtures: an arbitrary directory is unscrubbed,
+and the difference decides whether anything derived from the run may be committed.
+
 ---
 
 ## Enablement

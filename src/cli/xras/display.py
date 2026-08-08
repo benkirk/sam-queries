@@ -159,3 +159,43 @@ def display_replay_result(ctx, payload) -> None:
         f"({_status(payload['status'])})",
         style='green',
     )
+
+
+def display_mapping_report(ctx, payload) -> None:
+    """Render the resource-mapping gaps, worst group first."""
+    from rich.table import Table
+
+    ctx.console.rule('[bold]XRAS resource mapping')
+    ctx.console.print(
+        f"[bold]{payload['mapped']}[/bold] mapping row(s) in "
+        f"xras_resource_repository_key_resource")
+
+    unmapped = payload['unmapped_active']
+    if unmapped:
+        table = Table(title='Active resources XRAS cannot name', title_style='bold red')
+        table.add_column('Resource', style='yellow')
+        for name in unmapped:
+            table.add_row(name)
+        ctx.console.print(table)
+        ctx.console.print(
+            '[dim]An award citing one of these fails with "No resource found in SAM '
+            'corresponding to key %s". Adding a mapping also CHANGES GET response '
+            'bytes, so close these before the parity run, not after.[/dim]')
+    else:
+        ctx.console.print('[green]Every active resource is mapped.[/green]')
+
+    stale = payload['mapped_decommissioned']
+    if stale:
+        table = Table(title='Mappings pointing at decommissioned resources',
+                      title_style='bold')
+        table.add_column('Key', justify='right', style='cyan')
+        table.add_column('Resource', style='dim')
+        for entry in stale:
+            table.add_row(str(entry['key']), entry['resource'])
+        ctx.console.print(table)
+        ctx.console.print('[dim]Harmless, but misleading in triage.[/dim]')
+
+    if payload['dangling_keys']:
+        ctx.console.print(
+            f"[bold red]Dangling keys with no resource row:[/bold red] "
+            f"{', '.join(str(k) for k in payload['dangling_keys'])}")

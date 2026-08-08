@@ -672,6 +672,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[write] Re-submit a stored payload as a new, linked audit row')
 @click.option('--summary', is_flag=True,
               help='[rollup] Counts by status and action type')
+@click.option('--validate-mapping', is_flag=True,
+              help='[check] Report SAM resources XRAS cannot name (pre-cutover gate)')
 @click.option('--status', multiple=True,
               type=click.Choice(['received', 'processed', 'manual',
                                  'failed', 'replayed']),
@@ -686,8 +688,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[list] Maximum rows to return')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
-def xras(ctx: Context, action_id, show_payload, replay, summary, status,
-         action_type, request_number, last, limit, verbose):
+def xras(ctx: Context, action_id, show_payload, replay, summary, validate_mapping,
+         status, action_type, request_number, last, limit, verbose):
     """Inspect and replay the XRAS action log.
 
     \b
@@ -715,6 +717,7 @@ def xras(ctx: Context, action_id, show_payload, replay, summary, status,
       sam-admin xras --status failed --type Extension
       sam-admin xras --show 42 --payload
       sam-admin xras --summary --last 30d
+      sam-admin xras --validate-mapping
       sam-admin xras --replay 42
       sam-admin --format json xras --summary | jq .by_status
     """
@@ -739,6 +742,7 @@ def xras(ctx: Context, action_id, show_payload, replay, summary, status,
         show_payload=show_payload,
         replay=replay,
         summary=summary,
+        validate_mapping=validate_mapping,
         status=status,
         action_type=action_type,
         request_number=request_number,

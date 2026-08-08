@@ -201,6 +201,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('--base-url', default='http://localhost:5050',
                         help='webapp base URL (default: the webdev container)')
+    parser.add_argument('--dir', dest='payload_dir', default=None, metavar='PATH',
+                        help='Post every *.json under PATH instead of the committed '
+                             'fixtures. For the raw-payload loop: point it at a '
+                             'directory of unscrubbed production bodies '
+                             '(e.g. ~/xras_payloads_raw). Those files must never '
+                             'enter tests/ or any commit — they are real people, '
+                             'real awards, real organizations.')
     parser.add_argument('--errors', action='store_true',
                         help='also post a malformed body (400) and a rejected one (422)')
     parser.add_argument('--skip-credentials', action='store_true',
@@ -225,9 +232,16 @@ def main(argv=None):
         print(f'provisioning api_credentials for {username!r} ...')
         print(f'  {ensure_credentials(args, username, password)}')
 
-    payloads = sorted(FIXTURE_DIR.glob('*.json'))
+    source = pathlib.Path(args.payload_dir).expanduser() if args.payload_dir else FIXTURE_DIR
+    payloads = sorted(source.glob('*.json'))
     if not payloads:
-        sys.exit(f'no fixtures found under {FIXTURE_DIR}')
+        sys.exit(f'no payloads found under {source}')
+    if args.payload_dir:
+        # Loud on purpose. The committed fixtures are scrubbed; an arbitrary
+        # directory is not, and the difference decides whether anything derived
+        # from this run may be committed.
+        print(f'⚠️  posting UNSCRUBBED payloads from {source} — '
+              f'nothing derived from this run may be committed')
 
     import requests
     http = requests.Session()

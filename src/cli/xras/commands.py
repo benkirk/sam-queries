@@ -17,11 +17,14 @@ class XrasCommand(BaseCommand):
     """
 
     def execute(self, *, action_id=None, replay=None, summary=False,
+                validate_mapping=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
         try:
             filters = self._filters(status, action_type, request_number, last)
 
+            if validate_mapping:
+                return self._validate_mapping()
             if replay is not None:
                 return self._replay(replay)
             if action_id is not None:
@@ -33,6 +36,21 @@ class XrasCommand(BaseCommand):
             return self.handle_exception(e)
 
     # -- modes ------------------------------------------------------------
+
+    def _validate_mapping(self) -> int:
+        """Pre-cutover gate: report resources XRAS cannot name.
+
+        Exits ``EXIT_NOT_FOUND`` when an **active** resource is unmapped, so the
+        check can gate a deploy script rather than only inform a human. A
+        decommissioned mapping is reported but does not fail the run — it is
+        untidy, not broken.
+        """
+        payload = builders.build_mapping_report(self.session)
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_mapping_report(self.ctx, payload)
+        return EXIT_NOT_FOUND if payload['unmapped_active'] else EXIT_SUCCESS
 
     def _list(self, filters, limit) -> int:
         payload = builders.build_action_list(self.session, filters=filters,
