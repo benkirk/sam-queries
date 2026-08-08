@@ -507,8 +507,11 @@ and the init script was separately replayed into a scratch database and its
 index included.
 
 ⚠️ `zz-90` is `CREATE TABLE IF NOT EXISTS`, so it only reaches **fresh** containers.
-A running dev/test container needs the `ALTER` above, or
-`docker compose --profile test down -v && make docker-build && make docker-up`.
+A running dev/test container needs the `ALTER` above, or a `down -v` → rebuild → up
+cycle. ✅ **Verified end to end**: after `down -v`, rebuild, up and `make clone`, both
+`mysql` (3306) and `mysql-test` (3307) carry all three columns and the
+`xras_action_log_action` index, created by the init script with no manual step — and
+the full suite, the stress tier and the perf tier are green against them.
 CI needs neither: init scripts run *after* the snapshot restore, which is how this
 table reached dev and CI in the first place — no LFS blob regeneration.
 
@@ -526,8 +529,10 @@ SAM rather than by XRAS and should be safe — check rather than assume.
 ## The dev-clone census — the cheap thing that replaced the generator
 
 Read-only, run against port 3306 after the verdicts were written, to test whether the
-referent figures the plan rests on had moved. **They had not.** Nothing here is
-committed beyond these aggregates.
+referent figures the plan rests on had moved. **They had not** — and every figure was
+then re-measured after a full `down -v` → rebuild → `make clone` cycle and came back
+**identical**, so these are stable properties of the data rather than a snapshot
+artefact. Nothing here is committed beyond these aggregates.
 
 | | plan said | measured | |
 |---|---|---|---|
