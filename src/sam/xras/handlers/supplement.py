@@ -39,19 +39,14 @@ from sam.projects.projects import Project
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
 from ..wire import get_field
-from ._allocations import (           # noqa: F401  — re-exported, see the shim note
+from ._allocations import (
     account_for_resource,
     auth_at_panel_meeting,
     create_window_from_project_history,
     latest_allocation,
     mark_panel_authorised,
-    new_allocation_end_date,
 )
-from ._fields import (               # noqa: F401  — re-exported
-    resolve_resource,
-    resource_comment,
-    transaction_amount,
-)
+from ._fields import resolve_resource, resource_comment, transaction_amount
 
 logger = logging.getLogger(__name__)
 

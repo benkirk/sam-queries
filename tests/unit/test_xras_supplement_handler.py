@@ -24,15 +24,17 @@ from sam.accounting.allocations import (
     replay_amount,
 )
 from sam.xras.errors import ActionErrors, XrasActionRejected
-from sam.xras.handlers.supplement import (
+from sam.xras.handlers._allocations import (
     account_for_resource,
     auth_at_panel_meeting,
-    handle_supplement,
     new_allocation_end_date,
+)
+from sam.xras.handlers._fields import (
     resolve_resource,
     resource_comment,
     transaction_amount,
 )
+from sam.xras.handlers.supplement import handle_supplement
 
 pytestmark = pytest.mark.unit
 

@@ -55,13 +55,12 @@ from ..extractors import (
 )
 from ..roster import resolve_roster
 from ..wire import get_field
-from ._allocations import (           # noqa: F401  — re-exported, see the shim note
+from ._allocations import (
     auth_at_panel_meeting,
-    clamp_start_to_commission,
     create_window_from_action_dates,
     mark_panel_authorised,
 )
-from ._fields import (                # noqa: F401  — re-exported
+from ._fields import (
     abstract,
     parse_action_begin_date,
     parse_action_end_date,

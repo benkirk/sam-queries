@@ -41,12 +41,8 @@ from .. import errors as e
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
 from ..wire import get_field
-from ._allocations import (           # noqa: F401  — re-exported, see the shim note
-    account_is_active,
-    effective_end_date,
-    latest_allocation,
-)
-from ._fields import parse_action_end_date  # noqa: F401  — re-exported
+from ._allocations import account_is_active, effective_end_date, latest_allocation
+from ._fields import parse_action_end_date
 
 logger = logging.getLogger(__name__)
 

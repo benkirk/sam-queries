@@ -30,14 +30,13 @@ from sam.accounting.allocations import (
     replay_amount,
 )
 from sam.xras.errors import ActionErrors, XrasActionRejected
-from sam.xras.handlers.extension import (
-    EXTENSION_COMMENT,
+from sam.xras.handlers._allocations import (
     account_is_active,
     effective_end_date,
-    handle_extension,
     latest_allocation,
-    parse_action_end_date,
 )
+from sam.xras.handlers._fields import parse_action_end_date
+from sam.xras.handlers.extension import EXTENSION_COMMENT, handle_extension
 
 pytestmark = pytest.mark.unit
 

@@ -24,11 +24,9 @@ import pytest
 from sam.accounting.allocations import Allocation, AllocationTransaction
 from sam.projects.projects import Project
 from sam.xras.errors import ActionErrors, XrasActionRejected
-from sam.xras.handlers.new import (
-    clamp_start_to_commission,
-    handle_new,
-    parse_action_begin_date,
-)
+from sam.xras.handlers._allocations import clamp_start_to_commission
+from sam.xras.handlers._fields import parse_action_begin_date
+from sam.xras.handlers.new import handle_new
 
 pytestmark = pytest.mark.unit
 
