@@ -79,15 +79,16 @@
         "expect": "processed",
         "http": 200,
         "triage": "Is this the same action I saw an hour ago?",
-        "verdict": "action_id",
+        "verdict": "answered — action_id landed; this now proves detection",
         "notes": [
             "Supplement is ADDITIVE: three posts of 250,000 leave 750,000. That is",
             "correct per-post behaviour and the wrong total.",
-            "Three rows, all `processed`, identical in every column an operator can",
-            "filter on. `actionId` is on the wire and in `raw_payload` and nowhere",
-            "else, so detecting the duplicate means parsing JSON out of a TEXT column.",
-            "XRAS owns the retry, so nothing NEEDS this today — but nothing can see it",
-            "either."
+            "Three rows were identical in every column an operator can filter on;",
+            "`actionId` lived only as bytes inside `raw_payload`, so detecting the",
+            "duplicate meant parsing JSON out of a TEXT column.",
+            "RESOLVED: `action_id` is an indexed column. XRAS still owns the retry —",
+            "this was always about DETECTION, which no later code change could add",
+            "without a second DBA ticket."
         ]
     },
 
@@ -111,14 +112,16 @@
         "expect": "manual",
         "http": 200,
         "triage": "Why did this park?",
-        "verdict": "service_and_reason",
+        "verdict": "answered — service + outcome_reason landed",
         "notes": [
             "One of FOUR parking causes that produce byte-identical rows: nothing",
             "matched, the type is disabled by XRAS_ACTIONS_ENABLED, no handler is",
             "registered, or Transfer parked by design.",
-            "`DispatchResult` carries `service` and `reason` for exactly this, and the",
-            "route logs them — but k8s app logs are ephemeral, so within days the row",
-            "is all that is left and it cannot tell the four apart."
+            "`DispatchResult` has carried `service` and `reason` since Sprint C and",
+            "the route logged them; k8s app logs are ephemeral, so within days the row",
+            "was all that was left and it could not tell the four apart.",
+            "RESOLVED: both are columns now. A NULL `service` is itself the answer for",
+            "this cause — no service was ever selected."
         ]
     },
 
@@ -127,7 +130,7 @@
         "expect": "manual",
         "http": 200,
         "triage": "Did my 3am config change park this, or did it never match?",
-        "verdict": "service_and_reason",
+        "verdict": "answered — service + outcome_reason landed",
         "notes": [
             "The lever exists to park a misbehaving payload class by config instead",
             "of by revert. An operator who pulls it and then cannot confirm from the",
@@ -145,8 +148,9 @@
         "notes": [
             "The ONLY one of the four parking causes with an in-table discriminator,",
             "and only because Transfer has a dedicated action_type.",
-            "`projcode_result` now carries the projcode on the manual arm (C.1a), so",
-            "the row names its project. `reason` still does not survive."
+            "`projcode_result` carries the projcode on the manual arm (C.1a) and",
+            "`outcome_reason` now carries NOT_IMPLEMENTED_REASON — the sentence",
+            "written specifically for whoever reads this row at 3am."
         ]
     },
 
@@ -176,7 +180,7 @@
         "expect": "manual",
         "http": 200,
         "triage": "Confirm it parks rather than erroring, and that the row says so",
-        "verdict": "service_and_reason",
+        "verdict": "answered — service + outcome_reason landed",
         "notes": [
             "Legacy has no AdvanceProjectActionService at all, so it falls off the",
             "end of the selector chain. Parking is correct; being indistinguishable",

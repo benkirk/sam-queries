@@ -55,6 +55,33 @@ CREATE TABLE IF NOT EXISTS xras_action_log (
     action_type         VARCHAR(32),             -- NULL when the payload won't parse
     request_number      VARCHAR(30),             -- projcode for existing projects,
                                                  -- NCAR#### for New; project.projcode width
+    -- The wire's `actionId`: the only identifier for the ACTION, and therefore the
+    -- idempotency key. `requestId` is deliberately NOT stored — request_number
+    -- already addresses the request in the form operators use, so it would be a
+    -- second key for a thing that is already addressable.
+    --
+    -- Measured: three identical posts produce three rows identical in every column
+    -- the dashboard can filter on. The cost of not noticing is asymmetric —
+    -- Extension is 60% of traffic and a double post writes nothing (the
+    -- equal-end-date skip), Supplement is 15% and a double post adds a full
+    -- increment. XRAS owns the retry, so this is about DETECTION, which is the part
+    -- no later code change can add without a second DBA ticket.
+    action_id           INT UNSIGNED,
+    -- Which legacy service handled it, from sam.xras.dispatch.SERVICES. VARCHAR
+    -- rather than ENUM on purpose: the vocabulary lives in Python and an ENUM here
+    -- would be a second copy that drifts.
+    service             VARCHAR(16),
+    -- Why it parked, in words, for whoever reads the row at 3am. FOUR causes produce
+    -- byte-identical rows without it — nothing matched, the type is disabled by the
+    -- XRAS_ACTIONS_ENABLED triage lever, no handler is registered, or Transfer
+    -- parked by design — and only Transfer is distinguishable, and only because it
+    -- owns a dedicated action_type.
+    --
+    -- NOT folded into error_messages, which means "the 422 body XRAS received" and
+    -- is a wire contract. VARCHAR(255) rather than TEXT on purpose: this is a
+    -- sentence, and a bounded column cannot reproduce the overflow that loses an
+    -- audit row under STRICT_TRANS_TABLES.
+    outcome_reason      VARCHAR(255),
     raw_payload         TEXT         NOT NULL,   -- the body, verbatim, before parsing
     status              VARCHAR(16)  NOT NULL,   -- received|processed|manual|failed|replayed
     http_status         SMALLINT UNSIGNED,       -- the code we answered: 200|400|422.
@@ -74,6 +101,9 @@ CREATE TABLE IF NOT EXISTS xras_action_log (
     -- the status-only rollups (the summary strip, the CLI's --summary).
     KEY xras_action_log_triage   (status, action_type),
     KEY xras_action_log_request  (request_number),
+    -- "have I seen this action before" is a point lookup, and the answer decides
+    -- whether an operator treats a row as a duplicate or a second award.
+    KEY xras_action_log_action   (action_id),
     KEY xras_action_log_replay_fk (replay_of_id),
     CONSTRAINT xras_action_log_replay_fk
         FOREIGN KEY (replay_of_id) REFERENCES xras_action_log (xras_action_log_id)

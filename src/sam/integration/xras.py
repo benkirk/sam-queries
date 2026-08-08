@@ -102,6 +102,7 @@ class XrasActionLog(Base):
         # status-only rollups (the page's summary strip, ``sam-admin xras --summary``).
         Index('xras_action_log_triage', 'status', 'action_type'),
         Index('xras_action_log_request', 'request_number'),
+        Index('xras_action_log_action', 'action_id'),
         Index('xras_action_log_replay_fk', 'replay_of_id'),
     )
 
@@ -122,6 +123,25 @@ class XrasActionLog(Base):
     #: NULL when the body could not be parsed, in which case we do not know it.
     action_type = Column(String(32))
     request_number = Column(String(30))
+
+    #: The wire's ``actionId`` — the only identifier for the *action*, and therefore
+    #: the idempotency key. ``requestId`` is deliberately not stored:
+    #: ``request_number`` already addresses the request in the form operators use.
+    #:
+    #: XRAS owns the retry, so this is about **detection**, not prevention. Three
+    #: identical posts otherwise produce three rows identical in every filterable
+    #: column, and the cost of not noticing is asymmetric — Extension writes nothing
+    #: on a repeat, Supplement adds a full increment.
+    action_id = Column(Integer)
+
+    #: Which legacy service handled it — one of :data:`sam.xras.dispatch.SERVICES`.
+    #: Recorded on the ``manual`` arm too, which is the whole point: four parking
+    #: causes are otherwise byte-identical.
+    service = Column(String(16))
+
+    #: Why it parked or failed, in words. Deliberately **not** ``error_messages``,
+    #: which means "the 422 body XRAS received" and is a wire contract.
+    outcome_reason = Column(String(255))
 
     raw_payload = Column(Text, nullable=False)
 

@@ -67,15 +67,16 @@ def test_repeat_post_supplement(xras_client, action_log, dispatching, scenario,
     assert len(rows) == 3
     assert {r['status'] for r in rows} == {scenario['expect']}
 
-    # ⚠️ The evidence for `action_id`. `actionId` was on the wire of all three, and it
-    # survives only as bytes inside `raw_payload` — so telling a duplicate from a
-    # legitimate second award means parsing JSON out of a TEXT column.
+    # ⚠️ **This assertion is inverted from what it was.** It used to prove `actionId`
+    # survived only as bytes inside `raw_payload`, so telling a duplicate from a
+    # legitimate second award meant parsing JSON out of a TEXT column. That was the
+    # evidence behind the `action_id` verdict; the column landed, so this now proves
+    # the duplicate is detectable with a point lookup.
     assert all(r['action_type'] == 'Supplement' for r in rows)
-    assert all('"actionId": 40001' in r['raw_payload'] for r in rows)
-
-    from sam.integration.xras import XrasActionLog
-    assert not hasattr(XrasActionLog, 'action_id'), (
-        'action_id has landed — rewrite this to assert the duplicate is detectable')
+    assert {r['action_id'] for r in rows} == {40001}, (
+        'three posts of one action must share one action_id — that is what makes '
+        'them a detectable duplicate rather than three indistinguishable rows')
+    assert all(r['service'] == 'supplement' for r in rows)
 
 
 def test_repeat_post_extension(xras_client, action_log, dispatching, scenario,

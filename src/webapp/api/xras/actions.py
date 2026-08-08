@@ -57,7 +57,11 @@ from sqlalchemy.orm import Session
 
 from sam.integration.xras import XrasActionLog
 from sam.schemas.forms import XrasActionSchema
-from sam.xras.dispatch import dispatch_action, parse_enabled_action_types
+from sam.xras.dispatch import (
+    dispatch_action,
+    parse_enabled_action_types,
+    select_service,
+)
 from sam.xras.errors import XrasActionRejected
 # Imported for its side effect: every handler module registers itself with the
 # dispatcher at import time. Without this the registry is empty and every action
@@ -90,6 +94,11 @@ _PROJCODE_RESULT_WIDTH = 30
 #: slice lives here rather than at the four ``replay.py`` call sites that used to carry
 #: it: a width guard belongs next to the column it guards, or the fifth caller misses it.
 _PROCESSED_BY_WIDTH = 35
+#: ``service`` holds one of ``sam.xras.dispatch.SERVICES``; ``outcome_reason`` holds a
+#: sentence written for whoever reads the row at 3am. Both bounded rather than ``TEXT``,
+#: deliberately: a sentence that cannot overflow cannot lose the audit row.
+_SERVICE_WIDTH = 16
+_OUTCOME_REASON_WIDTH = 255
 
 #: ``raw_payload`` and ``error_messages`` are ``TEXT`` — 65,535 **bytes**, not
 #: characters, and the column is utf8mb3.
@@ -163,6 +172,26 @@ def _fit_error_messages(messages):
     return '\n'.join(kept)
 
 
+def _fit_int(value):
+    """Coerce an untrusted payload value to an int, or ``None``.
+
+    ``actionId`` is read off the raw dict on the 400/422 paths, before the schema has
+    had a chance to reject it, so it may be anything at all. Anything non-numeric
+    becomes ``None`` rather than raising — the same trade ``_fit`` makes, for the same
+    reason: an audit write that 500s is the one failure this table cannot afford.
+
+    Negative and out-of-range values become ``None`` too, because the column is
+    ``INT UNSIGNED`` and MySQL would reject them under ``STRICT_TRANS_TABLES``.
+    """
+    if value is None:
+        return None
+    try:
+        number = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return number if 0 <= number <= 4_294_967_295 else None
+
+
 def _fit(value, width):
     """Coerce an untrusted payload value to a column-safe string, or ``None``.
 
@@ -177,8 +206,8 @@ def _fit(value, width):
 
 
 def _record(*, status, raw_payload, action_type=None, request_number=None,
-            error_messages=None, http_status=None, remote_actor=None,
-            replay_of_id=None, processed_by=None):
+            action_id=None, error_messages=None, http_status=None,
+            remote_actor=None, replay_of_id=None, processed_by=None):
     """Write one audit row on a private connection and commit. Returns its id.
 
     Deliberately does **not** use ``db.session``: this row must outlive a rollback of
@@ -212,6 +241,7 @@ def _record(*, status, raw_payload, action_type=None, request_number=None,
             # precisely the row this table exists to keep.
             action_type=_fit(action_type, _ACTION_TYPE_WIDTH),
             request_number=_fit(request_number, _REQUEST_NUMBER_WIDTH),
+            action_id=_fit_int(action_id),
             error_messages=_fit_error_messages(error_messages),
             http_status=http_status,
             replay_of_id=replay_of_id,
@@ -223,7 +253,7 @@ def _record(*, status, raw_payload, action_type=None, request_number=None,
 
 
 def _finish(log_id, *, status, projcode_result=None, error_messages=None,
-            http_status=None):
+            http_status=None, service=None, outcome_reason=None):
     """Update an existing audit row to its terminal state, again on its own connection."""
     with Session(db.engine) as session:
         row = session.get(XrasActionLog, log_id)
@@ -237,6 +267,10 @@ def _finish(log_id, *, status, projcode_result=None, error_messages=None,
             row.error_messages = _fit_error_messages(error_messages)
         if http_status is not None:
             row.http_status = http_status
+        if service is not None:
+            row.service = _fit(service, _SERVICE_WIDTH)
+        if outcome_reason is not None:
+            row.outcome_reason = _fit(outcome_reason, _OUTCOME_REASON_WIDTH)
         session.commit()
 
 
@@ -308,8 +342,11 @@ def _dispatch(log_id, action):
         result = dispatch_action(db.session, action,
                                  enabled=_enabled_action_types())
     except XrasActionRejected as exc:
+        # The service is known even though it rejected — which service produced a
+        # 422 is the first thing an operator wants when the same projcode fails
+        # repeatedly.
         _finish(log_id, status='failed', error_messages=exc.messages,
-                http_status=422)
+                http_status=422, service=select_service(db.session, action))
         return _errors(exc.messages, 422)
 
     if result.warnings:
@@ -324,13 +361,19 @@ def _dispatch(log_id, action):
             '; '.join(result.warnings))
 
     if result.status == 'processed':
-        _finish(log_id, status='processed', projcode_result=result.projcode)
+        _finish(log_id, status='processed', projcode_result=result.projcode,
+                service=result.service)
         current_app.logger.info(
             'XRAS action processed: id=%s service=%s projcode=%s',
             log_id, result.service, result.projcode)
         return xras_response(message='OK')
 
-    _finish(log_id, status='manual', projcode_result=result.projcode)
+    # `service` and `outcome_reason` are the whole reason this arm is worth
+    # distinguishing: four causes park an action and, without them, the rows are
+    # byte-identical. `service` is NULL when nothing matched at all, which is itself
+    # the answer to "why did this park".
+    _finish(log_id, status='manual', projcode_result=result.projcode,
+            service=result.service, outcome_reason=result.reason)
     current_app.logger.warning(
         'XRAS action parked for a human: id=%s service=%s projcode=%s reason=%s',
         log_id, result.service, result.projcode, result.reason)
@@ -406,6 +449,7 @@ def post_action(action_id=None, request_id=None, action_type=None):
         _record(status='failed', raw_payload=raw_payload, http_status=422,
                 action_type=parsed.get('actionType'),
                 request_number=parsed.get('requestNumber'),
+                action_id=parsed.get('actionId'),
                 error_messages=lines)
         return _errors(lines, 422)
 
@@ -413,7 +457,8 @@ def post_action(action_id=None, request_id=None, action_type=None):
     # replayable record behind. http_status is 200 unless dispatch changes it.
     log_id = _record(status='received', raw_payload=raw_payload, http_status=200,
                      action_type=action.get('actionType'),
-                     request_number=action.get('requestNumber'))
+                     request_number=action.get('requestNumber'),
+                     action_id=action.get('actionId'))
 
     if _capture_only():
         # Recorded and deliberately not acted on. The row stays 'received', which is
