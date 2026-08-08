@@ -471,13 +471,24 @@ def test_opportunity_qa_is_populated_only_on_new_actions():
 
 
 def test_allocation_type_vocabulary_does_not_match_sams_table():
-    """Observed spellings are XRAS's own and are inert on the action-post path.
+    """Observed spellings are XRAS's own, and only one of the five names a SAM row.
 
-    Legacy reads ``allocationType`` only on the GET side, never here — so the fact
-    that ``Exploratory`` / ``Data Analysis`` / ``Educational`` / ``Large`` appear in
-    no SAM ``allocation_type`` row is not a blocker. It is a trap: a handler that
-    tried to map this field would find no match, and ``Small`` is not even unique in
-    that table.
+    ⚠️ **Corrected in Sprint C.** This test used to say the field was "inert on the
+    action-post path" and read only on the GET side. It is not: it is the first input
+    to the eleven-strategy allocation-type chain, and the strategies read it three
+    different ways — as an exact key (``ACCESSStrategy``), as an equality test
+    (``LargeStrategy``), and as free text (``ExternalStrategy``). Sprint A wrote that
+    claim from the POJOs, before anyone read ``AllocationTypeIdExtractor``.
+
+    What survives is the assertion, and the trap underneath it. Of the five observed
+    spellings only ``Small`` names a SAM ``allocation_type`` row — where it is **not
+    unique**, appearing under both ``UNIV USS`` and ``UW``. The other four resolve by
+    falling *through* to ``opportunityName``. So a handler that mapped this field
+    directly would mis-file four types outright and coin-flip the fifth.
+
+    The chain, its order, and the pair each corpus payload resolves to are in
+    ``tests/unit/test_xras_extractors.py`` — where six of the eight are checked
+    against the allocation type the real project carries in production.
     """
     observed = {load_schema(n)['allocationType'] for n in ALL_FIXTURES}
     assert observed == {'Small', 'Large', 'Educational', 'Exploratory', 'Data Analysis'}

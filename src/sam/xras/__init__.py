@@ -10,6 +10,12 @@ they are exercised by unit tests directly and reached from two callers that are
 not the same: the live route (``webapp/api/xras/actions.py``) and replay
 (``webapp/api/xras/replay.py``).
 
+This module re-exports the **error vocabulary only**, so that importing ``sam.xras``
+costs nothing but ``errors.py``. The submodules that touch the ORM — ``extractors``,
+and the handlers to come — are imported by name (``from sam.xras.extractors import
+resolve_contract``), which also keeps the dependency direction visible at each call
+site.
+
 The design and the measured production data behind it are in
 ``docs/plans/XRAS_SPRINT_C.md``; the wire contract is in
 ``docs/plans/XRAS_REIMPLEMENTATION.md``.
@@ -38,6 +44,7 @@ from .errors import (
     update_end_date_before_existing,
     all_end_dates_null_or_past,
     cannot_find_contract,
+    ambiguous_contract,
     mnemonic_external_failed,
     mnemonic_internal_failed,
     no_affiliation_for_pi,
@@ -73,6 +80,7 @@ __all__ = [
     'update_end_date_before_existing',
     'all_end_dates_null_or_past',
     'cannot_find_contract',
+    'ambiguous_contract',
     'mnemonic_external_failed',
     'mnemonic_internal_failed',
     'no_affiliation_for_pi',

@@ -414,11 +414,103 @@ test coverage by it: `Small (No NSF award)` 146 · `Small` 87 · `Data` 79 ·
 `Classroom` 52 · `CHAP` 30 · `NSC` 16 · `Discover ACCESS` 15 · `Explore ACCESS` 10 ·
 `External Project` 4.
 
+### As built — and the chain is verified against production, not just the Java
+
+`src/sam/xras/extractors.py`. `select_allocation_type_parms()` is pure (no session);
+`resolve_allocation_type()` resolves the pair to a row and reports.
+
+**Six of the eight corpus payloads resolve to the exact `(panel, type)` the real
+project carries today.** That closes the question the table above could only answer by
+inspection:
+
+| Payload | Wire `allocationType` | Strategy | Resolved | Production |
+|---|---|---|---|---|
+| UCUB0166 / UWIS0064 / UWIS0071 | `Small` | 1, exact | `UNIV USS` / `Small` | ✅ same |
+| UFSU0023 | `Large` | 5 | `CHAP` / `CHAP` | ✅ same |
+| UCUB0182 | `Exploratory` | 6 | `UNIV USS` / `Small (No NSF award)` | ✅ same |
+| UBRN0027 | `Data Analysis` | 9 | `UNIV USS` / `Data` | ✅ same |
+| NCAR4253 | `Small` | 1, exact | `UNIV USS` / `Small` | absent from sample |
+| NCAR4232 | `Educational` | 8 | `UNIV USS` / `Classroom` | never created (fail fixture) |
+
+So the corpus exercises **five of eleven** strategies. The other six — NSC, External,
+CSL, SmallNSF, ASD-UNIV, ASD-NCAR — are pinned by unit tests only, and that is
+recorded in the deviations section rather than left implicit.
+
+⚠️ One divergence, in `_clean()`. Java distinguishes an *absent* `allocationType`
+(Jackson default `""` → exact-lookup branch, which can only miss) from an explicit
+JSON `null` (→ the `opportunityName` branch that detects Discover/Explore ACCESS).
+marshmallow gives `None` for both and the distinction is not recoverable. We take the
+`null` behaviour, which is strictly the more capable one — the only payloads affected
+are ACCESS-instance ones omitting the key, where legacy resolves nothing at all.
+
 **A second consumer of the same resolution:** `getAuthAtPanelMeeting()` is `true` iff
 the resolved type is `CSL` or `CHAP` — but note the branch is **inverted** from what
 you would expect (`ProjectAllocationActionCommandsFactoryBase:96-114`): when the
 payload carries an `allocationType` it runs the strategy chain; when it does **not**,
 it reads the *existing project's* stored type and looks that up by name.
+
+---
+
+## The other three extractors — as built
+
+All in `src/sam/xras/extractors.py`, all reporting into `ActionErrors` rather than
+raising, per § *The extractors report rather than propagate*. Pinned by
+`tests/unit/test_xras_extractors.py` (97 tests).
+
+### Area of interest — ⚠️ the plan's `FosAoi` route was wrong
+
+**`fosNum` is an `area_of_interest_id`, not an `fos_aoi.fos_id`.** Legacy's
+`areaOfInterestRepository.findOne(fosInt)` is a Spring Data *primary-key* lookup;
+`fos_aoi` is not on this path and cannot be — its `fos_id` values are 5-digit
+AMIE/XSEDE codes (`10202`, `10501`, …) while XRAS sends `1`–`40`. Settled against
+production three ways: the id spaces are disjoint (asserted in a test), every corpus
+payload's primary `fosNum` equals the `area_of_interest_id` its real project carries,
+and every `fosName` XRAS sends is SAM's `area_of_interest` string verbatim. Reading
+this through `fos_aoi` would have mis-filed every XRAS project's research area
+silently, with no error. `XRAS_REIMPLEMENTATION.md` § *Data* is corrected.
+
+Non-numeric `fosNum` falls back to a name lookup, mirroring the `NumberFormatException`
+arm. Empty `fos: []` → `No FieldOfScience (fos) objects`.
+
+### Contract — the collision now reports instead of 500ing
+
+Three steps, of which the middle one is legacy:
+
+1. Exact match on the **full grant number** first (`Contract.get_by_number`,
+   whitespace-insensitive). Strictly better than legacy and never wrong.
+2. Else the ≥6-digit core-number suffix match, `ilike '%core'` — the column is
+   `utf8mb3_bin`, so a plain `LIKE` undercounts. Exactly one row → that row.
+3. A tie → **report, naming the candidates**. Legacy closes the same query with
+   Hibernate's `uniqueResult()`, which raises `NonUniqueResultException` — *not* an
+   `AttributeExtractionException`, so it escapes the observer and becomes a 500 with no
+   diagnostic. Three cores collide in production today (§ *Data*).
+
+This adds the one string to the vocabulary this sprint has added:
+`Ambiguous contract for grant number "%s" ("%s"): matches %s`. It never replaces a
+legacy message — it appears only where legacy emitted nothing at all.
+
+### Mnemonic — 24% of failures, and one silent legacy hole
+
+Three routes in legacy's order: `opportunityName` starting `'NCAR '` → the **lab**
+strategy (walk the PI's org parentage to level 3); else an institution → `"Name, City"`
+then `"Name"`; else the organization name. Reuses the existing
+`MnemonicCode.build_lookup` / `resolve_for_*` ports so the code XRAS picks and the one
+the admin create-project form suggests cannot drift.
+
+**Declared divergence:** `UserLabStrategy` has no error arm — it returns `null` in
+silence, so an NCAR-opportunity PI whose lab has no soft link yields a project with no
+mnemonic and a failure that surfaces later and less legibly. We report
+`Could not determine Mnemonic code for internal PI via organization`. A lab is an
+organization, and a projcode cannot be minted without a code.
+
+`pi_username` is passed in rather than read off the action, so this module does not
+depend on `sam.xras.roster`; legacy reads `action.getPiUsername()`, the same value.
+⚠️ `ProjectActionCommandFactoryBase:110`'s `action.getMnemonicCode()` short-circuit is
+dead on the XRAS path — `XrasAction.getMnemonicCode()` is a hardcoded `return null`.
+It is the AMIE actions sharing the base class that supply one. Nothing to port.
+
+The parentage walk gets a cycle guard: `parent_org_id` is a self-FK with nothing
+stopping a loop, and legacy's `while (org != null)` would hang the request thread.
 
 ---
 
@@ -593,6 +685,22 @@ must decide about explicitly:
 |---|---|---|
 | `End date of allocation (%s) must be after commission date of resource(%s).` | `DefaultAddAllocationToProjectCommand:63` | ⚠️ **no space** before `(` in `resource(%s)`. `IllegalStateException` |
 | `Cannot add allocation to inactive project %s` | `project/domain/model/Project:251` | why `InactivateNewProject` runs last |
+
+### Strings this port adds
+
+Adding to an operator-facing vocabulary is a contract change, so each one is listed
+with the case it covers and the reason legacy has nothing there. Neither replaces a
+legacy message; both appear only where legacy emitted **nothing at all**.
+
+| String | Covers | What legacy does |
+|---|---|---|
+| `Ambiguous contract for grant number "%s" ("%s"): matches %s` | two contracts share a ≥6-digit core | `uniqueResult()` raises `NonUniqueResultException`, which is not an `AttributeExtractionException` → escapes the observer → **500, no diagnostic** |
+
+And one legacy string reused in a place legacy does not emit it:
+
+| String | New site | Why |
+|---|---|---|
+| `Could not determine Mnemonic code for internal PI via organization` | the **lab** route (`opportunityName` starts `'NCAR '`) | `UserLabStrategy` alone has no error arm — it returns `null` in silence, and the project is created with no mnemonic. A lab is an organization, and a projcode cannot be minted without a code |
 
 ### The extractors report rather than propagate
 

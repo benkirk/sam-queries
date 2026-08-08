@@ -267,6 +267,27 @@ def cannot_find_contract(grant_number: str, core_number: str) -> str:
     return f'Cannot find contract for grant number "{grant_number}" ("{core_number}")'
 
 
+def ambiguous_contract(grant_number: str, core_number: str,
+                       candidates: Iterable[str]) -> str:
+    """**Not a legacy string** — legacy has none, because it crashes here instead.
+
+    ``getContractEndingIn`` is a suffix match closed with Hibernate's
+    ``uniqueResult()``, which raises ``NonUniqueResultException`` when two contracts
+    end in the same core number. Production holds three such pairs (``1049089`` /
+    ``PLR-1049089``, ``OPP-1744587`` / ``PLR-1744587``, ``2146709`` / ``AGS-2146709``),
+    and the exception is not an ``AttributeExtractionException``, so it escapes the
+    observer and becomes a 500 with no diagnostic at all.
+
+    Adding a string to the vocabulary is a contract change, so it is worth being clear
+    about what this one is *not*: it never replaces a message legacy emits, and it can
+    only appear where legacy emitted nothing. The candidates are named because the fix
+    is a data fix and the operator cannot make it without knowing which rows collided.
+    """
+    listed = ', '.join(candidates)
+    return (f'Ambiguous contract for grant number "{grant_number}" ("{core_number}"): '
+            f'matches {listed}')
+
+
 # -- Mnemonic -- action/domain/model/mnemoniccode/MnemonicCodeExtractor
 
 
