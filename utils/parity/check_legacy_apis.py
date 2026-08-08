@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.join(_HERE, '..', '..'))
 
 import requests  # noqa: E402
 
-from utils.parity.clients import LegacyClient, NewClient  # noqa: E402
+from utils.parity.clients import LegacyClient, NewClient, XrasClient  # noqa: E402
 from utils.parity.comparators import (  # noqa: E402
     CheckResult,
     collect_resource_names,
@@ -51,6 +51,7 @@ from utils.parity.comparators import (  # noqa: E402
     compare_project_access,
     compare_queue,
     compare_wallclock_exemption,
+    compare_xras,
 )
 
 
@@ -93,6 +94,25 @@ def _resolve_credentials() -> tuple[tuple[str, str], tuple[str, str]] | None:
         return None
 
     return (legacy_user, legacy_pass), (new_user, new_pass)
+
+
+def _resolve_xras_credentials() -> tuple[str, str] | None:
+    """The XRAS credential, or None if it is not configured.
+
+    Deliberately separate and deliberately optional. `/api/xras/**` requires
+    `ROLE_XRAS`, which the `SAM_LEGACY_*` account does not hold, so there is no
+    sensible fallback — and `--api all` should still compare the other five
+    APIs for someone who has not provisioned it. The dispatch loop skips `xras`
+    with a message rather than failing the run.
+
+    One credential serves both stacks: they read the same `api_credentials`
+    table, which is what makes a byte-for-byte comparison meaningful — no
+    difference in what the two can *see* can be mistaken for a difference in
+    what they *render*.
+    """
+    user = os.environ.get('SAM_XRAS_USER', '')
+    password = os.environ.get('SAM_XRAS_PASS', '')
+    return (user, password) if user and password else None
 
 
 def _probe(label: str, url: str, timeout: int = 5) -> bool:
@@ -186,6 +206,77 @@ def _fetch_wallclock(legacy: LegacyClient, new: NewClient, verbose: int) -> tupl
     return legacy_data, new_data
 
 
+def _fetch_xras(legacy: XrasClient, new: XrasClient, verbose: int,
+                sample_user: str | None = None) -> tuple[dict, dict]:
+    """Run the same probe set against both stacks, keeping raw bodies.
+
+    The sample is bootstrapped from legacy's own output rather than hardcoded,
+    so it keeps working as the data moves: the roster supplies a real username,
+    and that user's requests supply real projcodes. Only the deliberate misses
+    are literals.
+
+    `/people` is deliberately last — it is 3.8 MB and the slowest probe, so a
+    cheap mismatch surfaces before it runs.
+    """
+    probes: dict[str, callable] = {}
+
+    if verbose:
+        print('  fetching legacy people roster (sampling) ...', file=sys.stderr)
+    _, roster_body = legacy.people()
+    roster = [p['username'] for p in json.loads(roster_body)]
+
+    # Find a user who actually has projects. The roster is in user_id order and
+    # 22k of its 28k entries are inactive, so roster[0] is an ancient account
+    # with nothing attached — sampling it would leave every requests/* probe
+    # comparing two empty responses, which passes while proving nothing.
+    # Walk newest-first and stop at the first hit; each attempt costs a ~6 s
+    # legacy call, so the search is capped.
+    username, projcodes = (sample_user or 'benkirk'), []
+    candidates = [sample_user] if sample_user else list(reversed(roster))[:8]
+    for candidate in candidates:
+        if verbose:
+            print(f'  looking for a user with requests: {candidate} ...',
+                  file=sys.stderr)
+        _, body = legacy.requests_by_user(candidate)
+        masters = json.loads(body)['result']['masters']
+        if masters or sample_user:
+            username = candidate
+            projcodes = [m['requestNumber'] for m in masters[:3]]
+            break
+    if not projcodes:
+        print('WARNING: no sampled user had any requests — the requests/* and '
+              'dates/requests probes will compare empty responses. Pass '
+              '--xras-user to pick one explicitly.', file=sys.stderr)
+
+    probes['people/{username}'] = lambda c: c.person(username)
+    # The 404 closed form (len(username) + 47) is as much a contract as the 200.
+    probes['people/{username} 404'] = lambda c: c.person(
+        'zzznotauser', allow_404=True)
+    for code in projcodes:
+        probes[f'requests/request/{code}'] = (
+            lambda c, code=code: c.request(code))
+    probes['requests/request unknown'] = lambda c: c.request('ZZZZ9999')
+    probes[f'requests/user/{username}'] = lambda c: c.requests_by_user(username)
+    for role in ('pi', 'co_pi', 'allocation_manager'):
+        probes[f'requests/role/{role}'] = (
+            lambda c, role=role: c.requests_by_role(role, username))
+    if projcodes:
+        probes['dates/requests single'] = (
+            lambda c: c.request_dates(projcodes[0]))
+        probes['dates/requests multi'] = (
+            lambda c: c.request_dates(','.join(projcodes)))
+    probes['people roster'] = lambda c: c.people()
+
+    legacy_data: dict = {}
+    new_data: dict = {}
+    for label, probe in probes.items():
+        if verbose:
+            print(f'  probing {label} ...', file=sys.stderr)
+        legacy_data[label] = probe(legacy)
+        new_data[label] = probe(new)
+    return legacy_data, new_data
+
+
 # ---------------------------------------------------------------------------
 # Reporting
 # ---------------------------------------------------------------------------
@@ -226,8 +317,14 @@ def _parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
-        '--api', choices=('directory', 'project', 'fstree', 'queue', 'wallclock', 'all'),
+        '--api', choices=('directory', 'project', 'fstree', 'queue', 'wallclock',
+                          'xras', 'all'),
         default='all', help='Which API to compare (default: all)',
+    )
+    p.add_argument(
+        '--xras-user', default=None,
+        help='Username to sample for the xras requests/* probes. Default: '
+             'search the roster newest-first for one that has projects.',
     )
     p.add_argument(
         '--branch', default=None,
@@ -277,6 +374,7 @@ def main() -> int:
 
     legacy = LegacyClient(args.legacy_base_url, legacy_auth, timeout=args.timeout)
     new = NewClient(args.new_base_url, new_auth, timeout=args.timeout)
+    xras_auth = _resolve_xras_credentials()
 
     branches = (
         tuple(b.strip() for b in args.branch.split(',') if b.strip())
@@ -288,7 +386,7 @@ def main() -> int:
     )
 
     selected = (
-        ('directory', 'project', 'fstree', 'queue', 'wallclock')
+        ('directory', 'project', 'fstree', 'queue', 'wallclock', 'xras')
         if args.api == 'all' else (args.api,)
     )
 
@@ -311,6 +409,16 @@ def main() -> int:
             elif api == 'wallclock':
                 ld, nd = _fetch_wallclock(legacy, new, args.verbose)
                 results = compare_wallclock_exemption(ld, nd)
+            elif api == 'xras':
+                if xras_auth is None:
+                    print('SKIP xras: SAM_XRAS_USER / SAM_XRAS_PASS not set',
+                          file=sys.stderr)
+                    continue
+                ld, nd = _fetch_xras(
+                    XrasClient(args.legacy_base_url, xras_auth, timeout=args.timeout),
+                    XrasClient(args.new_base_url, xras_auth, timeout=args.timeout),
+                    args.verbose, args.xras_user)
+                results = compare_xras(ld, nd)
             else:  # pragma: no cover — argparse choices guarantee membership
                 raise AssertionError(api)
             sections.append((api, results, time.monotonic() - t0))

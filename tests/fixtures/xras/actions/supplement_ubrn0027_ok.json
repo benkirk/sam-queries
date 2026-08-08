@@ -1,0 +1,99 @@
+{
+  "actionId": 392003,
+  "actionType": "Supplement",
+  "actionBeginDate": "2025-12-02",
+  "actionEndDate": "2026-12-31",
+  "requestId": 1433839,
+  "requestNumber": "UBRN0027",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Arctic sea ice albedo in CESM2 large ensemble",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532222,
+  "opportunityName": "Data Analysis Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Data Analysis",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 907888,
+      "resourceRepositoryKey": 145145,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 907886,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "10000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 907884,
+      "resourceRepositoryKey": 144552,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 507820,
+      "roleType": "Allocation Manager",
+      "username": "user_00000012",
+      "beginDate": "2025-11-21",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given11",
+        "middleName": null,
+        "lastName": "Surname11",
+        "email": "user11@example.invalid",
+        "phone": null,
+        "organization": "BROWN UNIVERSITY",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 507819,
+      "roleType": "PI",
+      "username": "user_00000012",
+      "beginDate": "2025-11-21",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given11",
+        "middleName": null,
+        "lastName": "Surname11",
+        "email": "user11@example.invalid",
+        "phone": null,
+        "organization": "BROWN UNIVERSITY",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500031,
+      "fosNum": "29",
+      "fosName": "Physical Oceanography",
+      "fosAbbr": "Physical Oceanography",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

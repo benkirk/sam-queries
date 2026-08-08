@@ -54,6 +54,13 @@ class SAMWebappConfig(SAMConfig):
     # the create POST route 403s. Lets ops temporarily freeze project creation.
     CREATE_PROJECTS_ENABLED = os.getenv('CREATE_PROJECTS_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
+    # POST /api/xras/v1/actions capture mode. When ON (the default) the endpoint
+    # authenticates, parses and writes its xras_action_log row, then returns 200
+    # WITHOUT dispatching to a handler — legacy SAM is still the system of record
+    # for these actions until cutover, and the audit rows are how we harvest real
+    # payloads in the meantime. Flip OFF per handler as each one lands.
+    XRAS_ACTIONS_CAPTURE_ONLY = os.getenv('XRAS_ACTIONS_CAPTURE_ONLY', '1').lower() in ('1', 'true', 'yes')
+
     # OIDC configuration (active when AUTH_PROVIDER='oidc')
     OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
     OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')

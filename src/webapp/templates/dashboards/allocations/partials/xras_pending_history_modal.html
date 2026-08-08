@@ -1,0 +1,82 @@
+{#
+  Activation timeline for one project — rendered into #auditDetailsModalBody.
+
+  Context:
+    project   the Project
+    events    get_xras_activation_events(...) — newest first
+    post_url  where the add-comment form POSTs
+
+  The add-comment form lives at the bottom of the timeline rather than behind its
+  own button: you read the history, then add to it. That also means there is no
+  separate comment-form GET route.
+
+  ⚠️  Gated on MANAGE_XRAS in the ROUTE, not just here — `notified_to` carries
+  project lead/admin contact details, the same category as the raw payload.
+#}
+{# `with context` is load-bearing — see xras_pending_event_form.html. #}
+{% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+
+{% set _ICONS = {
+    'notified':  'fa-envelope',
+    'dismissed': 'fa-eye-slash',
+    'activated': 'fa-circle-check',
+    'comment':   'fa-comment',
+    'restored':  'fa-rotate-left',
+} %}
+{% set _LABELS = {
+    'notified':  'Marked notified',
+    'dismissed': 'Dismissed',
+    'activated': 'Activated',
+    'comment':   'Comment',
+    'restored':  'Restored',
+} %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Activation history — {{ project.projcode }}
+</h5>
+
+{% if events %}
+<ul class="list-unstyled mb-4">
+    {% for e in events %}
+    <li class="d-flex gap-3 pb-3 mb-3 border-bottom">
+        <div class="text-muted pt-1">
+            <i class="fas {{ _ICONS.get(e.event_type, 'fa-circle') }}"></i>
+        </div>
+        <div class="flex-grow-1">
+            <div class="d-flex align-items-baseline flex-wrap gap-2">
+                <strong>{{ _LABELS.get(e.event_type, e.event_type) }}</strong>
+                <span class="text-muted small">by {{ e.created_by }}</span>
+                <span class="text-muted small ms-auto"
+                      title="{{ e.creation_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
+                    {{ e.age | fmt_ago }} ago
+                </span>
+            </div>
+            {% if e.comment %}
+            <div class="mt-1">{{ e.comment }}</div>
+            {% endif %}
+            {% if e.notified_to %}
+            <div class="text-muted small mt-1">
+                To: <code class="user-select-all">{{ e.notified_to }}</code>
+            </div>
+            {% endif %}
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="text-muted">Nothing has been recorded for this project yet.</p>
+{% endif %}
+
+<form hx-post="{{ post_url }}"
+      hx-target="#auditDetailsModalBody"
+      hx-swap="innerHTML">
+    {{ textarea_field('comment', 'Add a comment', required=True, rows=2,
+                      maxlength=4000,
+                      placeholder='Anything the next person should know.') }}
+    {{ form_errors_panel() }}
+    <div class="d-flex justify-content-end gap-2">
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-comment"></i> Add comment
+        </button>
+    </div>
+</form>

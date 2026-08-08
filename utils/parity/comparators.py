@@ -1077,3 +1077,175 @@ def compare_wallclock_exemption(legacy: dict, new: dict) -> list[CheckResult]:
     ))
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# XRAS (/api/xras/v1/*)
+# ---------------------------------------------------------------------------
+#
+# The strictest comparator here, and deliberately so. Every other API in this
+# module is compared with tolerance — subset checks, ±5% on usage, ±1 day on
+# dates — because those legacy endpoints read a *mirrored* database and some
+# lag is expected. XRAS has no such lag: both stacks read the same production
+# `sam` schema (see XRAS_REIMPLEMENTATION.md section 4.3), so any difference is
+# a rendering difference and must fail.
+#
+# That is also why comparison is on raw bytes rather than parsed JSON. The bugs
+# worth catching here are length-preserving — swapped firstName/lastName, a
+# reordered field, a `%.1f` that became `%.2f` and back — and a parsed
+# comparison sees none of them.
+# ---------------------------------------------------------------------------
+
+#: `masters[]` is emitted in Java `HashMap` bucket order over the projcode
+#: keys. That is an artifact of legacy's data structure, not of the data, and
+#: reproducing it was rejected (see section 7 of the plan doc), so the two
+#: multi-master endpoints are compared master-by-master instead of byte-by-byte.
+_ORDER_INSENSITIVE_MASTERS = True
+
+
+def _first_difference(legacy: bytes, new: bytes) -> str:
+    """Describe where two bodies diverge, in a form that is actually useful.
+
+    Reports the size delta first (usually the whole story), then the byte
+    offset of the first difference with a window of context either side.
+    """
+    if legacy == new:
+        return ''
+    if len(legacy) != len(new):
+        head = f'size {len(legacy):,} -> {len(new):,} ({len(new) - len(legacy):+,} B)'
+    else:
+        head = f'same size ({len(legacy):,} B), content differs'
+    limit = min(len(legacy), len(new))
+    offset = next((i for i in range(limit) if legacy[i] != new[i]), limit)
+    lo, hi = max(0, offset - 40), offset + 40
+    return (f'{head}; first difference at byte {offset:,}\n'
+            f'      legacy: ...{legacy[lo:hi]!r}...\n'
+            f'      new:    ...{new[lo:hi]!r}...')
+
+
+def _byte_check(name: str, legacy: bytes, new: bytes) -> CheckResult:
+    diff = _first_difference(legacy, new)
+    return CheckResult(
+        name=name,
+        passed=not diff,
+        summary=(f'{len(legacy):,} B identical' if not diff
+                 else 'bodies differ'),
+        mismatches=[diff] if diff else [],
+        compared=1,
+    )
+
+
+def _canonicalise_master(master: dict) -> dict:
+    """Sort the one array whose legacy order is not derived from the data.
+
+    `allocations[]` follows `xras_allocation`'s `ORDER BY al.start_date DESC`,
+    which is **not a total order** — one production project has 11 allocations
+    sharing a start_date. MySQL returns tied rows in whatever order it likes, so
+    legacy's own output is arbitrary there (measured against production for
+    SCSG0001: the 6 request groups with no tie match a deterministic order
+    exactly; the 9 with a tie match neither ascending nor descending
+    allocation_id). Our port adds a primary-key tiebreaker so its output is at
+    least reproducible.
+
+    Sorting both sides by the serialised allocation keeps the *content* check
+    exact — every field, value and key order still has to match — while
+    ignoring an order neither side can be held to. Same reasoning as the
+    `masters[]` relaxation, one level down.
+    """
+    import json
+
+    out = dict(master)
+    out['requests'] = [
+        {**request,
+         'allocations': sorted(
+             request.get('allocations', []),
+             key=lambda a: json.dumps(a, separators=(',', ':'),
+                                      ensure_ascii=False))}
+        for request in master.get('requests', [])
+    ]
+    return out
+
+
+def _masters_check(name: str, legacy: bytes, new: bytes) -> CheckResult:
+    """Compare an `AccountingRequestResponse` master-by-master.
+
+    Byte-exact *within* each master, except for the two array orders legacy
+    does not derive from the data: the master sequence itself (Java `HashMap`
+    bucket order) and `allocations[]` under a `start_date` tie.
+    """
+    import json
+
+    try:
+        lm = {m['requestNumber']: _canonicalise_master(m)
+              for m in json.loads(legacy)['result']['masters']}
+        nm = {m['requestNumber']: _canonicalise_master(m)
+              for m in json.loads(new)['result']['masters']}
+    except (ValueError, KeyError, TypeError) as exc:
+        return CheckResult(name=name, passed=False,
+                           summary='unparseable response',
+                           mismatches=[str(exc)], compared=0)
+
+    mismatches = []
+    for code in sorted(set(lm) - set(nm)):
+        mismatches.append(f'master {code!r} present in legacy, absent from new')
+    for code in sorted(set(nm) - set(lm)):
+        mismatches.append(f'master {code!r} present in new, absent from legacy')
+
+    shared = sorted(set(lm) & set(nm))
+    for code in shared:
+        # Re-serialise each master with the same writer, so the comparison sees
+        # field order and value formatting but not the enclosing array order.
+        lb = json.dumps(lm[code], separators=(',', ':'), ensure_ascii=False)
+        nb = json.dumps(nm[code], separators=(',', ':'), ensure_ascii=False)
+        if lb != nb:
+            mismatches.append(
+                f'master {code}: ' + _first_difference(lb.encode(), nb.encode()))
+
+    return CheckResult(
+        name=name,
+        passed=not mismatches,
+        summary=f'{len(shared)} masters compared byte-exact (order-insensitive)',
+        mismatches=mismatches,
+        compared=len(shared),
+    )
+
+
+def compare_xras(legacy: dict, new: dict) -> list[CheckResult]:
+    """Compare captured XRAS responses.
+
+    Both arguments map a probe label to `(status, body_bytes)`; the caller
+    (`_fetch_xras`) decides which usernames and projcodes to sample.
+    """
+    results: list[CheckResult] = []
+
+    for label in sorted(set(legacy) & set(new)):
+        l_status, l_body = legacy[label]
+        n_status, n_body = new[label]
+
+        if l_status != n_status:
+            results.append(CheckResult(
+                name=f'xras / {label} status',
+                passed=False,
+                summary=f'legacy HTTP {l_status}, new HTTP {n_status}',
+                mismatches=[f'status {l_status} != {n_status}'],
+                compared=1,
+            ))
+            continue
+
+        if _ORDER_INSENSITIVE_MASTERS and label.startswith(
+                ('requests/request', 'requests/user', 'requests/role')):
+            results.append(_masters_check(f'xras / {label}', l_body, n_body))
+        else:
+            results.append(_byte_check(f'xras / {label}', l_body, n_body))
+
+    missing = sorted(set(legacy) ^ set(new))
+    if missing:
+        results.append(CheckResult(
+            name='xras / probe coverage',
+            passed=False,
+            summary=f'{len(missing)} probes ran against only one stack',
+            mismatches=missing,
+            compared=0,
+        ))
+
+    return results

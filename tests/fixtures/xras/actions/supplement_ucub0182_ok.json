@@ -1,0 +1,92 @@
+{
+  "actionId": 392126,
+  "actionType": "Supplement",
+  "actionBeginDate": "2025-08-21",
+  "actionEndDate": "2026-12-31",
+  "requestId": 1428503,
+  "requestNumber": "UCUB0182",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Flood Foundation Model Development",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 907990,
+      "resourceRepositoryKey": 145576,
+      "awardedAmount": "1500.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 907988,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "500000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 481498,
+      "roleType": "Allocation Manager",
+      "username": "user_00000013",
+      "beginDate": "2025-08-20",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given12",
+        "middleName": "M12",
+        "lastName": "Surname12",
+        "email": "user12@example.invalid",
+        "phone": "555-0107",
+        "organization": "NCAR/CGD",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 481370,
+      "roleType": "PI",
+      "username": "user_00000014",
+      "beginDate": "2025-08-19",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given13",
+        "middleName": null,
+        "lastName": "Surname13",
+        "email": "user13@example.invalid",
+        "phone": "555-0108",
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500021,
+      "fosNum": "19",
+      "fosName": "Hydrologic Sciences",
+      "fosAbbr": "Hydrologic Sciences",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}
