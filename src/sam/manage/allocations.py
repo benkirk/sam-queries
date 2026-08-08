@@ -69,7 +69,7 @@ def validate_allocation_dates(start_date: datetime, end_date: Optional[datetime]
 def log_allocation_transaction(
     session: Session,
     allocation: Allocation,
-    user_id: int,
+    user_id: Optional[int],
     transaction_type: str,
     comment: Optional[str] = None,
     old_values: Optional[Dict[str, Any]] = None,
@@ -88,10 +88,26 @@ def log_allocation_transaction(
     Args:
         session: SQLAlchemy session
         allocation: Allocation object being modified
-        user_id: User making the change (from flask_login.current_user)
+        user_id: User making the change (from flask_login.current_user), or
+            **None for an integration actor** — see below
         transaction_type: One of AllocationTransactionType constants
         comment: Optional custom comment
         old_values: Dict with previous values (for EDIT type) - keys: amount, start_date, end_date, description
+
+    ``user_id=None`` means *no human did this* — an integration wrote the row on its
+    own authority. ``allocation_transaction.user_id`` is nullable
+    (``sam/accounting/allocations.py``) and nothing here validates or dereferences it,
+    so ``None`` writes SQL NULL.
+
+    That is not a loophole, it is the established convention for this column: legacy
+    Java SAM writes NULL for every XRAS-driven transaction, and **25,048 rows in
+    production carry it** (measured 2026-08-07). Reproducing it is what keeps the
+    XRAS port's audit rows diffable against the ones legacy has been writing for
+    years. The type hint said ``int`` only because every caller so far has been a
+    web request with a logged-in user.
+
+    Do not invent a service account to avoid the NULL. A synthetic user id would be
+    indistinguishable from a real person in every report that joins this column.
 
     Returns:
         AllocationTransaction: The created transaction record

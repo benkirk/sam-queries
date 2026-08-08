@@ -586,6 +586,20 @@ is `CSL` or `CHAP`.
 
 ### 3.4 Error strings the handlers must be able to produce
 
+> ⚠️ **SUPERSEDED — do not implement from this list.** Sprint A flagged it as needing a
+> pass against the Java source; that pass is done, and this list turned out to be wrong
+> or incomplete in **seven** places: a double space dropped, `Missing begin/end date`
+> is really two strings, and four strings are missing entirely
+> (`Could not convert begin|end date for allocation(s)`,
+> `Transfer requires one source resource (negative amount)`,
+> `No FieldOfScience (fos) objects`, `No AllocationType for SelectionParms{…}`). The
+> single end-date row is also two different validators on two different handler paths.
+>
+> The verified table, with every emitter at `file:line`, is
+> [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md) § *The error vocabulary*; it is implemented in
+> `src/sam/xras/errors.py` and pinned byte-for-byte by `tests/unit/test_xras_errors.py`.
+> Kept below as the historical record of what was inferred before the source was read.
+
 `Missing title` · `Missing pi role` · `PI %s is not in database` · `PI %s is not an active user: ` ·
 `Allocation Manager %s is not in database: ` · `Allocation Manager %s is not active ` ·
 `Username %s is missing` · `Username %s is inactive` ·

@@ -63,13 +63,19 @@ Neither is code. Both have external lead time. Start them the day this sprint st
 
 ## Settle this before handler one
 
-**The actor question.** Legacy writes `allocation_transaction.user_id = NULL` for XRAS.
-`log_allocation_transaction` (`src/sam/manage/allocations.py:69`) declares `user_id: int`
-positionally, but the column is nullable (`src/sam/accounting/allocations.py:232`) and
-nothing in the body validates or dereferences it — so `None` writes `NULL` and matches
-legacy today. **Widen the hint to `Optional[int]` and document that `None` means an
-integration actor.** Every handler and every parity diff depends on this, and changing it
-midway invalidates diffs already taken.
+**The actor question — ✅ settled, commit 1.** Legacy writes
+`allocation_transaction.user_id = NULL` for XRAS, and **25,048 production rows carry
+it** (measured 2026-08-07). `log_allocation_transaction`
+(`src/sam/manage/allocations.py`) now types `user_id: Optional[int]` and documents that
+`None` means an integration actor.
+
+The mechanism in legacy is incidental rather than deliberate, which is worth knowing
+before anyone "fixes" it: `username` is never set on any of the extend / supplement /
+adjust / add-allocation commands, so `userRepository.get(null)` issues
+`WHERE username = null`, returns null, and the column lands NULL. Same outcome, no
+intent. **Do not invent a service account to avoid the NULL** — a synthetic user id is
+indistinguishable from a real person in every report that joins this column, and it
+would break diffing our rows against the years of legacy rows beside them.
 
 **The replay invariant.** Every `allocation_transaction` write must keep
 `replay(history) == amount`. These handlers are about to become the largest writer of
@@ -143,6 +149,129 @@ Three traps the corpus proved, each of which would produce a wrong dispatch:
 Accept **both** `Adjust` and `Adjustment`. The alias already exists for the query layer —
 `XRAS_ACTION_TYPE_ALIASES` and `canonical_action_type()`,
 `src/sam/queries/xras_actions.py:72` — reuse it rather than adding a second spelling map.
+
+---
+
+## Per-handler semantics, from the Java
+
+Read from source at tag 2.0.3. This is the porting specification; § 3.3 of the
+reference doc is the summary.
+
+### Extension
+
+```java
+project.getAccounts().stream()
+    .filter(a -> a.isActive() && a.hasAllocations())
+    .map(Account::getLatestAllocation)
+    .filter(this::isAllocationEndDateExtendable)     // reports and drops on shrink
+    .map(al -> buildExtendAllocationCommand(al, comment))
+```
+
+- **`resources[]` is ignored entirely** — per *active account*, one allocation each.
+  `Account.isActive()` is `project.isActive() && resource.isCommissioned(now) &&
+  !creationTime.after(now)`.
+- `Account.getLatestAllocation()` returns the max-end-date allocation, but an
+  allocation with a **null end date short-circuits and is returned immediately**. And
+  `Allocation.getEndDate()` is decommission-clamped: `min(stored end, resource
+  decommission)`, with a null stored end reading through as the decommission date.
+- Shrink test is `getEndDate().before(allocation.getEndDate())` — **strictly** before,
+  so equal end dates pass and emit a **no-op** extend command. That is a candidate
+  explanation for the "2 successful posts that mutated nothing" in § 1.2.
+- A reported shrink drops *that* allocation but the stream continues; the accumulated
+  error then aborts the whole action at `throwExceptionIfErrors`. One bad account kills
+  the extension.
+- Comment is `action.getClass().getSimpleName() + " Extension Request"` — a Java class
+  name leaking into the database. **Hardcode `XrasAction Extension Request`**;
+  production has 1,416 rows of it and 8,552 of the pre-2025-10 `XRAS Extension Request`.
+- Command order: `validateNewEndDate` (pre-order walk of the whole child subtree, each
+  node must pass) → resolve user (always null) → `disinherit()` → `extend()`, which
+  walks the subtree writing one `EXTENSION` row per node, **skipping nodes whose end
+  date already equals the new one**.
+- Row shape: `transaction_type=EXTENSION`, `alloc_end_date` set, `transaction_amount`
+  / `requested_amount` / `alloc_start_date` **NULL**, `user_id` NULL, `propagated`
+  false.
+
+### Supplement
+
+Per requested resource; existing allocation looked up via `Project.getAccount(name)`
+(a plain scan over **all** accounts, active or not).
+
+```java
+if (allocation == null)                       return buildAddAllocationCommand(resource);
+else if (getTransactionAmount(resource) > 0)  return buildSupplementAllocationCommand(...);
+return null;                                   // <= 0 silently dropped
+```
+
+- **`awardedAmount` is the INCREMENT**, not the new total — `SUPPLEMENT` does
+  `allocation.addAmount(transaction_amount)`. This is the single most important
+  porting semantic here.
+- ⚠️ The `> 0` test **unboxes a null `Float`** when the amount is blank or unparseable,
+  throwing an NPE *inside* assembly — so `throwExceptionIfErrors` never runs and the
+  operator gets a bare `NullPointerException` instead of `Awarded amount missing`. We
+  guard and keep the diagnostic (declared divergence).
+- Create branch dates: **start = today at 00:00**, not the action's begin date. End =
+  latest **contract** end if not before today, else latest **allocation** end if not
+  before today, else report `All contract and allocation end dates are null or past…`.
+- Row shape on supplement: `SUPPLEMENT`, `transaction_amount` = increment,
+  `requested_amount` NULL, comment = normalized `resources[].comments` or NULL,
+  `auth_at_panel_mtg` per the CSL/CHAP rule, dates NULL, `user_id` NULL.
+
+### Adjustment
+
+A near-verbatim copy of Supplement with `buildAdjustAllocationCommand` swapped in —
+**including the `> 0` guard**, which means legacy's adjust handler silently drops
+negatives, the one thing an adjustment is for. Combined with defect 4 (it tests
+`"Adjust"` while the wire says `"Adjustment"`) it has never serviced a single action.
+We accept both spellings **and** honour negatives. Row shape: `ADJUSTMENT`, signed
+`transaction_amount`, everything else NULL.
+
+### New
+
+`AddProjectAssembler` marks its order `// the order below is important!!`:
+**AddProject → AddContract → AddAllocation×N → AddUser×N → InactivateNewProject.**
+
+The aggregation overwrites each collaborator's `projcode` with the *generated* one
+after step 1 — during assembly they all hold the XRAS **request number**.
+
+Why the order cannot be rearranged:
+- `Project.addAllocation` throws `Cannot add allocation to inactive project %s`, and
+  `Account.isAssignable()` requires `project.isActive()` — so the project is created
+  **active** and inactivated only at the end.
+- Accounts are created as a side effect of adding an allocation, and user assignment
+  requires an account (`Assignment to project {0} cannot be made until project has an
+  account on resource {1}.`). Allocations must precede users. Our
+  `add_user_to_project` has the same constraint for the same reason.
+
+Field sources: title = `cleanText(requestTitle, 255)`; lead = PI; admin = AM (optional,
+no error when absent); AOI from primary `fosNum`; charge type **always** `NONEXEMPT`;
+`active` **always** true; allocation type via the extractor chain; mnemonic via the
+extractor; org acronym from the *lead's* `getBestOrganization()`; `extAlias` always null.
+
+Allocation dates use the **action's own** begin/end (unlike Supplement), end
+EOD-clamped. Commission clamping happens downstream in the command: an early start is
+**silently clamped forward**; an end at-or-before commission is **fatal**.
+
+### Update
+
+Per resource, and a single resource can emit **three** commands in this order:
+
+| condition | result |
+|---|---|
+| no allocation, **or** existing does not overlap the action window | **ADD** (using the action's dates) |
+| overlaps, existing EOD end **after** action end | **ERROR** `Action end date before existing allocation end date for %s` |
+| overlaps, existing end **before** action end | **EXTEND**… |
+| …then unless `resources[].comments == "AUTO_DEFAULT_ALLOCATION_TRANSACTION"` | (undo — dead, see defect 5) then **SUPPLEMENT** (`>0`) or **ADJUST** (`<0`) |
+
+⚠️ `isAllocationOverlapping` requires both action dates non-null, so a blank action
+date routes to ADD — and then NPEs on the commission clamp. Guard it.
+
+Update-driven extends use the **resource comment**, not `XrasAction Extension Request`.
+
+Two legacy bugs on this path we fix: it **silently re-activates an inactive project**
+(`setActive(getActive())` with `getActive()` hardcoded true, and no `InactivateNewProject`
+to undo it), and it **never actually updates lead or admin** — the guard compares the
+fetched user's username against the lookup key, which is always equal, and
+`setLeadUser` is missing braces so only its first statement is guarded.
 
 ---
 
@@ -225,12 +354,12 @@ route, `src/webapp/dashboards/admin/projects_routes.py:600-687`, runs
    rather than adds. Legacy creates the allocation when the resource has none (start
    today, end = latest contract/allocation end), supplements when the increment is `> 0`,
    and log-warns on `≤ 0`.
-3. **The allocation-type rule table.** § 3.2's eleven ordered strategies, transcribed as
-   data — a `(panel, allocation_type)` pair table. ⚠️ **Never resolve by name alone**:
-   `Small` appears twice in `allocation_type` and so does `Education`. Pair the rules with
-   names and resolve the ids at runtime — never hardcode a lookup-table PK.
-4. **The `AUTO_DEFAULT_ALLOCATION_TRANSACTION` undo compensation** the Update path needs
-   — a compensating `UNDO AUTO/DEFAULT` adjustment. 33 such rows in two years.
+3. **The allocation-type rule table** — see § *Allocation-type resolution* below for the
+   verified strategies. ⚠️ **Never resolve by name alone**: `Small` appears twice in
+   `allocation_type` and so does `Education`. Resolve the `(panel, type)` pair to an id
+   at runtime; never hardcode a lookup-table PK.
+4. ~~**The `AUTO_DEFAULT_ALLOCATION_TRANSACTION` undo compensation.**~~ **Not needed —
+   the path is dead in legacy.** See § *Legacy defect 5* below.
 5. **Nothing for Transfer.** `exchange_allocations` (`manage/allocations.py:416`) does not
    fit: it is 1→1, same-resource, and raises rather than clamping, where legacy's transfer
    is one negative source to N positive destinations summing to zero with the source
@@ -238,19 +367,240 @@ route, `src/webapp/dashboards/admin/projects_routes.py:600-687`, runs
 
 ---
 
-## Errors
+## Allocation-type resolution — eleven strategies, first non-null wins
 
-**Accumulate, never short-circuit.** Legacy gathers every problem into an ordered
-`LinkedHashSet` and raises once, which is what lets an XRAS admin fix a request in one
-pass instead of five — they read the 422 body directly in their "Accounting Service
-Posts" panel. The schema layer already does this (`_flatten` in `actions.py:151`); the
-handler layer must accumulate its own and merge.
+`allocationtype/AllocationTypeIdExtractor:10-22`. Resolves to a **`(panel, type)` pair**,
+then `findByPanelAndType`. Order verified against the source:
 
-§ 3.4 lists ~23 exact error strings. ⚠️ Sprint A flagged that section as needing **a pass
-against the Java source** before it is trusted: there are two different end-date
-validators, and `ProjectActionCommandFactoryBase:58` has a dangling trailing colon-space
-that a naive transcription would drop. Do that pass first — the strings are the contract
-the oracle diffs against.
+| # | Strategy | Match rule | → `(panel, type)` |
+|---|---|---|---|
+| 1 | ACCESS | if `allocationType` non-null → **exact lookup by SAM type name** (see trap below); else lowercase `opportunityName` contains `discover` → Discover; contains `explore` or equals `staff allocations` → Explore | `("ACCESS","Discover ACCESS")` / `("ACCESS","Explore ACCESS")` |
+| 2 | NSC | `opportunityName.startsWith("NCAR - NSC Allocation Request")` | `("NCAR-ARP","NSC")` |
+| 3 | External | full-match `(.* )?External( .*)?` against **any** of `requestTitle`, `opportunityName`, `allocationType` | `("External Projects","External Project")` |
+| 4 | CSL | full-match `\s*CSL(\|[\W].*)` against `requestTitle` only | `("CSLAP","CSL")` |
+| 5 | Large | `allocationType == "Large"` or `opportunityName` contains `Large Allocation` | `("CHAP","CHAP")` |
+| 6 | SmallNonNSF | contains `no NSF award` \| `unsponsored` \| `Exploratory Allocation` | `("UNIV USS","Small (No NSF award)")` |
+| 7 | SmallNSF | contains `w/ NSF` \| `with NSF` \| `Small Allocation` | `("UNIV USS","Small")` |
+| 8 | Classroom | contains `Classroom/Training` \| `Classroom Allocation` | `("UNIV USS","Classroom")` |
+| 9 | DataAnalysis | contains `Data Analysis Allocation` | `("UNIV USS","Data")` |
+| 10 | ASD-UNIV | lowercase `opportunityName.startsWith("univ - asd opportunity")` | `("ASD-CHAP","ASD-UNIV")` |
+| 11 | ASD-NCAR | lowercase `opportunityName.startsWith("ncar - asd opportunity")` | `("ASD-NCAR","ASD-NCAR")` |
+
+All null → `Unable to determine allocation type from action data`. Pair resolved but
+absent from `allocation_type` → `No AllocationType for SelectionParms{…}`.
+
+⚠️ **Three traps, each of which silently produces the wrong answer.**
+
+1. **The CSL regex in § 3.2 is markdown-mangled.** It renders as `\s*CSL(\|[\W].*)`,
+   which reads as a *literal pipe*. The source is
+   `Pattern.compile("\\s*" + "CSL" + "(|[\\W].*)")` — an **alternation with an empty
+   left branch**: "CSL alone, or CSL followed by a non-word char and anything". Java
+   `.matches()` is full-match, so Python needs
+   `re.fullmatch(r"\s*CSL(|[\W].*)", request_title)`.
+2. **Strategy 1 short-circuits on the literal `"Small"`.** `AllocationType.lookup` is
+   keyed on SAM's *type names*, so a wire `allocationType: "Small"` resolves
+   immediately to `("UNIV USS","Small")` and never reaches strategies 2–11. `"Large"`
+   does **not** (its type name is `CHAP`), and `"Educational"` / `"Exploratory"` /
+   `"Data Analysis"` all miss and fall through. § 3.2's "may return null and fall
+   through" only half-covers this. `Small` is the second most common resulting type,
+   so this is a live path, not a corner.
+3. **Java's POJO defaults hide null-safety bugs.** `XrasAction.allocationType` defaults
+   to `""`, never Java-null, and `ACCESSStrategy` / `LargeStrategy` dereference it
+   unguarded. Our schema admits `None` (the wire sends JSON `null`), so Python would
+   raise where Java does not. Normalise `None` and `""` identically at the boundary.
+
+Production frequency of the resulting types (automated creations, 12 months) — order
+test coverage by it: `Small (No NSF award)` 146 · `Small` 87 · `Data` 79 ·
+`Classroom` 52 · `CHAP` 30 · `NSC` 16 · `Discover ACCESS` 15 · `Explore ACCESS` 10 ·
+`External Project` 4.
+
+**A second consumer of the same resolution:** `getAuthAtPanelMeeting()` is `true` iff
+the resolved type is `CSL` or `CHAP` — but note the branch is **inverted** from what
+you would expect (`ProjectAllocationActionCommandsFactoryBase:96-114`): when the
+payload carries an `allocationType` it runs the strategy chain; when it does **not**,
+it reads the *existing project's* stored type and looks that up by name.
+
+---
+
+## The roster — `roles[]` read twice, differently
+
+`XrasAction.java`. Two readings of one array, and conflating them is the easiest way
+to get membership wrong.
+
+| Reading | Method | Filter | Result |
+|---|---|---|---|
+| **Role assignment** | `getPiUsername()` / `getAllocationManagerUsername()` | `roleType` **must** equal `PI` or `Allocation Manager`, plus a date window | project **lead** / **admin** |
+| **Roster** | `getUsernames()` | **`roleType` never examined** — date window only | **every** entry becomes a member |
+
+`ActionRoleName` has exactly two constants, `PI("PI")` and
+`ALLOCATION_MANAGER("Allocation Manager")` — space-separated, case-sensitive, and a
+*different vocabulary* from the `Pi`/`CoPi`/`AllocationManager` keys of
+`GET /v1/requests/role/…`. So a `Co-PI` or `User` is invisible to role assignment but
+**is still added to the project**.
+
+The predicates, verified:
+
+```java
+// roster — getUsernames()
+if (roleBeginDate.compareTo(actionDate) > 0) continue;                       // strictly excluded
+if (endDate != null && endDate.compareTo(actionDate) < 0) continue;
+
+// role assignment — getUsernameByRoleType()
+if (roleBeginDate > actionDate && currDate <= roleBeginDate && currDate <= actionDate)
+    continue;                                                                 // excluded only if ALSO future
+if (endDate != null && endDate.compareTo(actionDate) < 0) continue;           // identical to roster
+```
+
+- **The end-date rule is identical on both readings.** Only the begin-date rule differs
+  — § 3.5 says so and it is correct, but its snippet omits the roster's end-date line,
+  which invites the wrong conclusion.
+- The role-assignment begin rule is a triple conjunct: a future-dated role is ignored
+  **only while the action itself is also still in the future**. Once the action begin
+  date has passed, a future-dated role is *accepted*. That is defect 3: such a person
+  becomes project lead but is excluded from the roster, so they lead a project they
+  have no account on. **Port both, and warn when they disagree.**
+- All comparisons are lexicographic `String.compareTo`, correct only because the wire
+  is zero-padded `yyyy-MM-dd`. ⚠️ Jackson defaults these fields to `""`, so an empty
+  `endDate` compares *less than* any real date and the role is skipped — a Python port
+  parsing dates would behave differently.
+- `getUsernames()` **does not dedupe**; one human holding two roles appears twice.
+  `Account.assign` is idempotent, so this is harmless — but our port dedupes anyway.
+- `getUsernameByRoleType` returns the **first** survivor: defect 1. Our rule is filter
+  on the date window, reject only if more than one still survives.
+
+`AddUserToProjectActionCommandsFactory.create()` fans the roster out **per resource** —
+one command per `resources[]` entry, each carrying every username. ⚠️ With
+`resources: []` — **both Extensions in the corpus** — zero add-user commands are
+produced even though the roster is non-empty.
+
+---
+
+## Legacy defect 5 — the AUTO/DEFAULT undo has never fired
+
+Sprint C's plan and § 3.1 both said the Update path must reproduce a compensating
+`UNDO AUTO/DEFAULT` adjustment, "33 such rows in two years". **It does not, because the
+mechanism is broken in legacy and has never once executed.**
+
+`ActionTag` is a two-valued enum where `name()` and `getValue()` differ:
+
+```java
+AUTO_DEFAULT_ALLOCATION_TRANSACTION("AUTO/DEFAULT"),
+UNDO_AUTO_DEFAULT_ALLOCATION_TRANSACTION("UNDO AUTO/DEFAULT");
+```
+
+Writers use `.name()` (`AllocationTransaction:23`, `UpdateProjectAllocationActionCommandsFactory:62,110`,
+`AMIEAction:112`); the detector `isAutoDefaultAllocation` compares `.getValue()`
+(`ProjectAllocationActionCommandsFactoryBase:153`). They never match.
+
+Settled against production data (2026-08-07):
+
+```sql
+SELECT transaction_comment, COUNT(*) FROM allocation_transaction
+ WHERE transaction_comment LIKE '%AUTO%DEFAULT%' GROUP BY 1;
+```
+
+| `transaction_comment` | rows |
+|---|---:|
+| `AUTO_DEFAULT_ALLOCATION_TRANSACTION` | 33 |
+| `AUTO/DEFAULT` | 17 |
+| *any `UNDO` spelling* | **0** |
+
+The "33 rows" the plan cited are the `.name()` form — what the *writer* produces, not
+what the detector looks for. The 17 `AUTO/DEFAULT` rows are an older writer, so the
+detector is reachable only against pre-existing legacy data, and **no compensating
+adjustment has ever been written in either spelling.**
+
+**Decision: do not port it.** Detect the tag and log a warning so the situation is
+visible if it ever arises; take no compensating action. Porting dead code invents
+behaviour nobody has observed, on the Update path, against live allocations. The
+separate *contingent-resource* short-circuit — wire `resources[].comments ==
+"AUTO_DEFAULT_ALLOCATION_TRANSACTION"` meaning extension-only — compares `.name()`
+on both sides and **does** work; that one is ported.
+
+---
+
+## The error vocabulary
+
+> **This section supersedes `XRAS_REIMPLEMENTATION.md` § 3.4**, which was written from
+> the POJOs before anyone read the emitters and is **wrong or incomplete in seven
+> places**. The pass against the Java source Sprint A asked for is done; the results
+> are below and are implemented in `src/sam/xras/errors.py`, one named builder per
+> message with its emitter cited, pinned byte-for-byte by
+> `tests/unit/test_xras_errors.py`.
+
+### Assemble → check once → execute
+
+Legacy builds the entire command list first — pure, no writes — reporting problems
+into a `LinkedHashSet` on `ProcessingAction`, then calls `throwExceptionIfErrors` and
+only then executes (`AbstractServiceableProjectActionService.addOrUpdate`, whole
+handler in `@Transactional(REQUIRES_NEW)`). **Nothing is written if assembly reported
+anything.** Port that shape: build a plan, accumulate, raise 422, and do not open
+`management_transaction` until validation has passed.
+
+The container is insertion-ordered **and deduplicating**, and both halves are
+load-bearing. Three resources each missing `awardedAmount` yield **one** `Awarded
+amount missing`; `AddAllocationToProjectActionCommandsFactory` calls `getResourceName`
+twice per resource, so an unmapped key reports twice and collapses to one line. A
+Python `list` diverges on every multi-resource failure. `ActionErrors` provides
+`dict.fromkeys` semantics.
+
+### The 33 strings
+
+Java paths relative to `~/codes/sam/src/main/java/edu/ucar/cisl/sam/`. ␣ marks
+significant whitespace. **Bold** rows are absent from or mangled in § 3.4.
+
+| Exact string | Emitter |
+|---|---|
+| `Missing title` | `action/command/ProjectActionCommandFactoryBase:28` |
+| `Missing pi role` | `…ProjectActionCommandFactoryBase:39` |
+| `PI %s is not in database` | `…:43` — no trailing punctuation |
+| `PI %s is not an active user:␣` | `…:45` — ⚠️ trailing colon-space |
+| `Allocation Manager %s is not in database:␣` | `…:58` — ⚠️ trailing colon-space |
+| `Allocation Manager %s is not active␣` | `…:60` — ⚠️ trailing bare space |
+| `Username %s is missing` | `action/command/AddUserToProjectActionCommandsFactory:55` |
+| `Username %s is inactive` | `…:57` |
+| `No resource found in SAM corresponding to key %s` | `action/command/ProjectAllocationActionCommandsFactoryBase:38` — allocation path, `resource.getKey()` |
+| `No resource found in SAM corresponding to name %s` | `AddUserToProjectActionCommandsFactory:81` — roster path, `getResourceName()` |
+| `Awarded amount missing` | `ProjectAllocationActionCommandsFactoryBase:55` |
+| **`Could not convert awarded amount "%s"␣␣to float`** | `…:66` — ⚠️ **two spaces** before `to float` |
+| **`Missing begin date for allocation(s)`** | `…:85` — § 3.4 collapses this and the next into one slashed string |
+| **`Missing end date for allocation(s)`** | `…:85` |
+| **`Could not convert begin date for allocation(s)`** | `…:91` — absent from § 3.4 |
+| **`Could not convert end date for allocation(s)`** | `…:91` — absent from § 3.4 |
+| **`Action end date is before existing allocation end date (%s)`** | `ExtendProjectAllocationActionCommandsFactory:42` — **Extension** path, `%s` is a `yyyy-MM-dd` date |
+| **`Action end date before existing allocation end date for %s`** | `UpdateProjectAllocationActionCommandsFactory:52` — **Update** path, `%s` is a resource name, and no "is" |
+| `All contract and allocation end dates are null or past for project [%s]` | `SupplementProjectAllocationActionCommandsFactory:73`, duplicated at `AdjustProjectAllocationActionCommandsFactory:72` |
+| `Cannot find contract for grant number "%s" ("%s")` | `action/domain/model/ContractNumberExtractor:21` — grant number, then extracted core |
+| `Could not determine Mnemonic code for external PI via institution` | `…/mnemoniccode/MnemonicCodeExtractor:39` |
+| `Could not determine Mnemonic code for internal PI via organization` | `…:47` — **24% of all legacy XRAS failures** |
+| `Could not produce affiliation data for PI %s` | `…:56` |
+| **`No FieldOfScience (fos) objects`** | `action/domain/model/AreaOfInterestExtractor:14` — fires on `fos: []`; absent from § 3.4 |
+| `AreaOfInterest (FOS) id is not in database: %s` | `…:25` |
+| `Unable to determine allocation type from action data` | `…/allocationtype/AllocationTypeIdExtractor:31` |
+| **`No AllocationType for SelectionParms{panel='%s', type='%s'}`** | `…:37` — pair resolved but no row; absent from § 3.4 |
+| `Transfer supports only one source (negative amount)` | `TransferProjectAllocationActionCommandsFactory:57` |
+| **`Transfer requires one source resource (negative amount)`** | `…:67` — a *third* arity string; absent from § 3.4 |
+| `Transfer requires at least one destination resource (positive amount)` | `…:71` |
+| `Transfer source project:resource (%s:%s) has no allocation` | `…:93` |
+| `Transfer destination credit (%f) exceeds source allowed debit (%f)` | `…:102` — ⚠️ Java `%f` is **six decimal places** (`1000.000000`) |
+| `Request not serviced, no appropriate service found` | `action/service/ProjectActionServiceSelector` — `BadRequestException`, never reaches a client |
+
+Two more that are *not* observer-reported and therefore never reach the accumulated
+422 in legacy — they escape as exceptions and become a 500 — but which our handlers
+must decide about explicitly:
+
+| String | Emitter | Note |
+|---|---|---|
+| `End date of allocation (%s) must be after commission date of resource(%s).` | `DefaultAddAllocationToProjectCommand:63` | ⚠️ **no space** before `(` in `resource(%s)`. `IllegalStateException` |
+| `Cannot add allocation to inactive project %s` | `project/domain/model/Project:251` | why `InactivateNewProject` runs last |
+
+### The extractors report rather than propagate
+
+`ProjectActionCommandFactoryBase` catches `AttributeExtractionException` from the AOI
+(`:79-81`), allocation-type (`:103-105`) and mnemonic (`:115-117`) extractors and funnels
+`e.getMessage()` into the observer, so those accumulate with everything else rather
+than aborting. Reproduce that: an unresolvable mnemonic and a missing title arrive in
+the same 422.
 
 ---
 
