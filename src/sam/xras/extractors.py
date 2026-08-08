@@ -52,6 +52,7 @@ from sam.resources.facilities import Panel
 
 from . import errors as e
 from .errors import ActionErrors
+from .wire import get_field
 
 __all__ = [
     'SelectionParms',
@@ -164,11 +165,11 @@ def _access_strategy(action) -> Optional[SelectionParms]:
     short-circuit, so both are live. § 3.2's "may return null and fall through" covers
     only half of it.
     """
-    allocation_type = _clean(_get(action, 'allocationType'))
+    allocation_type = _clean(get_field(action, 'allocationType'))
     if allocation_type is not None:
         return _lookup_by_type_name(allocation_type)
 
-    opportunity = _clean(_get(action, 'opportunityName'))
+    opportunity = _clean(get_field(action, 'opportunityName'))
     if opportunity is None:
         return None
     lowered = opportunity.lower()
@@ -183,7 +184,7 @@ def _nsc_strategy(action) -> Optional[SelectionParms]:
     """`NSCStrategy` — the only strategy keyed on a prefix of ``opportunityName``
     that is also an ``NCAR ``-prefixed name, so it is also the one whose payloads
     take the mnemonic *lab* path. See :func:`resolve_mnemonic_code`."""
-    opportunity = _clean(_get(action, 'opportunityName'))
+    opportunity = _clean(get_field(action, 'opportunityName'))
     if opportunity and opportunity.startswith('NCAR - NSC Allocation Request'):
         return _ALLOCATION_TYPES['NSC']
     return None
@@ -193,7 +194,7 @@ def _external_strategy(action) -> Optional[SelectionParms]:
     """`ExternalStrategy` — the only strategy that tests **three** fields, and the
     only one that reads ``allocationType`` as free text rather than as a key."""
     for field in ('requestTitle', 'opportunityName', 'allocationType'):
-        value = _clean(_get(action, field))
+        value = _clean(get_field(action, field))
         if value and _EXTERNAL_PATTERN.fullmatch(value):
             return _ALLOCATION_TYPES['EXTERNAL']
     return None
@@ -202,7 +203,7 @@ def _external_strategy(action) -> Optional[SelectionParms]:
 def _csl_strategy(action) -> Optional[SelectionParms]:
     """`CSLStrategy` — ``requestTitle`` only. See :data:`_CSL_PATTERN` for the regex
     the plan document mangles."""
-    title = _clean(_get(action, 'requestTitle'))
+    title = _clean(get_field(action, 'requestTitle'))
     if title and _CSL_PATTERN.fullmatch(title):
         return _ALLOCATION_TYPES['CSL']
     return None
@@ -216,8 +217,8 @@ def _large_strategy(action) -> Optional[SelectionParms]:
     on an explicit JSON ``null``; the POJO defaults of ``""`` are all that keep it
     standing. We guard, because our schema admits ``None``.
     """
-    allocation_type = _clean(_get(action, 'allocationType'))
-    opportunity = _clean(_get(action, 'opportunityName'))
+    allocation_type = _clean(get_field(action, 'allocationType'))
+    opportunity = _clean(get_field(action, 'opportunityName'))
     if allocation_type == 'Large' or (opportunity and 'Large Allocation' in opportunity):
         return _ALLOCATION_TYPES['LARGE']
     return None
@@ -226,7 +227,7 @@ def _large_strategy(action) -> Optional[SelectionParms]:
 def _opportunity_contains(action, *markers: str) -> bool:
     """Case-**sensitive** substring test on ``opportunityName``, as Java's
     ``String.contains``. Five strategies share this shape."""
-    opportunity = _clean(_get(action, 'opportunityName'))
+    opportunity = _clean(get_field(action, 'opportunityName'))
     if not opportunity:
         return False
     return any(marker in opportunity for marker in markers)
@@ -265,7 +266,7 @@ def _data_analysis_strategy(action) -> Optional[SelectionParms]:
 def _asd_univ_strategy(action) -> Optional[SelectionParms]:
     """`ASDUNIVStrategy` — lowercased prefix test, unlike the case-sensitive
     ``contains`` strategies above."""
-    opportunity = _clean(_get(action, 'opportunityName'))
+    opportunity = _clean(get_field(action, 'opportunityName'))
     if opportunity and opportunity.lower().startswith('univ - asd opportunity'):
         return _ALLOCATION_TYPES['ASDUNIV']
     return None
@@ -273,7 +274,7 @@ def _asd_univ_strategy(action) -> Optional[SelectionParms]:
 
 def _asd_ncar_strategy(action) -> Optional[SelectionParms]:
     """`ASDNCARStrategy`."""
-    opportunity = _clean(_get(action, 'opportunityName'))
+    opportunity = _clean(get_field(action, 'opportunityName'))
     if opportunity and opportunity.lower().startswith('ncar - asd opportunity'):
         return _ALLOCATION_TYPES['ASDNCAR']
     return None
@@ -296,17 +297,6 @@ _STRATEGIES = (
     _asd_univ_strategy,
     _asd_ncar_strategy,
 )
-
-
-def _get(action, key: str):
-    """Read one wire field from either a loaded dict or an object with attributes.
-
-    The schema loads to a plain dict with camelCase keys; tests find it convenient to
-    pass a namespace. Keeping both readable costs one function.
-    """
-    if isinstance(action, dict):
-        return action.get(key)
-    return getattr(action, key, None)
 
 
 def select_allocation_type_parms(action) -> Optional[SelectionParms]:
@@ -370,12 +360,12 @@ def primary_fos_num(action) -> Optional[str]:
     legacy's second loop verbatim (`XrasAction:302-311`); ``isPrimary`` is not reliably
     at index 0. Returns ``None`` for an empty array — the caller owns the message.
     """
-    entries = _get(action, 'fos') or []
+    entries = get_field(action, 'fos') or []
     for entry in entries:
-        if _get(entry, 'isPrimary'):
-            return _get(entry, 'fosNum')
+        if get_field(entry, 'isPrimary'):
+            return get_field(entry, 'fosNum')
     for entry in entries:
-        return _get(entry, 'fosNum')
+        return get_field(entry, 'fosNum')
     return None
 
 
@@ -512,7 +502,7 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
         return None
 
     lookup = MnemonicCode.build_lookup(session)
-    opportunity = _clean(_get(action, 'opportunityName')) or ''
+    opportunity = _clean(get_field(action, 'opportunityName')) or ''
 
     if opportunity.startswith('NCAR '):
         lab = _lab_level_organization(_organization_parentage(_best_organization(user)))

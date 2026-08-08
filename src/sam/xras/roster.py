@@ -62,6 +62,7 @@ from sam.core.users import User
 
 from . import errors as e
 from .errors import ActionErrors
+from .wire import get_field
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +103,6 @@ class Roster:
     admin_username: Optional[str]
     member_usernames: Tuple[str, ...]
     warnings: Tuple[str, ...] = ()
-
-
-def _get(obj, key: str):
-    """Read one wire field from a loaded dict or an attribute-carrying object."""
-    if isinstance(obj, dict):
-        return obj.get(key)
-    return getattr(obj, key, None)
 
 
 def _wire_str(value) -> str:
@@ -166,7 +160,7 @@ def _today() -> str:
 def _end_date_in_range(role, action_date: str) -> bool:
     """``roleEndDateInRange`` — identical on both readings, which § 3.5's snippet
     omits in a way that invites the wrong conclusion."""
-    end_date = _get(role, 'endDate')
+    end_date = get_field(role, 'endDate')
     if end_date is None:
         return True
     return not (_wire_str(end_date) < action_date)
@@ -187,15 +181,15 @@ def roster_usernames(action) -> Tuple[str, ...]:
     roster is computed and validated regardless; whether anything is done with it is
     the handler's decision, not this function's.
     """
-    action_date = _wire_str(_get(action, 'actionBeginDate'))
+    action_date = _wire_str(get_field(action, 'actionBeginDate'))
     names: List[str] = []
-    for role in _get(action, 'roles') or ():
-        begin_date = _wire_str(_get(role, 'beginDate'))
+    for role in get_field(action, 'roles') or ():
+        begin_date = _wire_str(get_field(role, 'beginDate'))
         if begin_date > action_date:
             continue
         if not _end_date_in_range(role, action_date):
             continue
-        username = normalize_username(_get(role, 'username'))
+        username = normalize_username(get_field(role, 'username'))
         if username not in names:
             names.append(username)
     return tuple(names)
@@ -216,20 +210,20 @@ def role_candidates(action, role_type: str, *, today: Optional[str] = None) -> T
     depending on when it ran.
     """
     current_date = today or _today()
-    action_date = _wire_str(_get(action, 'actionBeginDate'))
+    action_date = _wire_str(get_field(action, 'actionBeginDate'))
 
     candidates: List[str] = []
-    for role in _get(action, 'roles') or ():
-        if _wire_str(_get(role, 'roleType')) != role_type:
+    for role in get_field(action, 'roles') or ():
+        if _wire_str(get_field(role, 'roleType')) != role_type:
             continue
-        begin_date = _wire_str(_get(role, 'beginDate'))
+        begin_date = _wire_str(get_field(role, 'beginDate'))
         if (begin_date > action_date
                 and current_date <= begin_date
                 and current_date <= action_date):
             continue
         if not _end_date_in_range(role, action_date):
             continue
-        candidates.append(normalize_username(_get(role, 'username')))
+        candidates.append(normalize_username(get_field(role, 'username')))
     return tuple(candidates)
 
 
@@ -296,7 +290,7 @@ def resolve_roster(session, action, errs: ActionErrors, *,
         logger.warning(
             'XRAS role/roster disagreement: %s is assigned a role but is excluded '
             'from the project roster (legacy defect 3) — action %s',
-            username, _get(action, 'actionId'))
+            username, get_field(action, 'actionId'))
 
     pi_candidates = role_candidates(action, PI_ROLE, today=today)
     pi_username: Optional[str] = None

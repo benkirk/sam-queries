@@ -41,6 +41,7 @@ from sam.projects.projects import Project
 from .. import errors as e
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
+from ..wire import get_field
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +59,6 @@ __all__ = ['handle_extension', 'EXTENSION_COMMENT']
 EXTENSION_COMMENT = 'XrasAction Extension Request'
 
 
-def _get(obj, key: str):
-    """Read one wire field from a loaded dict or an attribute-carrying object."""
-    if isinstance(obj, dict):
-        return obj.get(key)
-    return getattr(obj, key, None)
-
-
 def parse_action_end_date(action, errs: ActionErrors) -> Optional[datetime]:
     """``ProjectAllocationActionCommandsFactoryBase.getEndDate()``.
 
@@ -76,7 +70,7 @@ def parse_action_end_date(action, errs: ActionErrors) -> Optional[datetime]:
     ``getDateAtEndOfDay`` and SAM's own 23:59:59 end-date convention. The two agree,
     which is why :func:`sam.base.normalize_end_date` can do the work.
     """
-    raw = _get(action, 'actionEndDate')
+    raw = get_field(action, 'actionEndDate')
     if raw is None or not str(raw).strip():
         errs.report(e.missing_date('end'))
         return None
@@ -178,7 +172,7 @@ def handle_extension(session, action) -> DispatchResult:
         XrasActionRejected: the new end date is missing, unparseable, or would
             shrink at least one account's allocation. Nothing is written.
     """
-    projcode = (_get(action, 'requestNumber') or '').strip()
+    projcode = (get_field(action, 'requestNumber') or '').strip()
     project = Project.get_by_projcode(session, projcode)
     errs = ActionErrors()
 

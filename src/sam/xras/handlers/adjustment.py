@@ -56,7 +56,8 @@ from sam.projects.projects import Project
 from .. import errors as e
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
-from .extension import _get, latest_allocation
+from ..wire import get_field
+from .extension import latest_allocation
 from .supplement import (
     _mark_panel_authorised,
     account_for_resource,
@@ -85,7 +86,7 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
     ``auth`` flag went missing for an entire sprint. See
     ``docs/plans/XRAS_HANDLER_REFACTOR.md``.
     """
-    projcode = (_get(action, 'requestNumber') or '').strip()
+    projcode = (get_field(action, 'requestNumber') or '').strip()
     project = Project.get_by_projcode(session, projcode)
     if project is None:                              # pragma: no cover - dispatcher checked
         return [], []
@@ -94,7 +95,7 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
     adjustments: List[tuple] = []
     creations: List[tuple] = []
 
-    for wire_resource in _get(action, 'resources') or ():
+    for wire_resource in get_field(action, 'resources') or ():
         resource = resolve_resource(session, wire_resource, errs)
         if resource is None:
             continue
@@ -151,7 +152,7 @@ def handle_adjustment(session, action) -> DispatchResult:
             a create branch with no usable end date, or an adjustment that would take
             an allocation below zero. Nothing is written.
     """
-    projcode = (_get(action, 'requestNumber') or '').strip()
+    projcode = (get_field(action, 'requestNumber') or '').strip()
     errs = ActionErrors()
     adjustments, creations = _plan(session, action, errs)
 

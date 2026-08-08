@@ -69,6 +69,8 @@ from typing import Callable, Dict, FrozenSet, Optional, Tuple
 from sam.projects.projects import Project
 from sam.queries.xras_actions import XRAS_ACTION_TYPES, canonical_action_type
 
+from .wire import get_field
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -191,8 +193,8 @@ def select_service(session, action) -> Optional[str]:
     design (``InactivateNewProject``), so an active-only existence check would route a
     re-posted New action to the Add handler and mint a second project.
     """
-    action_type = canonical_action_type(_get(action, 'actionType'))
-    request_number = (_get(action, 'requestNumber') or '').strip()
+    action_type = canonical_action_type(get_field(action, 'actionType'))
+    request_number = (get_field(action, 'requestNumber') or '').strip()
     exists = bool(request_number) and Project.get_by_projcode(
         session, request_number) is not None
 
@@ -228,7 +230,7 @@ def dispatch_action(session, action, *,
             written — the contract is assemble → check once → execute, so this is
             raised before any transaction opens.
     """
-    action_type = canonical_action_type(_get(action, 'actionType'))
+    action_type = canonical_action_type(get_field(action, 'actionType'))
     service = select_service(session, action)
 
     if service is None:
@@ -249,10 +251,3 @@ def dispatch_action(session, action, *,
                               reason=f'no handler is registered for {service!r}')
 
     return handler(session, action)
-
-
-def _get(obj, key: str):
-    """Read one wire field from a loaded dict or an attribute-carrying object."""
-    if isinstance(obj, dict):
-        return obj.get(key)
-    return getattr(obj, key, None)

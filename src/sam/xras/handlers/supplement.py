@@ -46,7 +46,8 @@ from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
 from ..extractors import select_allocation_type_parms
 from ..roster import normalize_username
-from .extension import _get, effective_end_date, latest_allocation
+from ..wire import get_field
+from .extension import effective_end_date, latest_allocation
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Res
     unmapped key reports twice and collapses to one line in the accumulator. That is
     the dedup working as designed, and it is why the container is a set.
     """
-    key = _get(wire_resource, 'key')
+    key = get_field(wire_resource, 'key')
     row = None
     if key is not None:
         row = (session.query(XrasResourceRepositoryKeyResource)
@@ -105,7 +106,7 @@ def transaction_amount(wire_resource, errs: ActionErrors) -> Optional[float]:
     ``Could not convert awarded amount "%s"␣␣to float`` has **two spaces** before
     ``to float``. Reproduced; see :mod:`sam.xras.errors`.
     """
-    raw = _get(wire_resource, 'awardedAmount')
+    raw = get_field(wire_resource, 'awardedAmount')
     if raw is None or not str(raw).strip():
         errs.report(e.awarded_amount_missing())
         return None
@@ -122,7 +123,7 @@ def resource_comment(wire_resource) -> Optional[str]:
     Same ``StringUtil.normalize`` the roster uses on usernames, so an accented comment
     is ASCII-folded before it reaches ``transaction_comment``.
     """
-    comment = normalize_username(_get(wire_resource, 'comments')).strip()
+    comment = normalize_username(get_field(wire_resource, 'comments')).strip()
     return comment or None
 
 
@@ -136,11 +137,11 @@ def auth_at_panel_meeting(session, action) -> bool:
     reproduced. Set on 1,264 of the 3,203 integration-written SUPPLEMENT rows in
     production, so it is not vestigial.
     """
-    if _get(action, 'allocationType'):
+    if get_field(action, 'allocationType'):
         parms = select_allocation_type_parms(action)
         return parms is not None and parms.allocation_type in _PANEL_AUTHORISED
 
-    projcode = (_get(action, 'requestNumber') or '').strip()
+    projcode = (get_field(action, 'requestNumber') or '').strip()
     project = Project.get_by_projcode(session, projcode) if projcode else None
     stored = getattr(project.allocation_type, 'allocation_type', None) if project else None
     return stored in _PANEL_AUTHORISED
@@ -204,7 +205,7 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
     resource still lets the rest report their own problems before the single
     ``raise_if_any()``.
     """
-    projcode = (_get(action, 'requestNumber') or '').strip()
+    projcode = (get_field(action, 'requestNumber') or '').strip()
     project = Project.get_by_projcode(session, projcode)
     if project is None:                              # pragma: no cover - dispatcher checked
         return [], []
@@ -214,7 +215,7 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
     supplements: List[tuple] = []
     creations: List[tuple] = []
 
-    for wire_resource in _get(action, 'resources') or ():
+    for wire_resource in get_field(action, 'resources') or ():
         resource = resolve_resource(session, wire_resource, errs)
         if resource is None:
             continue
@@ -261,7 +262,7 @@ def handle_supplement(session, action) -> DispatchResult:
         XrasActionRejected: an unmapped resource key, a missing or unparseable amount,
             or a create branch with no usable end date. Nothing is written.
     """
-    projcode = (_get(action, 'requestNumber') or '').strip()
+    projcode = (get_field(action, 'requestNumber') or '').strip()
     errs = ActionErrors()
     supplements, creations = _plan(session, action, errs)
 

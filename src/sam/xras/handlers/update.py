@@ -79,7 +79,8 @@ from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
 from ..extractors import resolve_allocation_type, resolve_area_of_interest
 from ..roster import resolve_roster
-from .extension import _get, effective_end_date, latest_allocation, parse_action_end_date
+from ..wire import get_field
+from .extension import effective_end_date, latest_allocation, parse_action_end_date
 from .new import _abstract, _title, clamp_start_to_commission, parse_action_begin_date
 from .supplement import (
     account_for_resource,
@@ -178,7 +179,7 @@ def _plan_resource(session, project, wire_resource, errs, *,
 
     # --- Contingent resource: the date moves, the amount does not. This short-circuit
     # compares `.name()` on both sides and genuinely works, unlike the undo below.
-    if _get(wire_resource, 'comments') == CONTINGENT_RESOURCE_COMMENT:
+    if get_field(wire_resource, 'comments') == CONTINGENT_RESOURCE_COMMENT:
         return planned
 
     # --- The undo that has never fired. Detected, warned, NOT performed.
@@ -206,7 +207,7 @@ def handle_update(session, action) -> DispatchResult:
     Raises:
         XrasActionRejected: anything assembly reported. Nothing is written.
     """
-    projcode = (_get(action, 'requestNumber') or '').strip()
+    projcode = (get_field(action, 'requestNumber') or '').strip()
     project = Project.get_by_projcode(session, projcode)
     errs = ActionErrors()
 
@@ -224,7 +225,7 @@ def handle_update(session, action) -> DispatchResult:
 
     planned: List[tuple] = []
     if project is not None:
-        for wire_resource in _get(action, 'resources') or ():
+        for wire_resource in get_field(action, 'resources') or ():
             planned.extend(_plan_resource(
                 session, project, wire_resource, errs,
                 start=start, end=end, auth=auth))

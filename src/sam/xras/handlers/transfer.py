@@ -46,6 +46,7 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Write primitives* item 5.
 import logging
 
 from ..dispatch import DispatchResult, register
+from ..wire import get_field
 
 logger = logging.getLogger(__name__)
 
@@ -67,13 +68,12 @@ def handle_transfer(session, action) -> DispatchResult:
     registry's contract is uniform — a special case in the dispatcher would be a worse
     trade than an unused argument here.
     """
-    projcode = (action.get('requestNumber') if isinstance(action, dict)
-                else getattr(action, 'requestNumber', None)) or ''
+    projcode = (get_field(action, 'requestNumber') or '').strip()
     logger.warning(
         'XRAS Transfer action for %s parked for a human: %s',
-        projcode.strip() or '<no projcode>', NOT_IMPLEMENTED_REASON)
+        projcode or '<no projcode>', NOT_IMPLEMENTED_REASON)
     return DispatchResult(status='manual', service='transfer',
-                          projcode=projcode.strip() or None,
+                          projcode=projcode or None,
                           reason=NOT_IMPLEMENTED_REASON)
 
 

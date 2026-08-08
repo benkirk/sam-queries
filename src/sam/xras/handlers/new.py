@@ -57,7 +57,8 @@ from ..extractors import (
     resolve_mnemonic_code,
 )
 from ..roster import resolve_roster
-from .extension import _get, parse_action_end_date
+from ..wire import get_field
+from .extension import parse_action_end_date
 from .supplement import (
     auth_at_panel_meeting,
     resolve_resource,
@@ -99,7 +100,7 @@ def parse_action_begin_date(action, errs: ActionErrors) -> Optional[datetime]:
     Reports ``Missing begin date for allocation(s)`` / ``Could not convert begin date
     for allocation(s)``. Unlike the end date this is **not** moved to end of day.
     """
-    raw = _get(action, 'actionBeginDate')
+    raw = get_field(action, 'actionBeginDate')
     if raw is None or not str(raw).strip():
         errs.report(e.missing_date('begin'))
         return None
@@ -136,7 +137,7 @@ def clamp_start_to_commission(resource, start: datetime) -> datetime:
 
 def _title(action, errs: ActionErrors) -> Optional[str]:
     """``getTitle()`` — blank reports ``Missing title``, else cleaned and truncated."""
-    raw = _get(action, 'requestTitle')
+    raw = get_field(action, 'requestTitle')
     title = (raw or '').strip()
     if not title:
         errs.report(e.missing_title())
@@ -146,7 +147,7 @@ def _title(action, errs: ActionErrors) -> Optional[str]:
 
 def _abstract(action) -> Optional[str]:
     """``getAbstract()`` — blank becomes ``None`` rather than an empty string."""
-    raw = (_get(action, 'requestAbstract') or '').strip()
+    raw = (get_field(action, 'requestAbstract') or '').strip()
     return raw or None
 
 
@@ -161,7 +162,7 @@ def _plan_allocations(session, action, errs: ActionErrors) -> List[tuple]:
     end = parse_action_end_date(action, errs)
 
     planned: List[tuple] = []
-    for wire_resource in _get(action, 'resources') or ():
+    for wire_resource in get_field(action, 'resources') or ():
         resource = resolve_resource(session, wire_resource, errs)
         amount = transaction_amount(wire_resource, errs)
         if resource is None or amount is None or begin is None or end is None:
@@ -187,8 +188,8 @@ def _plan_contracts(session, action, errs: ActionErrors) -> List:
     the missing contract. A project with no contract is legitimate.
     """
     contracts = []
-    for grant in _get(action, 'grants') or ():
-        contract = resolve_contract(session, _get(grant, 'grantNumber'), errs)
+    for grant in get_field(action, 'grants') or ():
+        contract = resolve_contract(session, get_field(grant, 'grantNumber'), errs)
         if contract is not None:
             contracts.append(contract)
     return contracts
