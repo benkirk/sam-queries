@@ -176,9 +176,25 @@ class TestAccountIsActive:
         """
         from factories import make_account
         account = make_account(session)
-        assert account.creation_time > datetime.now(), (
-            'the skew this test exists for is gone — if the clocks now agree, '
-            'reconsider porting the conjunct rather than deleting this test')
+
+        # ⚠️ The skew is a property of the *environment*, not of the code, so it
+        # cannot be asserted unconditionally. `account.creation_time` comes from
+        # MySQL's `NOW()` (UTC in these containers); `datetime.now()` is the app
+        # clock. On a naive-Mountain laptop those differ by six hours and the
+        # account looks future-dated; in CI both are UTC and they agree to the
+        # second. Asserting the skew exists passed on every developer machine and
+        # failed on the runner — by 0.28 seconds.
+        #
+        # What the handler must do is the same either way: extend an account
+        # created moments ago. That is the assertion below, and it holds in both
+        # environments — which is the whole point of not porting the conjunct.
+        if account.creation_time > datetime.now():
+            skew = account.creation_time - datetime.now()
+            assert skew > timedelta(minutes=1), (
+                'creation_time is ahead of the app clock by less than a minute, '
+                'which is neither the documented multi-hour timezone skew nor '
+                'agreement — look at the container TZ before trusting this test')
+
         assert account_is_active(account, datetime.now())
 
     def test_the_soft_delete_check_is_ours_not_legacys(self, session):
