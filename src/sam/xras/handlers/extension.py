@@ -30,10 +30,9 @@ Verified against ``~/codes/sam`` at tag 2.0.3
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from sam.accounting.allocations import Allocation
-from sam.base import normalize_end_date
 from sam.manage.extend import extend_account_allocation
 from sam.manage.transaction import management_transaction
 from sam.projects.projects import Project
@@ -42,6 +41,12 @@ from .. import errors as e
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
 from ..wire import get_field
+from ._allocations import (           # noqa: F401  — re-exported, see the shim note
+    account_is_active,
+    effective_end_date,
+    latest_allocation,
+)
+from ._fields import parse_action_end_date  # noqa: F401  — re-exported
 
 logger = logging.getLogger(__name__)
 
@@ -57,112 +62,6 @@ __all__ = ['handle_extension', 'EXTENSION_COMMENT']
 #: derived, because deriving it from a Python class name would silently produce a third
 #: spelling the moment anyone renamed a class.
 EXTENSION_COMMENT = 'XrasAction Extension Request'
-
-
-def parse_action_end_date(action, errs: ActionErrors) -> Optional[datetime]:
-    """``ProjectAllocationActionCommandsFactoryBase.getEndDate()``.
-
-    Blank → ``Missing end date for allocation(s)``; unparseable → ``Could not convert
-    end date for allocation(s)``. Two separate strings — § 3.4 of the reference doc
-    collapses them into one slashed line, which is one of its seven errors.
-
-    A valid date is returned at **end of day**, matching legacy's
-    ``getDateAtEndOfDay`` and SAM's own 23:59:59 end-date convention. The two agree,
-    which is why :func:`sam.base.normalize_end_date` can do the work.
-    """
-    raw = get_field(action, 'actionEndDate')
-    if raw is None or not str(raw).strip():
-        errs.report(e.missing_date('end'))
-        return None
-    try:
-        parsed = datetime.strptime(str(raw).strip(), '%Y-%m-%d')
-    except ValueError:
-        errs.report(e.could_not_convert_date('end'))
-        return None
-    return normalize_end_date(parsed)
-
-
-def effective_end_date(allocation: Allocation) -> Optional[datetime]:
-    """``Allocation.getEndDate()`` — the stored end, clamped by decommission.
-
-    Legacy's getter is not a plain column read: when the account's resource has a
-    ``decommission_date``, it returns ``min(stored end, decommission)``, and a **null**
-    stored end reads through as the decommission date itself. Both the shrink test and
-    the latest-allocation search go through it, so a port that read ``end_date``
-    directly would compare different quantities than legacy did.
-
-    The account filter already excludes resources decommissioned *before now*, so the
-    clamp only bites on an announced future decommission — which is exactly when it
-    matters, because that is when an allocation is quietly shorter than it looks.
-    """
-    resource = allocation.account.resource if allocation.account else None
-    decommission = getattr(resource, 'decommission_date', None)
-    if decommission is None:
-        return allocation.end_date
-    if allocation.end_date is None:
-        return decommission
-    return min(allocation.end_date, decommission)
-
-
-def account_is_active(account, now: datetime) -> bool:
-    """``Account.isActive(date)`` — ``project.isActive() && resource.isCommissioned(date)
-    && !creationTime.after(date)``, minus the third conjunct. See below.
-
-    ⚠️ **Not ``Account.is_active``.** SAM's hybrid on this model comes from
-    ``SoftDeleteMixin`` and means "not deleted", which is a different question
-    entirely — using it here would extend allocations on decommissioned resources and
-    on inactive projects. The house rule (CLAUDE.md § 5) is to prefer the hybrid, and
-    this is the case where doing so would be wrong; the composite is built from the
-    other models' documented predicates rather than from raw columns.
-
-    ⚠️ **``!creationTime.after(now)`` is deliberately not ported.** It compares two
-    clocks that are not the same clock: ``account.creation_time`` carries
-    ``server_default=CURRENT_TIMESTAMP`` and resolves in the **MySQL server's**
-    timezone, which is UTC in the dev and CI containers, while ``now`` is
-    ``datetime.now()`` in SAM's naive-Mountain convention. Measured, today, against the
-    test container: ``NOW()`` returns 12:45 while Python returns 06:45 — a six-hour
-    skew, in the direction that makes every account created in the last six hours look
-    like it was created in the future.
-
-    The conjunct can only ever *exclude*, so honouring it under skew means an Extension
-    posted shortly after a New silently skips the account it should extend, reports
-    ``processed``, and writes nothing. Dropping it is a no-op in any deployment where
-    the two clocks agree — which is the intent — and removes the failure mode where
-    they do not. This repo has already been bitten once by the same UTC default (see
-    ``webapp/api/xras/actions.py``'s ``received_time`` comment).
-
-    The soft-delete check is kept **as well**, as a declared divergence: legacy has no
-    equivalent, but extending a deleted account would be wrong regardless. Unobservable
-    today — production has zero deleted accounts out of 17,989.
-    """
-    if not account.is_active:                      # SoftDeleteMixin: not deleted
-        return False
-    if account.project is None or not account.project.is_active:
-        return False
-    if account.resource is None or not account.resource.is_commissioned_at(now):
-        return False
-    return True
-
-
-def latest_allocation(account) -> Optional[Allocation]:
-    """``Account.getLatestAllocation()`` — max end date, with one short-circuit.
-
-    ⚠️ An allocation whose **effective** end date is null is returned *immediately*,
-    regardless of position or of what else the account holds. Legacy returns from
-    inside the loop, so this is iteration-order dependent when an account has two
-    open-ended allocations — a shape that should not exist and, if it did, would make
-    legacy's own answer arbitrary. Reproduced rather than tidied, and flagged here
-    because "latest" is a misleading name for it.
-    """
-    latest = None
-    latest_end = None
-    for allocation in account.allocations:
-        end = effective_end_date(allocation)
-        if end is None:
-            return allocation
-        if latest is None or latest_end < end:
-            latest, latest_end = allocation, end
-    return latest
 
 
 def handle_extension(session, action) -> DispatchResult:

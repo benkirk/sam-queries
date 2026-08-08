@@ -30,172 +30,32 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Supplement*.
 """
 
 import logging
-from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
-from sam.accounting.allocations import Allocation
-from sam.base import normalize_end_date
-from sam.integration.xras import XrasResourceRepositoryKeyResource
 from sam.manage.allocations import create_allocation, supplement_allocation
 from sam.manage.transaction import management_transaction
 from sam.projects.projects import Project
-from sam.resources.resources import Resource
 
-from .. import errors as e
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
-from ..extractors import select_allocation_type_parms
-from ..roster import normalize_username
 from ..wire import get_field
-from .extension import effective_end_date, latest_allocation
+from ._allocations import (           # noqa: F401  — re-exported, see the shim note
+    account_for_resource,
+    auth_at_panel_meeting,
+    create_window_from_project_history,
+    latest_allocation,
+    mark_panel_authorised,
+    new_allocation_end_date,
+)
+from ._fields import (               # noqa: F401  — re-exported
+    resolve_resource,
+    resource_comment,
+    transaction_amount,
+)
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    'handle_supplement',
-    'resolve_resource',
-    'transaction_amount',
-    'resource_comment',
-    'auth_at_panel_meeting',
-    'account_for_resource',
-    'new_allocation_end_date',
-]
-
-#: ``AllocationTypeIdExtractor``'s two panel-authorised types. ``getAuthAtPanelMeeting()``
-#: is ``true`` iff the resolved type is one of these.
-_PANEL_AUTHORISED = frozenset({'CSL', 'CHAP'})
-
-
-def resolve_resource(session, wire_resource, errs: ActionErrors) -> Optional[Resource]:
-    """``resources[].key`` → a SAM resource, via ``xras_resource_repository_key_resource``.
-
-    Reports ``No resource found in SAM corresponding to key %s`` — the *key* variant.
-    The roster path has its own string naming the resource **name** instead; both can
-    fire for one action, which is why they are separate builders.
-
-    ⚠️ Only **13** mapping rows exist and 11 active SAM resources have none, so this is
-    a live failure mode rather than a defensive branch. An award citing Derecho's GPU
-    partition or Gust fails here, and the fix is a data fix.
-
-    ⚠️ Legacy calls ``getResourceName`` **twice** per resource on some paths, so an
-    unmapped key reports twice and collapses to one line in the accumulator. That is
-    the dedup working as designed, and it is why the container is a set.
-    """
-    key = get_field(wire_resource, 'key')
-    row = None
-    if key is not None:
-        row = (session.query(XrasResourceRepositoryKeyResource)
-               .filter(XrasResourceRepositoryKeyResource.resource_repository_key == key)
-               .first())
-    if row is None or row.resource is None:
-        errs.report(e.no_resource_for_key('' if key is None else str(key)))
-        return None
-    return row.resource
-
-
-def transaction_amount(wire_resource, errs: ActionErrors) -> Optional[float]:
-    """``getTransactionAmount`` — blank reports, unparseable reports, else a float.
-
-    ⚠️ **A declared divergence lives here.** Legacy's caller then does
-    ``getTransactionAmount(resource) > 0``, which **unboxes a null ``Float``** when the
-    amount was blank or unparseable — throwing a ``NullPointerException`` *inside*
-    assembly, so ``throwExceptionIfErrors`` never runs and the operator receives a bare
-    stack-trace class name instead of ``Awarded amount missing``. Returning ``None`` and
-    letting the caller check keeps the diagnostic, which is the entire point of the 422.
-
-    ``Could not convert awarded amount "%s"␣␣to float`` has **two spaces** before
-    ``to float``. Reproduced; see :mod:`sam.xras.errors`.
-    """
-    raw = get_field(wire_resource, 'awardedAmount')
-    if raw is None or not str(raw).strip():
-        errs.report(e.awarded_amount_missing())
-        return None
-    try:
-        return float(str(raw).strip())
-    except ValueError:
-        errs.report(e.could_not_convert_amount(str(raw)))
-        return None
-
-
-def resource_comment(wire_resource) -> Optional[str]:
-    """``getComment`` — the normalized ``resources[].comments``, or ``None`` if blank.
-
-    Same ``StringUtil.normalize`` the roster uses on usernames, so an accented comment
-    is ASCII-folded before it reaches ``transaction_comment``.
-    """
-    comment = normalize_username(get_field(wire_resource, 'comments')).strip()
-    return comment or None
-
-
-def auth_at_panel_meeting(session, action) -> bool:
-    """``getAuthAtPanelMeeting()`` — true iff the allocation type is CSL or CHAP.
-
-    ⚠️ The branch is **inverted** from what you would expect
-    (``ProjectAllocationActionCommandsFactoryBase:96-114``): when the payload *carries*
-    an ``allocationType`` it runs the eleven-strategy chain; when it does **not**, it
-    reads the *existing project's* stored type and looks that up by name. Both arms are
-    reproduced. Set on 1,264 of the 3,203 integration-written SUPPLEMENT rows in
-    production, so it is not vestigial.
-    """
-    if get_field(action, 'allocationType'):
-        parms = select_allocation_type_parms(action)
-        return parms is not None and parms.allocation_type in _PANEL_AUTHORISED
-
-    projcode = (get_field(action, 'requestNumber') or '').strip()
-    project = Project.get_by_projcode(session, projcode) if projcode else None
-    stored = getattr(project.allocation_type, 'allocation_type', None) if project else None
-    return stored in _PANEL_AUTHORISED
-
-
-def account_for_resource(project: Project, resource: Resource):
-    """``Project.getAccount(resourceName)`` — a scan over **all** accounts.
-
-    ⚠️ Deliberately unfiltered. Extension's ``account.isActive()`` gate does not apply
-    here, so a supplement lands on an account whose project is inactive or whose
-    resource is decommissioned. Matching on the resource *name*, case-insensitively
-    (``Account.isForResource`` uses ``equalsIgnoreCase``), rather than on the id —
-    because that is the join legacy makes, and the two can disagree if two resource
-    rows ever share a name.
-    """
-    wanted = (resource.resource_name or '').casefold()
-    for account in project.accounts:
-        if account.resource is not None and \
-                (account.resource.resource_name or '').casefold() == wanted:
-            return account
-    return None
-
-
-def new_allocation_end_date(project: Project, start_date: datetime) -> Optional[datetime]:
-    """``findLatestProjectEndDateForNewAllocation`` — contract first, then allocation.
-
-    Latest **contract** end date if it is not before *start_date*; else the latest
-    **allocation** end date under the same test; else ``None``, which the caller turns
-    into ``All contract and allocation end dates are null or past for project [%s]``.
-
-    ⚠️ Kept bug-for-bug: the create branch derives its window from *today* and the
-    project's own history, and **never looks at the action's ``actionBeginDate`` or
-    ``actionEndDate``**. A Supplement that creates an allocation therefore gets dates
-    XRAS did not ask for. Reproduced because the alternative is inventing a policy, and
-    because 100% of Supplement traffic succeeds under the current rule.
-    """
-    contract_ends = [pc.contract.end_date for pc in project.contracts
-                     if pc.contract is not None and pc.contract.end_date is not None]
-    latest = max(contract_ends, default=None)
-    if latest is not None and latest >= start_date:
-        return latest
-
-    allocation_ends = []
-    for account in project.accounts:
-        if not account.allocations:
-            continue
-        allocation = latest_allocation(account)
-        end = effective_end_date(allocation) if allocation is not None else None
-        if end is not None:
-            allocation_ends.append(end)
-    latest = max(allocation_ends, default=None)
-    if latest is not None and latest >= start_date:
-        return latest
-    return None
+__all__ = ['handle_supplement']
 
 
 def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]]:
@@ -211,7 +71,6 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
         return [], []
 
     auth = auth_at_panel_meeting(session, action)
-    comment_for = resource_comment
     supplements: List[tuple] = []
     creations: List[tuple] = []
 
@@ -227,15 +86,14 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
         if allocation is None:
             # Create branch. Note the amount is still required — legacy passes it
             # straight into the add command, where a null would fail validation.
-            start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            end = new_allocation_end_date(project, start)
-            if end is None:
-                errs.report(e.all_end_dates_null_or_past(projcode))
+            window = create_window_from_project_history(project, projcode, errs)
+            if window is None:
                 continue
             if amount is None:
                 continue
-            creations.append((resource, amount, comment_for(wire_resource),
-                              start, normalize_end_date(end), auth))
+            start, end = window
+            creations.append((resource, amount, resource_comment(wire_resource),
+                              start, end, auth))
             continue
 
         if amount is None:
@@ -250,7 +108,8 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
                 projcode, resource.resource_name, amount)
             continue
 
-        supplements.append((allocation, amount, comment_for(wire_resource), auth))
+        supplements.append((allocation, amount, resource_comment(wire_resource),
+                            auth))
 
     return supplements, creations
 
@@ -285,24 +144,9 @@ def handle_supplement(session, action) -> DispatchResult:
                 comment=comment,
             )
             if auth:
-                _mark_panel_authorised(session, created)
+                mark_panel_authorised(session, created)
 
     return DispatchResult(status='processed', service='supplement', projcode=projcode)
-
-
-def _mark_panel_authorised(session, allocation: Allocation) -> None:
-    """Set ``auth_at_panel_mtg`` on the CREATE row ``create_allocation`` just wrote.
-
-    ``create_allocation`` is the shared primitive and does not know about this column;
-    reaching for the row it just added is cheaper and less invasive than widening its
-    signature for one caller.
-    """
-    latest = max(allocation.transactions,
-                 key=lambda t: (t.creation_time, t.allocation_transaction_id or 0),
-                 default=None)
-    if latest is not None:
-        latest.auth_at_panel_mtg = True
-        session.flush()
 
 
 register('supplement', handle_supplement)

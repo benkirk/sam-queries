@@ -61,7 +61,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-from sam.accounting.allocations import Allocation, AllocationTransactionType
+from sam.accounting.allocations import Allocation
 from sam.core.users import User
 from sam.manage import add_user_to_project
 from sam.manage.allocations import (
@@ -80,14 +80,22 @@ from ..errors import ActionErrors
 from ..extractors import resolve_allocation_type, resolve_area_of_interest
 from ..roster import resolve_roster
 from ..wire import get_field
-from .extension import effective_end_date, latest_allocation, parse_action_end_date
-from .new import _abstract, _title, clamp_start_to_commission, parse_action_begin_date
-from .supplement import (
+from ._allocations import (
     account_for_resource,
     auth_at_panel_meeting,
-    new_allocation_end_date,
+    create_window_from_action_dates,
+    effective_end_date,
+    latest_allocation,
+    mark_panel_authorised,
+)
+from ._fields import (
+    abstract,
+    parse_action_begin_date,
+    parse_action_end_date,
+    plan_contracts,
     resolve_resource,
     resource_comment,
+    title,
     transaction_amount,
 )
 
@@ -158,12 +166,11 @@ def _plan_resource(session, project, wire_resource, errs, *,
         amount = transaction_amount(wire_resource, errs)
         if amount is None or start is None or end is None:
             return []
-        clamped = clamp_start_to_commission(resource, start)
-        if end <= clamped:
-            errs.report(e.allocation_end_before_commission(
-                end.strftime('%Y-%m-%d'), resource.resource_name))
+        window = create_window_from_action_dates(resource, start, end, errs)
+        if window is None:
             return []
-        planned.append(('add', resource, amount, clamped, end, comment, auth))
+        clamped, alloc_end = window
+        planned.append(('add', resource, amount, clamped, alloc_end, comment, auth))
         return planned
 
     existing_end = effective_end_date(allocation)
@@ -212,7 +219,7 @@ def handle_update(session, action) -> DispatchResult:
     errs = ActionErrors()
 
     # ---- assemble
-    title = _title(action, errs)
+    project_title = title(action, errs)
     roster = resolve_roster(session, action, errs)
     aoi = resolve_area_of_interest(session, action, errs)
     allocation_type = resolve_allocation_type(session, action, errs)
@@ -220,8 +227,7 @@ def handle_update(session, action) -> DispatchResult:
     end = parse_action_end_date(action, errs)
     auth = auth_at_panel_meeting(session, action)
 
-    from .new import _plan_contracts
-    contracts = _plan_contracts(session, action, errs)
+    contracts = plan_contracts(session, action, errs)
 
     planned: List[tuple] = []
     if project is not None:
@@ -248,8 +254,8 @@ def handle_update(session, action) -> DispatchResult:
                 're-activate it. Leaving it inactive — a human has not approved it.',
                 projcode)
         project.update(
-            title=title,
-            abstract=_abstract(action),
+            title=project_title,
+            abstract=abstract(action),
             area_of_interest_id=aoi.area_of_interest_id,
             allocation_type_id=allocation_type.allocation_type_id,
             # Bug 2: legacy's guard never fires, so these never move. They do here.
@@ -275,7 +281,7 @@ def handle_update(session, action) -> DispatchResult:
                     start_date=alloc_start, end_date=alloc_end,
                     user_id=None, comment=comment)
                 if panel:
-                    _mark_panel_authorised(session, created)
+                    mark_panel_authorised(session, created)
             elif kind == 'extend':
                 _, allocation, new_end, comment = step
                 extend_account_allocation(session, allocation, new_end=new_end,
@@ -296,15 +302,6 @@ def handle_update(session, action) -> DispatchResult:
 
     return DispatchResult(status='processed', service='update', projcode=projcode,
                           warnings=roster.warnings)
-
-
-def _mark_panel_authorised(session, allocation) -> None:
-    latest = max(allocation.transactions,
-                 key=lambda t: (t.creation_time, t.allocation_transaction_id or 0),
-                 default=None)
-    if latest is not None:
-        latest.auth_at_panel_mtg = True
-        session.flush()
 
 
 register('update', handle_update)

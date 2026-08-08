@@ -45,10 +45,8 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Adjustment*.
 """
 
 import logging
-from datetime import datetime
 from typing import List, Tuple
 
-from sam.base import normalize_end_date
 from sam.manage.allocations import adjust_allocation, create_allocation
 from sam.manage.transaction import management_transaction
 from sam.projects.projects import Project
@@ -57,16 +55,14 @@ from .. import errors as e
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
 from ..wire import get_field
-from .extension import latest_allocation
-from .supplement import (
-    _mark_panel_authorised,
+from ._allocations import (
     account_for_resource,
     auth_at_panel_meeting,
-    new_allocation_end_date,
-    resolve_resource,
-    resource_comment,
-    transaction_amount,
+    create_window_from_project_history,
+    latest_allocation,
+    mark_panel_authorised,
 )
+from ._fields import resolve_resource, resource_comment, transaction_amount
 
 logger = logging.getLogger(__name__)
 
@@ -105,12 +101,10 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
         amount = transaction_amount(wire_resource, errs)
 
         if allocation is None:
-            # Create branch, identical to Supplement's — including deriving the window
-            # from today rather than from the action's own dates.
-            start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            end = new_allocation_end_date(project, start)
-            if end is None:
-                errs.report(e.all_end_dates_null_or_past(projcode))
+            # Create branch, identical to Supplement's — same named policy, so the two
+            # cannot drift the way they did when each carried its own thirty lines.
+            window = create_window_from_project_history(project, projcode, errs)
+            if window is None:
                 continue
             if amount is None:
                 continue
@@ -121,8 +115,9 @@ def _plan(session, action, errs: ActionErrors) -> Tuple[List[tuple], List[tuple]
                 errs.report(e.adjustment_would_go_negative(
                     resource.resource_name, 0.0, amount))
                 continue
+            start, end = window
             creations.append((resource, amount, resource_comment(wire_resource),
-                              start, normalize_end_date(end), auth))
+                              start, end, auth))
             continue
 
         if amount is None:
@@ -178,7 +173,7 @@ def handle_adjustment(session, action) -> DispatchResult:
                 # legacy commands: `buildAddAllocationCommand` (copied verbatim from
                 # the supplement factory) calls `.authAtPanelMeeting(...)`,
                 # `buildAdjustAllocationCommand` does not. The asymmetry is the Java's.
-                _mark_panel_authorised(session, created)
+                mark_panel_authorised(session, created)
 
     return DispatchResult(status='processed', service='adjust', projcode=projcode)
 

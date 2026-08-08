@@ -35,8 +35,7 @@ against the Java, per the plan. See ``docs/plans/XRAS_SPRINT_C.md`` § *New*.
 """
 
 import logging
-from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from sam.core.groups import GidAllocation, NoAvailableGidError
 from sam.core.organizations import ProjectOrganization
@@ -47,32 +46,35 @@ from sam.manage.transaction import management_transaction
 from sam.projects.contracts import ProjectContract
 from sam.projects.projects import Project, ProjcodeExhaustedError, next_projcode
 
-from .. import errors as e
 from ..dispatch import DispatchResult, register
 from ..errors import ActionErrors
 from ..extractors import (
     resolve_allocation_type,
     resolve_area_of_interest,
-    resolve_contract,
     resolve_mnemonic_code,
 )
 from ..roster import resolve_roster
 from ..wire import get_field
-from .extension import parse_action_end_date
-from .supplement import (
+from ._allocations import (           # noqa: F401  — re-exported, see the shim note
     auth_at_panel_meeting,
+    clamp_start_to_commission,
+    create_window_from_action_dates,
+    mark_panel_authorised,
+)
+from ._fields import (                # noqa: F401  — re-exported
+    abstract,
+    parse_action_begin_date,
+    parse_action_end_date,
+    plan_contracts,
     resolve_resource,
     resource_comment,
+    title,
     transaction_amount,
 )
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['handle_new', 'parse_action_begin_date', 'clamp_start_to_commission']
-
-#: ``project.title`` is ``varchar(255)``; legacy truncates with
-#: ``StringUtil.cleanText(requestTitle, 255)``.
-_TITLE_WIDTH = 255
+__all__ = ['handle_new']
 
 
 class XrasProjectCreationFailed(RuntimeError):
@@ -94,69 +96,16 @@ class XrasProjectCreationFailed(RuntimeError):
     """
 
 
-def parse_action_begin_date(action, errs: ActionErrors) -> Optional[datetime]:
-    """``getStartDate()`` — the mirror of :func:`.extension.parse_action_end_date`.
-
-    Reports ``Missing begin date for allocation(s)`` / ``Could not convert begin date
-    for allocation(s)``. Unlike the end date this is **not** moved to end of day.
-    """
-    raw = get_field(action, 'actionBeginDate')
-    if raw is None or not str(raw).strip():
-        errs.report(e.missing_date('begin'))
-        return None
-    try:
-        return datetime.strptime(str(raw).strip(), '%Y-%m-%d')
-    except ValueError:
-        errs.report(e.could_not_convert_date('begin'))
-        return None
-
-
-def clamp_start_to_commission(resource, start: datetime) -> datetime:
-    """Push an allocation start forward to the resource's commission date.
-
-    ⚠️ **Silent, and deliberately so.** ``DefaultAddAllocationToProjectCommand`` clamps
-    an early start with no report — the allocation simply begins later than XRAS asked.
-    The *end* side is the opposite: an end at or before the commission date raises
-    ``End date of allocation (%s) must be after commission date of resource(%s).``
-    (note the missing space before the parenthesis, reproduced in
-    :mod:`sam.xras.errors`) as an ``IllegalStateException``, which is not observer-
-    reported and so becomes a 500 in legacy.
-
-    This is new behaviour with no precedent elsewhere in this repo, so it is isolated
-    here rather than pushed into ``create_allocation`` — the operator-facing allocation
-    flows should keep rejecting a bad start rather than quietly moving it.
-    """
-    commission = getattr(resource, 'commission_date', None)
-    if commission is not None and start < commission:
-        logger.info(
-            'XRAS allocation start %s precedes %s commissioning (%s); clamping forward',
-            start.date(), resource.resource_name, commission.date())
-        return commission
-    return start
-
-
-def _title(action, errs: ActionErrors) -> Optional[str]:
-    """``getTitle()`` — blank reports ``Missing title``, else cleaned and truncated."""
-    raw = get_field(action, 'requestTitle')
-    title = (raw or '').strip()
-    if not title:
-        errs.report(e.missing_title())
-        return None
-    return title[:_TITLE_WIDTH]
-
-
-def _abstract(action) -> Optional[str]:
-    """``getAbstract()`` — blank becomes ``None`` rather than an empty string."""
-    raw = (get_field(action, 'requestAbstract') or '').strip()
-    return raw or None
-
-
 def _plan_allocations(session, action, errs: ActionErrors) -> List[tuple]:
     """One allocation per ``resources[]`` entry, using the **action's own** dates.
 
     ⚠️ The contrast with Supplement matters: that handler derives its create-branch
     window from *today* and the project's history, while New uses ``actionBeginDate``
-    and ``actionEndDate``. Same table, two different date policies, both legacy's.
+    and ``actionEndDate``. Same table, two different date policies, both legacy's, and
+    both now named — ``create_window_from_action_dates`` is this one.
+
+    ⚠️ Both dates are parsed **above** the loop, so date errors precede resource errors
+    in the 422 body. That order is asserted across ten test modules.
     """
     begin = parse_action_begin_date(action, errs)
     end = parse_action_end_date(action, errs)
@@ -167,32 +116,13 @@ def _plan_allocations(session, action, errs: ActionErrors) -> List[tuple]:
         amount = transaction_amount(wire_resource, errs)
         if resource is None or amount is None or begin is None or end is None:
             continue
-        start = clamp_start_to_commission(resource, begin)
-        if end <= start:
-            # Legacy raises IllegalStateException here, which escapes the observer and
-            # becomes a 500 with no diagnostic. Reported instead — same refusal, one an
-            # operator can act on.
-            errs.report(e.allocation_end_before_commission(
-                end.strftime('%Y-%m-%d'), resource.resource_name))
+        window = create_window_from_action_dates(resource, begin, end, errs)
+        if window is None:
             continue
-        planned.append((resource, amount, start, end,
+        start, alloc_end = window
+        planned.append((resource, amount, start, alloc_end,
                         resource_comment(wire_resource)))
     return planned
-
-
-def _plan_contracts(session, action, errs: ActionErrors) -> List:
-    """Resolve every ``grants[]`` entry to a contract.
-
-    ⚠️ ``grants: []`` is **not** an error — ``new_ncar4232_failed.json`` is an
-    Educational allocation with no grant at all, and its failure was the mnemonic, not
-    the missing contract. A project with no contract is legitimate.
-    """
-    contracts = []
-    for grant in get_field(action, 'grants') or ():
-        contract = resolve_contract(session, get_field(grant, 'grantNumber'), errs)
-        if contract is not None:
-            contracts.append(contract)
-    return contracts
 
 
 def handle_new(session, action) -> DispatchResult:
@@ -206,13 +136,13 @@ def handle_new(session, action) -> DispatchResult:
     errs = ActionErrors()
 
     # ---- assemble: everything is resolved and reported before anything is written.
-    title = _title(action, errs)
+    project_title = title(action, errs)
     roster = resolve_roster(session, action, errs)
     aoi = resolve_area_of_interest(session, action, errs)
     allocation_type = resolve_allocation_type(session, action, errs)
     mnemonic = resolve_mnemonic_code(session, action, errs,
                                      pi_username=roster.pi_username)
-    contracts = _plan_contracts(session, action, errs)
+    contracts = plan_contracts(session, action, errs)
     allocations = _plan_allocations(session, action, errs)
     auth = auth_at_panel_meeting(session, action)
 
@@ -246,8 +176,8 @@ def handle_new(session, action) -> DispatchResult:
         project = Project.create(
             session,
             projcode=projcode,
-            title=title,
-            abstract=_abstract(action),
+            title=project_title,
+            abstract=abstract(action),
             project_lead_user_id=lead.user_id,
             project_admin_user_id=admin.user_id if admin else None,
             area_of_interest_id=aoi.area_of_interest_id,
@@ -282,7 +212,7 @@ def handle_new(session, action) -> DispatchResult:
                 comment=comment,
             )
             if auth:
-                _mark_panel_authorised(session, created)
+                mark_panel_authorised(session, created)
 
         # 4. Members. Skipped entirely when there are no accounts —
         # `add_user_to_project` raises rather than no-ops, and an Educational
@@ -309,16 +239,6 @@ def _lead_organization(lead: User):
     if lead is None:
         return None
     return next((uo.organization for uo in lead.organizations if uo.is_active), None)
-
-
-def _mark_panel_authorised(session, allocation) -> None:
-    """Set ``auth_at_panel_mtg`` on the NEW row ``create_allocation`` just wrote."""
-    latest = max(allocation.transactions,
-                 key=lambda t: (t.creation_time, t.allocation_transaction_id or 0),
-                 default=None)
-    if latest is not None:
-        latest.auth_at_panel_mtg = True
-        session.flush()
 
 
 register('add', handle_new)
