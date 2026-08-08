@@ -1025,6 +1025,44 @@ And one legacy string reused in a place legacy does not emit it:
 |---|---|---|
 | `Could not determine Mnemonic code for internal PI via organization` | the **lab** route (`opportunityName` starts `'NCAR '`) | `UserLabStrategy` alone has no error arm — it returns `null` in silence, and the project is created with no mnemonic. A lab is an organization, and a projcode cannot be minted without a code |
 
+### Coverage — as built
+
+`tests/unit/test_xras_error_coverage.py`. **Every one of the 34 builders is either
+exercised by a synthetic payload or declared unreachable with a reason**, and the two
+declarations are asserted against the module, so a new string with neither fails the
+suite. That is the structural difference from the "~15 hand-written fixtures" the plan
+scoped: a fixture pile decays silently, a checked declaration does not.
+
+| | count |
+|---|---:|
+| Reachable and exercised | **28** |
+| Declared unreachable — Transfer, not serviced | 5 |
+| Declared unreachable — `no_resource_for_name` | 1 |
+
+`no_resource_for_name` is worth naming because it is the one *structural* divergence in
+the vocabulary: it is the **roster** path's resource lookup. Legacy fans the roster out
+per `resources[]` entry and resolves each by *name*; SAM's `add_user_to_project` is
+project-scoped and adds a member to every account at once, so there is no per-resource
+name lookup to fail. The allocation path's key variant (`no_resource_for_key`) is the
+one that fires.
+
+The matrix also pins two behaviours nothing else could:
+
+* **three resources each missing an amount produce exactly one**
+  `Awarded amount missing` — the accumulator's dedup, in the place most likely to be
+  got wrong, and only a synthetic payload can produce the shape;
+* **seven distinct problems across seven categories arrive in one 422** — identity,
+  classification, resource, amount, contract, mnemonic and roster together. That is
+  assemble → check once, demonstrated rather than asserted.
+
+⚠️ **The matrix caught its own payload once**, which is worth recording: a test meant to
+produce `Unable to determine allocation type from action data` instead succeeded,
+because its `requestTitle` read *"Nothing matching CSL or External here"* — and
+`ExternalStrategy` full-matches `(.* )?External( .*)?` against the **title** as well as
+the opportunity name. A title merely *mentioning* the word resolves the whole action to
+`External Projects`. Noted in the test, because it is an easy trap for anyone writing a
+payload by hand.
+
 ### The extractors report rather than propagate
 
 `ProjectActionCommandFactoryBase` catches `AttributeExtractionException` from the AOI
