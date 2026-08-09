@@ -63,6 +63,37 @@ def committed_action(app):
 
 
 @pytest.fixture
+def committed_odd_status_action(app):
+    """A committed row whose ``status`` is outside the five-value vocabulary.
+
+    Not reachable through the writers — they only ever pass the five constants —
+    which is the point: this is the "a bad write happened" case the query layer
+    deliberately preserves rather than hides, and the only way to exercise the
+    facet strip's handling of it. Same insert path and same PK-targeted cleanup as
+    :func:`committed_action`.
+    """
+    from sqlalchemy import delete
+    from sqlalchemy.orm import Session
+
+    from sam.integration.xras import XrasActionLog
+    from webapp.api.xras import actions
+    from webapp.extensions import db
+
+    with app.app_context():
+        log_id = actions._record(
+            status='pending', raw_payload='{"actionType":"Extension"}',
+            http_status=200, action_type='Extension', remote_actor='samuel',
+        )
+
+    yield log_id
+
+    with app.app_context(), Session(db.engine) as session:
+        session.execute(delete(XrasActionLog).where(
+            XrasActionLog.xras_action_log_id == log_id))
+        session.commit()
+
+
+@pytest.fixture
 def view_only_client(auth_client, monkeypatch):
     """`benkirk` minus MANAGE_XRAS.
 
@@ -218,12 +249,43 @@ class TestFacetChips:
     def test_status_chips_are_wired_to_the_filter_form(self, auth_client):
         html = auth_client.get('/allocations/xras_fragment').data.decode()
         chips = self._chips(html, 'status')
-        # One per status in the fixed vocabulary.
+        # One per status in the fixed vocabulary. A superset is legal — an
+        # out-of-vocabulary status gets its own chip (see the test below) — but
+        # nothing in the snapshot should produce one, so this asserts the floor
+        # exactly rather than loosening to >=.
         assert len(chips) == 5
         # Every chip writes into the form the filter panel actually renders.
         assert {form_id for form_id, _ in chips} == {'xras-filters'}
         assert {value for _, value in chips} == {
             'received', 'processed', 'manual', 'failed', 'replayed'}
+
+    def test_an_unknown_status_gets_its_own_chip(self, auth_client,
+                                                 committed_odd_status_action):
+        """A status outside the vocabulary must be visible, and filterable.
+
+        ``summarize_xras_actions`` preserves it on purpose — *"A status outside the
+        vocabulary would be a bug, not a filter miss — surface it rather than
+        dropping it on the floor"* — and this strip used to re-derive its rows from
+        ``XRAS_ACTION_STATUSES``, undoing that one layer up. The headline total
+        counted the row regardless, so the strip disagreed with the number above it.
+
+        Unlike a NULL ``action_type``, an unknown status is a real string the
+        multi-select can express, so a chip for it works rather than being a control
+        that cannot fire.
+        """
+        html = auth_client.get('/allocations/xras_fragment').data.decode()
+        values = [value for _, value in self._chips(html, 'status')]
+        assert 'pending' in values
+
+    def test_the_known_statuses_keep_their_order_ahead_of_strays(
+            self, auth_client, committed_odd_status_action):
+        """The five are a stable, learnable strip; a stray appends rather than
+        reshuffling what an operator scans for."""
+        html = auth_client.get('/allocations/xras_fragment').data.decode()
+        values = [value for _, value in self._chips(html, 'status')]
+        assert values[:5] == [
+            'received', 'processed', 'manual', 'failed', 'replayed']
+        assert values[5:] == ['pending']
 
     def test_action_type_chips_are_wired(self, auth_client, committed_action):
         html = auth_client.get('/allocations/xras_fragment').data.decode()

@@ -12,7 +12,6 @@ sees.
 from typing import Any, Dict, List, Optional
 
 from sam.queries.xras_actions import (
-    XRAS_ACTION_STATUSES,
     get_recent_xras_actions,
     summarize_xras_actions,
 )
@@ -77,11 +76,16 @@ def build_summary(session, *, filters: Dict[str, Any]) -> Dict[str, Any]:
         'kind':       'xras_action_summary',
         'total':      summary['total'],
         'filters':    _describe_filters(filters),
-        # Every status appears, including at zero — an absent bucket reads as
-        # "not measured" rather than "none". Same rule as the contract audit's
-        # always-present check sections.
-        'by_status':  {s: summary['by_status'].get(s, 0)
-                       for s in XRAS_ACTION_STATUSES},
+        # Passed through, not re-derived. `summarize_xras_actions` already seeds
+        # every status at zero — an absent bucket reads as "not measured" rather
+        # than "none" — AND deliberately keeps any status outside the vocabulary,
+        # because that is a bug worth surfacing rather than a filter miss.
+        #
+        # ⚠️ This used to be `{s: ... for s in XRAS_ACTION_STATUSES}`, which
+        # re-applied the zero-fill (already done) and silently dropped the stray.
+        # `total` counted it either way, so the envelope reported a total that did
+        # not reconcile with the sum of its own buckets.
+        'by_status':  summary['by_status'],
         'by_type':    summary['by_type'],
     }
 

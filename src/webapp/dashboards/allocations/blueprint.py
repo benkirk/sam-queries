@@ -1336,10 +1336,26 @@ def xras_fragment():
     type_facet = summarize_xras_actions(
         db.session, status=filters['status'], **_facet_common)
 
-    # Every status renders, including at zero — the vocabulary is fixed at five
-    # and an absent bucket would read as "not measured" rather than "none".
-    status_facets = [{'value': s, 'count': status_facet['by_status'].get(s, 0)}
-                     for s in XRAS_ACTION_STATUSES]
+    # Every status renders, including at zero — an absent bucket would read as
+    # "not measured" rather than "none". `summarize_xras_actions` already seeds
+    # the five, so iterating its dict gives that for free, in vocabulary order.
+    #
+    # ⚠️ Iterated, not re-derived from XRAS_ACTION_STATUSES. That spelling dropped
+    # any status outside the vocabulary — which the query layer goes out of its way
+    # to keep, because it is a bug worth surfacing — while the headline total above
+    # still counted it, so the strip disagreed with its own total.
+    #
+    # A stray appends rather than reshuffling: the five are a stable strip an
+    # operator scans by position.
+    #
+    # Its chip filters even though `all_statuses` (line ~1295) still offers only the
+    # five: `set-filter-submit` synthesizes a missing <option> before setting the
+    # value (static/js/actions.js:152-160). The offer list is deliberately NOT
+    # widened the way `_xras_action_types` widens its own — an unsampled action type
+    # is normal traffic, a stray status is only ever a bad write, and presenting one
+    # as a standing filter choice would dress a bug up as a category.
+    status_facets = [{'value': s, 'count': n}
+                     for s, n in status_facet['by_status'].items()]
 
     # A NULL action_type is a real count — a body that would not parse has none —
     # but it is not a filterable value: there is no way to express "IS NULL"

@@ -89,17 +89,47 @@ class TestListMode:
 class TestSummaryMode:
     def test_summary_json_lists_every_status_including_zero(self, runner,
                                                             cli_session):
-        """An absent bucket reads as "not measured" rather than "none"."""
+        """An absent bucket reads as "not measured" rather than "none".
+
+        ``>=`` rather than ``==``: the five are a floor, not a ceiling. An
+        out-of-vocabulary status must survive to the envelope — see
+        ``test_an_unknown_status_survives_into_the_summary``.
+        """
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--summary'])
         assert result.exit_code == 0
         payload = json.loads(result.output)
         assert payload['kind'] == 'xras_action_summary'
-        assert set(payload['by_status']) == {
+        assert set(payload['by_status']) >= {
             'received', 'processed', 'manual', 'failed', 'replayed'}
 
     def test_summary_total_matches_the_status_buckets(self, runner, cli_session):
         payload = json.loads(
             runner.invoke(cli, ['--format', 'json', 'xras', '--summary']).output)
+        assert payload['total'] == sum(payload['by_status'].values())
+
+    def test_an_unknown_status_survives_into_the_summary(self, runner, cli_session):
+        """A status outside the vocabulary is a bug to surface, not a row to hide.
+
+        ``summarize_xras_actions`` goes out of its way to keep it — *"A status
+        outside the vocabulary would be a bug, not a filter miss — surface it rather
+        than dropping it on the floor"* — and this builder used to re-derive the
+        dict from ``XRAS_ACTION_STATUSES``, silently undoing that. ``total`` counted
+        the row either way, so the envelope reported a total that did not reconcile
+        with the sum of its own buckets, on the surface built for triage.
+        """
+        from datetime import datetime
+
+        from sam.integration.xras import XrasActionLog
+
+        cli_session.add(XrasActionLog(
+            received_time=datetime.now(), remote_actor='xras',
+            status='pending', raw_payload='{}', action_type='Extension'))
+        cli_session.flush()
+
+        payload = json.loads(
+            runner.invoke(cli, ['--format', 'json', 'xras', '--summary']).output)
+
+        assert payload['by_status'].get('pending') == 1
         assert payload['total'] == sum(payload['by_status'].values())
 
     def test_summary_renders_in_rich_mode(self, runner, cli_session):
