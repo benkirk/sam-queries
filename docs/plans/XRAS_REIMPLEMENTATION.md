@@ -52,7 +52,7 @@ up, which pushes SMTP to D.
 | **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
 | **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ✅ shipped — [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md) § *Deviations*. Suite 5,213 → **5,223** |
 | **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **3 columns built** — the ticket is a transcription of `zz-90` |
-| **D** — SMTP | Phase 0.2: lift `EmailNotificationService` into `src/sam/notifications/` | ☐ **deferrable** — see below. Not on the cutover chain |
+| **D** — SMTP | Phase 0.2: lift `EmailNotificationService` out of the CLI into a channel-agnostic `src/sam/notify/`, plus the delivery ledger both consumers lack | ☐ **designed, not built** — [`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md). Still **deferrable** and not on the cutover chain, but it wants **two more tables on the same DBA ticket**, so the schema half is not deferrable past PR #424 |
 | **Cutover** | The five remaining gates, none of them code | ☐ — [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) |
 
 **Both follow-ups are done, and the DBA ticket is a transcription rather than a
@@ -989,13 +989,25 @@ Phases are ordered by **production volume × failure rate**.
    second request costs another round of the same lead time. Staging needs both run by hand once —
    `infrastructure/scripts/init-rds.sh` restores the raw `.xz` with no initdb hook.
 
-2. ☐ **SMTP from the k8s webapp.** Lift `EmailNotificationService` into `src/sam/notifications/`,
-   drop the hardcoded `Bcc`, and give the webapp `MAIL_*` config — or accept DB-only audit for v1 and
-   add email later. This is a move plus a config wire-up, not a build: `src/config.py:32,37` already
-   defines `MAIL_SERVER` (default `ndir.ucar.edu`) and `MAIL_DEFAULT_FROM` (default
-   `sam-admin@ucar.edu`), with `.env` populating both, and `src/cli/notifications/email.py` is stdlib
-   `smtplib` + Jinja2 with no Flask coupling. Legacy sends ~3 emails per action (`XrasActionLogger`
-   lacks `additivity="false"`, so every event also reaches the root `SMTPAppender`); **we send one.**
+   ⚠️ **And it may carry four.** [`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md) § 5-6
+   proposes `notification_log` and `notification_subscription` on this same ticket, for exactly
+   the reason `zz-91` joined it. Decide before filing.
+
+2. ☐ **SMTP from the k8s webapp.** ⚠️ **Superseded — see
+   [`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md).** The design work found that the
+   assessment below is wrong in one important way: it is **not** just a move plus a config
+   wire-up. A mailer living in `src/sam/` can mail real users from any dev container running an
+   obfuscated production snapshot, so it needs fail-closed safety defaults; and neither consumer
+   records what it sends, which is the re-email bug `XRAS_SPRINT_B_FOLLOWUP.md` § *The adjacent
+   bug* leaves open. The package is `src/sam/notify/`, not `src/sam/notifications/`.
+
+   The original assessment, kept because its facts are still correct: lift
+   `EmailNotificationService`, drop the hardcoded `Bcc`, and give the webapp `MAIL_*` config —
+   `src/config.py:32,37` already defines `MAIL_SERVER` (default `ndir.ucar.edu`) and
+   `MAIL_DEFAULT_FROM` (default `sam-admin@ucar.edu`), with `.env` populating both, and
+   `src/cli/notifications/email.py` is stdlib `smtplib` + Jinja2 with no Flask coupling. Legacy
+   sends ~3 emails per action (`XrasActionLogger` lacks `additivity="false"`, so every event also
+   reaches the root `SMTPAppender`); **we send one.**
 
 3. ✅ **Role enforcement — `login_or_token_required(roles=, deny=)`.** Two keyword-only, defaulted,
    purely additive parameters on the shared decorator:
