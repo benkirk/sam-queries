@@ -25,7 +25,7 @@ drift (``src/cli/README.md`` § *Adding New Commands*).
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from sam.integration.xras import XrasActionLog, XrasActivationEvent
@@ -138,6 +138,38 @@ XRAS_ACTION_SORT_COLUMNS = {
     'projcode_result': XrasActionLog.projcode_result,
     'processed_by': XrasActionLog.processed_by,
 }
+
+
+#: The two columns that can name a project, and the **only** place that pair is
+#: spelled. ``request_number`` is the projcode for Extension/Supplement/Update;
+#: ``projcode_result`` is the one SAM minted on the New path. Either may match and
+#: nothing in the row distinguishes them — the two are the same shape.
+_PROJCODE_COLUMNS = (XrasActionLog.projcode_result, XrasActionLog.request_number)
+
+#: Newest action first. ⚠️ **The id is not decoration.** ``received_time`` is a MySQL
+#: ``DATETIME`` — one-second resolution — and XRAS posts arrive in bursts, so ties
+#: are ordinary. Every consumer of the projcode join orders by this so they cannot
+#: name different rows for the same project.
+_LATEST_ACTION_ORDER = (XrasActionLog.received_time.desc(),
+                        XrasActionLog.xras_action_log_id.desc())
+
+
+def action_names_project(projcode):
+    """The ``projcode_result`` OR ``request_number`` match, as one clause.
+
+    ⚠️ **This is the subtlest logic in the feature and it is spelled here only.** It
+    used to be written three ways in this module, and two of them disagreed on how to
+    break a same-second tie: the provenance query ordered by ``(received_time, id)``
+    while the pending card merged two per-column queries comparing only
+    ``received_time``, so whichever column happened to be iterated first won. The
+    card could then show one action as the reason a project was pending while
+    ``xras_activation_event`` stamped a different one as the provenance of what the
+    operator did about it.
+
+    *projcode* may be a literal or a column expression, so the same clause serves the
+    single-project lookup and the join.
+    """
+    return or_(*(column == projcode for column in _PROJCODE_COLUMNS))
 
 
 def _split_errors(error_messages: Optional[str]) -> List[str]:
@@ -402,8 +434,12 @@ def _annotate_project_existence(session, rows):
     if not rows:
         return
 
+    # The same column pair as :data:`_PROJCODE_COLUMNS`, read off the already-built
+    # dicts rather than the ORM — this is the one consumer that has the values in
+    # hand and wants a set-membership answer per row, not a join. Sourced from the
+    # tuple so adding a third projcode-bearing column reaches all three consumers.
     codes = {c for item in rows
-             for c in (item['request_number'], item['projcode_result']) if c}
+             for c in (item[column.key] for column in _PROJCODE_COLUMNS) if c}
     if not codes:
         return
 
@@ -642,35 +678,40 @@ def get_xras_pending_activation(
         ``dismissed``, ``dismissed_time``, ``dismissed_by``, ``notified_time``,
         ``notified_by``, ``notified_stale`` and ``comment_count``.
     """
-    # Both columns are projcode-shaped and either may name the project, so gather
-    # candidates from each. A UNION in SQL would need the same OR-join anyway, and
-    # this keeps the "which column matched" information available.
+    # One OR-join, ordered newest-first, keeping the first row seen per project.
+    #
+    # ⚠️ This was two per-column queries merged in Python, and the merge compared
+    # only `received_time` — so on a same-second tie whichever column was iterated
+    # first won, regardless of id, while `get_latest_xras_action_id` broke the same
+    # tie on id. The two could name different actions for one project. Both now go
+    # through `action_names_project` and `_LATEST_ACTION_ORDER`; do not re-split
+    # this into per-column passes.
+    #
+    # The old form justified itself as keeping "which column matched" available.
+    # Nothing ever read it — the dict below carries no such key — so the OR-join
+    # gives up nothing and costs one query instead of two.
+    rows = (
+        session.query(XrasActionLog, Project)
+        .join(Project, action_names_project(Project.projcode))
+        .filter(~Project.is_active)
+        .order_by(*_LATEST_ACTION_ORDER)
+        .all()
+    )
+
     candidates: Dict[str, Dict[str, Any]] = {}
-    for column in (XrasActionLog.projcode_result, XrasActionLog.request_number):
-        rows = (
-            session.query(XrasActionLog, Project)
-            .join(Project, Project.projcode == column)
-            .filter(column.isnot(None))
-            .filter(~Project.is_active)
-            .order_by(XrasActionLog.received_time.desc(),
-                      XrasActionLog.xras_action_log_id.desc())
-            .all()
-        )
-        for action, project in rows:
-            existing = candidates.get(project.projcode)
-            # Keep the most recent action per project — an Extension that followed a
-            # New is the one an operator should be looking at.
-            if existing is not None and existing['received_time'] >= action.received_time:
-                continue
-            candidates[project.projcode] = {
-                'projcode': project.projcode,
-                'project_id': project.project_id,
-                'title': project.title,
-                'action_log_id': action.xras_action_log_id,
-                'action_type': action.action_type,
-                'received_time': action.received_time,
-                'status': action.status,
-            }
+    for action, project in rows:
+        # First wins: the rows arrive newest-first, so this keeps the most recent
+        # action per project — an Extension that followed a New is the one an
+        # operator should be looking at.
+        candidates.setdefault(project.projcode, {
+            'projcode': project.projcode,
+            'project_id': project.project_id,
+            'title': project.title,
+            'action_log_id': action.xras_action_log_id,
+            'action_type': action.action_type,
+            'received_time': action.received_time,
+            'status': action.status,
+        })
 
     state = _activation_state(session, [c['project_id'] for c in candidates.values()])
 
@@ -734,10 +775,11 @@ def get_latest_xras_action_id(
 ) -> Optional[int]:
     """The most recent ``xras_action_log`` row naming *project_id*, or None.
 
-    Provenance for ``xras_activation_event.xras_action_log_id``. Lives here
-    rather than in a route because it reuses the ``projcode_result`` OR
-    ``request_number`` join, which is the subtlest logic in this feature and must
-    not be re-spelled anywhere else.
+    Provenance for ``xras_activation_event.xras_action_log_id``. Lives here rather
+    than in a route because it shares :func:`action_names_project` and
+    :data:`_LATEST_ACTION_ORDER` with :func:`get_xras_pending_activation` — the card
+    that says *why* a project is pending and the stamp recording what the operator
+    did about it must never name different actions.
     """
     project = session.get(Project, project_id)
     if project is None:
@@ -745,10 +787,8 @@ def get_latest_xras_action_id(
 
     row = (
         session.query(XrasActionLog)
-        .filter((XrasActionLog.projcode_result == project.projcode)
-                | (XrasActionLog.request_number == project.projcode))
-        .order_by(XrasActionLog.received_time.desc(),
-                  XrasActionLog.xras_action_log_id.desc())
+        .filter(action_names_project(project.projcode))
+        .order_by(*_LATEST_ACTION_ORDER)
         .first()
     )
     return row.xras_action_log_id if row else None

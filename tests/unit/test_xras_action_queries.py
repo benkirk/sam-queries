@@ -570,6 +570,53 @@ class TestActionProvenance:
     def test_a_missing_project_is_none_not_an_error(self, session):
         assert get_latest_xras_action_id(session, 999_999_999) is None
 
+    def test_a_same_second_tie_breaks_on_id_across_both_columns(self, session):
+        """Two rows, one matching per column, same ``received_time``: id decides.
+
+        ``received_time`` is a MySQL ``DATETIME`` — one-second resolution — and XRAS
+        posts arrive in bursts, so a tie is not exotic. The rule has to be *some*
+        deterministic thing, and "the row inserted last" is the only one available
+        that an operator would also pick by eye.
+
+        The alternative that was in place — first column processed wins — is not a
+        rule anyone chose; it was a property of iterating
+        ``(projcode_result, request_number)`` in that order.
+        """
+        project = make_project(session, active=False)
+        when = datetime.now().replace(microsecond=0)
+
+        _action(session, action_type='New', request_number='NCAR9999',
+                projcode_result=project.projcode, received_time=when)
+        later = _action(session, action_type='Extension',
+                        request_number=project.projcode, received_time=when)
+
+        assert get_latest_xras_action_id(
+            session, project.project_id) == later.xras_action_log_id
+
+    def test_the_pending_card_and_the_provenance_id_agree_on_a_tie(self, session):
+        """The two must never name different rows — the card shows one action as the
+        reason a project is pending, and ``xras_activation_event`` stamps the other
+        as the provenance of what the operator then did about it.
+
+        These were two spellings of one join with two tie-break rules: the provenance
+        query ordered by ``(received_time DESC, id DESC)``, while the card merged two
+        per-column queries comparing **only** ``received_time``, so on a tie whichever
+        column was iterated first won regardless of id.
+        """
+        project = make_project(session, active=False)
+        when = datetime.now().replace(microsecond=0)
+
+        _action(session, action_type='New', request_number='NCAR9999',
+                projcode_result=project.projcode, received_time=when)
+        later = _action(session, action_type='Extension',
+                        request_number=project.projcode, received_time=when)
+
+        row = _pending_row(session, project)
+        assert row is not None
+        assert row['action_log_id'] == later.xras_action_log_id
+        assert row['action_log_id'] == get_latest_xras_action_id(
+            session, project.project_id)
+
 
 class TestNotifyRecipients:
     def test_lead_is_returned_with_an_address(self, session):
