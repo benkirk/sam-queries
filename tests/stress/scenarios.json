@@ -74,6 +74,99 @@
         ]
     },
 
+    "astral_unicode_payload": {
+        "what": "an emoji in a project title, inside the POST body",
+        "expect": "received",
+        "http": 200,
+        "triage": "Does a 4-byte character lose the row the way an oversized one did?",
+        "verdict": "answered",
+        "notes": [
+            "A THIRD way to lose an audit row, and the first that is not about length.",
+            "utf8mb3 cannot represent a codepoint above the BMP at all, so MySQL raises",
+            "1366 Incorrect string value rather than 1406 Data too long. Same outcome",
+            "under STRICT_TRANS_TABLES: the INSERT fails, _record has no try/except, the",
+            "route 500s and the row is gone.",
+            "",
+            "MEASURED against the test container before the fix:",
+            "  emoji in raw_payload (utf8mb3)  -> LOST, DataError 1366",
+            "  emoji in raw_payload (utf8mb4)  -> OK,   {\"title\":\"Ocean [wave] model\"}",
+            "",
+            "Reachable from ordinary traffic, unlike the two oversize scenarios which are",
+            "tail risks: raw_payload is the XRAS body verbatim, carrying project titles",
+            "and abstracts, and error_messages interpolates those values back out.",
+            "",
+            "FIXED BY CHARSET, not by code — raw_payload and error_messages are utf8mb4.",
+            "That was free only because the table did not exist in production yet; the",
+            "DBA ticket carrying zz-90/zz-91 is still unfiled. Afterwards it would have",
+            "been an ALTER on a table with an audit trail in it."
+        ]
+    },
+
+    "astral_unicode_identifier": {
+        "what": "the same emoji in actionType, which stays utf8mb3",
+        "expect": "received",
+        "http": 200,
+        "triage": "Do the columns that could NOT move to utf8mb4 still keep the row?",
+        "verdict": "answered",
+        "notes": [
+            "action_type and request_number are read off the raw dict on the 400/422",
+            "arms, before the schema could reject them, so they are untrusted — and they",
+            "cannot follow raw_payload to utf8mb4, because sam/queries/xras_activation.py",
+            "joins request_number and projcode_result against project.projcode",
+            "(utf8mb3_general_ci).",
+            "",
+            "MEASURED on production (sam-sql.ucar.edu, MySQL 8.0.41-32) — the mixed",
+            "comparison works, and stops seeking:",
+            "  projcode = _utf8mb4'SCSG0001' COLLATE utf8mb4_general_ci",
+            "    -> type: index   rows: 4650    full index scan",
+            "  projcode = 'SCSG0001'",
+            "    -> type: const   rows: 1       index seek",
+            "",
+            "So _fit() sanitises instead: astral codepoints become U+FFFD before the",
+            "width slice, in that order so the replacement cannot be cut in half. Lossy",
+            "and losing nothing wanted — these columns hold projcodes and a fixed action",
+            "vocabulary. The original spelling stays recoverable from raw_payload."
+        ]
+    },
+
+    "unmapped_path_oversize_body": {
+        "what": "a body twice the raw_payload column, POSTed to an unmapped path",
+        "expect": "unmapped",
+        "http": 404,
+        "triage": "Does the newest ingress guard the same column the oldest one does?",
+        "verdict": "answered",
+        "notes": [
+            "The catch-all is the widest door into this table — any URL under",
+            "/api/xras/, not one — and the least guarded. post_action REFUSES an",
+            "oversized body with a 422 before recording, an explicit pre-check.",
+            "unmapped_path has no equivalent: it records unconditionally and relies",
+            "entirely on _fit_payload, with MAX_CONTENT_LENGTH at 16 MB.",
+            "",
+            "Truncating rather than refusing is right here, and for a different reason",
+            "than on the actions path: there is nothing to apply, so the only question",
+            "is whether the row survives to say XRAS called something we do not",
+            "implement. The request line is kept at the front, where it is readable."
+        ]
+    },
+
+    "unmapped_path_astral": {
+        "what": "an emoji in both the path and the body of an unmapped call",
+        "expect": "unmapped",
+        "http": 404,
+        "triage": "Do BOTH charset guards hold on the same request?",
+        "verdict": "answered",
+        "notes": [
+            "The one scenario that exercises the two mechanisms against each other.",
+            "The path is echoed into outcome_reason, varchar(255) and still utf8mb3, so",
+            "it survives only because _fit sanitises. The body lands in raw_payload,",
+            "utf8mb4, so it survives verbatim. Change either guard alone and this file",
+            "goes half-red.",
+            "",
+            "Before either, this lost the row and answered 500 — on a feature whose",
+            "entire purpose is leaving a record."
+        ]
+    },
+
     "repeat_post_supplement": {
         "what": "the same Supplement posted three times",
         "expect": "processed",

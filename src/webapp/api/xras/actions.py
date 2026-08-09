@@ -121,6 +121,28 @@ def _truncate_bytes(text, width):
     return encoded[:width].decode('utf-8', errors='ignore'), True
 
 
+def _strip_astral(text):
+    """Replace codepoints above the BMP with U+FFFD.
+
+    ⚠️ For the **utf8mb3** columns only. utf8mb3 cannot represent a 4-byte character
+    at all, and under ``STRICT_TRANS_TABLES`` that is not a truncation — MySQL raises
+    ``1366 Incorrect string value`` and the audit row is lost. Same outcome as the
+    ``1406`` overflow the widths guard, reached by encoding rather than by length.
+
+    Deliberately **not** applied to ``raw_payload`` or ``error_messages``: those two
+    columns are ``utf8mb4`` (``zz-90-xras_action_log.sql``) precisely so the body XRAS
+    sent is stored as sent. The identifiers cannot follow them, because
+    ``sam/queries/xras_activation.py`` joins ``request_number`` and ``projcode_result``
+    against ``project.projcode`` and a mixed-charset comparison stops using the index
+    (measured on production: ``type: const, rows: 1`` → ``type: index, rows: 4650``).
+
+    Lossy, and losing nothing anyone wanted — these columns hold projcodes, usernames
+    and a fixed action vocabulary, where a 4-byte glyph carries no meaning. The
+    original spelling stays recoverable from ``raw_payload``.
+    """
+    return ''.join('�' if ord(c) > 0xFFFF else c for c in text)
+
+
 def _fit_payload(raw_payload):
     """Bound ``raw_payload``, announcing the cut. Returns ``(text, was_truncated)``.
 
@@ -199,10 +221,19 @@ def _fit(value, width):
     NULL ``action_type`` is meaningful ("we could not parse the body"). Anything
     else is stringified and truncated rather than allowed to raise: an audit write
     that 500s is the one failure mode this table cannot afford.
+
+    Two ways to raise, and this guards both. Length is the obvious one. Encoding is
+    the other: every column reached through here is **utf8mb3**, which cannot hold a
+    4-byte character — see :func:`_strip_astral`. Sanitise *before* slicing, so a
+    replacement character cannot be cut in half.
+
+    ``width`` counts **characters**, correctly: MySQL ``VARCHAR(n)`` is n characters,
+    while ``TEXT`` is 65,535 *bytes* — which is why the two TEXT columns go through
+    :func:`_fit_payload` / :func:`_fit_error_messages` and count bytes instead.
     """
     if value is None:
         return None
-    return str(value)[:width]
+    return _strip_astral(str(value))[:width]
 
 
 def _record(*, status, raw_payload, action_type=None, request_number=None,

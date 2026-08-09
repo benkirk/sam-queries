@@ -211,3 +211,96 @@ def test_the_widths_match_the_database(app):
     # SMALLINT UNSIGNED tops out at 65,535; every code we answer is 3 digits.
     assert str(columns['http_status']['type']).upper().startswith('SMALLINT')
     assert str(XrasActionLog.http_status.type).upper().startswith('SMALLINT')
+
+
+# ---------------------------------------------------------------------------
+# The other way an audit write raises: encoding, not length
+# ---------------------------------------------------------------------------
+
+#: One codepoint above the Basic Multilingual Plane. utf8mb3 cannot represent it at
+#: all — it is 4 bytes in UTF-8 and that charset stops at 3.
+ASTRAL = '\U0001F30A'          # 🌊 WATER WAVE
+
+
+def _raw_utf8(payload):
+    """Serialise the way the broker does: **raw UTF-8, not ``\\uXXXX`` escapes.**
+
+    ⚠️ This is the whole test, and getting it wrong makes the scenario vacuous.
+    ``json.dumps`` defaults to ``ensure_ascii=True``, which turns the emoji into the
+    ASCII sequence ``\\ud83c\\udf0a`` — a body that is pure ASCII, stores fine in
+    utf8mb3, and proves nothing. The first draft of this test did exactly that and
+    "passed" the column it was meant to break.
+
+    Legacy's own output is the evidence for which side XRAS is on: §2 measured the
+    roster response carrying 78 non-ASCII bytes and **zero** ``\\uXXXX`` escapes,
+    because an unconfigured Jackson ``ObjectMapper`` writes raw UTF-8. The broker
+    posting to us uses the same library the same way.
+    """
+    return json.dumps(payload, separators=(',', ':'), ensure_ascii=False)
+
+
+def test_astral_unicode_payload(xras_client, action_log, scenario):
+    """An emoji in a project title must not cost the audit row.
+
+    A *different* failure from the two above, reaching the same outcome. Those overflow
+    a length and raise ``1406 Data too long``; this one is representable-length but
+    unrepresentable-charset and raises ``1366 Incorrect string value``. Both are fatal
+    under ``STRICT_TRANS_TABLES`` — confirmed on in production — and `_record` has no
+    ``try``/``except``, so both lose the row and answer 500.
+
+    ⚠️ Not contrived. ``raw_payload`` is the XRAS body **verbatim**, so it carries
+    whatever a PI typed into a title or an abstract, and ``error_messages`` interpolates
+    those same values back out. An emoji in a project title is an ordinary thing.
+
+    Fixed by charset, not by code: ``raw_payload`` and ``error_messages`` are utf8mb4
+    (``zz-90-xras_action_log.sql``), which was free only because the table had not yet
+    been created in production. The identifier columns stay utf8mb3 and are handled by
+    ``_fit`` — see the test below.
+    """
+    payload = {'actionType': 'New', 'requestNumber': 'NCAR0001',
+               'title': f'Ocean {ASTRAL} circulation', 'resources': []}
+
+    resp = xras_client.post(PATH, data=_raw_utf8(payload),
+                            content_type='application/json', headers=auth_headers())
+
+    assert resp.status_code == scenario['http']
+    row = action_log.one()
+    assert row['status'] == scenario['expect']
+    # The row exists AND the character round-tripped — a guard that stored `?` or
+    # U+FFFD here would pass a "did it survive" check while corrupting the one
+    # artefact an operator replays from.
+    assert ASTRAL in row['raw_payload']
+
+
+def test_astral_unicode_identifier(xras_client, action_log, scenario):
+    """The same character in ``action_type``, which is deliberately still utf8mb3.
+
+    ``action_type`` and ``request_number`` are read off the **raw** dict on the 400/422
+    arms, before the schema could reject them, so they are genuinely untrusted — and
+    they cannot follow ``raw_payload`` to utf8mb4, because
+    ``sam/queries/xras_activation.py`` joins ``request_number`` and ``projcode_result``
+    against ``project.projcode`` (utf8mb3_general_ci). Measured on production: the
+    mixed-charset comparison still *compares*, but stops seeking —
+    ``type: const, rows: 1`` becomes ``type: index, rows: 4650``.
+
+    So these columns are guarded in Python instead. ``_fit`` already existed to stop an
+    untrusted value turning an audit write into a 500; it bounded length and not
+    encoding. It now replaces astral characters with U+FFFD — lossy, and losing nothing
+    anyone wanted, because the column holds projcodes and a fixed action vocabulary.
+    """
+    payload = {'actionType': f'New{ASTRAL}', 'requestNumber': 'NCAR0001',
+               'resources': []}
+
+    resp = xras_client.post(PATH, data=_raw_utf8(payload),
+                            content_type='application/json', headers=auth_headers())
+
+    assert resp.status_code == scenario['http']
+    row = action_log.one()
+    assert row['status'] == scenario['expect']
+    # Sanitised, not dropped: the row still says an action type arrived and roughly
+    # what it was.
+    assert row['action_type'] is not None
+    assert ASTRAL not in row['action_type']
+    assert row['action_type'].startswith('New')
+    # The body itself is utf8mb4, so the original spelling is still recoverable.
+    assert ASTRAL in row['raw_payload']
