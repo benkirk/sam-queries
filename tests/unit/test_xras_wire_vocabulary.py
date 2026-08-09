@@ -38,10 +38,14 @@ import pytest
 
 from sam.schemas.forms import xras as xras_schemas
 
+# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
+# re-export keeps the suite passing UNEDITED, which is the proof the move was
+# pure. Commit 4B repoints the imports and deletes every one of these.
+from xras_helpers import FIXTURE_DIR  # noqa: F401
+
 pytestmark = pytest.mark.unit
 
 XRAS_SRC = pathlib.Path(__file__).parent.parent.parent / 'src' / 'sam' / 'xras'
-FIXTURE_DIR = pathlib.Path(__file__).parent.parent / 'fixtures' / 'xras' / 'actions'
 
 #: Field names read for reasons other than the XRAS wire contract, with the reason.
 #: Anything not declared by a schema and not listed here is a bug.

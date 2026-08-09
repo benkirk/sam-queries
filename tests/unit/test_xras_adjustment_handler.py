@@ -28,22 +28,17 @@ from sam.accounting.allocations import (
 from sam.xras.errors import XrasActionRejected
 from sam.xras.handlers.adjustment import handle_adjustment
 
+# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
+# re-export keeps the suite passing UNEDITED, which is the proof the move was
+# pure. Commit 4B repoints the imports and deletes every one of these.
+from xras_helpers import FIXTURE_DIR, committing, load_fixture, txns_for, wire_resource  # noqa: F401
+
 pytestmark = pytest.mark.unit
 
-FIXTURE_DIR = Path(__file__).parent.parent / 'fixtures' / 'xras' / 'actions'
 
 
-def load_fixture(name):
-    return json.loads((FIXTURE_DIR / name).read_text())
 
 
-def wire_resource(key, amount='250000', comments=None):
-    # ⚠️ ``resourceRepositoryKey`` is the field XRAS actually sends. This helper
-    # said ``key`` for a whole sprint, which is how the handlers came to read a
-    # field no payload has ever carried. See
-    # ``tests/unit/test_xras_wire_vocabulary.py``.
-    return {'resourceRepositoryKey': key, 'awardedAmount': amount,
-            'comments': comments}
 
 
 def action_for(projcode, *resources, action_type='Adjustment',
@@ -59,26 +54,8 @@ def action_for(projcode, *resources, action_type='Adjustment',
             'roles': []}
 
 
-def txns_for(session, allocation):
-    return (session.query(AllocationTransaction)
-            .filter(AllocationTransaction.allocation_id == allocation.allocation_id)
-            .all())
 
 
-@pytest.fixture
-def committing(session, monkeypatch):
-    """Flush instead of commit — see the Extension handler tests for why this exists."""
-    from contextlib import contextmanager
-
-    import sam.xras.handlers.base as base
-
-    @contextmanager
-    def flushing(sess):
-        yield sess
-        sess.flush()
-
-    monkeypatch.setattr(base, 'management_transaction', flushing)
-    return session
 
 
 @pytest.fixture

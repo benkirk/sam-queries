@@ -56,9 +56,13 @@ from sam.schemas.forms import XrasActionSchema
 from sam.xras.dispatch import dispatch_action
 from sam.xras.errors import XrasActionRejected
 
+# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
+# re-export keeps the suite passing UNEDITED, which is the proof the move was
+# pure. Commit 4B repoints the imports and deletes every one of these.
+from xras_helpers import FIXTURE_DIR, committing  # noqa: F401
+
 pytestmark = pytest.mark.unit
 
-FIXTURE_DIR = Path(__file__).parent.parent / 'fixtures' / 'xras' / 'actions'
 ALL_FIXTURES = sorted(p.name for p in FIXTURE_DIR.glob('*.json'))
 
 
@@ -67,20 +71,6 @@ def load_through_schema(name):
     return XrasActionSchema().load(json.loads((FIXTURE_DIR / name).read_text()))
 
 
-@pytest.fixture
-def committing(session, monkeypatch):
-    """Flush instead of commit — see the Extension handler tests for why this exists."""
-    from contextlib import contextmanager
-
-    import sam.xras.handlers.base as base
-
-    @contextmanager
-    def flushing(sess):
-        yield sess
-        sess.flush()
-
-    monkeypatch.setattr(base, 'management_transaction', flushing)
-    return session
 
 
 @pytest.fixture

@@ -38,13 +38,15 @@ from sam.xras.handlers._allocations import (
 from sam.xras.handlers._fields import parse_action_end_date
 from sam.xras.handlers.extension import EXTENSION_COMMENT, handle_extension
 
+# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
+# re-export keeps the suite passing UNEDITED, which is the proof the move was
+# pure. Commit 4B repoints the imports and deletes every one of these.
+from xras_helpers import FIXTURE_DIR, committing, load_fixture, txns_for  # noqa: F401
+
 pytestmark = pytest.mark.unit
 
-FIXTURE_DIR = Path(__file__).parent.parent / 'fixtures' / 'xras' / 'actions'
 
 
-def load_fixture(name):
-    return json.loads((FIXTURE_DIR / name).read_text())
 
 
 def action_for(projcode, end_date='2030-06-30', **extra):
@@ -54,40 +56,8 @@ def action_for(projcode, end_date='2030-06-30', **extra):
     return payload
 
 
-def txns_for(session, allocation):
-    return (session.query(AllocationTransaction)
-            .filter(AllocationTransaction.allocation_id == allocation.allocation_id)
-            .all())
 
 
-@pytest.fixture
-def committing(session, monkeypatch):
-    """Neutralise ``management_transaction``'s commit for handler tests.
-
-    The handler commits by design — it is the write boundary. But the suite's
-    per-test isolation is a SAVEPOINT on this connection, and a real ``COMMIT``
-    would release it and leak rows into the shared xdist database. Patching the
-    context manager to flush instead keeps every assertion below true (the rows
-    exist, and are visible on this session) while leaving the rollback intact.
-
-    ⚠️ **One patch point, and that is new.** This used to name a handler module, and
-    every test that drove more than one handler had to patch five of them — a missed
-    one commits for real while the assertions still pass, which is the silent version
-    of this failure and has already leaked rows once. ``management_transaction`` is now
-    imported only by ``sam.xras.handlers.base``, and
-    ``tests/unit/test_xras_transaction_seam.py`` enforces that.
-    """
-    from contextlib import contextmanager
-
-    import sam.xras.handlers.base as base
-
-    @contextmanager
-    def flushing(sess):
-        yield sess
-        sess.flush()
-
-    monkeypatch.setattr(base, 'management_transaction', flushing)
-    return session
 
 
 # ---------------------------------------------------------------------------

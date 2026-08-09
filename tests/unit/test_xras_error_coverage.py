@@ -29,6 +29,11 @@ from sam.xras import errors as e
 from sam.xras.dispatch import dispatch_action
 from sam.xras.errors import XrasActionRejected
 
+# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
+# re-export keeps the suite passing UNEDITED, which is the proof the move was
+# pure. Commit 4B repoints the imports and deletes every one of these.
+from xras_helpers import committing, wire_resource  # noqa: F401
+
 pytestmark = pytest.mark.unit
 
 
@@ -93,20 +98,6 @@ def public_builders():
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def committing(session, monkeypatch):
-    """Flush instead of commit — see the Extension handler tests for why this exists."""
-    from contextlib import contextmanager
-
-    import sam.xras.handlers.base as base
-
-    @contextmanager
-    def flushing(sess):
-        yield sess
-        sess.flush()
-
-    monkeypatch.setattr(base, 'management_transaction', flushing)
-    return session
 
 
 @pytest.fixture
@@ -165,13 +156,6 @@ def new_action(pi, *resources, **overrides):
     return payload
 
 
-def wire_resource(key, amount='250000', comments=None):
-    # ⚠️ ``resourceRepositoryKey`` is the field XRAS actually sends. This helper
-    # said ``key`` for a whole sprint, which is how the handlers came to read a
-    # field no payload has ever carried. See
-    # ``tests/unit/test_xras_wire_vocabulary.py``.
-    return {'resourceRepositoryKey': key, 'awardedAmount': amount,
-            'comments': comments}
 
 
 def project_with_allocation(session, resource, *, end=datetime(2033, 7, 31),

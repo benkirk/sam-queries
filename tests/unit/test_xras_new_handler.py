@@ -28,29 +28,17 @@ from sam.xras.handlers._allocations import clamp_start_to_commission
 from sam.xras.handlers._fields import parse_action_begin_date
 from sam.xras.handlers.new import handle_new
 
+# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
+# re-export keeps the suite passing UNEDITED, which is the proof the move was
+# pure. Commit 4B repoints the imports and deletes every one of these.
+from xras_helpers import FIXTURE_DIR, committing, load_fixture, wire_resource  # noqa: F401
+
 pytestmark = pytest.mark.unit
 
-FIXTURE_DIR = Path(__file__).parent.parent / 'fixtures' / 'xras' / 'actions'
 
 
-def load_fixture(name):
-    return json.loads((FIXTURE_DIR / name).read_text())
 
 
-@pytest.fixture
-def committing(session, monkeypatch):
-    """Flush instead of commit — see the Extension handler tests for why this exists."""
-    from contextlib import contextmanager
-
-    import sam.xras.handlers.base as base
-
-    @contextmanager
-    def flushing(sess):
-        yield sess
-        sess.flush()
-
-    monkeypatch.setattr(base, 'management_transaction', flushing)
-    return session
 
 
 @pytest.fixture
@@ -148,13 +136,6 @@ def action_for(creatable, *resources, **overrides):
     return payload
 
 
-def wire_resource(key, amount='250000', comments=None):
-    # ⚠️ ``resourceRepositoryKey`` is the field XRAS actually sends. This helper
-    # said ``key`` for a whole sprint, which is how the handlers came to read a
-    # field no payload has ever carried. See
-    # ``tests/unit/test_xras_wire_vocabulary.py``.
-    return {'resourceRepositoryKey': key, 'awardedAmount': amount,
-            'comments': comments}
 
 
 # ---------------------------------------------------------------------------
