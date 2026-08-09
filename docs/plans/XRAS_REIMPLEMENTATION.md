@@ -251,7 +251,7 @@ bare `/v1/*` surface.
 | 4 | GET | `/api/xras/v1/requests/user/{username}` | same |
 | 5 | GET | `/api/xras/v1/requests/role/{role}/{username}` | same |
 | 6 | GET | `/api/xras/v1/dates/requests/{requestNumbers}` | `ResponseWrapper{result: List<RequestDatesDTO>}` |
-| 7 | POST | `/api/xras/v1/roles/{requestNumber}/{role}/{username}` | empty body, 200 |
+| 7 | POST | `/api/xras/v1/roles/{requestNumber}/{role}/{username}` | empty body, 200, **no `Content-Type`** |
 | 8 | POST | `/api/xras/v1/actions` | `{"message":"OK","result":null}` |
 
 - **#1 and #2 are the only endpoints without the `{message, result}` envelope.** Any client
@@ -264,7 +264,23 @@ bare `/v1/*` surface.
   `RoleService.setLeadUserRole(requestNumber, username)`, i.e. it *reassigns the project lead*.
   There is no XRAS endpoint for adding a co-PI or an ordinary member. Rosters arrive whole, in the
   `roles[]` array of `POST /actions` — see §3.5. (And the ACCESS spec's `DELETE /v1/roles/…` is
-  unimplemented, so revocations never reach SAM at all.)
+  unimplemented, so revocations never reach SAM at all.) It is **`@PostMapping` — POST only**: a
+  `javap` of the deployed class shows `value=[...]` with no `method=`, which reads like "all
+  verbs", but `@PostMapping` is a Spring meta-annotation carrying `method = RequestMethod.POST`
+  on *itself*. Every `@GetMapping` on the other five controllers decompiles identically.
+- ⚠️ **#7's four-branch error ladder is dead code.** `RoleServiceImpl` matches the validation
+  message against `"Project  *[^ ]* * does not exist."` and three siblings, but the message it
+  receives is assembled by `ValidationException.errorsToString()` and always reads
+  `ValidationException:\n projcode: Project ABC123 does not exist.(ABC123)` — `propertyPath` from
+  `BeanCommandValidator`, `invalidValue` alongside it. `String.matches` is a **full-string**
+  match, so the prefix and the suffix defeat every pattern and **every** validation failure falls
+  to the `else` → `BadRequestException` → **400**, carrying that raw string as `message`. Not
+  merely the two-constraints-fail case. `RoleServiceImplTest` is green only because it `@Mock`s
+  `getMessage()` to return the bare sentence, bypassing the assembly entirely — it documents
+  intent, not behaviour. §7 records what this port does instead.
+- #7's success is `BaseController.createOkResponse()` = `new ResponseEntity(HttpStatus.OK)`:
+  200, zero-length body, and **no `Content-Type` header** — no message converter runs, so none is
+  negotiated. `webapp.api.xras.serialize.empty_ok` reproduces it.
 - #8 takes `@RequestBody String actionJson` and calls `new ObjectMapper().readValue(...)` itself — a
   second, unconfigured mapper. Parse failure → `RuntimeException` → 500.
 - The ACCESS/XRAS spec documents `POST /v1/actions/<actionId>/<requestId>/<actionType>`, but **all
@@ -1370,6 +1386,23 @@ three-module domain pattern in `src/cli/README.md:137-168`.
 - **`Permission.MANAGE_XRAS`** gates replay and activate-project rather than reusing
   `EDIT_ALLOCATIONS`, so it can be granted to whoever fields XRAS failures independently of general
   allocation editing.
+- **`POST /v1/roles`'s error ladder is redesigned, not ported** — 404 for the three
+  "does not exist" cases (all three segments are resource identity) and **409** for the two
+  "inactive" cases (the resource exists; its state refuses the write). Two reasons this is
+  not a parity violation worth arguing about. First, there is nothing to be faithful to:
+  legacy's four-branch ladder **can never fire** (below), so its real behaviour is
+  400-for-everything carrying a leaked `ValidationException:` string, and no client has
+  received anything else. Second, legacy's *intended* 403 is wrong on its own terms — 403
+  is an authorization verdict about the caller, and on an endpoint behind Basic auth it is
+  indistinguishable from a bad API key, which is the wrong first instinct during triage
+  week. It is an artifact of `XrasController` mapping `BadStateException` to `FORBIDDEN`,
+  that being the only non-404 exception class `RoleServiceImpl` had to hand.
+- **An unmapped path under `/api/xras/` returns the envelope 404 and writes an audit row**
+  (`status='unmapped'`) rather than Werkzeug's HTML. `/v1/roles` went unported for a whole
+  build and nothing could have surfaced it, because an unmapped path left no trace — the
+  same silence, one level up, that `xras_action_log` exists to end. Recording it needs a
+  real `<path:>` route: a routing 404 has `request.blueprint = None`, so the blueprint's
+  `errorhandler(404)` never fires. It sits **behind auth**, so a scanner cannot mint rows.
 - **The repo ships no golden byte corpus.** Repo tests assert the *rules* (field order, the per-DTO
   null policy, `"%.1f"`, epoch-millis, both 404 forms, the closed-form length) against factory data;
   real bytes are compared live by the parity harness, where the data is real by construction and

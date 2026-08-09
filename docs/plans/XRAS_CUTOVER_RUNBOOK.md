@@ -24,7 +24,8 @@ no code is left.** The design, the measurements and the reasoning live in
 
 | # | Precondition | How to prove it |
 |---|---|---|
-| 1 | All six handlers built and registered | `pytest -q` → 5,246 passed; `pytest -m stress -n 0` → 17 passed |
+| 1 | All six handlers built and registered | `pytest -q` → 5,280 passed; `pytest -m stress -n 0` → 17 passed |
+| 1b | The whole legacy surface is mapped — all eight endpoints, not the seven XRAS calls today | `pytest tests/api/test_xras_roles.py tests/api/test_xras_unmapped.py -q` |
 | 2 | The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
 | 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml:291` — and confirm it in the running pod's env before anything else |
 | 4 | The replay-and-diff oracle passes | `pytest tests/unit/test_xras_oracle.py -q` |
@@ -34,6 +35,11 @@ no code is left.** The design, the measurements and the reasoning live in
 While it is `"1"` the endpoint authenticates, parses and audits every post and dispatches
 nothing. Legacy is still the system of record; dispatching before the repoint would
 double-apply actions legacy has already applied, against live allocations, with no undo.
+
+**It gates `POST /v1/roles` too**, and that is deliberate: the lead reassignment is the
+*other* XRAS write, and without the gate it would be the one that applies the moment the
+base URL repoints while every action is still being captured. Under capture-only it
+answers 200 (legacy's success shape), records `status='received'`, and changes nothing.
 
 ---
 
@@ -202,6 +208,15 @@ new.
 - **Wire shapes never seen in production**: `Co-PI` vs `CoPi` is **closed** — membership
   ignores `roleType` entirely, so the spelling cannot matter, tested across three.
   `Renewal` and `Advance` are exercised synthetically.
+- **`POST /v1/roles` answers 404/409 where legacy answers 400.** Ported late, after an audit
+  of the deployed WAR found it missing. Legacy's own ladder is dead code — every validation
+  failure there falls through to 400 with a leaked `ValidationException:` string (§2.1) — so
+  there is no contract this breaks and no client that has seen anything else. Zero traffic in
+  58 days of access logs. If a 409 appears in triage it means "project or user is inactive",
+  and the `message` says which.
+- **A new `unmapped` status appears on the XRAS tab** whenever XRAS calls a path we do not
+  implement. It is **not** a failure and not a parked action: it means the broker asked for
+  something new. One row is worth reading; a run of them is a conversation with ACCESS.
 - **SMTP is not implemented**, deliberately. Legacy keeps mailing until the repoint;
   Sprint B's pending-activation card is the accepted substitute trigger. It becomes real
   work *after* cutover — see `XRAS_REIMPLEMENTATION.md` § 0.2.

@@ -444,7 +444,7 @@ for project, allocation, resource_name, days_remaining in get_projects_by_alloca
 ## Testing
 
 Suite size, timings, and tier breakdown live in **`docs/TESTING.md`** — keep
-counts there, not here. Currently 5,309 collected (5,270 in the default run,
+counts there, not here. Currently 5,356 collected (5,317 in the default run,
 ~90 s under xdist); `perf` and `stress` are gated off by default.
 
 ```bash
