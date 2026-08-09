@@ -66,6 +66,7 @@ from sam.notify.base import (
 #: imports the module on first access and caches the attribute in globals, so
 #: the cost is paid once and only by code that actually asks.
 _LAZY_EXPORTS = {
+    'to_recipients':              'sam.notify.audience',
     'NotifyConfig':               'sam.notify.config',
     'NOTIFICATION_KINDS':         'sam.notify.kinds',
     'NotificationKind':           'sam.notify.kinds',
@@ -136,5 +137,6 @@ __all__ = [
     'TransportError',
     'build_transport',
     'get_kind',
+    'to_recipients',
     'transport_names',
 ]

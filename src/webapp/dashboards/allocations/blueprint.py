@@ -21,9 +21,12 @@ from webapp.utils.htmx import (
     register_typeahead,
 )
 from webapp.api.xras.replay import replay_action
+from sam import fmt
+from sam.enums import ResourceTypeName
 from sam.integration.xras import XrasActivationEvent
 from sam.manage.transaction import management_transaction
 from sam.projects.projects import Project
+from webapp.utils.notify import get_notifier, notify_summary
 from webapp.utils.project_permissions import can_edit_project_governance
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
@@ -1491,45 +1494,165 @@ def _record_activation_event(project, event_type, *, comment=None,
     )
 
 
+def _xras_activation_messages(project, people):
+    """Build one :class:`~sam.notify.Message` per recipient for a handoff.
+
+    ``dedup_key`` embeds the most recent XRAS action naming the project, which
+    is the same timestamp comparison the card's "marked notified" badge is
+    derived from (``latest('notified') > latest_action``) — expressed as a
+    key. A *new* Extension therefore mints a new key and the project can be
+    notified again, while re-clicking about the same action cannot re-mail
+    anyone. One mechanism, two surfaces.
+    """
+    from sam.notify import Message, to_recipients
+
+    action_id = get_latest_xras_action_id(db.session, project.project_id)
+    usage = project.get_detailed_allocation_usage()
+    resources = [{
+        'resource_name': name,
+        'amount': fmt.number(info.get('allocated')),
+        'units': ResourceTypeName.allocation_unit(info.get('resource_type'),
+                                                  info.get('allocated')),
+        'end_date': fmt.date_str(info.get('end_date'), null=None),
+    } for name, info in sorted(usage.items())]
+
+    lead_email = project.lead.primary_email if project.lead else None
+    context = {
+        'project_code': project.projcode,
+        'project_title': project.title,
+        'project_lead': project.lead.display_name if project.lead else 'Project Lead',
+        'project_lead_email': lead_email,
+        'resources': resources,
+    }
+    subject = f'NSF NCAR Project {project.projcode} is now active'
+
+    return [
+        Message(
+            kind='xras_activation',
+            recipient=recipient,
+            subject=subject,
+            context=context,
+            entity=('project', project.project_id),
+            projcode=project.projcode,
+            dedup_key=(f'xras_activation:{project.projcode}:{action_id}'
+                       f':{recipient.address}'),
+            requested_by=current_user.username,
+        )
+        for recipient in to_recipients(people)
+    ]
+
+
+@bp.route('/xras_notify_form/<int:project_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_notify_form(project_id: int):
+    """Modal body: **what these people will actually receive**, plus Send.
+
+    A real send is irreversible, so the one-click POST became two steps — the
+    same reasoning that already puts an ``hx-confirm`` on ``xras_activate``.
+    A preview beats a confirm dialog because it also answers "and what does
+    it say", which is the question an operator actually has.
+
+    ``preview()`` writes **no** ledger row: a preview is not an attempt, and a
+    stray row would poison the dedup query for the send that follows.
+    """
+    project = _load_pending_project(project_id)
+    if project is None:
+        return htmx_modal_not_found('Project')
+
+    people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
+    messages = _xras_activation_messages(project, people)
+
+    notifier = get_notifier(ledger=False)
+    preview = None
+    preview_error = None
+    if messages:
+        try:
+            preview = notifier.preview(messages[0])
+        except Exception as exc:            # a template problem, not a send
+            current_app.logger.warning(
+                'XRAS notify preview failed for %s: %s', project.projcode, exc)
+            preview_error = str(exc)
+
+    return render_template(
+        'dashboards/allocations/partials/xras_notify_form.html',
+        project=project,
+        people=people,
+        preview=preview,
+        preview_error=preview_error,
+        notify_enabled=notifier.config.enabled,
+        redirect_to=notifier.config.redirect_to or None,
+        post_url=url_for('allocations_dashboard.xras_notify',
+                         project_id=project_id),
+    )
+
+
 @bp.route('/xras_notify/<int:project_id>', methods=['POST'])
 @login_required
 @require_permission(Permission.MANAGE_XRAS)
 def xras_notify(project_id: int):
-    """Record that an operator handed a pending project off. **Sends no mail.**
+    """Send the handoff mail, then record what actually happened.
 
-    SAM has no mailer — zero ``MAIL_*`` / ``flask_mail`` / ``smtplib`` wiring under
-    ``src/webapp/``, and standing that up is its own follow-on change. So this
-    route does the whole timestamp half (which is what the card's badge, the
-    staleness rule and "notify again" are derived from) and answers with an
-    explicit **Not implemented** dialog listing the addresses, rather than a
-    success toast that would imply mail moved.
+    **Send first, record second.** The activation event's ``notified_to``
+    names the addresses that *succeeded*, so the card never claims a handoff
+    that did not leave the building. The recipients are recomputed here,
+    server-side, and never taken from the request: "the current lead" and
+    "who we notified" are different questions, and only the second is an
+    audit answer.
 
-    The recipients are recomputed here, server-side, and stored in ``notified_to``
-    — never taken from the request. "The current lead" and "who we notified" are
-    different questions, and only the second one is an audit answer.
+    No path may 500. ``Notifier.send_many`` never raises for a delivery
+    failure, and the three outcomes are:
 
-    No idempotency guard, deliberately: "notified 3 times, last by benkirk" is a
-    feature of the derived design, not a bug to suppress.
+    * **all delivered** — success fragment naming who was mailed;
+    * **partial** — success fragment naming the failures; the event records
+      only the successes;
+    * **nothing delivered** (relay down, or ``NOTIFY_ENABLED`` off) — the
+      manual-fallback dialog, which hands the operator the addresses and says
+      plainly that nothing was sent. **No activation event is written**,
+      because none happened.
+
+    ``suppressed`` counts as "nothing delivered" here on purpose: if everyone
+    was already told about this same XRAS action, there is no new handoff to
+    record, and writing another ``notified`` event would be the double-count
+    the derive rule exists to prevent.
     """
     project = _load_pending_project(project_id)
     if project is None:
         return htmx_not_found('Project')
 
     people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
-    notified_to = '; '.join(f"{p['name']} <{p['email']}>" for p in people) or None
+    messages = _xras_activation_messages(project, people)
+
+    results = get_notifier().send_many(messages) if messages else []
+    summary = notify_summary(results)
+
+    if not summary['ok']:
+        current_app.logger.info(
+            'XRAS notify sent nothing: project=%s by=%s statuses=%s',
+            project.projcode, current_user.username,
+            sorted({r.status for r in results}) or ['no recipients'])
+        return htmx_success(
+            'dashboards/allocations/partials/xras_notify_manual_fallback.html',
+            {'refreshXrasTab': {}},
+            project=project, people=people, summary=summary)
+
+    notified_to = '; '.join(
+        f"{r.message.recipient.name or r.message.recipient.address} "
+        f"<{r.message.recipient.address}>" for r in summary['delivered']) or None
 
     with management_transaction(db.session):
         event = _record_activation_event(project, 'notified',
                                          notified_to=notified_to)
 
     current_app.logger.info(
-        'XRAS notify recorded (no mail sent): project=%s by=%s to=%s',
-        project.projcode, current_user.username, notified_to)
+        'XRAS notify sent: project=%s by=%s to=%s failed=%d',
+        project.projcode, current_user.username, notified_to,
+        len(summary['failed']))
 
     return htmx_success(
-        'dashboards/allocations/partials/xras_notify_not_implemented.html',
+        'dashboards/allocations/partials/xras_notify_sent.html',
         {'refreshXrasTab': {}},
-        project=project, people=people, recorded_at=event.creation_time)
+        project=project, summary=summary, recorded_at=event.creation_time)
 
 
 @bp.route('/xras_activate/<int:project_id>', methods=['POST'])

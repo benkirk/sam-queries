@@ -1498,6 +1498,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_notify_form",
+    "/allocations/xras_notify_form/<int:project_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_pending_fragment",
     "/allocations/xras_pending_fragment",
     [

@@ -1,0 +1,95 @@
+{#
+  Manual-fallback dialog for the Notify button — rendered into
+  #auditDetailsModalBody when NOTHING was delivered.
+
+  Context:
+    project   the Project the operator acted on
+    people    [{'name','email','role'}] — recomputed server-side at click time
+    summary   webapp.utils.notify.notify_summary(results)
+
+  ⚠️  THIS DIALOG IS STILL THE FEATURE, not a placeholder to delete.
+
+  It began life as "Notify — not implemented", back when SAM had no mailer at
+  all. SMTP has now landed, so the dialog no longer means "we never built
+  this" — it means **this attempt delivered nothing**, which is a state that
+  will keep happening: NOTIFY_ENABLED off on this deployment, the relay
+  refusing, or every recipient already notified about this same XRAS action.
+
+  What must NOT change is the response to that state: say plainly that
+  nothing was sent, hand over the addresses so a human can finish the job,
+  and write no activation event — because no handoff happened. A success
+  toast here would leave the card claiming a notification nobody received.
+#}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Notify — nothing was sent
+</h5>
+
+{% set suppressed = summary.suppressed | length %}
+{% set failed = summary.failed | length %}
+
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="fas fa-triangle-exclamation mt-1"></i>
+    <div>
+        {% if suppressed and not failed %}
+        <strong>Everyone here has already been notified about this request.</strong>
+        <div>
+            No mail was sent, and nothing was recorded — the card already shows
+            this project as notified. It will become notifiable again when a new
+            XRAS action names it.
+        </div>
+        {% elif failed %}
+        <strong>Email delivery failed.</strong>
+        <div>No mail was sent. Send it yourself, to:</div>
+        {% else %}
+        <strong>Email delivery is not enabled on this deployment.</strong>
+        <div>No mail was sent. Send it yourself, to:</div>
+        {% endif %}
+    </div>
+</div>
+
+{% if not (suppressed and not failed) %}
+{% if people %}
+<ul class="list-unstyled mb-3">
+    {% for p in people %}
+    <li class="mb-1">
+        <code class="user-select-all">{{ p.email }}</code>
+        <span class="text-muted small">— {{ p.name }} ({{ p.role }})</span>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="text-danger-emphasis">
+    <i class="fas fa-circle-exclamation"></i>
+    No lead or admin email address is on file for this project — you will need to
+    find a recipient another way.
+</p>
+{% endif %}
+{% endif %}
+
+{% if failed %}
+<div class="project-stats-box mb-3">
+    {% for result in summary.failed %}
+    <div class="stat-item">
+        <span class="text-muted">{{ result.recipient }}</span>
+        <strong class="text-danger small">{{ result.detail or 'Unknown error' }}</strong>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="project-stats-box">
+    <div class="stat-item">
+        <span class="text-muted">Project</span>
+        <strong>{{ project.projcode }}</strong>
+    </div>
+    <div class="stat-item">
+        <span class="text-muted">Recorded</span>
+        <strong>Nothing — no notification event was written</strong>
+    </div>
+</div>
+
+<p class="text-muted small mt-3 mb-0">
+    Because nothing was delivered, the card is unchanged and the Notify button
+    stays available. Delivery attempts are recorded either way — see
+    Admin → Configuration → Notifications.
+</p>

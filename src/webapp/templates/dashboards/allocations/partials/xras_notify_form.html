@@ -1,0 +1,106 @@
+{#
+  Preview modal for the Notify button — rendered into #auditDetailsModalBody
+  by GET xras_notify_form.
+
+  Context:
+    project         the Project the operator is about to notify about
+    people          [{'name','email','role'}] recomputed server-side
+    preview         RenderedMessage for the FIRST recipient, or None
+    preview_error   str, when the template would not render
+    notify_enabled  NotifyConfig.enabled
+    redirect_to     NOTIFY_REDIRECT_TO, or None
+    post_url        where Send posts
+
+  WHY A PREVIEW AND NOT AN hx-confirm
+
+  A real send is irreversible, so this is deliberately two clicks — the same
+  reasoning that already puts an hx-confirm on Activate. A preview is the
+  better of the two because it answers the question an operator actually has:
+  not "are you sure" but "and what does it say".
+#}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Notify — {{ project.projcode }}
+</h5>
+
+{% if not notify_enabled %}
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="fas fa-triangle-exclamation mt-1"></i>
+    <div>
+        <strong>Email delivery is not enabled on this deployment.</strong>
+        <div>
+            Sending will record the attempt and deliver nothing. You can still
+            preview the message below.
+        </div>
+    </div>
+</div>
+{% elif redirect_to %}
+{# The failure mode this line exists to prevent: a staging box quietly
+   swallowing mail while the UI reports success. #}
+<div class="alert alert-warning d-flex align-items-start gap-2">
+    <i class="fas fa-shuffle mt-1"></i>
+    <div>
+        <strong>All mail on this deployment is redirected.</strong>
+        <div>
+            This will be delivered to <code>{{ redirect_to }}</code>, not to the
+            recipients below.
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<h6 class="text-muted text-uppercase small mb-2">Recipients</h6>
+{% if people %}
+<ul class="list-unstyled mb-3">
+    {% for p in people %}
+    <li class="mb-1">
+        <code class="user-select-all">{{ p.email }}</code>
+        <span class="text-muted small">— {{ p.name }} ({{ p.role }})</span>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="text-danger-emphasis">
+    <i class="fas fa-circle-exclamation"></i>
+    No lead or admin email address is on file for this project — there is
+    nobody to send to.
+</p>
+{% endif %}
+
+{% if preview_error %}
+<div class="alert alert-danger">
+    <strong>The message could not be rendered.</strong>
+    <div class="small mt-1"><code>{{ preview_error }}</code></div>
+</div>
+{% elif preview %}
+<h6 class="text-muted text-uppercase small mb-2">Message</h6>
+<div class="project-stats-box mb-2">
+    <div class="stat-item">
+        <span class="text-muted">Subject</span>
+        <strong>{{ preview.subject }}</strong>
+    </div>
+    <div class="stat-item">
+        <span class="text-muted">Template</span>
+        <strong>{{ preview.template_text }}</strong>
+    </div>
+</div>
+<pre class="border rounded p-3 small mb-3"
+     style="max-height: 22rem; overflow: auto; white-space: pre-wrap;">{{ preview.text }}</pre>
+<p class="text-muted small">
+    Shown as it will reach {{ people[0].name }} ({{ people[0].role }}). Wording
+    that depends on the recipient's role differs for the others.
+</p>
+{% endif %}
+
+<div class="d-flex justify-content-end gap-2 mt-3">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+        Cancel
+    </button>
+    <button type="button" class="btn btn-primary"
+            hx-post="{{ post_url }}"
+            hx-target="#auditDetailsModalBody"
+            hx-swap="innerHTML"
+            {% if not people %}disabled{% endif %}>
+        <i class="fas fa-paper-plane"></i>
+        Send{% if people %} to {{ people | length }}{% endif %}
+    </button>
+</div>
