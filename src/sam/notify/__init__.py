@@ -1,4 +1,4 @@
-"""Channel-agnostic notifications for SAM — SMTP today, a ledger beside it.
+"""Channel-agnostic notifications for SAM — SMTP first, the ledger with it.
 
 ``sam.notify`` is the mailer both consumers share: ``sam-admin project
 --upcoming-expirations --notify`` and the webapp's XRAS activation Notify
@@ -29,6 +29,23 @@ production, obfuscation does not remove the mail relay, and the relay accepts
 arbitrary external recipients from the whole UCAR ``/16``. A ``Notifier`` you
 did not explicitly enable records ``suppressed`` and mails nobody.
 
+Imports are **lazy** (PEP 562)
+------------------------------
+Only :mod:`sam.notify.base` is imported eagerly. Everything else — the
+renderer, the transports, the service — loads on first attribute access.
+
+This is not micro-optimisation. ``sam/__init__.py`` exports
+:class:`~sam.notify.models.NotificationLog`, and importing *any* submodule
+runs this file first. Eager imports here therefore put ``jinja2``, three
+transports and ``sam.fmt`` into the import graph of **every** consumer of the
+ORM — the CLI, every test, every script — and ``sam.fmt`` in turn imports the
+top-level ``config`` module. Under ``python3 ./src/webapp/run.py`` that lands
+``sam.fmt`` first in the chain, where ``config`` is shadowed by
+``webapp/config.py`` (``sys.path[0]`` is the script's own directory) and
+startup dies with a confusing partially-initialised-module ``ImportError``.
+
+The rule this encodes: **the ORM must be importable without the mailer.**
+
 Design, measurements and rationale: ``docs/plans/NOTIFICATION_FRAMEWORK.md``.
 """
 
@@ -43,22 +60,48 @@ from sam.notify.base import (
     Transport,
     TransportError,
 )
-from sam.notify.config import NotifyConfig
-from sam.notify.kinds import NOTIFICATION_KINDS, NotificationKind, get_kind
-from sam.notify.registry import TRANSPORTS, build_transport, transport_names
-from sam.notify.render import (
-    DEFAULT_FACILITY_TEMPLATE,
-    TEMPLATE_DIR,
-    TemplateError,
-    TemplateRenderer,
-)
-from sam.notify.service import REDIRECT_BANNER, Notifier
-from sam.notify.transports import (
-    ConsoleTransport,
-    NullTransport,
-    ORIGINAL_TO_HEADER,
-    SmtpTransport,
-)
+
+#: Public name → the submodule that defines it. Everything reachable from
+#: ``sam.notify`` that is not already imported above lives here; ``__getattr__``
+#: imports the module on first access and caches the attribute in globals, so
+#: the cost is paid once and only by code that actually asks.
+_LAZY_EXPORTS = {
+    'NotifyConfig':               'sam.notify.config',
+    'NOTIFICATION_KINDS':         'sam.notify.kinds',
+    'NotificationKind':           'sam.notify.kinds',
+    'get_kind':                   'sam.notify.kinds',
+    'NotificationLog':            'sam.notify.models',
+    'TRANSPORTS':                 'sam.notify.registry',
+    'build_transport':            'sam.notify.registry',
+    'transport_names':            'sam.notify.registry',
+    'DEFAULT_FACILITY_TEMPLATE':  'sam.notify.render',
+    'TEMPLATE_DIR':               'sam.notify.render',
+    'TemplateError':              'sam.notify.render',
+    'TemplateRenderer':           'sam.notify.render',
+    'REDIRECT_BANNER':            'sam.notify.service',
+    'Notifier':                   'sam.notify.service',
+    'ConsoleTransport':           'sam.notify.transports',
+    'NullTransport':              'sam.notify.transports',
+    'ORIGINAL_TO_HEADER':         'sam.notify.transports',
+    'SmtpTransport':              'sam.notify.transports',
+}
+
+
+def __getattr__(name):
+    """PEP 562 lazy attribute access — see the module docstring."""
+    module_name = _LAZY_EXPORTS.get(name)
+    if module_name is None:
+        raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+    import importlib
+    value = getattr(importlib.import_module(module_name), name)
+    globals()[name] = value          # cache; __getattr__ runs once per name
+    return value
+
+
+def __dir__():
+    """So tab-completion and `dir()` still show the full surface."""
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))
+
 
 __all__ = [
     'Channel',
@@ -69,6 +112,7 @@ __all__ = [
     'NOTIFICATION_KINDS',
     'NOTIFICATION_STATUSES',
     'NotificationKind',
+    'NotificationLog',
     'Notifier',
     'NotifyConfig',
     'NotifyError',
