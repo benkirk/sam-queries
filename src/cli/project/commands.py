@@ -26,7 +26,7 @@ from cli.project.display import (
     display_tree_audit
 )
 from sam import Project, fmt
-from sam.enums import FacilityName
+from sam.enums import FacilityName, ResourceTypeName
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations,
@@ -343,7 +343,15 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     'allocated_amount': resource_usage.get('allocated', 0),
                     'used_amount': resource_usage.get('used', 0),
                     'remaining_amount': resource_usage.get('remaining', 0),
-                    'units': 'core-hours'  # Default unit
+                    # Was hardcoded 'core-hours', which told a PI with a DISK
+                    # or ARCHIVE allocation that their TiB-years were
+                    # core-hours. ResourceTypeName.allocation_unit is the one
+                    # source the dashboard and the CLI already share; it also
+                    # returns None for an access-boolean grant (amount == 1),
+                    # so the notice stops rendering "1 hours".
+                    'units': ResourceTypeName.allocation_unit(
+                        resource_usage.get('resource_type'),
+                        resource_usage.get('allocated')),
                 })
 
             # Build recipients dict: email -> (name, role)

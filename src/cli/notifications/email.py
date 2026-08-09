@@ -29,9 +29,17 @@ class EmailNotificationService:
         self.mail_password = ctx.mail_password
         self.mail_from = ctx.mail_from
 
-        # Setup Jinja2 template environment
-        template_dir = Path(__file__).parent.parent / 'templates'
-        self.jinja_env = Environment(loader=FileSystemLoader(str(template_dir)))
+        # Setup Jinja2 template environment.
+        #
+        # ⚠️ Transitional. The templates now live in sam/notify/templates/ and
+        # this class is deleted outright when the CLI moves onto sam.notify.
+        # Pointing at the new home keeps this commit green without a second
+        # copy of four files — a duplicate would be the thing that silently
+        # diverges in between. The generic `expiration.{txt,html}` symlinks
+        # are gone; sam.notify.render.DEFAULT_FACILITY_TEMPLATE replaced them,
+        # which is why _get_template_name below now names UNIV explicitly.
+        from sam.notify.render import TEMPLATE_DIR
+        self.jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
 
     def _get_template_name(self, base_name: str, facility: str = None, extension: str = 'txt') -> str:
         """
@@ -39,7 +47,7 @@ class EmailNotificationService:
 
         Resolution order:
         1. {base_name}-{facility}.{extension} (e.g., expiration-UNIV.txt)
-        2. {base_name}.{extension} (e.g., expiration.txt)
+        2. {base_name}-UNIV.{extension}       (what the deleted symlinks meant)
 
         Args:
             base_name: Base template name (e.g., 'expiration')
@@ -56,9 +64,10 @@ class EmailNotificationService:
                 self.jinja_env.get_template(facility_template)
                 return facility_template
             except jinja2.exceptions.TemplateNotFound:
-                pass  # Fall back to generic
+                pass  # Fall back to the default facility
 
-        return f"{base_name}.{extension}"
+        from sam.notify.render import DEFAULT_FACILITY_TEMPLATE
+        return f"{base_name}-{DEFAULT_FACILITY_TEMPLATE}.{extension}"
 
     def send_expiration_notification(self, notification: Dict) -> Tuple[bool, Optional[str]]:
         """Send expiration notification email.

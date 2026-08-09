@@ -42,13 +42,21 @@ def email_service(mock_context):
 
 
 def test_template_fallback_without_facility(email_service):
-    """Generic template is used when no facility is specified."""
-    assert email_service._get_template_name('expiration', None, 'txt') == 'expiration.txt'
+    """The default-facility template is used when no facility is specified.
+
+    Was `expiration.txt` — a symlink to `expiration-UNIV.txt`. The symlink is
+    gone (it did not survive a wheel build and said nothing about *which*
+    facility it meant); `sam.notify.render.DEFAULT_FACILITY_TEMPLATE` names it.
+    Same file, same rendered mail.
+    """
+    assert email_service._get_template_name('expiration', None, 'txt') == \
+        'expiration-UNIV.txt'
 
 
 def test_template_fallback_with_missing_facility_template(email_service):
-    """Fallback to generic template when facility-specific template doesn't exist."""
-    assert email_service._get_template_name('expiration', 'NONEXISTENT', 'txt') == 'expiration.txt'
+    """Fallback to the default facility when the specific one doesn't exist."""
+    assert email_service._get_template_name('expiration', 'NONEXISTENT', 'txt') == \
+        'expiration-UNIV.txt'
 
 
 def test_template_selection_with_facility(email_service):

@@ -304,14 +304,27 @@ everything runs from an editable install:
 `Environment` — the body only touches `.filters` and `.globals` — keeping a thin
 app-taking wrapper for the existing call site.
 
-Be honest about why: **no shipping template needs this** — the four expiration
-templates use plain variables with every value pre-formatted by the caller. The
-justification is not CLAUDE.md's "no raw `.format()` in display code" rule, it
-is a **live bug one line away**: `src/cli/project/commands.py:349` hardcodes
-`'units': 'core-hours'` with a `# Default unit` comment, so a DISK or ARCHIVE
-expiration notice currently tells a PI their TiB-years are core-hours.
-`alloc_unit` (already registered, `fmt.py:479-482`) is the correct source, and
-becomes reachable from a mail template only once this refactor lands.
+Be honest about why, because this was justified twice and both times wrongly.
+
+**Not** "a shipping template needs a filter": the four expiration templates
+render exactly seven variables — `recipient_name`, `project_code`,
+`project_title`, `latest_expiration`, `grace_expiration`, `project_lead`,
+`project_lead_email` — every one a plain string pre-formatted by the caller.
+
+**Nor** "a DISK notice tells a PI their TiB-years are core-hours". It does
+not, because **no expiration template renders the resource table at all**.
+`src/cli/project/commands.py:346` builds `resources` with a hardcoded
+`'units': 'core-hours'` and nothing downstream ever displays it. That is dead
+data, not a mis-rendered notice, and it is worth fixing only because it is one
+line and the value is wrong the moment anything *does* render it.
+
+The real justification is forward-looking: the **new** `xras_activation`
+template (§ 1) renders a per-resource allocation table, which is the first
+notification body that has to state a unit. Getting that right needs
+`alloc_unit` (`fmt.py:479-482`, and correct — it also returns `None` for an
+access-boolean grant, so the table stops reading "1 hours"), and a standalone
+`Environment` cannot reach it until `register_jinja_filters` stops writing
+`app.jinja_env`. So: a small refactor with one new consumer, not a bug fix.
 
 ---
 
@@ -499,7 +512,8 @@ Three one-liners get fixed while the file is open:
   two lines below a `project_lead_name` that *is* guarded (`:375`). It
   `AttributeError`s on a lead-less project, and being *outside* the mailer's
   `try`, aborts the run for **every** project rather than skipping one.
-- **`:349`** — the hardcoded `'units': 'core-hours'`, per § 4.
+- **`:346`** — the hardcoded `'units': 'core-hours'`, per § 4. Dead data
+  today; wrong the moment a template renders it.
 - **`:377-379`** — dead debug code: a commented-out `recipients = {}` reset then
   a hardcoded `benkirk@ucar.edu`, on a loop variable leaked from `:355`.
   Uncommenting it silently redirects every notice — which is what
