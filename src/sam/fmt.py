@@ -451,10 +451,17 @@ def size(
 
 # ── Framework integration ─────────────────────────────────────────────────────
 
-def register_jinja_filters(app) -> None:
-    """Register fmt_* Jinja2 filters on a Flask application.
+def register_jinja_filters(target) -> None:
+    """Register fmt_* Jinja2 filters on a Flask app **or** a bare Environment.
 
-    Call once inside create_app() after the app object is created.
+    Call once inside create_app() after the app object is created — or once
+    per standalone ``jinja2.Environment`` (``sam.notify.render``), which is
+    why this accepts either. The body only ever touches ``.filters`` and
+    ``.globals``, so the Flask coupling was never more than the attribute
+    lookup now done on the first line.
+
+    Args:
+        target: a Flask app (its ``.jinja_env`` is used) or an Environment.
 
     Filters registered:
         fmt_number  — {{ value | fmt_number }}
@@ -469,22 +476,24 @@ def register_jinja_filters(app) -> None:
         fmt_factor  — {{ multiplier | fmt_factor }}   → '×0.70'
         fmt_ago     — {{ timedelta | fmt_ago }}       → '29 hours'
     """
-    app.jinja_env.filters['fmt_number']   = number
-    app.jinja_env.filters['fmt_pct']      = pct
-    app.jinja_env.filters['fmt_date']     = date_str
-    app.jinja_env.filters['fmt_size']     = size
-    app.jinja_env.filters['fmt_hours']    = hours
-    app.jinja_env.filters['fmt_factor']   = factor
-    app.jinja_env.filters['fmt_ago']      = ago
-    app.jinja_env.filters['to_local_dt']  = to_local_dt
+    env = getattr(target, 'jinja_env', target)
+
+    env.filters['fmt_number']   = number
+    env.filters['fmt_pct']      = pct
+    env.filters['fmt_date']     = date_str
+    env.filters['fmt_size']     = size
+    env.filters['fmt_hours']    = hours
+    env.filters['fmt_factor']   = factor
+    env.filters['fmt_ago']      = ago
+    env.filters['to_local_dt']  = to_local_dt
     # Resource-type allocation unit label ('hours' / 'TiB' / None). Used on
     # the headline "<n> allocated" figures. Usage:
     #   {{ resource.resource_type | alloc_unit(resource.allocated) }}
     from sam.enums import ResourceTypeName
-    app.jinja_env.filters['alloc_unit']   = ResourceTypeName.allocation_unit
+    env.filters['alloc_unit']   = ResourceTypeName.allocation_unit
     # Global (not a filter) so templates can render "{{ local_tz_label() }}"
     # alongside naive-local timestamps that don't go through to_local_dt.
-    app.jinja_env.globals['local_tz_label'] = local_tz_label
+    env.globals['local_tz_label'] = local_tz_label
 
 
 def mpl_number_formatter(sig_figs: Optional[int] = None):
