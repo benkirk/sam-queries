@@ -197,6 +197,11 @@ from .integration.xras_views import (
     XrasRequestView
 )
 
+# Notification delivery ledger. Imported from sam.notify.models rather than
+# sam.notify: the package __init__ pulls in jinja2 and the transports, and this
+# module is imported by everything that touches the ORM.
+from .notify.models import NotificationLog
+
 from .security.roles import Role, RoleUser, ApiCredentials, RoleApiCredentials
 from .security.access import AccessBranch, AccessBranchResource
 
@@ -260,6 +265,8 @@ __all__ = [
     'XrasActivationEvent', 'XRAS_ACTIVATION_EVENT_TYPES',
     'XrasUserView', 'XrasRoleView', 'XrasActionView',
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',
+    # Notifications
+    'NotificationLog',
     # Security
     'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',
     'AccessBranch', 'AccessBranchResource',
