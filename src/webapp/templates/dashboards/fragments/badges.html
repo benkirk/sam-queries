@@ -8,8 +8,10 @@
       {{ status_badge('expired', extra='ms-1', small=True) }}
 
   Known states (case-insensitive): active, inactive, locked, expired, open-ended,
-  plus the five xras_action_log states (received, processed, manual, failed,
-  replayed) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
+  plus the six xras_action_log states (received, processed, manual, failed,
+  replayed, unmapped) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
+  test_xras_dashboard.py asserts every member of that tuple has an entry in all
+  three dicts below.
   Unknown states fall back to bg-secondary with the raw label rendered.
 #}
 
@@ -24,6 +26,7 @@
     'manual':     'bg-warning text-dark',
     'failed':     'bg-danger',
     'replayed':   'bg-secondary',
+    'unmapped':   'bg-dark',
 } -%}
 {%- set _STATUS_LABELS = {
     'active':     'Active',
@@ -36,6 +39,7 @@
     'manual':     'Manual',
     'failed':     'Failed',
     'replayed':   'Replayed',
+    'unmapped':   'Unmapped',
 } -%}
 {# Hover explanations — applied as a Bootstrap tooltip (tooltip-init.js) so the
    badge is self-documenting wherever it appears. #}
@@ -50,6 +54,7 @@
     'manual':     'Parked for a human: no handler services this action type.',
     'failed':     'Rejected. See the error list for what XRAS was told.',
     'replayed':   'An operator re-submitted the stored payload; it was re-validated but not dispatched.',
+    'unmapped':   'XRAS called a path SAM does not implement. Nothing was applied — decide whether it should be.',
 } -%}
 
 

@@ -19,6 +19,7 @@ the HTML for anyone who opened view-source.
 """
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -247,17 +248,22 @@ class TestFacetChips:
                 if m.group(2) == field]
 
     def test_status_chips_are_wired_to_the_filter_form(self, auth_client):
+        from sam.queries.xras_actions import XRAS_ACTION_STATUSES
+
         html = auth_client.get('/allocations/xras_fragment').data.decode()
         chips = self._chips(html, 'status')
         # One per status in the fixed vocabulary. A superset is legal — an
         # out-of-vocabulary status gets its own chip (see the test below) — but
         # nothing in the snapshot should produce one, so this asserts the floor
         # exactly rather than loosening to >=.
-        assert len(chips) == 5
+        #
+        # Read from the tuple rather than spelled out: this is a check that the
+        # strip renders the vocabulary, not a second copy of it. Spelling it out is
+        # what made adding `unmapped` break two tests that had no opinion about it.
+        assert len(chips) == len(XRAS_ACTION_STATUSES)
         # Every chip writes into the form the filter panel actually renders.
         assert {form_id for form_id, _ in chips} == {'xras-filters'}
-        assert {value for _, value in chips} == {
-            'received', 'processed', 'manual', 'failed', 'replayed'}
+        assert {value for _, value in chips} == set(XRAS_ACTION_STATUSES)
 
     def test_an_unknown_status_gets_its_own_chip(self, auth_client,
                                                  committed_odd_status_action):
@@ -279,13 +285,15 @@ class TestFacetChips:
 
     def test_the_known_statuses_keep_their_order_ahead_of_strays(
             self, auth_client, committed_odd_status_action):
-        """The five are a stable, learnable strip; a stray appends rather than
-        reshuffling what an operator scans for."""
+        """The vocabulary is a stable, learnable strip in its declared order; a stray
+        appends rather than reshuffling what an operator scans for."""
+        from sam.queries.xras_actions import XRAS_ACTION_STATUSES
+
         html = auth_client.get('/allocations/xras_fragment').data.decode()
         values = [value for _, value in self._chips(html, 'status')]
-        assert values[:5] == [
-            'received', 'processed', 'manual', 'failed', 'replayed']
-        assert values[5:] == ['pending']
+        known = len(XRAS_ACTION_STATUSES)
+        assert values[:known] == list(XRAS_ACTION_STATUSES)
+        assert values[known:] == ['pending']
 
     def test_action_type_chips_are_wired(self, auth_client, committed_action):
         html = auth_client.get('/allocations/xras_fragment').data.decode()
@@ -587,3 +595,34 @@ class TestPendingCardGating:
         resp = view_only_client.get('/allocations/xras')
         assert resp.status_code == 200
         assert b'Show dismissed' not in resp.data
+
+
+class TestStatusVocabularyIsRenderable:
+    """Every status the table can hold must have a badge, a label and a tooltip.
+
+    ``XRAS_ACTION_STATUSES`` and ``badges.html`` are two files that have to agree, and
+    nothing else makes them. The macro falls back to ``bg-secondary`` with the raw string
+    for an unknown state, so a missing entry does not raise — it renders a grey chip
+    labelled ``unmapped`` with no explanation, on the page an operator reaches for when
+    something has gone wrong. Silent, and exactly when it matters most.
+
+    Parsed out of the template source rather than rendered, because these are Jinja
+    ``{%- set -%}`` literals with no macro that exposes them.
+    """
+
+    BADGES = (Path(__file__).resolve().parents[2] / 'src' / 'webapp' / 'templates'
+              / 'dashboards' / 'fragments' / 'badges.html')
+
+    def _keys(self, dict_name):
+        source = self.BADGES.read_text()
+        body = re.search(rf'{dict_name} = \{{(.*?)\}}', source, re.S)
+        assert body, f'{dict_name} not found in badges.html'
+        return set(re.findall(r"'([^']+)':", body.group(1)))
+
+    @pytest.mark.parametrize(
+        'dict_name', ['_STATUS_VARIANTS', '_STATUS_LABELS', '_STATUS_TOOLTIPS'])
+    def test_every_status_has_an_entry(self, dict_name):
+        from sam.queries.xras_actions import XRAS_ACTION_STATUSES
+
+        missing = set(XRAS_ACTION_STATUSES) - self._keys(dict_name)
+        assert not missing, f'{dict_name} is missing {sorted(missing)}'

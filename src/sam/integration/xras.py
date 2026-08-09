@@ -145,7 +145,8 @@ class XrasActionLog(Base):
 
     raw_payload = Column(Text, nullable=False)
 
-    #: received | processed | manual | failed | replayed
+    #: received | processed | manual | failed | replayed | unmapped
+    #: (``unmapped`` is not an action state — see ``XRAS_ACTION_STATUSES``.)
     status = Column(String(16), nullable=False)
 
     #: The HTTP code we answered: 200, 400 or 422. ``status='failed'`` covers a

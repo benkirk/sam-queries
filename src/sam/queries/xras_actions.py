@@ -32,13 +32,23 @@ from sqlalchemy.orm import Session
 from sam.integration.xras import XrasActionLog
 from sam.projects.projects import Project
 
-#: The five values ``xras_action_log.status`` may take, in lifecycle order.
+#: The values ``xras_action_log.status`` may take, in lifecycle order.
 #: ``status`` is a plain ``varchar(16)`` — this tuple is the vocabulary, and it is
-#: what the page's filter dropdown and the summary rollup enumerate.
+#: what the page's filter dropdown and the summary rollup enumerate. Adding a
+#: member therefore costs **no DDL**, which is why ``unmapped`` could be added
+#: without reopening the cutover's DBA ticket.
 #:
 #: ``processed`` is **unvalidated**: no handler exists yet, so nothing writes it.
 #: It is listed because the UI must render it, not because it has been observed.
-XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'replayed')
+#:
+#: ``unmapped`` is the odd one: it is not an action's lifecycle state at all, but a
+#: request for a path this blueprint does not implement (see
+#: :mod:`webapp.api.xras.unmapped`). It is deliberately **not** folded into
+#: ``manual`` — that is the four-cause parking cohort operators filter on during
+#: triage — nor into ``failed``, which would inflate the failure rate the dashboard
+#: reports for something that never claimed to be supported.
+XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'replayed',
+                        'unmapped')
 
 #: Action types on the wire, for the filter dropdown. This is legacy's own declared
 #: vocabulary (``action/domain/model/Action.java``: ``// New, Extension, Supplement,
