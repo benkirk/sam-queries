@@ -25,6 +25,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from sam.integration.xras import XrasActionLog, XrasActivationEvent
 from sam.projects.projects import Project

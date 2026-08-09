@@ -190,6 +190,32 @@ jobs:
             -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
             webapp bash -c "cd /code && pytest -m perf -n 0 -v --tb=short"
 
+      # The stress tier, the perf tier's sibling: both are gated off the default
+      # run by pytest.ini's `-m "not perf and not stress"`, and both check
+      # themselves against a committed declaration file (`tests/perf/baselines.json`,
+      # `tests/stress/scenarios.json`). Only perf had a step here; that was an
+      # oversight rather than a decision.
+      #
+      # What it buys: the only automated proof that an `xras_action_log` row
+      # SURVIVES adverse input. Under STRICT_TRANS_TABLES an oversized value does
+      # not truncate, it raises `1406 Data too long` and the audit row is lost —
+      # and that row is what the whole cutover triage story assumes exists.
+      #
+      # ⚠️ `-n 0` is required, and is also FASTER: 17 tests in ~2.5s serially
+      # versus ~6.5s under `-n auto`, where xdist startup dominates. It also makes
+      # this tier immune to the worker-count-dependent failures that have already
+      # bitten this suite once (see the `make_mnemonic_code` namespace fix).
+      #
+      # Contains no PII by construction: it builds every payload synthetically
+      # (it needs a 65KB body and an unmapped key, which no real payload provides),
+      # never loads `tests/fixtures/xras/actions/`, and never reads the dev database.
+      - name: Run XRAS stress tests (audit-row survival + parking)
+        if: always()
+        run: |
+          docker compose exec -T \
+            -e SAM_TEST_DB_URL='mysql+pymysql://root:root@mysql-test:3306/sam' \
+            webapp bash -c "cd /code && pytest -m stress -n 0 -v --tb=short"
+
       - name: Cleanup
         if: always()
         run: |
