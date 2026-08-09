@@ -246,6 +246,26 @@ Features:
 
 Access: `http://localhost:5050/admin/` (Admin Dashboard)
 
+### Notifications
+
+Email delivery, shared with the CLI via `sam.notify` (design and relay
+measurements: `docs/plans/NOTIFICATION_FRAMEWORK.md`).
+
+- **XRAS activation handoff** — the pending-activation card's Notify button
+  previews the message and its recipients, then sends. Two steps, because the
+  send is irreversible. Nothing delivered → the manual-fallback dialog and
+  **no** activation event, so the card cannot claim a handoff nobody received.
+- **Delivery log** — every attempt, for every channel:
+  `Admin → Configuration → Notifications` (counts, `VIEW_SYSTEM_CONFIG`) with
+  `Details »` → `/admin/htmx/notifications` (rows, `SYSTEM_ADMIN`, because
+  every row names a real person's email).
+
+⚠️ **Fail-closed.** `NOTIFY_ENABLED` defaults to `0`; without it every attempt
+is recorded `suppressed` and nothing is delivered. Set
+`NOTIFY_REDIRECT_TO=you@example.edu` to exercise the real send path safely —
+messages are re-addressed, recorded `redirected` rather than `sent`, and both
+the card and the preview say so loudly.
+
 ## REST API
 
 All API endpoints require authentication (session cookie) and appropriate RBAC permissions. Responses are in JSON format serialized using [Marshmallow schemas](#api-serialization-with-marshmallow).

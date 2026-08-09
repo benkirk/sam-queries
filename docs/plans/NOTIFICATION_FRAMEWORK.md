@@ -1,6 +1,9 @@
 # A notification framework in `sam.notify` — SMTP first, the ledger with it
 
-> ☐ **Proposed. Nothing here is built.** This is the design for Sprint D of
+> ✅ **Built.** Ten commits on `smtp_notify`, stacked on `integration`. See
+> § *As built* at the end for what changed on the way, including **four
+> claims in this document that measurement disproved**. This is the design
+> for Sprint D of
 > [`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md) § 2.1 / Phase 0.2 — the
 > row that reads *"lift `EmailNotificationService` into `src/sam/notifications/`"*.
 >
@@ -888,3 +891,85 @@ What remains:
    rewrites the tests meant to cover them.
 5. **Nothing here changes what XRAS itself receives.** These are NCAR-originated
    notices only; the broker contract is untouched.
+
+---
+
+## As built
+
+Ten commits on `smtp_notify`, plus two corrections to this document made
+*before* the code they would have misdirected. Everything in § 1–§ 10 shipped
+as described except where noted below.
+
+### ⚠️ Four claims this document made that measurement disproved
+
+Each was a plausible reading of the code. Each was wrong, and each is
+corrected in place above rather than left for the next reader to re-derive.
+
+| claim | what was measured | consequence |
+|---|---|---|
+| The hardcoded `Bcc` ships on the wire, so every recipient can read it (§ 7) | `smtplib.send_message` extracts envelope recipients from `To`/`Cc`/`Bcc` and serialises **without** `Bcc`. Today's blind copy is blind. | `NOTIFY_BCC` is a config move, not a correctness fix. The test survives, reframed: a transport passing `to_addrs` explicitly *would* transmit the header, so `SmtpTransport` never sets one. |
+| A DISK/ARCHIVE notice tells a PI their TiB-years are core-hours (§ 4) | The four expiration templates render exactly seven variables and **none renders the resource table**. The hardcode is dead data. | Fixed anyway (one line), but `register_jinja_filters(env)` is justified *forward* — its consumer is the new `xras_activation` template, the first body that states a per-resource unit. |
+| `project.lead.primary_email` AttributeErrors on a lead-less project and aborts the run for every project (§ 7) | `project_lead_user_id` is `NOT NULL` **and** the FK is enforced (0 dangling rows); `primary_email` *returns* `None` rather than raising. | The crash is unreachable. The guard is kept for consistency; the reachable case — a lead with no address, one such project in the snapshot — got four tests. |
+| *(implicit)* importing a submodule avoids the package's imports | It does not: `import sam.notify.models` runs `sam/notify/__init__.py` first. | Broke `webdev` startup. `sam/notify/__init__.py` is now lazy (PEP 562); `tests/unit/test_notify_import_graph.py` is the gate. |
+
+### Deviations from the plan
+
+- **`register_jinja_filters(env)` moved from commit 2 to commit 1**, because
+  `render.py` needs it to be complete. Commit 2 kept the template move,
+  packaging and the `alloc_unit` fix.
+- **`cli/notifications/email.py` was pointed at the new template directory in
+  commit 2** rather than given a copy, so every commit stays green without a
+  duplicate of four files that would silently diverge before commit 5 deleted
+  the module.
+- **`--force` reuses the existing flag** rather than adding one. It already
+  meant "skip the confirmation prompt" for `--deactivate`; it now means "skip
+  the protection" on both surfaces, and the validation reads
+  `--force requires --deactivate or --notify`.
+- **`webapp/run.py` drops its own directory from `sys.path`.** Beyond the
+  reported bug, and optional — but `python3 src/webapp/run.py` makes
+  `src/webapp` `sys.path[0]`, where `config` resolves to `webapp/config.py`
+  instead of `src/config.py`. Whether that fires depends on import *order*,
+  which is what let an unrelated change arm it.
+- **Four notification statuses joined the shared `status_badge` vocabulary**
+  rather than getting a private colour map.
+
+### Not built, and why
+
+- **`stuck_queued` has no alert beyond the card.** The counter is there; who
+  gets told is a policy question nobody has asked yet.
+- **Nothing schedules a send** (§ 9). Still true, still deliberate, and still
+  the reason suppression is load-bearing rather than a nicety.
+
+### Verified by hand, not only by the suite
+
+Run inside the compose network against the **obfuscated** test database
+(never the dev DB, which may hold real production rows):
+
+```
+sam-admin project --upcoming-expirations --notify   →  602 sent
+same command again                                  →  0 sent, 602 skipped
+age one queued row past the horizon, re-run         →  exactly 1 retried,
+                                                        601 still skipped
+```
+
+The third line is the § 5 deadlock. Without the staleness horizon that one
+recipient would have been suppressed permanently, and no amount of clicking
+reaches the state — it needs a crash between the `queued` write and the
+outcome write.
+
+### Coverage
+
+`src/cli` is outside `[tool.coverage.run] source`, so the lift put 571
+statements under `fail_under = 75.0` for the first time — in the same commit
+that rewrote the tests meant to cover them (risk #4). Measured after:
+**`src/sam/notify` 571 statements, 6 missed, 98.95%**.
+
+### Still outstanding
+
+- **`zz-92` on PR #424's DBA ticket.** One table, not two. This is the
+  design's only remaining external dependency.
+- **Staging needs all three `zz-9*` run by hand once** —
+  `infrastructure/scripts/init-rds.sh` restores the raw `.xz` with no initdb
+  hook.
+- **Whether the expiration notices should become a CronJob** — deliberately
+  not decided here.

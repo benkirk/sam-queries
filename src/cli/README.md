@@ -35,7 +35,6 @@ cli/
 ├── accounting/               # Charge rollups, per-job queries, summary ingest
 ├── contracts/                # Contract search (sam-search) + data-hygiene audit (sam-admin)
 ├── awards/                   # Public award APIs (NSF, USAspending) — sam-search
-├── notifications/            # Expiration email delivery (email.py)
 ├── templates/                # Expiration email templates
 └── cmds/                     # Entry points
     ├── search.py             # sam-search

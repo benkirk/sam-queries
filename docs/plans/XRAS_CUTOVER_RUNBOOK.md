@@ -227,9 +227,13 @@ new.
 - **A new `unmapped` status appears on the XRAS tab** whenever XRAS calls a path we do not
   implement. It is **not** a failure and not a parked action: it means the broker asked for
   something new. One row is worth reading; a run of them is a conversation with ACCESS.
-- **SMTP is not implemented**, deliberately. Legacy keeps mailing until the repoint;
-  Sprint B's pending-activation card is the accepted substitute trigger. It becomes real
-  work *after* cutover — see `XRAS_REIMPLEMENTATION.md` § 0.2.
+- **SMTP is implemented** (Sprint D, `NOTIFICATION_FRAMEWORK.md`). The pending-activation
+  card's Notify button now previews and sends the handoff mail legacy sent on activation,
+  and records every attempt in `notification_log`.
+  ⚠️ It is **fail-closed**: `NOTIFY_ENABLED` defaults to `0` everywhere, and production
+  sets it explicitly in `helm/values.yaml`. If it is unset at cutover, nothing is
+  delivered and every attempt is recorded `suppressed` — visible on Admin → Configuration
+  → Notifications, and warned about at startup. Check that card on the day.
 
 ## Housekeeping, after the dust settles
 
