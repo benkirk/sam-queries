@@ -23,7 +23,8 @@ from cli.project.display import (
     display_abandoned_users_from_expired_projects,
     display_notification_results,
     display_notification_preview,
-    display_tree_audit
+    display_tree_audit,
+    notification_progress,
 )
 from sam import Project, fmt
 from sam.enums import FacilityName, ResourceTypeName
@@ -158,7 +159,8 @@ class ProjectExpirationCommand(BaseProjectCommand):
                         end_date=datetime.now() + timedelta(days=32),
                         facility_names=facility_filter
                     )
-                    return self._send_notifications(all_expiring, email_list, dry_run)
+                    return self._send_notifications(all_expiring, email_list,
+                                                    dry_run, force=force)
 
             else:
                 # Recent Expirations
@@ -281,18 +283,49 @@ class ProjectExpirationCommand(BaseProjectCommand):
 
         return EXIT_ERROR if failed else EXIT_SUCCESS
 
-    def _send_notifications(self, expiring_data: list, additional_recipients: str = None, dry_run: bool = False) -> int:
-        """Send email notifications for expiring projects.
+    def _notifier(self):
+        """Build a :class:`sam.notify.Notifier` wired to a ledger.
+
+        The ledger gets its **own** sessions off this command's engine, not
+        ``self.session``: mail handed to a relay cannot be un-sent by a
+        rollback, so a ledger row must survive one. See
+        ``sam/notify/ledger.py``.
+        """
+        from sqlalchemy.orm import Session
+        from sam.notify import Notifier
+        from sam.notify.ledger import NotificationLedger
+
+        engine = self.session.get_bind()
+        return Notifier(ledger=NotificationLedger(lambda: Session(engine)))
+
+    def _send_notifications(self, expiring_data: list, additional_recipients: str = None,
+                            dry_run: bool = False, force: bool = False) -> int:
+        """Send expiration notices for expiring projects.
+
+        This builds the audience and the payload — that is expiration domain
+        logic and stays here — then hands ``Message`` objects to
+        ``sam.notify``. Rendering, the safety guards, the transport and the
+        ``notification_log`` rows all live there.
 
         Args:
             expiring_data: List of tuples (project, allocation, resource_name, days_remaining)
             additional_recipients: Comma-separated list of additional email addresses
-            dry_run: If True, preview emails without sending
+            dry_run: If True, render previews without sending and write no
+                ledger rows — a preview is not an attempt.
+            force: Ignore suppression and re-send. The escape hatch for a
+                notice that genuinely has to go out twice.
 
         Returns:
             EXIT_SUCCESS if all emails sent, EXIT_ERROR if any failed
         """
-        from cli.notifications import EmailNotificationService
+        import getpass
+
+        from sam.notify import Message, Recipient
+
+        try:
+            requested_by = getpass.getuser()
+        except Exception:                       # no passwd entry (container)
+            requested_by = 'cli'
 
         # Group by project to send one email per project
         projects_map = defaultdict(list)
@@ -304,8 +337,8 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 'days_remaining': days_remaining
             })
 
-        # Build notification list
-        notifications = []
+        # Build the message list
+        messages = []
         for projcode, resources_data in projects_map.items():
             project = resources_data[0]['project']
 
@@ -376,50 +409,75 @@ class ProjectExpirationCommand(BaseProjectCommand):
                     if email and email not in recipients:
                         recipients[email] = (email, 'user')
 
-            # Get project lead name for templates
+            # Lead details for the templates.
+            #
+            # `.primary_email` used to be read unguarded, two lines below a
+            # guarded `project_lead_name`. Measured, that asymmetry is NOT the
+            # crash it looks like: `project.project_lead_user_id` is NOT NULL
+            # with an enforced FK (`project_lead_user_fk`, 0 dangling rows), so
+            # `project.lead` cannot be None, and `primary_email` returns None
+            # rather than raising when a lead has no address on file. The guard
+            # is kept for consistency with the line above it, not because it
+            # fixes a reachable AttributeError. What IS reachable — and what
+            # the templates must cope with — is `project_lead_email is None`.
             project_lead_name = project.lead.display_name if project.lead else 'Project Lead'
-
-            ## hard-code one for test
-            #recipients = {}
-            #recipients["benkirk@ucar.edu"] = (user.display_name, 'lead')
+            project_lead_email = project.lead.primary_email if project.lead else None
 
             subject = f'NSF NCAR Project {projcode} Expiration Notice'
             if facility_name == FacilityName.WNA:
                 subject = f'NCAR/Wyoming Computing Project {projcode} Expiration Notice'
 
-            # Create notification for each recipient
+            # One Message per recipient — the ledger records one row per
+            # person, and suppression keys on the recipient.
             for recipient_email, (recipient_name, recipient_role) in recipients.items():
-                notifications.append({
-                    'subject': subject,
-                    'recipient': recipient_email,
-                    'recipient_name': recipient_name,
-                    'recipient_role': recipient_role,
-                    'project_code': projcode,
-                    'project_title': project.title,
-                    'project_lead': project_lead_name,
-                    'project_lead_email': project.lead.primary_email,
-                    'resources': resources,
-                    'latest_expiration': latest_expiration_date,
-                    'grace_expiration': grace_expiration_date,
-                    'facility': facility_name
-                })
+                messages.append(Message(
+                    kind='expiration',
+                    recipient=Recipient(recipient_email, name=recipient_name,
+                                        role=recipient_role),
+                    subject=subject,
+                    context={
+                        'project_code': projcode,
+                        'project_title': project.title,
+                        'project_lead': project_lead_name,
+                        'project_lead_email': project_lead_email,
+                        'resources': resources,
+                        'latest_expiration': latest_expiration_date,
+                        'grace_expiration': grace_expiration_date,
+                        'facility': facility_name,
+                    },
+                    facility=facility_name,
+                    entity=('project', project.project_id),
+                    projcode=projcode,
+                    # Keyed on the expiration date, so a NEW expiration mints a
+                    # new key and is never wrongly suppressed — which is why
+                    # the suppression query needs no time window of its own.
+                    dedup_key=(f'expiration:{projcode}:{latest_expiration_date}'
+                               f':{recipient_email}'),
+                    requested_by=requested_by,
+                ))
 
-        # Send notifications (or preview in dry-run mode)
         total_projects = len(projects_map)
-        email_service = EmailNotificationService(self.ctx)
-        results = email_service.send_batch_notifications(notifications, dry_run=dry_run)
+        notifier = self._notifier()
 
-        # Display results
         if dry_run:
-            display_notification_preview(self.ctx, results, total_projects)
-        else:
-            display_notification_results(self.ctx, results, total_projects)
+            # preview() writes NO ledger row: a preview is not an attempt, and
+            # a stray row would poison the dedup query for the real send.
+            previews = []
+            failures = []
+            for message in messages:
+                try:
+                    previews.append((message, notifier.preview(message)))
+                except Exception as exc:
+                    failures.append((message, str(exc)))
+            display_notification_preview(self.ctx, previews, failures, total_projects)
+            return EXIT_ERROR if failures else EXIT_SUCCESS
 
-        # Return error if any failed
-        if results['failed']:
-            return EXIT_ERROR
+        with notification_progress(self.ctx, len(messages)) as on_result:
+            results = notifier.send_many(messages, force=force,
+                                         on_result=on_result)
 
-        return EXIT_SUCCESS
+        display_notification_results(self.ctx, results, total_projects)
+        return EXIT_ERROR if any(not r.ok for r in results) else EXIT_SUCCESS
 
 
 class ProjectTreeAuditCommand(BaseProjectCommand):

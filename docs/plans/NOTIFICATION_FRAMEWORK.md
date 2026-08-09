@@ -509,9 +509,16 @@ that is expiration domain logic — but emits `Message` objects and calls
 Three one-liners get fixed while the file is open:
 
 - **`:392`** — `'project_lead_email': project.lead.primary_email` is unguarded,
-  two lines below a `project_lead_name` that *is* guarded (`:375`). It
-  `AttributeError`s on a lead-less project, and being *outside* the mailer's
-  `try`, aborts the run for **every** project rather than skipping one.
+  two lines below a `project_lead_name` that *is* guarded (`:375`). An earlier
+  revision claimed this `AttributeError`s on a lead-less project and aborts
+  the run for **every** project. ⚠️ **Measured, that is not reachable.**
+  `project.project_lead_user_id` is `NOT NULL` **and** carries an enforced FK
+  (`project_lead_user_fk`; the snapshot has 0 dangling rows), so `project.lead`
+  is never `None`; and `primary_email` *returns* `None` rather than raising
+  when a lead has no address. Guard it anyway, for consistency with the line
+  above — but the case the templates actually have to survive is
+  `project_lead_email is None`, which **is** reachable (one snapshot project
+  is in exactly that state) and now has tests.
 - **`:346`** — the hardcoded `'units': 'core-hours'`, per § 4. Dead data
   today; wrong the moment a template renders it.
 - **`:377-379`** — dead debug code: a commented-out `recipients = {}` reset then
