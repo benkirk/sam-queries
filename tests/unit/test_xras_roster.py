@@ -279,7 +279,53 @@ class TestResolveRoster:
 
         assert not errs
         assert result == Roster(pi_username=pi.username, admin_username=am.username,
-                                member_usernames=(pi.username, am.username))
+                                member_usernames=(pi.username, am.username),
+                                pi=pi, admin=am, members=(pi, am))
+
+    def test_the_roster_carries_the_rows_it_already_fetched(self, session):
+        """``resolve_roster`` validates by looking each user up, so it has the rows.
+
+        Handing them over is what lets New and Update stop re-querying every username
+        they were just given — two byte-identical blocks that doubled the query count
+        for a roster. ``members`` stays positionally aligned with
+        ``member_usernames``.
+        """
+        from factories import make_user
+        pi = make_user(session)
+        am = make_user(session)
+        errs = ActionErrors()
+
+        result = resolve_roster(session, act(
+            role(PI_ROLE, pi.username),
+            role(ALLOCATION_MANAGER_ROLE, am.username),
+        ), errs, today='2026-06-15')
+
+        assert result.pi is pi
+        assert result.admin is am
+        assert list(result.members) == [pi, am]
+        assert len(result.members) == len(result.member_usernames)
+
+    def test_a_member_with_no_user_row_keeps_its_place_as_none(self, session):
+        """The hole is preserved rather than compacted.
+
+        A missing member is already an error, so ``raise_if_any()`` stops the action
+        before anything iterates this — but keeping the slot keeps ``members`` aligned
+        with ``member_usernames`` and keeps the handlers' ``if member is not None``
+        guard meaningful instead of silently unreachable-by-shortening.
+        """
+        from factories import make_user
+        pi = make_user(session)
+        errs = ActionErrors()
+
+        result = resolve_roster(session, act(
+            role(PI_ROLE, pi.username),
+            role('Co-PI', 'nosuchuser_zz'),
+        ), errs, today='2026-06-15')
+
+        assert 'nosuchuser_zz' in result.member_usernames
+        assert len(result.members) == len(result.member_usernames)
+        missing_at = result.member_usernames.index('nosuchuser_zz')
+        assert result.members[missing_at] is None
 
     def test_no_pi_role_reports_missing_pi_role(self, session):
         errs = ActionErrors()

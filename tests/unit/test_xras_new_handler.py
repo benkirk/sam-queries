@@ -484,6 +484,41 @@ class TestContracts:
                 in exc.value.messages)
 
 
+class TestTheRosterIsNotFetchedTwice:
+    """A regression guard on the double fetch, not a micro-optimisation.
+
+    ``resolve_roster`` looks every username up in order to validate it, and this
+    handler used to throw those rows away and query again from the usernames — a
+    byte-identical block shared with ``update.py``. The cost scales with the roster:
+    a ten-member action paid twenty ``SELECT``s for ten rows.
+
+    Counting calls rather than asserting a timing, because the failure mode is
+    silent — it looks exactly like working code.
+    """
+
+    def test_each_username_is_looked_up_exactly_once(
+            self, committing, creatable, mapped_resource, monkeypatch):
+        from sam.core.users import User
+        from sam.xras.handlers.new import NewHandler
+
+        calls = []
+        original = User.get_by_username.__func__
+
+        def counting(cls, session, username):
+            calls.append(username)
+            return original(cls, session, username)
+
+        monkeypatch.setattr(User, 'get_by_username', classmethod(counting))
+
+        handler = NewHandler(committing, action_for(
+            creatable, wire_resource(mapped_resource.xras_key)))
+        handler.assemble()
+
+        assert calls, 'the roster resolved no users at all — test is vacuous'
+        assert len(calls) == len(set(calls)), (
+            f'each username should be fetched once; got {calls}')
+
+
 class TestTheRegistration:
 
     def test_the_handler_is_bound_to_the_add_service(self):

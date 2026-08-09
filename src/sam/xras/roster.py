@@ -56,7 +56,7 @@ import logging
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from sam.core.users import User
 
@@ -97,12 +97,28 @@ class Roster:
 
     ``warnings`` are not errors. They record situations the action survives but a
     human should look at — today only the defect-3 disagreement.
+
+    **The resolved rows come with it.** ``pi`` / ``admin`` / ``members`` are the
+    ``User`` objects :func:`_validate_user` already fetched while validating. The New
+    and Update handlers used to re-look-up every one of them from the usernames — two
+    byte-identical seven-line blocks — which doubled the query count for a roster:
+    ten members cost twenty ``SELECT``s where ten would do.
+
+    ⚠️ ``members`` is positionally aligned with ``member_usernames`` and **may contain
+    ``None``** where a username matched no row. That is deliberate: a missing member
+    has already been reported, so ``raise_if_any()`` stops the action before anything
+    iterates it, and preserving the hole keeps the handlers' existing
+    ``if member is not None`` guard meaningful rather than silently shortening the
+    list and changing what a future reader thinks it is looking at.
     """
 
     pi_username: Optional[str]
     admin_username: Optional[str]
     member_usernames: Tuple[str, ...]
     warnings: Tuple[str, ...] = ()
+    pi: Optional[User] = None
+    admin: Optional[User] = None
+    members: Tuple[Optional[User], ...] = ()
 
 
 def _wire_str(value) -> str:
@@ -246,21 +262,54 @@ def role_assignment_disagreements(action, *, today: Optional[str] = None) -> Tup
     return tuple(sorted(assigned - members))
 
 
-def _validate_user(session, username: str, errs: ActionErrors,
-                   missing, inactive) -> None:
-    """Report *username* against the users table using the given message builders.
+def _user_resolver(session):
+    """A memoised ``username -> User | None`` lookup for one ``resolve_roster`` call.
+
+    One person routinely occupies several roles in one action — PI, Allocation
+    Manager and roster member is the ordinary shape, not an edge case — and each
+    occurrence must be *reported* separately, in legacy's vocabulary and order. Only
+    the **lookup** is redundant, so only the lookup is cached.
+
+    Scoped to a single call rather than module-level: it must not outlive the session
+    it queried, and an action is short.
+    """
+    cache: Dict[str, Optional[User]] = {}
+
+    def resolve(username: str) -> Optional[User]:
+        if username not in cache:
+            cache[username] = User.get_by_username(session, username)
+        return cache[username]
+
+    return resolve
+
+
+def _validate_user(lookup, username: str, errs: ActionErrors,
+                   missing, inactive) -> Optional[User]:
+    """Report *username* against the users table, and **return the row it fetched**.
 
     ⚠️ ``User.is_active`` is ``active AND NOT locked``; Java's ``isActive()`` returns
     ``active`` alone. The house rule (CLAUDE.md § 5) is to use the hybrid, and the
     divergence is unobservable: production has **zero** locked users out of 28,371. A
     locked account is one somebody has deliberately stopped; leading a new project with
     it would be wrong even if legacy allowed it.
+
+    ⚠️ **An inactive user is returned, not dropped.** It reported an error, so
+    ``raise_if_any()`` will stop the action before anything reads the row — but the
+    handlers used to re-fetch unconditionally and would have got it, so returning it
+    keeps this a pure de-duplication of queries rather than a behaviour change.
+
+    ⚠️ **Reporting is per occurrence, deliberately.** Called three times for one
+    person in three roles, this reports three times — the strings differ per role
+    (``PI %s is not in database`` vs ``Allocation Manager %s is not in database:␣`` vs
+    ``Username %s is missing``) and ``ActionErrors`` deduplicates identical ones
+    anyway. It is the query that is shared, via *lookup*, not the diagnosis.
     """
-    user = User.get_by_username(session, username)
+    user = lookup(username)
     if user is None:
         errs.report(missing(username))
     elif not user.is_active:
         errs.report(inactive(username))
+    return user
 
 
 def resolve_roster(session, action, errs: ActionErrors, *,
@@ -285,6 +334,7 @@ def resolve_roster(session, action, errs: ActionErrors, *,
     **A missing Allocation Manager is not an error.** Legacy guards the whole check on
     ``adminUsername != null``, and real payloads arrive without one. A missing PI is.
     """
+    lookup = _user_resolver(session)
     warnings = role_assignment_disagreements(action, today=today)
     for username in warnings:
         logger.warning(
@@ -294,32 +344,39 @@ def resolve_roster(session, action, errs: ActionErrors, *,
 
     pi_candidates = role_candidates(action, PI_ROLE, today=today)
     pi_username: Optional[str] = None
+    pi: Optional[User] = None
     if not pi_candidates:
         errs.report(e.missing_pi_role())
     elif len(pi_candidates) > 1:
         errs.report(e.ambiguous_role(PI_ROLE, pi_candidates))
     else:
         pi_username = pi_candidates[0]
-        _validate_user(session, pi_username, errs,
-                       e.pi_not_in_database, e.pi_not_active)
+        pi = _validate_user(lookup, pi_username, errs,
+                            e.pi_not_in_database, e.pi_not_active)
 
     admin_candidates = role_candidates(action, ALLOCATION_MANAGER_ROLE, today=today)
     admin_username: Optional[str] = None
+    admin: Optional[User] = None
     if len(admin_candidates) > 1:
         errs.report(e.ambiguous_role(ALLOCATION_MANAGER_ROLE, admin_candidates))
     elif admin_candidates:
         admin_username = admin_candidates[0]
-        _validate_user(session, admin_username, errs,
-                       e.manager_not_in_database, e.manager_not_active)
+        admin = _validate_user(lookup, admin_username, errs,
+                               e.manager_not_in_database, e.manager_not_active)
 
     members = roster_usernames(action)
-    for username in members:
-        _validate_user(session, username, errs,
+    member_rows = tuple(
+        _validate_user(lookup, username, errs,
                        e.username_missing, e.username_inactive)
+        for username in members
+    )
 
     return Roster(
         pi_username=pi_username,
         admin_username=admin_username,
         member_usernames=members,
         warnings=warnings,
+        pi=pi,
+        admin=admin,
+        members=member_rows,
     )

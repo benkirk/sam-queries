@@ -33,6 +33,12 @@ __all__ = [
     'CarveoutFrontier',
     'date_ranges_overlap',
     'InheritingAllocationException',
+    # The XRAS integration primitives. `manage/extend.py` added its own on the way
+    # in and this module did not, so the stated public surface was three names
+    # short of the real one.
+    'log_integration_transaction',
+    'supplement_allocation',
+    'adjust_allocation',
 ]
 
 
@@ -1109,6 +1115,58 @@ def log_integration_transaction(
     return txn
 
 
+def _add_to_subtree(
+    session: Session,
+    allocation: Allocation,
+    *,
+    amount: float,
+    comment: Optional[str],
+    transaction_type: AllocationTransactionType,
+    auth_at_panel_mtg: Optional[bool] = None,
+) -> List[Allocation]:
+    """Add *amount* to an allocation and every inheriting child, logging one row each.
+
+    The mechanism shared by :func:`supplement_allocation` and
+    :func:`adjust_allocation`, whose bodies were byte-identical apart from the
+    transaction type and the panel flag. They stay as two public functions because
+    the *policy* differs and their docstrings are where that is recorded — this is
+    only the part that cannot be allowed to drift.
+
+    Legacy shape, reproduced: ``disinherit()`` before ``supplement()``, routed
+    through :func:`detach_allocation` so it leaves the audit row legacy never wrote;
+    then ``TreeWalker.walk`` so every inheriting child receives the same increment
+    and its own row, with ``propagated`` false on all of them.
+
+    ⚠️ **``auth_at_panel_mtg`` defaults to ``None`` and callers must leave it that
+    way when the column should be NULL.** :func:`log_integration_transaction` sets
+    it only ``if auth_at_panel_mtg is not None``, so passing ``False`` "to be
+    explicit" writes 0 where legacy writes NULL — different bytes on an audit row.
+    ``buildAdjustAllocationCommand`` never sets it; the supplement one does. Pinned
+    by ``test_auth_at_panel_mtg_is_null_not_zero``.
+
+    Runs inside the caller's ``management_transaction()`` — does NOT commit.
+    """
+    if allocation.is_inheriting:
+        detach_allocation(session, allocation.allocation_id, None)
+
+    modified: List[Allocation] = []
+    subtree: List[Allocation] = []
+    allocation._walk_tree(lambda node: subtree.append(node))
+
+    for node in subtree:
+        node.amount = float(node.amount or 0.0) + float(amount)
+        log_integration_transaction(
+            session, node, transaction_type,
+            comment=comment,
+            transaction_amount=float(amount),
+            auth_at_panel_mtg=auth_at_panel_mtg,
+        )
+        modified.append(node)
+
+    session.flush()
+    return modified
+
+
 def supplement_allocation(
     session: Session,
     allocation: Allocation,
@@ -1149,25 +1207,9 @@ def supplement_allocation(
     Returns:
         Every node modified, root first.
     """
-    if allocation.is_inheriting:
-        detach_allocation(session, allocation.allocation_id, None)
-
-    modified: List[Allocation] = []
-    subtree: List[Allocation] = []
-    allocation._walk_tree(lambda node: subtree.append(node))
-
-    for node in subtree:
-        node.amount = float(node.amount or 0.0) + float(amount)
-        log_integration_transaction(
-            session, node, AllocationTransactionType.SUPPLEMENT,
-            comment=comment,
-            transaction_amount=float(amount),
-            auth_at_panel_mtg=auth_at_panel_mtg,
-        )
-        modified.append(node)
-
-    session.flush()
-    return modified
+    return _add_to_subtree(session, allocation, amount=amount, comment=comment,
+                           transaction_type=AllocationTransactionType.SUPPLEMENT,
+                           auth_at_panel_mtg=auth_at_panel_mtg)
 
 
 def adjust_allocation(
@@ -1206,21 +1248,5 @@ def adjust_allocation(
     Returns:
         Every node modified, root first.
     """
-    if allocation.is_inheriting:
-        detach_allocation(session, allocation.allocation_id, None)
-
-    modified: List[Allocation] = []
-    subtree: List[Allocation] = []
-    allocation._walk_tree(lambda node: subtree.append(node))
-
-    for node in subtree:
-        node.amount = float(node.amount or 0.0) + float(amount)
-        log_integration_transaction(
-            session, node, AllocationTransactionType.ADJUSTMENT,
-            comment=comment,
-            transaction_amount=float(amount),
-        )
-        modified.append(node)
-
-    session.flush()
-    return modified
+    return _add_to_subtree(session, allocation, amount=amount, comment=comment,
+                           transaction_type=AllocationTransactionType.ADJUSTMENT)

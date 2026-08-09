@@ -170,12 +170,10 @@ class UpdateHandler(ActionHandler):
             for wire_resource in self.get('resources') or ():
                 self.planned.extend(self._plan_resource(wire_resource))
 
-        self.lead = (User.get_by_username(self.session, self.roster.pi_username)
-                     if self.roster.pi_username else None)
-        self.admin = (User.get_by_username(self.session, self.roster.admin_username)
-                      if self.roster.admin_username else None)
-        self.members = [User.get_by_username(self.session, name)
-                        for name in self.roster.member_usernames]
+        # Taken from the roster, not re-looked-up — see the same block in `new.py`.
+        self.lead = self.roster.pi
+        self.admin = self.roster.admin
+        self.members = list(self.roster.members)
         self.warnings = self.roster.warnings
 
     def _plan_resource(self, wire_resource):

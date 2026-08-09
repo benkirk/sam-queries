@@ -458,13 +458,30 @@ def _lab_level_organization(parentage: List[Organization]) -> Optional[Organizat
     return parentage[len(parentage) - 3]
 
 
+#: "the caller did not resolve the PI", as distinct from "the caller resolved it and
+#: there is no such user" — which is ``None`` and must still report.
+_UNRESOLVED = object()
+
+
 def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
-                          pi_username: Optional[str]) -> Optional[MnemonicCode]:
+                          pi_username: Optional[str],
+                          pi=_UNRESOLVED) -> Optional[MnemonicCode]:
     """The three-letter code the new project's projcode will be minted from.
 
     ``pi_username`` is passed rather than read off the action because resolving it is
     the roster's job (``sam.xras.roster``) and this module must not depend on that
     one — legacy reads ``action.getPiUsername()`` here, which is the same value.
+
+    ``pi`` is the already-resolved ``User`` row, when the caller has one. The roster
+    fetched it moments earlier to validate it, so the handler passes it through rather
+    than paying for the same ``SELECT`` twice. Omitting it makes this look the PI up
+    itself, which is what the extractor tests do and why the parameter is optional
+    rather than required.
+
+    ⚠️ ``None`` is a **resolved** answer meaning "no such user", and still reports. The
+    sentinel is what distinguishes it from "not looked up yet"; a plain
+    ``pi=None`` default would silently turn every existing caller into the
+    no-such-user arm.
 
     Three routes, in legacy's order:
 
@@ -496,7 +513,8 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
         errs.report(e.no_affiliation_for_pi(pi_username or ''))
         return None
 
-    user = User.get_by_username(session, pi_username)
+    user = (User.get_by_username(session, pi_username)
+            if pi is _UNRESOLVED else pi)
     if user is None:
         errs.report(e.no_affiliation_for_pi(pi_username))
         return None

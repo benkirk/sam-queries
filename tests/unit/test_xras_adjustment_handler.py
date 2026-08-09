@@ -282,6 +282,23 @@ class TestTheRowShape:
         row = self._row(committing, project, allocation, mapped_resource)
         assert not row.auth_at_panel_mtg
 
+    def test_auth_at_panel_mtg_is_null_not_zero(self, committing, allocated,
+                                                mapped_resource):
+        """⚠️ ``is None``, deliberately — ``not row.auth_at_panel_mtg`` above cannot
+        tell NULL from 0 and this is the difference that matters.
+
+        ``log_integration_transaction`` sets the column only ``if auth_at_panel_mtg
+        is not None``, so Adjustment gets NULL by **passing nothing**. Legacy writes
+        NULL here; a caller that passed ``False`` to be explicit would write 0 and
+        the two are different bytes on an audit row.
+
+        This is the invariant a shared helper between ``supplement_allocation`` and
+        ``adjust_allocation`` is most likely to break, and nothing pinned it before.
+        """
+        project, allocation = allocated
+        row = self._row(committing, project, allocation, mapped_resource)
+        assert row.auth_at_panel_mtg is None
+
     def test_the_informational_columns_are_null(self, committing, allocated,
                                                 mapped_resource):
         project, allocation = allocated

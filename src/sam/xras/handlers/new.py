@@ -108,17 +108,17 @@ class NewHandler(ActionHandler):
             self.session, self.action, self.errors)
         self.mnemonic = resolve_mnemonic_code(
             self.session, self.action, self.errors,
-            pi_username=self.roster.pi_username)
+            pi_username=self.roster.pi_username, pi=self.roster.pi)
         self.contracts = plan_contracts(self.session, self.action, self.errors)
         self.allocations = self._plan_allocations()
         self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
-        self.lead = (User.get_by_username(self.session, self.roster.pi_username)
-                     if self.roster.pi_username else None)
-        self.admin = (User.get_by_username(self.session, self.roster.admin_username)
-                      if self.roster.admin_username else None)
-        self.members = [User.get_by_username(self.session, name)
-                        for name in self.roster.member_usernames]
+        # Taken from the roster, not re-looked-up: `resolve_roster` fetched every one
+        # of these while validating them, and this block used to throw that away and
+        # query again — twenty SELECTs for a ten-member roster where ten would do.
+        self.lead = self.roster.pi
+        self.admin = self.roster.admin
+        self.members = list(self.roster.members)
         self.warnings = self.roster.warnings
 
     def _plan_allocations(self):
