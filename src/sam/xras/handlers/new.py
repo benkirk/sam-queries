@@ -52,6 +52,7 @@ from ..extractors import (
 )
 from ..roster import resolve_roster
 from ._allocations import auth_at_panel_meeting, create_window_from_action_dates
+from ._plans import PlannedCreate
 from ._fields import (
     abstract,
     parse_action_begin_date,
@@ -110,8 +111,16 @@ class NewHandler(ActionHandler):
             self.session, self.action, self.errors,
             pi_username=self.roster.pi_username, pi=self.roster.pi)
         self.contracts = plan_contracts(self.session, self.action, self.errors)
-        self.allocations = self._plan_allocations()
+
+        # ⚠️ Before `_plan_allocations()`, and that ordering is now load-bearing: the
+        # plan records capture the flag at construction, where the old execute-time
+        # loop read it after assembly had finished. Computing it after planning would
+        # stamp every CREATE row with the `False` from `__init__`.
+        #
+        # Safe to move up: `auth_at_panel_meeting` reports no errors, so it cannot
+        # disturb the 422 ordering that ten test modules assert.
         self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
+        self.allocations = self._plan_allocations()
 
         # Taken from the roster, not re-looked-up: `resolve_roster` fetched every one
         # of these while validating them, and this block used to throw that away and
@@ -146,8 +155,11 @@ class NewHandler(ActionHandler):
             if window is None:
                 continue
             start, alloc_end = window
-            planned.append((resource, amount, start, alloc_end,
-                            resource_comment(wire_resource)))
+            planned.append(PlannedCreate(
+                resource=resource, amount=amount,
+                comment=resource_comment(wire_resource),
+                start=start, end=alloc_end,
+                panel_authorised=self.panel_authorised))
         return planned
 
     def execute(self) -> None:
@@ -205,10 +217,10 @@ class NewHandler(ActionHandler):
                                    contract_id=contract.contract_id)
 
         # 3. Allocations — these create the accounts step 4 needs.
-        for resource, amount, start, end, comment in self.allocations:
-            self.create_allocation_for(
-                project, resource, amount=amount, start=start, end=end,
-                comment=comment, panel_authorised=self.panel_authorised)
+        #
+        # `project` is the row created moments ago inside this transaction, NOT
+        # `self.project`, which is None here by dispatch invariant.
+        self.execute_plan(self.allocations, project=project)
 
         # 4. Members. Skipped entirely when there are no accounts —
         # `add_user_to_project` raises rather than no-ops, and an Educational

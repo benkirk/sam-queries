@@ -65,6 +65,7 @@ from ..dispatch import DispatchResult
 from ..errors import ActionErrors
 from ..wire import get_field
 from ._allocations import mark_panel_authorised
+from ._plans import apply_plan
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,20 @@ class ActionHandler(ABC):
         if panel_authorised:
             self.mark_panel_authorised(created)
         return created
+
+    def execute_plan(self, steps, *, project=None) -> None:
+        """Apply an ordered list of :mod:`~sam.xras.handlers._plans` records.
+
+        ⚠️ **Order is preserved and is part of the contract.** Update emits up to
+        three steps for one resource and legacy applies them in emission order; this
+        iterates rather than grouping by kind for that reason.
+
+        *project* defaults to :attr:`project`, which is right for Supplement, Adjust
+        and Update. New passes the project it created inside the transaction.
+        """
+        target = self.project if project is None else project
+        for step in steps:
+            apply_plan(self, step, project=target)
 
     # ---- the answer ------------------------------------------------------------
 

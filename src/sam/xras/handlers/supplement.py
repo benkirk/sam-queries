@@ -32,8 +32,6 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Supplement*.
 import logging
 from typing import List
 
-from sam.manage.allocations import supplement_allocation
-
 from ..dispatch import DispatchResult, register
 from ._allocations import (
     account_for_resource,
@@ -42,6 +40,7 @@ from ._allocations import (
     latest_allocation,
 )
 from ._fields import resolve_resource, resource_comment, transaction_amount
+from ._plans import PlannedCreate, PlannedSupplement
 from .base import ActionHandler
 
 logger = logging.getLogger(__name__)
@@ -58,8 +57,7 @@ class SupplementHandler(ActionHandler):
         """Examine the whole ``resources[]`` array and write nothing, so one bad
         resource still lets the rest report their own problems before the single
         ``raise_if_any()``."""
-        self.supplements: List[tuple] = []
-        self.creations: List[tuple] = []
+        self.planned: List[object] = []
         if self.project is None:                     # pragma: no cover - dispatcher checked
             return
 
@@ -85,8 +83,11 @@ class SupplementHandler(ActionHandler):
                 if amount is None:
                     continue
                 start, end = window
-                self.creations.append((resource, amount,
-                                       resource_comment(wire_resource), start, end))
+                self.planned.append(PlannedCreate(
+                    resource=resource, amount=amount,
+                    comment=resource_comment(wire_resource),
+                    start=start, end=end,
+                    panel_authorised=self.panel_authorised))
                 continue
 
             if amount is None:
@@ -101,18 +102,13 @@ class SupplementHandler(ActionHandler):
                     self.projcode, resource.resource_name, amount)
                 continue
 
-            self.supplements.append((allocation, amount,
-                                     resource_comment(wire_resource)))
+            self.planned.append(PlannedSupplement(
+                allocation=allocation, amount=amount,
+                comment=resource_comment(wire_resource),
+                panel_authorised=self.panel_authorised))
 
     def execute(self) -> None:
-        for allocation, amount, comment in self.supplements:
-            supplement_allocation(self.session, allocation, amount=amount,
-                                  comment=comment,
-                                  auth_at_panel_mtg=self.panel_authorised)
-        for resource, amount, comment, start, end in self.creations:
-            self.create_allocation_for(
-                self.project, resource, amount=amount, start=start, end=end,
-                comment=comment, panel_authorised=self.panel_authorised)
+        self.execute_plan(self.planned)
 
 
 def handle_supplement(session, action) -> DispatchResult:

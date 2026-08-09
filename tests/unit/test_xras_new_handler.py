@@ -484,6 +484,51 @@ class TestContracts:
                 in exc.value.messages)
 
 
+class TestPanelAuthorisation:
+    """New marks its CREATE rows when the resolved type is panel-authorised.
+
+    ⚠️ **This was untested until the plan records landed**, on the handler with the
+    highest production failure rate. Every other New test uses the default
+    ``allocationType='Small'``, which is not panel-authorised, so the flag was
+    ``False`` either way and nothing could tell a correct implementation from one
+    that never set it — exactly the blind spot that hid the Adjustment bug for a
+    sprint.
+
+    It caught a real ordering hazard immediately: ``PlannedCreate`` captures the flag
+    at construction, so computing ``panel_authorised`` *after* ``_plan_allocations()``
+    — which is where it used to sit, harmlessly, because the old loop read it at
+    execute time — would have stamped every row with the ``False`` from ``__init__``.
+    """
+
+    def _created_new_row(self, session, project_id):
+        from sam.accounting.allocations import AllocationTransactionType
+        created = (session.query(Allocation).join(Allocation.account)
+                   .filter_by(project_id=project_id).one())
+        return (session.query(AllocationTransaction)
+                .filter(AllocationTransaction.allocation_id == created.allocation_id)
+                .filter(AllocationTransaction.transaction_type
+                        == AllocationTransactionType.NEW)
+                .one())
+
+    def test_a_panel_authorised_type_marks_the_created_row(
+            self, committing, creatable, mapped_resource, session):
+        result = handle_new(committing, action_for(
+            creatable, wire_resource(mapped_resource.xras_key),
+            allocationType='Large'))
+
+        project = Project.get_by_projcode(session, result.projcode)
+        assert self._created_new_row(session, project.project_id).auth_at_panel_mtg
+
+    def test_a_non_panel_type_leaves_it_unmarked(
+            self, committing, creatable, mapped_resource, session):
+        """The other half of the pair — the flag tracks the type, not the branch."""
+        result = handle_new(committing, action_for(
+            creatable, wire_resource(mapped_resource.xras_key)))
+
+        project = Project.get_by_projcode(session, result.projcode)
+        assert not self._created_new_row(session, project.project_id).auth_at_panel_mtg
+
+
 class TestTheRosterIsNotFetchedTwice:
     """A regression guard on the double fetch, not a micro-optimisation.
 

@@ -47,7 +47,6 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Adjustment*.
 import logging
 from typing import List
 
-from sam.manage.allocations import adjust_allocation
 
 from .. import errors as e
 from ..dispatch import DispatchResult, register
@@ -58,6 +57,7 @@ from ._allocations import (
     latest_allocation,
 )
 from ._fields import resolve_resource, resource_comment, transaction_amount
+from ._plans import PlannedAdjust, PlannedCreate
 from .base import ActionHandler
 
 logger = logging.getLogger(__name__)
@@ -81,8 +81,7 @@ class AdjustmentHandler(ActionHandler):
         the panel-authorisation flag went missing for an entire sprint. What actually
         needed naming was the shared **create policy**, not the whole planner.
         """
-        self.adjustments: List[tuple] = []
-        self.creations: List[tuple] = []
+        self.planned: List[object] = []
         if self.project is None:                     # pragma: no cover - dispatcher checked
             return
 
@@ -119,8 +118,11 @@ class AdjustmentHandler(ActionHandler):
                         resource.resource_name, 0.0, amount))
                     continue
                 start, end = window
-                self.creations.append((resource, amount,
-                                       resource_comment(wire_resource), start, end))
+                self.planned.append(PlannedCreate(
+                    resource=resource, amount=amount,
+                    comment=resource_comment(wire_resource),
+                    start=start, end=end,
+                    panel_authorised=self.panel_authorised))
                 continue
 
             if amount is None:
@@ -137,19 +139,17 @@ class AdjustmentHandler(ActionHandler):
                     resource.resource_name, current, amount))
                 continue
 
-            self.adjustments.append((allocation, amount,
-                                     resource_comment(wire_resource)))
+            # PlannedAdjust carries no panel flag — see its docstring; that absence
+            # is what keeps auth_at_panel_mtg NULL rather than 0.
+            self.planned.append(PlannedAdjust(
+                allocation=allocation, amount=amount,
+                comment=resource_comment(wire_resource)))
 
     def execute(self) -> None:
-        for allocation, amount, comment in self.adjustments:
-            # ⚠️ No `auth_at_panel_mtg` here, and that is not an omission:
-            # `buildAdjustAllocationCommand` never sets it where the supplement one
-            # does. The CREATE rows below *do* get it — see the module docstring.
-            adjust_allocation(self.session, allocation, amount=amount, comment=comment)
-        for resource, amount, comment, start, end in self.creations:
-            self.create_allocation_for(
-                self.project, resource, amount=amount, start=start, end=end,
-                comment=comment, panel_authorised=self.panel_authorised)
+        # ⚠️ ADJUSTMENT rows get no `auth_at_panel_mtg` while the CREATE rows do.
+        # That split is `buildAdjustAllocationCommand`'s, not a slip, and it now
+        # lives in the plan types rather than in this loop.
+        self.execute_plan(self.planned)
 
 
 def handle_adjustment(session, action) -> DispatchResult:

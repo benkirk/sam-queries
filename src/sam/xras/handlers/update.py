@@ -64,8 +64,6 @@ from typing import List, Optional
 from sam.accounting.allocations import Allocation
 from sam.core.users import User
 from sam.manage import add_user_to_project
-from sam.manage.allocations import adjust_allocation, supplement_allocation
-from sam.manage.extend import extend_account_allocation
 from sam.projects.contracts import ProjectContract
 
 from .. import errors as e
@@ -89,6 +87,12 @@ from ._fields import (
     resource_comment,
     title,
     transaction_amount,
+)
+from ._plans import (
+    PlannedAdjust,
+    PlannedCreate,
+    PlannedExtend,
+    PlannedSupplement,
 )
 from .base import ActionHandler
 
@@ -203,8 +207,10 @@ class UpdateHandler(ActionHandler):
             if window is None:
                 return []
             clamped, alloc_end = window
-            planned.append(('add', resource, amount, clamped, alloc_end, comment,
-                            self.panel_authorised))
+            planned.append(PlannedCreate(
+                resource=resource, amount=amount, comment=comment,
+                start=clamped, end=alloc_end,
+                panel_authorised=self.panel_authorised))
             return planned
 
         existing_end = effective_end_date(allocation)
@@ -217,7 +223,8 @@ class UpdateHandler(ActionHandler):
 
         # --- EXTEND, carrying the RESOURCE comment rather than the Extension one.
         if existing_end is not None and existing_end < end:
-            planned.append(('extend', allocation, end, comment))
+            planned.append(PlannedExtend(
+                allocation=allocation, new_end=end, comment=comment))
 
         # --- Contingent resource: the date moves, the amount does not. This
         # short-circuit compares `.name()` on both sides and genuinely works, unlike
@@ -238,10 +245,13 @@ class UpdateHandler(ActionHandler):
         if amount is None:
             return planned
         if amount > 0:
-            planned.append(('supplement', allocation, amount, comment,
-                            self.panel_authorised))
+            planned.append(PlannedSupplement(
+                allocation=allocation, amount=amount, comment=comment,
+                panel_authorised=self.panel_authorised))
         elif amount < 0:
-            planned.append(('adjust', allocation, amount, comment))
+            # PlannedAdjust carries no panel flag by design — see its docstring.
+            planned.append(PlannedAdjust(
+                allocation=allocation, amount=amount, comment=comment))
         return planned
 
     @staticmethod
@@ -280,26 +290,10 @@ class UpdateHandler(ActionHandler):
                 ProjectContract.create(self.session, project_id=project.project_id,
                                        contract_id=contract.contract_id)
 
-        # 3. Allocations, in the order the factory emitted them.
-        for step in self.planned:
-            kind = step[0]
-            if kind == 'add':
-                _, resource, amount, alloc_start, alloc_end, comment, panel = step
-                self.create_allocation_for(
-                    project, resource, amount=amount, start=alloc_start,
-                    end=alloc_end, comment=comment, panel_authorised=panel)
-            elif kind == 'extend':
-                _, allocation, new_end, comment = step
-                extend_account_allocation(self.session, allocation, new_end=new_end,
-                                          comment=comment)
-            elif kind == 'supplement':
-                _, allocation, amount, comment, panel = step
-                supplement_allocation(self.session, allocation, amount=amount,
-                                      comment=comment, auth_at_panel_mtg=panel)
-            elif kind == 'adjust':
-                _, allocation, amount, comment = step
-                adjust_allocation(self.session, allocation, amount=amount,
-                                  comment=comment)
+        # 3. Allocations, in the order the factory emitted them. One resource can
+        # emit three steps and that order is legacy's, so this iterates a flat list
+        # rather than grouping by kind.
+        self.execute_plan(self.planned, project=project)
 
         # 4. Membership. As on the Add path, skipped when the project has no accounts.
         if project.accounts:
