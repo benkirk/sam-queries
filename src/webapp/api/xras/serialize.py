@@ -119,3 +119,21 @@ def unauthenticated() -> Response:
     return Response(
         UNAUTHENTICATED_BODY, status=401, mimetype=UNAUTHENTICATED_MIMETYPE,
     )
+
+
+def empty_ok() -> Response:
+    """The 200 that carries nothing at all — ``POST /v1/roles``'s success.
+
+    ``BaseController.createOkResponse()`` is ``new ResponseEntity(HttpStatus.OK)``:
+    no body, and — because Spring never invokes a message converter — **no**
+    ``Content-Type`` header either. Every other response on this surface has one,
+    which is why this cannot go through :func:`xras_response`.
+
+    Flask will not produce that on its own. ``Response('')`` applies the app's
+    ``default_mimetype`` (``text/html; charset=utf-8``), so the header is popped
+    explicitly after construction. ``tests/api/test_xras_roles.py`` pins both the
+    zero length and the header's absence.
+    """
+    response = Response('', status=200)
+    response.headers.pop('Content-Type', None)
+    return response

@@ -8,14 +8,21 @@ legacy Java wire contract byte for byte. The XRAS broker at
 https://admin-ncar.xras.org/ is the sole caller and pulls identity and request
 data from these endpoints; response bytes must not change. Additive changes only.
 
-Endpoints (this package covers the GETs; ``POST /v1/actions`` is a later phase)::
+Endpoints — the whole of legacy's mapped surface::
 
-    GET /api/xras/v1/people                            bare array,  no envelope
-    GET /api/xras/v1/people/{username}                 bare object, no envelope
-    GET /api/xras/v1/requests/request/{requestNumber}  {message, result}
-    GET /api/xras/v1/requests/user/{username}          {message, result}
-    GET /api/xras/v1/requests/role/{role}/{username}   {message, result}
-    GET /api/xras/v1/dates/requests/{requestNumbers}   {message, result}
+    GET  /api/xras/v1/people                            bare array,  no envelope
+    GET  /api/xras/v1/people/{username}                 bare object, no envelope
+    GET  /api/xras/v1/requests/request/{requestNumber}  {message, result}
+    GET  /api/xras/v1/requests/user/{username}          {message, result}
+    GET  /api/xras/v1/requests/role/{role}/{username}   {message, result}
+    GET  /api/xras/v1/dates/requests/{requestNumbers}   {message, result}
+    POST /api/xras/v1/actions                           {message, result}
+    POST /api/xras/v1/roles/{requestNumber}/{role}/{username}   empty body
+
+...plus a catch-all (:mod:`webapp.api.xras.unmapped`) that turns a request for
+anything else under this prefix into an ``xras_action_log`` row. It exists because
+``/v1/roles`` went unported for a whole build and nothing surfaced it: an unmapped
+path left no trace, so only an audit of the deployed ``ROOT.war`` could find it.
 
 Serialization — including why ``jsonify`` is unusable here and why null handling
 is per-DTO rather than global — lives in :mod:`webapp.api.xras.serialize`.
@@ -127,6 +134,19 @@ def _bad_request(error):
     return xras_response(message=getattr(error, 'description', None), status=400)
 
 
+@bp.errorhandler(409)
+def _conflict(error):
+    """409 is ours — legacy has no state-conflict code on this surface.
+
+    ``POST /v1/roles`` uses it for "the project/user exists but is inactive".
+    Legacy reaches 403 there, via ``XrasController`` mapping ``BadStateException``
+    to ``FORBIDDEN`` — an authorization verdict about the *caller*, which on an
+    endpoint behind Basic auth is indistinguishable from a bad API key. §7 records
+    the divergence; :mod:`webapp.api.xras.roles` records the reasoning.
+    """
+    return xras_response(message=getattr(error, 'description', None), status=409)
+
+
 @bp.errorhandler(422)
 def _unprocessable(error):
     """422 is new with ``POST /actions`` — legacy 500s where we report the error list.
@@ -152,5 +172,10 @@ def _server_error(error):
 from . import people  # noqa: E402,F401
 from . import requests as _requests  # noqa: E402,F401
 from . import actions as _actions  # noqa: E402,F401
+from . import roles as _roles  # noqa: E402,F401
+# Last, and deliberately: it registers the `<path:>` catch-all. Werkzeug sorts by
+# specificity rather than registration order, so this is belt-and-braces — the
+# actual guard is `test_xras_unmapped.py::test_no_mapped_rule_is_shadowed`.
+from . import unmapped as _unmapped  # noqa: E402,F401
 
 __all__ = ['bp', 'xras_api_required', 'XRAS_ROLE']
