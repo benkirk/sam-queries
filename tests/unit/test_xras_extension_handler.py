@@ -19,7 +19,6 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Extension*.
 
 import json
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 
@@ -38,15 +37,10 @@ from sam.xras.handlers._allocations import (
 from sam.xras.handlers._fields import parse_action_end_date
 from sam.xras.handlers.extension import EXTENSION_COMMENT, handle_extension
 
-# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
-# re-export keeps the suite passing UNEDITED, which is the proof the move was
-# pure. Commit 4B repoints the imports and deletes every one of these.
-from xras_helpers import FIXTURE_DIR, committing, load_fixture, txns_for  # noqa: F401
+from xras_helpers import load_fixture, txns_for
+from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
 pytestmark = pytest.mark.unit
-
-
-
 
 
 def action_for(projcode, end_date='2030-06-30', **extra):
@@ -54,10 +48,6 @@ def action_for(projcode, end_date='2030-06-30', **extra):
                'actionEndDate': end_date, 'resources': [], 'roles': []}
     payload.update(extra)
     return payload
-
-
-
-
 
 
 # ---------------------------------------------------------------------------

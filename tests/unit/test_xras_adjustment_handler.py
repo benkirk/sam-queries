@@ -16,7 +16,6 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *Adjustment*.
 
 import json
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -28,17 +27,10 @@ from sam.accounting.allocations import (
 from sam.xras.errors import XrasActionRejected
 from sam.xras.handlers.adjustment import handle_adjustment
 
-# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
-# re-export keeps the suite passing UNEDITED, which is the proof the move was
-# pure. Commit 4B repoints the imports and deletes every one of these.
-from xras_helpers import FIXTURE_DIR, committing, load_fixture, txns_for, wire_resource  # noqa: F401
+from xras_helpers import load_fixture, txns_for, wire_resource
+from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
 pytestmark = pytest.mark.unit
-
-
-
-
-
 
 
 def action_for(projcode, *resources, action_type='Adjustment',
@@ -54,22 +46,16 @@ def action_for(projcode, *resources, action_type='Adjustment',
             'roles': []}
 
 
-
-
-
-
 @pytest.fixture
 def mapped_resource(session):
-    from factories import make_resource
-    from sam.integration.xras import XrasResourceRepositoryKeyResource
+    """A resource carrying an ``xras_resource_repository_key_resource`` row.
 
-    resource = make_resource(session)
-    key = 910_000 + resource.resource_id
-    session.add(XrasResourceRepositoryKeyResource(
-        resource_repository_key=key, resource_id=resource.resource_id))
-    session.flush()
-    resource.xras_key = key
-    return resource
+    Only 13 such rows exist in production and 11 active resources have none,
+    so the unmapped case the tests below exercise is a live failure mode
+    rather than a defensive branch.
+    """
+    from factories import make_xras_key_mapping
+    return make_xras_key_mapping(session)
 
 
 @pytest.fixture

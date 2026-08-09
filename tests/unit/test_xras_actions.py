@@ -44,23 +44,17 @@ and the co-PI ``roleType`` spelling.
 """
 
 import json
-from pathlib import Path
 
 import pytest
 from marshmallow import ValidationError
 
 from sam.schemas.forms import XrasActionSchema
 
-# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
-# re-export keeps the suite passing UNEDITED, which is the proof the move was
-# pure. Commit 4B repoints the imports and deletes every one of these.
-from xras_helpers import FIXTURE_DIR, load_fixture  # noqa: F401
+from xras_helpers import FIXTURE_DIR, load_fixture
 
 
 #: Every payload, by fixture stem — the corpus is small enough to parametrize whole.
 ALL_FIXTURES = sorted(p.name for p in FIXTURE_DIR.glob('*.json'))
-
-
 
 
 def load_schema(name):

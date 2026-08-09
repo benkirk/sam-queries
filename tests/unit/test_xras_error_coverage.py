@@ -21,7 +21,7 @@ in Sprint A, and only real payloads can. Nothing here is evidence the schema is 
 See ``docs/plans/XRAS_SPRINT_C.md`` § *Follow-on*.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 
@@ -29,10 +29,8 @@ from sam.xras import errors as e
 from sam.xras.dispatch import dispatch_action
 from sam.xras.errors import XrasActionRejected
 
-# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
-# re-export keeps the suite passing UNEDITED, which is the proof the move was
-# pure. Commit 4B repoints the imports and deletes every one of these.
-from xras_helpers import committing, wire_resource  # noqa: F401
+from xras_helpers import wire_resource
+from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
 pytestmark = pytest.mark.unit
 
@@ -98,20 +96,16 @@ def public_builders():
 # ---------------------------------------------------------------------------
 
 
-
-
 @pytest.fixture
 def mapped_resource(session):
-    from factories import make_resource
-    from sam.integration.xras import XrasResourceRepositoryKeyResource
+    """A resource carrying an ``xras_resource_repository_key_resource`` row.
 
-    resource = make_resource(session)
-    key = 300_000 + resource.resource_id
-    session.add(XrasResourceRepositoryKeyResource(
-        resource_repository_key=key, resource_id=resource.resource_id))
-    session.flush()
-    resource.xras_key = key
-    return resource
+    Only 13 such rows exist in production and 11 active resources have none,
+    so the unmapped case the tests below exercise is a live failure mode
+    rather than a defensive branch.
+    """
+    from factories import make_xras_key_mapping
+    return make_xras_key_mapping(session)
 
 
 @pytest.fixture
@@ -154,8 +148,6 @@ def new_action(pi, *resources, **overrides):
     }
     payload.update(overrides)
     return payload
-
-
 
 
 def project_with_allocation(session, resource, *, end=datetime(2033, 7, 31),

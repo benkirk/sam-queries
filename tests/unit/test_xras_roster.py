@@ -18,8 +18,6 @@ when it ran.
 See ``docs/plans/XRAS_SPRINT_C.md`` § *The roster*.
 """
 
-import json
-from pathlib import Path
 
 import pytest
 
@@ -36,17 +34,9 @@ from sam.xras.roster import (
     roster_usernames,
 )
 
-# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
-# re-export keeps the suite passing UNEDITED, which is the proof the move was
-# pure. Commit 4B repoints the imports and deletes every one of these.
-from xras_helpers import FIXTURE_DIR  # noqa: F401
+from xras_helpers import FIXTURE_DIR, load_fixture
 
 pytestmark = pytest.mark.unit
-
-
-
-def load_fixture(name):
-    return json.loads((FIXTURE_DIR / name).read_text())
 
 
 def role(role_type='PI', username='alice', begin='2026-01-01', end=None):

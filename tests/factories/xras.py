@@ -9,11 +9,18 @@ plus three local factories living inside ``test_xras_action_queries.py``. The lo
 ones were correctly shaped — session-first, flush, return — which is exactly why they
 belonged here instead.
 
-⚠️ **Mapping keys are sequenced, not hand-picked.** Every module used to choose its
-own magic base (``300_000``, ``900_000``, ``910_000``, ``930_000``, ``960_000``,
-``980_000``, ``990_000``) and two had already collided. ``next_int`` is
-worker-namespaced, so the namespace is disjoint across xdist workers by construction
-rather than by convention.
+⚠️ **Mapping keys are derived from ``resource_id``, and that is not arbitrary.** Every
+module used to pick its own magic base (``300_000``, ``900_000``, ``910_000``,
+``930_000``, ``960_000``, ``980_000``, ``990_000``) purely to stay out of the others'
+way, which is convention doing a job the database can do properly.
+
+The offset is what makes it safe: ``resource_id`` is a DB-assigned primary key, so it
+is unique across **every xdist worker** without coordination.
+
+⚠️ Do **not** swap this for ``next_int``. That counter is process-local and, unlike
+``next_seq``, bakes in **no** worker tag — so twelve workers would all mint
+``900_001`` and collide on ``resource_repository_key``, which is itself a primary key.
+Tried; it produced exactly that, intermittently.
 """
 
 from datetime import datetime
@@ -24,8 +31,11 @@ from sam.integration.xras import (
     XrasResourceRepositoryKeyResource,
 )
 
-from ._seq import next_int
 from .resources import make_resource
+
+#: Offset applied to ``resource_id`` to keep synthetic keys clear of the 13 real
+#: mapping rows in the snapshot, whose keys are all below 10,000.
+_KEY_BASE = 900_000
 
 __all__ = [
     'make_xras_key_mapping',
@@ -44,7 +54,7 @@ def make_xras_key_mapping(session, *, resource=None, key=None):
     independently.
     """
     resource = resource if resource is not None else make_resource(session)
-    key = key if key is not None else 900_000 + next_int('xraskey')
+    key = key if key is not None else _KEY_BASE + resource.resource_id
     session.add(XrasResourceRepositoryKeyResource(
         resource_repository_key=key, resource_id=resource.resource_id))
     session.flush()

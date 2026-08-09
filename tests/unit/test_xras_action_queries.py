@@ -274,9 +274,21 @@ class TestProjectExistenceFlags:
 
 class TestSummary:
     def test_every_status_appears_even_at_zero(self, session):
-        """An absent bucket reads as "not measured" rather than "none"."""
+        """An absent bucket reads as "not measured" rather than "none".
+
+        ⚠️ ``>=``, not ``==``. The five are a **floor**: this function deliberately
+        keeps any status outside the vocabulary rather than dropping it, so a superset
+        is correct behaviour, not a leak to assert against.
+
+        It is also not a hypothetical here. ``test_xras_dashboard.py``'s
+        ``committed_odd_status_action`` fixture writes a ``pending`` row on its own
+        connection and **commits** — it has to, because route handlers read through
+        Flask-SQLAlchemy's session and see only committed rows — so under ``-n auto``
+        another worker's summary can legitimately observe it mid-flight. An ``==``
+        here fails intermittently and blames the wrong test.
+        """
         summary = summarize_xras_actions(session)
-        assert set(summary['by_status']) == set(XRAS_ACTION_STATUSES)
+        assert set(summary['by_status']) >= set(XRAS_ACTION_STATUSES)
 
     def test_total_equals_the_sum_of_buckets(self, session):
         _action(session, status='failed')

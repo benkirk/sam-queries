@@ -16,7 +16,6 @@ strategy table and § *The error vocabulary* for the strings.
 """
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -33,15 +32,9 @@ from sam.xras.extractors import (
     select_allocation_type_parms,
 )
 
-# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
-# re-export keeps the suite passing UNEDITED, which is the proof the move was
-# pure. Commit 4B repoints the imports and deletes every one of these.
-from xras_helpers import FIXTURE_DIR, load_fixture  # noqa: F401
+from xras_helpers import FIXTURE_DIR, load_fixture
 
 pytestmark = pytest.mark.unit
-
-
-
 
 
 def action(**overrides):

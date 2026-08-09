@@ -41,7 +41,6 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *The oracle*.
 
 import json
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -56,10 +55,8 @@ from sam.schemas.forms import XrasActionSchema
 from sam.xras.dispatch import dispatch_action
 from sam.xras.errors import XrasActionRejected
 
-# noqa: F401 shim — Stage 4A. The body moved to tests/xras_helpers.py; this
-# re-export keeps the suite passing UNEDITED, which is the proof the move was
-# pure. Commit 4B repoints the imports and deletes every one of these.
-from xras_helpers import FIXTURE_DIR, committing  # noqa: F401
+from xras_helpers import FIXTURE_DIR
+from xras_helpers import committing  # noqa: F401  — pytest resolves it by name
 
 pytestmark = pytest.mark.unit
 
@@ -71,8 +68,6 @@ def load_through_schema(name):
     return XrasActionSchema().load(json.loads((FIXTURE_DIR / name).read_text()))
 
 
-
-
 @pytest.fixture
 def mapped_resources(session):
     """Three mapped resources, so a multi-resource payload keeps its arity.
@@ -80,19 +75,8 @@ def mapped_resources(session):
     Production shows an Extension touching **3.3 allocations on average** (§ 1.2), so a
     one-resource fixture would not exercise the shape the correlation describes.
     """
-    from factories import make_resource
-    from sam.integration.xras import XrasResourceRepositoryKeyResource
-
-    resources = []
-    for _ in range(3):
-        resource = make_resource(session)
-        key = 980_000 + resource.resource_id
-        session.add(XrasResourceRepositoryKeyResource(
-            resource_repository_key=key, resource_id=resource.resource_id))
-        resource.xras_key = key
-        resources.append(resource)
-    session.flush()
-    return resources
+    from factories import make_xras_key_mapping
+    return [make_xras_key_mapping(session) for _ in range(3)]
 
 
 def _project_with_allocations(session, resources, *, amount=1_000_000.0,
