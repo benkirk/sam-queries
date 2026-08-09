@@ -43,14 +43,16 @@ from sam.queries.xras_actions import (
     XRAS_ACTION_TYPES,
     XRAS_REQUEST_TOKEN_EXAMPLE,
     count_recent_xras_actions,
-    get_latest_xras_action_id,
     get_observed_action_types,
     get_projects_by_ids,
     get_recent_xras_actions,
+    summarize_xras_actions,
+)
+from sam.queries.xras_activation import (
+    get_latest_xras_action_id,
     get_xras_activation_events,
     get_xras_pending_activation,
     get_xras_pending_recipients,
-    summarize_xras_actions,
 )
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code

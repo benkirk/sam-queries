@@ -24,13 +24,15 @@ from sam.queries.xras_actions import (
     XRAS_REQUEST_TOKEN_PREFIXES,
     canonical_action_type,
     count_recent_xras_actions,
+    get_recent_xras_actions,
+    summarize_xras_actions,
+)
+from sam.queries.xras_activation import (
     count_xras_dismissed_pending,
     get_latest_xras_action_id,
-    get_recent_xras_actions,
     get_xras_activation_events,
     get_xras_pending_activation,
     get_xras_pending_recipients,
-    summarize_xras_actions,
 )
 
 
