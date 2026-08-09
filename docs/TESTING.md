@@ -2,9 +2,9 @@
 
 ## Overview
 
-The SAM test suite has **5,309 collected tests** (as of 2026-08) across
+The SAM test suite has **5,322 collected tests** (as of 2026-08) across
 five tiers. The default run — everything except the two gated tiers — is
-**5,270 tests in ~90 seconds** on a laptop with pytest-xdist parallelism.
+**5,283 tests in ~90 seconds** on a laptop with pytest-xdist parallelism.
 
 Two tiers are gated **off** by default and run only when asked for:
 

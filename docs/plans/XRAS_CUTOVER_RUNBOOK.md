@@ -24,7 +24,7 @@ no code is left.** The design, the measurements and the reasoning live in
 
 | # | Precondition | How to prove it |
 |---|---|---|
-| 1 | All six handlers built and registered | `pytest -q` → 5,233 passed; `pytest -m stress` → 17 passed |
+| 1 | All six handlers built and registered | `pytest -q` → 5,246 passed; `pytest -m stress -n 0` → 17 passed |
 | 2 | The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
 | 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml:291` — and confirm it in the running pod's env before anything else |
 | 4 | The replay-and-diff oracle passes | `pytest tests/unit/test_xras_oracle.py -q` |
