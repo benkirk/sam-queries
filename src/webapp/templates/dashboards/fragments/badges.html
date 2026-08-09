@@ -15,6 +15,9 @@
   Unknown states fall back to bg-secondary with the raw label rendered.
 #}
 
+{# Notification delivery statuses (sam.notify.NOTIFICATION_STATUSES) share
+   this vocabulary from 'failed' onwards. `redirected` is warning rather than
+   success on purpose: it WAS delivered, but not to the person it names. #}
 {%- set _STATUS_VARIANTS = {
     'active':     'bg-success',
     'inactive':   'bg-secondary',
@@ -27,6 +30,10 @@
     'failed':     'bg-danger',
     'replayed':   'bg-secondary',
     'unmapped':   'bg-dark',
+    'sent':       'bg-success',
+    'queued':     'bg-info text-dark',
+    'suppressed': 'bg-secondary',
+    'redirected': 'bg-warning text-dark',
 } -%}
 {%- set _STATUS_LABELS = {
     'active':     'Active',
@@ -40,6 +47,10 @@
     'failed':     'Failed',
     'replayed':   'Replayed',
     'unmapped':   'Unmapped',
+    'sent':       'Sent',
+    'queued':     'Queued',
+    'suppressed': 'Suppressed',
+    'redirected': 'Redirected',
 } -%}
 {# Hover explanations — applied as a Bootstrap tooltip (tooltip-init.js) so the
    badge is self-documenting wherever it appears. #}
@@ -55,6 +66,10 @@
     'failed':     'Rejected. See the error list for what XRAS was told.',
     'replayed':   'An operator re-submitted the stored payload; it was re-validated but not dispatched.',
     'unmapped':   'XRAS called a path SAM does not implement. Nothing was applied — decide whether it should be.',
+    'sent':       'Handed to the relay and accepted.',
+    'queued':     'Written before the send. Still queued long after means a process died mid-send.',
+    'suppressed': 'Not sent on purpose — already notified under the same key, or notifications are disabled.',
+    'redirected': 'Delivered to NOTIFY_REDIRECT_TO, NOT to the recipient named. Staging/dev only.',
 } -%}
 
 

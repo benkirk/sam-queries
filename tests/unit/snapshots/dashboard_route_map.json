@@ -1218,6 +1218,27 @@
     ]
   ],
   [
+    "admin_dashboard.notification_detail",
+    "/admin/htmx/notifications/<int:log_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.notifications",
+    "/admin/htmx/notifications",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.notifications_log",
+    "/admin/htmx/notifications/log",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.nsf_program_contracts",
     "/admin/nsf-program/<int:nsf_program_id>/contracts",
     [

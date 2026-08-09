@@ -195,6 +195,12 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/admin/fragments/nsf_program_contracts_htmx.html': [
         'contractDetailsModalBody'],
+    # The delivery log's per-row detail button opens the shared audit modal.
+    # Loaded only into dashboards/admin/notifications.html, which includes
+    # partials/audit_details_modal.html itself — same arrangement as the XRAS
+    # action log, which is the page this one is modelled on.
+    'dashboards/admin/fragments/notifications_log.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/organization_card.html': [
         'createAoiFormContainer', 'createAoiGroupFormContainer', 'createAoiGroupModal',
         'createAoiModal', 'createNsfProgramFormContainer', 'createNsfProgramModal',
