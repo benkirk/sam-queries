@@ -281,6 +281,16 @@ webapp:
     FS_SCAN_PG_PORT: "5432"
     FS_SCAN_PG_DB: "campaign"
     FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:destor"
+    # XRAS action ingestion. CAPTURE_ONLY is the safety interlock: while it is "1" the
+    # endpoint authenticates, parses and audits every post but dispatches nothing,
+    # because legacy SAM at sam.ucar.edu is still the system of record. It flips to "0"
+    # only at cutover, in step with XRAS repointing its base URL to sam.hpc.ucar.edu —
+    # dispatching before then would double-apply actions legacy has already applied.
+    XRAS_ACTIONS_CAPTURE_ONLY: "1"
+    # Per-type triage lever, checked only once CAPTURE_ONLY is off. "all" | "none" |
+    # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
+    # manual without a revert; an unknown token leaves that type disabled.
+    XRAS_ACTIONS_ENABLED: "all"
 
   # system_status DB credentials (injected as STATUS_DB_USERNAME / STATUS_DB_PASSWORD).
   # MUST be a non-superuser role — connecting as the postgres SUPERUSER causes

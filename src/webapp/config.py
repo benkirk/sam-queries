@@ -54,6 +54,23 @@ class SAMWebappConfig(SAMConfig):
     # the create POST route 403s. Lets ops temporarily freeze project creation.
     CREATE_PROJECTS_ENABLED = os.getenv('CREATE_PROJECTS_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
+    # POST /api/xras/v1/actions capture mode. When ON (the default) the endpoint
+    # authenticates, parses and writes its xras_action_log row, then returns 200
+    # WITHOUT dispatching to a handler — legacy SAM is still the system of record
+    # for these actions until cutover, and the audit rows are how we harvest real
+    # payloads in the meantime. Flip OFF per handler as each one lands.
+    XRAS_ACTIONS_CAPTURE_ONLY = os.getenv('XRAS_ACTIONS_CAPTURE_ONLY', '1').lower() in ('1', 'true', 'yes')
+
+    # Per-type triage lever for POST /api/xras/v1/actions. NOT a rollout mechanism —
+    # all six handlers ship enabled in one deploy, because XRAS repoints its base URL
+    # once and every action type arrives at the same moment. This exists so a
+    # misbehaving payload class can be parked by config instead of by revert: a
+    # disabled type takes the manual-fallback path, audited and visible, and a human
+    # applies it. 'all' (the default), 'none', or a comma-separated list of action
+    # types — 'Extension,Supplement'. An unknown token is logged and dropped, which
+    # leaves that type DISABLED rather than enabling something nobody meant to.
+    XRAS_ACTIONS_ENABLED = os.getenv('XRAS_ACTIONS_ENABLED', 'all')
+
     # OIDC configuration (active when AUTH_PROVIDER='oidc')
     OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
     OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')

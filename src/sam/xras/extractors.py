@@ -1,0 +1,642 @@
+"""Turning wire fields into SAM rows: allocation type, area of interest, mnemonic,
+contract.
+
+Four independent lookups that every project-shaped handler needs, extracted here
+because legacy extracts them here too — and because each one is a place where a
+plausible reading of the payload gives the wrong answer.
+
+The contract they all share
+---------------------------
+**They report; they do not raise.** ``ProjectActionCommandFactoryBase`` catches
+``AttributeExtractionException`` from the area-of-interest (`:79-81`), allocation-type
+(`:103-105`) and mnemonic (`:115-117`) extractors and funnels ``e.getMessage()`` into
+the observer, so an unresolvable mnemonic and a missing title arrive in the *same*
+422. Every function below takes an :class:`~sam.xras.errors.ActionErrors`, reports
+into it, and returns ``None`` — never raises for a data problem.
+
+**They return ORM rows, not ids or names.** Legacy returns an ``Integer`` id from the
+allocation-type extractor and a ``String`` name from the area-of-interest one, because
+its downstream commands re-resolve them. Ours have no such commands, so returning the
+row is both cheaper and harder to misuse — and the allocation-type row carries the
+panel, which ``getAuthAtPanelMeeting()`` needs.
+
+**They are pure where they can be.** :func:`select_allocation_type_parms` takes no
+session: the eleven-strategy chain is string matching, and the database is consulted
+only to turn the resulting pair into a row. That split is what lets the strategy
+order be tested against the corpus without a database.
+
+Where the traps are
+-------------------
+Each function's docstring carries its own; the two that would silently produce wrong
+data are worth naming up front:
+
+1. ``fosNum`` is an ``area_of_interest_id``, **not** an ``fos_aoi.fos_id``. See
+   :func:`resolve_area_of_interest`.
+2. A ``(panel, type)`` pair must be resolved to an id **at runtime**. ``Small`` and
+   ``Education`` each name two different ``allocation_type`` rows.
+
+Verified against ``~/codes/sam`` at tag 2.0.3. Design notes and the production
+measurements behind them: ``docs/plans/XRAS_SPRINT_C.md``.
+"""
+
+import re
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+from sam.accounting.allocations import AllocationType
+from sam.core.organizations import MnemonicCode, Organization
+from sam.core.users import User
+from sam.projects.areas import AreaOfInterest
+from sam.projects.contracts import Contract
+from sam.resources.facilities import Panel
+
+from . import errors as e
+from .errors import ActionErrors
+from .wire import get_field
+
+__all__ = [
+    'SelectionParms',
+    'select_allocation_type_parms',
+    'resolve_allocation_type',
+    'resolve_area_of_interest',
+    'resolve_mnemonic_code',
+    'extract_core_number',
+    'resolve_contract',
+]
+
+
+# ---------------------------------------------------------------------------
+# Allocation type — eleven strategies, first non-null wins.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SelectionParms:
+    """The ``(panel, type)`` pair a strategy resolves to.
+
+    Java's ``SelectionParms``. ``__str__`` is not reproduced here — the operator-facing
+    rendering lives in :func:`sam.xras.errors.no_allocation_type_for_pair`, which is
+    where every other wire string lives.
+    """
+
+    panel: str
+    allocation_type: str
+
+
+#: ``AllocationType`` enum, verbatim, in declaration order.
+#:
+#: ⚠️ **Not** in *strategy* order — the chain order is :data:`_STRATEGIES` below, and
+#: the two differ (``NSC`` is 6th here, 2nd there). This mapping exists only to give
+#: :func:`_lookup_by_type_name` its keys, exactly as Java's ``NAME_MAP`` does.
+_ALLOCATION_TYPES: Dict[str, SelectionParms] = {
+    'EXPLORE_ACCESS': SelectionParms('ACCESS', 'Explore ACCESS'),
+    'DISCOVER_ACCESS': SelectionParms('ACCESS', 'Discover ACCESS'),
+    'EXTERNAL': SelectionParms('External Projects', 'External Project'),
+    'CSL': SelectionParms('CSLAP', 'CSL'),
+    'LARGE': SelectionParms('CHAP', 'CHAP'),
+    'NSC': SelectionParms('NCAR-ARP', 'NSC'),
+    'SMALL_NON_NSF': SelectionParms('UNIV USS', 'Small (No NSF award)'),
+    'SMALL_NSF': SelectionParms('UNIV USS', 'Small'),
+    'CLASSROOM': SelectionParms('UNIV USS', 'Classroom'),
+    'DATA_ANALYSIS': SelectionParms('UNIV USS', 'Data'),
+    'ASDUNIV': SelectionParms('ASD-CHAP', 'ASD-UNIV'),
+    'ASDNCAR': SelectionParms('ASD-NCAR', 'ASD-NCAR'),
+}
+
+#: ``AllocationType.NAME_MAP`` — keyed on the **SAM type name**, which is why a wire
+#: ``allocationType`` of ``'Small'`` resolves and ``'Large'`` does not. See
+#: :func:`_access_strategy`.
+_BY_TYPE_NAME: Dict[str, SelectionParms] = {
+    parms.allocation_type: parms for parms in _ALLOCATION_TYPES.values()
+}
+
+#: ``CSLStrategy.CSLPREFIX``. The empty left branch of the alternation is deliberate
+#: and load-bearing: "CSL alone, **or** CSL followed by a non-word character and
+#: anything". ⚠️ ``XRAS_REIMPLEMENTATION.md`` § 3.2 renders this with a backslash
+#: before the pipe, which reads as a literal ``|`` and matches nothing real —
+#: transcribing the doc rather than the source breaks CSL detection outright.
+#: Java's ``Matcher.matches()`` is a full match, hence ``fullmatch`` at the call site.
+_CSL_PATTERN = re.compile(r'\s*CSL(|[\W].*)')
+
+#: ``ExternalStrategy.EXTERNAL_PATTERN`` — also full-match, also applied to three
+#: different fields.
+_EXTERNAL_PATTERN = re.compile(r'(.* )?External( .*)?')
+
+
+def _clean(value: Optional[str]) -> Optional[str]:
+    """Normalise a wire string to "a value" or ``None``.
+
+    ⚠️ **A declared divergence, and the only one in this module that changes which
+    branch runs.** Jackson gives ``XrasAction.allocationType`` a default of ``""``,
+    so Java can tell an *absent* key (``""``) from an explicit JSON ``null`` (Java
+    ``null``) — and it behaves differently on each: ``""`` takes the exact-lookup
+    branch of ``ACCESSStrategy``, which can only miss, while ``null`` takes the
+    ``opportunityName`` branch that detects Discover/Explore ACCESS.
+
+    marshmallow gives both ``None`` (``load_default=None``), so the distinction is not
+    recoverable here. We take the ``null`` behaviour for both, which is the strictly
+    more capable one: the ``""`` path Java would have taken always resolves to nothing
+    and falls straight through. The only payloads affected are ACCESS-instance ones
+    that omit the key entirely, where legacy fails to resolve a type at all.
+    """
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _lookup_by_type_name(name: Optional[str]) -> Optional[SelectionParms]:
+    """``AllocationType.lookup`` — exact, case-sensitive, on the **SAM type name**."""
+    return _BY_TYPE_NAME.get(name) if name else None
+
+
+def _access_strategy(action) -> Optional[SelectionParms]:
+    """`ACCESSStrategy` — strategy 1, and the one that short-circuits the other ten.
+
+    ⚠️ When the payload carries an ``allocationType`` this is an **exact lookup by SAM
+    type name**, not an ACCESS test. So a wire ``allocationType: 'Small'`` resolves
+    here, to ``('UNIV USS', 'Small')``, and strategies 2–11 never run. ``'Large'`` does
+    **not** — the ``LARGE`` member's type name is ``'CHAP'`` — so it falls through to
+    ``LargeStrategy`` at position 5, which is what actually resolves it. ``'Educational'``,
+    ``'Exploratory'`` and ``'Data Analysis'`` all miss here too and are resolved further
+    down by ``opportunityName``.
+
+    Five of the eight corpus payloads take the fall-through path and one takes the
+    short-circuit, so both are live. § 3.2's "may return null and fall through" covers
+    only half of it.
+    """
+    allocation_type = _clean(get_field(action, 'allocationType'))
+    if allocation_type is not None:
+        return _lookup_by_type_name(allocation_type)
+
+    opportunity = _clean(get_field(action, 'opportunityName'))
+    if opportunity is None:
+        return None
+    lowered = opportunity.lower()
+    if 'discover' in lowered:
+        return _ALLOCATION_TYPES['DISCOVER_ACCESS']
+    if 'explore' in lowered or lowered == 'staff allocations':
+        return _ALLOCATION_TYPES['EXPLORE_ACCESS']
+    return None
+
+
+def _nsc_strategy(action) -> Optional[SelectionParms]:
+    """`NSCStrategy` — the only strategy keyed on a prefix of ``opportunityName``
+    that is also an ``NCAR ``-prefixed name, so it is also the one whose payloads
+    take the mnemonic *lab* path. See :func:`resolve_mnemonic_code`."""
+    opportunity = _clean(get_field(action, 'opportunityName'))
+    if opportunity and opportunity.startswith('NCAR - NSC Allocation Request'):
+        return _ALLOCATION_TYPES['NSC']
+    return None
+
+
+def _external_strategy(action) -> Optional[SelectionParms]:
+    """`ExternalStrategy` — the only strategy that tests **three** fields, and the
+    only one that reads ``allocationType`` as free text rather than as a key."""
+    for field in ('requestTitle', 'opportunityName', 'allocationType'):
+        value = _clean(get_field(action, field))
+        if value and _EXTERNAL_PATTERN.fullmatch(value):
+            return _ALLOCATION_TYPES['EXTERNAL']
+    return None
+
+
+def _csl_strategy(action) -> Optional[SelectionParms]:
+    """`CSLStrategy` — ``requestTitle`` only. See :data:`_CSL_PATTERN` for the regex
+    the plan document mangles."""
+    title = _clean(get_field(action, 'requestTitle'))
+    if title and _CSL_PATTERN.fullmatch(title):
+        return _ALLOCATION_TYPES['CSL']
+    return None
+
+
+def _large_strategy(action) -> Optional[SelectionParms]:
+    """`LargeStrategy` — where ``allocationType: 'Large'`` actually resolves, having
+    missed the exact lookup in strategy 1.
+
+    ⚠️ Java dereferences both fields unguarded here and would ``NullPointerException``
+    on an explicit JSON ``null``; the POJO defaults of ``""`` are all that keep it
+    standing. We guard, because our schema admits ``None``.
+    """
+    allocation_type = _clean(get_field(action, 'allocationType'))
+    opportunity = _clean(get_field(action, 'opportunityName'))
+    if allocation_type == 'Large' or (opportunity and 'Large Allocation' in opportunity):
+        return _ALLOCATION_TYPES['LARGE']
+    return None
+
+
+def _opportunity_contains(action, *markers: str) -> bool:
+    """Case-**sensitive** substring test on ``opportunityName``, as Java's
+    ``String.contains``. Five strategies share this shape."""
+    opportunity = _clean(get_field(action, 'opportunityName'))
+    if not opportunity:
+        return False
+    return any(marker in opportunity for marker in markers)
+
+
+def _small_non_nsf_strategy(action) -> Optional[SelectionParms]:
+    """`SmallNonNSFStrategy` — note ``'unsponsored'`` is lowercase in the source while
+    its two neighbours are title-cased, and the test is case-sensitive."""
+    if _opportunity_contains(action, 'no NSF award', 'unsponsored', 'Exploratory Allocation'):
+        return _ALLOCATION_TYPES['SMALL_NON_NSF']
+    return None
+
+
+def _small_nsf_strategy(action) -> Optional[SelectionParms]:
+    """`SmallNSFStrategy`. Ordered **after** the non-NSF variant, so an opportunity
+    naming both markers is non-NSF."""
+    if _opportunity_contains(action, 'w/ NSF', 'with NSF', 'Small Allocation'):
+        return _ALLOCATION_TYPES['SMALL_NSF']
+    return None
+
+
+def _classroom_strategy(action) -> Optional[SelectionParms]:
+    """`ClassroomStrategy`."""
+    if _opportunity_contains(action, 'Classroom/Training', 'Classroom Allocation'):
+        return _ALLOCATION_TYPES['CLASSROOM']
+    return None
+
+
+def _data_analysis_strategy(action) -> Optional[SelectionParms]:
+    """`DataAnalysisStrategy`."""
+    if _opportunity_contains(action, 'Data Analysis Allocation'):
+        return _ALLOCATION_TYPES['DATA_ANALYSIS']
+    return None
+
+
+def _asd_univ_strategy(action) -> Optional[SelectionParms]:
+    """`ASDUNIVStrategy` — lowercased prefix test, unlike the case-sensitive
+    ``contains`` strategies above."""
+    opportunity = _clean(get_field(action, 'opportunityName'))
+    if opportunity and opportunity.lower().startswith('univ - asd opportunity'):
+        return _ALLOCATION_TYPES['ASDUNIV']
+    return None
+
+
+def _asd_ncar_strategy(action) -> Optional[SelectionParms]:
+    """`ASDNCARStrategy`."""
+    opportunity = _clean(get_field(action, 'opportunityName'))
+    if opportunity and opportunity.lower().startswith('ncar - asd opportunity'):
+        return _ALLOCATION_TYPES['ASDNCAR']
+    return None
+
+
+#: ``AllocationTypeIdExtractor.SELECTION_PARM_STRATEGY``, in order. First non-``None``
+#: wins (``FirstSuccessfulStrategy``). The order is the behaviour — ``SmallNonNSF``
+#: before ``SmallNSF``, and ``ACCESS`` first because its exact-lookup branch is what
+#: lets a payload name its type outright.
+_STRATEGIES = (
+    _access_strategy,
+    _nsc_strategy,
+    _external_strategy,
+    _csl_strategy,
+    _large_strategy,
+    _small_non_nsf_strategy,
+    _small_nsf_strategy,
+    _classroom_strategy,
+    _data_analysis_strategy,
+    _asd_univ_strategy,
+    _asd_ncar_strategy,
+)
+
+
+def select_allocation_type_parms(action) -> Optional[SelectionParms]:
+    """Run the eleven-strategy chain. Pure — no session, no error reporting.
+
+    Returns the ``(panel, type)`` pair, or ``None`` if every strategy declined.
+    :func:`resolve_allocation_type` is the version that talks to the database and
+    reports; this one exists so the chain order can be tested against the corpus
+    without one.
+    """
+    for strategy in _STRATEGIES:
+        parms = strategy(action)
+        if parms is not None:
+            return parms
+    return None
+
+
+def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[AllocationType]:
+    """The ``allocation_type`` row this action's project belongs to.
+
+    ⚠️ **Resolved by the ``(panel, type)`` pair, never by type name alone.** ``Small``
+    names two rows (``UNIV USS`` id 8 and ``UW`` id 3) and so does ``Education``
+    (``UNIV USS`` id 9, inactive, and ``UW`` id 18). A name-keyed lookup would put
+    university-panel projects on the Wyoming panel roughly at random.
+
+    The pair is resolved to an id at runtime rather than pinned in a constant, per the
+    house rule against hardcoding lookup-table PKs. Legacy's ``findByPanelAndType``
+    applies no ``active`` filter and neither does this — all twelve pairs the strategy
+    chain can produce are active today, and filtering would turn a data change into a
+    silent behaviour change.
+
+    Reports ``Unable to determine allocation type from action data`` when no strategy
+    matched, or ``No AllocationType for SelectionParms{…}`` when one did but the pair
+    names no row.
+    """
+    parms = select_allocation_type_parms(action)
+    if parms is None:
+        errs.report(e.allocation_type_undetermined())
+        return None
+
+    row = (session.query(AllocationType)
+           .join(Panel, AllocationType.panel_id == Panel.panel_id)
+           .filter(Panel.panel_name == parms.panel)
+           .filter(AllocationType.allocation_type == parms.allocation_type)
+           .first())
+    if row is None:
+        errs.report(e.no_allocation_type_for_pair(parms.panel, parms.allocation_type))
+        return None
+    return row
+
+
+# ---------------------------------------------------------------------------
+# Area of interest.
+# ---------------------------------------------------------------------------
+
+
+def primary_fos_num(action) -> Optional[str]:
+    """``XrasAction.getPfosNumber()`` — the primary ``fos[]`` entry's ``fosNum``.
+
+    Falls back to the **first** entry when no entry is flagged primary, which is
+    legacy's second loop verbatim (`XrasAction:302-311`); ``isPrimary`` is not reliably
+    at index 0. Returns ``None`` for an empty array — the caller owns the message.
+    """
+    entries = get_field(action, 'fos') or []
+    for entry in entries:
+        if get_field(entry, 'isPrimary'):
+            return get_field(entry, 'fosNum')
+    for entry in entries:
+        return get_field(entry, 'fosNum')
+    return None
+
+
+def resolve_area_of_interest(session, action, errs: ActionErrors) -> Optional[AreaOfInterest]:
+    """The ``area_of_interest`` row named by the primary field of science.
+
+    ⚠️ **``fosNum`` is an ``area_of_interest_id``, not an ``fos_aoi.fos_id``.** Legacy
+    calls ``areaOfInterestRepository.findOne(fosInt)``, which is a Spring Data
+    *primary-key* lookup — the ``fos_aoi`` mapping table is not on this path at all.
+    It cannot be: its ``fos_id`` values are five-digit AMIE/XSEDE codes (``10202``,
+    ``10501``, …) while XRAS sends ``1``–``40``, the ``area_of_interest`` id space.
+    Confirmed against production — every one of the eight corpus payloads' primary
+    ``fosNum`` equals the ``area_of_interest_id`` its real project carries, and the
+    ``fosName`` XRAS sends is the SAM ``area_of_interest`` string verbatim. Reading
+    this through ``fos_aoi`` would file every XRAS project under the wrong research
+    area, silently.
+
+    Non-numeric ``fosNum`` falls back to a lookup by name, mirroring the
+    ``NumberFormatException`` arm — ``Integer.decode`` also accepts ``0x``/``0``
+    prefixed forms, which ``int(…, 0)`` reproduces closely enough that no real payload
+    can tell them apart.
+    """
+    fos = primary_fos_num(action)
+    if fos is None:
+        errs.report(e.no_fos_objects())
+        return None
+
+    row = None
+    try:
+        row = session.get(AreaOfInterest, int(str(fos).strip(), 0))
+    except (TypeError, ValueError):
+        row = (session.query(AreaOfInterest)
+               .filter(AreaOfInterest.area_of_interest == fos)
+               .first())
+
+    if row is None:
+        errs.report(e.aoi_not_in_database(str(fos)))
+        return None
+    return row
+
+
+# ---------------------------------------------------------------------------
+# Mnemonic code — 24% of legacy's XRAS failures land here.
+# ---------------------------------------------------------------------------
+
+
+def _best_organization(user: User) -> Optional[Organization]:
+    """``User.getBestOrganization()`` — the first *current* ``user_organization``.
+
+    "First" is DB order in both implementations; there is no tie-break, and a user
+    with two concurrent organizations gets whichever the row order hands over. Kept
+    as-is: it matches the existing lead-hint route
+    (``dashboards/admin/projects_routes.py:451``), so the mnemonic this suggests to an
+    operator and the one XRAS resolves are the same value.
+    """
+    return next((uo.organization for uo in user.organizations if uo.is_active), None)
+
+
+def _best_institution(user: User):
+    """``User.getBestInstitution()`` — the first current ``user_institution``."""
+    return next((ui.institution for ui in user.institutions if ui.is_active), None)
+
+
+def _organization_parentage(org: Optional[Organization]) -> List[Organization]:
+    """The org and its ancestors, **deepest first**, root last.
+
+    ``DefaultUserAffiliationQuery`` walks ``getParentOrg()`` to the top. The visited
+    set is a cycle guard: ``parent_org_id`` is a self-FK with nothing stopping a
+    loop, and an import that made one would otherwise hang the request thread.
+    """
+    parentage: List[Organization] = []
+    seen = set()
+    while org is not None and org.organization_id not in seen:
+        seen.add(org.organization_id)
+        parentage.append(org)
+        org = org.parent
+    return parentage
+
+
+def _lab_level_organization(parentage: List[Organization]) -> Optional[Organization]:
+    """``UserLabStrategy.getBestOrgAtLabLevelOrHigher()``.
+
+    The list runs deepest → root, so index ``len - 3`` is the level-3 org — "lab
+    level" at NCAR. A user shallower than that gets their own organization.
+    """
+    if not parentage:
+        return None
+    if len(parentage) <= 3:
+        return parentage[0]
+    return parentage[len(parentage) - 3]
+
+
+#: "the caller did not resolve the PI", as distinct from "the caller resolved it and
+#: there is no such user" — which is ``None`` and must still report.
+_UNRESOLVED = object()
+
+
+def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
+                          pi_username: Optional[str],
+                          pi=_UNRESOLVED) -> Optional[MnemonicCode]:
+    """The three-letter code the new project's projcode will be minted from.
+
+    ``pi_username`` is passed rather than read off the action because resolving it is
+    the roster's job (``sam.xras.roster``) and this module must not depend on that
+    one — legacy reads ``action.getPiUsername()`` here, which is the same value.
+
+    ``pi`` is the already-resolved ``User`` row, when the caller has one. The roster
+    fetched it moments earlier to validate it, so the handler passes it through rather
+    than paying for the same ``SELECT`` twice. Omitting it makes this look the PI up
+    itself, which is what the extractor tests do and why the parameter is optional
+    rather than required.
+
+    ⚠️ ``None`` is a **resolved** answer meaning "no such user", and still reports. The
+    sentinel is what distinguishes it from "not looked up yet"; a plain
+    ``pi=None`` default would silently turn every existing caller into the
+    no-such-user arm.
+
+    Three routes, in legacy's order:
+
+    1. ``opportunityName`` starts with ``'NCAR '`` → the **lab** strategy: walk the
+       PI's organization parentage to level 3 and match that. Note this catches the
+       NSC opportunity prefix (``'NCAR - NSC Allocation Request'``) as well as the
+       NCAR ASD one.
+    2. The PI has an institution → match ``"Name, City"``, then ``"Name"``.
+    3. Otherwise → match the PI's organization name.
+
+    ``MnemonicCode.build_lookup`` + ``resolve_for_*`` are the existing ports of
+    ``UserInstitutionStrategy`` / ``UserOrganizationStrategy``; this reuses them so the
+    code XRAS picks and the one the admin create-project form suggests cannot drift.
+
+    **Declared divergence.** Legacy's lab route returns ``null`` *without reporting* —
+    ``UserLabStrategy`` has no error arm, unlike the other two — so an NCAR-opportunity
+    PI whose lab has no soft link yields a project with no mnemonic, and the failure
+    surfaces later and less legibly. We report
+    ``Could not determine Mnemonic code for internal PI via organization``, which is
+    both true and the string an operator already knows: a lab is an organization, and a
+    projcode cannot be minted without a code.
+
+    ⚠️ ``ProjectActionCommandFactoryBase:110`` short-circuits on
+    ``action.getMnemonicCode()`` before calling any of this. On the XRAS path that is
+    dead: ``XrasAction.getMnemonicCode()`` is a hardcoded ``return null``. It is the
+    AMIE actions, which share the base class, that supply one. Nothing to port.
+    """
+    if not pi_username:
+        errs.report(e.no_affiliation_for_pi(pi_username or ''))
+        return None
+
+    user = (User.get_by_username(session, pi_username)
+            if pi is _UNRESOLVED else pi)
+    if user is None:
+        errs.report(e.no_affiliation_for_pi(pi_username))
+        return None
+
+    lookup = MnemonicCode.build_lookup(session)
+    opportunity = _clean(get_field(action, 'opportunityName')) or ''
+
+    if opportunity.startswith('NCAR '):
+        lab = _lab_level_organization(_organization_parentage(_best_organization(user)))
+        code = MnemonicCode.resolve_for_organization(lab, lookup) if lab else None
+        if code is None:
+            # Divergence, argued above: legacy returns null here in silence.
+            errs.report(e.mnemonic_internal_failed())
+            return None
+        return _mnemonic_row(session, code)
+
+    institution = _best_institution(user)
+    if institution is not None:
+        code = MnemonicCode.resolve_for_institution(institution, lookup)
+        if code is None:
+            errs.report(e.mnemonic_external_failed())
+            return None
+        return _mnemonic_row(session, code)
+
+    org = _best_organization(user)
+    code = MnemonicCode.resolve_for_organization(org, lookup) if org else None
+    if code is None:
+        errs.report(e.mnemonic_internal_failed())
+        return None
+    return _mnemonic_row(session, code)
+
+
+def _mnemonic_row(session, code: str) -> Optional[MnemonicCode]:
+    """The ``mnemonic_code`` row for a resolved code.
+
+    ``build_lookup`` yields codes, but callers need the id to mint a projcode
+    (``next_projcode``). ``code`` is uniquely indexed, so this is a scalar getter.
+    """
+    return (session.query(MnemonicCode)
+            .filter(MnemonicCode.code == code)
+            .filter(MnemonicCode.is_active)
+            .first())
+
+
+# ---------------------------------------------------------------------------
+# Contract.
+# ---------------------------------------------------------------------------
+
+#: ``ContractNumberExtractor.CORE_NUMBER_EXTRACTOR_PATTERN``. Group 2 is the core: the
+#: **last** run of six or more digits, with any non-digit tail allowed after it. The
+#: leading ``(.*[^0-9])?`` is greedy, so ``'NSF-1234567890'`` yields ``'1234567890'``
+#: and not a six-digit prefix of it.
+_CORE_NUMBER_PATTERN = re.compile(r'^(.*[^0-9])?([0-9]{6,})[^0-9]*$')
+
+
+def extract_core_number(grant_number: str) -> str:
+    """The ≥6-digit core of an award number, or the input trimmed.
+
+    ``'NSF-2146709'`` → ``'2146709'``; ``'AGS-2524858'`` → ``'2524858'``;
+    ``'USDA Prime Award No. 2013-67003-20652'`` → ``'20652'`` is *not* what happens —
+    ``20652`` is five digits, so the pattern's last ≥6-digit run is ``67003``… also
+    five. That string matches nothing and comes back trimmed, whole. Pure string work,
+    no database.
+    """
+    match = _CORE_NUMBER_PATTERN.match(grant_number or '')
+    if match:
+        return match.group(2)
+    return (grant_number or '').strip()
+
+
+def resolve_contract(session, grant_number: Optional[str],
+                     errs: ActionErrors) -> Optional[Contract]:
+    """The SAM ``contract`` row behind one ``grants[]`` entry.
+
+    Legacy extracts the core number and runs a single suffix match —
+    ``contract_number ILIKE '%<core>'``, ``uniqueResult()``. Two things about that are
+    worth knowing before reading the code below.
+
+    **The column is case-sensitive.** ``contract.contract_number`` is ``utf8mb3_bin``,
+    so a plain ``LIKE`` undercounts badly; every comparison here uses ``ilike``.
+
+    **``uniqueResult()`` throws on a tie, and ties exist.** Production holds
+    ``1049089`` *and* ``PLR-1049089``; ``OPP-1744587`` *and* ``PLR-1744587``;
+    ``2146709`` *and* ``AGS-2146709``. A grant citing any of those cores makes legacy
+    raise ``NonUniqueResultException`` — which is not an ``AttributeExtractionException``,
+    so it escapes the observer entirely and becomes a 500 with no diagnostic.
+
+    **Declared divergence, in three steps:**
+
+    1. Exact match on the **full grant number** first, via ``Contract.get_by_number``
+       (whitespace-insensitive, since operators have stored ``'OCE- 1419584'``). This
+       is strictly better than legacy and can never be wrong: if the payload names a
+       contract SAM holds verbatim, that is the contract.
+    2. Otherwise the core-number suffix match. Exactly one row → that row.
+    3. A tie → report it, naming the candidates, instead of raising. The operator gets
+       an actionable 422 where legacy gave them a 500 and an email about a
+       ``NonUniqueResultException``.
+
+    Steps 1 and 3 are the divergence; step 2 is legacy. Nothing here can resolve to a
+    row legacy would have rejected — only to one it would have crashed on.
+    """
+    grant_number = (grant_number or '').strip()
+    if not grant_number:
+        errs.report(e.cannot_find_contract('', ''))
+        return None
+
+    exact = Contract.get_by_number(session, grant_number)
+    if exact is not None:
+        return exact
+
+    core = extract_core_number(grant_number)
+    candidates = (session.query(Contract)
+                  .filter(Contract.contract_number.ilike(f'%{core}'))
+                  .order_by(Contract.contract_id)
+                  .all())
+
+    if not candidates:
+        errs.report(e.cannot_find_contract(grant_number, core))
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    errs.report(e.ambiguous_contract(
+        grant_number, core, [c.contract_number for c in candidates]))
+    return None

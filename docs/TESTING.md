@@ -2,10 +2,16 @@
 
 ## Overview
 
-The SAM test suite has **~3,100 collected tests** (as of 2026-07) across
-five tiers, running in **~95 seconds** on a laptop with pytest-xdist
-parallelism. A separate **~23-test performance suite** (query-count and
-latency baselines) is gated behind `pytest -m perf`.
+The SAM test suite has **5,360 collected tests** (as of 2026-08) across
+five tiers. The default run — everything except the two gated tiers — is
+**5,317 tests in ~90 seconds** on a laptop with pytest-xdist parallelism.
+
+Two tiers are gated **off** by default and run only when asked for:
+
+| tier | size | command | what it is |
+|---|---|---|---|
+| `perf` | 22 | `pytest -m perf -n 0` | query-count and latency baselines |
+| `stress` | 21 | `pytest -m stress` | XRAS audit-row triage: oversize payloads, 4-byte unicode, the unmapped-path ingress, repeat posts, unsampled wire shapes |
 
 > This file is the single source of truth for suite size and timings —
 > other docs link here rather than restating numbers.
@@ -42,7 +48,18 @@ pytest --cov=src --cov-report=html --cov-fail-under=60
 # Performance regression tests (serial, ~26s)
 make perf
 # or: pytest -m perf -n 0 -v
+
+# XRAS stress scenarios (~5s) — audit-row triage, oversize payloads,
+# repeat posts, and the wire shapes the corpus never sampled
+pytest -m stress
 ```
+
+Both `perf` and `stress` are gated **off** by default via `addopts`
+(`-m "not perf and not stress"`) and run only when asked for. Each has a
+declaration file next to it that the tests read — `tests/perf/baselines.json`
+for query-count limits, `tests/stress/scenarios.json` for what each scenario
+expects the `xras_action_log` row to say. A stress test with no manifest entry
+fails rather than running unspecified.
 
 If `SAM_TEST_DB_URL` is unset or points at anything other than
 `127.0.0.1:3307`, pytest aborts with `REFUSING TO RUN tests against

@@ -7,7 +7,11 @@
       {{ status_badge('locked', extra='ms-1') }}
       {{ status_badge('expired', extra='ms-1', small=True) }}
 
-  Known states (case-insensitive): active, inactive, locked, expired, open-ended.
+  Known states (case-insensitive): active, inactive, locked, expired, open-ended,
+  plus the six xras_action_log states (received, processed, manual, failed,
+  replayed, unmapped) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
+  test_xras_dashboard.py asserts every member of that tuple has an entry in all
+  three dicts below.
   Unknown states fall back to bg-secondary with the raw label rendered.
 #}
 
@@ -17,6 +21,12 @@
     'locked':     'bg-warning text-dark',
     'expired':    'bg-secondary',
     'open-ended': 'bg-info text-dark',
+    'received':   'bg-info text-dark',
+    'processed':  'bg-success',
+    'manual':     'bg-warning text-dark',
+    'failed':     'bg-danger',
+    'replayed':   'bg-secondary',
+    'unmapped':   'bg-dark',
 } -%}
 {%- set _STATUS_LABELS = {
     'active':     'Active',
@@ -24,6 +34,12 @@
     'locked':     'Locked',
     'expired':    'Expired',
     'open-ended': 'Open-ended',
+    'received':   'Received',
+    'processed':  'Processed',
+    'manual':     'Manual',
+    'failed':     'Failed',
+    'replayed':   'Replayed',
+    'unmapped':   'Unmapped',
 } -%}
 {# Hover explanations — applied as a Bootstrap tooltip (tooltip-init.js) so the
    badge is self-documenting wherever it appears. #}
@@ -33,14 +49,36 @@
     'locked':     'Frozen: no further charging or changes until unlocked.',
     'expired':    'Allocation period has ended.',
     'open-ended': 'No end date — runs indefinitely.',
+    'received':   'Captured and audited. Not dispatched — SAM is recording XRAS actions while legacy still applies them.',
+    'processed':  'A handler applied this action successfully.',
+    'manual':     'Parked for a human: no handler services this action type.',
+    'failed':     'Rejected. See the error list for what XRAS was told.',
+    'replayed':   'An operator re-submitted the stored payload; it was re-validated but not dispatched.',
+    'unmapped':   'XRAS called a path SAM does not implement. Nothing was applied — decide whether it should be.',
 } -%}
 
 
-{% macro status_badge(state, extra='', small=False, label=None) -%}
+{#
+  tooltip=False suppresses the hover explanation. Two reasons a caller wants
+  that, both live in the facet chips (fragments/facet_chips.html):
+
+  1. The badge sits inside a control that has its OWN title ("Filter by Status
+     received"). Two tooltips on one element is a coin toss over which the user
+     gets, and on a filter control the action beats the vocabulary lesson.
+  2. That control replaces its own container on click. A Bootstrap tooltip mid
+     show/hide transition when htmx removes its trigger throws
+     `Object.values(undefined)` from _isWithActiveTrigger — tooltip-init.js
+     disposes on htmx:beforeCleanupElement, but it cannot beat Bootstrap's own
+     queued transition callback. Not rendering the tooltip removes the race
+     rather than fighting it.
+
+  The table rows keep theirs, which is where the explanation is actually useful.
+#}
+{% macro status_badge(state, extra='', small=False, label=None, tooltip=True) -%}
 {%- set key = state|lower -%}
 {%- set variant = _STATUS_VARIANTS.get(key, 'bg-secondary') -%}
 {%- set text = label if label is not none else _STATUS_LABELS.get(key, state) -%}
-{%- set tip = _STATUS_TOOLTIPS.get(key) -%}
+{%- set tip = _STATUS_TOOLTIPS.get(key) if tooltip else None -%}
 <span class="badge {{ variant }}{% if extra %} {{ extra }}{% endif %}"
       {%- if tip %} data-bs-toggle="tooltip" data-bs-title="{{ tip }}"{% endif %}
       {%- if small %} style="font-size:0.7em;"{% endif %}>{{ text }}</span>

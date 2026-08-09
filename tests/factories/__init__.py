@@ -20,6 +20,11 @@ from .core import (
     make_user_organization,
 )
 from .operational import make_wallclock_exemption
+from .xras import (
+    make_xras_action,
+    make_xras_activation_event,
+    make_xras_key_mapping,
+)
 from .projects import (
     make_account,
     make_allocation,
@@ -65,6 +70,9 @@ __all__ = [
     "make_queue",
     "make_comp_charge_summary",
     "make_wallclock_exemption",
+    "make_xras_action",
+    "make_xras_activation_event",
+    "make_xras_key_mapping",
     "make_facility",
     "make_aoi_group",
     "make_aoi",

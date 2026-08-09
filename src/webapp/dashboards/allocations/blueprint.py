@@ -5,15 +5,26 @@ Provides drill-down allocation dashboard showing allocation summaries
 grouped hierarchically by Resource → Facility → Allocation Type → Projects.
 """
 
-from flask import Blueprint, render_template, request, flash, redirect, url_for, jsonify
+
+from flask import (
+    Blueprint, render_template, request, flash, redirect, url_for, jsonify,
+    current_app,
+)
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.htmx import (
-    handle_htmx_form_post, read_layout, read_theme, register_typeahead,
+    handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
+    htmx_success_message, modal_triggers, read_flag, read_layout, read_theme,
+    register_typeahead,
 )
+from webapp.api.xras.replay import replay_action
+from sam.integration.xras import XrasActivationEvent
+from sam.manage.transaction import management_transaction
+from sam.projects.projects import Project
+from webapp.utils.project_permissions import can_edit_project_governance
 from sam.queries.allocations import (
     ALLOCATION_TRANSACTION_SORT_COLUMNS,
     count_recent_allocation_transactions,
@@ -26,14 +37,31 @@ from sam.queries.charges import (
     count_recent_charge_adjustments,
     get_recent_charge_adjustments,
 )
+from sam.queries.xras_actions import (
+    XRAS_ACTION_SORT_COLUMNS,
+    XRAS_ACTION_STATUSES,
+    XRAS_ACTION_TYPES,
+    XRAS_REQUEST_TOKEN_EXAMPLE,
+    count_recent_xras_actions,
+    get_observed_action_types,
+    get_projects_by_ids,
+    get_recent_xras_actions,
+    summarize_xras_actions,
+)
+from sam.queries.xras_activation import (
+    get_latest_xras_action_id,
+    get_xras_activation_events,
+    get_xras_pending_activation,
+    get_xras_pending_recipients,
+)
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
-from sam.schemas.forms import CreateChargeAdjustmentForm
+from sam.schemas.forms import CreateChargeAdjustmentForm, XrasActivationEventForm
 from flask import abort
 from webapp.utils.rbac import (
-    apply_facility_scope, filter_rows_by_facility, require_permission,
-    require_permission_any_facility, user_facility_scope, Permission,
-    allowed_facility_names as _allowed_facility_names,
+    apply_facility_scope, filter_rows_by_facility, has_permission,
+    require_permission, require_permission_any_facility, user_facility_scope,
+    Permission, allowed_facility_names as _allowed_facility_names,
 )
 from webapp.api.access_control import require_project_access
 from sam.resources.resources import Resource
@@ -1129,4 +1157,583 @@ def htmx_create_adjustment():
         success_message='Charge adjustment saved.',
         error_prefix='Error creating adjustment',
         context_fn=_create_adjustment_form_context,
+    )
+
+
+# ============================================================================
+# XRAS action log — the operator surface for POST /api/xras/v1/actions
+#
+# Gating, and why it is two permissions:
+#   VIEW_XRAS    the page, the table, the filters, the error lists. Swept into
+#                ALL_VIEW by name, so every operator bundle already has it.
+#   MANAGE_XRAS  the raw-payload panel and the replay button. The payload is the
+#                request body verbatim and carries participant names, emails,
+#                phones and grant-officer contacts.
+#
+# Plain require_permission(), NOT require_permission_any_facility(): an XRAS
+# action is not facility-scopable. It arrives before we know its facility (a New
+# action has no project yet) and a malformed body has none at all — there is
+# nothing to intersect a scope against. See the note in rbac.py's
+# USER_FACILITY_PERMISSIONS.
+# ============================================================================
+
+_XRAS_FRAGMENT_TARGET = 'alloc-xras-fragment'
+_XRAS_FORM_ID = 'xras-filters'
+
+#: Close the modal, then reload the tab behind it. Built by ``modal_triggers``
+#: rather than written as a literal, which is what the four admin route modules
+#: already do — the close half is the shared convention and only the reload event
+#: is ours.
+_XRAS_MODAL_TRIGGERS = modal_triggers('refreshXrasTab')
+
+
+def _parse_xras_filters(request_args):
+    """Parse filter + sort + pagination params for the XRAS fragment.
+
+    Deliberately a sibling of ``_parse_audit_filters`` rather than a
+    generalisation of it. The sort/page halves are identical by convention (that
+    is what makes the shared ``sort_link`` / ``pagination`` macros work), but the
+    filter halves have nothing in common — projcode/resource/username/facility
+    versus status/action-type/request-number. Merging them would mean a parameter
+    for every field either page has.
+
+    Returns ``(filters, sort, page)`` with the same shapes ``_parse_audit_filters``
+    returns, because the table fragment renders through the same macros.
+
+    Default 30-day window is applied iff **neither** ``start_date`` nor
+    ``end_date`` appears in the query string — explicitly empty bounds mean
+    "all time", which is a different intent from "I have not chosen".
+    """
+    statuses = request_args.getlist('status') or None
+    action_types = request_args.getlist('action_type') or None
+    request_number = (request_args.get('request_number') or '').strip() or None
+
+    start_date_str = (request_args.get('start_date') or '').strip()
+    end_date_str = (request_args.get('end_date') or '').strip()
+
+    if 'start_date' not in request_args and 'end_date' not in request_args:
+        start_date = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                      - timedelta(days=30))
+        # Deliberately UNBOUNDED above, where the sibling audit pages use
+        # datetime.now(). There are no future rows, so an upper bound buys
+        # nothing — and a sub-second one actively loses the newest row.
+        # `received_time` is a MySQL DATETIME with second resolution and MySQL
+        # ROUNDS rather than truncates, so a row written at 10:10:24.894 is
+        # stored as 10:10:25 and lands *after* an end_date captured microseconds
+        # earlier in the same request. On an audit surface whose whole job is
+        # answering "did my action get recorded?", the row most worth seeing is
+        # the one that just arrived. (_parse_audit_filters above still has the
+        # sub-second bound; same latent bug, left alone as pre-existing.)
+        end_date = None
+    else:
+        try:
+            start_date = (datetime.strptime(start_date_str, '%Y-%m-%d')
+                          if start_date_str else None)
+        except ValueError:
+            start_date = None
+        try:
+            end_date = (datetime.strptime(end_date_str, '%Y-%m-%d')
+                        .replace(hour=23, minute=59, second=59)
+                        if end_date_str else None)
+        except ValueError:
+            end_date = None
+
+    filters = {
+        'status': statuses,
+        'action_type': action_types,
+        'request_number': request_number,
+        'start_date': start_date,
+        'end_date': end_date,
+    }
+
+    sort_by = request_args.get('sort_by') or None
+    if sort_by and sort_by not in XRAS_ACTION_SORT_COLUMNS:
+        sort_by = None
+    sort_dir = request_args.get('sort_dir', 'desc')
+    if sort_dir not in ('asc', 'desc'):
+        sort_dir = 'desc'
+
+    try:
+        page_n = max(1, int(request_args.get('page', 1)))
+    except (TypeError, ValueError):
+        page_n = 1
+    try:
+        per_page = int(request_args.get('per_page', 50))
+    except (TypeError, ValueError):
+        per_page = 50
+    per_page = max(10, min(per_page, 200))
+
+    return filters, {'sort_by': sort_by, 'sort_dir': sort_dir}, \
+           {'n': page_n, 'per_page': per_page}
+
+
+def _xras_action_types():
+    """Filter vocabulary: the known types plus anything actually in the table.
+
+    ``XrasActionSchema`` applies no enum to ``actionType`` on purpose — Transfer,
+    Renewal and Advance still have zero samples and no co-PI role has ever been
+    sampled — so a type we have never seen must still be filterable rather than
+    invisible. Union, don't replace.
+
+    Observed values are folded onto their canonical spelling first, so an alias pair
+    offers **one** entry: ``Adjust`` and ``Adjustment`` are the same action and
+    filtering on either returns both (``XRAS_ACTION_TYPE_ALIASES``). Two chips that
+    filter identically would read as two distinct action types.
+    """
+    return sorted(set(XRAS_ACTION_TYPES) | set(get_observed_action_types(db.session)))
+
+
+@bp.route('/xras')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras():
+    """XRAS action-log page: the operator surface for the ingest endpoint."""
+    end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date = end_date - timedelta(days=30)
+    return render_template(
+        'dashboards/allocations/xras.html',
+        xras_start_date=start_date.strftime('%Y-%m-%d'),
+        xras_end_date=end_date.strftime('%Y-%m-%d'),
+        all_statuses=list(XRAS_ACTION_STATUSES),
+        all_action_types=_xras_action_types(),
+        # Site-specific, so it lives with the token family rather than in the
+        # template — see XRAS_REQUEST_TOKEN_PREFIXES.
+        request_example=XRAS_REQUEST_TOKEN_EXAMPLE,
+    )
+
+
+@bp.route('/xras_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_fragment():
+    """HTMX fragment: sortable, paginated table of XRAS actions."""
+    filters, sort, page = _parse_xras_filters(request.args)
+    offset = (page['n'] - 1) * page['per_page']
+
+    rows = get_recent_xras_actions(
+        db.session,
+        **filters,
+        sort_by=sort['sort_by'], sort_dir=sort['sort_dir'],
+        offset=offset, limit=page['per_page'],
+    )
+    total = count_recent_xras_actions(db.session, **filters)
+    # Facet counts, computed with SELF-EXCLUSION: each dimension's rollup omits
+    # its OWN filter while honouring every other one.
+    #
+    # This is what makes the chips switchers rather than dead ends. Scoping a
+    # dimension by itself drives every unselected value to zero the moment one is
+    # picked — click "failed" and the other four statuses all read 0, so there is
+    # no way to move to another status without first clearing the filter. The
+    # jobs explorer's facet strip learned the same lesson (service.jobs_facets
+    # passes self_exclude).
+    #
+    # Two GROUP BY queries instead of one; both are served by the
+    # (status, action_type) triage index.
+    _facet_common = dict(
+        request_number=filters['request_number'],
+        start_date=filters['start_date'], end_date=filters['end_date'],
+    )
+    status_facet = summarize_xras_actions(
+        db.session, action_type=filters['action_type'], **_facet_common)
+    type_facet = summarize_xras_actions(
+        db.session, status=filters['status'], **_facet_common)
+
+    # Every status renders, including at zero — an absent bucket would read as
+    # "not measured" rather than "none". `summarize_xras_actions` already seeds
+    # the five, so iterating its dict gives that for free, in vocabulary order.
+    #
+    # ⚠️ Iterated, not re-derived from XRAS_ACTION_STATUSES. That spelling dropped
+    # any status outside the vocabulary — which the query layer goes out of its way
+    # to keep, because it is a bug worth surfacing — while the headline total above
+    # still counted it, so the strip disagreed with its own total.
+    #
+    # A stray appends rather than reshuffling: the five are a stable strip an
+    # operator scans by position.
+    #
+    # Its chip filters even though `all_statuses` (line ~1295) still offers only the
+    # five: `set-filter-submit` synthesizes a missing <option> before setting the
+    # value (static/js/actions.js:152-160). The offer list is deliberately NOT
+    # widened the way `_xras_action_types` widens its own — an unsampled action type
+    # is normal traffic, a stray status is only ever a bad write, and presenting one
+    # as a standing filter choice would dress a bug up as a category.
+    status_facets = [{'value': s, 'count': n}
+                     for s, n in status_facet['by_status'].items()]
+
+    # A NULL action_type is a real count — a body that would not parse has none —
+    # but it is not a filterable value: there is no way to express "IS NULL"
+    # through the form's multi-select. Dropped rather than rendered as a chip
+    # that cannot work, the same rule the jobs facet strip applies.
+    action_type_facets = sorted(
+        ({'value': t, 'count': n}
+         for t, n in type_facet['by_action_type'].items() if t),
+        key=lambda r: (-r['count'], r['value']),
+    )
+
+    return render_template(
+        'dashboards/allocations/partials/xras_table.html',
+        rows=rows, total=total,
+        status_facets=status_facets, action_type_facets=action_type_facets,
+        page=page, sort=sort, filters=filters,
+        fragment_url=url_for('allocations_dashboard.xras_fragment'),
+        target_id=_XRAS_FRAGMENT_TARGET,
+        form_id=_XRAS_FORM_ID,
+        sortable_columns=sorted(XRAS_ACTION_SORT_COLUMNS),
+    )
+
+
+@bp.route('/xras_pending_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_pending_fragment():
+    """HTMX fragment: XRAS-touched projects still awaiting activation.
+
+    Stands in for the success email legacy sends and SAM has no mailer for — which
+    is what keeps SMTP deferred rather than a prerequisite for the POST cutover.
+    See ``get_xras_pending_activation`` for what this can and cannot see, and for
+    the timestamp rule that derives every state on this card.
+
+    Two gates, both enforced HERE rather than only in the template:
+
+    - ``recipients`` (project lead/admin contact details) is fetched only for
+      ``MANAGE_XRAS``, so a ``VIEW_XRAS`` response never carries the addresses at
+      all and a view-source cannot leak what the page chose not to draw. Same rule
+      as the raw-payload panel.
+    - ``may_activate`` is resolved **per project** through
+      ``can_edit_project_governance``, not once for the card. The helper is flat
+      over the user today, so this costs one extra query and buys nothing
+      immediately — but the moment it becomes project- or facility-aware the card
+      follows for free, whereas a card-level flag would quietly start lying. The
+      POST route calls the same helper itself, so the authority stays in one
+      place and this is only ever a rendering hint.
+    """
+    may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
+    include_dismissed = read_flag(request.args, 'include_dismissed') and may_manage
+
+    # Fetched once with the dismissed rows in, then filtered here.
+    #
+    # `count_xras_dismissed_pending` runs this exact pipeline — the OR-join plus
+    # `_activation_state` — so calling both ran it twice per render for a count
+    # already present in the rows. The `include_dismissed` flag is only a `continue`
+    # inside the loop, so filtering afterwards is what it would have done anyway.
+    # (Safe because this route passes no `limit`; the query applies that after the
+    # skip, so a limited call could not be reproduced this way.)
+    all_pending = get_xras_pending_activation(db.session, include_dismissed=True)
+    dismissed_count = sum(1 for p in all_pending if p['dismissed'])
+    pending = (all_pending if include_dismissed
+               else [p for p in all_pending if not p['dismissed']])
+
+    project_ids = [p['project_id'] for p in pending]
+
+    recipients = {}
+    may_activate = {}
+    if may_manage:
+        recipients = get_xras_pending_recipients(db.session, project_ids)
+        may_activate = {
+            p.project_id: can_edit_project_governance(current_user, p)
+            for p in get_projects_by_ids(db.session, project_ids)
+        }
+
+    return render_template(
+        'dashboards/allocations/partials/xras_pending_card.html',
+        pending=pending,
+        recipients=recipients,
+        may_activate=may_activate,
+        include_dismissed=include_dismissed,
+        dismissed_count=dismissed_count if may_manage else 0,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pending-activation worklist — the operator write path.
+#
+# These are dashboard routes, NOT an API: session-cookie auth, CSRF via the
+# hx-headers on <body>, and the card's own buttons are the only callers. No
+# /api/v1/ or /api/xras/v1/ surface is added; webapp/api/xras/ stays the
+# legacy-compat inbound blueprint it is.
+#
+# ⚠️ Every one of these writes runs INSIDE management_transaction, which is the
+# OPPOSITE of what webapp/api/xras/replay.py does one screen away — see the
+# docstrings below for why, because the difference is deliberate and a reader
+# who has just read replay.py will expect the other answer.
+# ---------------------------------------------------------------------------
+
+
+def _load_pending_project(project_id):
+    """Fetch the project an activation event is about, or None."""
+    return db.session.get(Project, project_id)
+
+
+def _record_activation_event(project, event_type, *, comment=None,
+                             notified_to=None):
+    """Append one operator event, with the prompting action as provenance.
+
+    Runs inside ``management_transaction`` — deliberately unlike
+    :func:`webapp.api.xras.replay.replay_action`, which commits its audit row on a
+    private connection precisely so it survives a handler rollback. Its value is
+    "we received this even though processing it blew up".
+
+    An activation event is the inverse: it records an operator's *decision*, and
+    if the decision does not apply the record must not survive. Because the card's
+    state is **derived** from these events, an ``activated`` row that outlived its
+    own effect would make the card go on showing the project as pending while the
+    audit says it was activated — exactly the drift the append-only design exists
+    to eliminate. Two connections mean two truths; the design's premise is one.
+    """
+    return XrasActivationEvent.create(
+        db.session,
+        project_id=project.project_id,
+        event_type=event_type,
+        created_by=current_user.username,
+        comment=comment,
+        notified_to=notified_to,
+        xras_action_log_id=get_latest_xras_action_id(db.session,
+                                                     project.project_id),
+    )
+
+
+@bp.route('/xras_notify/<int:project_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_notify(project_id: int):
+    """Record that an operator handed a pending project off. **Sends no mail.**
+
+    SAM has no mailer — zero ``MAIL_*`` / ``flask_mail`` / ``smtplib`` wiring under
+    ``src/webapp/``, and standing that up is its own follow-on change. So this
+    route does the whole timestamp half (which is what the card's badge, the
+    staleness rule and "notify again" are derived from) and answers with an
+    explicit **Not implemented** dialog listing the addresses, rather than a
+    success toast that would imply mail moved.
+
+    The recipients are recomputed here, server-side, and stored in ``notified_to``
+    — never taken from the request. "The current lead" and "who we notified" are
+    different questions, and only the second one is an audit answer.
+
+    No idempotency guard, deliberately: "notified 3 times, last by benkirk" is a
+    feature of the derived design, not a bug to suppress.
+    """
+    project = _load_pending_project(project_id)
+    if project is None:
+        return htmx_not_found('Project')
+
+    people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
+    notified_to = '; '.join(f"{p['name']} <{p['email']}>" for p in people) or None
+
+    with management_transaction(db.session):
+        event = _record_activation_event(project, 'notified',
+                                         notified_to=notified_to)
+
+    current_app.logger.info(
+        'XRAS notify recorded (no mail sent): project=%s by=%s to=%s',
+        project.projcode, current_user.username, notified_to)
+
+    return htmx_success(
+        'dashboards/allocations/partials/xras_notify_not_implemented.html',
+        {'refreshXrasTab': {}},
+        project=project, people=people, recorded_at=event.creation_time)
+
+
+@bp.route('/xras_activate/<int:project_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_activate(project_id: int):
+    """Activate a pending XRAS project in one click.
+
+    ⚠️ **Double-gated.** ``project.active`` is a GOVERNANCE_FIELD, and
+    ``MANAGE_XRAS`` alone must not be enough to flip it.
+    ``can_edit_project_governance`` is the single definition of who may — flat
+    ``EDIT_PROJECTS`` with **no** steward override, so a project lead cannot.
+
+    Deliberately not a §8 decorator: ``require_project_permission(EDIT_PROJECTS)``
+    resolves a *projcode* and means "X **OR** project lead/admin", which is
+    strictly too permissive here. Swapping this URL to a projcode to reach that
+    decorator would introduce the very bug the gate exists to prevent.
+    ``_ProjectUpdateHandler.form_input()`` calls the same helper in-body for the
+    same reason.
+    """
+    project = _load_pending_project(project_id)
+    if project is None:
+        return htmx_not_found('Project')
+    if not can_edit_project_governance(current_user, project):
+        abort(403)
+
+    # Idempotent: a double-click must not write two 'activated' events.
+    if project.is_active:
+        return htmx_success_message(
+            {'refreshXrasTab': {}},
+            f'{project.projcode} is already active.',
+            detail='Nothing to do.')
+
+    with management_transaction(db.session):
+        # reactivate(), not update(active=True): the latter deliberately leaves
+        # inactivate_time alone (see the method docstring for why widening it
+        # would corrupt unrelated admin saves).
+        project.reactivate()
+        _record_activation_event(project, 'activated')
+
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Activated {project.projcode}.',
+        detail=project.title or None)
+
+
+@bp.route('/xras_dismiss_form/<int:project_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_dismiss_form(project_id: int):
+    """Modal body: ask for the reason a project should not be activated."""
+    project = _load_pending_project(project_id)
+    if project is None:
+        return htmx_modal_not_found('Project')
+    return render_template(
+        'dashboards/allocations/partials/xras_pending_event_form.html',
+        project=project,
+        post_url=url_for('allocations_dashboard.xras_dismiss',
+                         project_id=project_id),
+    )
+
+
+@bp.route('/xras_dismiss/<int:project_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_dismiss(project_id: int):
+    """Hide a pending project from the card, with a required reason.
+
+    Not permanent and not a delete: a dismissal is superseded by whichever comes
+    later, a new XRAS action or an explicit Restore. See
+    ``get_xras_pending_activation`` for the rule.
+    """
+    project = _load_pending_project(project_id)
+    if project is None:
+        return htmx_not_found('Project')
+
+    return handle_htmx_form_post(
+        schema_cls=XrasActivationEventForm,
+        template='dashboards/allocations/partials/xras_pending_event_form.html',
+        do_action=lambda data: _record_activation_event(
+            project, 'dismissed', comment=data['comment']),
+        success_triggers=_XRAS_MODAL_TRIGGERS,
+        success_message=f'Dismissed {project.projcode}.',
+        success_detail='It will reappear if a new XRAS action names it.',
+        error_prefix='Error dismissing project',
+        extra_context={
+            'project': project,
+            'post_url': url_for('allocations_dashboard.xras_dismiss',
+                                project_id=project_id),
+        },
+    )
+
+
+@bp.route('/xras_restore/<int:project_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_restore(project_id: int):
+    """Undo a dismissal.
+
+    An append-only log has no DELETE, so this is a **superseding** event rather
+    than the removal of the dismissal — the mistake and its correction both stay
+    on the record, each with its own author and timestamp.
+    """
+    project = _load_pending_project(project_id)
+    if project is None:
+        return htmx_not_found('Project')
+
+    with management_transaction(db.session):
+        _record_activation_event(project, 'restored')
+
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Restored {project.projcode} to the worklist.')
+
+
+@bp.route('/xras_history/<int:project_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_history(project_id: int):
+    """Modal body: the append-only operator timeline, plus an add-comment form.
+
+    ``MANAGE_XRAS`` rather than ``VIEW_XRAS``, deliberately: the timeline surfaces
+    ``notified_to``, which is project lead/admin contact detail — the same
+    category of data the raw-payload gate was created for.
+    """
+    project = _load_pending_project(project_id)
+    if project is None:
+        return htmx_modal_not_found('Project')
+    return render_template(
+        'dashboards/allocations/partials/xras_pending_history_modal.html',
+        project=project,
+        events=get_xras_activation_events(db.session, project_id),
+        post_url=url_for('allocations_dashboard.xras_comment',
+                         project_id=project_id),
+    )
+
+
+@bp.route('/xras_comment/<int:project_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_comment(project_id: int):
+    """Append a note to a pending project's timeline."""
+    project = _load_pending_project(project_id)
+    if project is None:
+        return htmx_not_found('Project')
+
+    return handle_htmx_form_post(
+        schema_cls=XrasActivationEventForm,
+        template='dashboards/allocations/partials/xras_pending_history_modal.html',
+        do_action=lambda data: _record_activation_event(
+            project, 'comment', comment=data['comment']),
+        success_triggers=_XRAS_MODAL_TRIGGERS,
+        success_message=f'Comment added to {project.projcode}.',
+        error_prefix='Error adding comment',
+        context_fn=lambda: {
+            'project': project,
+            'events': get_xras_activation_events(db.session, project_id),
+            'post_url': url_for('allocations_dashboard.xras_comment',
+                                project_id=project_id),
+        },
+    )
+
+
+@bp.route('/xras_action_details/<int:action_id>')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_action_details(action_id: int):
+    """HTMX fragment: full detail for a single XRAS action.
+
+    ``include_payload`` is gated on MANAGE_XRAS at the *query* level, not just in
+    the template: an operator without it never has the PII in their response body
+    at all, so a view-source cannot leak what the page chose not to draw.
+    """
+    may_see_payload = has_permission(current_user, Permission.MANAGE_XRAS)
+    rows = get_recent_xras_actions(
+        db.session, action_log_id=action_id, include_payload=may_see_payload,
+    )
+    if not rows:
+        # A bare string, not abort(404): this lands in a modal body, where a 404
+        # error page would be worse than useless. text-danger-emphasis rather
+        # than text-danger — the saturated brand red fails WCAG AA on the dark
+        # card (3.35:1 measured); the -emphasis token is theme-aware.
+        return htmx_modal_not_found('Action')
+    return render_template(
+        'dashboards/allocations/partials/xras_action_details_modal.html',
+        r=rows[0], may_see_payload=may_see_payload,
+    )
+
+
+@bp.route('/xras_replay/<int:action_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_replay(action_id: int):
+    """Re-submit a stored payload's bytes as a new, linked audit row."""
+    try:
+        new_id = replay_action(action_id, actor=current_user.username)
+    except LookupError:
+        return htmx_not_found('Action')
+    except Exception as exc:                       # pragma: no cover - defensive
+        current_app.logger.exception('XRAS replay failed for id=%s', action_id)
+        return (f'<div class="alert alert-danger mb-0">Replay failed: {exc}</div>', 500)
+
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Replayed action #{action_id}.',
+        detail=f'Recorded as action #{new_id}.',
     )

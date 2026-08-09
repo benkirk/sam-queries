@@ -229,19 +229,37 @@ def make_mnemonic_code(
 ) -> MnemonicCode:
     """Build and flush a fresh MnemonicCode row.
 
-    ``code`` is a UNIQUE 3-char column, too short for the usual
-    worker-namespaced ``next_seq`` strings. Generated codes are
-    ``Q<base36 worker><base36 counter>`` — one char each, so the code
-    stays exactly 3 chars for any xdist worker up to gw35. The leading
-    ``Q`` + digit-bearing base36 positions keep generated codes disjoint
-    from real (all-alpha, meaningful) snapshot mnemonics.
+    ``code`` is a UNIQUE 3-char column, too short for the usual worker-namespaced
+    ``next_seq`` strings. Generated codes are ``Q`` plus a **two-character base36
+    slice of a 1,296-wide space, partitioned across the xdist workers actually
+    running**. The ``Q`` prefix keeps them disjoint from real snapshot mnemonics,
+    which are meaningful abbreviations — verified: zero ``Q``-prefixed rows exist.
+
+    ⚠️ **The old scheme was ``Q<worker><counter>``: one char each, so 36 codes per
+    worker — and that made capacity depend on how many cores the machine has.** With
+    12 workers locally each worker ran few enough tests to stay under 36; CI's
+    4-worker runner gave each worker ~3x the tests and blew the limit with
+    ``exhausted its 36x36 namespace``. It passed on every developer laptop and failed
+    on the smallest machine in the fleet, which is the wrong way round.
+
+    Partitioning by ``PYTEST_XDIST_WORKER_COUNT`` inverts that: **fewer workers means
+    a larger share each**, which is exactly when each worker needs more. Four workers
+    get 324 codes apiece; twelve get 108; serial (``-n 0``) gets all 1,296.
     """
     if code is None:
         alphabet = string.digits + string.ascii_uppercase
+        span = len(alphabet) ** 2                      # 1,296 two-char combinations
+        workers = max(1, int(os.environ.get('PYTEST_XDIST_WORKER_COUNT', '1')))
+        share = span // workers
         n = next_int("mnemonic_code")
-        if n >= len(alphabet) or _WORKER_NUM >= len(alphabet):
-            raise RuntimeError("make_mnemonic_code exhausted its 36x36 namespace")
-        code = f"Q{alphabet[_WORKER_NUM]}{alphabet[n]}"
+        if n >= share:
+            raise RuntimeError(
+                f'make_mnemonic_code exhausted worker {_WORKER_NUM}\'s share of the '
+                f'code space ({share} codes across {workers} worker(s)). Either a '
+                f'test is looping, or the suite genuinely needs more than {span} '
+                f'mnemonics and the column is too narrow for that.')
+        slot = _WORKER_NUM * share + n
+        code = f'Q{alphabet[slot // len(alphabet)]}{alphabet[slot % len(alphabet)]}'
     if description is None:
         description = f"Test mnemonic {next_seq('mnemo_desc')}"
 

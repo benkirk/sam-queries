@@ -41,6 +41,15 @@ def _can_admin():
             and has_permission_any_facility(current_user, Permission.ACCESS_ADMIN_DASHBOARD))
 
 
+def _can_view_xras():
+    # has_permission, not has_permission_any_facility: an XRAS action is not
+    # facility-scopable (it arrives before we know its facility, and a malformed
+    # body has none at all), so the facility-scoped tier is deliberately excluded
+    # rather than shown a partial view. See rbac.py's USER_FACILITY_PERMISSIONS.
+    return (current_user.is_authenticated
+            and has_permission(current_user, Permission.VIEW_XRAS))
+
+
 def _can_view_config():
     return (current_user.is_authenticated
             and has_permission(current_user, Permission.VIEW_SYSTEM_CONFIG))
@@ -155,6 +164,8 @@ NAV_SECTIONS = (
              'icon': 'fas fa-exchange-alt'},
             {'endpoint': 'allocations_dashboard.adjustments', 'label': 'Adjustments',
              'icon': 'fas fa-balance-scale'},
+            {'endpoint': 'allocations_dashboard.xras', 'label': 'XRAS',
+             'icon': 'fas fa-plug', 'visible': _can_view_xras},
         ),
     },
     {
