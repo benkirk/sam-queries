@@ -302,6 +302,63 @@ def _errors(error_messages, status):
     return xras_response({'errors': error_messages}, message=summary, status=status)
 
 
+def _parse_action(raw_payload):
+    """Parse and validate one POST body. **The single spelling of the 400/422 ladder.**
+
+    Returns ``(action, audit)``:
+
+    - ``action`` is the validated dict, or ``None`` if the body did not survive.
+    - ``audit`` is always the ``_record`` kwargs describing the outcome —
+      ``status``, ``http_status``, and (except on the two 400 arms) the three
+      identity columns. Callers merge their own kwargs on top and decide what to
+      return.
+
+    ⚠️ **The three message strings are on the wire contract.** XRAS administrators
+    read them in their "Accounting Service Posts" panel, the same standing as the
+    error vocabulary in :mod:`sam.xras.errors`. Reproduce, do not tidy.
+
+    ⚠️ **Identity is read off the *raw* dict on the 422 arm, and off the *validated*
+    action on the success arm.** That asymmetry is deliberate: a rejected body never
+    passed the schema, so the only ``actionType`` / ``requestNumber`` / ``actionId``
+    available are untrusted — which is exactly why :func:`_fit` and :func:`_fit_int`
+    guard them. On the 400 arms there is no identity at all, and a NULL
+    ``action_type`` is meaningful there: it says "we could not parse the body".
+
+    This exists because there were two copies. ``replay.py`` carried the second, and
+    it had already drifted — it never passed ``action_id``, so every replayed row
+    stored NULL in the column the runbook's triage section reaches for first ("three
+    posts sharing one ``action_id`` are a duplicate, not three awards"). The copy
+    predated the column and nothing pointed the two at each other. One spelling now,
+    so the next column added here cannot reach one path and miss the other.
+    """
+    try:
+        parsed = json.loads(raw_payload)
+    except ValueError as exc:
+        return None, {'status': 'failed', 'http_status': 400,
+                      'error_messages': [f'Malformed JSON body: {exc}']}
+
+    if not isinstance(parsed, dict):
+        return None, {
+            'status': 'failed', 'http_status': 400,
+            'error_messages': [
+                f'Expected a JSON object, got {type(parsed).__name__}'],
+        }
+
+    try:
+        action = XrasActionSchema().load(parsed)
+    except ValidationError as exc:
+        return None, {'status': 'failed', 'http_status': 422,
+                      'error_messages': _flatten(exc.messages),
+                      'action_type': parsed.get('actionType'),
+                      'request_number': parsed.get('requestNumber'),
+                      'action_id': parsed.get('actionId')}
+
+    return action, {'status': 'received', 'http_status': 200,
+                    'action_type': action.get('actionType'),
+                    'request_number': action.get('requestNumber'),
+                    'action_id': action.get('actionId')}
+
+
 def _capture_only():
     """Whether dispatch is suppressed. Default **on** until handlers land."""
     return current_app.config.get('XRAS_ACTIONS_CAPTURE_ONLY', True)
@@ -426,39 +483,17 @@ def post_action(action_id=None, request_id=None, action_type=None):
                 error_messages=[message])
         return _errors([message], 422)
 
-    try:
-        parsed = json.loads(raw_payload)
-    except ValueError as exc:
-        # Legacy 500s here (an unconfigured ObjectMapper inside a RuntimeException).
-        # A malformed body is the client's error, so 400 — and it still gets a row,
-        # with action_type NULL because we genuinely do not know it.
-        _record(status='failed', raw_payload=raw_payload, http_status=400,
-                error_messages=[f'Malformed JSON body: {exc}'])
-        return _errors([f'Malformed JSON body: {exc}'], 400)
-
-    if not isinstance(parsed, dict):
-        message = f'Expected a JSON object, got {type(parsed).__name__}'
-        _record(status='failed', raw_payload=raw_payload, http_status=400,
-                error_messages=[message])
-        return _errors([message], 400)
-
-    try:
-        action = XrasActionSchema().load(parsed)
-    except ValidationError as exc:
-        lines = _flatten(exc.messages)
-        _record(status='failed', raw_payload=raw_payload, http_status=422,
-                action_type=parsed.get('actionType'),
-                request_number=parsed.get('requestNumber'),
-                action_id=parsed.get('actionId'),
-                error_messages=lines)
-        return _errors(lines, 422)
+    # Legacy 500s on a malformed body (an unconfigured ObjectMapper inside a
+    # RuntimeException). That is the client's error, so 400 — and it still gets a
+    # row, with action_type NULL because we genuinely do not know it.
+    action, audit = _parse_action(raw_payload)
+    if action is None:
+        _record(raw_payload=raw_payload, **audit)
+        return _errors(audit['error_messages'], audit['http_status'])
 
     # The row lands here — before dispatch, so a handler that explodes leaves a
     # replayable record behind. http_status is 200 unless dispatch changes it.
-    log_id = _record(status='received', raw_payload=raw_payload, http_status=200,
-                     action_type=action.get('actionType'),
-                     request_number=action.get('requestNumber'),
-                     action_id=action.get('actionId'))
+    log_id = _record(raw_payload=raw_payload, **audit)
 
     if _capture_only():
         # Recorded and deliberately not acted on. The row stays 'received', which is

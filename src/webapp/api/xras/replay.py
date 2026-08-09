@@ -41,8 +41,9 @@ because of its equal-end-date skip.
 
 XRAS owns the retry. A post that fails is parked on *their* side and re-sent from there
 once the underlying data is fixed, so a replay that applied would race a resend with no
-idempotency key between them — ``actionId`` exists in every payload but is not a column,
-only bytes inside ``raw_payload``.
+idempotency key between them. ``actionId`` is now a column (C.1b) and every row this
+module writes carries it, but it is a *triage* handle rather than an idempotency key —
+nothing enforces uniqueness on it and nothing consults it before applying an action.
 
 What remains is the half that was always the valuable one: replay re-parses and
 re-validates stored bytes against the **current** schema code and records ``replayed``
@@ -53,14 +54,10 @@ If a production remediation path is ever wanted, it needs that idempotency key a
 agreement with XRAS about who owns resend — not a flag flip here.
 """
 
-import json
-
 from flask import current_app
-from marshmallow import ValidationError
 from sqlalchemy.orm import Session
 
 from sam.integration.xras import XrasActionLog
-from sam.schemas.forms import XrasActionSchema
 from webapp.extensions import db
 
 #: Imported as a MODULE, not as names. ``from .actions import _record`` would bind
@@ -109,46 +106,24 @@ def replay_action(log_id, *, actor):
     original = _load_original(log_id)
     raw_payload = original['raw_payload']
 
-    # Parse and validate exactly as the ingest route does — a replay must be able to
-    # *fail*, and fail the same way. A payload harvested months ago against an older
-    # schema is precisely the case worth catching.
-    try:
-        parsed = json.loads(raw_payload)
-    except ValueError as exc:
-        message = f'Malformed JSON body: {exc}'
-        return actions._record(
-            status='failed', raw_payload=raw_payload, http_status=400,
-            error_messages=[message], remote_actor=original['remote_actor'],
-            replay_of_id=log_id, processed_by=actor,
-        )
+    #: What every row this function writes carries, on any arm. The bytes still
+    #: originated at XRAS so ``remote_actor`` stays theirs; the human goes in
+    #: ``processed_by``, which is also the only column wide enough for a username.
+    provenance = dict(remote_actor=original['remote_actor'],
+                      replay_of_id=log_id, processed_by=actor)
 
-    if not isinstance(parsed, dict):
-        message = f'Expected a JSON object, got {type(parsed).__name__}'
-        return actions._record(
-            status='failed', raw_payload=raw_payload, http_status=400,
-            error_messages=[message], remote_actor=original['remote_actor'],
-            replay_of_id=log_id, processed_by=actor,
-        )
+    # Parse and validate through the ingest route's own function — a replay must be
+    # able to *fail*, and fail the same way. A payload harvested months ago against
+    # an older schema is precisely the case worth catching.
+    #
+    # ⚠️ This used to be a hand-copied duplicate of that ladder, and the copy had
+    # already drifted: it never passed `action_id`, so every replayed row stored NULL
+    # in the duplicate-detection column. Call the shared one; do not re-inline it.
+    action, audit = actions._parse_action(raw_payload)
+    if action is None:
+        return actions._record(raw_payload=raw_payload, **audit, **provenance)
 
-    try:
-        action = XrasActionSchema().load(parsed)
-    except ValidationError as exc:
-        lines = actions._flatten(exc.messages)
-        return actions._record(
-            status='failed', raw_payload=raw_payload, http_status=422,
-            action_type=parsed.get('actionType'),
-            request_number=parsed.get('requestNumber'),
-            error_messages=lines, remote_actor=original['remote_actor'],
-            replay_of_id=log_id, processed_by=actor,
-        )
-
-    new_id = actions._record(
-        status='received', raw_payload=raw_payload, http_status=200,
-        action_type=action.get('actionType'),
-        request_number=action.get('requestNumber'),
-        remote_actor=original['remote_actor'],
-        replay_of_id=log_id, processed_by=actor,
-    )
+    new_id = actions._record(raw_payload=raw_payload, **audit, **provenance)
 
     # Re-validated, never dispatched — see the module docstring. 'replayed' is
     # precisely true and is distinguishable from 'received' ("arrived from XRAS,

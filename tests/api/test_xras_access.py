@@ -1238,6 +1238,56 @@ class TestReplay:
             with pytest.raises(LookupError):
                 replay_action(999_999_999, actor='benkirk')
 
+    def test_a_replay_carries_the_same_action_id_as_its_parent(
+            self, app, xras_client, action_log):
+        """``action_id`` is the duplicate-detection column, so a replay must keep it.
+
+        The runbook's triage section reaches for it first: *"have I seen this action
+        before? Three posts sharing one ``action_id`` are a duplicate, not three
+        awards."* A replay that stored NULL would break that lookup on precisely the
+        rows an operator had touched — the ones most likely to be under investigation.
+
+        It was NULL because ``replay.py`` predates the column: the module docstring
+        still said ``actionId`` was "not a column, only bytes inside ``raw_payload``",
+        which was true until C.1b added it. The two parse ladders were copies, so the
+        column reached one and not the other.
+        """
+        from webapp.api.xras.replay import replay_action
+
+        self._seed(xras_client)
+        original = action_log.one()
+        assert original['action_id'] == 391986, 'corpus payload carries actionId'
+
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='benkirk')
+
+        assert action_log.by_id(new_id)['action_id'] == original['action_id']
+
+    def test_a_replay_of_a_rejected_payload_still_carries_action_id(
+            self, app, xras_client, action_log):
+        """The 422 arm too — a rejected action is the one you most want to correlate.
+
+        ``actions.py`` reads it off the *unvalidated* dict for exactly this reason, so
+        the replay arm must as well.
+        """
+        from webapp.api.xras.replay import replay_action
+
+        resp = xras_client.post(
+            '/api/xras/v1/actions',
+            data=json.dumps({'actionType': 'New', 'requestNumber': 'NCAR9999',
+                             'actionId': 424242, 'awardPeriod': True}),
+            content_type='application/json', headers=_auth())
+        assert resp.status_code == 422
+        original = action_log.one()
+        assert original['action_id'] == 424242
+
+        with app.app_context():
+            new_id = replay_action(original['id'], actor='benkirk')
+
+        row = action_log.by_id(new_id)
+        assert row['status'] == 'failed'
+        assert row['action_id'] == 424242
+
     def test_a_long_actor_name_is_truncated_not_a_dataerror(
             self, app, xras_client, action_log):
         """``processed_by`` is varchar(35). An over-long actor must not turn an
