@@ -8,7 +8,7 @@ plain dict a builder produced — never an ORM object. All formatting goes throu
 from rich.panel import Panel
 from rich.table import Table
 
-from cli.core.display_utils import BLANK, date_cell, text, truncate
+from cli.core.display_utils import BLANK, text, truncate
 
 #: Rich styles per action status. Deliberately the same semantics as the web
 #: badges (dashboards/fragments/badges.html) so an operator reading the terminal
@@ -163,8 +163,6 @@ def display_replay_result(ctx, payload) -> None:
 
 def display_mapping_report(ctx, payload) -> None:
     """Render the resource-mapping gaps, worst group first."""
-    from rich.table import Table
-
     ctx.console.rule('[bold]XRAS resource mapping')
     ctx.console.print(
         f"[bold]{payload['mapped']}[/bold] mapping row(s) in "

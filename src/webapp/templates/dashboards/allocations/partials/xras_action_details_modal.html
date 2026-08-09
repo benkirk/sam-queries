@@ -41,13 +41,13 @@
 
     <div class="stat-item">
         <span class="stat-label">Received:</span>
-        <span class="stat-value">{{ r.received_time.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+        <span class="stat-value">{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</span>
     </div>
 
     {% if r.processed_time %}
     <div class="stat-item">
         <span class="stat-label">Processed:</span>
-        <span class="stat-value">{{ r.processed_time.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+        <span class="stat-value">{{ r.processed_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</span>
     </div>
     {% endif %}
 

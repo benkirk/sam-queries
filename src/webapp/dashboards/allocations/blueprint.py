@@ -5,7 +5,6 @@ Provides drill-down allocation dashboard showing allocation summaries
 grouped hierarchically by Resource → Facility → Allocation Type → Projects.
 """
 
-import json
 
 from flask import (
     Blueprint, render_template, request, flash, redirect, url_for, jsonify,
@@ -17,8 +16,9 @@ from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.htmx import (
-    handle_htmx_form_post, htmx_not_found, htmx_success_message, read_flag,
-    read_layout, read_theme, register_typeahead,
+    handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
+    htmx_success_message, modal_triggers, read_flag, read_layout, read_theme,
+    register_typeahead,
 )
 from webapp.api.xras.replay import replay_action
 from sam.integration.xras import XrasActivationEvent
@@ -1180,6 +1180,12 @@ def htmx_create_adjustment():
 _XRAS_FRAGMENT_TARGET = 'alloc-xras-fragment'
 _XRAS_FORM_ID = 'xras-filters'
 
+#: Close the modal, then reload the tab behind it. Built by ``modal_triggers``
+#: rather than written as a literal, which is what the four admin route modules
+#: already do — the close half is the shared convention and only the reload event
+#: is ours.
+_XRAS_MODAL_TRIGGERS = modal_triggers('refreshXrasTab')
+
 
 def _parse_xras_filters(request_args):
     """Parse filter + sort + pagination params for the XRAS fragment.
@@ -1520,10 +1526,10 @@ def xras_notify(project_id: int):
         'XRAS notify recorded (no mail sent): project=%s by=%s to=%s',
         project.projcode, current_user.username, notified_to)
 
-    return render_template(
+    return htmx_success(
         'dashboards/allocations/partials/xras_notify_not_implemented.html',
-        project=project, people=people, recorded_at=event.creation_time,
-    ), 200, {'HX-Trigger': json.dumps({'refreshXrasTab': {}})}
+        {'refreshXrasTab': {}},
+        project=project, people=people, recorded_at=event.creation_time)
 
 
 @bp.route('/xras_activate/<int:project_id>', methods=['POST'])
@@ -1577,7 +1583,7 @@ def xras_dismiss_form(project_id: int):
     """Modal body: ask for the reason a project should not be activated."""
     project = _load_pending_project(project_id)
     if project is None:
-        return '<p class="text-danger-emphasis mb-0">Project not found.</p>'
+        return htmx_modal_not_found('Project')
     return render_template(
         'dashboards/allocations/partials/xras_pending_event_form.html',
         project=project,
@@ -1605,7 +1611,7 @@ def xras_dismiss(project_id: int):
         template='dashboards/allocations/partials/xras_pending_event_form.html',
         do_action=lambda data: _record_activation_event(
             project, 'dismissed', comment=data['comment']),
-        success_triggers={'closeActiveModal': {}, 'refreshXrasTab': {}},
+        success_triggers=_XRAS_MODAL_TRIGGERS,
         success_message=f'Dismissed {project.projcode}.',
         success_detail='It will reappear if a new XRAS action names it.',
         error_prefix='Error dismissing project',
@@ -1651,7 +1657,7 @@ def xras_history(project_id: int):
     """
     project = _load_pending_project(project_id)
     if project is None:
-        return '<p class="text-danger-emphasis mb-0">Project not found.</p>'
+        return htmx_modal_not_found('Project')
     return render_template(
         'dashboards/allocations/partials/xras_pending_history_modal.html',
         project=project,
@@ -1675,7 +1681,7 @@ def xras_comment(project_id: int):
         template='dashboards/allocations/partials/xras_pending_history_modal.html',
         do_action=lambda data: _record_activation_event(
             project, 'comment', comment=data['comment']),
-        success_triggers={'closeActiveModal': {}, 'refreshXrasTab': {}},
+        success_triggers=_XRAS_MODAL_TRIGGERS,
         success_message=f'Comment added to {project.projcode}.',
         error_prefix='Error adding comment',
         context_fn=lambda: {
@@ -1706,7 +1712,7 @@ def xras_action_details(action_id: int):
         # error page would be worse than useless. text-danger-emphasis rather
         # than text-danger — the saturated brand red fails WCAG AA on the dark
         # card (3.35:1 measured); the -emphasis token is theme-aware.
-        return '<p class="text-danger-emphasis mb-0">Action not found.</p>'
+        return htmx_modal_not_found('Action')
     return render_template(
         'dashboards/allocations/partials/xras_action_details_modal.html',
         r=rows[0], may_see_payload=may_see_payload,

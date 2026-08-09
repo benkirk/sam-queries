@@ -609,3 +609,67 @@ def get_projects_by_ids(session: Session, project_ids) -> List[Project]:
             .filter(Project.project_id.in_(project_ids)).all())
 
 
+
+
+def audit_resource_mapping(session: Session) -> Dict[str, Any]:
+    """Which SAM resources XRAS can and cannot name, in three groups.
+
+    ``xras_resource_repository_key_resource`` maps an XRAS ``resourceRepositoryKey``
+    to a SAM resource, and it is the join behind two different things:
+
+    * on the **write** side, an unmapped key is
+      ``No resource found in SAM corresponding to key %s`` — the action fails.
+    * on the **read** side, ``resourceRepositoryKey`` is simply *omitted* from the
+      GET payloads when a resource has no row, so **closing a gap moves response
+      bytes**. That is why this is a pre-cutover check and not a post-cutover one:
+      adding a mapping after the parity run invalidates it.
+
+    Three groups because they need different actions: active resources with no
+    mapping (the ones that break awards), mapping rows pointing at decommissioned
+    kit (harmless but misleading), and rows whose resource has vanished entirely (a
+    broken FK, which should be impossible).
+
+    ⚠️ **An unmapped active resource is not a failure.** Not every internal resource
+    is offered for allocation through XRAS, so most of the unmapped ones are unmapped
+    by design — stably 11 of them across snapshot refreshes. Only ``dangling`` is
+    unambiguously broken. The caller decides what to do with that; this reports.
+
+    Lives here rather than in ``cli/xras/builders.py``, where it was: builders are
+    ORM→dict extractors per ``src/cli/README.md``, and a webapp surface that wants
+    the same audit should not have to import the CLI to get it.
+    """
+    from sam.integration.xras import XrasResourceRepositoryKeyResource
+    from sam.resources.resources import Resource
+
+    rows = session.query(XrasResourceRepositoryKeyResource).all()
+
+    # ⚠️ Keyed by resource_id, so two keys pointing at ONE resource collapse to the
+    # last one seen while ``mapped`` below still counts both. Left as-is because the
+    # column is the mapping's primary key and the duplicate is itself the anomaly —
+    # but it is why these two numbers can disagree.
+    by_resource_id = {r.resource_id: r for r in rows}
+
+    unmapped_active, mapped_decommissioned, dangling = [], [], []
+
+    for resource in session.query(Resource).all():
+        row = by_resource_id.get(resource.resource_id)
+        commissioned = resource.is_commissioned_at()
+        if row is None:
+            if commissioned:
+                unmapped_active.append(resource.resource_name)
+        elif not commissioned:
+            mapped_decommissioned.append(
+                {'key': row.resource_repository_key,
+                 'resource': resource.resource_name})
+
+    for row in rows:
+        if row.resource is None:
+            dangling.append(row.resource_repository_key)
+
+    return {
+        'mapped': len(rows),
+        'unmapped_active': sorted(unmapped_active),
+        'mapped_decommissioned': sorted(mapped_decommissioned,
+                                        key=lambda d: d['resource']),
+        'dangling_keys': sorted(dangling),
+    }

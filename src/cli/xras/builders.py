@@ -12,6 +12,7 @@ sees.
 from typing import Any, Dict, List, Optional
 
 from sam.queries.xras_actions import (
+    audit_resource_mapping,
     get_recent_xras_actions,
     summarize_xras_actions,
 )
@@ -120,51 +121,10 @@ def _describe_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def build_mapping_report(session) -> dict:
-    """Which SAM resources XRAS can and cannot name.
+    """The ``xras_resource_mapping`` envelope.
 
-    ``xras_resource_repository_key_resource`` maps an XRAS ``resourceRepositoryKey``
-    to a SAM resource, and it is the join behind two different things:
-
-    * on the **write** side, an unmapped key is
-      ``No resource found in SAM corresponding to key %s`` — the action fails.
-    * on the **read** side, ``resourceRepositoryKey`` is simply *omitted* from the
-      GET payloads when a resource has no row, so **closing a gap moves response
-      bytes**. That is why this is a pre-cutover check and not a post-cutover one:
-      adding a mapping after the parity run invalidates it.
-
-    Reports three groups, because they need different actions: active resources with
-    no mapping (the ones that break awards), mapping rows pointing at decommissioned
-    kit (harmless but misleading), and rows whose resource has vanished entirely
-    (a broken FK, which should be impossible).
+    The audit itself is :func:`sam.queries.xras_actions.audit_resource_mapping` —
+    builders are ORM→dict extractors, not query modules, and the webapp should be
+    able to reach the same answer without importing the CLI.
     """
-    from sam.integration.xras import XrasResourceRepositoryKeyResource
-    from sam.resources.resources import Resource
-
-    rows = session.query(XrasResourceRepositoryKeyResource).all()
-    by_resource_id = {r.resource_id: r for r in rows}
-
-    unmapped_active, mapped_decommissioned, dangling = [], [], []
-
-    for resource in session.query(Resource).all():
-        row = by_resource_id.get(resource.resource_id)
-        commissioned = resource.is_commissioned_at()
-        if row is None:
-            if commissioned:
-                unmapped_active.append(resource.resource_name)
-        elif not commissioned:
-            mapped_decommissioned.append(
-                {'key': row.resource_repository_key,
-                 'resource': resource.resource_name})
-
-    for row in rows:
-        if row.resource is None:
-            dangling.append(row.resource_repository_key)
-
-    return {
-        'kind': 'xras_resource_mapping',
-        'mapped': len(rows),
-        'unmapped_active': sorted(unmapped_active),
-        'mapped_decommissioned': sorted(mapped_decommissioned,
-                                        key=lambda d: d['resource']),
-        'dangling_keys': sorted(dangling),
-    }
+    return {'kind': 'xras_resource_mapping', **audit_resource_mapping(session)}
