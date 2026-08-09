@@ -24,9 +24,10 @@ no code is left.** The design, the measurements and the reasoning live in
 
 | # | Precondition | How to prove it |
 |---|---|---|
-| 1 | All six handlers built and registered | `pytest -q` → 5,280 passed; `pytest -m stress -n 0` → 17 passed |
+| 1 | All six handlers built and registered | `pytest -q` → 5,280 passed; `pytest -m stress -n 0` → 21 passed |
 | 1b | The whole legacy surface is mapped — all eight endpoints, not the seven XRAS calls today | `pytest tests/api/test_xras_roles.py tests/api/test_xras_unmapped.py -q` |
 | 2 | The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
+| 2b | ⚠️ The DDL the DBA ran is the **current** `zz-90`/`zz-91` — `raw_payload`, `error_messages`, `comment` and `notified_to` must be **utf8mb4** | `SELECT COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_NAME IN ('xras_action_log','xras_activation_event')` |
 | 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml:291` — and confirm it in the running pod's env before anything else |
 | 4 | The replay-and-diff oracle passes | `pytest tests/unit/test_xras_oracle.py -q` |
 | 5 | A notification path exists for `active = 0` projects | Sprint B's pending-activation card on the Allocations dashboard |
@@ -208,6 +209,15 @@ new.
 - **Wire shapes never seen in production**: `Co-PI` vs `CoPi` is **closed** — membership
   ignores `roleType` entirely, so the spelling cannot matter, tested across three.
   `Renewal` and `Advance` are exercised synthetically.
+- **The audit table's charset is split, on purpose.** `raw_payload`, `error_messages`
+  and `xras_activation_event.comment` / `.notified_to` are **utf8mb4**; every
+  identifier column is **utf8mb3**. utf8mb3 cannot hold a 4-byte character at all, and
+  under `STRICT_TRANS_TABLES` that raises `1366` and **loses the audit row** — so the
+  columns carrying human text (project titles, abstracts, operator notes) had to move.
+  The identifiers could not follow: `request_number` and `projcode_result` join against
+  `project.projcode`, and a mixed-charset comparison stops using the index. They are
+  guarded by `_fit()` replacing astral characters with `U+FFFD` instead, so an emoji in
+  `actionType` shows as `New�` in the table and verbatim in `raw_payload`.
 - **`POST /v1/roles` answers 404/409 where legacy answers 400.** Ported late, after an audit
   of the deployed WAR found it missing. Legacy's own ladder is dead code — every validation
   failure there falls through to 400 with a leaked `ValidationException:` string (§2.1) — so

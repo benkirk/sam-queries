@@ -2,7 +2,7 @@
 
 ## Overview
 
-The SAM test suite has **5,356 collected tests** (as of 2026-08) across
+The SAM test suite has **5,360 collected tests** (as of 2026-08) across
 five tiers. The default run — everything except the two gated tiers — is
 **5,317 tests in ~90 seconds** on a laptop with pytest-xdist parallelism.
 
@@ -11,7 +11,7 @@ Two tiers are gated **off** by default and run only when asked for:
 | tier | size | command | what it is |
 |---|---|---|---|
 | `perf` | 22 | `pytest -m perf -n 0` | query-count and latency baselines |
-| `stress` | 17 | `pytest -m stress` | XRAS audit-row triage, oversize payloads, repeat posts, unsampled wire shapes |
+| `stress` | 21 | `pytest -m stress` | XRAS audit-row triage: oversize payloads, 4-byte unicode, the unmapped-path ingress, repeat posts, unsampled wire shapes |
 
 > This file is the single source of truth for suite size and timings —
 > other docs link here rather than restating numbers.
