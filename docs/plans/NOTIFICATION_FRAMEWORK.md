@@ -214,7 +214,7 @@ unused. New alongside it:
 | `NOTIFY_ENABLED` | **`false`** | master switch. Fail-closed. |
 | `NOTIFY_TRANSPORT` | `smtp` | `smtp` / `console` / `null` |
 | `NOTIFY_REDIRECT_TO` | *(empty)* | when set, **every** message is re-addressed here |
-| `NOTIFY_BCC` | *(empty)* | an **envelope** Bcc; replaces the hardcoded header |
+| `NOTIFY_BCC` | *(empty)* | an **envelope** Bcc; replaces the hardcoded address |
 | `MAIL_TIMEOUT` | `10` | socket timeout, seconds |
 | `NOTIFY_QUEUED_STALE_SECONDS` | `300` | how long a `queued` row blocks its own retry — see § 5 |
 
@@ -505,11 +505,20 @@ Three one-liners get fixed while the file is open:
   Uncommenting it silently redirects every notice — which is what
   `NOTIFY_REDIRECT_TO` exists to do properly.
 
-**And the `Bcc` change is a correctness fix, not a config move.**
-`email.py:127,138` sets `msg['Bcc']` and never strips the header before
-`send_message`, so it goes out on the wire: every recipient can read it, the one
-thing a *blind* carbon copy must not do. `NOTIFY_BCC` joins the envelope
-recipient list, with no header emitted.
+**The `Bcc` is a config move, and the interesting part is not to break it.**
+An earlier revision of this doc claimed `email.py:127,138` leaks the header,
+since it sets `msg['Bcc']` and never deletes it. **Measured, that is wrong**:
+`smtplib.send_message` extracts the envelope recipients from `To`/`Cc`/`Bcc`
+and then serialises the message *without* `Bcc`, so today's blind copy really
+is blind. So `NOTIFY_BCC` only replaces a hardcoded address with config.
+
+What makes it worth a test anyway is that the rewrite can easily lose the
+property. A transport that builds its own recipient list and calls
+`sendmail(from_addr, [recipient], msg.as_string())` — the obvious shape once
+you are computing envelope recipients yourself — serialises whatever headers
+are set, `Bcc` included. `SmtpTransport` therefore never sets a `Bcc` header at
+all: the address goes only into `to_addrs`. § 10's assertion is a regression
+guard on that, not a bug fix.
 
 ### The two recipient resolvers
 
@@ -697,7 +706,7 @@ rather than rewriting them is what turns this into a red build.
   text-only fallback, `sam.fmt` filters present in the notify env
 - `test_notify_smtp_transport.py` — TLS, timeout, `TransportError` mapping,
   multipart vs plain, and `NOTIFY_BCC` **as an envelope recipient with no
-  header emitted** (the § 7 fix; nothing asserts on the Bcc today)
+  header emitted** — a regression guard, per § 7, not a bug fix
 - `test_notify_service.py` — the guard matrix (disabled → `suppressed`,
   redirect → `redirected` + `intended_recipient` + a key built from the
   *intended* address), the `queued → sent|failed` lifecycle, one `open()` per
