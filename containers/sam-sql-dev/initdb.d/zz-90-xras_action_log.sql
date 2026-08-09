@@ -34,6 +34,37 @@
 --   project.projcode          varchar(30)  utf8mb3
 --   users.username            varchar(35)  utf8mb3
 --   project / allocation_transaction / manual_task  ENGINE=InnoDB, utf8mb3_general_ci
+--
+-- CHARSET IS SPLIT, AND THE SPLIT IS MEASURED
+-- ------------------------------------------
+-- The table default stays utf8mb3 to match its neighbours. The two TEXT columns
+-- are utf8mb4, because they are the only ones that hold text a human wrote:
+-- raw_payload is a verbatim XRAS body carrying project titles, abstracts and
+-- personal names, and error_messages is built from those same values. utf8mb3
+-- cannot store a 4-byte character at all — under STRICT_TRANS_TABLES (confirmed
+-- on in production: sam-sql.ucar.edu, MySQL 8.0.41-32) a single emoji raises
+-- `1366 Incorrect string value`, the INSERT fails, and THE AUDIT ROW IS LOST.
+-- That is the same failure class as the 1406 overflow guarded in
+-- webapp/api/xras/actions.py, arriving through a different door.
+--
+-- ⚠️  The identifier columns must NOT follow. remote_actor / action_type /
+--     request_number / service / status / projcode_result / processed_by stay
+--     utf8mb3, and two of them are load-bearing: sam/queries/xras_activation.py
+--     joins `project.projcode` (utf8mb3_general_ci) against BOTH projcode_result
+--     and request_number. Measured on production — a utf8mb4 value compared to
+--     that column still compares (no 1267), but stops seeking:
+--
+--       WHERE projcode = _utf8mb4'SCSG0001' COLLATE utf8mb4_general_ci
+--         -> type: index   rows: 4650      full index scan
+--       WHERE projcode = 'SCSG0001'
+--         -> type: const   rows: 1         index seek
+--
+--     Those columns hold projcodes and a fixed action vocabulary, where a 4-byte
+--     glyph is meaningless, so `_fit()` replaces astral characters instead.
+--
+-- This split is free ONLY because these tables do not exist in production yet.
+-- Once the DBA creates them it becomes an ALTER on a table with an audit trail
+-- in it — so whatever ticket carries this file must carry THIS version of it.
 
 USE `sam`;
 
@@ -82,13 +113,20 @@ CREATE TABLE IF NOT EXISTS xras_action_log (
     -- sentence, and a bounded column cannot reproduce the overflow that loses an
     -- audit row under STRICT_TRANS_TABLES.
     outcome_reason      VARCHAR(255),
-    raw_payload         TEXT         NOT NULL,   -- the body, verbatim, before parsing
+    -- utf8mb4: see the CHARSET note in the header. This is the XRAS body verbatim,
+    -- so it carries whatever a PI typed into a title or an abstract.
+    raw_payload         TEXT         CHARACTER SET utf8mb4
+                                     COLLATE utf8mb4_general_ci NOT NULL,
     status              VARCHAR(16)  NOT NULL,   -- received|processed|manual|failed|replayed
     http_status         SMALLINT UNSIGNED,       -- the code we answered: 200|400|422.
                                                  -- status='failed' covers BOTH a malformed
                                                  -- body (400) and a schema rejection (422),
                                                  -- and triage needs to tell them apart.
-    error_messages      TEXT,                    -- the ordered list, one per line
+    -- utf8mb4 for the same reason: these strings interpolate payload values
+    -- (`Cannot find contract for grant number "..."`), so they inherit the body's
+    -- character range.
+    error_messages      TEXT         CHARACTER SET utf8mb4
+                                     COLLATE utf8mb4_general_ci,
     projcode_result     VARCHAR(30),             -- diverges from request_number on the New path
     processed_time      DATETIME,
     processed_by        VARCHAR(35),             -- users.username width

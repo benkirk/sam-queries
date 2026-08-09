@@ -74,12 +74,21 @@ CREATE TABLE IF NOT EXISTS xras_activation_event (
     event_type          VARCHAR(16)  NOT NULL,
 
     -- Required for 'comment' and 'dismissed'; unused by the one-click actions.
-    comment             TEXT,
+    --
+    -- utf8mb4, per the CHARSET note in zz-90: a human types this into a form, and
+    -- utf8mb3 cannot hold a 4-byte character at all — under STRICT_TRANS_TABLES an
+    -- emoji in a dismissal reason would raise 1366 and lose the event. Unlike the
+    -- xras_action_log identifier columns this joins to nothing, so it is free.
+    comment             TEXT         CHARACTER SET utf8mb4
+                                     COLLATE utf8mb4_general_ci,
 
     -- Who was actually told. Recorded rather than derived because the project
     -- lead can change: "the current lead" and "who we notified" are different
     -- questions, and only the second one is an audit answer.
-    notified_to         TEXT,
+    -- utf8mb4 alongside `comment`: free text, not indexed, not joined, so matching
+    -- its neighbour costs nothing and avoids a per-column exception to remember.
+    notified_to         TEXT         CHARACTER SET utf8mb4
+                                     COLLATE utf8mb4_general_ci,
 
     -- PROVENANCE ONLY — which action prompted this. project_id is the key; the
     -- card is project-scoped so it survives the action log's blind spots.
