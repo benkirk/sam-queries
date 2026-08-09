@@ -1,16 +1,20 @@
 """Notifier — the guard matrix and the batch lifecycle.
 
-Ledger interaction is covered separately (tests/unit/test_notification_log.py);
-here the ledger is absent or a stub, so these tests pin the *decisions*
-rather than the recording.
+Most of these run with no ledger at all, so they pin the *decisions* rather
+than the recording; `TestWithALedger` at the end wires a real one and checks
+the two meet.
 """
+
+from contextlib import contextmanager
 
 import pytest
 
+from sam import NotificationLog
 from sam.notify import (
     Message, Notifier, NotifyConfig, NullTransport, Recipient, TransportError,
     TemplateRenderer,
 )
+from sam.notify.ledger import NotificationLedger
 
 
 @pytest.fixture
@@ -244,3 +248,143 @@ class TestTransportSelection:
                             renderer=renderer)
         notifier.send(_message())
         assert 'Dear A PI' in capsys.readouterr().out
+
+
+class TestWithALedger:
+    """The guard matrix wired to real rows.
+
+    The ledger commits by design (mail cannot be un-sent by a rollback), so
+    the factory hands back the test session with `commit` neutered — see
+    tests/unit/test_notify_ledger.py.
+    """
+
+    @pytest.fixture
+    def ledger(self, session):
+        @contextmanager
+        def factory():
+            real_commit = session.commit
+            session.commit = session.flush
+            try:
+                yield session
+            finally:
+                session.commit = real_commit
+
+        return NotificationLedger(factory, config=NotifyConfig())
+
+    def _notifier(self, renderer, ledger, transport=None, **cfg):
+        cfg.setdefault('enabled', True)
+        return Notifier(config=NotifyConfig(**cfg), renderer=renderer,
+                        transport=transport or NullTransport(), ledger=ledger)
+
+    def test_a_send_writes_one_row_that_ends_sent(self, renderer, ledger, session):
+        result = self._notifier(renderer, ledger).send(_message())
+        row = session.get(NotificationLog, result.log_id)
+        assert (row.status, row.recipient) == ('sent', 'pi@x.edu')
+        assert row.sent_time is not None
+
+    def test_the_row_is_queued_before_the_transport_runs(self, renderer, ledger,
+                                                         session):
+        """Ordering is the whole point: a crash between the two writes must
+        leave an honest 'we do not know', not a silent loss."""
+        seen = {}
+
+        class Watching(NullTransport):
+            def deliver(self, message, rendered):
+                seen['status'] = session.get(
+                    NotificationLog, max(
+                        r.notification_log_id for r in
+                        session.query(NotificationLog).all())).status
+                super().deliver(message, rendered)
+
+        self._notifier(renderer, ledger, Watching()).send(_message())
+        assert seen['status'] == 'queued'
+
+    def test_a_transport_failure_resolves_the_row_to_failed(self, renderer,
+                                                            ledger, session):
+        class Exploding(NullTransport):
+            def deliver(self, message, rendered):
+                raise TransportError('550 nope')
+
+        result = self._notifier(renderer, ledger, Exploding()).send(_message())
+        row = session.get(NotificationLog, result.log_id)
+        assert row.status == 'failed'
+        assert '550 nope' in row.error
+
+    def test_disabled_records_suppressed(self, renderer, ledger, session):
+        result = self._notifier(renderer, ledger, enabled=False).send(_message())
+        row = session.get(NotificationLog, result.log_id)
+        assert row.status == 'suppressed'
+        assert 'NOTIFY_ENABLED' in row.error
+
+    def test_a_second_send_of_the_same_key_is_suppressed(self, renderer, ledger,
+                                                          session):
+        """The re-email bug, fixed. `--upcoming-expirations --notify` used to
+        re-mail the entire roster on every invocation inside the window."""
+        notifier = self._notifier(renderer, ledger)
+        key = 'expiration:SCSG0001:2026-09-30:pi@x.edu'
+        first = notifier.send(_message(dedup_key=key))
+        second = notifier.send(_message(dedup_key=key))
+        assert first.status == 'sent'
+        assert second.status == 'suppressed'
+        assert 'already sent' in second.detail
+
+    def test_force_overrides_suppression(self, renderer, ledger):
+        notifier = self._notifier(renderer, ledger)
+        key = 'expiration:SCSG0001:2026-09-30:pi@x.edu'
+        notifier.send(_message(dedup_key=key))
+        assert notifier.send(_message(dedup_key=key), force=True).status == 'sent'
+
+    def test_messages_without_a_key_are_never_suppressed(self, renderer, ledger):
+        notifier = self._notifier(renderer, ledger)
+        assert notifier.send(_message()).status == 'sent'
+        assert notifier.send(_message()).status == 'sent'
+
+    def test_a_redirect_records_the_intended_recipient(self, renderer, ledger,
+                                                        session):
+        result = self._notifier(renderer, ledger,
+                                redirect_to='me@x.edu').send(_message('pi@x.edu'))
+        row = session.get(NotificationLog, result.log_id)
+        assert (row.status, row.recipient, row.intended_recipient) == \
+            ('redirected', 'me@x.edu', 'pi@x.edu')
+
+    def test_the_suppression_key_survives_a_redirect(self, renderer, ledger,
+                                                      session):
+        """Built from the intended recipient, so staging suppresses the same
+        way production does."""
+        key = 'expiration:SCSG0001:2026-09-30:pi@x.edu'
+        result = self._notifier(renderer, ledger, redirect_to='me@x.edu').send(
+            _message('pi@x.edu', dedup_key=key))
+        assert session.get(NotificationLog, result.log_id).dedup_key == key
+
+    def test_preview_writes_no_row(self, renderer, ledger, session):
+        """A preview is not an attempt, and a stray `suppressed` row would
+        poison the dedup query for the real send that follows."""
+        before = session.query(NotificationLog).count()
+        self._notifier(renderer, ledger).preview(_message())
+        assert session.query(NotificationLog).count() == before
+
+    def test_an_unrecordable_send_is_refused_rather_than_sent(self, renderer):
+        """Fail-closed, matching NOTIFY_ENABLED one layer up: an unrecorded
+        send is one the next run sends again."""
+        def broken():
+            raise RuntimeError('database unreachable')
+
+        transport = NullTransport()
+        notifier = Notifier(config=NotifyConfig(enabled=True), renderer=renderer,
+                            transport=transport,
+                            ledger=NotificationLedger(broken, config=NotifyConfig()))
+        result = notifier.send(_message())
+        assert result.status == 'failed'
+        assert 'refusing to send' in result.detail
+        assert transport.delivered == []
+
+    def test_an_unrecordable_suppression_does_not_raise(self, renderer):
+        """Nothing went out, so an unwritable ledger is bookkeeping — it must
+        not turn 'we sent nothing' into an exception out of a route."""
+        def broken():
+            raise RuntimeError('database unreachable')
+
+        notifier = Notifier(config=NotifyConfig(enabled=False), renderer=renderer,
+                            transport=NullTransport(),
+                            ledger=NotificationLedger(broken, config=NotifyConfig()))
+        assert notifier.send(_message()).status == 'suppressed'

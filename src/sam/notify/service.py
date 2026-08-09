@@ -31,6 +31,7 @@ from sam.notify.base import (
 )
 from sam.notify.config import NotifyConfig
 from sam.notify.kinds import get_kind
+from sam.notify.ledger import LedgerError
 from sam.notify.registry import build_transport
 from sam.notify.render import TemplateRenderer
 
@@ -230,7 +231,20 @@ class Notifier:
         # honest "we do not know" rather than a silent loss. The staleness
         # horizon in the ledger is what keeps that row from suppressing its
         # own retry forever.
-        result = self._record(outgoing, status='queued', rendered=rendered)
+        #
+        # ⚠️ And if it cannot be written, we do NOT send. The ledger is what
+        # makes a re-run safe; an unrecorded send is one the next run sends
+        # again, which is the re-email bug this whole design exists to fix.
+        # Fail-closed here matches NOTIFY_ENABLED's default one layer up.
+        try:
+            result = self._record(outgoing, status='queued', rendered=rendered,
+                                  strict=True)
+        except LedgerError as exc:
+            logger.error('notify: refusing to send to %s — ledger unavailable: %s',
+                         outgoing.recipient.address, exc)
+            return DeliveryResult(
+                ok=False, status='failed', message=outgoing,
+                detail=f'ledger unavailable, refusing to send: {exc}')
 
         try:
             transport.deliver(outgoing, rendered)
@@ -249,13 +263,30 @@ class Notifier:
     # ---------------------------------------------------------------- ledger
     def _record(self, message: Message, *, status: str,
                 detail: Optional[str] = None,
-                rendered: Optional[RenderedMessage] = None) -> DeliveryResult:
-        """Write one ledger row, if a ledger is configured."""
+                rendered: Optional[RenderedMessage] = None,
+                strict: bool = False) -> DeliveryResult:
+        """Write one ledger row, if a ledger is configured.
+
+        Args:
+            strict: propagate :class:`LedgerError` instead of swallowing it.
+                True only for the ``queued`` write that precedes a send —
+                the one row whose absence would let the next run re-send.
+                For a ``suppressed`` or ``failed`` row nothing went out, so
+                an unwritable ledger is a bookkeeping problem and must not
+                turn "we sent nothing" into a raised exception.
+        """
         log_id = None
         if self.ledger is not None:
-            log_id = self.ledger.record(
-                message, status=status, detail=detail,
-                transport=self.config.transport, rendered=rendered)
+            try:
+                log_id = self.ledger.record(
+                    message, status=status, detail=detail,
+                    transport=self.config.transport, rendered=rendered)
+            except LedgerError:
+                if strict:
+                    raise
+                logger.warning('notify: could not record %r for %s; nothing '
+                               'was sent, so continuing', status,
+                               message.recipient.address)
         return DeliveryResult(
             ok=status in ('sent', 'redirected', 'suppressed'),
             status=status, message=message, detail=detail, log_id=log_id)
