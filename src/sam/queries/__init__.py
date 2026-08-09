@@ -118,6 +118,8 @@ from .xras_actions import (
     count_recent_xras_actions,
     count_xras_dismissed_pending,
     get_latest_xras_action_id,
+    get_observed_action_types,
+    get_projects_by_ids,
     get_recent_xras_actions,
     get_xras_activation_events,
     get_xras_pending_activation,
@@ -268,6 +270,8 @@ __all__ = [
     'get_xras_pending_activation',
     'count_xras_dismissed_pending',
     'get_latest_xras_action_id',
+    'get_observed_action_types',
+    'get_projects_by_ids',
     'get_xras_activation_events',
     'get_xras_pending_recipients',
     # Usage cache

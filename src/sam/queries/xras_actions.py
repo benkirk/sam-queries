@@ -764,9 +764,42 @@ def count_xras_dismissed_pending(session: Session) -> int:
     truthful count, "no rows" reads as "all clear" when it may mean "all
     dismissed" — the same honesty problem the empty-state copy already solves for
     capture mode.
+
+    ⚠️ This runs the **whole** pending pipeline. A caller that also needs the rows
+    should call :func:`get_xras_pending_activation` once with
+    ``include_dismissed=True`` and count the ``dismissed`` flag itself, as
+    ``xras_pending_fragment`` does — calling both doubles the work for a number
+    already present in the rows. This exists for callers that want only the count.
     """
     return sum(1 for row in get_xras_pending_activation(
         session, include_dismissed=True) if row['dismissed'])
+
+
+def get_observed_action_types(session: Session) -> List[str]:
+    """Every ``action_type`` present in the log, folded onto canonical spellings.
+
+    Alias pairs collapse to one entry — ``Adjust`` and ``Adjustment`` are the same
+    action and filtering on either returns both, so offering two chips that filter
+    identically would read as two distinct action types.
+    """
+    return sorted({
+        canonical_action_type(row.action_type)
+        for row in session.query(XrasActionLog.action_type)
+        .filter(XrasActionLog.action_type.isnot(None))
+        .distinct().all()
+    })
+
+
+def get_projects_by_ids(session: Session, project_ids) -> List[Project]:
+    """The ``Project`` rows for *project_ids*, or an empty list for an empty input.
+
+    An empty ``IN ()`` is legal SQL but a pointless round trip, and the guard is the
+    kind of thing that gets forgotten at the second call site.
+    """
+    if not project_ids:
+        return []
+    return (session.query(Project)
+            .filter(Project.project_id.in_(project_ids)).all())
 
 
 def get_latest_xras_action_id(

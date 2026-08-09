@@ -17,11 +17,11 @@ from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.htmx import (
-    handle_htmx_form_post, htmx_not_found, htmx_success_message, read_layout,
-    read_theme, register_typeahead,
+    handle_htmx_form_post, htmx_not_found, htmx_success_message, read_flag,
+    read_layout, read_theme, register_typeahead,
 )
 from webapp.api.xras.replay import replay_action
-from sam.integration.xras import XrasActionLog, XrasActivationEvent
+from sam.integration.xras import XrasActivationEvent
 from sam.manage.transaction import management_transaction
 from sam.projects.projects import Project
 from webapp.utils.project_permissions import can_edit_project_governance
@@ -42,10 +42,10 @@ from sam.queries.xras_actions import (
     XRAS_ACTION_STATUSES,
     XRAS_ACTION_TYPES,
     XRAS_REQUEST_TOKEN_EXAMPLE,
-    canonical_action_type,
     count_recent_xras_actions,
-    count_xras_dismissed_pending,
     get_latest_xras_action_id,
+    get_observed_action_types,
+    get_projects_by_ids,
     get_recent_xras_actions,
     get_xras_activation_events,
     get_xras_pending_activation,
@@ -1272,13 +1272,7 @@ def _xras_action_types():
     filtering on either returns both (``XRAS_ACTION_TYPE_ALIASES``). Two chips that
     filter identically would read as two distinct action types.
     """
-    observed = {
-        canonical_action_type(row.action_type) for row in
-        db.session.query(XrasActionLog.action_type)
-        .filter(XrasActionLog.action_type.isnot(None))
-        .distinct().all()
-    }
-    return sorted(set(XRAS_ACTION_TYPES) | observed)
+    return sorted(set(XRAS_ACTION_TYPES) | set(get_observed_action_types(db.session)))
 
 
 @bp.route('/xras')
@@ -1405,22 +1399,30 @@ def xras_pending_fragment():
       place and this is only ever a rendering hint.
     """
     may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
-    include_dismissed = bool(request.args.get('include_dismissed')) and may_manage
+    include_dismissed = read_flag(request.args, 'include_dismissed') and may_manage
 
-    pending = get_xras_pending_activation(
-        db.session, include_dismissed=include_dismissed)
+    # Fetched once with the dismissed rows in, then filtered here.
+    #
+    # `count_xras_dismissed_pending` runs this exact pipeline — the OR-join plus
+    # `_activation_state` — so calling both ran it twice per render for a count
+    # already present in the rows. The `include_dismissed` flag is only a `continue`
+    # inside the loop, so filtering afterwards is what it would have done anyway.
+    # (Safe because this route passes no `limit`; the query applies that after the
+    # skip, so a limited call could not be reproduced this way.)
+    all_pending = get_xras_pending_activation(db.session, include_dismissed=True)
+    dismissed_count = sum(1 for p in all_pending if p['dismissed'])
+    pending = (all_pending if include_dismissed
+               else [p for p in all_pending if not p['dismissed']])
+
     project_ids = [p['project_id'] for p in pending]
 
     recipients = {}
     may_activate = {}
     if may_manage:
         recipients = get_xras_pending_recipients(db.session, project_ids)
-        projects = (db.session.query(Project)
-                    .filter(Project.project_id.in_(project_ids)).all()
-                    if project_ids else [])
         may_activate = {
             p.project_id: can_edit_project_governance(current_user, p)
-            for p in projects
+            for p in get_projects_by_ids(db.session, project_ids)
         }
 
     return render_template(
@@ -1429,7 +1431,7 @@ def xras_pending_fragment():
         recipients=recipients,
         may_activate=may_activate,
         include_dismissed=include_dismissed,
-        dismissed_count=count_xras_dismissed_pending(db.session) if may_manage else 0,
+        dismissed_count=dismissed_count if may_manage else 0,
     )
 
 
