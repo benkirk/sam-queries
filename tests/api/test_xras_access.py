@@ -16,56 +16,22 @@ sees committed rows. Following `test_api_credentials_auth.py`, the DB-key loader
 is monkeypatched instead.
 """
 
-import base64
 import json
 import pathlib
 
-import bcrypt
 import pytest
 
 from xras_audit import action_log  # noqa: F401  — shared with tests/stress/
+from xras_helpers import (  # noqa: F401  — pytest resolves fixtures by name
+    XRAS_PW,
+    basic_auth as _basic,
+    reset_db_key_cache,
+    xras_auth as _auth,
+    xras_client,
+    xras_keys,
+)
 
 from webapp.api.xras import serialize
-from webapp.utils import api_auth
-
-
-XRAS_PW = 'xras-test-pw'
-
-
-def _basic(username: str, password: str) -> str:
-    token = base64.b64encode(f'{username}:{password}'.encode()).decode('ascii')
-    return f'Basic {token}'
-
-
-@pytest.fixture(autouse=True)
-def _reset_db_key_cache():
-    """`_DB_KEY_CACHE` is a process-global dict — wipe it around each test."""
-    api_auth._DB_KEY_CACHE.update(at=None, map={})
-    yield
-    api_auth._DB_KEY_CACHE.update(at=None, map={})
-
-
-@pytest.fixture
-def xras_keys(monkeypatch):
-    """Two DB-sourced keys: one holding ROLE_XRAS, one holding something else."""
-    hashed = bcrypt.hashpw(XRAS_PW.encode(), bcrypt.gensalt(rounds=4)).decode()
-    monkeypatch.setattr(
-        api_auth, '_get_db_api_keys',
-        lambda: {
-            'samuel': {'hash': hashed, 'roles': ['ROLE_XRAS']},
-            'nobody': {'hash': hashed, 'roles': ['ROLE_SOMETHING']},
-        },
-    )
-
-
-@pytest.fixture
-def xras_client(client, xras_keys):
-    """Unauthenticated test client with the XRAS key map installed."""
-    return client
-
-
-def _auth(username='samuel'):
-    return {'Authorization': _basic(username, XRAS_PW)}
 
 
 # ---------------------------------------------------------------------------

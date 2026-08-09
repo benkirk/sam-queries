@@ -24,10 +24,12 @@ times, ``load_fixture`` nine, ``committing`` seven, ``wire_resource`` five,
   mutating three ``end_date`` values. Seven copies is seven chances for one to drift.
 """
 
+import base64
 import json
 from contextlib import contextmanager
 from pathlib import Path
 
+import bcrypt
 import pytest
 
 from sam.accounting.allocations import AllocationTransaction
@@ -38,6 +40,12 @@ __all__ = [
     'wire_resource',
     'txns_for',
     'committing',
+    'XRAS_PW',
+    'basic_auth',
+    'xras_auth',
+    'reset_db_key_cache',
+    'xras_keys',
+    'xras_client',
 ]
 
 #: The eight real, scrubbed XRAS payloads. Prefer these over a hand-built dict for
@@ -102,3 +110,69 @@ def committing(session, monkeypatch):
 
     monkeypatch.setattr(base, 'management_transaction', flushing)
     return session
+
+
+# ---------------------------------------------------------------------------
+# Authenticating against the blueprint
+#
+# Every module that drives an `/api/xras/*` route over HTTP needs the same four
+# pieces, and they carry the same non-obvious constraint: a `make_api_credentials`
+# row is **invisible** to a request, because routes read Flask-SQLAlchemy's
+# `db.session` on a separate connection that only sees committed rows. So the DB-key
+# loader is monkeypatched rather than seeded — the pattern `test_api_credentials_auth.py`
+# established. Duplicating that reasoning per test module is how it drifts.
+# ---------------------------------------------------------------------------
+
+#: The password behind both fake keys. Any value; it only has to round-trip bcrypt.
+XRAS_PW = 'xras-test-pw'
+
+
+def basic_auth(username: str, password: str) -> str:
+    """An HTTP Basic ``Authorization`` header value."""
+    token = base64.b64encode(f'{username}:{password}'.encode()).decode('ascii')
+    return f'Basic {token}'
+
+
+def xras_auth(username: str = 'samuel') -> dict:
+    """Headers authenticating as *username* against :func:`xras_keys`.
+
+    Default holds ``ROLE_XRAS``; pass ``'nobody'`` for a valid credential that does
+    not, which is the 403 path.
+    """
+    return {'Authorization': basic_auth(username, XRAS_PW)}
+
+
+@pytest.fixture(autouse=True)
+def reset_db_key_cache():
+    """``_DB_KEY_CACHE`` is a process-global dict — wipe it around each test.
+
+    Autouse, so importing it into a module is the whole of the wiring. Without it a
+    key map leaks between tests in the same worker and auth assertions go
+    order-dependent.
+    """
+    from webapp.utils import api_auth
+
+    api_auth._DB_KEY_CACHE.update(at=None, map={})
+    yield
+    api_auth._DB_KEY_CACHE.update(at=None, map={})
+
+
+@pytest.fixture
+def xras_keys(monkeypatch):
+    """Two DB-sourced keys: one holding ``ROLE_XRAS``, one holding something else."""
+    from webapp.utils import api_auth
+
+    hashed = bcrypt.hashpw(XRAS_PW.encode(), bcrypt.gensalt(rounds=4)).decode()
+    monkeypatch.setattr(
+        api_auth, '_get_db_api_keys',
+        lambda: {
+            'samuel': {'hash': hashed, 'roles': ['ROLE_XRAS']},
+            'nobody': {'hash': hashed, 'roles': ['ROLE_SOMETHING']},
+        },
+    )
+
+
+@pytest.fixture
+def xras_client(client, xras_keys):
+    """Unauthenticated test client with the XRAS key map installed."""
+    return client
