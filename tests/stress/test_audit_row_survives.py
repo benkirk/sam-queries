@@ -20,11 +20,9 @@ import json
 
 import pytest
 
-from .conftest import auth_headers
+from .conftest import ACTIONS_PATH as PATH, auth_headers
 
 pytestmark = pytest.mark.stress
-
-PATH = '/api/xras/v1/actions'
 
 #: ``TEXT`` — 65,535 **bytes**, not characters. The column is utf8mb3.
 TEXT_LIMIT = 65_535

@@ -16,34 +16,9 @@ import json
 
 import pytest
 
-from .conftest import auth_headers
+from .conftest import post_action as _post
 
 pytestmark = pytest.mark.stress
-
-PATH = '/api/xras/v1/actions'
-
-
-def _post(client, payload):
-    return client.post(PATH, data=json.dumps(payload),
-                       content_type='application/json', headers=auth_headers())
-
-
-@pytest.fixture
-def snapshot_project(app):
-    """A committed snapshot project — route tests cannot use factories.
-
-    The route reads ``db.session`` on its own connection and sees only committed rows.
-    """
-    from sqlalchemy.orm import Session
-
-    from sam.projects.projects import Project
-    from webapp.extensions import db
-
-    with app.app_context(), Session(db.engine) as session:
-        project = session.query(Project).filter(Project.is_active).first()
-        assert project is not None, 'the snapshot has no active project'
-        session.expunge(project)
-        return project
 
 
 # ---------------------------------------------------------------------------

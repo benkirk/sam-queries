@@ -174,5 +174,11 @@ def xras_keys(monkeypatch):
 
 @pytest.fixture
 def xras_client(client, xras_keys):
-    """Unauthenticated test client with the XRAS key map installed."""
+    """Unauthenticated test client with the XRAS key map installed.
+
+    ⚠️ Import ``xras_keys`` alongside this one. pytest resolves a fixture's own
+    dependencies by name in the *requesting* module's namespace, so importing
+    ``xras_client`` alone raises ``fixture 'xras_keys' not found`` — at setup, not
+    at import, so it surfaces as an error in every test rather than a bad import.
+    """
     return client

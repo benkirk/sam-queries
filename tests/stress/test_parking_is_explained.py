@@ -13,20 +13,11 @@ is the difference between a two-minute triage and a long one."* It has carried
 missing, and the app log holding them in the meantime is ephemeral in k8s.
 """
 
-import json
-
 import pytest
 
-from .conftest import auth_headers
+from .conftest import post_action as _post
 
 pytestmark = pytest.mark.stress
-
-PATH = '/api/xras/v1/actions'
-
-
-def _post(client, payload):
-    return client.post(PATH, data=json.dumps(payload),
-                       content_type='application/json', headers=auth_headers())
 
 
 def _action(action_type='Supplement', request_number='PARK0001', **extra):
@@ -68,7 +59,7 @@ def test_park_no_service(xras_client, action_log, dispatching, scenario):
 
 
 def test_park_disabled_type(xras_client, action_log, dispatching, scenario, app,
-                            any_active_project):
+                            snapshot_project):
     """The same shape, parked for a completely different reason.
 
     ⚠️ The project must **exist**, or ``select_service`` returns ``None`` before the
@@ -80,7 +71,7 @@ def test_park_disabled_type(xras_client, action_log, dispatching, scenario, app,
     import sam.xras.handlers  # noqa: F401
 
     app.config['XRAS_ACTIONS_ENABLED'] = 'Extension'
-    resp = _post(xras_client, _action('Adjustment', any_active_project.projcode))
+    resp = _post(xras_client, _action('Adjustment', snapshot_project.projcode))
 
     assert resp.status_code == scenario['http']
     row = action_log.one()
@@ -95,7 +86,7 @@ def test_park_disabled_type(xras_client, action_log, dispatching, scenario, app,
 
 
 def test_a_disabled_park_and_an_unmatched_park_are_distinguishable(
-        xras_client, action_log, dispatching, app, any_active_project):
+        xras_client, action_log, dispatching, app, snapshot_project):
     """The former evidence, now the acceptance test.
 
     ⚠️ This assertion is **inverted from what it was**. It used to read
@@ -111,7 +102,7 @@ def test_a_disabled_park_and_an_unmatched_park_are_distinguishable(
     # Cause 2: the project exists so `adjust` IS selected, and then the triage
     # lever stops it. Same action_type, same status, same everything else.
     app.config['XRAS_ACTIONS_ENABLED'] = 'Extension'
-    _post(xras_client, _action('Adjustment', any_active_project.projcode))
+    _post(xras_client, _action('Adjustment', snapshot_project.projcode))
 
     rows = action_log.rows()
     assert len(rows) == 2
@@ -134,7 +125,7 @@ def test_a_disabled_park_and_an_unmatched_park_are_distinguishable(
 
 
 def test_park_transfer_by_design(xras_client, action_log, dispatching, scenario,
-                                 any_active_project):
+                                 snapshot_project):
     """Transfer parks deliberately — and is the one park with a discriminator.
 
     Two, in fact, and only one of them was there before C.1a: ``action_type`` is
@@ -142,7 +133,7 @@ def test_park_transfer_by_design(xras_client, action_log, dispatching, scenario,
     """
     import sam.xras.handlers  # noqa: F401
 
-    resp = _post(xras_client, _action('Transfer', any_active_project.projcode))
+    resp = _post(xras_client, _action('Transfer', snapshot_project.projcode))
 
     assert resp.status_code == scenario['http']
     row = action_log.one()
@@ -151,7 +142,7 @@ def test_park_transfer_by_design(xras_client, action_log, dispatching, scenario,
     # The triage query `transfer.py`'s own docstring promises.
     assert row['action_type'] == 'Transfer'
     # C.1a: the projcode reaches the row rather than only the app log.
-    assert row['projcode_result'] == any_active_project.projcode
+    assert row['projcode_result'] == snapshot_project.projcode
 
     # `NOT_IMPLEMENTED_REASON` — the sentence written specifically for whoever reads
     # this row at 3am with no context — now reaches the row rather than stopping at
@@ -163,24 +154,3 @@ def test_park_transfer_by_design(xras_client, action_log, dispatching, scenario,
     # Still NULL, and the two columns are not interchangeable: `error_messages`
     # means "the 422 body XRAS received", and a parked action answers 200.
     assert row['error_messages'] is None
-
-
-@pytest.fixture
-def any_active_project(app):
-    """A committed snapshot project.
-
-    ⚠️ Route tests cannot use factories. The route reads Flask-SQLAlchemy's
-    ``db.session`` on its own connection, which sees only **committed** rows, so a
-    factory-made project is invisible to it and every dispatch would park as "no
-    service matches" — silently turning a scenario into a different scenario.
-    """
-    from sqlalchemy.orm import Session
-
-    from sam.projects.projects import Project
-    from webapp.extensions import db
-
-    with app.app_context(), Session(db.engine) as session:
-        project = session.query(Project).filter(Project.is_active).first()
-        assert project is not None, 'the snapshot has no active project'
-        session.expunge(project)
-        return project
