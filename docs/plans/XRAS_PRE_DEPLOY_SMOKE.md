@@ -444,9 +444,13 @@ exercise. Worth a line in the corpus docs so the next person does not read `_ok`
 - the title is interpolated into a pre-wrapped paragraph, so
   `Your project UHSS0002 - "Smoke Test A …" is now active on` already runs past 80
   columns with a short synthetic title; a real one will look ragged
-- *"This message replaces the activation notice previously sent by the NSF NCAR
-  allocations office"* is transitional wording — right for cutover, but decide now
-  whether it is meant to age out.
+- ☑ *"This message replaces the activation notice previously sent by the NSF NCAR
+  allocations office"* was transitional wording — right for cutover, and the
+  question raised here was whether it should age out. **Decided: dropped**
+  (Round 2). It explains a changeover to recipients who mostly will not
+  remember the previous arrangement, and it dates the mail from the day it
+  ships. The activation notice now opens straight into what the reader needs:
+  the project is active, and here are its allocations.
 
 ### Carried in as hypotheses
 

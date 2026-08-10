@@ -2,9 +2,6 @@ Dear {{ recipient_name }},
 
 Your project {{ project_code }} - "{{ project_title }}" is now active on
 NSF NCAR computing resources.
-
-This message replaces the activation notice previously sent by the NSF NCAR
-allocations office when a new or extended request was processed.
 {% if resources %}
 Allocations:
 {% for r in resources %}
