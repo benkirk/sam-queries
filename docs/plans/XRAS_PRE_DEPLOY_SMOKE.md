@@ -448,7 +448,26 @@ exercise. Worth a line in the corpus docs so the next person does not read `_ok`
 
 *What changed in `src/sam/notify/templates/xras_activation.{txt,html}` and why.*
 
-☐ *(none yet)*
+**✅ 1 · Point the portal link and its prose at SAM, not ARC.** Ben's call after
+reading the delivered mail. Both files:
+
+| | Was | Now |
+|---|---|---|
+| link | `https://arc.ucar.edu/` | `https://sam.hpc.ucar.edu/` |
+| prose | "through the ARC portal" | "through the **SAM** portal" |
+
+The mail sends a PI to manage members and request supplements — that is SAM's
+surface, and naming ARC sends them to the wrong place. Verified the target is live
+and its certificate validates (`302` to login, `ssl_verify=0`), so the link is
+already good; it does not wait on the CNAME work in `project_cname_sam_hpc`.
+
+Re-rendered both variants afterwards — text and HTML agree.
+
+⚠️ **This makes the two template families diverge.** `expiration-UNIV.txt:33` and
+`expiration-UNIV.html:65` still say `https://arc.ucar.edu/`. Expiration notices are
+out of scope for this run by decision, so they are deliberately left alone — but they
+should get the same treatment before the next expiration send, or a PI will be
+directed to two different portals by two different SAM emails.
 
 ## Verification
 
