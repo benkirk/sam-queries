@@ -1,0 +1,93 @@
+{#
+  Confirmation for the Notify button — rendered into #auditDetailsModalBody
+  when at least one message was delivered.
+
+  Context:
+    project      the Project notified about
+    summary      webapp.utils.notify.notify_summary(results)
+    recorded_at  creation_time of the 'notified' event just written
+
+  `redirected` is reported separately from `sent` and never folded into it:
+  those reached NOTIFY_REDIRECT_TO, not the people they name.
+#}
+{% set sent = summary.sent | length %}
+{% set redirected = summary.redirected | length %}
+{% set failed = summary.failed | length %}
+{% set suppressed = summary.suppressed | length %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Notify — {{ project.projcode }}
+</h5>
+
+<div class="alert {{ 'alert-warning' if failed else 'alert-success' }} d-flex align-items-start gap-2">
+    <i class="fas {{ 'fa-triangle-exclamation' if failed else 'fa-circle-check' }} mt-1"></i>
+    <div>
+        {% if failed %}
+        <strong>Partially sent.</strong>
+        <div>{{ failed }} message(s) could not be delivered — see below.</div>
+        {% else %}
+        <strong>Sent.</strong>
+        <div>The project lead and admin have been notified.</div>
+        {% endif %}
+    </div>
+</div>
+
+{% if summary.sent %}
+<h6 class="text-muted text-uppercase small mb-2">Delivered</h6>
+<ul class="list-unstyled mb-3">
+    {% for result in summary.sent %}
+    <li class="mb-1">
+        <i class="fas fa-check text-success"></i>
+        <code class="user-select-all">{{ result.recipient }}</code>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+{% if summary.redirected %}
+<h6 class="text-muted text-uppercase small mb-2">Redirected</h6>
+<div class="alert alert-warning py-2 small">
+    {{ redirected }} message(s) went to the deployment's redirect address, not
+    to the recipient named. Nobody outside this deployment was contacted.
+</div>
+{% endif %}
+
+{% if summary.failed %}
+<h6 class="text-muted text-uppercase small mb-2">Failed</h6>
+<div class="project-stats-box mb-3">
+    {% for result in summary.failed %}
+    <div class="stat-item">
+        <span class="text-muted">{{ result.recipient }}</span>
+        <strong class="text-danger small">{{ result.detail or 'Unknown error' }}</strong>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if suppressed %}
+<p class="text-muted small">
+    {{ suppressed }} recipient(s) had already been notified about this request
+    and were skipped.
+</p>
+{% endif %}
+
+<div class="project-stats-box">
+    <div class="stat-item">
+        <span class="text-muted">Recorded against</span>
+        <strong>{{ project.projcode }}</strong>
+    </div>
+    <div class="stat-item">
+        <span class="text-muted">At</span>
+        <strong>{{ recorded_at | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</strong>
+    </div>
+    <div class="stat-item">
+        <span class="text-muted">By</span>
+        <strong>{{ current_user.username }}</strong>
+    </div>
+</div>
+
+<p class="text-muted small mt-3 mb-0">
+    The activation event records only the addresses that were actually
+    delivered to. Every attempt, including the failures, is in the delivery
+    log — see Admin → Configuration → Notifications.
+</p>

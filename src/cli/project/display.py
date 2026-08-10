@@ -1,6 +1,9 @@
 """Display functions for project commands. Operate on plain dicts produced
 by `cli.project.builders`; never touch ORM objects directly."""
 
+from collections import defaultdict
+from contextlib import contextmanager
+
 from cli.core.context import Context
 from cli.project.builders import (
     build_project_core,
@@ -16,6 +19,9 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 from rich.tree import Tree
+from rich.progress import (
+    Progress, BarColumn, TextColumn, TimeElapsedColumn, MofNCompleteColumn,
+)
 
 
 def display_project(ctx: Context, data: dict, extra_title_info: str = "",
@@ -511,134 +517,177 @@ def display_tree_audit(ctx: Context, violations: list, bad_dates: list):
         ctx.console.print("✅ No impossible allocation date windows", style="green")
 
 
-def display_notification_results(ctx: Context, results: dict, total_projects: int):
-    """Display notification results summary.
+
+# ── Expiration notices ───────────────────────────────────────────────────────
+#
+# These consume `sam.notify` types (DeliveryResult / Message / RenderedMessage)
+# rather than the old notification dicts. `rich` lives here and nowhere in
+# `sam/`; the progress bar reaches the library only through the `on_result`
+# callback `notification_progress` yields.
+
+
+@contextmanager
+def notification_progress(ctx: Context, total: int,
+                          description: str = "Sending expiration notices..."):
+    """Yield an ``on_result`` callback that advances a progress bar.
+
+    This is the seam that keeps the CLI's presentation out of ``sam.notify``.
+    The predecessor drove a ``rich.progress.Progress`` from *inside* the send
+    loop (``cli/notifications/email.py:188-219``), against a console it had
+    duck-typed off the CLI ``Context`` — which is a large part of why the
+    mailer could not be lifted as-is.
+    """
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        console=ctx.console,
+        transient=False,
+    ) as progress:
+        task = progress.add_task(description, total=total)
+        yield lambda result: progress.advance(task)
+
+
+def display_notification_results(ctx: Context, results: list, total_projects: int):
+    """Summarise a send.
 
     Args:
         ctx: Context object
-        results: Dict with 'success' and 'failed' lists
-        total_projects: Total number of projects with expiring allocations
+        results: ``list[sam.notify.DeliveryResult]``
+        total_projects: Number of projects with expiring allocations
     """
-    success_count = len(results['success'])
-    failed_count = len(results['failed'])
+    by_status = defaultdict(list)
+    for result in results:
+        by_status[result.status].append(result)
+
+    sent = by_status['sent']
+    redirected = by_status['redirected']
+    suppressed = by_status['suppressed']
+    failed = by_status['failed']
 
     grid = Table(show_header=False, box=None, padding=(0, 2))
     grid.add_column("Field", style="cyan bold")
     grid.add_column("Value")
 
     grid.add_row("Expiring Projects", str(total_projects))
-    grid.add_row("Emails Sent",
-                 f"[green]{success_count}[/]" if success_count > 0 else "0")
-    grid.add_row("Failed",
-                 f"[red]{failed_count}[/]" if failed_count > 0 else "0")
+    grid.add_row("Emails Sent", f"[green]{len(sent)}[/]" if sent else "0")
+    if redirected:
+        # Never folded into "Sent": these reached NOTIFY_REDIRECT_TO, not the
+        # people they name. A staging box quietly swallowing mail is the
+        # failure mode this line exists to prevent.
+        grid.add_row("Redirected", f"[yellow]{len(redirected)}[/]")
+    if suppressed:
+        grid.add_row("Skipped (already notified)", f"[dim]{len(suppressed)}[/]")
+    grid.add_row("Failed", f"[red]{len(failed)}[/]" if failed else "0")
 
-    panel = Panel(grid, title="Notification Results", expand=False, border_style="blue")
+    panel = Panel(grid, title="Notification Results", expand=False,
+                  border_style="blue")
     ctx.console.print(panel)
 
-    if failed_count > 0:
+    if failed:
         ctx.console.print("\n[red bold]Failed Notifications:[/]")
-        for notification in results['failed']:
+        for result in failed:
             ctx.console.print(
-                f"  {notification['recipient']}: {notification.get('error', 'Unknown error')}",
-                style="red"
-            )
+                f"  {result.recipient}: {result.detail or 'Unknown error'}",
+                style="red")
 
-    if ctx.verbose and success_count > 0:
+    if suppressed:
+        # Load-bearing hint: without it, an operator who re-runs the command
+        # sees zeros and concludes the mailer is broken.
+        ctx.console.print(
+            f"\n[dim]{len(suppressed)} recipient(s) were already notified "
+            f"about this expiration. Use --force to send anyway.[/]")
+
+    if ctx.verbose and sent:
         ctx.console.print("\n[green]Successful Notifications:[/]")
-        for notification in results['success']:
-            ctx.console.print(
-                f"  {notification['recipient']} ({notification['project_code']})",
-                style="green"
-            )
+        for result in sent:
+            projcode = result.message.projcode if result.message else '?'
+            ctx.console.print(f"  {result.recipient} ({projcode})", style="green")
 
 
-def display_notification_preview(ctx: Context, results: dict, total_projects: int):
-    """Display notification preview in dry-run mode.
+def display_notification_preview(ctx: Context, previews: list, failures: list,
+                                 total_projects: int):
+    """Show what a real run would send.
 
     Args:
         ctx: Context object
-        results: Dict with 'success', 'failed', and 'preview_samples' lists
-        total_projects: Total number of projects with expiring allocations
+        previews: ``list[(Message, RenderedMessage)]``
+        failures: ``list[(Message, error_str)]`` — templates that would not render
+        total_projects: Number of projects with expiring allocations
     """
-    from collections import defaultdict
-
-    success_count = len(results['success'])
-    failed_count = len(results['failed'])
-
-    ctx.console.print(f"\n[bold yellow]DRY-RUN MODE: Preview only, no emails will be sent[/]\n")
+    ctx.console.print(
+        "\n[bold yellow]DRY-RUN MODE: Preview only, no emails will be sent[/]\n")
 
     grid = Table(show_header=False, box=None, padding=(0, 2))
     grid.add_column("Field", style="cyan bold")
     grid.add_column("Value")
 
     grid.add_row("Projects with Expiring Allocations", str(total_projects))
-    grid.add_row("Emails That Would Be Sent", str(success_count))
+    grid.add_row("Emails That Would Be Sent", str(len(previews)))
+    grid.add_row("Unique Recipients",
+                 str(len({m.recipient.address for m, _ in previews})))
+    if failures:
+        grid.add_row("Preview Errors", f"[red]{len(failures)}[/]")
 
-    unique_recipients = set(n['recipient'] for n in results['success'])
-    grid.add_row("Unique Recipients", str(len(unique_recipients)))
+    ctx.console.print(Panel(grid, title="Dry-Run Summary", expand=False,
+                            border_style="yellow"))
 
-    if failed_count > 0:
-        grid.add_row("Preview Errors", f"[red]{failed_count}[/]")
-
-    panel = Panel(grid, title="Dry-Run Summary", expand=False, border_style="yellow")
-    ctx.console.print(panel)
-
-    if failed_count > 0:
+    if failures:
         ctx.console.print("\n[red bold]Preview Errors:[/]")
-        for notification in results['failed']:
-            ctx.console.print(
-                f"  {notification['recipient']}: {notification.get('error', 'Unknown error')}",
-                style="red"
-            )
+        for message, error in failures:
+            ctx.console.print(f"  {message.recipient.address}: {error}",
+                              style="red")
 
     by_project = defaultdict(list)
-    for notification in results['success']:
-        by_project[notification['project_code']].append(notification)
+    for message, rendered in previews:
+        by_project[message.projcode].append((message, rendered))
 
     ctx.console.print("\n[bold]Email Preview by Project:[/]\n")
 
-    for projcode, project_notifications in sorted(by_project.items()):
-        first = project_notifications[0]
-        recipients = [n['recipient'] for n in project_notifications]
+    for projcode, entries in sorted(by_project.items()):
+        first_message, _ = entries[0]
+        context = first_message.context
+        recipients = [m.recipient.address for m, _ in entries]
 
-        ctx.console.print(f"[cyan bold]{projcode}[/] - {first['project_title']}")
-        ctx.console.print(f"  Recipients ({len(recipients)}): {', '.join(sorted(recipients))}")
+        ctx.console.print(
+            f"[cyan bold]{projcode}[/] - {context.get('project_title', '')}")
+        ctx.console.print(
+            f"  Recipients ({len(recipients)}): {', '.join(sorted(recipients))}")
 
-        for resource in first['resources']:
-            urgency = ("🔴 URGENT" if resource['days_remaining'] <= 7
-                       else "🟠 WARNING" if resource['days_remaining'] <= 14
+        for resource in context.get('resources', []):
+            days = resource['days_remaining']
+            urgency = ("🔴 URGENT" if days <= 7
+                       else "🟠 WARNING" if days <= 14
                        else "🔵 NOTICE")
             ctx.console.print(
                 f"    {urgency} {resource['resource_name']}: "
-                f"{resource['days_remaining']} days remaining "
-                f"(expires {resource['expiration_date']})"
-            )
+                f"{days} days remaining "
+                f"(expires {resource['expiration_date']})")
 
         ctx.console.print()
 
-    if ctx.verbose and 'preview_samples' in results and results['preview_samples']:
+    if ctx.verbose and previews:
         ctx.console.print("\n[bold]Sample Rendered Emails:[/]\n")
 
-        for i, sample in enumerate(results['preview_samples'], 1):
-            meta_info = (f"To: {sample['recipient']} ({sample['recipient_role']})"
-                         f" | Project: {sample['project_code']}")
-            if sample['facility']:
-                meta_info += f" | Facility: {sample['facility']}"
-            if sample['html_content']:
-                meta_info += (f" | Templates: {sample['text_template']},"
-                              f" {sample['html_template']}")
+        for i, (message, rendered) in enumerate(previews[:2], 1):
+            meta = (f"To: {message.recipient.address} "
+                    f"({message.recipient.role}) | Project: {message.projcode}")
+            if message.facility:
+                meta += f" | Facility: {message.facility}"
+            if rendered.template_html:
+                meta += (f" | Templates: {rendered.template_text}, "
+                         f"{rendered.template_html}")
             else:
-                meta_info += f" | Template: {sample['text_template']} (text-only)"
+                meta += f" | Template: {rendered.template_text} (text-only)"
 
-            ctx.console.print(f"[dim]{meta_info}[/dim]")
-
+            ctx.console.print(f"[dim]{meta}[/dim]")
             ctx.console.print(Panel(
-                sample['text_content'],
-                title=f"Sample Email #{i} to {sample['recipient_name']}",
-                border_style="dim"
-            ))
+                rendered.text,
+                title=f"Sample Email #{i} to {message.recipient.name}",
+                border_style="dim"))
 
-            if i < len(results['preview_samples']):
+            if i < min(len(previews), 2):
                 ctx.console.print()
 
     if not ctx.verbose:

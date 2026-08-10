@@ -511,6 +511,40 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'active_blocks_count': 0,
         }
 
+    # --- Notifications (sam.notify config + notification_log counts)
+    #
+    # Config comes from NotifyConfig.summary(), which never returns
+    # MAIL_PASSWORD — the masking rule this whole module exists for holds by
+    # construction rather than by the template remembering.
+    #
+    # ⚠️ NO ADDRESSES. The card is VIEW_SYSTEM_CONFIG; every row of the
+    # activity log names a real person's email and is SYSTEM_ADMIN. The one
+    # deliberate exception is `redirect_to`, which is an operator-configured
+    # sink rather than a subject's address, and hiding it would defeat the
+    # line's purpose — a staging box quietly swallowing mail is exactly what
+    # it exists to surface.
+    try:
+        from sam.notify import NotifyConfig
+        from sam.queries.notifications import summarize_notifications
+
+        notify_config = NotifyConfig.from_environment()
+        notifications_block = dict(notify_config.summary())
+        notifications_block.update(summarize_notifications(
+            db.session,
+            queued_stale_seconds=notify_config.queued_stale_seconds))
+    except Exception:
+        # The table may not exist yet (it awaits a DBA in production), and a
+        # config card that 500s is worse than one that says "unavailable".
+        notifications_block = {
+            'enabled':      False,
+            'transport':    None,
+            'relay':        None,
+            'redirect_to':  None,
+            'unavailable':  True,
+            'sent': 0, 'redirected': 0, 'failed': 0, 'suppressed': 0,
+            'queued_stuck': 0, 'total': 0, 'by_status': {},
+        }
+
     # --- Audit & Logging
     audit_path = cfg.get('AUDIT_LOG_PATH', '')
     audit_logging = {
@@ -529,6 +563,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'databases':     databases,
         'auth':          auth,
         'caching':       caching_block,
+        'notifications': notifications_block,
         'rate_limits':   rate_limits_block,
         'audit_logging': audit_logging,
         'audit_tail':    audit_tail,

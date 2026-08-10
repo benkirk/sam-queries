@@ -197,6 +197,16 @@ from .integration.xras_views import (
     XrasRequestView
 )
 
+# Notification delivery ledger.
+#
+# ⚠️ This costs an import of `sam.notify`, whose __init__ therefore imports
+# ONLY sam.notify.base eagerly and defers the rest via PEP 562 __getattr__.
+# Eager imports there would put jinja2, three transports and sam.fmt into the
+# import graph of every ORM consumer — and sam.fmt imports the top-level
+# `config` module, which `python3 src/webapp/run.py` shadows with
+# webapp/config.py. See the sam/notify/__init__.py docstring.
+from .notify.models import NotificationLog
+
 from .security.roles import Role, RoleUser, ApiCredentials, RoleApiCredentials
 from .security.access import AccessBranch, AccessBranchResource
 
@@ -260,6 +270,8 @@ __all__ = [
     'XrasActivationEvent', 'XRAS_ACTIVATION_EVENT_TYPES',
     'XrasUserView', 'XrasRoleView', 'XrasActionView',
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',
+    # Notifications
+    'NotificationLog',
     # Security
     'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',
     'AccessBranch', 'AccessBranchResource',

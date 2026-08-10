@@ -88,7 +88,7 @@ sam-queries/
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
 │   ├── core/                # Context, base command classes, exit codes
 │   ├── user/ project/ allocations/ accounting/   # Command + display modules
-│   ├── notifications/ templates/                 # Expiration emails
+│   ├── notifications/                            # Expiration-notice display helpers
 │   └── cmds/                # Entry points (search.py, admin.py)
 ├── src/webapp/           # Flask web application (see src/webapp/README.md)
 │   ├── api/v1/              # REST blueprints (+ legacy-compat, see §API below)
@@ -553,6 +553,44 @@ Jinja2 filters are registered in `create_app()` — use them in every template.
 
 **Do NOT** use raw `'{:,.0f}'.format(x)` or `.strftime(…)` in templates or CLI
 display code. (Migration history: `docs/plans/implemented/FORMAT_DISPLAY.md`.)
+
+---
+
+## Notifications — `sam.notify`
+
+One mailer, two consumers: `sam-admin project --upcoming-expirations --notify`
+and the webapp's XRAS activation Notify button. Design and measurements:
+`docs/plans/NOTIFICATION_FRAMEWORK.md`.
+
+```python
+from sam.notify import Message, Notifier, Recipient
+notifier = Notifier(ledger=NotificationLedger(lambda: Session(engine)))
+notifier.send(Message(kind='expiration', recipient=Recipient(...), subject=...,
+                      dedup_key='expiration:SCSG0001:2026-09-30:pi@x.edu'))
+```
+
+⚠️ **Fail-closed.** `NOTIFY_ENABLED` defaults to **false** everywhere; only
+`helm/values.yaml` sets it. Every dev container runs an obfuscated production
+snapshot, obfuscation does not remove the mail relay, and `ndir.ucar.edu`
+relays for the whole `128.117.0.0/16` — a mailer that defaults on can reach
+**any address on the internet**. `TestingConfig` also pins
+`NOTIFY_TRANSPORT='null'`, and an autouse fixture in `tests/conftest.py`
+makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
+
+| | |
+|---|---|
+| **Suppression** | every `Message` carries a `dedup_key`; `sent`/`redirected` suppress a repeat, `failed`/`suppressed` do not. `--force` overrides. |
+| **Stale `queued`** | a `queued` row suppresses only until `NOTIFY_QUEUED_STALE_SECONDS`. Without that horizon one crash suppresses a recipient **permanently** — the counter on the admin card is the same predicate inverted. |
+| **The key is pre-redirect** | built from the *intended* recipient, so `NOTIFY_REDIRECT_TO` cannot collapse a staging run onto one key. |
+| **Ledger transactions** | `notification_log` commits on its **own** session — mail cannot be un-sent by a rollback. This is the inverse of `xras_activation_event`, which commits *inside* `management_transaction`. |
+| **`preview()` writes no row** | a preview is not an attempt; a stray row would poison the dedup query. |
+| **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
+| **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
+
+❌ **DON'T** add eager imports to `sam/notify/__init__.py` — `sam/__init__.py`
+exports `NotificationLog`, so eager imports there put jinja2 and the
+transports into every ORM consumer's import graph.
+`tests/unit/test_notify_import_graph.py` is the gate.
 
 ---
 

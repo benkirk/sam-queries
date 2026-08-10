@@ -139,6 +139,46 @@ def pytest_configure(config):
 ADMIN_TESTING_BUNDLE = 'admin-testing-only'
 
 
+# ---- No test may open an SMTP socket --------------------------------------
+#
+# STRUCTURAL, not belt-and-braces. docs/plans/NOTIFICATION_FRAMEWORK.md § 9
+# measured ndir.ucar.edu relaying for the whole 128.117.0.0/16 and returning
+# `250 2.1.5 Ok` for an ARBITRARY EXTERNAL recipient. Any host that can run
+# this suite can therefore mail anyone on the internet, over an envelope-from
+# that SPF-passes as ucar.edu.
+#
+# `TestingConfig` pins NOTIFY_ENABLED=False and NOTIFY_TRANSPORT='null', but
+# config is a value a test can override and a fixture can forget. The socket
+# is not. This makes reaching a real relay a loud failure with a sentence
+# explaining itself, instead of mail to a real person.
+#
+# It replaces the classes at their smtplib import site, so it holds for
+# sam.notify.transports.smtp (which does `import smtplib`) as well as for any
+# test that pokes smtplib directly.
+
+
+class _SmtpBlockedInTests(RuntimeError):
+    """Raised when a test tries to open an SMTP connection."""
+
+
+@pytest.fixture(autouse=True)
+def _no_smtp_sockets(monkeypatch):
+    """Make every smtplib connection attempt fail loudly."""
+    import smtplib
+
+    def _blocked(*args, **kwargs):
+        raise _SmtpBlockedInTests(
+            "A test tried to open an SMTP connection. The suite must never "
+            "reach a real relay: ndir.ucar.edu accepts arbitrary external "
+            "recipients from the UCAR /16, so this would mail a real person. "
+            "Use NullTransport (the TestingConfig default), ConsoleTransport, "
+            "or patch 'sam.notify.transports.smtp.smtplib.SMTP' explicitly."
+        )
+
+    monkeypatch.setattr(smtplib, "SMTP", _blocked)
+    monkeypatch.setattr(smtplib, "SMTP_SSL", _blocked)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _register_admin_testing_bundle():
     from webapp.utils.rbac import GROUP_PERMISSIONS, Permission

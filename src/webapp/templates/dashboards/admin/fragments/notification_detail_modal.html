@@ -1,0 +1,109 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{#
+  One delivery attempt, in full — rendered into #auditDetailsModalBody.
+
+  Context:
+    row   NotificationLog
+
+  Rendered bodies are deliberately NOT stored, so there is nothing to leak
+  here beyond the columns. What the columns DO carry is the recipient, which
+  is why this route is SYSTEM_ADMIN like the table it opens from.
+
+  `template` is the one field worth the modal on its own: it is the only
+  record of which facility variant a given person actually received, and the
+  fallback chain (`{base}-{facility}` → `{base}-UNIV` → `{base}`) is
+  otherwise invisible after the fact.
+#}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Delivery #{{ row.notification_log_id }}
+</h5>
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+    {{ status_badge(row.status) }}
+    <span class="badge bg-secondary">{{ row.kind }}</span>
+    <span class="badge bg-light text-dark">{{ row.channel }}</span>
+    <span class="badge bg-light text-dark">via {{ row.transport }}</span>
+</div>
+
+<dl class="config-stats small mb-3">
+    <dt>Recipient</dt>
+    <dd><code class="user-select-all">{{ row.recipient }}</code>
+        {% if row.recipient_name %}
+        <span class="text-muted">— {{ row.recipient_name }}</span>
+        {% endif %}
+        {% if row.recipient_role %}
+        <span class="badge bg-light text-dark ms-1">{{ row.recipient_role }}</span>
+        {% endif %}
+    </dd>
+
+    {% if row.intended_recipient %}
+    <dt>Intended recipient</dt>
+    <dd>
+        <code class="user-select-all">{{ row.intended_recipient }}</code>
+        <div class="text-warning-emphasis small">
+            This message was rerouted by <code>NOTIFY_REDIRECT_TO</code> and did
+            <strong>not</strong> reach the address above.
+        </div>
+    </dd>
+    {% endif %}
+
+    <dt>Subject</dt>
+    <dd>{{ row.subject or '—' }}</dd>
+
+    <dt>Template</dt>
+    <dd>
+        {% if row.template %}<code>{{ row.template }}</code>
+        {% else %}<span class="text-muted">—</span>{% endif %}
+    </dd>
+
+    <dt>Project</dt>
+    <dd>
+        {% if row.projcode %}<code>{{ row.projcode }}</code>
+        {% else %}<span class="text-muted">—</span>{% endif %}
+        {% if row.entity_type %}
+        <span class="text-muted small">
+            ({{ row.entity_type }} #{{ row.entity_id }})
+        </span>
+        {% endif %}
+    </dd>
+
+    <dt>Suppression key</dt>
+    <dd>
+        {% if row.dedup_key %}
+        <code class="user-select-all small">{{ row.dedup_key }}</code>
+        {% else %}
+        <span class="text-muted">— (this message is never suppressed)</span>
+        {% endif %}
+    </dd>
+
+    <dt>Requested by</dt>
+    <dd>{{ row.requested_by }}</dd>
+
+    <dt>Attempted</dt>
+    <dd>{{ row.creation_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</dd>
+
+    <dt>Outcome recorded</dt>
+    <dd>
+        {% if row.sent_time %}
+        {{ row.sent_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}
+        {% else %}
+        <span class="text-muted">— still queued</span>
+        {% endif %}
+    </dd>
+</dl>
+
+{% if row.error %}
+<div class="alert alert-danger small mb-0">
+    <strong>Detail</strong>
+    <pre class="mb-0 mt-1" style="white-space: pre-wrap;">{{ row.error }}</pre>
+</div>
+{% endif %}
+
+{% if row.status == 'queued' and not row.sent_time %}
+<p class="text-muted small mt-3 mb-0">
+    A row that stays <code>queued</code> means the process died between
+    writing the attempt and writing its outcome — SAM does not know whether
+    this message was delivered. Once it ages past
+    <code>NOTIFY_QUEUED_STALE_SECONDS</code> it stops suppressing a retry.
+</p>
+{% endif %}

@@ -311,6 +311,19 @@ class ProductionConfig(SAMWebappConfig):
                 "Generate keys with: python scripts/gen_api_key.py",
                 stacklevel=2,
             )
+        # Notifications are fail-closed (NOTIFY_ENABLED defaults false), so a
+        # dropped env var means "no mail" rather than "mail the wrong people".
+        # That is the right way round, but it is silent — warn so the disabled
+        # state is noticed within a day rather than at the next expiration
+        # round. docs/plans/NOTIFICATION_FRAMEWORK.md § 3.
+        if os.getenv('NOTIFY_ENABLED', '0').lower() not in ('1', 'true', 'yes'):
+            import warnings
+            warnings.warn(
+                "NOTIFY_ENABLED is not set. No notification will be sent — "
+                "expiration notices and XRAS activation mail will be recorded "
+                "as 'suppressed'. Set NOTIFY_ENABLED=1 to enable delivery.",
+                stacklevel=2,
+            )
         # Fail CLOSED: production must run OIDC, never stub/ldap [PR295 P0-2].
         # StubAuthProvider accepts any non-empty password, so a single dropped
         # env var must never silently downgrade a public deployment to it.
@@ -387,6 +400,17 @@ class TestingConfig(SAMWebappConfig):
     # test container does not provide. Disable eager load at startup;
     # route-level tests stub the service layer instead.
     FS_SCANS_ENABLED = False
+
+    # Notifications OFF and pinned to the recording transport, on the same
+    # reasoning as the zeroed cache TTLs above: a test tier that CAN reach
+    # shared state is a test tier that eventually does. Here "shared state"
+    # is the internet — ndir.ucar.edu relays for the whole UCAR /16 and
+    # accepts arbitrary external recipients
+    # (docs/plans/NOTIFICATION_FRAMEWORK.md § 9). Belt and braces with the
+    # autouse no-socket fixture in tests/conftest.py, which is the gate that
+    # holds even when a test builds its own config.
+    NOTIFY_ENABLED   = False
+    NOTIFY_TRANSPORT = 'null'
 
 
 _configs = {

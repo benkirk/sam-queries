@@ -195,6 +195,12 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/admin/fragments/nsf_program_contracts_htmx.html': [
         'contractDetailsModalBody'],
+    # The delivery log's per-row detail button opens the shared audit modal.
+    # Loaded only into dashboards/admin/notifications.html, which includes
+    # partials/audit_details_modal.html itself — same arrangement as the XRAS
+    # action log, which is the page this one is modelled on.
+    'dashboards/admin/fragments/notifications_log.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/organization_card.html': [
         'createAoiFormContainer', 'createAoiGroupFormContainer', 'createAoiGroupModal',
         'createAoiModal', 'createNsfProgramFormContainer', 'createNsfProgramModal',
@@ -231,8 +237,14 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # transactions and adjustments tables above.
     'dashboards/allocations/partials/xras_action_details_modal.html': [
         'auditDetailsModalBody'],
+    # The notify preview: its Send button re-targets the same modal body it was
+    # itself swapped into, so the outcome (sent / manual fallback) replaces the
+    # preview in place. Reached only from the pending card, i.e. the same single
+    # host page as the dismiss form directly below.
+    'dashboards/allocations/partials/xras_notify_form.html': [
+        'auditDetailsModalBody'],
     # The pending card's action buttons open the shared audit modal for the
-    # notify notice, the dismiss form and the activation history. Same shell,
+    # notify preview, the dismiss form and the activation history. Same shell,
     # same single host page (xras.html includes partials/audit_details_modal.html).
     'dashboards/allocations/partials/xras_pending_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',

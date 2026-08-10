@@ -279,7 +279,20 @@ it. That is also why `notified_to` is stored: it is what the operator was handed
 
 ---
 
-## The adjacent bug — recorded, not fixed
+## The adjacent bug — recorded here, ✅ FIXED in Sprint D
+
+> **Update (2026-08-09).** This section was written to record the bug and
+> name the moment to fix it: *"if a notification ledger is ever wanted, that
+> is the moment to fold both in."* That moment arrived — see
+> [`../NOTIFICATION_FRAMEWORK.md`](../NOTIFICATION_FRAMEWORK.md).
+> `notification_log` now records every attempt and
+> `expiration:{projcode}:{latest_end_date}:{recipient}` suppresses the
+> re-send. Verified end to end against the obfuscated snapshot: 602 sent,
+> then 0 sent / 602 skipped on an immediate re-run. `--force` overrides.
+>
+> The analysis below stands as the record of what the bug was.
+
+
 
 `sam-admin project --upcoming-expirations --notify` **persists nothing at all.**
 It recomputes its recipient list from a pure date-window query on every run

@@ -421,6 +421,7 @@ _ACTIVATION_WRITE_PATHS = [
     ('POST', '/allocations/xras_restore/1'),
     ('POST', '/allocations/xras_comment/1'),
     ('GET', '/allocations/xras_dismiss_form/1'),
+    ('GET', '/allocations/xras_notify_form/1'),
     ('GET', '/allocations/xras_history/1'),
 ]
 

@@ -1053,6 +1053,45 @@ class SAMAnonymizer:
         print(f"[✓] Purged {total:,} xras_activation_event records")
         return total
 
+    def purge_notification_log(self, session: Session) -> int:
+        """
+        Empty notification_log — every row names a real person's email address.
+
+        ``recipient`` and ``intended_recipient`` are addresses, ``recipient_name``
+        is a display name, and ``subject`` routinely carries a projcode plus a
+        title. Unlike most PII in this database these cannot be mapped back
+        through ``original_username_to_user_id`` with any confidence: a
+        notification may have gone to an address that belongs to no SAM user at
+        all (``--additional-recipients``, an operator, a departed PI's forwarding
+        address). The failure mode is a PII leak into a **public Git LFS blob**,
+        because the obfuscated dump is committed (see
+        ``backups/sam-obfuscated.sql.xz``).
+
+        Deleting is both safer and free: this is an operational delivery record,
+        not reference data. Nothing in dev or CI reads historical rows — the
+        tests that exercise the table create their own
+        (``tests/factories/notify.py``).
+
+        ⚠️ It is also the table whose rows would make a dev container *skip*
+        sending: suppression matches on ``dedup_key``, so importing production
+        rows into dev would silently suppress mail an operator was testing.
+
+        No FK constraints (deliberate — see the DDL header), so DELETE is
+        unconstrained by ordering.
+        """
+        print("\n[*] Purging notification_log table...")
+
+        result = session.execute(text("SELECT COUNT(*) FROM notification_log"))
+        total = result.scalar()
+        print(f"  Found {total:,} delivery records (recipient addresses — cannot be scrubbed in place)")
+
+        if not self.dry_run:
+            session.execute(text("DELETE FROM notification_log"))
+            session.commit()
+
+        print(f"[✓] Purged {total:,} notification_log records")
+        return total
+
     def anonymize_all(self) -> Dict[str, int]:
         """
         Execute full anonymization workflow.
@@ -1126,6 +1165,13 @@ class SAMAnonymizer:
                     self.purge_xras_action_log(session)
                 else:
                     print("\n[!] xras_action_log not present in source — skipping")
+
+                # Same tolerance, same reason: notification_log also awaits the
+                # DBA. No FK to or from it, so ordering does not matter here.
+                if self._table_exists(session, 'notification_log'):
+                    self.purge_notification_log(session)
+                else:
+                    print("\n[!] notification_log not present in source — skipping")
 
                 if not self.dry_run:
                     print("\n[*] Committing all changes...")

@@ -96,7 +96,10 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning)
 @click.option('--dry-run', is_flag=True, help='Preview emails without sending (requires --notify)')
 @click.option('--email-list', type=str, help='Comma-separated list of additional email recipients')
 @click.option('--deactivate', is_flag=True, help='Deactivate expired projects (requires --recent-expirations)')
-@click.option('--force', is_flag=True, help='Skip confirmation prompt (requires --deactivate)')
+@click.option('--force', is_flag=True,
+              help='With --deactivate: skip the confirmation prompt. '
+                   'With --notify: re-send to recipients already notified '
+                   'about this expiration (overrides suppression).')
 @click.option('--since', type=click.DateTime(formats=['%Y-%m-%d']), default=None,
               help='Look back to this date for --recent-expirations (e.g., 2024-01-01)')
 @click.option('--list-users', is_flag=True, help='List all users')
@@ -135,9 +138,11 @@ def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_reso
         ctx.console.print("Error: --deactivate requires --recent-expirations", style="bold red")
         sys.exit(1)
 
-    # Validate that --force requires --deactivate
-    if force and not deactivate:
-        ctx.console.print("Error: --force requires --deactivate", style="bold red")
+    # --force means "skip the protection" on both surfaces that have one:
+    # the deactivation confirmation prompt, and notification suppression.
+    if force and not (deactivate or notify):
+        ctx.console.print("Error: --force requires --deactivate or --notify",
+                          style="bold red")
         sys.exit(1)
 
     # DB-wide tree audit — no projcode (the invariant spans trees, not projects)
@@ -157,7 +162,8 @@ def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_reso
             facility_filter=facility_filter,
             notify=notify,
             dry_run=dry_run,
-            email_list=email_list
+            email_list=email_list,
+            force=force,
         )
         sys.exit(exit_code)
 
