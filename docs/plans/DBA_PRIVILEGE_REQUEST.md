@@ -1,7 +1,31 @@
 # DBA request — DDL privileges for `hpc-writer` on `sam`
 
-**Status:** drafted 2026-08-10, not yet filed. Account and current grants
-confirmed against production the same day — see § *Confirmed on production*.
+> ## ✅ GRANTED 2026-08-10 — this document is now a record, not a request
+>
+> The ask below was filed and approved **exactly as written**. Confirmed in place
+> from the UCAR VPN the same day:
+>
+> ```
+> GRANT USAGE ON *.* TO `hpc-writer`@`%`
+> GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, REFERENCES, INDEX, ALTER ON `sam`.* TO `hpc-writer`@`%`
+> ```
+>
+> All three tables were then created by hand and verified — 7 utf8mb4 columns,
+> 3 FK constraints, 27 index rows, 0 rows of data. See
+> [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) § 2 for the applied
+> sequence and the verification queries.
+>
+> **What this changes going forward:** a new table in `sam` is no longer a DBA
+> round-trip. Still no `DROP`, so `DROP TABLE`, `TRUNCATE TABLE` and any
+> destructive path remain a DBA action — which is the point of the ask.
+>
+> The rest of this document is kept because the *evidence* is what made the
+> request succeed on the first attempt, and the next person asking for a
+> privilege will want the shape of it.
+
+**Status:** drafted 2026-08-10, filed and granted the same day. Account and
+original grants confirmed against production before filing — see § *Confirmed on
+production*.
 
 **What this replaces:** the per-table DBA ticket described in
 [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) § 2. That ticket is still
@@ -246,13 +270,52 @@ Not re-checked this session, and not load-bearing for the request:
 version the harness ran.
 
 **Scope:** production only. The Test instance and the staging RDS (creds via
-`scripts/infra/db-creds-staging.sh`) are out of scope here; staging still needs
-all three files run by hand, since `infrastructure/scripts/init-rds.sh` restores
-the raw `.xz` with no initdb hook.
+`scripts/infra/db-creds-staging.sh`) are out of scope here.
+
+⚠️ **Correction, 2026-08-10.** This section used to say staging "still needs all
+three files run by hand, since `init-rds.sh` restores the raw `.xz` with no
+initdb hook." The second half is true; the first is now only half true. The
+committed snapshot was regenerated in #429 and **does** contain all three tables
+(0 rows — the anonymizer purges them), so a *fresh* `init-rds.sh` restore gets
+them for free. An **existing** RDS never re-runs that bootstrap, so it still
+needs them by hand. CIRRUS/k8s is the deployment target, so this is a
+check-the-render concern rather than a release gate.
 
 ## After the grant lands
 
 There is no privilege self-check anywhere in the repo — nothing runs
 `SHOW GRANTS` / `CURRENT_USER()`. A few lines in `scripts/check_db_drift.py`
 (already the read-only prod-introspection tool) would turn *"did the DBA
-actually apply it"* into a command rather than a memory.
+actually apply it"* into a command rather than a memory. **Still open**; the
+2026-08-10 confirmation was a hand-run `SHOW GRANTS`.
+
+⚠️ **The host-row caveat is still live and is the one to remember.**
+`SHOW GRANTS FOR CURRENT_USER()` returned `hpc-writer@%` for a session *from the
+VPN*. If a more specific row exists for the k8s pod subnet, the running webapp
+matches that one instead and does **not** inherit this grant. Irrelevant to a
+`CREATE TABLE` run by an operator at a terminal — which is how the three tables
+landed — but it would matter for any DDL issued from a pod, and for reasoning
+about what the application account can actually reach.
+
+## Connecting as `hpc-writer` from a script or an agent
+
+Bare `-p` (interactive prompt) is the right answer at a human terminal. It is not
+available to anything non-interactive, and `MYSQL_PWD` is **not** the fallback:
+`~/.my.cnf` exists on the operator workstation and option files beat that
+environment variable.
+
+Use an explicit option file instead — `--defaults-file` suppresses `~/.my.cnf`
+entirely, unlike `--defaults-extra-file`:
+
+```bash
+umask 077
+CNF=$(mktemp)
+{ printf '[client]\nuser=hpc-writer\nhost=sam-sql.ucar.edu\ndatabase=sam\n'
+  printf 'password=%s\n' "$(sed -n '3p' ~/SAM_keys | sed 's/^[^=]*=[[:space:]]*//')"
+} > "$CNF"
+mysql --defaults-file="$CNF" -e "SHOW GRANTS FOR CURRENT_USER();"
+rm -f "$CNF"
+```
+
+Piping the secret out of `~/SAM_keys` rather than echoing it keeps it out of the
+terminal, `ps`, shell history and any transcript. Delete the file afterwards.

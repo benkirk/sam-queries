@@ -26,8 +26,8 @@ no code is left.** The design, the measurements and the reasoning live in
 |---|---|---|
 | 1 | All six handlers built and registered | `pytest -q` → 5,280 passed; `pytest -m stress -n 0` → 21 passed |
 | 1b | The whole legacy surface is mapped — all eight endpoints, not the seven XRAS calls today | `pytest tests/api/test_xras_roles.py tests/api/test_xras_unmapped.py -q` |
-| 2 | The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
-| 2b | ⚠️ The DDL the DBA ran is the **current** `zz-90`/`zz-91` — `raw_payload`, `error_messages`, `comment` and `notified_to` must be **utf8mb4** | `SELECT COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_NAME IN ('xras_action_log','xras_activation_event')` |
+| 2 | ✅ **Done 2026-08-10.** The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
+| 2b | ✅ **Done 2026-08-10.** ⚠️ The DDL applied is the **current** `zz-90`/`zz-91`/`zz-92` — **exactly 7** columns must come back utf8mb4: `raw_payload`, `error_messages`, `comment`, `notified_to`, `recipient_name`, `subject`, `error` | `SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='sam' AND TABLE_NAME IN ('xras_action_log','xras_activation_event','notification_log') AND CHARACTER_SET_NAME='utf8mb4'` |
 | 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml:291` — and confirm it in the running pod's env before anything else |
 | 4 | The replay-and-diff oracle passes | `pytest tests/unit/test_xras_oracle.py -q` |
 | 5 | A notification path exists for `active = 0` projects | Sprint B's pending-activation card on the Allocations dashboard |
@@ -62,26 +62,52 @@ useful once code that reads those columns is running.
   41-byte 401 unauthenticated.
 - ⚠️ ECS-staging is **not** CIRRUS-k8s. Helm changes reach production via `main` → cirrus.
 
-### 2 · The DBA ticket · ⏳ external
+### 2 · The three tables · ✅ **DONE 2026-08-10 — no longer a DBA ticket**
 
-`xras_action_log` + `xras_activation_event` in production, and **run by hand on staging**
-— `infrastructure/scripts/init-rds.sh` restores the raw `.xz` with no initdb hook.
+**`hpc-writer` was granted DDL**, so this stopped being an external gate:
 
-**One ticket carries both tables.** A second costs another round of lead time.
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, REFERENCES, INDEX, ALTER ON `sam`.* TO 'hpc-writer'@'%';
+```
 
-The ticket is a **transcription of the current init scripts**, not a design question:
+Deliberately **no `DROP`**, so the worst case stays additive. `REFERENCES` is the
+non-obvious half and the reason a ticket saying "we need CREATE TABLE" would have
+failed: MySQL 8.0 requires it on the **parent** of every foreign key, and `zz-90` has a
+self-referential FK while `zz-91` points at `project`. `CREATE` alone yields only
+`zz-92`. Full evidence in [`DBA_PRIVILEGE_REQUEST.md`](DBA_PRIVILEGE_REQUEST.md).
 
-- `containers/sam-sql-dev/initdb.d/zz-90-xras_action_log.sql`
-- `containers/sam-sql-dev/initdb.d/zz-91-xras_activation_event.sql`
+All **three** files were then applied by hand to `sam-sql.ucar.edu`, in this order —
+`zz-91`'s FK references `zz-90`, so the order is load-bearing:
 
-⚠️ **File the current file.** `zz-90` gained three columns in C.1b — `action_id`,
-`service`, `outcome_reason` — each with written evidence in
-[`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. An older copy of the
-DDL is missing them, and adding a column later is a second ticket.
+```bash
+mysql --defaults-file=<creds> < containers/sam-sql-dev/initdb.d/zz-90-xras_action_log.sql
+mysql --defaults-file=<creds> < containers/sam-sql-dev/initdb.d/zz-91-xras_activation_event.sql
+mysql --defaults-file=<creds> < containers/sam-sql-dev/initdb.d/zz-92-notification_log.sql
+```
 
-- **Done when** both tables exist in prod and staging with all columns and indexes.
-- ⚠️ **Landing this starts capturing nothing.** XRAS still posts to legacy's URL; nothing
-  reaches this endpoint until the repoint. An early ticket buys lead time, not payloads.
+**Three files, not two.** `zz-92-notification_log.sql` (Sprint D,
+[`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md)) belongs to the same round;
+this gate listed only the two XRAS tables for a while, which is precisely the
+one-table-short mistake the "one ticket" rule exists to prevent.
+
+Verified on production, all five matching:
+
+| Check | Expected | Got |
+|---|---|---|
+| Tables | 3, InnoDB, `utf8mb3_general_ci`, 0 rows | ✅ |
+| `xras_action_log` C.1b columns | `action_id`, `service`, `outcome_reason` | ✅ |
+| utf8mb4 columns (precondition 2b) | exactly 7 | ✅ |
+| FK constraints | 3 | ✅ |
+| Index coverage (`information_schema.STATISTICS`) | 27 rows | ✅ |
+
+⚠️ **Landing this started capturing nothing.** XRAS still posts to legacy's URL; nothing
+reaches this endpoint until the repoint. Early tables buy lead time, not payloads.
+
+⚠️ **ECS-staging's RDS does not have them.** `infrastructure/scripts/init-rds.sh`
+restores the snapshot — which *does* now contain all three — but it is a one-time
+bootstrap after `terraform apply`, so an existing instance never picks them up. Until
+that DB is given the DDL, the XRAS tab and Admin → Notifications 500 there. CIRRUS/k8s
+is the deployment target; ECS-staging is a check-the-render environment.
 
 ### 3 · Parity against the deployed host
 
@@ -241,8 +267,11 @@ new.
   `containers/sam-sql-dev/anonymize_sam_db.py` still covers the three new columns.
   `raw_payload` is a verbatim POST body full of PII and the obfuscated dump is a committed
   public LFS blob.
-- `zz-90` / `zz-91` are **self-retiring**: once prod has the tables and the snapshot is
-  regenerated, the restore already contains them and `IF NOT EXISTS` makes the scripts
-  no-ops. Delete them whenever.
+- `zz-90` / `zz-91` / `zz-92` are **self-retiring, and as of 2026-08-10 already retired
+  in effect**: prod has the tables and the committed snapshot carries all three (0 rows,
+  purged by the anonymizer), so the restore already contains them and `IF NOT EXISTS`
+  makes the scripts no-ops everywhere. Delete them whenever — but note that doing so
+  makes the **snapshot** the sole source of truth for the utf8mb3/utf8mb4 split, which
+  the ORM does not encode. Keep the charset assertion somewhere before deleting them.
 - `compose.yaml` sets no `TZ` while `helm/values.yaml` sets `America/Denver`, so local dev
   and CI run UTC against ~123 `datetime.now()` call sites. Its own change, its own run.

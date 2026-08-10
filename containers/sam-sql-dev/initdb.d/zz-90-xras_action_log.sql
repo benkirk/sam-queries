@@ -117,11 +117,16 @@ CREATE TABLE IF NOT EXISTS xras_action_log (
     -- so it carries whatever a PI typed into a title or an abstract.
     raw_payload         TEXT         CHARACTER SET utf8mb4
                                      COLLATE utf8mb4_general_ci NOT NULL,
-    status              VARCHAR(16)  NOT NULL,   -- received|processed|manual|failed|replayed
-    http_status         SMALLINT UNSIGNED,       -- the code we answered: 200|400|422.
-                                                 -- status='failed' covers BOTH a malformed
-                                                 -- body (400) and a schema rejection (422),
-                                                 -- and triage needs to tell them apart.
+    status              VARCHAR(16)  NOT NULL,   -- received|processed|manual|failed|
+                                                 -- replayed|unmapped. `unmapped` is the
+                                                 -- catch-all's: XRAS called a path we do
+                                                 -- not implement. Six, and the widest is
+                                                 -- 9 chars, so VARCHAR(16) has room.
+    http_status         SMALLINT UNSIGNED,       -- the code we answered: 200|400|422|500.
+                                                 -- status='failed' covers a malformed body
+                                                 -- (400), a schema rejection (422) AND a
+                                                 -- handler that raised (500), and triage
+                                                 -- needs to tell them apart.
     -- utf8mb4 for the same reason: these strings interpolate payload values
     -- (`Cannot find contract for grant number "..."`), so they inherit the body's
     -- character range.
