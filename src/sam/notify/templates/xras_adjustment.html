@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h3 {
+            color: #0275d8;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        .project-info {
+            background-color: #f5f5f5;
+            border-left: 4px solid #5cb85c;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        table.allocations {
+            border-collapse: collapse;
+            margin: 15px 0;
+            width: 100%;
+        }
+        table.allocations th,
+        table.allocations td {
+            border-bottom: 1px solid #ddd;
+            padding: 6px 10px;
+            text-align: left;
+        }
+        table.allocations th {
+            background-color: #f5f5f5;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 0.9em;
+            color: #666;
+        }
+        /* The contact line lives in the footer; a default-blue mailto would
+           pull the eye straight past the message body to the fine print. */
+        .footer a {
+            color: inherit;
+        }
+        .footer p {
+            margin: 0 0 6px;
+        }
+    </style>
+</head>
+<body>
+    <p>Dear {{ recipient_name }},</p>
+
+    <div class="project-info">
+        The allocation for your project <strong>{{ project_code }}</strong> -
+        "{{ project_title }}" has been adjusted.
+    </div>
+
+    {# "Change", not "Added": an Adjustment is the only action type whose
+       amounts can be negative, and the sign is carried in r.amount. #}
+    {% if changes %}
+    <h3>Changes applied by this request</h3>
+    <table class="allocations">
+        <tr><th>Resource</th><th>Change</th></tr>
+        {% for r in changes %}
+        <tr>
+            <td>{{ r.resource_name }}</td>
+            <td>{{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if resources %}
+    <h3>Your project now holds</h3>
+    <table class="allocations">
+        <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
+        {% for r in resources %}
+        <tr>
+            <td>{{ r.resource_name }}</td>
+            <td>{{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}</td>
+            <td>{{ r.end_date or '—' }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    <p>
+        The revised balances are in effect now; no change to how you submit
+        work. If this does not look right, please contact
+        <a href="mailto:help@ucar.edu">help@ucar.edu</a>.
+    </p>
+
+    <ul>
+        <li>Documentation:
+            <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a></li>
+        <li>Manage your project and its members at
+            <a href="https://sam.hpc.ucar.edu/">sam.hpc.ucar.edu</a></li>
+    </ul>
+
+    {% if recipient_role != 'lead' %}
+    <p>
+        Your project lead ({{ project_lead }}{% if project_lead_email %} /
+        {{ project_lead_email }}{% endif %}) manages membership and any future
+        extension or supplement requests.
+    </p>
+    {% endif %}
+
+    <div class="footer">
+        <p>This is an automated notification from the NSF NCAR Systems Accounting Manager.</p>
+        <p>If you believe you received this message in error, please contact
+            <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
+    </div>
+</body>
+</html>

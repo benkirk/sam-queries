@@ -84,12 +84,17 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
     # facet chips and the dedup key are built from, so folding them would
     # make "we notified them about the supplement" unaskable.
     #
-    # ⚠️ `adjust` and `transfer` deliberately have no kind. An Adjustment can
-    # be a *reduction*, and "your allocation was cut" is not a mail to send
-    # without deciding what it should say; Transfer parks as manual by design
-    # and never completes. Both still appear on the activity table as history,
-    # with no Notify button — see XRAS_SERVICE_KINDS in
-    # sam.queries.xras_activation, which is the map that leaves them out.
+    # ⚠️ `transfer` deliberately has no kind: it parks as manual by design and
+    # never completes, so there is no outcome to report. It still appears on
+    # the activity table as history, with no Notify button — see
+    # XRAS_SERVICE_KINDS in sam.queries.xras_activation, which is the map that
+    # leaves it out.
+    #
+    # `adjust` had no kind for the same reason until the Round 2 smoke: an
+    # Adjustment can be a *reduction*, and "your allocation was cut" was not a
+    # mail to send before deciding what it should say. It now says it — see
+    # xras_adjustment below, whose whole design is that it never claims a
+    # direction the payload does not support.
     NotificationKind(
         key='xras_supplement',
         label='XRAS allocation supplement',
@@ -108,6 +113,17 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         key='xras_update',
         label='XRAS allocation renewal',
         template_base='xras_update',
+        default_subscribed=True,
+        facility_aware=False,
+    ),
+    # The one kind whose message may be bad news. Its template states the
+    # signed change per resource and the resulting total, and never uses a
+    # word that presumes a direction — an Adjustment is the only action type
+    # that can subtract.
+    NotificationKind(
+        key='xras_adjustment',
+        label='XRAS allocation adjustment',
+        template_base='xras_adjustment',
         default_subscribed=True,
         facility_aware=False,
     ),

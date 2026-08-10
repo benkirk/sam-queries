@@ -648,15 +648,21 @@ The Round 1 order was forced; it no longer is. Do one project each way.
   `Renewal` against an existing project dispatched to `update`, rendered
   `xras_update.txt`, and read correctly ("has been renewed", allocations for
   the new period, project code and members unchanged).
-- ☐ **Should an Adjustment notify after all?** Currently no notice at all. A
-  *reduction* is the case that decided it; an *increase* arguably deserves one.
+- ☑ **Should an Adjustment notify after all?** **Yes** — built in Round 2 as
+  `xras_adjustment`. See § *The Adjustment notice* below for the wording rule,
+  which is the whole difficulty.
 - ☐ **Does the window default of 30 days match how an operator works?** Triage
-  week suggests days, not weeks.
-- ☐ **Is the action-log table below now redundant on this page?** The activity
-  table shows processed actions; the log shows everything. Two tables, one page.
-- ☐ **Automatic sending.** Everything is manual by design so far. The message
-  builders are shaped for a handler to call — decide whether that lands before
-  cutover or after.
+  week suggests days, not weeks. Still open.
+- ☑ **Is the action-log table below now redundant on this page?** **No, keep
+  it.** It shows *failures*, which the activity table cannot: that one is
+  scoped to `status='processed'` by design. Surfacing failures is exactly what
+  is wanted during deployment, when a 422 on an unknown contract or an
+  unmapped resource is the thing an operator most needs to see.
+- ☑ **Automatic sending** — **follow-on, not this branch.** Everything stays
+  manual through the ledger for cutover. The message builders already take an
+  action and are shaped for a handler to call.
+- ☑ **The `--ncar-vermilion` alert contrast (3.84:1)** — **accepted.** Do not
+  re-flag it.
 
 ### Round 2 findings — as run, 2026-08-10
 
@@ -749,8 +755,62 @@ the project is active. Verified both ways.
   and the table scrolls inside its own wrapper. The card-per-row redesign below
   `md` stays deferred.
 
-Remaining open questions from the list below: the Adjustment notice, the 30-day
-default, whether the action-log table is now redundant, and automatic sending.
+Only one open question survives the list above: the 30-day default window.
+
+### The Adjustment notice — the fifth kind
+
+`adjust` was deliberately unmapped, on the grounds that an Adjustment can be a
+**reduction** and "your allocation was cut" was not a mail to send before
+deciding what it should say. Decided: **it notifies**, because a PI whose
+allocation shrank is exactly who needs telling. `transfer` remains the only
+unmapped service (it parks as `manual` and never completes).
+
+The difficulty is entirely in the wording, and it is load-bearing:
+
+- **The subject line claims no direction** — *"allocation has been adjusted"*.
+  A subject promising good news is read long before the body can correct it.
+- **The change is stated per resource with an explicit sign**, `+50,000` /
+  `-100,000`, from `_action_increments(action, signed=True)`. The `+` is added
+  only here; a supplement's amounts are increments by construction and its
+  template already says "Added by this request".
+- **`changes` is a separate context key from `added`.** `added` carries a
+  promise that every number in it is an increase, which the supplement wording
+  leans on. An adjustment makes no such promise, and reusing the key would
+  have let a reduction render under supplement prose.
+- **Units are computed on the magnitude.** `allocation_unit` picks
+  singular/plural from the value, and −1 is one hour in either direction.
+- The body ends with *"If this does not look right, please contact
+  help@ucar.edu"* rather than the cheerful close the other four share.
+
+`tests/unit/test_notify_templates.py::TestTheAdjustmentNoticeNeverPresumesADirection`
+renders a **reduction** and fails if either part contains *additional*,
+*added*, *increase*, *more time* or *extra*. It asserts on the **rendered**
+part, not the source file, so a Jinja comment explaining the ban does not trip
+its own rule.
+
+**Both directions were smoked** against `UHSS0003`, the synthetic project — no
+real allocation was touched:
+
+| Posted | Derecho | Casper | Mail said |
+|---|---|---|---|
+| `--amount -100000` | 1,250,000 → 1,150,000 | 12,500 → 2,500 | `-100,000` / `-10,000` |
+| `--amount 50000` | → 1,200,000 | → 7,500 | `+50,000` / `+5,000` |
+
+`scripts/xras/smoke_payloads.py --adjustment PROJCODE --amount N` generates
+them; the amount is signed and Casper takes a tenth of it, so one run exercises
+two magnitudes.
+
+**The below-zero guard was smoked too**, and it is the reason to keep the
+action-log table. `--amount -9000000` came back 422 naming both resources —
+
+> Adjustment of -9,000,000.00 for Derecho would take the allocation below zero
+> (currently 1,200,000.00)
+
+— and **wrote nothing**: Derecho and Casper were still 1,200,000 and 7,500
+afterwards, so the whole action rolled back rather than applying the half that
+fit. Legacy has no such guard, but legacy also never ran an Adjustment. The
+failed row appears only in the action log below, never in the activity ledger,
+which is exactly the split that makes both tables worth having during cutover.
 
 ### One Round 1 note corrected
 

@@ -846,11 +846,82 @@ class TestActivityRowExpansion:
 
     def test_a_row_needing_activation_offers_no_notify_for_an_unmapped_service(
             self, app):
-        """An Adjustment has no kind, so Notify would post a message nobody
-        can build."""
+        """A service with no kind would make Notify post a message nobody can
+        build. `transfer` is the only one left — `adjust` gained a kind once
+        the reduction wording was written."""
         body = self._render(app, may_manage=True,
                             rows=[self._row(kind=None, notifiable=False,
-                                            action_type='Adjustment',
+                                            action_type='Transfer',
                                             notifications=[], notified=False,
                                             tags=[])])
         assert 'xras_notify_form' not in body
+
+
+class TestSignedIncrements:
+    """`_action_increments(signed=True)` — the Adjustment mail's only number.
+
+    The allocation now holds the NEW TOTAL and `allocation_transaction`
+    records the delta without naming the XRAS action, so this payload read is
+    the only place the per-resource change survives. A dropped or flipped sign
+    here tells a PI their allocation grew when it shrank, and nothing
+    downstream could catch it.
+    """
+
+    def _action(self, *, amount, key):
+        import json
+        from types import SimpleNamespace
+        return SimpleNamespace(raw_payload=json.dumps({
+            'resources': [{'resourceRepositoryKey': key,
+                           'awardedAmount': str(amount)}]}))
+
+    @pytest.fixture
+    def resource_key(self, session):
+        """Any real mapping row — the helper resolves the key through it.
+
+        A Layer-1 "any row of this shape" pick, deliberately: the sign logic
+        is what is under test, not which resource carries it.
+        """
+        from sam.integration.xras import XrasResourceRepositoryKeyResource
+        row = session.query(XrasResourceRepositoryKeyResource).first()
+        if row is None:
+            pytest.skip('no xras_resource_repository_key_resource rows')
+        return row.resource_repository_key
+
+    def test_a_positive_amount_is_shown_with_an_explicit_plus(
+            self, app, session, resource_key):
+        from webapp.dashboards.allocations import blueprint
+        with app.app_context():
+            out = blueprint._action_increments(
+                self._action(amount=50000.0, key=resource_key), signed=True)
+        assert out and out[0]['amount'].startswith('+')
+
+    def test_a_negative_amount_keeps_its_minus(
+            self, app, session, resource_key):
+        from webapp.dashboards.allocations import blueprint
+        with app.app_context():
+            out = blueprint._action_increments(
+                self._action(amount=-100000.0, key=resource_key), signed=True)
+        assert out and out[0]['amount'].startswith('-')
+
+    def test_the_supplement_path_is_unsigned(
+            self, app, session, resource_key):
+        """A supplement's amounts are increments by construction, and its
+        wording already says "Added by this request" — a '+' there would be
+        noise, and changing it would move a byte in a shipped template."""
+        from webapp.dashboards.allocations import blueprint
+        with app.app_context():
+            out = blueprint._action_increments(
+                self._action(amount=50000.0, key=resource_key))
+        assert out and not out[0]['amount'].startswith('+')
+
+    def test_units_are_computed_on_the_magnitude(
+            self, app, session, resource_key):
+        """`allocation_unit` picks singular/plural from the value; -1 is one
+        hour in either direction, so a sign must not reach it."""
+        from webapp.dashboards.allocations import blueprint
+        with app.app_context():
+            neg = blueprint._action_increments(
+                self._action(amount=-2500.0, key=resource_key), signed=True)
+            pos = blueprint._action_increments(
+                self._action(amount=2500.0, key=resource_key), signed=True)
+        assert neg[0]['units'] == pos[0]['units']

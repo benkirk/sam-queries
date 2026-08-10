@@ -578,9 +578,31 @@ class TestActivityTags:
         assert 'not_notified' in tags
 
     def test_a_service_with_no_kind_is_never_not_notified(self, session):
-        """An Adjustment has no notice defined, so flagging it "not notified"
-        would put a permanent to-do on the operator's list for something they
-        cannot action."""
+        """A service with no notice defined must not be flagged "not
+        notified": that would put a permanent to-do on the operator's list for
+        something they cannot action.
+
+        The example is `transfer`, which is now the ONLY service left out of
+        XRAS_SERVICE_KINDS. It used to be `adjust` as well — the rule has not
+        changed, only the sole surviving instance of it. (A real Transfer
+        parks as `manual` and so never reaches this table at all; what is
+        under test is the mapping, not the status.)
+        """
+        project = make_project(session, active=True)
+        action = _action(session, status='processed',
+                         request_number=project.projcode,
+                         action_type='Transfer')
+        action.service = 'transfer'
+        session.flush()
+        row = _activity_row(session, project)
+        assert row['notifiable'] is False
+        assert 'not_notified' not in row['tags']
+
+    def test_an_adjustment_is_now_notifiable(self, session):
+        """`adjust` was deliberately unmapped — an Adjustment can REDUCE an
+        allocation, and that mail was not worth sending until it was written.
+        It is written now (`xras_adjustment`), and a PI whose allocation
+        shrank is exactly who needs telling."""
         project = make_project(session, active=True)
         action = _action(session, status='processed',
                          request_number=project.projcode,
@@ -588,8 +610,9 @@ class TestActivityTags:
         action.service = 'adjust'
         session.flush()
         row = _activity_row(session, project)
-        assert row['notifiable'] is False
-        assert 'not_notified' not in row['tags']
+        assert row['kind'] == 'xras_adjustment'
+        assert row['notifiable'] is True
+        assert 'not_notified' in row['tags']
 
 
 class TestActivationDeriveRule:

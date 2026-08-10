@@ -1639,6 +1639,9 @@ _XRAS_KIND_SUBJECTS = {
     'xras_supplement': 'NSF NCAR Project {projcode} has received additional allocation',
     'xras_extension': 'NSF NCAR Project {projcode} allocation has been extended',
     'xras_update': 'NSF NCAR Project {projcode} allocation has been renewed',
+    # Deliberately directionless: an Adjustment can subtract, and a subject
+    # line promising good news is read long before the body corrects it.
+    'xras_adjustment': 'NSF NCAR Project {projcode} allocation has been adjusted',
 }
 
 
@@ -1649,14 +1652,24 @@ def _load_xras_action(action_id):
     return db.session.get(XrasActionLog, action_id)
 
 
-def _action_increments(action):
-    """What *this* action added, read back off its own stored payload.
+def _action_increments(action, *, signed=False):
+    """What *this* action changed, read back off its own stored payload.
 
     A supplement's mail has to say how much was added, and that number exists
     nowhere else: the allocation now holds the **new total**, and
     ``allocation_transaction`` records the delta without naming the XRAS
     action. The payload is the only place the increment survives, which is one
     more reason ``raw_payload`` is stored verbatim.
+
+    ``signed=True`` prefixes a ``+`` on positive amounts, for the Adjustment
+    mail. An Adjustment is the **only** action type whose amounts can be
+    negative (``AdjustmentHandler`` exists to honour them — the legacy
+    factory's copy-pasted ``> 0`` gate is what kept it dark), so this is the
+    one message where the reader cannot infer the direction from the action
+    type and has to be shown it. ``fmt.number`` already carries the minus.
+
+    Units are computed on the **magnitude**: ``allocation_unit`` decides
+    singular/plural from the value, and -1 is one hour in either direction.
 
     Returns ``[{'resource_name', 'amount', 'units'}]``, or ``[]`` for anything
     unparseable — a wrong number here would be worse than an absent one, so
@@ -1691,12 +1704,15 @@ def _action_increments(action):
             amount = float(item.get('awardedAmount'))
         except (TypeError, ValueError):
             continue
+        shown = fmt.number(amount)
+        if signed and amount > 0:
+            shown = f'+{shown}'
         out.append({
             'resource_name': resource.resource_name,
-            'amount': fmt.number(amount),
+            'amount': shown,
             'units': ResourceTypeName.allocation_unit(
                 resource.resource_type.resource_type
-                if resource.resource_type else None, amount),
+                if resource.resource_type else None, abs(amount)),
         })
     return sorted(out, key=lambda r: r['resource_name'])
 
@@ -1739,10 +1755,15 @@ def _xras_messages(project, people, *, action=None):
         'project_lead': project.lead.display_name if project.lead else 'Project Lead',
         'project_lead_email': lead_email,
         'resources': resources,
-        # Only the supplement template reads this, but every kind carries it —
+        # Only one template reads each of these, but every kind carries both —
         # a template that renders an undefined name renders nothing, silently,
         # so the cheapest guard is for the key to always exist.
         'added': _action_increments(action) if kind == 'xras_supplement' else [],
+        # Signed, and separate from `added` on purpose: `added` is a promise
+        # that every number in it is an increase, which the supplement wording
+        # leans on. An adjustment makes no such promise.
+        'changes': (_action_increments(action, signed=True)
+                    if kind == 'xras_adjustment' else []),
         'action_type': action.action_type if action else None,
     }
     subject = _XRAS_KIND_SUBJECTS.get(

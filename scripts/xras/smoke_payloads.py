@@ -23,6 +23,7 @@ Typical run (see docs/plans/XRAS_PRE_DEPLOY_SMOKE.md for the full checklist)::
     python scripts/xras/smoke_payloads.py --supplement UHSS0003 --post
     python scripts/xras/smoke_payloads.py --extension UHSS0004 --post
     python scripts/xras/smoke_payloads.py --renewal UHSS0004 --post
+    python scripts/xras/smoke_payloads.py --adjustment UHSS0003 --amount -100000 --post
 
 Without ``--post`` the payload is written to stdout, which is the way to check
 what you are about to send.
@@ -163,6 +164,22 @@ def build(args):
         title = f'Smoke Test - Renewal of {args.renewal}'
         resources = _resources([(DERECHO, 750_000.0), (CASPER, 7_500.0)])
         grants = []
+    elif args.adjustment:
+        # ⚠️ The ONLY action type whose amounts may be negative, and the only
+        # reason `xras_adjustment` needs its own wording — see
+        # `sam/xras/handlers/adjustment.py`, which exists to honour the sign
+        # that legacy's copy-pasted `> 0` gate silently dropped.
+        #
+        # `--amount` is signed and applies to Derecho; Casper takes a tenth of
+        # it, so a single run exercises two magnitudes in the same direction.
+        # A reduction below zero is REJECTED by the handler (422), which is
+        # itself worth smoking.
+        action_type, request_number = 'Adjustment', args.adjustment
+        direction = 'Reduction' if args.amount < 0 else 'Increase'
+        title = f'Smoke Test - {direction} adjustment to {args.adjustment}'
+        resources = _resources([(DERECHO, args.amount),
+                                (CASPER, args.amount / 10.0)])
+        grants = []
     else:                                             # pragma: no cover
         raise SystemExit('pick one of --new / --supplement / --extension / --renewal')
 
@@ -204,6 +221,13 @@ def main(argv=None):
     what.add_argument('--renewal', metavar='PROJCODE',
                       help='a Renewal against an existing project → the '
                            '`update` service and the xras_update kind')
+    what.add_argument('--adjustment', metavar='PROJCODE',
+                      help='a signed Adjustment (see --amount); the only '
+                           'action type that can REDUCE an allocation')
+
+    parser.add_argument('--amount', type=float, default=-100_000.0,
+                        help='signed Derecho delta for --adjustment; Casper '
+                             'gets a tenth (default: -100000, a reduction)')
 
     parser.add_argument('--lead', default='benkirk',
                         help='PI username; must exist in SAM (default: benkirk)')

@@ -53,13 +53,16 @@ __all__ = [
 #: ``xras_action_log.service`` → the notification kind that reports it.
 #:
 #: The dispatcher's vocabulary is :data:`sam.xras.dispatch.SERVICES`; this maps
-#: the subset that produces something a PI should be told about. Two are
+#: the subset that produces something a PI should be told about. One is
 #: deliberately absent:
 #:
-#: * ``adjust`` — an Adjustment can be a **reduction**, and "your allocation was
-#:   cut" is not a mail to send before deciding what it should say.
 #: * ``transfer`` — parks as ``manual`` by design and never completes, so there
 #:   is no outcome to report.
+#:
+#: ``adjust`` was absent for the same reason until the Round 2 smoke, on the
+#: grounds that an Adjustment can be a **reduction**. It notifies now; the
+#: reduction case is handled in the template's wording rather than by staying
+#: silent, because a PI whose allocation shrank is precisely who needs telling.
 #:
 #: A row whose service is not here still appears on the activity table as
 #: history; it simply has no Notify button. Adding a kind is this dict plus
@@ -69,6 +72,7 @@ XRAS_SERVICE_KINDS: Mapping[str, str] = {
     'update': 'xras_update',
     'extend': 'xras_extension',
     'supplement': 'xras_supplement',
+    'adjust': 'xras_adjustment',
 }
 
 #: Statuses whose ledger row means the recipient was actually reached.

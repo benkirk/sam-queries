@@ -51,6 +51,56 @@ class TestEveryKindResolves:
         assert rendered.text.strip()
 
 
+class TestTheAdjustmentNoticeNeverPresumesADirection:
+    """`xras_adjustment` is the one kind whose message may be bad news.
+
+    An Adjustment is the only action type whose amounts can be negative —
+    `sam.xras.handlers.adjustment` exists precisely to honour the sign that
+    legacy's copy-pasted `> 0` gate dropped. `adjust` therefore had no
+    notification kind at all until the wording was written, on the grounds
+    that "your allocation was cut" should not be sent by accident.
+
+    So the words that would make a reduction read as a gift are a defect, not
+    a style preference, and the subject line matters most: it is read long
+    before the body can correct it.
+    """
+
+    FORBIDDEN = ('additional', 'added', 'increase', 'more time', 'extra')
+
+    #: A reduction — the case the wording has to survive.
+    CONTEXT = {
+        'project_code': 'UHSS0003', 'project_title': 'A project',
+        'changes': [{'resource_name': 'Derecho', 'amount': '-100,000',
+                     'units': 'hours'}],
+        'resources': [{'resource_name': 'Derecho', 'amount': '1.15M',
+                       'units': 'hours', 'end_date': '2027-12-23'}],
+    }
+
+    @pytest.fixture
+    def rendered(self, renderer):
+        return renderer.render(Message(
+            kind='xras_adjustment', subject='s',
+            recipient=Recipient('pi@x.edu', name='A PI', role='lead'),
+            context=self.CONTEXT))
+
+    @pytest.mark.parametrize('part', ['text', 'html'])
+    def test_the_body_claims_no_direction(self, rendered, part):
+        """Asserted on the RENDERED part, not the source file: a Jinja comment
+        explaining *why* the word is banned would otherwise trip the check on
+        a template that is perfectly correct."""
+        body = (getattr(rendered, part) or '').lower()
+        found = [w for w in self.FORBIDDEN if w in body]
+        assert not found, (
+            f'the {part} part uses {found} — an Adjustment can REDUCE an '
+            f'allocation, and this is the one notice that has to survive '
+            f'being read by someone whose allocation shrank')
+
+    def test_it_states_the_signed_change_and_the_resulting_total(self, rendered):
+        assert '-100,000 hours' in rendered.text
+        assert '1.15M hours' in rendered.text
+        assert 'adjusted' in rendered.text.lower()
+
+
 class TestNoOrphans:
 
     def test_every_shipped_file_is_reachable_from_some_kind(self, renderer):
