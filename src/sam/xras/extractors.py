@@ -585,6 +585,18 @@ def extract_core_number(grant_number: str) -> str:
     return (grant_number or '').strip()
 
 
+#: Escape the three characters that mean something to ``LIKE``. The backslash goes
+#: first — translating it after ``%`` would double-escape the backslashes just added.
+#: ``str.translate`` sidesteps that by doing every mapping in one pass.
+_LIKE_ESCAPE = str.maketrans({'\\': r'\\', '%': r'\%', '_': r'\_'})
+
+#: A tie is already an operator-facing error, and the message names every candidate.
+#: Two is the largest real tie in production (``1049089`` / ``PLR-1049089``), so this
+#: is far above any legitimate result while still bounding what a wildcard could drag
+#: into ``xras_action_log.error_messages``.
+_MAX_CONTRACT_CANDIDATES = 25
+
+
 def resolve_contract(session, grant_number: Optional[str],
                      errs: ActionErrors) -> Optional[Contract]:
     """The SAM ``contract`` row behind one ``grants[]`` entry.
@@ -626,9 +638,17 @@ def resolve_contract(session, grant_number: Optional[str],
         return exact
 
     core = extract_core_number(grant_number)
+    # `core` is the payload's `grantNumber` verbatim whenever the ≥6-digit pattern
+    # misses, so `%` and `_` off the wire would otherwise reach LIKE as wildcards: a
+    # `grantNumber` of `%` matches every contract in the table, and every match is
+    # then named in `ambiguous_contract` and stored in `error_messages`. Never an
+    # injection — SQLAlchemy binds the parameter — but a third-party broker should
+    # not get to choose how many rows this returns. Escaped and capped.
+    suffix = core.translate(_LIKE_ESCAPE)
     candidates = (session.query(Contract)
-                  .filter(Contract.contract_number.ilike(f'%{core}'))
+                  .filter(Contract.contract_number.ilike(f'%{suffix}', escape='\\'))
                   .order_by(Contract.contract_id)
+                  .limit(_MAX_CONTRACT_CANDIDATES)
                   .all())
 
     if not candidates:
