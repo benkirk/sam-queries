@@ -76,6 +76,41 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         # variant and the resolver finds it through the default.
         facility_aware=False,
     ),
+    # ── The other three XRAS outcomes ────────────────────────────────────
+    #
+    # One kind per action type rather than one `xras_update` branching on a
+    # context key. The prose genuinely differs — a supplement reports an
+    # increment, an extension reports a date — and the kind is what the admin
+    # facet chips and the dedup key are built from, so folding them would
+    # make "we notified them about the supplement" unaskable.
+    #
+    # ⚠️ `adjust` and `transfer` deliberately have no kind. An Adjustment can
+    # be a *reduction*, and "your allocation was cut" is not a mail to send
+    # without deciding what it should say; Transfer parks as manual by design
+    # and never completes. Both still appear on the activity table as history,
+    # with no Notify button — see XRAS_SERVICE_KINDS in
+    # sam.queries.xras_activation, which is the map that leaves them out.
+    NotificationKind(
+        key='xras_supplement',
+        label='XRAS allocation supplement',
+        template_base='xras_supplement',
+        default_subscribed=True,
+        facility_aware=False,
+    ),
+    NotificationKind(
+        key='xras_extension',
+        label='XRAS allocation extension',
+        template_base='xras_extension',
+        default_subscribed=True,
+        facility_aware=False,
+    ),
+    NotificationKind(
+        key='xras_update',
+        label='XRAS allocation renewal',
+        template_base='xras_update',
+        default_subscribed=True,
+        facility_aware=False,
+    ),
 )
 
 

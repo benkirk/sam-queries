@@ -1,4 +1,4 @@
-"""The XRAS pending-activation worklist — a *different* table from the action log.
+"""XRAS operator state — a *different* table from the action log.
 
 Split out of :mod:`sam.queries.xras_actions`, which had fused two concerns over two
 tables with no shared helpers across the seam. The forms layer already splits exactly
@@ -6,9 +6,13 @@ this way (``sam/schemas/forms/xras.py`` and ``xras_activation.py``); this brings
 query layer in line.
 
 **What lives here.** Everything about ``xras_activation_event`` and the derived
-operator state on top of it: which XRAS-touched projects are still inactive, what an
-operator has done about each, who would be notified, and the provenance link back to
-the action that prompted it.
+operator state on top of it: what happened recently, what an operator has done about
+each outcome, who would be notified, and the provenance link back to the action that
+prompted it.
+
+The centrepiece is :func:`get_xras_activity`, which is keyed on the **action**. It
+replaced a project-keyed worklist filtered on ``~Project.is_active``; see its
+docstring for the three operator-visible bugs that key caused.
 
 **The one thing shared across the seam** is the ``projcode_result`` OR
 ``request_number`` join, imported from :mod:`~sam.queries.xras_actions` as
@@ -22,7 +26,7 @@ the split.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -30,15 +34,92 @@ from sqlalchemy.orm import Session
 from sam.integration.xras import XrasActionLog, XrasActivationEvent
 from sam.projects.projects import Project
 
+from .notifications import get_recent_notifications
 from .xras_actions import _LATEST_ACTION_ORDER, action_names_project
 
 __all__ = [
-    'get_xras_pending_activation',
-    'count_xras_dismissed_pending',
+    'ACTIVITY_TAGS',
+    'XRAS_SERVICE_KINDS',
+    'activity_tags',
+    'get_xras_activity',
+    'xras_dedup_key',
+    'parse_xras_dedup_key',
     'get_latest_xras_action_id',
     'get_xras_activation_events',
     'get_xras_pending_recipients',
 ]
+
+
+#: ``xras_action_log.service`` → the notification kind that reports it.
+#:
+#: The dispatcher's vocabulary is :data:`sam.xras.dispatch.SERVICES`; this maps
+#: the subset that produces something a PI should be told about. Two are
+#: deliberately absent:
+#:
+#: * ``adjust`` — an Adjustment can be a **reduction**, and "your allocation was
+#:   cut" is not a mail to send before deciding what it should say.
+#: * ``transfer`` — parks as ``manual`` by design and never completes, so there
+#:   is no outcome to report.
+#:
+#: A row whose service is not here still appears on the activity table as
+#: history; it simply has no Notify button. Adding a kind is this dict plus
+#: :data:`sam.notify.kinds.NOTIFICATION_KINDS` plus the two template files.
+XRAS_SERVICE_KINDS: Mapping[str, str] = {
+    'add': 'xras_activation',
+    'update': 'xras_update',
+    'extend': 'xras_extension',
+    'supplement': 'xras_supplement',
+}
+
+#: Statuses whose ledger row means the recipient was actually reached.
+#: Mirrors :data:`sam.notify.ledger.SUPPRESSING_STATUSES` — deliberately, since
+#: "we told them" and "do not tell them again" must be the same predicate.
+_DELIVERED_STATUSES = frozenset({'sent', 'redirected'})
+
+
+def xras_dedup_key(kind: str, projcode: str, action_id: Optional[int],
+                   address: str) -> str:
+    """The one place an XRAS notification key is spelled.
+
+    ``{kind}:{projcode}:{action_id}:{address}``. Keyed on the **action**, not
+    the project, which is what lets a Supplement be notified after a New
+    without either suppressing the other.
+
+    ``action_id`` may be ``None`` — a project no action names is still a
+    stable key, it just says so.
+    """
+    return f'{kind}:{projcode}:{action_id}:{address}'
+
+
+def parse_xras_dedup_key(
+    key: Optional[str],
+) -> Optional[Tuple[str, str, Optional[int], str]]:
+    """Read a key back, or ``None`` if it is not one of ours.
+
+    The inverse of :func:`xras_dedup_key`, and the **only** reader — the
+    activity table correlates ``notification_log`` rows to actions through
+    this rather than through a foreign key, because ``notification_log`` is
+    deliberately generic (no FKs, ``entity_type``/``entity_id``) and an
+    XRAS-shaped column on it would be the wrong kind of coupling.
+
+    That correlation is cheap: ``notification_log_projcode`` serves the
+    ``IN`` fetch and the parse happens in Python over rows already in hand.
+
+    Returns ``(kind, projcode, action_id, address)``. An expiration key, a
+    malformed one, or ``None`` all return ``None`` rather than raising —
+    callers are rendering a table, not validating input.
+    """
+    parts = (key or '').split(':', 3)
+    if len(parts) != 4:
+        return None
+    kind, projcode, raw_action, address = parts
+    if kind not in set(XRAS_SERVICE_KINDS.values()):
+        return None
+    try:
+        action_id: Optional[int] = int(raw_action)
+    except ValueError:
+        action_id = None
+    return kind, projcode, action_id, address
 
 
 def _activation_state(
@@ -78,161 +159,195 @@ def _activation_state(
     return state
 
 
-def get_xras_pending_activation(
+def get_xras_activity(
     session: Session,
     *,
-    limit: Optional[int] = None,
-    include_dismissed: bool = False,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None,
+    statuses: Sequence[str] = ('processed',),
 ) -> List[Dict[str, Any]]:
-    """Projects an XRAS action touched that are still inactive.
+    """Recent XRAS outcomes — one row per **action**, not per project.
 
-    XRAS projects arrive ``active = 0`` **by design** and a human activates them.
-    Legacy's trigger for that human is its success email; SAM has no mailer, so
-    this view is the stand-in — which is what keeps SMTP deferred rather than a
-    prerequisite for the ``POST /actions`` cutover.
+    This replaces the project-keyed pending worklist, and the change of key is
+    the whole point. A project-keyed row folds every action into one and is
+    filtered on ``~Project.is_active``, which has three consequences an
+    operator actually hit:
 
-    **Identification, and its limit.** There is no marker on ``Project`` saying
-    "XRAS created this" — nothing in ``sam/projects/`` records provenance, and
-    ``XrasActionView`` is an *outbound* reporting view derived from allocations,
-    not a record of inbound posts. So a project qualifies here iff some
-    ``xras_action_log`` row names it, via either:
+    * activating a project **erased** its own Notify button, so activating
+      before notifying left no way back;
+    * a Supplement or Extension against a live project was invisible — it
+      adjusted real allocations and appeared nowhere;
+    * a second action had to mark the first notification "stale", because one
+      row cannot represent two things having happened.
 
-    - ``projcode_result`` — the New path, where SAM minted the projcode; or
-    - ``request_number`` — Extension/Supplement/Update, where XRAS sends the
-      projcode *as* the request number.
+    Keyed on the action, all three dissolve. Nothing leaves the table because
+    someone did their job, and ``notified_stale`` stops existing as a concept:
+    a new action is a new row.
 
-    The consequence is worth stating plainly rather than discovering later: **this
-    card sees only projects this table knows about.** It renders empty today
-    (capture mode has created nothing) and grows exactly as the log grows. It does
-    **not** retro-discover the 23 historical XRAS projects legacy created, and an
-    empty card must not be read as "nothing pending" until SAM has been the system
-    of record for a while.
+    **Scope.** Successfully processed actions only, by default. A failure or a
+    ``manual`` park needs an operator to fix something, not to mail anyone,
+    and it is already on the action-log table below with its own filters.
 
-    **Derived operator state.** Rows also carry the current state of the worklist,
-    computed from ``xras_activation_event`` rather than stored. Nothing here is a
-    boolean column; every state is a timestamp compared against ``received_time``,
-    which is already the most recent action naming the project::
-
-        hidden from the card  iff  latest('dismissed')
-                                       > MAX(received_time, latest('restored'))
-        "marked notified"     iff  latest('notified')  > received_time
-
-    That single rule is both the anti-spam mechanism and the re-open mechanism: a
-    dismissed project **reappears** when a new Extension arrives (new information
-    — the operator should look again), while a notified one stays quiet until
-    something actually changes, and goes stale the moment it does. A stored
-    boolean gets both wrong. See ``sam.integration.xras.XrasActivationEvent``.
+    **Dismissal no longer hides.** It clears the call to action and marks the
+    row; the history stays. A table whose purpose is "what did we tell people"
+    cannot have rows that vanish.
 
     Args:
         session: the session to query.
-        limit: display cap, applied after sorting, in Python.
-        include_dismissed: when True, hidden rows are returned too, flagged
-            ``dismissed=True``. The card's "Show dismissed" toggle needs this —
-            without it a dismissal is unrecoverable until a new action arrives,
-            which may be never.
+        since: lower bound on ``received_time``. ``None`` means all time,
+            which the route never passes — the window is always explicit.
+        until: upper bound, for a custom range.
+        statuses: which ``xras_action_log.status`` values qualify.
 
     Returns:
-        A list of dicts with ``projcode``, ``project_id``, ``title``,
-        ``action_log_id``, ``action_type``, ``received_time``, ``status`` —
-        one per project, carrying its most recent XRAS action — plus the derived
-        ``dismissed``, ``dismissed_time``, ``dismissed_by``, ``notified_time``,
-        ``notified_by``, ``notified_stale`` and ``comment_count``.
+        Newest first. Each row carries the action (``action_log_id``,
+        ``action_type``, ``service``, ``received_time``, ``status``), its
+        project (``projcode``, ``project_id``, ``title``, ``project_active``),
+        the derived operator state (``dismissed`` and friends,
+        ``comment_count``, ``is_latest_action``), the notification rollup
+        (``kind``, ``notifiable``, ``notifications``, ``notified``,
+        ``notified_time``, ``notified_age``, ``delivered_count``,
+        ``failed_count``, ``suppressed_count``) and ``tags`` — see
+        :func:`activity_tags`.
     """
-    # One OR-join, ordered newest-first, keeping the first row seen per project.
-    #
-    # ⚠️ This was two per-column queries merged in Python, and the merge compared
-    # only `received_time` — so on a same-second tie whichever column was iterated
-    # first won, regardless of id, while `get_latest_xras_action_id` broke the same
-    # tie on id. The two could name different actions for one project. Both now go
-    # through `action_names_project` and `_LATEST_ACTION_ORDER`; do not re-split
-    # this into per-column passes.
-    #
-    # The old form justified itself as keeping "which column matched" available.
-    # Nothing ever read it — the dict below carries no such key — so the OR-join
-    # gives up nothing and costs one query instead of two.
-    rows = (
+    query = (
         session.query(XrasActionLog, Project)
         .join(Project, action_names_project(Project.projcode))
-        .filter(~Project.is_active)
+    )
+    if statuses:
+        query = query.filter(XrasActionLog.status.in_(list(statuses)))
+    if since is not None:
+        query = query.filter(XrasActionLog.received_time >= since)
+    if until is not None:
+        query = query.filter(XrasActionLog.received_time <= until)
+
+    window = query.order_by(*_LATEST_ACTION_ORDER).all()
+    if not window:
+        return []
+
+    projcodes = sorted({project.projcode for _action, project in window})
+
+    # Which action is newest for each project — over ALL time, not just the
+    # window, or a narrow window would promote an old action to "latest" and
+    # put an Activate button on the wrong row. Same ordering as
+    # `get_latest_xras_action_id`, so the two cannot disagree on a tie.
+    latest_action_id: Dict[str, int] = {}
+    for action, project in (
+        session.query(XrasActionLog, Project)
+        .join(Project, action_names_project(Project.projcode))
+        .filter(Project.projcode.in_(projcodes))
         .order_by(*_LATEST_ACTION_ORDER)
         .all()
-    )
+    ):
+        latest_action_id.setdefault(project.projcode, action.xras_action_log_id)
 
-    candidates: Dict[str, Dict[str, Any]] = {}
-    for action, project in rows:
-        # First wins: the rows arrive newest-first, so this keeps the most recent
-        # action per project — an Extension that followed a New is the one an
-        # operator should be looking at.
-        candidates.setdefault(project.projcode, {
-            'projcode': project.projcode,
-            'project_id': project.project_id,
-            'title': project.title,
-            'action_log_id': action.xras_action_log_id,
-            'action_type': action.action_type,
-            'received_time': action.received_time,
-            'status': action.status,
-        })
+    state = _activation_state(
+        session, sorted({project.project_id for _a, project in window}))
 
-    state = _activation_state(session, [c['project_id'] for c in candidates.values()])
+    # One indexed fetch for every notification about these projects, bucketed
+    # in Python by the action id embedded in the dedup key. `limit=None` is
+    # safe here precisely because the projcode IN list already bounds it.
+    by_action: Dict[Tuple[str, int], List[Any]] = {}
+    for row in get_recent_notifications(session, projcodes=projcodes,
+                                        limit=None):
+        parsed = parse_xras_dedup_key(row.dedup_key)
+        if parsed is None:
+            continue
+        _kind, parsed_projcode, action_id, _address = parsed
+        if action_id is None:
+            continue
+        by_action.setdefault((parsed_projcode, action_id), []).append(row)
 
-    pending: List[Dict[str, Any]] = []
-    for row in candidates.values():
-        events = state.get(row['project_id'], {})
+    now = datetime.now()
+    rows: List[Dict[str, Any]] = []
+    for action, project in window:
+        events = state.get(project.project_id, {})
         dismissed_ev = events.get('dismissed')
         restored_ev = events.get('restored')
-        notified_ev = events.get('notified')
 
-        # A dismissal is superseded by whichever came later: a fresh XRAS action
-        # (new information) or an explicit Restore (the operator undoing it).
-        supersedes = row['received_time']
+        # A dismissal is superseded by whichever came later: a fresh XRAS
+        # action (new information) or an explicit Restore. Unchanged from the
+        # worklist rule — only its *effect* changed, from hiding to marking.
+        supersedes = action.received_time
         if restored_ev is not None and restored_ev.creation_time > supersedes:
             supersedes = restored_ev.creation_time
         is_dismissed = (dismissed_ev is not None
                         and dismissed_ev.creation_time > supersedes)
 
-        if is_dismissed and not include_dismissed:
-            continue
+        notifications = by_action.get(
+            (project.projcode, action.xras_action_log_id), [])
+        delivered = [n for n in notifications
+                     if n.status in _DELIVERED_STATUSES]
+        newest_delivery = delivered[0] if delivered else None
 
-        # Ages are computed here, as timedeltas, because ``fmt_ago`` takes an
-        # elapsed delta rather than a timestamp. Doing the subtraction in the
-        # template would put `datetime.now()` in Jinja, where it is untestable.
-        now = datetime.now()
-        row.update({
+        row: Dict[str, Any] = {
+            'action_log_id': action.xras_action_log_id,
+            'action_type': action.action_type,
+            'service': action.service,
+            'received_time': action.received_time,
+            'status': action.status,
+            'projcode': project.projcode,
+            'project_id': project.project_id,
+            'title': project.title,
+            'project_active': bool(project.is_active),
+            'is_latest_action': (latest_action_id.get(project.projcode)
+                                 == action.xras_action_log_id),
+            'kind': XRAS_SERVICE_KINDS.get(action.service or ''),
             'dismissed': is_dismissed,
             'dismissed_time': dismissed_ev.creation_time if is_dismissed else None,
             'dismissed_by': dismissed_ev.created_by if is_dismissed else None,
             'dismissed_reason': dismissed_ev.comment if is_dismissed else None,
-            'notified_time': notified_ev.creation_time if notified_ev else None,
-            'notified_age': (now - notified_ev.creation_time) if notified_ev else None,
-            'notified_by': notified_ev.created_by if notified_ev else None,
-            # Stale means "we told them, then the situation changed" — the button
-            # becomes "Mark notified again" rather than staying quiet.
-            'notified_stale': (notified_ev is not None
-                               and notified_ev.creation_time <= row['received_time']),
             'comment_count': events.get('comment_count', 0),
-        })
-        pending.append(row)
+            'notifications': notifications,
+            'notified': bool(delivered),
+            'notified_time': newest_delivery.creation_time if newest_delivery else None,
+            # A timedelta, because ``fmt_ago`` takes an elapsed delta. Putting
+            # ``datetime.now()`` in Jinja would make it untestable.
+            'notified_age': ((now - newest_delivery.creation_time)
+                             if newest_delivery else None),
+            'delivered_count': len(delivered),
+            'failed_count': sum(1 for n in notifications if n.status == 'failed'),
+            'suppressed_count': sum(1 for n in notifications
+                                    if n.status == 'suppressed'),
+        }
+        row['notifiable'] = row['kind'] is not None
+        row['needs_activation'] = (not row['project_active']
+                                   and row['is_latest_action']
+                                   and not is_dismissed)
+        row['tags'] = activity_tags(row)
+        rows.append(row)
 
-    pending.sort(key=lambda r: r['received_time'], reverse=True)
-    return pending[:limit] if limit is not None else pending
+    return rows
 
 
-def count_xras_dismissed_pending(session: Session) -> int:
-    """How many pending rows are currently hidden by a dismissal.
+#: The chip vocabulary, in display order. Declared rather than derived so a
+#: value with no rows still renders — an absent chip reads as "not measured",
+#: which is a different claim from "none".
+ACTIVITY_TAGS: Tuple[str, ...] = (
+    'needs_activation', 'not_notified', 'notified', 'failed', 'dismissed',
+)
 
-    Feeds the card's empty state and its "Show dismissed" toggle. Without a
-    truthful count, "no rows" reads as "all clear" when it may mean "all
-    dismissed" — the same honesty problem the empty-state copy already solves for
-    capture mode.
 
-    ⚠️ This runs the **whole** pending pipeline. A caller that also needs the rows
-    should call :func:`get_xras_pending_activation` once with
-    ``include_dismissed=True`` and count the ``dismissed`` flag itself, as
-    ``xras_pending_fragment`` does — calling both doubles the work for a number
-    already present in the rows. This exists for callers that want only the count.
+def activity_tags(row: Mapping[str, Any]) -> List[str]:
+    """The chip tags one activity row carries.
+
+    A **list**, not a single state, because the useful questions overlap: a
+    row can need activation *and* not have been notified, and an operator
+    filtering on "not notified" must still find it. Collapsing these into one
+    enum would make that row reachable from only one chip.
     """
-    return sum(1 for row in get_xras_pending_activation(
-        session, include_dismissed=True) if row['dismissed'])
+    tags: List[str] = []
+    if row.get('needs_activation'):
+        tags.append('needs_activation')
+    if row.get('notified'):
+        tags.append('notified')
+    elif row.get('notifiable'):
+        tags.append('not_notified')
+    if row.get('failed_count'):
+        tags.append('failed')
+    if row.get('dismissed'):
+        tags.append('dismissed')
+    return tags
 
 
 def get_latest_xras_action_id(
@@ -243,7 +358,7 @@ def get_latest_xras_action_id(
 
     Provenance for ``xras_activation_event.xras_action_log_id``. Lives here rather
     than in a route because it shares :func:`action_names_project` and
-    :data:`_LATEST_ACTION_ORDER` with :func:`get_xras_pending_activation` — the card
+    :data:`_LATEST_ACTION_ORDER` with :func:`get_xras_activity` — the table
     that says *why* a project is pending and the stamp recording what the operator
     did about it must never name different actions.
     """
@@ -297,7 +412,7 @@ def get_xras_pending_recipients(
 ) -> Dict[int, List[Dict[str, str]]]:
     """Lead and admin contact details for the notify handoff, per project.
 
-    ⚠️ **Deliberately not folded into** :func:`get_xras_pending_activation`.
+    ⚠️ **Deliberately not folded into** :func:`get_xras_activity`.
     Doing so would push contact PII into every caller of that function, including
     the ``VIEW_XRAS`` render of the card. Keeping it separate lets the route ask
     for addresses only when the viewer holds ``MANAGE_XRAS``, so a view-source

@@ -57,9 +57,11 @@ def events(monkeypatch):
     class _Event:
         creation_time = None
 
-    def _spy(project, event_type, *, comment=None, notified_to=None):
+    def _spy(project, event_type, *, comment=None, notified_to=None,
+             action_log_id=None):
         recorded.append({'project': project, 'event_type': event_type,
-                         'notified_to': notified_to})
+                         'notified_to': notified_to,
+                         'action_log_id': action_log_id})
         return _Event()
 
     monkeypatch.setattr(blueprint, '_record_activation_event', _spy)

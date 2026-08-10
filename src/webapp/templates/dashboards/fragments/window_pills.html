@@ -1,0 +1,81 @@
+{#
+  Lookback-window pills for an HTMX-filtered fragment.
+
+  ── Why this exists next to date_range_picker.html ───────────────────────
+  `date_range_picker` is a plain `method="GET"` form that navigates the whole
+  page, driven by static/js/pickers.js. That is right for a page whose entire
+  content is the range. It is wrong for a card that lives inside a page and
+  re-renders one fragment: a full-page nav would throw away every other
+  fragment's state.
+
+  So these pills write into the caller's existing filter form and submit it
+  through the form's own hx-get, using `set-filter-submit` — the same CSP-clean
+  handler the facet chips use (static/js/actions.js). No new JavaScript, and
+  the window round-trips with the chips because they are fields of one form.
+
+  ── Contract ─────────────────────────────────────────────────────────────
+      window_pills(form_id, pills, days, custom=False,
+                   start_date='', end_date='')
+
+    form_id     id of the enclosing filter form
+    pills       ((days:int, label:str), ...)
+    days        the selected value, or None when a custom range is in force
+    custom      True when start/end are driving the window
+    start_date  'YYYY-MM-DD' or '' — echoed back into the custom inputs
+    end_date    ditto
+
+  The caller MUST render a hidden `days` field inside the form — that is the
+  control `set-filter-submit` targets by name.
+
+  The `start_date` / `end_date` inputs are emitted here, and bound to the form
+  with the HTML `form=` attribute rather than by nesting. That is what lets
+  the window controls live inside a re-rendering fragment while their state
+  belongs to a form outside it: `form.elements` includes form-associated
+  controls, so both htmx's `hx-include` and `data-clear-fields` see them.
+  ⚠️ Do NOT also put `start_date`/`end_date` in the form — two controls of one
+  name make `form.elements[name]` a RadioNodeList, and assigning `.value` to
+  that silently does nothing.
+
+  ⚠️ Class convention: `btn-outline-secondary` + `active` for the selected
+  pill, never `btn-primary`. The jobs pills shipped with primary/outline-primary
+  once and it read backwards — blue looked like the *unselected* state next to
+  every other selector on the dashboards.
+
+  ⚠️ An explicit range must OUTRANK `days`, and the route is where that is
+  enforced (`_parse_activity_window`). Clicking a day pill therefore has to
+  clear the custom inputs, or the range would win and the pill would appear to
+  do nothing — which is what `data-clear-fields` below is for.
+#}
+
+{% macro window_pills(form_id, pills, days, custom=False,
+                      start_date='', end_date='') %}
+<div class="d-flex flex-wrap align-items-center gap-2">
+  <div class="btn-group btn-group-sm" role="group" aria-label="Time window">
+    {% for _days, _label in pills %}
+    <button type="button"
+            class="btn btn-outline-secondary{{ ' active' if (not custom and days == _days) else '' }}"
+            data-action="set-filter-submit"
+            data-form-id="{{ form_id }}"
+            data-field="days"
+            data-value="{{ _days }}"
+            data-clear-fields="start_date,end_date">{{ _label }}</button>
+    {% endfor %}
+    <button type="button"
+            class="btn btn-outline-secondary{{ ' active' if custom else '' }}"
+            data-action="toggle-custom-window"
+            data-target="#{{ form_id }}-custom"
+            aria-expanded="{{ 'true' if custom else 'false' }}">Custom</button>
+  </div>
+
+  <div id="{{ form_id }}-custom"
+       class="d-flex align-items-center gap-2{{ '' if custom else ' d-none' }}">
+    <input type="date" class="form-control form-control-sm" name="start_date"
+           form="{{ form_id }}" value="{{ start_date }}" aria-label="From">
+    <span class="text-muted small">to</span>
+    <input type="date" class="form-control form-control-sm" name="end_date"
+           form="{{ form_id }}" value="{{ end_date }}" aria-label="To">
+    <button type="submit" form="{{ form_id }}"
+            class="btn btn-sm btn-secondary">Apply</button>
+  </div>
+</div>
+{% endmacro %}

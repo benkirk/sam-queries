@@ -246,7 +246,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # The pending card's action buttons open the shared audit modal for the
     # notify preview, the dismiss form and the activation history. Same shell,
     # same single host page (xras.html includes partials/audit_details_modal.html).
-    'dashboards/allocations/partials/xras_pending_card.html': [
+    'dashboards/allocations/partials/xras_activity_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_event_form.html': [

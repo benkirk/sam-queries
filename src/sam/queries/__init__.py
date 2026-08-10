@@ -122,11 +122,15 @@ from .xras_actions import (
     summarize_xras_actions,
 )
 from .xras_activation import (
-    count_xras_dismissed_pending,
+    ACTIVITY_TAGS,
+    XRAS_SERVICE_KINDS,
+    activity_tags,
     get_latest_xras_action_id,
     get_xras_activation_events,
-    get_xras_pending_activation,
+    get_xras_activity,
     get_xras_pending_recipients,
+    parse_xras_dedup_key,
+    xras_dedup_key,
 )
 
 # Usage cache
@@ -269,8 +273,12 @@ __all__ = [
     'get_recent_xras_actions',
     'count_recent_xras_actions',
     'summarize_xras_actions',
-    'get_xras_pending_activation',
-    'count_xras_dismissed_pending',
+    'ACTIVITY_TAGS',
+    'XRAS_SERVICE_KINDS',
+    'activity_tags',
+    'get_xras_activity',
+    'parse_xras_dedup_key',
+    'xras_dedup_key',
     'get_latest_xras_action_id',
     'get_observed_action_types',
     'get_projects_by_ids',

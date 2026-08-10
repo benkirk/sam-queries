@@ -12,6 +12,7 @@ from flask import (
 )
 from flask_login import login_required, current_user
 from datetime import datetime, timedelta
+import json
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
@@ -23,7 +24,9 @@ from webapp.utils.htmx import (
 from webapp.api.xras.replay import replay_action
 from sam import fmt
 from sam.enums import ResourceTypeName
-from sam.integration.xras import XrasActivationEvent
+from sam.integration.xras import (
+    XrasActionLog, XrasActivationEvent, XrasResourceRepositoryKeyResource,
+)
 from sam.manage.transaction import management_transaction
 from sam.projects.projects import Project
 from webapp.utils.notify import get_notifier, notify_summary
@@ -52,10 +55,13 @@ from sam.queries.xras_actions import (
     summarize_xras_actions,
 )
 from sam.queries.xras_activation import (
+    ACTIVITY_TAGS,
+    XRAS_SERVICE_KINDS,
     get_latest_xras_action_id,
     get_xras_activation_events,
-    get_xras_pending_activation,
+    get_xras_activity,
     get_xras_pending_recipients,
+    xras_dedup_key,
 )
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
@@ -1183,6 +1189,12 @@ def htmx_create_adjustment():
 _XRAS_FRAGMENT_TARGET = 'alloc-xras-fragment'
 _XRAS_FORM_ID = 'xras-filters'
 
+#: The activity card's own filter form and swap target. Separate from the
+#: action-log table's pair above: the two tables filter independently, and
+#: sharing a form id would make one table's chips silently re-scope the other.
+_XRAS_ACTIVITY_FORM_ID = 'xras-activity-filters'
+_XRAS_ACTIVITY_TARGET = 'alloc-xras-pending'
+
 #: Close the modal, then reload the tab behind it. Built by ``modal_triggers``
 #: rather than written as a literal, which is what the four admin route modules
 #: already do — the close half is the shared convention and only the reload event
@@ -1384,23 +1396,127 @@ def xras_fragment():
     )
 
 
+#: Window pills for the activity card, and the default. `days` is free on this
+#: blueprint — it means lookback days in the jobs family and legacy days→hours
+#: on the status-history routes, and neither is reachable from here.
+_ACTIVITY_WINDOW_PILLS = ((7, '7D'), (30, '30D'), (90, '90D'))
+_ACTIVITY_DEFAULT_DAYS = 30
+_ACTIVITY_MAX_DAYS = 365
+
+#: Chip text for each tag. The tag itself is a slug that round-trips through
+#: the form; an operator should never see it, so the two are kept apart rather
+#: than the vocabulary being renamed to read nicely in both places.
+_ACTIVITY_TAG_LABELS = {
+    'needs_activation': 'Activation',
+    'not_notified': 'Not notified',
+    'notified': 'Notified',
+    'failed': 'Delivery failed',
+    'dismissed': 'Dismissed',
+}
+
+
+def _parse_activity_window(args) -> dict:
+    """``days`` pill, or an explicit custom range. Never a 400.
+
+    An explicit ``start_date``/``end_date`` **outranks** ``days`` — the Custom
+    pill sets the dates and leaves ``days`` behind in the form, so reading
+    ``days`` first would silently ignore the range the operator just typed.
+
+    Returns the parsed bounds *and* the raw strings, because the same dict has
+    to re-render the form controls.
+    """
+    start_raw = (args.get('start_date') or '').strip()
+    end_raw = (args.get('end_date') or '').strip()
+
+    def _date(raw, end_of_day=False):
+        try:
+            parsed = datetime.strptime(raw, '%Y-%m-%d')
+        except ValueError:
+            return None
+        return (parsed.replace(hour=23, minute=59, second=59)
+                if end_of_day else parsed)
+
+    since = _date(start_raw) if start_raw else None
+    until = _date(end_raw, end_of_day=True) if end_raw else None
+    if since is not None or until is not None:
+        return {'days': None, 'since': since, 'until': until,
+                'start_date': start_raw, 'end_date': end_raw, 'custom': True}
+
+    days = args.get('days', type=int) or _ACTIVITY_DEFAULT_DAYS
+    days = max(1, min(days, _ACTIVITY_MAX_DAYS))
+    return {'days': days, 'since': datetime.now() - timedelta(days=days),
+            'until': None, 'start_date': '', 'end_date': '', 'custom': False}
+
+
+def _row_activity_type(row) -> str:
+    """The chip value for the action-type dimension.
+
+    ``action_type`` rather than ``service``, because it is the word the wire
+    used and the one the action-log table below already shows. The two differ
+    on exactly one case — a ``New`` against an existing project routes to the
+    ``update`` service — and an operator scanning for "the New that came in"
+    should find it under New.
+    """
+    return row.get('action_type') or '—'
+
+
+def _filter_activity(rows, *, tags=None, types=None):
+    """Apply the chip selections. Tags are ANDed with types, ORed within."""
+    if tags:
+        wanted = set(tags)
+        rows = [r for r in rows if wanted & set(r['tags'])]
+    if types:
+        wanted_types = set(types)
+        rows = [r for r in rows if _row_activity_type(r) in wanted_types]
+    return rows
+
+
+def _activity_facets(rows, dimension, *, tags=None, types=None) -> dict:
+    """Counts for one chip dimension, **excluding that dimension's own filter**.
+
+    Computed in Python rather than SQL because the rows are already assembled
+    here — the notification rollup that produces the tags has no SQL form. The
+    set is one window of processed actions, so this is a pass over a list, not
+    a scan.
+    """
+    if dimension == 'tag':
+        scoped = _filter_activity(rows, types=types)
+        counts = {tag: 0 for tag in ACTIVITY_TAGS}
+        for row in scoped:
+            for tag in row['tags']:
+                counts[tag] = counts.get(tag, 0) + 1
+        return counts
+
+    if dimension == 'activity_type':
+        scoped = _filter_activity(rows, tags=tags)
+        counts: dict = {}
+        for row in scoped:
+            key = _row_activity_type(row)
+            counts[key] = counts.get(key, 0) + 1
+        return dict(sorted(counts.items()))
+
+    raise ValueError(f'unknown activity facet dimension {dimension!r}')
+
+
 @bp.route('/xras_pending_fragment')
 @login_required
 @require_permission(Permission.VIEW_XRAS)
 def xras_pending_fragment():
-    """HTMX fragment: XRAS-touched projects still awaiting activation.
+    """HTMX fragment: recent XRAS outcomes — what was communicated, what needs a human.
 
-    Stands in for the success email legacy sends and SAM has no mailer for — which
-    is what keeps SMTP deferred rather than a prerequisite for the POST cutover.
-    See ``get_xras_pending_activation`` for what this can and cannot see, and for
-    the timestamp rule that derives every state on this card.
+    One row per successfully processed action. See :func:`get_xras_activity` for
+    why the key is the action rather than the project, and for what this can and
+    cannot see.
+
+    The endpoint keeps its old name. It is an internal URL, ~30 tests pin it, and
+    renaming it would buy nothing over changing what it renders.
 
     Two gates, both enforced HERE rather than only in the template:
 
-    - ``recipients`` (project lead/admin contact details) is fetched only for
-      ``MANAGE_XRAS``, so a ``VIEW_XRAS`` response never carries the addresses at
-      all and a view-source cannot leak what the page chose not to draw. Same rule
-      as the raw-payload panel.
+    - ``recipients`` (project lead/admin contact details) and the per-recipient
+      delivery detail are assembled only for ``MANAGE_XRAS``, so a ``VIEW_XRAS``
+      response never carries the addresses at all and a view-source cannot leak
+      what the page chose not to draw. Same rule as the raw-payload panel.
     - ``may_activate`` is resolved **per project** through
       ``can_edit_project_governance``, not once for the card. The helper is flat
       over the user today, so this costs one extra query and buys nothing
@@ -1410,26 +1526,27 @@ def xras_pending_fragment():
       place and this is only ever a rendering hint.
     """
     may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
-    include_dismissed = read_flag(request.args, 'include_dismissed') and may_manage
+    window = _parse_activity_window(request.args)
+    selected_tags = [t for t in request.args.getlist('tag') if t]
+    selected_types = [t for t in request.args.getlist('activity_type') if t]
 
-    # Fetched once with the dismissed rows in, then filtered here.
-    #
-    # `count_xras_dismissed_pending` runs this exact pipeline — the OR-join plus
-    # `_activation_state` — so calling both ran it twice per render for a count
-    # already present in the rows. The `include_dismissed` flag is only a `continue`
-    # inside the loop, so filtering afterwards is what it would have done anyway.
-    # (Safe because this route passes no `limit`; the query applies that after the
-    # skip, so a limited call could not be reproduced this way.)
-    all_pending = get_xras_pending_activation(db.session, include_dismissed=True)
-    dismissed_count = sum(1 for p in all_pending if p['dismissed'])
-    pending = (all_pending if include_dismissed
-               else [p for p in all_pending if not p['dismissed']])
+    rows = get_xras_activity(db.session,
+                             since=window['since'], until=window['until'])
 
-    project_ids = [p['project_id'] for p in pending]
+    # Facets are computed over the *unfiltered* window set, each dimension
+    # dropping its own selection — the same self-exclusion `facet_notifications`
+    # and `xras_fragment` keep. Scope a dimension by itself and every unselected
+    # value falls to zero the moment one is picked, and the chips stop being
+    # switchers.
+    tag_facets = _activity_facets(rows, 'tag', types=selected_types)
+    type_facets = _activity_facets(rows, 'activity_type', tags=selected_tags)
+
+    rows = _filter_activity(rows, tags=selected_tags, types=selected_types)
 
     recipients = {}
     may_activate = {}
     if may_manage:
+        project_ids = sorted({r['project_id'] for r in rows})
         recipients = get_xras_pending_recipients(db.session, project_ids)
         may_activate = {
             p.project_id: can_edit_project_governance(current_user, p)
@@ -1437,12 +1554,25 @@ def xras_pending_fragment():
         }
 
     return render_template(
-        'dashboards/allocations/partials/xras_pending_card.html',
-        pending=pending,
+        'dashboards/allocations/partials/xras_activity_card.html',
+        rows=rows,
         recipients=recipients,
         may_activate=may_activate,
-        include_dismissed=include_dismissed,
-        dismissed_count=dismissed_count if may_manage else 0,
+        may_manage=may_manage,
+        window=window,
+        window_pill_choices=_ACTIVITY_WINDOW_PILLS,
+        # Every declared tag renders, including at zero: an absent chip reads
+        # as "not measured", which is a different claim from "none".
+        tag_values=[{'value': tag,
+                     'label': _ACTIVITY_TAG_LABELS.get(tag, tag),
+                     'count': tag_facets.get(tag, 0)}
+                    for tag in ACTIVITY_TAGS],
+        type_values=[{'value': k, 'count': v} for k, v in type_facets.items()],
+        selected_tags=selected_tags,
+        selected_types=selected_types,
+        form_id=_XRAS_ACTIVITY_FORM_ID,
+        fragment_url=url_for('allocations_dashboard.xras_pending_fragment'),
+        target_id=_XRAS_ACTIVITY_TARGET,
     )
 
 
@@ -1467,7 +1597,7 @@ def _load_pending_project(project_id):
 
 
 def _record_activation_event(project, event_type, *, comment=None,
-                             notified_to=None):
+                             notified_to=None, action_log_id=None):
     """Append one operator event, with the prompting action as provenance.
 
     Runs inside ``management_transaction`` — deliberately unlike
@@ -1489,24 +1619,110 @@ def _record_activation_event(project, event_type, *, comment=None,
         created_by=current_user.username,
         comment=comment,
         notified_to=notified_to,
-        xras_action_log_id=get_latest_xras_action_id(db.session,
-                                                     project.project_id),
+        # `action_log_id` names the action the operator acted on. It defaults
+        # to the newest, which is right for Activate/Dismiss/Restore — those
+        # are about the project's current situation. Notify passes one
+        # explicitly, because working through a backlog means reporting an
+        # older outcome and the timeline has to say which.
+        xras_action_log_id=(action_log_id if action_log_id is not None
+                            else get_latest_xras_action_id(
+                                db.session, project.project_id)),
     )
 
 
-def _xras_activation_messages(project, people):
-    """Build one :class:`~sam.notify.Message` per recipient for a handoff.
+#: kind → (subject template, headline verb for the template context).
+#: The subject lives here rather than in the Jinja file because it is also the
+#: `notification_log.subject` column an operator reads back in the admin log,
+#: and a subject assembled inside a template cannot be searched from SQL.
+_XRAS_KIND_SUBJECTS = {
+    'xras_activation': 'NSF NCAR Project {projcode} is now active',
+    'xras_supplement': 'NSF NCAR Project {projcode} has received additional allocation',
+    'xras_extension': 'NSF NCAR Project {projcode} allocation has been extended',
+    'xras_update': 'NSF NCAR Project {projcode} allocation has been renewed',
+}
 
-    ``dedup_key`` embeds the most recent XRAS action naming the project, which
-    is the same timestamp comparison the card's "marked notified" badge is
-    derived from (``latest('notified') > latest_action``) — expressed as a
-    key. A *new* Extension therefore mints a new key and the project can be
-    notified again, while re-clicking about the same action cannot re-mail
-    anyone. One mechanism, two surfaces.
+
+def _load_xras_action(action_id):
+    """One ``xras_action_log`` row, or None. No permission logic — callers gate."""
+    if action_id is None:
+        return None
+    return db.session.get(XrasActionLog, action_id)
+
+
+def _action_increments(action):
+    """What *this* action added, read back off its own stored payload.
+
+    A supplement's mail has to say how much was added, and that number exists
+    nowhere else: the allocation now holds the **new total**, and
+    ``allocation_transaction`` records the delta without naming the XRAS
+    action. The payload is the only place the increment survives, which is one
+    more reason ``raw_payload`` is stored verbatim.
+
+    Returns ``[{'resource_name', 'amount', 'units'}]``, or ``[]`` for anything
+    unparseable — a wrong number here would be worse than an absent one, so
+    every failure path yields nothing rather than a guess.
+    """
+    if action is None or not action.raw_payload:
+        return []
+    try:
+        payload = json.loads(action.raw_payload)
+    except (ValueError, TypeError):
+        return []
+
+    wire = payload.get('resources') or []
+    keys = [w.get('resourceRepositoryKey') for w in wire
+            if w.get('resourceRepositoryKey') is not None]
+    if not keys:
+        return []
+
+    mapped = {
+        m.resource_repository_key: m.resource
+        for m in db.session.query(XrasResourceRepositoryKeyResource)
+        .filter(XrasResourceRepositoryKeyResource
+                .resource_repository_key.in_(keys)).all()
+    }
+
+    out = []
+    for item in wire:
+        resource = mapped.get(item.get('resourceRepositoryKey'))
+        if resource is None:
+            continue
+        try:
+            amount = float(item.get('awardedAmount'))
+        except (TypeError, ValueError):
+            continue
+        out.append({
+            'resource_name': resource.resource_name,
+            'amount': fmt.number(amount),
+            'units': ResourceTypeName.allocation_unit(
+                resource.resource_type.resource_type
+                if resource.resource_type else None, amount),
+        })
+    return sorted(out, key=lambda r: r['resource_name'])
+
+
+def _xras_messages(project, people, *, action=None):
+    """Build one :class:`~sam.notify.Message` per recipient for one XRAS action.
+
+    ``dedup_key`` embeds the action, so a Supplement mints a different key from
+    the New that preceded it: each outcome can be reported once, and re-opening
+    the modal about the same one cannot re-mail anybody. That is the same key
+    the activity table reads back to decide whether a row says "notified".
+
+    ``action=None`` falls back to the newest action naming the project, which
+    is what the Notify button did before it became action-aware and what a
+    caller with only a project id still gets.
     """
     from sam.notify import Message, to_recipients
 
-    action_id = get_latest_xras_action_id(db.session, project.project_id)
+    if action is None:
+        action = _load_xras_action(
+            get_latest_xras_action_id(db.session, project.project_id))
+
+    action_id = action.xras_action_log_id if action is not None else None
+    kind = XRAS_SERVICE_KINDS.get((action.service or '') if action else '',
+                                  'xras_activation')
+
     usage = project.get_detailed_allocation_usage()
     resources = [{
         'resource_name': name,
@@ -1523,19 +1739,26 @@ def _xras_activation_messages(project, people):
         'project_lead': project.lead.display_name if project.lead else 'Project Lead',
         'project_lead_email': lead_email,
         'resources': resources,
+        # Only the supplement template reads this, but every kind carries it —
+        # a template that renders an undefined name renders nothing, silently,
+        # so the cheapest guard is for the key to always exist.
+        'added': _action_increments(action) if kind == 'xras_supplement' else [],
+        'action_type': action.action_type if action else None,
     }
-    subject = f'NSF NCAR Project {project.projcode} is now active'
+    subject = _XRAS_KIND_SUBJECTS.get(
+        kind, _XRAS_KIND_SUBJECTS['xras_activation']
+    ).format(projcode=project.projcode)
 
     return [
         Message(
-            kind='xras_activation',
+            kind=kind,
             recipient=recipient,
             subject=subject,
             context=context,
             entity=('project', project.project_id),
             projcode=project.projcode,
-            dedup_key=(f'xras_activation:{project.projcode}:{action_id}'
-                       f':{recipient.address}'),
+            dedup_key=xras_dedup_key(kind, project.projcode, action_id,
+                                     recipient.address),
             requested_by=current_user.username,
         )
         for recipient in to_recipients(people)
@@ -1562,13 +1785,20 @@ def xras_notify_form(project_id: int):
     reporting "nothing was sent" afterwards and leaving SQL as the only
     recovery. Asking is cheap — one indexed lookup per recipient — and it is
     the same predicate ``send_many`` will apply.
+
+    ``?action_id=`` names *which* outcome to report, which is what lets a
+    Supplement be notified separately from the New before it. It is a query
+    param rather than a second path segment deliberately: absent means "the
+    newest action", which is exactly the old behaviour, so no URL changed and
+    no route-map entry moved.
     """
     project = _load_pending_project(project_id)
     if project is None:
         return htmx_modal_not_found('Project')
 
+    action = _load_xras_action(request.args.get('action_id', type=int))
     people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
-    messages = _xras_activation_messages(project, people)
+    messages = _xras_messages(project, people, action=action)
 
     notifier = get_notifier()
     preview = None
@@ -1581,9 +1811,14 @@ def xras_notify_form(project_id: int):
                 'XRAS notify preview failed for %s: %s', project.projcode, exc)
             preview_error = str(exc)
 
+    # A notifier without a ledger cannot answer "was this already sent", and
+    # that is a legitimate configuration — `get_notifier(ledger=False)` exists
+    # for a pure preview. No ledger means no duplicate to override, so the
+    # force toggle simply does not appear.
     already_notified = [
         m.recipient for m in messages
-        if m.dedup_key and notifier.ledger.already_sent(m.dedup_key)
+        if m.dedup_key and notifier.ledger is not None
+        and notifier.ledger.already_sent(m.dedup_key)
     ]
 
     return render_template(
@@ -1595,8 +1830,12 @@ def xras_notify_form(project_id: int):
         already_notified=already_notified,
         notify_enabled=notifier.config.enabled,
         redirect_to=notifier.config.redirect_to or None,
+        # The action travels to the POST so the send reports the same outcome
+        # the operator just previewed — not whatever is newest by then.
         post_url=url_for('allocations_dashboard.xras_notify',
-                         project_id=project_id),
+                         project_id=project_id,
+                         **({'action_id': action.xras_action_log_id}
+                            if action is not None else {})),
     )
 
 
@@ -1644,8 +1883,9 @@ def xras_notify(project_id: int):
     if project is None:
         return htmx_not_found('Project')
 
+    action = _load_xras_action(request.args.get('action_id', type=int))
     people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
-    messages = _xras_activation_messages(project, people)
+    messages = _xras_messages(project, people, action=action)
 
     # Unchecked checkboxes are omitted from the request entirely, so presence
     # is the signal — never a value comparison. See CLAUDE.md § 10.
@@ -1671,6 +1911,11 @@ def xras_notify(project_id: int):
     with management_transaction(db.session):
         event = _record_activation_event(
             project, 'notified', notified_to=notified_to,
+            # Stamp the action actually reported, not whatever is newest by
+            # now — an operator working through a backlog notifies about an
+            # older outcome, and the timeline must say which one.
+            action_log_id=(action.xras_action_log_id
+                           if action is not None else None),
             comment=('Re-sent with the duplicate check overridden.'
                      if force else None))
 

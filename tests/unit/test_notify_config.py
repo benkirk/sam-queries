@@ -16,7 +16,17 @@ class TestEnvironmentSeam:
     """Reading from os.environ, i.e. the CLI."""
 
     def test_defaults_are_fail_closed(self, monkeypatch):
-        monkeypatch.delenv('NOTIFY_ENABLED', raising=False)
+        """⚠️ Clear every var this asserts a default for, not just the first.
+
+        `from_environment()` falls back to `os.environ`, and a developer
+        running the local notification smoke has NOTIFY_REDIRECT_TO and
+        NOTIFY_TRANSPORT set in their `.env` — which `etc/config_env.sh`
+        exports into the shell pytest runs in. Deleting only NOTIFY_ENABLED
+        left this test asserting a default it was not actually isolating.
+        """
+        for name in ('NOTIFY_ENABLED', 'NOTIFY_TRANSPORT',
+                     'NOTIFY_REDIRECT_TO', 'NOTIFY_BCC'):
+            monkeypatch.delenv(name, raising=False)
         cfg = NotifyConfig.from_environment()
         assert cfg.enabled is False
         assert cfg.transport == 'smtp'
