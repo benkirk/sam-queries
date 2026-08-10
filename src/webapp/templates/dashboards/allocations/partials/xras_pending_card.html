@@ -151,10 +151,19 @@
                             {{ 'Notify again' if p.notified_time else 'Notify' }}
                         </button>
                         {% if may_activate.get(p.project_id) %}
+                        {# The confirm modal defaults to the `danger` variant —
+                           red header, red button — which reads as a warning for
+                           what is the happy-path completion of the workflow.
+                           `info` matches the green button and the intent; the
+                           audit line is phrased as history you can look at
+                           rather than a record kept against you. #}
                         <button class="btn btn-sm btn-outline-success"
                                 title="Activate this project"
                                 hx-post="{{ url_for('allocations_dashboard.xras_activate', project_id=p.project_id) }}"
-                                hx-confirm="Activate {{ p.projcode }}? This sets the project active and records who did it."
+                                hx-confirm="Activate {{ p.projcode }}? Its allocations become usable right away, and the activation is added to the project's history."
+                                data-confirm-title="Activate project"
+                                data-confirm-variant="info"
+                                data-confirm-label="Activate"
                                 hx-swap="none">
                             <i class="fas fa-circle-check"></i> Activate
                         </button>

@@ -479,6 +479,30 @@ address today**. The template no longer depends on that, which is the point — 
 
 The expiration templates never carried this line, so nothing to sync there.
 
+**✅ 3 · The Activate confirmation was styled as a destructive action.** Observed by
+Ben immediately after activating `UHSS0002`: a bright red header and red Confirm
+button, with the message *"Activate UHSS0002? This sets the project active and
+records who did it."* — which reads as a scolding for what is the happy-path
+completion of the workflow.
+
+Cause: `htmx-config.js:268` intercepts `htmx:confirm` and opens the shared Bootstrap
+modal, defaulting to `variant: 'danger'`. The button never overrode it. The
+established convention is that constructive actions *do* override — `Grant resource
+access`, `Make admin` and `Impersonate` all pass `data-confirm-variant="warning"`
+plus a title and label; the red default is reserved for genuine destruction.
+
+Changed in `partials/xras_pending_card.html` to `data-confirm-variant="info"` (blue
+header, `btn-primary`), matching the green outline button, with
+`data-confirm-title="Activate project"` / `data-confirm-label="Activate"`, and the
+message reworded to *"Activate {projcode}? Its allocations become usable right away,
+and the activation is added to the project's history."* — the audit fact restated as
+history you can look at rather than a record kept against you.
+
+This is the first use of the `info` variant; `warning` was the alternative, but
+Activate is strictly more benign than "Make admin", and the modal has supported
+`info` since it was written. No test asserts on the confirm text and the route map is
+untouched.
+
 ⚠️ **This makes the two template families diverge.** `expiration-UNIV.txt:33` and
 `expiration-UNIV.html:65` still say `https://arc.ucar.edu/`. Expiration notices are
 out of scope for this run by decision, so they are deliberately left alone — but they
