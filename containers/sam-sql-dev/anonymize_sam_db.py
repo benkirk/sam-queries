@@ -978,6 +978,120 @@ class SAMAnonymizer:
         print(f"[✓] Anonymized {count:,} {table_name} records")
         return count
 
+    def _table_exists(self, session: Session, table_name: str) -> bool:
+        """Whether *table_name* exists in the connected schema."""
+        result = session.execute(text(
+            "SELECT COUNT(*) FROM information_schema.tables "
+            "WHERE table_schema = DATABASE() AND table_name = :name"
+        ), {'name': table_name})
+        return bool(result.scalar())
+
+    def purge_xras_action_log(self, session: Session) -> int:
+        """
+        Empty xras_action_log — its raw_payload cannot be safely anonymized in place.
+
+        Each row stores a verbatim XRAS POST body, and that JSON carries real names,
+        emails, phone numbers and academic status under ``roles[].person``, plus
+        funding-agency program-officer contacts under ``grants[]``. Field-level
+        rewriting would have to parse the JSON, map every identity back through
+        ``original_username_to_user_id``, and stay correct as XRAS adds fields — and
+        the failure mode is a PII leak into a **public Git LFS blob**, because the
+        obfuscated dump is committed (see ``backups/sam-obfuscated.sql.xz``).
+
+        Deleting is both safer and free: this is an operational audit trail, not
+        reference data. Nothing in dev or CI reads historical rows — the tests that
+        exercise the table create their own (``tests/api/test_xras_access.py``), and
+        the committed real payloads live scrubbed in ``tests/fixtures/xras/actions/``.
+
+        Uses DELETE rather than TRUNCATE because the table carries a self-referential
+        FK (``replay_of_id``); TRUNCATE is refused on a table with FK constraints.
+        """
+        print("\n[*] Purging xras_action_log table...")
+
+        result = session.execute(text("SELECT COUNT(*) FROM xras_action_log"))
+        total = result.scalar()
+        print(f"  Found {total:,} audit rows (raw XRAS payloads — cannot be scrubbed in place)")
+
+        if not self.dry_run:
+            # Children first: replay rows reference the original they replay.
+            session.execute(text(
+                "DELETE FROM xras_action_log WHERE replay_of_id IS NOT NULL"))
+            session.execute(text("DELETE FROM xras_action_log"))
+            session.commit()
+
+        print(f"[✓] Purged {total:,} xras_action_log records")
+        return total
+
+    def purge_xras_activation_event(self, session: Session) -> int:
+        """
+        Empty xras_activation_event — it carries contact PII and free operator text.
+
+        ``notified_to`` stores the real addresses an operator was handed (project
+        lead and admin, name plus email), and ``comment`` is unconstrained prose
+        that routinely names people. Neither can be rewritten in place with any
+        confidence, and the failure mode is a PII leak into a **public Git LFS
+        blob**, because the obfuscated dump is committed (see
+        ``backups/sam-obfuscated.sql.xz``).
+
+        Deleting is both safer and free: this is an operational worklist, not
+        reference data. Nothing in dev or CI reads historical rows — the tests
+        that exercise the table create their own.
+
+        ⚠️ Must run BEFORE ``purge_xras_action_log``: ``xras_action_log_id`` is an
+        FK to that table, so emptying the parent first fails with `1451`.
+        """
+        print("\n[*] Purging xras_activation_event table...")
+
+        result = session.execute(text("SELECT COUNT(*) FROM xras_activation_event"))
+        total = result.scalar()
+        print(f"  Found {total:,} operator events (contact PII — cannot be scrubbed in place)")
+
+        if not self.dry_run:
+            session.execute(text("DELETE FROM xras_activation_event"))
+            session.commit()
+
+        print(f"[✓] Purged {total:,} xras_activation_event records")
+        return total
+
+    def purge_notification_log(self, session: Session) -> int:
+        """
+        Empty notification_log — every row names a real person's email address.
+
+        ``recipient`` and ``intended_recipient`` are addresses, ``recipient_name``
+        is a display name, and ``subject`` routinely carries a projcode plus a
+        title. Unlike most PII in this database these cannot be mapped back
+        through ``original_username_to_user_id`` with any confidence: a
+        notification may have gone to an address that belongs to no SAM user at
+        all (``--additional-recipients``, an operator, a departed PI's forwarding
+        address). The failure mode is a PII leak into a **public Git LFS blob**,
+        because the obfuscated dump is committed (see
+        ``backups/sam-obfuscated.sql.xz``).
+
+        Deleting is both safer and free: this is an operational delivery record,
+        not reference data. Nothing in dev or CI reads historical rows — the
+        tests that exercise the table create their own
+        (``tests/factories/notify.py``).
+
+        ⚠️ It is also the table whose rows would make a dev container *skip*
+        sending: suppression matches on ``dedup_key``, so importing production
+        rows into dev would silently suppress mail an operator was testing.
+
+        No FK constraints (deliberate — see the DDL header), so DELETE is
+        unconstrained by ordering.
+        """
+        print("\n[*] Purging notification_log table...")
+
+        result = session.execute(text("SELECT COUNT(*) FROM notification_log"))
+        total = result.scalar()
+        print(f"  Found {total:,} delivery records (recipient addresses — cannot be scrubbed in place)")
+
+        if not self.dry_run:
+            session.execute(text("DELETE FROM notification_log"))
+            session.commit()
+
+        print(f"[✓] Purged {total:,} notification_log records")
+        return total
+
     def anonymize_all(self) -> Dict[str, int]:
         """
         Execute full anonymization workflow.
@@ -1028,6 +1142,36 @@ class SAMAnonymizer:
                 self.anonymize_activity_table(session, 'dav_activity', 'dav_activity_id')
                 self.anonymize_activity_table(session, 'disk_activity', 'disk_activity_id')
                 self.anonymize_activity_table(session, 'archive_activity', 'archive_activity_id')
+
+                # Tables whose contents are removed rather than rewritten.
+                print("\n" + "=" * 70)
+                print("Purging Un-anonymizable Tables")
+                print("=" * 70)
+                # Tolerate absence: neither xras table exists in production yet
+                # (they need a DBA to run the DDL — the prod writer holds no DDL
+                # grant), and a bootstrap against a source without them must not
+                # fail here.
+                #
+                # ⚠️ ORDER IS LOAD-BEARING. xras_activation_event.xras_action_log_id
+                # is an FK to xras_action_log, so the child must be emptied FIRST
+                # or purge_xras_action_log fails with `1451 Cannot delete or update
+                # a parent row`.
+                if self._table_exists(session, 'xras_activation_event'):
+                    self.purge_xras_activation_event(session)
+                else:
+                    print("\n[!] xras_activation_event not present in source — skipping")
+
+                if self._table_exists(session, 'xras_action_log'):
+                    self.purge_xras_action_log(session)
+                else:
+                    print("\n[!] xras_action_log not present in source — skipping")
+
+                # Same tolerance, same reason: notification_log also awaits the
+                # DBA. No FK to or from it, so ordering does not matter here.
+                if self._table_exists(session, 'notification_log'):
+                    self.purge_notification_log(session)
+                else:
+                    print("\n[!] notification_log not present in source — skipping")
 
                 if not self.dry_run:
                     print("\n[*] Committing all changes...")
