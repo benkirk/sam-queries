@@ -267,11 +267,18 @@ new.
   `containers/sam-sql-dev/anonymize_sam_db.py` still covers the three new columns.
   `raw_payload` is a verbatim POST body full of PII and the obfuscated dump is a committed
   public LFS blob.
-- `zz-90` / `zz-91` / `zz-92` are **self-retiring, and as of 2026-08-10 already retired
-  in effect**: prod has the tables and the committed snapshot carries all three (0 rows,
-  purged by the anonymizer), so the restore already contains them and `IF NOT EXISTS`
-  makes the scripts no-ops everywhere. Delete them whenever — but note that doing so
-  makes the **snapshot** the sole source of truth for the utf8mb3/utf8mb4 split, which
-  the ORM does not encode. Keep the charset assertion somewhere before deleting them.
+- ✅ `zz-90` / `zz-91` / `zz-92` were **self-retiring, and are now deleted** (2026-08-10),
+  along with the `COPY initdb.d/` in `containers/sam-sql-dev/Dockerfile` — an empty
+  directory is untracked by git, so leaving the COPY behind would fail the image build.
+  Prod has the tables and the committed snapshot carries all three (0 rows, purged by
+  the anonymizer), so dev and CI get them from the restore.
+
+  ⚠️ The snapshot is now the **sole** carrier of the utf8mb3/utf8mb4 split, which the
+  ORM does not encode. That is why
+  `tests/integration/test_schema_validation.py::TestCharsetSplit` was added in the same
+  commit: it pins all seven utf8mb4 columns *and* the three identifier columns that must
+  stay utf8mb3, and it runs in the default tier rather than the gated stress one. If a
+  future snapshot regeneration loses the split, that test is the only thing that will
+  say so before an audit row goes missing in production.
 - `compose.yaml` sets no `TZ` while `helm/values.yaml` sets `America/Denver`, so local dev
   and CI run UTC against ~123 `datetime.now()` call sites. Its own change, its own run.

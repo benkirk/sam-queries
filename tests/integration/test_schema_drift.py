@@ -79,10 +79,12 @@ class TestSchemaDriftDetection:
     def test_missing_table_is_reported_but_not_unhealthy(self, engine, monkeypatch):
         """A table absent from the DB is a different, already-ticketed state.
 
-        containers/sam-sql-dev/initdb.d/zz-9*.sql exist precisely because
-        notification_log and the XRAS tables have no production counterpart
-        yet. Counting them as drift would pin prod at 503 forever and train
-        everyone to ignore this check.
+        A table an environment has not been given yet has its own remedy —
+        apply the DDL — and counting it as drift would pin that environment at
+        503 and train everyone to ignore this check. It is still *reported*
+        under `missing_tables`, which is what let the 2026-08-10 production
+        rollout be confirmed: the key went from listing the three XRAS /
+        notification tables to being absent entirely.
         """
         import webapp.utils.config_inspect as ci
 

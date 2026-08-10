@@ -66,6 +66,14 @@ notification framework (PR #428):
 | `xras_activation_event` | `src/sam/integration/xras.py:244` | `.../zz-91-xras_activation_event.sql` |
 | `notification_log` | `src/sam/notify/models.py:62` | `.../zz-92-notification_log.sql` |
 
+> ⚠️ **Those three `.sql` paths no longer exist.** They were self-retiring and were
+> deleted once production had the tables and the committed snapshot carried them.
+> Recover the exact DDL from git history if you need it — e.g.
+> `git show 7919468:containers/sam-sql-dev/initdb.d/zz-90-xras_action_log.sql` —
+> or read it off production with `SHOW CREATE TABLE`. The charset split they
+> encoded is now asserted by
+> `tests/integration/test_schema_validation.py::TestCharsetSplit`.
+
 Two facts make every such table an external ticket today:
 
 - `migrations/README.md` records `sam` as Alembic-unmanaged — only

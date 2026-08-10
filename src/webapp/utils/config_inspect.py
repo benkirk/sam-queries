@@ -211,12 +211,13 @@ def schema_drift(engine, ttl_seconds: float = _SCHEMA_DRIFT_TTL_SECONDS) -> Dict
       ``test_database_columns_in_orm``, which is informational for the same
       reason.
     - **Tables absent from the database are reported but do NOT flip the
-      status.** That is a different, already-ticketed condition — see
-      ``containers/sam-sql-dev/initdb.d/zz-9*.sql``, which supply
-      ``notification_log`` and the XRAS tables to dev/CI because they do not
-      exist in production yet. Counting those as drift would pin prod at 503
-      permanently and train everyone to ignore this check. The bug class this
-      guards is specifically "table exists, column does not".
+      status.** A table that a deployment has not been given yet is an
+      operational state with its own remedy, not schema drift; counting it here
+      would pin an environment at 503 and train everyone to ignore this check.
+      The bug class this guards is specifically "table exists, column does not".
+      ``missing_tables`` is still reported, so the condition stays visible —
+      that key going from populated to absent is how the 2026-08-10 XRAS /
+      notification tables were confirmed live in production.
 
     Memoized for ``ttl_seconds``; ``/api/v1/health/`` is public and exempt from
     rate limiting, so this costs at most one INFORMATION_SCHEMA query per
