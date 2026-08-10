@@ -255,18 +255,25 @@ class TestFacetChips:
 
         html = auth_client.get('/allocations/xras_fragment').data.decode()
         chips = self._chips(html, 'status')
-        # One per status in the fixed vocabulary. A superset is legal — an
-        # out-of-vocabulary status gets its own chip (see the test below) — but
-        # nothing in the snapshot should produce one, so this asserts the floor
-        # exactly rather than loosening to >=.
+        # A superset is legal — an out-of-vocabulary status gets its own chip
+        # (see the test below).
+        #
+        # ⚠️ This asserted the count EXACTLY, on the reasoning that nothing in
+        # the snapshot produces an extra chip. Under xdist that is false: the
+        # very next test's `committed_odd_status_action` fixture COMMITS its
+        # row (deliberately — the route reads db.session's own connection, so
+        # a SAVEPOINT-scoped row would be invisible to it), and a committed row
+        # is visible to every other worker. This test then saw a seventh chip
+        # and failed, on about half of all runs, with nothing to do with the
+        # code under test. Assert the vocabulary is present instead of
+        # asserting nobody else exists.
         #
         # Read from the tuple rather than spelled out: this is a check that the
         # strip renders the vocabulary, not a second copy of it. Spelling it out is
         # what made adding `unmapped` break two tests that had no opinion about it.
-        assert len(chips) == len(XRAS_ACTION_STATUSES)
+        assert set(XRAS_ACTION_STATUSES) <= {value for _, value in chips}
         # Every chip writes into the form the filter panel actually renders.
         assert {form_id for form_id, _ in chips} == {'xras-filters'}
-        assert {value for _, value in chips} == set(XRAS_ACTION_STATUSES)
 
     def test_an_unknown_status_gets_its_own_chip(self, auth_client,
                                                  committed_odd_status_action):
@@ -540,7 +547,19 @@ class TestActivationModalBodies:
             f'/allocations/xras_dismiss_form/{active_project.project_id}')
         assert resp.status_code == 200
         assert b'Reason' in resp.data
-        assert b'not permanent' in resp.data
+        assert b'ot permanent' in resp.data
+        assert b'Restore' in resp.data
+
+    def test_dismiss_form_does_not_promise_to_hide_the_row(
+            self, auth_client, active_project):
+        """The copy outlived the behaviour once already. Dismissing stopped
+        removing anything when the card became a ledger keyed on actions —
+        a modal still promising to hide the project describes the old card."""
+        resp = auth_client.get(
+            f'/allocations/xras_dismiss_form/{active_project.project_id}')
+        body = resp.data.decode()
+        assert 'hides the project' not in body
+        assert 'row stays' in body
 
     @pytest.mark.parametrize('endpoint', ['xras_comment', 'xras_dismiss'])
     def test_a_blank_note_is_rejected_with_a_VISIBLE_error(
@@ -789,14 +808,41 @@ class TestActivityRowExpansion:
         assert 'id="xras-activity-42"' not in body
         assert 'pi@example.edu' not in body
 
-    def test_a_row_with_no_deliveries_does_not_expand(self, app):
-        """An empty expansion is a chevron that does nothing."""
+    def test_a_row_with_no_deliveries_still_expands_to_show_recipients(self, app):
+        """The expansion is where the addresses live now that the Recipients
+        column is gone, so an un-notified row must still open — that is exactly
+        the row where an operator wants to see who is about to be mailed."""
         body = self._render(app, may_manage=True,
                             rows=[self._row(notifications=[], notified=False,
                                             delivered_count=0,
                                             tags=['not_notified'])])
-        assert 'id="xras-activity-42"' not in body
+        assert 'id="xras-activity-42"' in body
+        assert 'pi@example.edu' in body
         assert 'Not notified' in body
+        assert 'Delivery' not in body, 'no deliveries — no Delivery table'
+
+    def test_a_notifiable_row_with_nobody_to_mail_says_so_in_the_row(self, app):
+        """The one thing the Recipients column carried that was a PROBLEM
+        rather than a fact. Buried in the expansion it would go unseen, so it
+        is promoted to the Notified cell."""
+        from flask import render_template
+        with app.test_request_context():
+            body = render_template(
+                self.TEMPLATE,
+                rows=[self._row(notifications=[], notified=False,
+                                delivered_count=0, tags=['not_notified'])],
+                recipients={},          # ← nobody on file
+                may_activate={}, may_manage=True,
+                window={'days': 30, 'since': None, 'until': None,
+                        'start_date': '', 'end_date': '', 'custom': False},
+                window_pill_choices=((7, '7D'), (30, '30D')),
+                tag_values=[], type_values=[],
+                selected_tags=[], selected_types=[],
+                form_id='xras-activity-filters',
+                fragment_url='/allocations/xras_pending_fragment',
+                target_id='alloc-xras-pending')
+        assert 'No recipients' in body
+        assert 'No lead or admin email address on file' in body
 
     def test_a_row_needing_activation_offers_no_notify_for_an_unmapped_service(
             self, app):

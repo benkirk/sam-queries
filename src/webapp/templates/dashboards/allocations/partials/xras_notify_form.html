@@ -25,6 +25,23 @@
     Notify — {{ project.projcode }}
 </h5>
 
+{# Sits ABOVE the redirect banner: this one is about the message being wrong,
+   which outranks where it is going. Nothing in the card orders Notify after
+   Activate, and the activation notice asserts "is now active" — measured in
+   the pre-deploy smoke going out 64s before the project was activated. #}
+{% if project_inactive %}
+<div class="alert alert-danger d-flex align-items-start gap-2">
+    <i class="fas fa-triangle-exclamation mt-1"></i>
+    <div>
+        <strong>{{ project.projcode }} is not active yet.</strong>
+        <div>
+            The notice below tells the recipients their allocation is ready to
+            use. Activate the project first, or send now if you are about to.
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% if not notify_enabled %}
 <div class="alert alert-warning d-flex align-items-start gap-2">
     <i class="fas fa-triangle-exclamation mt-1"></i>
@@ -138,13 +155,15 @@
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
         Cancel
     </button>
-    {# hx-include picks up the force checkbox when it is on the page; the
-       selector matching nothing is the ordinary case and is harmless. An
+    {# hx-include only when the force checkbox is actually on the page. htmx
+       logs "selector returned no matches" as a console ERROR, and the common
+       case — a first-time notify — has no checkbox, so leaving it
+       unconditional put a red herring in the console on every send. An
        unchecked box sends no key at all, which is precisely the signal the
        route reads. #}
     <button type="button" class="btn btn-primary"
             hx-post="{{ post_url }}"
-            hx-include="#xrasNotifyForce"
+            {% if already_notified %}hx-include="#xrasNotifyForce"{% endif %}
             hx-target="#auditDetailsModalBody"
             hx-swap="innerHTML"
             {% if not people %}disabled{% endif %}>

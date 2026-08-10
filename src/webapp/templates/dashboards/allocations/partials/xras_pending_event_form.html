@@ -21,10 +21,14 @@
     Dismiss {{ project.projcode }}
 </h5>
 
+{# Wording follows the card's rebuild: dismissing no longer HIDES anything.
+   The row is a record of an XRAS action and stays put; what it loses is the
+   call to action. Nothing leaves this list because someone did their job. #}
 <p class="text-muted small">
-    This hides the project from the pending-activation card. It is not permanent:
-    the row reappears if a new XRAS action names the project, or if someone clicks
-    <strong>Restore</strong>.
+    This marks the project as one that should not be activated from XRAS. The
+    row stays in the list with your reason on it — it just stops asking to be
+    activated. Not permanent: click <strong>Restore</strong> to undo, and a new
+    XRAS action naming the project brings the prompt back.
 </p>
 
 <form hx-post="{{ post_url }}"

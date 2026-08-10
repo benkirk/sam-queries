@@ -644,9 +644,10 @@ The Round 1 order was forced; it no longer is. Do one project each way.
 
 ### Open questions Round 2 should answer
 
-- ☐ **Is `update` the right kind for a Renewal?** It is the only one of the four
-  never seen end to end, and `Renewal` against an existing project is the case
-  the corpus does not cover either.
+- ☑ **Is `update` the right kind for a Renewal?** **Yes** — closed in Round 2.
+  `Renewal` against an existing project dispatched to `update`, rendered
+  `xras_update.txt`, and read correctly ("has been renewed", allocations for
+  the new period, project code and members unchanged).
 - ☐ **Should an Adjustment notify after all?** Currently no notice at all. A
   *reduction* is the case that decided it; an *increase* arguably deserves one.
 - ☐ **Does the window default of 30 days match how an operator works?** Triage
@@ -656,6 +657,100 @@ The Round 1 order was forced; it no longer is. Do one project each way.
 - ☐ **Automatic sending.** Everything is manual by design so far. The message
   builders are shaped for a handler to call — decide whether that lands before
   cutover or after.
+
+### Round 2 findings — as run, 2026-08-10
+
+Driven through Playwright against `webdev` (5050) with the `.env` block still
+armed. Nine actions posted (`16`–`24`), four projects minted (`UHSS0003`–
+`UHSS0005` plus the Round 1 pair), seven notices sent.
+
+**All four kinds are now exercised end to end.** Each dedup key names its own
+action, which is the correlation the whole ledger rests on:
+
+| Kind | Action | Project | Wording checked |
+|---|---|---|---|
+| `xras_activation` | 16 | UHSS0003 | "is now active", four resources |
+| `xras_supplement` | 18 | UHSS0003 | increment **and** new total; 10,000+2,500 → 12,500 ✓ |
+| `xras_extension` | 19 | UHSS0003 | new end dates, "nothing else changes" |
+| `xras_update` | 20 | UHSS0004 | "has been renewed" — **the open question is closed, `update` is right** |
+
+**The redesign does what it was built to do.** Activating `UHSS0003` left the
+row in place, flipped the badge to *Active*, turned Notify into *Notify again*,
+and dropped the Activate button — with the chips re-counting live. Dismissing
+`UHSS0005` likewise kept the row and swapped Activate for Restore. In Round 1
+both rows would have vanished.
+
+Two subtler rules confirmed by observation rather than by test: `UHSS0004`
+carried a *Needs activation* Renewal row and a plain *Inactive* New row at the
+same time — one Activate per project, on the latest action only — and the state
+chips kept full-set counts while the action chips narrowed, which is the
+self-exclusion that stops a chip becoming a dead end.
+
+#### Seven things fixed during the run
+
+1. **Two columns headed "Project".** The state column now reads **State**.
+2. **The table overflowed its card by 99px on every desktop width**, putting
+   *Activate* off-screen behind a scroll. The card is capped at 1388px
+   regardless of viewport; eight columns plus a four-button action group wanted
+   1487. **Recipients moved into the row expansion** (Ben's call), which
+   reclaimed 159px and gave Title 58 of them. Now 0 overflow.
+3. **Consequence of (2), handled:** rows with no notifications previously did
+   not expand at all, which would have made the addresses unreachable on
+   exactly the un-notified rows where an operator wants them. **Every
+   manageable row now expands**; the Delivery table appears only when there is
+   delivery to show.
+4. **The one thing in Recipients that was a *problem* rather than a fact** — a
+   notifiable action with nobody to mail — is promoted to a red *No recipients*
+   badge in the Notified cell rather than buried in the expansion.
+5. **`<code>` inside an alert measured 1.21:1** against 8.57:1 for the alert's
+   own text. The string it hid most often is the redirect address — *"mail is
+   going HERE, not to the PI"* — on this modal and on the admin Notifications
+   card. Fixed globally in `components.css`; twelve templates benefit.
+6. **htmx logged a console ERROR on every first-time send**, because the Send
+   button's `hx-include="#xrasNotifyForce"` was unconditional while the force
+   checkbox only renders on a re-notify. Now emitted only when the box exists.
+7. **The Dismiss modal still promised to "hide the project from the
+   pending-activation card"** — copy that outlived its behaviour by one
+   redesign. Rewritten, and pinned by a test that fails if the old promise
+   comes back.
+
+#### One real ordering defect, and the decision taken
+
+**The activation notice can be sent while the project is still inactive.** It
+says *"is now active"* in as many words. Measured: the `UHSS0003` notice left
+at **15:11:53**; the project was not activated until **15:12:57** — 64 seconds
+during which the mail was false, and nothing would have forced the second step
+at all.
+
+Four options were weighed (warn / block / fold Notify into Activate / accept).
+**Decision: warn, still allow** — an operator may legitimately be about to
+activate, and a hard block makes a reasonable order of work impossible. The
+Notify modal now opens with a danger banner above the redirect banner (the
+message being *wrong* outranks where it is *going*), and it clears the moment
+the project is active. Verified both ways.
+
+#### Flagged, not fixed
+
+- **`.alert-danger` is `--ncar-vermilion` on `--text-on-brand` at 3.84:1** —
+  below AA for body text. Pre-existing, deliberate, and shared by twelve
+  templates, so restyling it is a project-wide decision and not this branch's
+  to take. The new banner is consistent with every other danger alert.
+- **A pre-existing flaky test was found and fixed** (`test_status_chips_are_
+  wired_to_the_filter_form`), because it failed 3 runs in 6 on *unmodified*
+  code. Cause: the next test's `committed_odd_status_action` fixture commits
+  its row — deliberately, since the route reads `db.session`'s own connection —
+  and a committed row is visible to every other xdist worker, so the exact
+  chip-count assertion saw a seventh chip. Now asserts the vocabulary is
+  present rather than that nobody else exists. Six runs, six passes.
+- **`update` rewrites the project title from the payload**, so `UHSS0004` is
+  now titled "Smoke Test - Renewal of UHSS0004". That is the handler doing its
+  job; only the synthetic payload is silly.
+- **Mobile** (390px): the page body does not scroll horizontally (375 ≤ 390)
+  and the table scrolls inside its own wrapper. The card-per-row redesign below
+  `md` stays deferred.
+
+Remaining open questions from the list below: the Adjustment notice, the 30-day
+default, whether the action-log table is now redundant, and automatic sending.
 
 ### One Round 1 note corrected
 

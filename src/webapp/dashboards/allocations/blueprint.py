@@ -1830,6 +1830,12 @@ def xras_notify_form(project_id: int):
         already_notified=already_notified,
         notify_enabled=notifier.config.enabled,
         redirect_to=notifier.config.redirect_to or None,
+        # Every one of these notices tells a PI their allocation is usable —
+        # the activation one says "is now active" in as many words. Nothing
+        # orders Notify after Activate, and in the pre-deploy smoke a notice
+        # went out 64 seconds before the project was activated. The operator
+        # keeps the choice; it just stops being invisible.
+        project_inactive=not project.is_active,
         # The action travels to the POST so the send reports the same outcome
         # the operator just previewed — not whatever is newest by then.
         post_url=url_for('allocations_dashboard.xras_notify',
