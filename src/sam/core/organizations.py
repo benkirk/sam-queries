@@ -44,7 +44,6 @@ class Organization(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSe
     level = Column(String(80))
     level_code = Column(String(10))
 
-    idms_sync_token = Column(String(64))
     idms_unique_name = Column(String(64))
     deleted = Column(Boolean)
 
@@ -160,7 +159,6 @@ class UserOrganization(Base, TimestampMixin, DateRangeMixin):
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     organization_id = Column(Integer, ForeignKey('organization.organization_id'), nullable=False)
     idms_unique_name = Column(String(64))
-    idms_sync_token = Column(String(64))
 
     user = relationship('User', back_populates='organizations')
     organization = relationship('Organization', back_populates='users')
@@ -208,7 +206,6 @@ class Institution(Base, TimestampMixin, SessionMixin):
     city = Column(String(30))
     zip = Column(String(15))
     code = Column(String(3))
-    idms_sync_token = Column(String(64))
 
     institution_type = relationship('InstitutionType', back_populates='institutions')
     institution_type_id = Column(Integer, ForeignKey('institution_type.institution_type_id'))
@@ -408,7 +405,6 @@ class UserInstitution(Base, TimestampMixin, DateRangeMixin):
     user_institution_id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey('users.user_id'), nullable=False)
     institution_id = Column(Integer, ForeignKey('institution.institution_id'), nullable=False)
-    idms_sync_token = Column(String(64))
 
     user = relationship('User', back_populates='institutions')
     institution = relationship('Institution', back_populates='users')
