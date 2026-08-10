@@ -2,10 +2,13 @@
 Tests for Health Check API endpoints.
 
 Covers:
-  GET /api/v1/health/       — public health + DB ping
+  GET /api/v1/health/       — public health: DB ping + schema drift
   GET /api/v1/health/live   — public liveness (no DB)
-  GET /api/v1/health/ready  — public readiness (delegates to health)
+  GET /api/v1/health/ready  — public readiness (connectivity only)
   GET /api/v1/health/db-pool — admin-only pool statistics
+
+``/`` and ``/ready`` deliberately diverge on schema drift; see
+TestSchemaDriftContract for why that split is load-bearing.
 
 The `non_admin_client` fixture lives in tests/conftest.py and picks any
 active non-benkirk user from the snapshot — `load_user()` will resolve
@@ -46,7 +49,7 @@ class TestLivenessEndpoint:
 
 
 # ---------------------------------------------------------------------------
-# GET /api/v1/health/  (and /ready which delegates to it)
+# GET /api/v1/health/
 # ---------------------------------------------------------------------------
 
 class TestHealthEndpoint:
@@ -127,7 +130,7 @@ class TestHealthEndpoint:
 # ---------------------------------------------------------------------------
 
 class TestReadinessEndpoint:
-    """Tests for GET /api/v1/health/ready — delegates to health()."""
+    """Tests for GET /api/v1/health/ready — connectivity only."""
 
     def test_readiness_returns_200_when_dbs_up(self, client):
         """Returns 200 when all DB connections succeed."""
@@ -156,6 +159,77 @@ class TestReadinessEndpoint:
             response = client.get('/api/v1/health/ready')
 
         assert response.status_code == 503
+
+    def test_readiness_omits_schema_check(self, client):
+        """/ready must not even run the drift probe."""
+        response = client.get('/api/v1/health/ready')
+        assert 'sam_schema' not in response.get_json()['checks']
+
+
+# ---------------------------------------------------------------------------
+# Schema drift — the / vs /ready split
+# ---------------------------------------------------------------------------
+
+_DRIFT = {
+    'status': 'unhealthy',
+    'drift': ['users: ORM has pdb_modified_time, idms_sync_token'],
+}
+
+
+class TestSchemaDriftContract:
+    """The 2026-08-10 outage in endpoint form.
+
+    A production DDL change dropped columns the ORM still selected. Every
+    page 500'd for ~20 minutes while all three probes reported 200, because
+    `SELECT 1` cannot see a missing column.
+
+    The split matters in both directions:
+      - `/` must go 503, or monitoring never pages.
+      - `/ready` must stay 200, or Kubernetes marks every replica NotReady,
+        empties the Service, and converts a degraded site into an
+        unreachable one — while stalling the rolling deploy carrying the fix.
+    """
+
+    def test_health_reports_schema_check_when_clean(self, client):
+        """The sam_schema check is present and healthy against the test DB."""
+        data = client.get('/api/v1/health/').get_json()
+        assert data['checks']['sam_schema']['status'] == 'healthy'
+        assert data['status'] == 'healthy'
+
+    def test_health_returns_503_on_drift(self, client):
+        with patch('webapp.api.v1.health.schema_drift', return_value=_DRIFT):
+            response = client.get('/api/v1/health/')
+
+        assert response.status_code == 503
+        data = response.get_json()
+        assert data['status'] == 'unhealthy'
+        assert data['checks']['sam_schema']['drift'] == _DRIFT['drift']
+        # Connectivity is fine — the drift alone must carry the failure.
+        assert data['checks']['sam']['status'] == 'healthy'
+
+    def test_readiness_stays_200_on_drift(self, client):
+        """Load-bearing: drift must never empty the k8s Service."""
+        with patch('webapp.api.v1.health.schema_drift', return_value=_DRIFT):
+            response = client.get('/api/v1/health/ready')
+
+        assert response.status_code == 200
+
+    def test_liveness_stays_200_on_drift(self, client):
+        """Drift must never restart pods either."""
+        with patch('webapp.api.v1.health.schema_drift', return_value=_DRIFT):
+            response = client.get('/api/v1/health/live')
+
+        assert response.status_code == 200
+
+    def test_schema_check_skipped_when_bind_unreachable(self, client):
+        """A dead bind reports connectivity, not a bogus drift verdict."""
+        failing_ping = (False, None, 'Connection refused')
+
+        with patch('webapp.api.v1.health._ping_engine', return_value=failing_ping):
+            response = client.get('/api/v1/health/')
+
+        assert response.status_code == 503
+        assert 'sam_schema' not in response.get_json()['checks']
 
 
 # ---------------------------------------------------------------------------

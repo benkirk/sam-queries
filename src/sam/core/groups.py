@@ -43,8 +43,6 @@ class AdhocGroup(Base, ActiveFlagMixin):
     group_name = Column(String(30), nullable=False)
     unix_gid = Column(Integer, nullable=False)
     creation_time = Column(TIMESTAMP, nullable=False, server_default=text('CURRENT_TIMESTAMP'))
-    pdb_modified_time = Column(TIMESTAMP)
-    idms_sync_token = Column(String(64))
 
     tags = relationship('AdhocGroupTag', back_populates='group', cascade='all, delete-orphan')
     system_accounts = relationship('AdhocSystemAccountEntry', back_populates='group', cascade='all, delete-orphan')
@@ -195,7 +193,6 @@ class GidAllocation(Base):
     # No server_default — MySQL defines this column as NULL DEFAULT NULL
     # with ON UPDATE CURRENT_TIMESTAMP.
     modified_time = Column(TIMESTAMP, onupdate=text('CURRENT_TIMESTAMP'))
-    idms_sync_token = Column(String(64))
 
     def __eq__(self, other):
         if not isinstance(other, GidAllocation):

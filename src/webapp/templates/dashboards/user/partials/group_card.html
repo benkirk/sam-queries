@@ -86,12 +86,6 @@
                         <span class="stat-label">Created:</span>
                         <span class="stat-value">{{ group.creation_time | fmt_date }}</span>
                     </div>
-                    {% if group.pdb_modified_time %}
-                    <div class="stat-item">
-                        <span class="stat-label">PDB modified:</span>
-                        <span class="stat-value">{{ group.pdb_modified_time | fmt_date }}</span>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
 

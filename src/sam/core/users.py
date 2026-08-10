@@ -47,6 +47,14 @@ class User(Base, TimestampMixin, SessionMixin):
     charging_exempt = Column(Boolean, nullable=False, default=False)
     deleted = Column(Boolean)
 
+    # Added to prod by the 2026-08-10 identity-sync cutover, in the same DDL
+    # that dropped pdb_modified_time / idms_sync_token. Mapped for read
+    # fidelity only: it is NULL across all 28,373 production rows, so there is
+    # no populated data to infer semantics from. Deliberately NOT wired into
+    # User.is_active (still `active AND NOT locked`) — do that only once the
+    # column has a documented meaning and a producer writing to it.
+    deactivate = Column(TIMESTAMP)
+
     academic_status_id = Column(Integer, ForeignKey('academic_status.academic_status_id'))
     login_type_id = Column(Integer, ForeignKey('login_type.login_type_id'))
     # NOTE: stores a unix_gid value, not adhoc_group.group_id — resolve via
@@ -55,10 +63,7 @@ class User(Base, TimestampMixin, SessionMixin):
     primary_gid = Column(Integer)
     contact_person_upid = Column(Integer)
 
-    pdb_modified_time = Column(TIMESTAMP)
-
     token_type = Column(String(30))
-    idms_sync_token = Column(String(64))
 
     # [All existing relationships remain the same...]
     academic_status = relationship('AcademicStatus', back_populates='users')
