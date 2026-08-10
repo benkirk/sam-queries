@@ -203,6 +203,93 @@ class TestTheNoticeMayContradictTheProject:
         assert 'disabled' not in body.split('hx-post')[1][:400]
 
 
+class TestThePreviewShowsBothParts:
+    """The modal used to show only the text part.
+
+    Most recipients see the HTML one, and until this existed it was reviewed by
+    reading the file — during the pre-deploy smoke its templates were edited
+    twice that way. Both parts come out of a single `render()` call
+    (`RenderedMessage`), so nothing had to be fetched; they were being dropped.
+    """
+
+    TEMPLATE = 'dashboards/allocations/partials/xras_notify_form.html'
+
+    #: A whole document with a <style> block, like the real templates.
+    EMAIL_HTML = ('<!DOCTYPE html><html><head><style>'
+                  'body{font-family:Georgia}.footer{color:#666}'
+                  '</style></head><body><p>Dear A PI,</p></body></html>')
+
+    def _render(self, app, *, html=EMAIL_HTML):
+        from types import SimpleNamespace
+        from flask import render_template
+        with app.test_request_context():
+            return render_template(
+                self.TEMPLATE,
+                project=SimpleNamespace(projcode='UHSS0004', project_id=7),
+                people=[SimpleNamespace(name='A PI', email='pi@example.edu',
+                                        role='lead')],
+                preview=SimpleNamespace(
+                    subject='s', text='Dear A PI,\n\nplain text part.',
+                    html=html, template_text='xras_activation.txt',
+                    template_html='xras_activation.html' if html else None),
+                preview_error=None, already_notified=[], notify_enabled=True,
+                redirect_to=None, project_inactive=False,
+                post_url='/allocations/xras_notify/7')
+
+    def test_both_parts_are_offered(self, app):
+        body = self._render(app)
+        assert 'id="xrasPreviewHtml"' in body
+        assert 'id="xrasPreviewText"' in body
+        assert 'plain text part.' in body
+
+    def test_html_is_the_default_tab(self, app):
+        """It is what most recipients see, so it is what an operator should be
+        looking at when they decide whether to send."""
+        body = self._render(app)
+        html_tab = body.split('id="xrasPreviewHtmlTab"')[1].split('>')[0]
+        text_tab = body.split('id="xrasPreviewTextTab"')[1].split('>')[0]
+        assert 'aria-selected="true"' in html_tab
+        assert 'aria-selected="false"' in text_tab
+
+    def test_the_html_is_sandboxed(self, app):
+        """No scripts, no same-origin. A preview is not a browser."""
+        body = self._render(app)
+        iframe = body.split('<iframe')[1].split('>')[0]
+        assert 'sandbox' in iframe
+        assert 'allow-scripts' not in iframe
+        assert 'allow-same-origin' not in iframe
+
+    def test_the_emails_css_never_reaches_the_host_document(self, app):
+        """⚠️ The regression this whole design exists to prevent.
+
+        The email templates are whole pages whose <style> blocks use bare
+        selectors (`body`, `h3`) plus `.footer`, which the dashboard also uses.
+        Inlined rather than framed, they restyle the page around them. The only
+        legal place for that CSS is inside the srcdoc ATTRIBUTE, where it is
+        escaped text rather than markup the parser acts on.
+        """
+        body = self._render(app)
+        # Escaped inside the attribute — never a live <style> tag.
+        assert '<style>' not in body
+        assert 'font-family:Georgia' in body            # present, but escaped
+        assert 'srcdoc="' in body
+
+    def test_no_html_variant_means_no_tab_strip(self, app):
+        """A lone tab answers a question nobody asked; fall back to exactly the
+        single <pre> this modal showed before."""
+        body = self._render(app, html=None)
+        assert 'nav-tabs' not in body
+        assert 'srcdoc' not in body
+        assert 'plain text part.' in body
+
+    def test_both_template_names_are_named(self, app):
+        """The pair is what shows the two parts resolved to the SAME facility
+        variant — the failure mode the stat exists to surface."""
+        body = self._render(app)
+        assert 'xras_activation.txt' in body
+        assert 'xras_activation.html' in body
+
+
 # ── The send ─────────────────────────────────────────────────────────────────
 
 class TestSendRecordsOnlyWhatWasDelivered:
