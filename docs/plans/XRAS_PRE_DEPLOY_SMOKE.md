@@ -56,12 +56,12 @@ will actually receive.
 
 | ☐ | Precondition | How to prove it |
 |---|---|---|
-| ☐ | On `xras_incoming_smoke`, both PRs present | `git log --oneline -2` → `dfaf7eb`, `24965d9` |
-| ☐ | The three tables exist locally | `mysql … -e "SHOW TABLES LIKE 'xras%'; SHOW TABLES LIKE 'notification%'"` → `xras_action_log`, `xras_activation_event`, `notification_log` |
-| ☐ | Containers up | `docker compose ps` → `webdev`, `mysql`, `cache` healthy |
-| ☐ | Resource key mapping seeded | `SELECT COUNT(*) FROM xras_resource_repository_key_resource` → 13, incl. keys `145575` (Derecho), `145576` (Derecho GPU), `145145` (Data_Access), `144650` (Casper) |
-| ☐ | `benkirk` holds `MANAGE_XRAS` + `SYSTEM_ADMIN` | `USER_PERMISSION_OVERRIDES['benkirk'] = [p for p in Permission]` — `src/webapp/utils/rbac.py:304` |
-| ☐ | XRAS write credential in the shell | `source etc/config_env.sh && echo $SAM_XRAS_USER` → `samuel` |
+| ✅ | On `xras_incoming_smoke`, both PRs present | `git log --oneline -2` → `dfaf7eb`, `24965d9` |
+| ✅ | The three tables exist locally, and are empty | `SHOW TABLES LIKE 'xras%'` / `LIKE 'notification%'` → `xras_action_log`, `xras_activation_event`, `notification_log`, all at 0 rows — a clean slate |
+| ✅ | Containers up | `docker compose ps` → `webdev`, `webapp`, `mysql`, `mysql-test`, `cache` healthy |
+| ✅ | Resource key mapping seeded | `SELECT COUNT(*) FROM xras_resource_repository_key_resource` → 13, incl. keys `145575` (Derecho), `145576` (Derecho GPU), `145145` (Data_Access), `144650` (Casper) — every key the corpus uses resolves |
+| ✅ | `benkirk` holds `MANAGE_XRAS` + `SYSTEM_ADMIN` | `USER_PERMISSION_OVERRIDES['benkirk'] = [p for p in Permission]` — `src/webapp/utils/rbac.py:304` |
+| ✅ | XRAS write credential in the shell | `source etc/config_env.sh && echo $SAM_XRAS_USER` → `samuel`; `api_credentials` is empty locally, so step 3 must write the row |
 
 ---
 
@@ -111,7 +111,7 @@ Projcodes render as `<facility.code><mnemonic><NNNN>`, so expect **`UHSS0001`,
 
 ## The sequence
 
-### 1 · Arm the two features
+### 1 · Arm the two features ✅
 
 Append a delimited block to `../.env` so teardown is a single delete:
 
@@ -134,7 +134,11 @@ and **nothing dispatches**.
 - **Done when** the block is written and `NOTIFY_REDIRECT_TO` is non-empty. Check
   this *before* the restart — the restart is what arms it.
 
-### 2 · Restart and confirm the arming
+✅ Written at `../.env:127-136`, with a pre-edit copy of the file kept in the session
+scratchpad. `NOTIFY_REDIRECT_TO=benkirk@ucar.edu` is set. Nothing is armed yet —
+the running containers still hold the old environment until step 2.
+
+### 2 · Restart and confirm the arming ✅
 
 ```bash
 docker compose up -d --force-recreate webdev
@@ -147,7 +151,17 @@ single visual confirmation that the guardrail is live.
 
 - **Done when** the container env shows all six keys and the card names the redirect.
 
-### 3 · Credential + the real fixture corpus
+✅ All six keys present in `webdev`. Verified in-app rather than only in the shell:
+
+| Probe | Result |
+|---|---|
+| `NotifyConfig.from_environment().summary()` | `enabled=True`, `transport=smtp`, `relay=ndir.ucar.edu:25`, `redirect_to=benkirk@ucar.edu` |
+| `resolve_recipient('pi@example.edu')` | `('benkirk@ucar.edu', 'pi@example.edu')` — **the guardrail proven directly**: any address is rewritten, the original preserved |
+| `get_webapp_config()` | `DevelopmentConfig`, `XRAS_ACTIONS_CAPTURE_ONLY=False`, `XRAS_ACTIONS_ENABLED='all'` → all 7 types parse |
+| `registered_services()` | `add, adjust, extend, supplement, transfer, update` — all six handlers registered |
+| `gather_runtime_state()['notifications']` | `enabled=True`, `redirect_to=benkirk@ucar.edu`, no `unavailable` flag → the card renders and `notification_log` is reachable |
+
+### 3 · Credential + the real fixture corpus ✅
 
 ```bash
 source etc/config_env.sh
@@ -166,7 +180,20 @@ makes the queue realistic enough to judge the operator surface.
   `SELECT status, COUNT(*) FROM xras_action_log GROUP BY status;` shows more than one
   status.
 
-### 4 · Build the benkirk-lead payloads
+✅ Credential created and `ROLE_XRAS` linked; 10 rows written — **4 `processed`,
+6 `failed`**, exactly the expected shape:
+
+| Payload | HTTP | service | Why |
+|---|---|---|---|
+| `adjustment_uwis0064_manual.json` | 200 | `adjust` | processed |
+| `extension_ucub0166_ok.json` | 200 | `extend` | processed |
+| `supplement_ubrn0027_ok.json` / `_ucub0182_ok.json` | 200 | `supplement` | processed |
+| `extension_ufsu0023_failed.json` | 422 | `extend` | *Action end date is before existing allocation end date (2033-07-31)* — fails as named |
+| `new_ncar4232_failed.json`, `new_ncar4253_ok.json` | 422 | `add` | roster: PI/AM *is not in database* |
+| `new_uwis0071_existing_ok.json` | 422 | `update` | same; note it correctly routed to `update`, not `add` |
+| malformed body / bad `awardPeriod` | 400 / 422 | — | error paths as designed |
+
+### 4 · Build the benkirk-lead payloads ✅
 
 Written to a scratchpad directory, **not** `tests/fixtures/` — these are synthetic,
 not corpus. Each starts as a copy of
@@ -197,7 +224,19 @@ Post with the same `XA-REQUESTER` / `XA-API-KEY` headers `seed_dev_actions.py` u
 
   shows `status='processed'`, `service='add'`, and two minted `UHSS####` codes.
 
-### 5 · The queue and the pending card
+✅ Both processed. The gotcha-3 prediction held exactly — mnemonic `HSS`, facility
+`U`, so:
+
+| Payload | `requestNumber` | → projcode | Contract | Allocations |
+|---|---|---|---|---|
+| Smoke **B** (no contract) | `NCAR9002` | **`UHSS0001`** (project 5896, gid 99030) | none | Derecho 500,000 · Casper 5,000 |
+| Smoke **A** (with contract) | `NCAR9001` | **`UHSS0002`** (project 5897, gid 99031) | `AGS-2524858` | Derecho 1,000,000 · Derecho GPU 2,500 · Casper 10,000 · Data_Access 1 |
+
+Both arrived `active = 0` as designed, both with `benkirk` as PI and sole recipient.
+Note the codes are **reversed** relative to the plan's A/B labelling — A failed on its
+first attempt (Finding 3) so B drew the lower number.
+
+### 5 · The queue and the pending card ✅
 
 Drive `/allocations/xras`: the log table and its filters, the detail modal
 (`xras_action_details/<id>`), and the pending-activation card — which should now list
@@ -205,6 +244,15 @@ both `UHSS####` projects with benkirk's address in the recipients column.
 
 - **Done when** both synthetic projects appear on the card with a recipient email
   shown and no "none on file" warning.
+
+✅ `get_xras_pending_activation()` returns exactly 2 rows — `UHSS0002` and `UHSS0001`,
+both `New`/`processed`, neither notified nor dismissed — and
+`get_xras_pending_recipients()` resolves one recipient each:
+`{'name': 'Benjamin Shelton Kirk', 'email': 'benkirk@ucar.edu', 'role': 'lead'}`.
+
+The four *processed* corpus actions produced **no** card rows, because all five
+projects they touched are already active. That is gotcha 1's corollary showing up on
+its own, before we did anything to provoke it — see Finding 5.
 
 ### 6 · Notify (before Activate) → the actual email
 
@@ -301,7 +349,88 @@ the only side effects a row delete would not undo.
 *Recorded as the run proceeds. Each entry: what was observed, whether it is a defect
 or a design question, and what (if anything) changed.*
 
-☐ *(nothing yet — step 1 is where this begins)*
+**☐ 1 · The local `From:` address diverges from production.** Noted while arming
+step 1, before any mail was sent. `../.env` sets `MAIL_DEFAULT_FROM=nusd@ucar.edu`
+and `MAIL_USE_TLS=false`; `helm/values.yaml:246,248` sets
+`MAIL_DEFAULT_FROM=sam-admin@ucar.edu` and `MAIL_USE_TLS=true`. So the mail reviewed
+in this exercise will arrive **from `nusd@ucar.edu`**, not from the address
+production will use.
+
+That matters for template review — the From line is part of what a PI reads — and it
+is arguably the more interesting question of the two: allocation mail plausibly
+*should* come from NUSD rather than a generic `sam-admin`. **Decide which one
+production should send as**, and if the answer is `nusd@`, `helm/values.yaml` needs
+the change. The TLS difference is inert (ndir advertises no STARTTLS, and
+`SmtpTransport` only upgrades when the server offers it).
+
+**☐ 2 · Allocation amounts in the mail are rendered *compact*.** The single most
+important finding of the run so far. The preview reads:
+
+```
+  - Casper: 10,000 hours through 2027-08-31
+  - Data_Access: 1 through 2027-08-31
+  - Derecho: 1.00M hours through 2027-08-31
+  - Derecho GPU: 2,500 hours through 2027-08-31
+```
+
+`fmt_number`'s house rule — exact with commas up to 100,000, compact above — is
+correct for a dashboard where space is scarce and the reader can hover. It is the
+wrong rule for an **official allocation notice**: `1.00M hours` is the one number in
+the message the PI will quote back, reconcile against their award, and plan on, and
+we have rounded it. `500K` on `UHSS0001` has the same problem.
+
+Recommended: render allocation amounts in this template with `fmt_number(raw=True)`
+(or the `alloc_unit`-aware equivalent) so they always read `1,000,000`. Applies to
+both `.txt` and `.html`.
+
+**☐ 3 · The `New` handler *links* an existing contract; it does not create one.**
+Smoke A first went out with an invented `grants[].grantNumber` of `SMOKE-9001` and
+was rejected 422 with `Cannot find contract for grant number "SMOKE-9001"`. Re-posting
+with a real award number (`AGS-2524858`, already in `contract`) processed and linked
+correctly via `project_contract`.
+
+Not a defect — but it is a **cutover expectation worth stating in the runbook**: any
+XRAS `New` action carrying a grant SAM has never seen will fail with a message about
+the *contract*, not the grant, and the operator's remedy is to create the contract
+first. Given `contract` holds 2,226 rows against a much larger NSF award space, this
+is a plausible recurring `failed` reason in triage week.
+
+**☐ 4 · Nothing in the mail distinguishes a project with a contract from one
+without.** A and B differ only in their allocation lists; the linked award
+`AGS-2524858` appears nowhere in the body. That may well be right — the PI knows
+their own grant — but it was the explicit reason for building two payloads, so
+record the decision rather than leave it implicit.
+
+**☐ 5 · The four processed corpus actions produced no card rows at all**, because
+every project they touched (`UWIS0064`, `UCUB0166`, `UBRN0027`, `UCUB0182`) is
+already active. So an Extension, an Adjustment and two Supplements against live
+projects were applied and left **no operator-visible trace on the worklist**. This is
+gotcha 1's corollary arriving unprompted, and it sharpens the design question: the
+pending card is an *activation* worklist, not an *action* worklist, and there is
+currently no surface that says "something changed on a project that is already
+running". Whether that matters is Ben's call; the XRAS log page does record it.
+
+**☐ 6 · No `New` action in the committed corpus can succeed on any local database.**
+All three fail on the roster (`PI user_00000009 is not in database`) because
+`scrub_payload.py` replaces usernames with pseudonyms, and
+`SELECT COUNT(*) FROM users WHERE username LIKE 'user\_000000%'` is **0** on the
+production clone (and the obfuscated snapshot uses a different `user_<hex>` shape).
+Handler *logic* is unit-tested with factories, but the end-to-end
+route → dispatch → handler → DB path for `add` had never run locally until this
+exercise. Worth a line in the corpus docs so the next person does not read `_ok` as
+"will succeed here".
+
+**☐ 7 · Minor template nits**, all in `xras_activation.txt`/`.html`:
+- a blank line between every allocation bullet (loop whitespace) makes a 4-resource
+  list twice as long as it needs to be
+- `Data_Access: 1` — the raw resource name carries an underscore, and a bare `1` has
+  no unit, so the line reads like a truncation
+- the title is interpolated into a pre-wrapped paragraph, so
+  `Your project UHSS0002 - "Smoke Test A …" is now active on` already runs past 80
+  columns with a short synthetic title; a real one will look ragged
+- *"This message replaces the activation notice previously sent by the NSF NCAR
+  allocations office"* is transitional wording — right for cutover, but decide now
+  whether it is meant to age out.
 
 ### Carried in as hypotheses
 
