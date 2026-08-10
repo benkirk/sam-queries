@@ -67,7 +67,7 @@
         <table class="table table-sm table-hover mb-0 align-middle">
             <thead class="table-subtle">
                 <tr>
-                    <th style="width:130px;">Project</th>
+                    <th style="width:150px; white-space:nowrap;">Project</th>
                     <th style="width:99%;">Title</th>
                     <th style="width:120px;">Action</th>
                     <th style="white-space:nowrap;">Received</th>
@@ -86,7 +86,11 @@
                 <tr {% if r.dismissed %}class="opacity-75"{% endif %}>
                     {# The four toggle cells. The Notified, Recipients and
                        Actions cells are deliberately NOT toggles. #}
-                    <td {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
+                    {# nowrap: the chevron and the projcode are one unit. Without
+                       it the inline-block button wraps below the icon as soon as
+                       the column is at all tight. #}
+                    <td style="white-space:nowrap;"
+                        {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
                         {% if expandable %}
                         <i class="fas fa-chevron-right small text-muted me-1 xras-collapse-icon"
                            style="transition: transform 0.2s;"></i>
