@@ -662,6 +662,17 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     except Exception:
         # The table may not exist yet (it awaits a DBA in production), and a
         # config card that 500s is worse than one that says "unavailable".
+        #
+        # Roll back first. The failure above came from a *statement*, which leaves
+        # SQLAlchemy's transaction marked as needing rollback — so without this any
+        # later use of `db.session` in the same request raises PendingRollbackError
+        # rather than the error it would have raised on its own. No caller does DB
+        # work after this block today, which is exactly why the trap is worth
+        # closing now instead of when someone adds one.
+        try:
+            db.session.rollback()
+        except Exception:                    # pragma: no cover - defensive
+            pass
         notifications_block = {
             'enabled':      False,
             'transport':    None,
@@ -670,6 +681,9 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'unavailable':  True,
             'sent': 0, 'redirected': 0, 'failed': 0, 'suppressed': 0,
             'queued_stuck': 0, 'total': 0, 'by_status': {},
+            # The template reads this outside the `unavailable` short-circuit, so it
+            # has to be present even though nothing renders it in this state.
+            'window_hours': None,
         }
 
     # --- Audit & Logging

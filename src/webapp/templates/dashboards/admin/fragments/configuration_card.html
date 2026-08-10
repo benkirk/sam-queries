@@ -272,11 +272,16 @@
             <div class="card inner-card h-100">
                 <div class="card-header mb-4 d-flex justify-content-between align-items-center">
                     <h5><i class="fas fa-envelope me-1"></i> Notifications</h5>
-                    {# Link target lands in the activity-log commit; relative
-                       path so this tile renders before that route exists. #}
-                    <a href="/admin/htmx/notifications" class="small text-decoration-none">
+                    {# The card is VIEW_SYSTEM_CONFIG but the activity log is
+                       SYSTEM_ADMIN, because every row of it names a real person's
+                       email address. Gated to match, so operators are not offered a
+                       link that 403s — same tier split as the Caching card above. #}
+                    {% if has_permission(Permission.SYSTEM_ADMIN) %}
+                    <a href="{{ url_for('admin_dashboard.notifications') }}"
+                       class="small text-decoration-none">
                         Details &raquo;
                     </a>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     {% if state.notifications.unavailable %}
@@ -340,10 +345,11 @@
             <div class="card inner-card h-100">
                 <div class="card-header mb-4 d-flex justify-content-between align-items-center">
                     <h5><i class="fas fa-traffic-light me-1"></i> Rate limiting</h5>
-                    {# Link target lands in the dedicated admin page commit; left
-                       as a relative path so this tile renders before that route
-                       is registered. #}
-                    <a href="/admin/htmx/rate-limits" class="small text-decoration-none">
+                    {# Ungated on purpose, unlike Notifications above: this page is
+                       VIEW_SYSTEM_CONFIG, the same tier as the card, so the link
+                       cannot 403. #}
+                    <a href="{{ url_for('admin_dashboard.rate_limits') }}"
+                       class="small text-decoration-none">
                         Details &raquo;
                     </a>
                 </div>

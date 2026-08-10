@@ -25,6 +25,8 @@ class TestTheTileRenders:
         assert b'Notifications' in resp.data
 
     def test_it_links_to_the_activity_log(self, auth_client):
+        """`auth_client` is `benkirk`, who holds SYSTEM_ADMIN — which is what the
+        link is gated on. See the sibling test below for the other half."""
         resp = auth_client.get(CONFIG_URL)
         assert b'/admin/htmx/notifications' in resp.data
 
@@ -100,6 +102,33 @@ class TestPermissions:
     def test_a_viewer_without_config_permission_is_refused(self, client):
         resp = client.get(CONFIG_URL)
         assert resp.status_code in (302, 401, 403)
+
+    def test_the_details_link_is_hidden_without_system_admin(self, auth_client,
+                                                             monkeypatch):
+        """The card is VIEW_SYSTEM_CONFIG; the log behind it is SYSTEM_ADMIN.
+
+        Offering every operator a link that 403s is a small thing that reads as a
+        broken page. The two tiers exist because each row of that log names a real
+        person's email address, so this is the visible edge of a privacy boundary
+        rather than a cosmetic gate.
+        """
+        from webapp.utils import rbac
+
+        real = rbac.has_permission
+
+        def _no_system_admin(user, permission):
+            if permission is rbac.Permission.SYSTEM_ADMIN:
+                return False
+            return real(user, permission)
+
+        # The context processor resolves `has_permission` from this module's globals
+        # at call time, so patching the attribute reaches the template.
+        monkeypatch.setattr(rbac, 'has_permission', _no_system_admin)
+
+        resp = auth_client.get(CONFIG_URL)
+        assert resp.status_code == 200
+        assert b'Notifications' in resp.data          # the tile itself still renders
+        assert b'/admin/htmx/notifications' not in resp.data
 
 
 class TestUnavailableTable:
