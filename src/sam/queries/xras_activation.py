@@ -450,7 +450,20 @@ def get_xras_pending_recipients(
                 continue
             seen.add(email)
             people.append({
-                'name': user.full_name or user.username,
+                # `display_name` first: it is (nickname or first) + last, so a
+                # PI greeted by mail gets "Ben Kirk" rather than the
+                # middle-name-carrying "Benjamin Shelton Kirk" that `full_name`
+                # produces. Everywhere else in the UI honours the nickname; a
+                # notice addressed to someone should read the way their
+                # colleagues address them.
+                #
+                # The rest of the chain only fires when `display_name` is
+                # EMPTY, which needs both (nickname or first) and last to be
+                # null — i.e. a user with no usable name, who falls through to
+                # `username`. `full_name` sits between them for the one row
+                # shape that has a middle name and nothing else; it is close to
+                # theoretical, and kept because it costs one `or`.
+                'name': user.display_name or user.full_name or user.username,
                 'email': email,
                 'role': role,
             })

@@ -868,6 +868,72 @@ class TestNotifyRecipients:
     def test_no_project_ids_is_an_empty_dict_not_a_full_scan(self, session):
         assert get_xras_pending_recipients(session, []) == {}
 
+    def test_the_greeting_uses_the_nickname_not_the_middle_name(self, session):
+        """`display_name`, the same name every other surface in the product
+        shows. XRAS mail used `full_name` and greeted people by their full
+        legal name — "Dear Benjamin Shelton Kirk" to someone the whole lab
+        calls Ben. See sam/notify/audience.py, which used to record the
+        divergence as deliberate."""
+        project = make_project(session, active=False)
+        lead = project.lead
+        lead.first_name, lead.middle_name, lead.last_name = (
+            'Benjamin', 'Shelton', 'Kirk')
+        lead.nickname = 'Ben'
+        session.flush()
+        _email(session, lead, 'lead@example.edu')
+
+        people = get_xras_pending_recipients(
+            session, [project.project_id])[project.project_id]
+        assert people[0]['name'] == 'Ben Kirk'
+
+    def test_a_user_with_no_nickname_still_gets_a_name(self, session):
+        """`display_name` falls back to first_name, so dropping `full_name`
+        from the front of the chain costs nothing in the ordinary case."""
+        project = make_project(session, active=False)
+        lead = project.lead
+        lead.first_name, lead.middle_name, lead.last_name = (
+            'Benjamin', 'Shelton', 'Kirk')
+        lead.nickname = None
+        session.flush()
+        _email(session, lead, 'lead@example.edu')
+
+        people = get_xras_pending_recipients(
+            session, [project.project_id])[project.project_id]
+        assert people[0]['name'] == 'Benjamin Kirk'
+
+    def test_a_middle_name_only_user_is_greeted_by_surname(self, session):
+        """⚠️ The `or full_name` behind `display_name` does NOT rescue this.
+
+        `display_name` returns 'Kirk' — truthy — so the fallback never fires,
+        and a user with a middle name but no first name is greeted by surname
+        alone. That is acceptable (and the row shape is close to theoretical),
+        but it is not what a reading of the `or` chain suggests, which is why
+        it is pinned rather than left to inference.
+        """
+        project = make_project(session, active=False)
+        lead = project.lead
+        lead.first_name, lead.nickname = None, None
+        lead.middle_name, lead.last_name = 'Shelton', 'Kirk'
+        session.flush()
+        _email(session, lead, 'lead@example.edu')
+
+        people = get_xras_pending_recipients(
+            session, [project.project_id])[project.project_id]
+        assert people[0]['name'] == 'Kirk'
+
+    def test_a_user_with_no_name_at_all_falls_back_to_the_username(
+            self, session):
+        """What the tail of the chain is actually for."""
+        project = make_project(session, active=False)
+        lead = project.lead
+        lead.first_name = lead.nickname = lead.middle_name = lead.last_name = None
+        session.flush()
+        _email(session, lead, 'lead@example.edu')
+
+        people = get_xras_pending_recipients(
+            session, [project.project_id])[project.project_id]
+        assert people[0]['name'] == lead.username
+
 
 class TestActionTypeRollup:
     """``by_action_type`` — the marginal the facet chips need."""
