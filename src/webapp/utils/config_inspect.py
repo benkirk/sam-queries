@@ -20,10 +20,13 @@ Design notes:
 import os
 import platform
 import socket
+import time
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from sqlalchemy import text
 
 
 # Per-pid cache so a fresh worker doesn't re-parse /proc on every request.
@@ -146,6 +149,130 @@ def classify_connection_error(error: Optional[str]) -> Optional[Dict[str, str]]:
                       'server down). Not a pool issue.'),
         }
     return {'class': 'unknown', 'hint': None}
+
+
+# ---------------------------------------------------------------------------
+# ORM ↔ database schema drift
+# ---------------------------------------------------------------------------
+#
+# Why this exists: on 2026-08-10 a production DDL change dropped 8 columns the
+# ORM still selected, and every page 500'd with MySQL 1054 for ~20 minutes
+# while /api/v1/health/ reported 200 healthy the whole time — because a
+# `SELECT 1` ping cannot see a column that stopped existing.
+#
+# One INFORMATION_SCHEMA query covers every mapped model, so this catches the
+# whole bug class rather than the four tables someone thought to probe.
+
+# (expires_at_monotonic, result). Module-level, so each gunicorn worker keeps
+# its own memo; a warm entry inherited across a fork is at most _TTL stale.
+_schema_drift_memo: Optional[Tuple[float, Dict[str, Any]]] = None
+
+_SCHEMA_DRIFT_TTL_SECONDS = 60.0
+
+
+def _mapped_tables() -> Dict[str, set]:
+    """Return {table_name: {column_names}} for models on the default bind.
+
+    Mirrors the filter in ``scripts/lib/schema_introspection.py``
+    ``iter_table_mappers``: skips views (``info={'is_view': True}``, which are
+    never DDL-managed by us) and cross-bind models (``__bind_key__``, i.e.
+    system_status, which is Alembic-managed and covered by
+    ``test_alembic_migrations.py``).
+    """
+    from sam.base import Base
+
+    tables: Dict[str, set] = {}
+    for mapper in Base.registry.mappers:
+        selectable = mapper.persist_selectable
+        if selectable.info.get('is_view', False):
+            continue
+        cls = mapper.class_
+        if getattr(cls, '__bind_key__', None) is not None:
+            continue
+        tables.setdefault(selectable.name, set()).update(
+            c.name for c in selectable.columns
+        )
+    return tables
+
+
+def schema_drift(engine, ttl_seconds: float = _SCHEMA_DRIFT_TTL_SECONDS) -> Dict[str, Any]:
+    """Report columns the ORM selects that the database does not have.
+
+    Returns a health-check entry:
+
+        {'status': 'healthy'}
+        {'status': 'unhealthy', 'drift': ['users: ORM has pdb_modified_time']}
+        {'status': 'unknown', 'error': '...'}   # introspection itself failed
+
+    Only ORM-side extras flip the status. Two deliberate exclusions:
+
+    - **DB columns absent from the ORM are ignored.** SQLAlchemy names its
+      columns explicitly, so an unmapped column breaks nothing. This matches
+      ``test_database_columns_in_orm``, which is informational for the same
+      reason.
+    - **Tables absent from the database are reported but do NOT flip the
+      status.** That is a different, already-ticketed condition — see
+      ``containers/sam-sql-dev/initdb.d/zz-9*.sql``, which supply
+      ``notification_log`` and the XRAS tables to dev/CI because they do not
+      exist in production yet. Counting those as drift would pin prod at 503
+      permanently and train everyone to ignore this check. The bug class this
+      guards is specifically "table exists, column does not".
+
+    Memoized for ``ttl_seconds``; ``/api/v1/health/`` is public and exempt from
+    rate limiting, so this costs at most one INFORMATION_SCHEMA query per
+    minute per pod.
+    """
+    global _schema_drift_memo
+
+    now = time.monotonic()
+    if _schema_drift_memo is not None and _schema_drift_memo[0] > now:
+        return _schema_drift_memo[1]
+
+    try:
+        orm_tables = _mapped_tables()
+        db_tables: Dict[str, set] = {}
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT TABLE_NAME, COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+            """))
+            for table_name, column_name in rows:
+                db_tables.setdefault(table_name, set()).add(column_name)
+
+        drift: List[str] = []
+        missing_tables: List[str] = []
+        for table, orm_cols in sorted(orm_tables.items()):
+            db_cols = db_tables.get(table)
+            if db_cols is None:
+                missing_tables.append(table)
+                continue
+            extra = orm_cols - db_cols
+            if extra:
+                drift.append(f"{table}: ORM has {', '.join(sorted(extra))}")
+
+        result: Dict[str, Any] = {
+            'status': 'unhealthy' if drift else 'healthy',
+            'models_checked': len(orm_tables),
+        }
+        if drift:
+            result['drift'] = drift
+        if missing_tables:
+            result['missing_tables'] = sorted(missing_tables)
+    except Exception as exc:
+        # Introspection failing is not itself schema drift — report it
+        # separately so a permissions or connectivity problem doesn't get
+        # misread as a dropped column.
+        result = {'status': 'unknown', 'error': str(exc)}
+
+    _schema_drift_memo = (now + ttl_seconds, result)
+    return result
+
+
+def reset_schema_drift_cache() -> None:
+    """Drop the memoized ``schema_drift`` result. For tests."""
+    global _schema_drift_memo
+    _schema_drift_memo = None
 
 
 def tail_audit_log(path: Optional[str], n: int = 25) -> Optional[List[str]]:
