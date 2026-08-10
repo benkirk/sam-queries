@@ -43,6 +43,14 @@
             font-size: 0.9em;
             color: #666;
         }
+        /* The contact line lives in the footer; a default-blue mailto would
+           pull the eye straight past the message body to the fine print. */
+        .footer a {
+            color: inherit;
+        }
+        .footer p {
+            margin: 0 0 6px;
+        }
     </style>
 </head>
 <body>
@@ -97,11 +105,10 @@
     </p>
     {% endif %}
 
-    <p>If you believe you received this message in error, please contact
-        <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
-
     <div class="footer">
-        This is an automated notification from the NSF NCAR Systems Accounting Manager.
+        <p>This is an automated notification from the NSF NCAR Systems Accounting Manager.</p>
+        <p>If you believe you received this message in error, please contact
+            <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
     </div>
 </body>
 </html>

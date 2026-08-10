@@ -19,8 +19,7 @@ Your project lead ({{ project_lead }}{% if project_lead_email %} /
 {{ project_lead_email }}{% endif %}) manages membership and any future
 extension or supplement requests.
 {% endif %}
-If you believe you received this message in error, please contact
-help@ucar.edu.
-
 --
 This is an automated notification from the NSF NCAR Systems Accounting Manager.
+If you believe you received this message in error, please contact
+help@ucar.edu.
