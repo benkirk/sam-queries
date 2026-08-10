@@ -2,6 +2,10 @@
 
 > ☐ **In progress.** Branch `xras_incoming_smoke`, on top of `integration` at
 > `dfaf7eb`. Findings and any code changes land here.
+>
+> **Round 1 (2026-08-09) is complete** — §§1–10 below, seven findings, four code
+> changes. It ended by rebuilding the operator card, so **[`## Round 2`](#round-2--exercising-the-activity-ledger)
+> is where a fresh session starts.** Read Round 1 for the reasoning; run Round 2.
 
 **Operational checklist.** Everything below is a command to run, a page to click or
 an observation to record. It is worked *through* — tick `☐ → ✅` in place and write
@@ -524,6 +528,144 @@ untouched.
 out of scope for this run by decision, so they are deliberately left alone — but they
 should get the same treatment before the next expiration send, or a PI will be
 directed to two different portals by two different SAM emails.
+
+## Round 2 — exercising the activity ledger
+
+**Written for a cold start.** Round 1 ended by replacing the surface it was
+testing, so nothing below assumes the session that produced it.
+
+### What changed, and why Round 2 exists
+
+Round 1's findings 5 and the two struck hypotheses were all one bug wearing three
+hats: the card was keyed on the **project** and filtered on `~Project.is_active`.
+So activating erased the Notify button, a Supplement against a live project was
+invisible, and a second action needed a "stale" flag because one row cannot
+represent two things happening.
+
+Rows are now one per **processed action**, over a selectable window
+(`d810bfc`). Also landed: four notification kinds instead of one
+(`xras_activation` / `xras_supplement` / `xras_extension` / `xras_update`, with
+`adjust` and `transfer` deliberately having none), an action-aware Notify
+(`?action_id=`), a force override on the modal (`f3c7f0d`), and the mail now
+points at the SAM portal and `help@ucar.edu` (`ed5fbc3`, `3284c23`).
+
+**None of that has been exercised by a human.** Round 2 is that.
+
+### Where things stand
+
+| | |
+|---|---|
+| Branch | `xras_incoming_smoke`; suite **5,621 passed** + 21 stress, route map unregenerated |
+| `.env` | **still armed** from Round 1 — `NOTIFY_ENABLED=1`, `NOTIFY_TRANSPORT=smtp`, `NOTIFY_REDIRECT_TO=benkirk@ucar.edu`, `XRAS_ACTIONS_CAPTURE_ONLY=0`. Re-confirm before posting anything (§2). |
+| Local DB | 15 `xras_action_log` rows, 6 `notification_log` rows, projects `UHSS0001` / `UHSS0002` both **active**, `api_credentials` has the `ROLE_XRAS` row |
+| ⚠️ Test hermeticity | `TestingConfig` now pins `XRAS_ACTIONS_CAPTURE_ONLY`, so a `.env` with `=0` no longer breaks ten API tests. If you see capture tests failing, that pin is the first thing to check. |
+
+### The generator
+
+`scripts/xras/smoke_payloads.py` replaces Round 1's hand-built scratchpad JSON,
+because the interesting payloads name a projcode that does not exist until the
+`New` before them has been processed. Print by default, `--post` to send:
+
+```bash
+source etc/config_env.sh
+python scripts/xras/smoke_payloads.py --new --contract AGS-2524858 --post
+python scripts/xras/smoke_payloads.py --new --post                  # no contract
+python scripts/xras/smoke_payloads.py --supplement UHSS000N --post
+python scripts/xras/smoke_payloads.py --extension  UHSS000N --post
+python scripts/xras/smoke_payloads.py --renewal    UHSS000N --post  # → xras_update
+```
+
+Validated end to end: an `--extension UHSS0002` posted 200, dispatched to
+`extend`, and moved all four allocations to 2027-12-23 (log row 15).
+
+Two constraints the script encodes, both learned the hard way in Round 1 —
+gotcha 3 for the first, finding 3 for the second:
+
+- the opportunity must **not** start with `"NCAR "`, or mnemonic resolution takes
+  the lab route and fails for any NCAR-lab lead;
+- `--contract` must name a row that **already exists** in `contract`; the `New`
+  handler links, it does not create.
+
+### The sequence
+
+Each step says what to look at, because looking is the point.
+
+**R2.1 · Re-arm and confirm.** Repeat §§1–2. The Notifications card must name
+the redirect target before anything is posted.
+
+**R2.2 · Two new projects, with and without a contract.** Post both `--new`
+forms. Expect `UHSS0003` / `UHSS0004`, both `active = 0`.
+- **Look at:** both appear on the card tagged **Needs activation** and **Not
+  notified**; the `Activation` chip now counts 2.
+
+**R2.3 · Notify, then Activate — then Activate a project you have NOT notified.**
+The Round 1 order was forced; it no longer is. Do one project each way.
+- **Look at:** the activated project **stays on the table** with its badge
+  flipped to Active, and its Notify button still works. That is the whole fix.
+
+**R2.4 · Supplement, Extension, Renewal.** One of each against the new projects.
+- **Look at:** each is a **new row**, not a mutation of an existing one; each is
+  independently notifiable; the mail for each says the right thing —
+  a supplement reports the **increment** (read back off its own `raw_payload`),
+  an extension the **new end date**, a renewal the new period. None of them
+  should say "is now active".
+
+**R2.5 · An Adjustment.** Post one (the corpus has
+`adjustment_uwis0064_manual.json`, or use `sam-admin xras --show`).
+- **Look at:** the row appears as history with **no Notify button** and a `—` in
+  the Notified column. That is deliberate: an Adjustment can be a *reduction*.
+
+**R2.6 · The window and the chips.** 7D / 30D / 90D / Custom; then each chip.
+- **Look at:** counts stay live when a chip is selected (self-exclusion — if
+  every other count drops to 0 the chips have become dead ends); the window
+  survives a Notify, because the container re-fetches a bare `hx-get` and only
+  `hx-include` carries the filters through.
+
+**R2.7 · The row expansion.** Expand a notified row.
+- **Look at:** per-recipient status, time and any error inline; then click
+  **Notify and Activate on that same expanded row** — the capture-phase problem
+  breaks exactly this, and only for the buttons.
+
+**R2.8 · Force.** Notify a row twice.
+- **Look at:** the second attempt offers **Send again anyway** *only because* a
+  duplicate would be suppressed; a row whose action is new must not show it.
+
+**R2.9 · Dismiss.** Dismiss a project needing activation.
+- **Look at:** the row **stays**, the Activate button goes, the reason is in the
+  tooltip. Then Restore.
+
+**R2.10 · Mobile.** 375px.
+- **Look at:** the page must not scroll horizontally; the table scrolls inside
+  its own wrapper. Known and unaddressed: the useful columns are three swipes
+  right, and a card-per-row layout below `md` would read better. That is a
+  redesign, not a fix — decide whether it is in scope.
+
+**R2.11 · Teardown.** §11. Env only; data stays.
+
+### Open questions Round 2 should answer
+
+- ☐ **Is `update` the right kind for a Renewal?** It is the only one of the four
+  never seen end to end, and `Renewal` against an existing project is the case
+  the corpus does not cover either.
+- ☐ **Should an Adjustment notify after all?** Currently no notice at all. A
+  *reduction* is the case that decided it; an *increase* arguably deserves one.
+- ☐ **Does the window default of 30 days match how an operator works?** Triage
+  week suggests days, not weeks.
+- ☐ **Is the action-log table below now redundant on this page?** The activity
+  table shows processed actions; the log shows everything. Two tables, one page.
+- ☐ **Automatic sending.** Everything is manual by design so far. The message
+  builders are shaped for a handler to call — decide whether that lands before
+  cutover or after.
+
+### One Round 1 note corrected
+
+The `UHSS0001` Supplement row reading "notified" was **right**, and an in-flight
+suspicion that it was mis-keyed was wrong: dedup key `xras_activation:UHSS0001:14:…`
+names action **14**, which is the Supplement. What is genuinely stale is only the
+*kind* — that mail went out with activation wording because it predates the four
+kinds. Re-notifying it now would produce the correct supplement text.
+
+---
 
 ## Verification
 
