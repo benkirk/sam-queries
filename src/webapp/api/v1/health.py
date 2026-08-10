@@ -1,10 +1,14 @@
 """Health check and application readiness endpoints.
 
 Intended consumers:
-  GET /api/v1/health/       — load balancer health checks
+  GET /api/v1/health/       — load balancers + monitoring: connectivity AND
+                              ORM ↔ database schema drift
   GET /api/v1/health/live   — Kubernetes liveness probe (no DB call)
-  GET /api/v1/health/ready  — Kubernetes readiness probe
+  GET /api/v1/health/ready  — Kubernetes readiness probe (connectivity only)
   GET /api/v1/health/db-pool — admin: connection pool statistics
+
+``/`` and ``/ready`` deliberately differ: only ``/`` fails on schema drift.
+See ``readiness`` for why a drifted schema must not empty the Service.
 """
 from datetime import datetime
 
@@ -16,7 +20,11 @@ from webapp.extensions import db
 from webapp.api.helpers import register_error_handlers
 from webapp.limiter import limiter as _rate_limit
 from webapp.utils.rbac import require_permission, Permission
-from webapp.utils.config_inspect import classify_connection_error, pool_stats
+from webapp.utils.config_inspect import (
+    classify_connection_error,
+    pool_stats,
+    schema_drift,
+)
 
 bp = Blueprint('api_health', __name__)
 register_error_handlers(bp)
@@ -41,8 +49,13 @@ def _ping_engine(engine):
         return False, None, str(exc)
 
 
-def _collect_health():
-    """Ping all configured DB engines and return a (healthy, checks) tuple."""
+def _collect_health(include_schema=False):
+    """Ping all configured DB engines and return a (healthy, checks) tuple.
+
+    With ``include_schema``, additionally diff the ORM's mapped columns
+    against the live ``sam`` schema and report it as a ``sam_schema`` check.
+    See ``schema_drift`` for why connectivity alone is not enough.
+    """
     engines = {'sam': db.engine}
     ss_engine = db.engines.get('system_status')
     if ss_engine:
@@ -60,7 +73,25 @@ def _collect_health():
             checks[name]['error'] = error
             healthy = False
 
+    # Only meaningful when the bind is reachable; a drift probe against a
+    # dead connection would report 'unknown' and add nothing.
+    if include_schema and checks['sam']['status'] == 'healthy':
+        checks['sam_schema'] = schema_drift(db.engine)
+        if checks['sam_schema']['status'] == 'unhealthy':
+            healthy = False
+
     return healthy, checks
+
+
+def _health_response(include_schema):
+    """Build the shared (payload, status_code) pair for / and /ready."""
+    healthy, checks = _collect_health(include_schema=include_schema)
+    return jsonify({
+        'status': 'healthy' if healthy else 'unhealthy',
+        'service': 'sam-webapp',
+        'timestamp': datetime.now().isoformat(),
+        'checks': checks,
+    }), 200 if healthy else 503
 
 
 # ---------------------------------------------------------------------------
@@ -70,19 +101,17 @@ def _collect_health():
 @bp.route('/', methods=['GET'])
 @_rate_limit.limiter.exempt
 def health():
-    """Health check for load balancers — pings all DB binds.
+    """Health check for load balancers — pings all DB binds, plus schema drift.
 
-    Returns 200 when all checks pass, 503 if any fail.
+    Returns 200 when all checks pass, 503 if any fail. This is the endpoint
+    monitoring should watch: it is the *only* one that reports ORM ↔ database
+    schema drift, the failure mode that took the site down on 2026-08-10 while
+    every connectivity probe stayed green.
+
     Public endpoint (no login required). Exempt from rate limiting so
     LB/Kubernetes probes never get throttled.
     """
-    healthy, checks = _collect_health()
-    return jsonify({
-        'status': 'healthy' if healthy else 'unhealthy',
-        'service': 'sam-webapp',
-        'timestamp': datetime.now().isoformat(),
-        'checks': checks,
-    }), 200 if healthy else 503
+    return _health_response(include_schema=True)
 
 
 @bp.route('/live', methods=['GET'])
@@ -100,9 +129,16 @@ def liveness():
 def readiness():
     """Kubernetes readiness probe — confirms the app can serve traffic.
 
-    Delegates to the full DB health check. Public endpoint.
+    Connectivity only: deliberately does NOT include the schema-drift check
+    that ``/`` reports. Drift affects every replica of an image identically,
+    so failing readiness on it would empty the Service and turn a degraded
+    site into an unreachable one — and stall the very rolling deploy that
+    ships the fix. Drift is a paging signal, not a "take this pod out"
+    signal; ``/`` carries it.
+
+    Public endpoint.
     """
-    return health()
+    return _health_response(include_schema=False)
 
 
 @bp.route('/db-pool', methods=['GET'])

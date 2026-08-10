@@ -1,21 +1,20 @@
 Dear {{ recipient_name }},
 
-Your project {{ project_code }} - "{{ project_title }}" is now active on
+Your project {{ project_code }} - "{{ project_title }}" has been extended on
 NSF NCAR computing resources.
 {% if resources %}
-Allocations:
+Allocations and their new end dates:
 {% for r in resources %}
   - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
     {%- if r.end_date %} through {{ r.end_date }}{% endif %}
-{% endfor %}
+{%- endfor %}
 {% endif %}
-Getting started:
+Nothing else changes — your project code, members and unused balance carry
+forward.
+
   - Documentation: https://ncar-hpc-docs.readthedocs.io/
   - Manage your project and its members at https://sam.hpc.ucar.edu/
-{% if recipient_role == 'lead' %}
-As project lead you can add and remove project members, designate a project
-administrator, and request extensions or supplements through the SAM portal.
-{% else %}
+{% if recipient_role != 'lead' %}
 Your project lead ({{ project_lead }}{% if project_lead_email %} /
 {{ project_lead_email }}{% endif %}) manages membership and any future
 extension or supplement requests.

@@ -412,6 +412,18 @@ class TestingConfig(SAMWebappConfig):
     NOTIFY_ENABLED   = False
     NOTIFY_TRANSPORT = 'null'
 
+    # Pinned for the same reason, and because it was measurably NOT pinned:
+    # `SAMWebappConfig.XRAS_ACTIONS_CAPTURE_ONLY` reads os.getenv at class-body
+    # time, so a developer with XRAS_ACTIONS_CAPTURE_ONLY=0 in their `.env` —
+    # which is exactly what a local dispatch smoke test needs — silently ran
+    # the whole API tier against the dispatching arm and watched ten capture
+    # tests fail for reasons that had nothing to do with their change.
+    #
+    # Tests that want the other arm override `app.config` explicitly
+    # (tests/api/test_xras_access.py::TestDispatchArms), which is the right
+    # way round: the default is deterministic and the exception is declared.
+    XRAS_ACTIONS_CAPTURE_ONLY = True
+
 
 _configs = {
     'development': DevelopmentConfig,

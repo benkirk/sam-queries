@@ -57,12 +57,25 @@
     <p>Dear {{ recipient_name }},</p>
 
     <div class="project-info">
-        Your project <strong>{{ project_code }}</strong> - "{{ project_title }}"
-        is now active on NSF NCAR computing resources.
+        Additional allocation has been added to your project
+        <strong>{{ project_code }}</strong> - "{{ project_title }}".
     </div>
 
+    {% if added %}
+    <h3>Added by this request</h3>
+    <table class="allocations">
+        <tr><th>Resource</th><th>Added</th></tr>
+        {% for r in added %}
+        <tr>
+            <td>{{ r.resource_name }}</td>
+            <td>{{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
     {% if resources %}
-    <h3>Allocations</h3>
+    <h3>Your project now holds</h3>
     <table class="allocations">
         <tr><th>Resource</th><th>Amount</th><th>Through</th></tr>
         {% for r in resources %}
@@ -75,7 +88,8 @@
     </table>
     {% endif %}
 
-    <h3>Getting started</h3>
+    <p>The additional time is available now; no change to how you submit work.</p>
+
     <ul>
         <li>Documentation:
             <a href="https://ncar-hpc-docs.readthedocs.io/">ncar-hpc-docs.readthedocs.io</a></li>
@@ -83,13 +97,7 @@
             <a href="https://sam.hpc.ucar.edu/">sam.hpc.ucar.edu</a></li>
     </ul>
 
-    {% if recipient_role == 'lead' %}
-    <p>
-        As project lead you can add and remove project members, designate a
-        project administrator, and request extensions or supplements through
-        the SAM portal.
-    </p>
-    {% else %}
+    {% if recipient_role != 'lead' %}
     <p>
         Your project lead ({{ project_lead }}{% if project_lead_email %} /
         {{ project_lead_email }}{% endif %}) manages membership and any future

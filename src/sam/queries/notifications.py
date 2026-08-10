@@ -102,7 +102,8 @@ def get_recent_notifications(session: Session, *,
                              kinds: Optional[Sequence[str]] = None,
                              channels: Optional[Sequence[str]] = None,
                              search: Optional[str] = None,
-                             limit: int = 100,
+                             projcodes: Optional[Sequence[str]] = None,
+                             limit: Optional[int] = 100,
                              offset: int = 0) -> List[NotificationLog]:
     """The activity-log table's rows, newest first.
 
@@ -112,15 +113,26 @@ def get_recent_notifications(session: Session, *,
     but the CLI's contract search learned the hard way that assuming a
     collation is how you undercount (see the `reference` note on
     case-sensitive contract columns), and being explicit costs nothing.
+
+    ``projcodes`` is the **equality** form and exists because ``search`` is
+    not a substitute for it: ``search`` compiles to a leading-wildcard
+    ``LIKE`` ORed against ``recipient``, which cannot use
+    ``notification_log_projcode (projcode, creation_time)``. A caller that
+    knows exactly which projects it wants — the XRAS activity table asking
+    "what was sent about these forty" — must use this one.
+
+    ``limit=None`` means no cap. That is for a caller that has already
+    bounded the result some other way (a projcode ``IN`` list and a time
+    window); a paginated table must always pass a number.
     """
     query = select(NotificationLog).where(*_filters(
         since=since, statuses=statuses, kinds=kinds, channels=channels,
-        search=search))
-    return list(session.execute(
-        query.order_by(NotificationLog.creation_time.desc(),
-                       NotificationLog.notification_log_id.desc())
-        .limit(limit).offset(offset)
-    ).scalars())
+        search=search, projcodes=projcodes))
+    query = query.order_by(NotificationLog.creation_time.desc(),
+                           NotificationLog.notification_log_id.desc())
+    if limit is not None:
+        query = query.limit(limit)
+    return list(session.execute(query.offset(offset)).scalars())
 
 
 def count_recent_notifications(session: Session, **filters) -> int:
@@ -172,7 +184,8 @@ def _filters(*, since: Optional[datetime] = None,
              statuses: Optional[Sequence[str]] = None,
              kinds: Optional[Sequence[str]] = None,
              channels: Optional[Sequence[str]] = None,
-             search: Optional[str] = None) -> list:
+             search: Optional[str] = None,
+             projcodes: Optional[Sequence[str]] = None) -> list:
     """The WHERE terms shared by the table, the count and the facets.
 
     One builder so a filter added to the table cannot be forgotten in the
@@ -187,6 +200,10 @@ def _filters(*, since: Optional[datetime] = None,
         conditions.append(NotificationLog.kind.in_(list(kinds)))
     if channels:
         conditions.append(NotificationLog.channel.in_(list(channels)))
+    if projcodes:
+        # Equality, not `search` — this is the term that can use
+        # notification_log_projcode. See get_recent_notifications.
+        conditions.append(NotificationLog.projcode.in_(list(projcodes)))
     if search:
         term = f'%{search.strip()}%'
         conditions.append(or_(

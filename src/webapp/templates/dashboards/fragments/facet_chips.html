@@ -23,7 +23,12 @@
 
   Args:
     label    — dimension name shown in the label column
-    values   — [{'value': str, 'count': int}], already ordered and filtered
+    values   — [{'value': str, 'count': int}], already ordered and filtered.
+               An optional 'label' key is the display text; `value` stays the
+               thing written into the form. That split exists because some
+               dimensions are keyed on a slug an operator should never see
+               ("needs_activation"), and rendering the slug would leak an
+               internal vocabulary into the UI.
     form_id  — id of the filter form to write into and submit
     field    — the form control's name; must match a control in that form
     active   — list/set of currently-selected values for this dimension
@@ -46,14 +51,14 @@
             data-form-id="{{ form_id }}"
             data-field="{{ field }}"
             data-value="{{ '' if is_active else row.value }}"
-            title="{{ 'Clear this filter' if is_active else 'Filter by ' ~ label ~ ' ' ~ row.value }}">
+            title="{{ 'Clear this filter' if is_active else 'Filter by ' ~ label ~ ' ' ~ (row.label or row.value) }}">
         {% if badge %}
         {# tooltip=False: the chip's own title already says what clicking does,
            and a live Bootstrap tooltip whose trigger htmx removes mid-transition
            throws. See the note on status_badge. #}
         {{ status_badge(row.value, tooltip=False) }}
         {% else %}
-        <span class="facet-chip-value">{{ row.value }}</span>
+        <span class="facet-chip-value">{{ row.label or row.value }}</span>
         {% endif %}
         <span class="facet-chip-count">{{ row.count | fmt_number }}</span>
     </button>

@@ -172,11 +172,14 @@ class TestXrasFragments:
 
     def test_pending_empty_state_does_not_claim_nothing_is_pending(
             self, auth_client):
-        """The card can only see projects this log knows about. While capture
-        mode is on, "empty" must not be presented as "all clear"."""
+        """The card can only see actions this log knows about. While capture
+        mode is on, "empty" must not be presented as "all clear".
+
+        ⚠️ Both literals are copy assertions. If you reword the empty state,
+        reword them — do not delete the second one, which is the honest half."""
         resp = auth_client.get('/allocations/xras_pending_fragment')
-        if b'No XRAS projects awaiting activation' in resp.data:
-            assert b'does not mean nothing is pending' in resp.data
+        assert b'No XRAS activity in this window' in resp.data
+        assert b'does not mean nothing is pending' in resp.data
 
     def test_missing_action_detail_is_a_message_not_a_404_page(self, auth_client):
         """It lands in a modal body, where a 404 error page would be worse than
@@ -252,18 +255,25 @@ class TestFacetChips:
 
         html = auth_client.get('/allocations/xras_fragment').data.decode()
         chips = self._chips(html, 'status')
-        # One per status in the fixed vocabulary. A superset is legal — an
-        # out-of-vocabulary status gets its own chip (see the test below) — but
-        # nothing in the snapshot should produce one, so this asserts the floor
-        # exactly rather than loosening to >=.
+        # A superset is legal — an out-of-vocabulary status gets its own chip
+        # (see the test below).
+        #
+        # ⚠️ This asserted the count EXACTLY, on the reasoning that nothing in
+        # the snapshot produces an extra chip. Under xdist that is false: the
+        # very next test's `committed_odd_status_action` fixture COMMITS its
+        # row (deliberately — the route reads db.session's own connection, so
+        # a SAVEPOINT-scoped row would be invisible to it), and a committed row
+        # is visible to every other worker. This test then saw a seventh chip
+        # and failed, on about half of all runs, with nothing to do with the
+        # code under test. Assert the vocabulary is present instead of
+        # asserting nobody else exists.
         #
         # Read from the tuple rather than spelled out: this is a check that the
         # strip renders the vocabulary, not a second copy of it. Spelling it out is
         # what made adding `unmapped` break two tests that had no opinion about it.
-        assert len(chips) == len(XRAS_ACTION_STATUSES)
+        assert set(XRAS_ACTION_STATUSES) <= {value for _, value in chips}
         # Every chip writes into the form the filter panel actually renders.
         assert {form_id for form_id, _ in chips} == {'xras-filters'}
-        assert {value for _, value in chips} == set(XRAS_ACTION_STATUSES)
 
     def test_an_unknown_status_gets_its_own_chip(self, auth_client,
                                                  committed_odd_status_action):
@@ -537,7 +547,19 @@ class TestActivationModalBodies:
             f'/allocations/xras_dismiss_form/{active_project.project_id}')
         assert resp.status_code == 200
         assert b'Reason' in resp.data
-        assert b'not permanent' in resp.data
+        assert b'ot permanent' in resp.data
+        assert b'Restore' in resp.data
+
+    def test_dismiss_form_does_not_promise_to_hide_the_row(
+            self, auth_client, active_project):
+        """The copy outlived the behaviour once already. Dismissing stopped
+        removing anything when the card became a ledger keyed on actions —
+        a modal still promising to hide the project describes the old card."""
+        resp = auth_client.get(
+            f'/allocations/xras_dismiss_form/{active_project.project_id}')
+        body = resp.data.decode()
+        assert 'hides the project' not in body
+        assert 'row stays' in body
 
     @pytest.mark.parametrize('endpoint', ['xras_comment', 'xras_dismiss'])
     def test_a_blank_note_is_rejected_with_a_VISIBLE_error(
@@ -563,7 +585,7 @@ class TestActivationModalBodies:
         assert 'This field is required.' in html
 
 
-class TestPendingCardGating:
+class TestActivityCardGating:
     """Contact details are fetched in the ROUTE only for MANAGE_XRAS, so a
     VIEW-only response cannot leak them through view-source."""
 
@@ -574,28 +596,15 @@ class TestPendingCardGating:
         assert b'xras_notify' not in resp.data
         assert b'xras_activate' not in resp.data
 
-    def test_view_only_user_cannot_force_dismissed_rows(self, view_only_client):
-        """`include_dismissed` is ANDed with MANAGE_XRAS in the route — a
-        hand-typed query param must not reveal the hidden set."""
-        resp = view_only_client.get(
-            '/allocations/xras_pending_fragment?include_dismissed=1')
-        assert resp.status_code == 200
-        assert b'Restore' not in resp.data
-
-    def test_manage_user_gets_the_show_dismissed_toggle_on_the_page(
+    def test_the_filter_form_lives_on_the_page_not_the_fragment(
             self, auth_client):
-        """The toggle lives on the PAGE, outside the fragment: if every pending
-        row were dismissed, a toggle inside the fragment would vanish with the
-        table and the rows would be unrecoverable."""
+        """Outside the fragment on purpose: the container re-fetches a BARE
+        hx-get on refreshXrasTab, and hx-include on it is what carries the
+        window and the chips through a write."""
         resp = auth_client.get('/allocations/xras')
         assert resp.status_code == 200
-        assert b'include_dismissed' in resp.data
-        assert b'Show dismissed' in resp.data
-
-    def test_view_only_user_does_not_get_the_toggle(self, view_only_client):
-        resp = view_only_client.get('/allocations/xras')
-        assert resp.status_code == 200
-        assert b'Show dismissed' not in resp.data
+        assert b'xras-activity-filters' in resp.data
+        assert b'hx-include="#xras-activity-filters"' in resp.data
 
 
 class TestStatusVocabularyIsRenderable:
@@ -627,3 +636,292 @@ class TestStatusVocabularyIsRenderable:
 
         missing = set(XRAS_ACTION_STATUSES) - self._keys(dict_name)
         assert not missing, f'{dict_name} is missing {sorted(missing)}'
+
+
+class TestNotifyForceToggle:
+    """The force override on the Notify modal, and the thing that reveals it.
+
+    Suppression is right by default: the dedup key exists so that re-opening the
+    modal and clicking Send does not mail the same handoff twice. But the cases
+    that actually reach an operator — a bad address since corrected, a template
+    fixed after the fact, a recipient who lost the mail — are exactly the cases
+    where a second send is the point, and before this the only recovery was a
+    ``DELETE`` against ``notification_log``.
+
+    Rendered directly rather than driven over HTTP: the route needs a committed
+    inactive project, a committed ``xras_action_log`` row naming it *and* a
+    committed ``notification_log`` row before the toggle can appear at all, and
+    none of that exercises the thing worth pinning. What can silently break is
+    the template — dropping the checkbox, or dropping the ``hx-include`` that is
+    the only reason its value ever reaches the route.
+
+    ``Notifier.send_many(force=True)`` bypassing suppression is covered a layer
+    down, in ``test_notify_service.py::test_force_overrides_suppression``.
+    """
+
+    TEMPLATE = 'dashboards/allocations/partials/xras_notify_form.html'
+
+    def _render(self, app, already_notified, people=None):
+        from types import SimpleNamespace
+
+        from flask import render_template
+
+        if people is None:
+            people = [{'name': 'Ben Kirk', 'email': 'benkirk@ucar.edu',
+                       'role': 'lead'}]
+        with app.test_request_context():
+            return render_template(
+                self.TEMPLATE,
+                project=SimpleNamespace(projcode='UHSS0001'),
+                people=people,
+                preview=None,
+                preview_error=None,
+                already_notified=already_notified,
+                notify_enabled=True,
+                redirect_to=None,
+                post_url='/allocations/xras_notify/1',
+            )
+
+    def _recipient(self, address='benkirk@ucar.edu'):
+        from types import SimpleNamespace
+        return SimpleNamespace(address=address, name='Ben Kirk', role='lead')
+
+    def test_absent_when_nothing_would_be_suppressed(self, app):
+        """The ordinary case. A toggle the operator sees every time is one they
+        learn to tick without reading it, which is the failure mode that makes
+        an override worse than not having one."""
+        body = self._render(app, already_notified=[])
+        # Assert on the checkbox itself, not the bare id: the Send button's
+        # `hx-include` names that id unconditionally, which is deliberate —
+        # a selector matching nothing is harmless, and making it conditional
+        # is one more thing to forget.
+        assert 'id="xrasNotifyForce"' not in body
+        assert 'name="force"' not in body
+        assert 'already been notified' not in body
+
+    def test_offered_when_a_duplicate_would_be_suppressed(self, app):
+        body = self._render(app, already_notified=[self._recipient()])
+        assert 'name="force"' in body
+        assert 'id="xrasNotifyForce"' in body
+        assert 'already been notified' in body
+        assert 'benkirk@ucar.edu' in body
+
+    def test_send_button_includes_the_checkbox(self, app):
+        """Without ``hx-include`` the box renders, ticks, and is never sent —
+        the request carries no ``force`` key and the send is suppressed anyway,
+        with the UI showing a control that does nothing."""
+        body = self._render(app, already_notified=[self._recipient()])
+        assert 'hx-include="#xrasNotifyForce"' in body
+
+    def test_partial_suppression_names_the_count(self, app):
+        """Two recipients, one already told. The operator needs to see that the
+        situation is mixed before deciding — "these recipients" would misdescribe
+        it, and the addresses listed are the ones the override actually acts on."""
+        body = self._render(
+            app,
+            already_notified=[self._recipient('lead@ucar.edu')],
+            people=[{'name': 'Lead', 'email': 'lead@ucar.edu', 'role': 'lead'},
+                    {'name': 'Admin', 'email': 'admin@ucar.edu', 'role': 'admin'}],
+        )
+        assert '1 of 2 recipients have' in body
+        assert 'These recipients have' not in body
+
+
+class TestActivityRowExpansion:
+    """The inline delivery detail, and the two things that can silently break it.
+
+    Rendered directly rather than driven over HTTP: the route needs committed
+    action, project and notification rows before an expandable row exists at
+    all, and none of that exercises what is actually fragile — where the
+    collapse toggle sits, and who is allowed to see the addresses inside.
+    """
+
+    TEMPLATE = 'dashboards/allocations/partials/xras_activity_card.html'
+
+    def _row(self, **over):
+        from types import SimpleNamespace
+        row = {
+            'action_log_id': 42, 'action_type': 'Supplement',
+            'service': 'supplement', 'received_time': None, 'status': 'processed',
+            'projcode': 'UHSS0001', 'project_id': 7, 'title': 'A project',
+            'project_active': True, 'is_latest_action': True,
+            'kind': 'xras_supplement', 'notifiable': True,
+            'dismissed': False, 'dismissed_time': None, 'dismissed_by': None,
+            'dismissed_reason': None, 'comment_count': 0,
+            'needs_activation': False, 'tags': ['notified'],
+            'notified': True, 'notified_time': None, 'notified_age': None,
+            'delivered_count': 1, 'failed_count': 0, 'suppressed_count': 0,
+            'notifications': [SimpleNamespace(
+                status='sent', recipient='pi@example.edu',
+                intended_recipient=None, creation_time=None,
+                requested_by='benkirk', error=None)],
+        }
+        row.update(over)
+        return row
+
+    def _render(self, app, *, may_manage, rows=None):
+        from flask import render_template
+        with app.test_request_context():
+            return render_template(
+                self.TEMPLATE,
+                rows=rows if rows is not None else [self._row()],
+                recipients={7: [{'name': 'A PI', 'email': 'pi@example.edu',
+                                 'role': 'lead'}]} if may_manage else {},
+                may_activate={}, may_manage=may_manage,
+                window={'days': 30, 'since': None, 'until': None,
+                        'start_date': '', 'end_date': '', 'custom': False},
+                window_pill_choices=((7, '7D'), (30, '30D')),
+                tag_values=[], type_values=[],
+                selected_tags=[], selected_types=[],
+                form_id='xras-activity-filters',
+                fragment_url='/allocations/xras_pending_fragment',
+                target_id='alloc-xras-pending')
+
+    def test_the_actions_cell_carries_no_collapse_toggle(self, app):
+        """Bootstrap's collapse data-api runs in the CAPTURE phase on document,
+        so a toggle anywhere up the tree from a button fires BEFORE that
+        button's own handler and `stopPropagation` cannot help. Notify and
+        Activate live in the last cell; the toggle must not.
+        See dashboards/fragments/collapse.html."""
+        body = self._render(app, may_manage=True)
+        actions_cell = body.split('<td class="text-end"')[1].split('</td>')[0]
+        assert 'data-bs-toggle="collapse"' not in actions_cell
+        assert 'xras_notify_form' in actions_cell, 'wrong cell — test is vacuous'
+
+    def test_the_row_itself_carries_no_collapse_toggle(self, app):
+        """Same reason, one level up: on the <tr> it would swallow every
+        button in the row."""
+        body = self._render(app, may_manage=True)
+        for line in body.splitlines():
+            if line.strip().startswith('<tr'):
+                assert 'data-bs-toggle="collapse"' not in line
+
+    def test_the_delivery_detail_renders_for_a_manager(self, app):
+        body = self._render(app, may_manage=True)
+        assert 'id="xras-activity-42"' in body
+        assert 'pi@example.edu' in body
+
+    def test_the_delivery_detail_is_absent_for_view_only(self, app):
+        """Every delivery row names a real person's address — the same reason
+        the Recipients column is MANAGE_XRAS."""
+        body = self._render(app, may_manage=False)
+        assert 'id="xras-activity-42"' not in body
+        assert 'pi@example.edu' not in body
+
+    def test_a_row_with_no_deliveries_still_expands_to_show_recipients(self, app):
+        """The expansion is where the addresses live now that the Recipients
+        column is gone, so an un-notified row must still open — that is exactly
+        the row where an operator wants to see who is about to be mailed."""
+        body = self._render(app, may_manage=True,
+                            rows=[self._row(notifications=[], notified=False,
+                                            delivered_count=0,
+                                            tags=['not_notified'])])
+        assert 'id="xras-activity-42"' in body
+        assert 'pi@example.edu' in body
+        assert 'Not notified' in body
+        assert 'Delivery' not in body, 'no deliveries — no Delivery table'
+
+    def test_a_notifiable_row_with_nobody_to_mail_says_so_in_the_row(self, app):
+        """The one thing the Recipients column carried that was a PROBLEM
+        rather than a fact. Buried in the expansion it would go unseen, so it
+        is promoted to the Notified cell."""
+        from flask import render_template
+        with app.test_request_context():
+            body = render_template(
+                self.TEMPLATE,
+                rows=[self._row(notifications=[], notified=False,
+                                delivered_count=0, tags=['not_notified'])],
+                recipients={},          # ← nobody on file
+                may_activate={}, may_manage=True,
+                window={'days': 30, 'since': None, 'until': None,
+                        'start_date': '', 'end_date': '', 'custom': False},
+                window_pill_choices=((7, '7D'), (30, '30D')),
+                tag_values=[], type_values=[],
+                selected_tags=[], selected_types=[],
+                form_id='xras-activity-filters',
+                fragment_url='/allocations/xras_pending_fragment',
+                target_id='alloc-xras-pending')
+        assert 'No recipients' in body
+        assert 'No lead or admin email address on file' in body
+
+    def test_a_row_needing_activation_offers_no_notify_for_an_unmapped_service(
+            self, app):
+        """A service with no kind would make Notify post a message nobody can
+        build. `transfer` is the only one left — `adjust` gained a kind once
+        the reduction wording was written."""
+        body = self._render(app, may_manage=True,
+                            rows=[self._row(kind=None, notifiable=False,
+                                            action_type='Transfer',
+                                            notifications=[], notified=False,
+                                            tags=[])])
+        assert 'xras_notify_form' not in body
+
+
+class TestSignedIncrements:
+    """`_action_increments(signed=True)` — the Adjustment mail's only number.
+
+    The allocation now holds the NEW TOTAL and `allocation_transaction`
+    records the delta without naming the XRAS action, so this payload read is
+    the only place the per-resource change survives. A dropped or flipped sign
+    here tells a PI their allocation grew when it shrank, and nothing
+    downstream could catch it.
+    """
+
+    def _action(self, *, amount, key):
+        import json
+        from types import SimpleNamespace
+        return SimpleNamespace(raw_payload=json.dumps({
+            'resources': [{'resourceRepositoryKey': key,
+                           'awardedAmount': str(amount)}]}))
+
+    @pytest.fixture
+    def resource_key(self, session):
+        """Any real mapping row — the helper resolves the key through it.
+
+        A Layer-1 "any row of this shape" pick, deliberately: the sign logic
+        is what is under test, not which resource carries it.
+        """
+        from sam.integration.xras import XrasResourceRepositoryKeyResource
+        row = session.query(XrasResourceRepositoryKeyResource).first()
+        if row is None:
+            pytest.skip('no xras_resource_repository_key_resource rows')
+        return row.resource_repository_key
+
+    def test_a_positive_amount_is_shown_with_an_explicit_plus(
+            self, app, session, resource_key):
+        from webapp.dashboards.allocations import blueprint
+        with app.app_context():
+            out = blueprint._action_increments(
+                self._action(amount=50000.0, key=resource_key), signed=True)
+        assert out and out[0]['amount'].startswith('+')
+
+    def test_a_negative_amount_keeps_its_minus(
+            self, app, session, resource_key):
+        from webapp.dashboards.allocations import blueprint
+        with app.app_context():
+            out = blueprint._action_increments(
+                self._action(amount=-100000.0, key=resource_key), signed=True)
+        assert out and out[0]['amount'].startswith('-')
+
+    def test_the_supplement_path_is_unsigned(
+            self, app, session, resource_key):
+        """A supplement's amounts are increments by construction, and its
+        wording already says "Added by this request" — a '+' there would be
+        noise, and changing it would move a byte in a shipped template."""
+        from webapp.dashboards.allocations import blueprint
+        with app.app_context():
+            out = blueprint._action_increments(
+                self._action(amount=50000.0, key=resource_key))
+        assert out and not out[0]['amount'].startswith('+')
+
+    def test_units_are_computed_on_the_magnitude(
+            self, app, session, resource_key):
+        """`allocation_unit` picks singular/plural from the value; -1 is one
+        hour in either direction, so a sign must not reach it."""
+        from webapp.dashboards.allocations import blueprint
+        with app.app_context():
+            neg = blueprint._action_increments(
+                self._action(amount=-2500.0, key=resource_key), signed=True)
+            pos = blueprint._action_increments(
+                self._action(amount=2500.0, key=resource_key), signed=True)
+        assert neg[0]['units'] == pos[0]['units']

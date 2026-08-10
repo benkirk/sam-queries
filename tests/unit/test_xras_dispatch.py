@@ -206,13 +206,27 @@ class TestNewIsNotAlwaysAdd:
     """Trap 2, demonstrated rather than asserted from the table."""
 
     def test_the_same_payload_routes_two_ways(self, session):
-        """One payload, one database, two answers — the only variable is whether the
-        project row exists. UWIS0071 is the production case: legacy emitted its
-        "Existing XRAS project updated" subject for an ``actionType: 'New'``."""
+        """One payload, one database, two answers — the only variable is whether
+        the project row exists. UWIS0071 is the production case: legacy emitted
+        its "Existing XRAS project updated" subject for an ``actionType: 'New'``.
+
+        ⚠️ The projcode is **rewritten to one this database cannot contain**,
+        rather than used as the fixture ships it. This test used to assert
+        ``'add'`` first, which silently required UWIS0071 to be ABSENT from the
+        snapshot — a fact about a 20 MB blob, asserted nowhere. The 2026-08-10
+        refresh brought the project in and the test failed for a reason that
+        had nothing to do with dispatch. What is under test is the *rule*, so
+        the rule is what the fixture should supply.
+        """
         from factories import make_project
-        data = load_fixture('new_uwis0071_existing_ok.json')
+        from factories._seq import next_seq
+        data = dict(load_fixture('new_uwis0071_existing_ok.json'))
         assert data['actionType'] == 'New'
 
+        # No truncation: `projcode` is varchar(30), and clipping next_seq's
+        # worker-namespaced counter to 8 chars would map UDSP00001 and
+        # UDSP00002 onto the same code — a collision under xdist.
+        data['requestNumber'] = next_seq('UDSP')
         assert select_service(session, data) == 'add'
         make_project(session, projcode=data['requestNumber'])
         assert select_service(session, data) == 'update'
@@ -239,7 +253,12 @@ class TestTheCorpusDispatches:
         'adjustment_uwis0064_manual.json': 'adjust',   # UWIS0064 present — see below
         'new_ncar4232_failed.json': 'add',             # request token, no project
         'new_ncar4253_ok.json': 'add',                 # request token, no project
-        'new_uwis0071_existing_ok.json': 'add',        # absent HERE; 'update' in prod
+        # Was 'add' with the comment "absent HERE; 'update' in prod". The
+        # 2026-08-10 snapshot refresh brought UWIS0071 in, so the snapshot now
+        # AGREES with production and this routes the way the real one does.
+        # That is the fixture getting better, not a regression — but it is also
+        # the whole reason the demonstration below no longer names this file.
+        'new_uwis0071_existing_ok.json': 'update',     # UWIS0071 present
     }
 
     def test_the_corpus_is_complete(self):

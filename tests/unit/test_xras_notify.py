@@ -57,9 +57,11 @@ def events(monkeypatch):
     class _Event:
         creation_time = None
 
-    def _spy(project, event_type, *, comment=None, notified_to=None):
+    def _spy(project, event_type, *, comment=None, notified_to=None,
+             action_log_id=None):
         recorded.append({'project': project, 'event_type': event_type,
-                         'notified_to': notified_to})
+                         'notified_to': notified_to,
+                         'action_log_id': action_log_id})
         return _Event()
 
     monkeypatch.setattr(blueprint, '_record_activation_event', _spy)
@@ -147,6 +149,58 @@ class TestPreviewForm:
         resp = auth_client.get(f'/allocations/xras_notify_form/{PROJECT_ID}')
         assert b'staging@example.edu' in resp.data
         assert b'redirected' in resp.data.lower()
+
+
+class TestTheNoticeMayContradictTheProject:
+    """Nothing orders Notify after Activate.
+
+    Rendered directly rather than driven over HTTP: the flag turns on a
+    project's `active` column, and a route-level test would need a committed
+    write on `db.session`'s own connection to move it. The template is what
+    is actually fragile here.
+
+    Measured in the pre-deploy smoke: an activation notice reading "is now
+    active" left the building at 15:11:53 for a project that was not
+    activated until 15:12:57.
+    """
+
+    TEMPLATE = 'dashboards/allocations/partials/xras_notify_form.html'
+
+    def _render(self, app, *, project_inactive):
+        from types import SimpleNamespace
+        from flask import render_template
+        with app.test_request_context():
+            return render_template(
+                self.TEMPLATE,
+                project=SimpleNamespace(projcode='UHSS0004', project_id=7),
+                people=[SimpleNamespace(name='A PI', email='pi@example.edu',
+                                        role='lead')],
+                preview=SimpleNamespace(subject='… is now active',
+                                        body='Your project … is now active',
+                                        template='xras_activation.txt'),
+                preview_error=None,
+                already_notified=[],
+                notify_enabled=True,
+                redirect_to=None,
+                project_inactive=project_inactive,
+                post_url='/allocations/xras_notify/7')
+
+    def test_an_inactive_project_is_called_out_before_the_operator_sends(
+            self, app):
+        body = self._render(app, project_inactive=True)
+        assert 'UHSS0004 is not active yet' in body
+        assert 'Activate the project first' in body
+
+    def test_an_active_project_gets_no_such_warning(self, app):
+        body = self._render(app, project_inactive=False)
+        assert 'not active yet' not in body
+
+    def test_the_warning_does_not_disable_sending(self, app):
+        """Deliberate: the operator may be about to activate, and a hard block
+        would make a legitimate order of work impossible."""
+        body = self._render(app, project_inactive=True)
+        assert '/allocations/xras_notify/7' in body
+        assert 'disabled' not in body.split('hx-post')[1][:400]
 
 
 # ── The send ─────────────────────────────────────────────────────────────────

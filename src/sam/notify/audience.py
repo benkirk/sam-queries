@@ -6,9 +6,14 @@ to lead + admin only (``get_xras_pending_recipients``, deliberately kept off
 the ``VIEW_XRAS`` render path so contact PII never reaches a viewer who is
 not entitled to it). What they share is the conversion, and that is here.
 
-Their name-formatting divergence — ``display_name`` for expirations,
-``full_name or username`` for XRAS — is **left alone**. Unifying it changes
-strings the XRAS card's tests pin, for no benefit to either.
+Their name formatting is now the **same**: ``display_name`` first, for both.
+It used to diverge (XRAS took ``full_name or username``) and that divergence
+was recorded here as deliberate, on the grounds that unifying it changed
+pinned strings for no benefit. The benefit turned up in the pre-deploy smoke:
+XRAS mail greeted a PI as "Benjamin Shelton Kirk" while every other surface in
+the product called him "Ben Kirk". ``display_name`` is (nickname or first) +
+last; XRAS keeps ``full_name`` then ``username`` behind it as the fallback
+chain, since ``display_name`` drops a middle name.
 
 See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 7.
 """

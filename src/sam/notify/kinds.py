@@ -76,6 +76,57 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         # variant and the resolver finds it through the default.
         facility_aware=False,
     ),
+    # ── The other three XRAS outcomes ────────────────────────────────────
+    #
+    # One kind per action type rather than one `xras_update` branching on a
+    # context key. The prose genuinely differs — a supplement reports an
+    # increment, an extension reports a date — and the kind is what the admin
+    # facet chips and the dedup key are built from, so folding them would
+    # make "we notified them about the supplement" unaskable.
+    #
+    # ⚠️ `transfer` deliberately has no kind: it parks as manual by design and
+    # never completes, so there is no outcome to report. It still appears on
+    # the activity table as history, with no Notify button — see
+    # XRAS_SERVICE_KINDS in sam.queries.xras_activation, which is the map that
+    # leaves it out.
+    #
+    # `adjust` had no kind for the same reason until the Round 2 smoke: an
+    # Adjustment can be a *reduction*, and "your allocation was cut" was not a
+    # mail to send before deciding what it should say. It now says it — see
+    # xras_adjustment below, whose whole design is that it never claims a
+    # direction the payload does not support.
+    NotificationKind(
+        key='xras_supplement',
+        label='XRAS allocation supplement',
+        template_base='xras_supplement',
+        default_subscribed=True,
+        facility_aware=False,
+    ),
+    NotificationKind(
+        key='xras_extension',
+        label='XRAS allocation extension',
+        template_base='xras_extension',
+        default_subscribed=True,
+        facility_aware=False,
+    ),
+    NotificationKind(
+        key='xras_update',
+        label='XRAS allocation renewal',
+        template_base='xras_update',
+        default_subscribed=True,
+        facility_aware=False,
+    ),
+    # The one kind whose message may be bad news. Its template states the
+    # signed change per resource and the resulting total, and never uses a
+    # word that presumes a direction — an Adjustment is the only action type
+    # that can subtract.
+    NotificationKind(
+        key='xras_adjustment',
+        label='XRAS allocation adjustment',
+        template_base='xras_adjustment',
+        default_subscribed=True,
+        facility_aware=False,
+    ),
 )
 
 
