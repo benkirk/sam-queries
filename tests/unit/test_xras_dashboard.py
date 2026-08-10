@@ -627,3 +627,92 @@ class TestStatusVocabularyIsRenderable:
 
         missing = set(XRAS_ACTION_STATUSES) - self._keys(dict_name)
         assert not missing, f'{dict_name} is missing {sorted(missing)}'
+
+
+class TestNotifyForceToggle:
+    """The force override on the Notify modal, and the thing that reveals it.
+
+    Suppression is right by default: the dedup key exists so that re-opening the
+    modal and clicking Send does not mail the same handoff twice. But the cases
+    that actually reach an operator — a bad address since corrected, a template
+    fixed after the fact, a recipient who lost the mail — are exactly the cases
+    where a second send is the point, and before this the only recovery was a
+    ``DELETE`` against ``notification_log``.
+
+    Rendered directly rather than driven over HTTP: the route needs a committed
+    inactive project, a committed ``xras_action_log`` row naming it *and* a
+    committed ``notification_log`` row before the toggle can appear at all, and
+    none of that exercises the thing worth pinning. What can silently break is
+    the template — dropping the checkbox, or dropping the ``hx-include`` that is
+    the only reason its value ever reaches the route.
+
+    ``Notifier.send_many(force=True)`` bypassing suppression is covered a layer
+    down, in ``test_notify_service.py::test_force_overrides_suppression``.
+    """
+
+    TEMPLATE = 'dashboards/allocations/partials/xras_notify_form.html'
+
+    def _render(self, app, already_notified, people=None):
+        from types import SimpleNamespace
+
+        from flask import render_template
+
+        if people is None:
+            people = [{'name': 'Ben Kirk', 'email': 'benkirk@ucar.edu',
+                       'role': 'lead'}]
+        with app.test_request_context():
+            return render_template(
+                self.TEMPLATE,
+                project=SimpleNamespace(projcode='UHSS0001'),
+                people=people,
+                preview=None,
+                preview_error=None,
+                already_notified=already_notified,
+                notify_enabled=True,
+                redirect_to=None,
+                post_url='/allocations/xras_notify/1',
+            )
+
+    def _recipient(self, address='benkirk@ucar.edu'):
+        from types import SimpleNamespace
+        return SimpleNamespace(address=address, name='Ben Kirk', role='lead')
+
+    def test_absent_when_nothing_would_be_suppressed(self, app):
+        """The ordinary case. A toggle the operator sees every time is one they
+        learn to tick without reading it, which is the failure mode that makes
+        an override worse than not having one."""
+        body = self._render(app, already_notified=[])
+        # Assert on the checkbox itself, not the bare id: the Send button's
+        # `hx-include` names that id unconditionally, which is deliberate —
+        # a selector matching nothing is harmless, and making it conditional
+        # is one more thing to forget.
+        assert 'id="xrasNotifyForce"' not in body
+        assert 'name="force"' not in body
+        assert 'already been notified' not in body
+
+    def test_offered_when_a_duplicate_would_be_suppressed(self, app):
+        body = self._render(app, already_notified=[self._recipient()])
+        assert 'name="force"' in body
+        assert 'id="xrasNotifyForce"' in body
+        assert 'already been notified' in body
+        assert 'benkirk@ucar.edu' in body
+
+    def test_send_button_includes_the_checkbox(self, app):
+        """Without ``hx-include`` the box renders, ticks, and is never sent —
+        the request carries no ``force`` key and the send is suppressed anyway,
+        with the UI showing a control that does nothing."""
+        body = self._render(app, already_notified=[self._recipient()])
+        assert 'hx-include="#xrasNotifyForce"' in body
+
+    def test_partial_suppression_names_the_count(self, app):
+        """Two recipients, one already told. The operator needs to see that the
+        situation is mixed before deciding — "these recipients" would misdescribe
+        it, and the addresses listed are the ones the override actually acts on."""
+        body = self._render(
+            app,
+            already_notified=[self._recipient('lead@ucar.edu')],
+            people=[{'name': 'Lead', 'email': 'lead@ucar.edu', 'role': 'lead'},
+                    {'name': 'Admin', 'email': 'admin@ucar.edu', 'role': 'admin'}],
+        )
+        assert '1 of 2 recipients have' in body
+        assert 'These recipients have' not in body

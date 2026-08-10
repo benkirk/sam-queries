@@ -266,9 +266,18 @@ FROM notification_log ORDER BY notification_log_id DESC;
 SELECT * FROM xras_activation_event ORDER BY xras_activation_event_id DESC;
 ```
 
-- **Done when** the row reads `status='redirected'`, `recipient='benkirk@ucar.edu'`
-  and `intended_recipient` = the pre-redirect address; an `event_type='notified'` row
-  exists; and the mail is in the inbox with the redirect banner.
+- **Done when** the row names `benkirk@ucar.edu`, an `event_type='notified'` row
+  exists, and the mail is in the inbox.
+
+✅ Sent for both projects. ⚠️ **The rows read `status='sent'` with
+`intended_recipient = NULL`, not `redirected`** — and that is correct, not a leak.
+`NotifyConfig.resolve_recipient` (`src/sam/notify/config.py:148`) only rewrites when
+`address != redirect_to`, so redirecting to the address we were going to mail anyway
+is a no-op: no `intended_recipient`, no `redirected` status, and **no redirect
+banner** in the body. The guardrail is unchanged for every other address — a probe
+with `pi@example.edu` still returns `('benkirk@ucar.edu', 'pi@example.edu')`. Worth
+knowing before reading a production ledger: `sent` does not prove redirection was
+off.
 
 ### 7 · Activate A
 
@@ -441,9 +450,16 @@ exercise. Worth a line in the corpus docs so the next person does not read `_ok`
   operator order really is activate-then-notify, the card needs to retain
   recently-activated projects for a window, or Notify needs a second home on the
   project page.
-- **No force on the operator Notify** (gotcha 2). Reasonable as anti-spam, but it
-  makes a legitimate re-send — corrected address, fixed template — impossible without
-  SQL.
+- ~~**No force on the operator Notify** (gotcha 2).~~ **Confirmed in use, and
+  fixed.** "Notify again" opened the modal, Send reported nothing delivered, and the
+  ledger holds two `suppressed` rows (ids 2 and 4) from exactly that. The modal now
+  offers a **Send again anyway** checkbox — but *only when a duplicate would actually
+  be suppressed*: `xras_notify_form` asks `ledger.already_sent()` per recipient ahead
+  of the click, so the toggle is never permanent furniture an operator learns to tick
+  without reading. It overrides the dedup check **alone** — `NOTIFY_ENABLED` still
+  fails closed — and a forced send is stamped on the activation event (*"Re-sent with
+  the duplicate check overridden."*) so the timeline can explain why someone was told
+  twice. Gotcha 2's `DELETE` recipe is no longer the only recovery.
 - **A supplement to an active project is invisible** on the operator surface. May be
   correct by design; if not, it is a gap in the worklist.
 

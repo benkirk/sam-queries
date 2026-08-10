@@ -1555,6 +1555,13 @@ def xras_notify_form(project_id: int):
 
     ``preview()`` writes **no** ledger row: a preview is not an attempt, and a
     stray row would poison the dedup query for the send that follows.
+
+    The ledger is attached here even though a preview does not need one: it
+    answers *"would this send be suppressed as a duplicate"* **before** the
+    operator clicks, so the modal can offer the override up front rather than
+    reporting "nothing was sent" afterwards and leaving SQL as the only
+    recovery. Asking is cheap — one indexed lookup per recipient — and it is
+    the same predicate ``send_many`` will apply.
     """
     project = _load_pending_project(project_id)
     if project is None:
@@ -1563,7 +1570,7 @@ def xras_notify_form(project_id: int):
     people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
     messages = _xras_activation_messages(project, people)
 
-    notifier = get_notifier(ledger=False)
+    notifier = get_notifier()
     preview = None
     preview_error = None
     if messages:
@@ -1574,12 +1581,18 @@ def xras_notify_form(project_id: int):
                 'XRAS notify preview failed for %s: %s', project.projcode, exc)
             preview_error = str(exc)
 
+    already_notified = [
+        m.recipient for m in messages
+        if m.dedup_key and notifier.ledger.already_sent(m.dedup_key)
+    ]
+
     return render_template(
         'dashboards/allocations/partials/xras_notify_form.html',
         project=project,
         people=people,
         preview=preview,
         preview_error=preview_error,
+        already_notified=already_notified,
         notify_enabled=notifier.config.enabled,
         redirect_to=notifier.config.redirect_to or None,
         post_url=url_for('allocations_dashboard.xras_notify',
@@ -1615,6 +1628,17 @@ def xras_notify(project_id: int):
     was already told about this same XRAS action, there is no new handoff to
     record, and writing another ``notified`` event would be the double-count
     the derive rule exists to prevent.
+
+    **The force override.** Suppression is right by default and wrong in the
+    cases that actually reach an operator: a bad address since corrected, a
+    template fixed after the fact, a recipient who deleted the mail. Without
+    an override the only recovery is a ``DELETE`` against ``notification_log``,
+    which is not a thing to ask of someone at 3am. ``force`` is offered by the
+    modal **only when a duplicate would actually be suppressed**, and it
+    bypasses the dedup check alone — ``NOTIFY_ENABLED`` still fails closed, so
+    this cannot be used to mail from a deployment that is meant to be silent.
+    A forced send is stamped on the activation event, because "we told them
+    twice" is exactly the kind of thing the timeline exists to explain.
     """
     project = _load_pending_project(project_id)
     if project is None:
@@ -1623,7 +1647,11 @@ def xras_notify(project_id: int):
     people = get_xras_pending_recipients(db.session, [project_id]).get(project_id, [])
     messages = _xras_activation_messages(project, people)
 
-    results = get_notifier().send_many(messages) if messages else []
+    # Unchecked checkboxes are omitted from the request entirely, so presence
+    # is the signal — never a value comparison. See CLAUDE.md § 10.
+    force = 'force' in request.form
+
+    results = get_notifier().send_many(messages, force=force) if messages else []
     summary = notify_summary(results)
 
     if not summary['ok']:
@@ -1641,13 +1669,15 @@ def xras_notify(project_id: int):
         f"<{r.message.recipient.address}>" for r in summary['delivered']) or None
 
     with management_transaction(db.session):
-        event = _record_activation_event(project, 'notified',
-                                         notified_to=notified_to)
+        event = _record_activation_event(
+            project, 'notified', notified_to=notified_to,
+            comment=('Re-sent with the duplicate check overridden.'
+                     if force else None))
 
     current_app.logger.info(
-        'XRAS notify sent: project=%s by=%s to=%s failed=%d',
+        'XRAS notify sent: project=%s by=%s to=%s failed=%d forced=%s',
         project.projcode, current_user.username, notified_to,
-        len(summary['failed']))
+        len(summary['failed']), force)
 
     return htmx_success(
         'dashboards/allocations/partials/xras_notify_sent.html',

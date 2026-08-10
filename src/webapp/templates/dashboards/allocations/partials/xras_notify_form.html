@@ -5,11 +5,14 @@
   Context:
     project         the Project the operator is about to notify about
     people          [{'name','email','role'}] recomputed server-side
-    preview         RenderedMessage for the FIRST recipient, or None
-    preview_error   str, when the template would not render
-    notify_enabled  NotifyConfig.enabled
-    redirect_to     NOTIFY_REDIRECT_TO, or None
-    post_url        where Send posts
+    preview          RenderedMessage for the FIRST recipient, or None
+    preview_error    str, when the template would not render
+    already_notified [Recipient] whose dedup_key is already spent — empty in
+                     the ordinary case, and the ONLY thing that reveals the
+                     force toggle
+    notify_enabled   NotifyConfig.enabled
+    redirect_to      NOTIFY_REDIRECT_TO, or None
+    post_url         where Send posts
 
   WHY A PREVIEW AND NOT AN hx-confirm
 
@@ -91,12 +94,57 @@
 </p>
 {% endif %}
 
+{% if already_notified %}
+{# Shown ONLY when a duplicate would actually be suppressed, which is what
+   makes the toggle meaningful rather than a permanent piece of furniture the
+   operator learns to tick. Without it the recovery for "we need to send that
+   again" is a DELETE against notification_log.
+
+   Scope, stated on the label because it is the thing people get wrong: this
+   overrides the duplicate check and nothing else. NOTIFY_ENABLED still fails
+   closed above. #}
+<div class="alert alert-info d-flex align-items-start gap-2">
+    <i class="fas fa-clock-rotate-left mt-1"></i>
+    <div class="flex-grow-1">
+        <strong>
+            {% if already_notified | length == people | length %}
+            These recipients have
+            {% else %}
+            {{ already_notified | length }} of {{ people | length }} recipients have
+            {% endif %}
+            already been notified about this XRAS action.
+        </strong>
+        <div class="small mt-1">
+            {% for r in already_notified %}
+            <code class="user-select-all">{{ r.address }}</code>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+        </div>
+        <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox"
+                   id="xrasNotifyForce" name="force" value="1">
+            <label class="form-check-label" for="xrasNotifyForce">
+                Send again anyway
+                <span class="text-muted small d-block">
+                    Overrides the duplicate check only — a corrected address, a
+                    fixed template, or a recipient who lost the mail.
+                </span>
+            </label>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <div class="d-flex justify-content-end gap-2 mt-3">
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
         Cancel
     </button>
+    {# hx-include picks up the force checkbox when it is on the page; the
+       selector matching nothing is the ordinary case and is harmless. An
+       unchecked box sends no key at all, which is precisely the signal the
+       route reads. #}
     <button type="button" class="btn btn-primary"
             hx-post="{{ post_url }}"
+            hx-include="#xrasNotifyForce"
             hx-target="#auditDetailsModalBody"
             hx-swap="innerHTML"
             {% if not people %}disabled{% endif %}>
