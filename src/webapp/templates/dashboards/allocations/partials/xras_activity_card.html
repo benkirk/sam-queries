@@ -68,7 +68,12 @@
             <thead class="table-subtle">
                 <tr>
                     <th style="width:150px; white-space:nowrap;">Project</th>
-                    <th style="width:99%;">Title</th>
+                    {# width:99% + max-width:0 on the cells is what makes
+                       text-overflow work at all in a table. min-width stops the
+                       column collapsing to "Sm…" once the other columns have
+                       taken their fixed widths on a phone — the wrapper scrolls,
+                       so a wider table costs nothing. #}
+                    <th style="width:99%; min-width:18rem;">Title</th>
                     <th style="width:120px;">Action</th>
                     <th style="white-space:nowrap;">Received</th>
                     <th style="width:150px;">Project</th>
