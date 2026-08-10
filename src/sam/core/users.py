@@ -55,10 +55,7 @@ class User(Base, TimestampMixin, SessionMixin):
     primary_gid = Column(Integer)
     contact_person_upid = Column(Integer)
 
-    pdb_modified_time = Column(TIMESTAMP)
-
     token_type = Column(String(30))
-    idms_sync_token = Column(String(64))
 
     # [All existing relationships remain the same...]
     academic_status = relationship('AcademicStatus', back_populates='users')
