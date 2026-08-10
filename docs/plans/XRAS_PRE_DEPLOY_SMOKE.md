@@ -363,8 +363,10 @@ production should send as**, and if the answer is `nusd@`, `helm/values.yaml` ne
 the change. The TLS difference is inert (ndir advertises no STARTTLS, and
 `SmtpTransport` only upgrades when the server offers it).
 
-**☐ 2 · Allocation amounts in the mail are rendered *compact*.** The single most
-important finding of the run so far. The preview reads:
+**✅ 2 · Allocation amounts in the mail are rendered *compact* — reviewed and
+accepted; do not re-propose.** Ben's call, 2026-08-09: `1.00M hours` is fine as it
+stands. Recorded in full below because the reasoning against it is not obviously
+wrong and someone will raise it again.
 
 ```
   - Casper: 10,000 hours through 2027-08-31
@@ -379,9 +381,10 @@ wrong rule for an **official allocation notice**: `1.00M hours` is the one numbe
 the message the PI will quote back, reconcile against their award, and plan on, and
 we have rounded it. `500K` on `UHSS0001` has the same problem.
 
-Recommended: render allocation amounts in this template with `fmt_number(raw=True)`
-(or the `alloc_unit`-aware equivalent) so they always read `1,000,000`. Applies to
-both `.txt` and `.html`.
+The argument made at the time was to render with `fmt_number(raw=True)` so amounts
+always read `1,000,000`. **Rejected** — the compact form is consistent with every
+other surface a PI sees, and the exact figure lives on the project page they are
+being sent to. No change.
 
 **☐ 3 · The `New` handler *links* an existing contract; it does not create one.**
 Smoke A first went out with an invented `grants[].grantNumber` of `SMOKE-9001` and
@@ -462,6 +465,19 @@ and its certificate validates (`302` to login, `ssl_verify=0`), so the link is
 already good; it does not wait on the CNAME work in `project_cname_sam_hpc`.
 
 Re-rendered both variants afterwards — text and HTML agree.
+
+**✅ 2 · Stop asking the recipient to reply.** Ben's call after reading the delivered
+mail: the `From:` address will eventually be a **no-reply** mailbox, so
+*"please reply to let us know"* is an instruction the mail will not be able to
+honour. Both files now read *"please contact help@ucar.edu"* (a `mailto:` link in
+the HTML).
+
+This is worth holding next to Finding 1: the local run sends as `nusd@ucar.edu` and
+`helm/values.yaml:248` sends as `sam-admin@ucar.edu`, and **neither is a no-reply
+address today**. The template no longer depends on that, which is the point — but the
+`From:` decision is still open.
+
+The expiration templates never carried this line, so nothing to sync there.
 
 ⚠️ **This makes the two template families diverge.** `expiration-UNIV.txt:33` and
 `expiration-UNIV.html:65` still say `https://arc.ucar.edu/`. Expiration notices are
