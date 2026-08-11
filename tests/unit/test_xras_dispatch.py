@@ -242,23 +242,66 @@ class TestNewIsNotAlwaysAdd:
 
 
 class TestTheCorpusDispatches:
-    """Five of the eight projcodes are in the obfuscated snapshot, so these are real."""
+    """Every projcode in the corpus is in the obfuscated snapshot, so these are real.
+
+    The only fixtures whose ``requestNumber`` is absent are the eleven ``NCAR####``
+    request tokens, and they are absent *because* they are tokens — a New that had not
+    yet minted a projcode when it was captured. So the selector is exercised against
+    real ``exists`` answers on 30 of 41, and against a real "no project" on the other
+    eleven. Nothing here is a fixture pretending.
+    """
 
     #: fixture → expected service, given the snapshot's contents.
+    #:
+    #: ⚠️ ``None`` means **no service matches** — the manual-fallback arm, not an
+    #: unfinished entry. All four are ``Date Adjustment``, an ``actionType`` with no
+    #: serviceable in legacy either; see :class:`TestDateAdjustmentParks`.
     EXPECTED = {
-        'extension_ucub0166_ok.json': 'extend',        # UCUB0166 present
-        'extension_ufsu0023_failed.json': 'extend',    # UFSU0023 present
-        'supplement_ubrn0027_ok.json': 'supplement',   # UBRN0027 present
-        'supplement_ucub0182_ok.json': 'supplement',   # UCUB0182 present
-        'adjustment_uwis0064_manual.json': 'adjust',   # UWIS0064 present — see below
-        'new_ncar4232_failed.json': 'add',             # request token, no project
-        'new_ncar4253_ok.json': 'add',                 # request token, no project
-        # Was 'add' with the comment "absent HERE; 'update' in prod". The
-        # 2026-08-10 snapshot refresh brought UWIS0071 in, so the snapshot now
-        # AGREES with production and this routes the way the real one does.
-        # That is the fixture getting better, not a regression — but it is also
-        # the whole reason the demonstration below no longer names this file.
-        'new_uwis0071_existing_ok.json': 'update',     # UWIS0071 present
+        'adjustment_ucsu0146_manual.json': 'adjust',       # UCSU0146 present
+        'adjustment_ucub0160_manual.json': 'adjust',       # UCUB0160 present
+        'adjustment_uwis0064_manual.json': 'adjust',       # UWIS0064 present — see below
+        'date_adjustment_uazn0052_manual.json': None,      # no serviceable
+        'date_adjustment_ucor0097_manual.json': None,      # no serviceable
+        'date_adjustment_ucub0155_manual.json': None,      # no serviceable
+        'date_adjustment_uwas0141_manual.json': None,      # no serviceable
+        'extension_ucbk0034_ok.json': 'extend',            # UCBK0034 present
+        'extension_ucsd0048_ok.json': 'extend',            # UCSD0048 present
+        'extension_ucsd0073_ok.json': 'extend',            # UCSD0073 present
+        'extension_ucub0166_ok.json': 'extend',            # UCUB0166 present
+        'extension_ufsu0023_failed.json': 'extend',        # UFSU0023 present
+        'extension_ugmu0052_ok.json': 'extend',            # UGMU0052 present
+        'extension_uiuc0073_ok.json': 'extend',            # UIUC0073 present
+        'extension_unid0003_ok.json': 'extend',            # UNID0003 present
+        'extension_uwho0019_ok.json': 'extend',            # UWHO0019 present
+        'new_ncar4214_ok.json': 'add',                     # request token, no project
+        'new_ncar4218_ok.json': 'add',                     # request token, no project
+        'new_ncar4223_ok.json': 'add',                     # request token, no project
+        'new_ncar4227_failed.json': 'add',                 # request token, no project
+        'new_ncar4228_failed.json': 'add',                 # request token, no project
+        'new_ncar4229_ok.json': 'add',                     # request token, no project
+        'new_ncar4232_failed.json': 'add',                 # request token, no project
+        'new_ncar4236_failed.json': 'add',                 # request token — see below
+        'new_ncar4246_ok.json': 'add',                     # request token, no project
+        'new_ncar4250_ok.json': 'add',                     # request token, no project
+        'new_ncar4253_ok.json': 'add',                     # request token, no project
+        # The five below are the shape that makes `New` ambiguous: actionType 'New'
+        # carrying a *projcode*, which legacy routes to Update and reports as
+        # "Existing XRAS project updated". Only the database can tell them from the
+        # eleven above — a request token is projcode-shaped.
+        'new_uchi0020_ok.json': 'update',                  # UCHI0020 present — see below
+        'new_uida0008_ok.json': 'update',                  # UIDA0008 present
+        'new_ummm0016_failed.json': 'update',              # UMMM0016 present
+        'new_umsb0003_ok.json': 'update',                  # UMSB0003 present
+        'new_uwis0071_existing_ok.json': 'update',         # UWIS0071 present
+        'supplement_uahv0010_ok.json': 'supplement',       # UAHV0010 present
+        'supplement_ubrn0027_ok.json': 'supplement',       # UBRN0027 present
+        'supplement_ucit0011_ok.json': 'supplement',       # UCIT0011 present
+        'supplement_ucla0076_ok.json': 'supplement',       # UCLA0076 present
+        'supplement_ucla0080_ok.json': 'supplement',       # UCLA0080 present
+        'supplement_ucsu0114_ok.json': 'supplement',       # UCSU0114 present
+        'supplement_ucub0182_ok.json': 'supplement',       # UCUB0182 present
+        'supplement_ugit0044_ok.json': 'supplement',       # UGIT0044 present
+        'supplement_uwku0002_ok.json': 'supplement',       # UWKU0002 present
     }
 
     def test_the_corpus_is_complete(self):
@@ -276,6 +319,101 @@ class TestTheCorpusDispatches:
         data = load_fixture('adjustment_uwis0064_manual.json')
         assert data['actionType'] == 'Adjustment'
         assert select_service(session, data) == 'adjust'
+
+
+class TestDateAdjustmentParks:
+    """``Date Adjustment`` — an ``actionType`` nobody knew existed until 2026-08-11.
+
+    It reached the corpus through the manual-fallback subject
+    (``New XRAS post action (Date Adjustment request for UAZN0052)``), which
+    ``XRAS_REIMPLEMENTATION.md`` § 1.4 identifies as *the only record of the action
+    types SAM does not service*. Four samples arrived in one forward, so it is not
+    rare.
+
+    **Parking is the correct behaviour and matches legacy exactly.** Legacy has no
+    ``DateAdjustProjectActionService``; every one of these four produced a
+    manual-fallback email and a bare 200. Servicing it would be new behaviour
+    introduced under a cutover with no observation window.
+    """
+
+    NAMES = sorted(p.name for p in FIXTURE_DIR.glob('date_adjustment_*.json'))
+
+    def test_all_four_are_present(self):
+        assert len(self.NAMES) == 4, self.NAMES
+
+    @pytest.mark.parametrize('name', NAMES)
+    def test_the_wire_really_sends_this_action_type(self, name):
+        """From the bytes, not from the subject line that first revealed it."""
+        assert load_fixture(name)['actionType'] == 'Date Adjustment'
+
+    @pytest.mark.parametrize('name', NAMES)
+    def test_no_service_matches(self, session, name):
+        assert select_service(session, load_fixture(name)) is None
+
+    @pytest.mark.parametrize('name', NAMES)
+    def test_it_parks_with_a_reason(self, session, name):
+        result = dispatch_action(session, load_fixture(name))
+        assert result.status == 'manual'
+        assert result.service is None
+        assert 'no service matches' in result.reason
+
+    @pytest.mark.parametrize('name', NAMES)
+    def test_it_is_extension_shaped(self, name):
+        """Why a handler is even conceivable: it carries dates and **no resources**.
+
+        That is the Extension signature — ``ExtensionHandler`` reads only
+        ``actionEndDate`` and ignores ``resources[]`` — so the obvious implementation
+        is to route it to ``extend``.
+
+        ⚠️ Recorded as a *shape* observation, not a recommendation. It also carries an
+        ``actionBeginDate``, which Extension ignores entirely, and no sample tells us
+        whether XRAS expects the begin date to move. Deciding that needs ACCESS, not
+        inference from four payloads.
+        """
+        data = load_fixture(name)
+        assert data['resources'] == []
+        assert data['actionBeginDate'] and data['actionEndDate']
+
+
+class TestOneActionIdSpansAFailureAndItsRetry:
+    """``actionId`` 388865 arrives twice, with different bodies and different outcomes.
+
+    Captured in the same forward: first as ``requestNumber: 'NCAR4236'``, which legacy
+    answered *"Failed to add or update XRAS project"*; then as
+    ``requestNumber: 'UCHI0020'``, which legacy answered *"Existing XRAS project
+    updated"*. Same action id, two posts, two services.
+
+    Two consequences worth pinning:
+
+    1. **``xras_action_log.action_id`` is not an identity key.** It exists to answer
+       "have I seen this action before?" (``XRAS_STRESS_AND_SCHEMA.md`` § *Verdicts*),
+       and the honest answer here is "yes, but not with this body". Any triage that
+       treats a repeated ``action_id`` as a duplicate post would collapse a failure
+       and its successful retry into one row.
+    2. **It is the only direct evidence we hold on broker retry behaviour**, which the
+       cutover runbook calls the riskiest open unknown (gate 4, issue #433). It shows
+       the broker does re-post after a failure, and that the body can change between
+       attempts. It does **not** show the retry interval or the attempt limit.
+    """
+
+    PAIR = ('new_ncar4236_failed.json', 'new_uchi0020_ok.json')
+
+    def test_both_carry_the_same_action_id(self):
+        first, second = (load_fixture(n) for n in self.PAIR)
+        assert first['actionId'] == second['actionId'] == 388865
+        assert first['requestNumber'] == 'NCAR4236'
+        assert second['requestNumber'] == 'UCHI0020'
+
+    def test_the_bodies_differ(self):
+        first, second = (load_fixture(n) for n in self.PAIR)
+        assert first != second
+
+    def test_they_select_different_services(self, session):
+        """The retry is not a re-post of the same work: the token became a projcode,
+        so the same action id routes to Add on one attempt and Update on the other."""
+        first, second = (load_fixture(n) for n in self.PAIR)
+        assert select_service(session, first) == 'add'
+        assert select_service(session, second) == 'update'
 
 
 # ---------------------------------------------------------------------------
@@ -438,12 +576,22 @@ class TestWhichHandlersExist:
     @pytest.mark.parametrize('name', sorted(p.name for p in FIXTURE_DIR.glob('*.json')))
     def test_a_payload_whose_service_is_unbuilt_still_parks_as_manual(
             self, session, clean_registry, name):
-        """With the registry emptied, every corpus payload takes the manual arm — and
-        names the handler it wanted, which is the distinction that saves triage time."""
+        """With the registry emptied, every corpus payload takes the manual arm.
+
+        Two distinguishable reasons, and the distinction is what saves triage time:
+
+        * **selected a service, no handler** — names the handler it wanted, which is
+          the case this test was written for (a handler that failed to register).
+        * **selected nothing** — no serviceable matches the ``actionType`` at all.
+          Emptying the registry cannot cause this, so it is a property of the payload:
+          the four ``Date Adjustment`` fixtures park this way with a full registry too.
+        """
         result = dispatch_action(session, load_fixture(name))
         assert result.status == 'manual'
-        assert result.service is not None
-        assert 'no handler is registered' in result.reason
+        if result.service is None:
+            assert 'no service matches' in result.reason
+        else:
+            assert 'no handler is registered' in result.reason
 
 
 class TestTransferIsDeliberatelyManual:

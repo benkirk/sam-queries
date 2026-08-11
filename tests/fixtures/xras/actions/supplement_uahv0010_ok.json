@@ -1,0 +1,99 @@
+{
+  "actionId": 390429,
+  "actionType": "Supplement",
+  "actionBeginDate": "2025-08-26",
+  "actionEndDate": "2026-08-31",
+  "requestId": 1428483,
+  "requestNumber": "UAHV0010",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Interdisciplinary Data Fusion Approaches to Quantifying Tornadic Wind Damage",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 902053,
+      "resourceRepositoryKey": 145576,
+      "awardedAmount": "1500.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 484143,
+      "roleType": "PI",
+      "username": "user_00000055",
+      "beginDate": "2025-08-26",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given55",
+        "middleName": null,
+        "lastName": "Surname55",
+        "email": "user55@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF ALABAMA AT HUNTSVILLE",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 484142,
+      "roleType": "Allocation Manager",
+      "username": "user_00000056",
+      "beginDate": "2025-08-26",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given56",
+        "middleName": null,
+        "lastName": "Surname56",
+        "email": "user56@example.invalid",
+        "phone": "555-0133",
+        "organization": "UNIVERSITY OF ALABAMA AT HUNTSVILLE",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500014,
+      "fosNum": "12",
+      "fosName": "Fluid Dynamics and Turbulence",
+      "fosAbbr": "Fluid Dynamics and Turbulence",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500026,
+      "fosNum": "24",
+      "fosName": "Natural and Man-Made Hazard Mitigation",
+      "fosAbbr": "Natural and Man-Made Hazard Mitigation",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500039,
+      "fosNum": "37",
+      "fosName": "Weather Prediction",
+      "fosAbbr": "Weather Prediction",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

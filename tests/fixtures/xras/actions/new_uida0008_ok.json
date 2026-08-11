@@ -1,13 +1,13 @@
 {
-  "actionId": 390463,
+  "actionId": 387372,
   "actionType": "New",
-  "actionBeginDate": "2026-08-06",
-  "actionEndDate": "2027-07-31",
-  "requestId": 1445830,
-  "requestNumber": "UWIS0071",
+  "actionBeginDate": "2026-07-15",
+  "actionEndDate": "2027-01-31",
+  "requestId": 1444666,
+  "requestNumber": "UIDA0008",
   "requestType": "New",
   "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
-  "requestTitle": "Utilizing MPAS-GOCART2G to Model Wildfire Smoke Aerosols' Impact on Severe Weather",
+  "requestTitle": "EPSCoR Research Fellows: NSF: Enhancing Water Budget Simulations across CONUS: Modeling Vegetation Uptake of Rock Moisture",
   "requestShortTitle": null,
   "requestGrantType": null,
   "opportunityId": 532220,
@@ -18,97 +18,104 @@
   "awardPeriod": 12,
   "resources": [
     {
-      "actionResourceId": 908396,
-      "resourceRepositoryKey": 145575,
-      "awardedAmount": "1000000.0",
+      "actionResourceId": 894148,
+      "resourceRepositoryKey": 145576,
+      "awardedAmount": "5000.0",
       "comments": null,
       "resourceQA": []
     },
     {
-      "actionResourceId": 908394,
+      "actionResourceId": 894146,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "2000000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 894144,
+      "resourceRepositoryKey": 145145,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 894142,
       "resourceRepositoryKey": 144650,
-      "awardedAmount": "5000.0",
+      "awardedAmount": "20000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 894140,
+      "resourceRepositoryKey": 144552,
+      "awardedAmount": "1.0",
       "comments": null,
       "resourceQA": []
     }
   ],
   "roles": [
     {
-      "requestPeopleRoleId": 575269,
-      "roleType": "PI",
-      "username": "user_00000070",
-      "beginDate": "2026-08-05",
+      "requestPeopleRoleId": 566406,
+      "roleType": "User",
+      "username": "user_00000046",
+      "beginDate": "2026-07-06",
       "endDate": null,
-      "isAccountToBeCreated": true,
-      "person": {
-        "firstName": "Given02",
-        "middleName": null,
-        "lastName": "Surname02",
-        "email": "user02@example.invalid",
-        "phone": null,
-        "organization": "NCAR/EDECD",
-        "academicStatus": null,
-        "isReconciled": true
-      }
-    },
-    {
-      "requestPeopleRoleId": 572054,
-      "roleType": "PI",
-      "username": "user_00000002",
-      "beginDate": "2026-07-27",
-      "endDate": "2026-08-04",
       "isAccountToBeCreated": false,
       "person": {
-        "firstName": "Given02",
+        "firstName": "Given46",
         "middleName": null,
-        "lastName": "Surname02",
-        "email": "user02@example.invalid",
+        "lastName": "Surname46",
+        "email": "user46@example.invalid",
         "phone": null,
-        "organization": "UNIVERSITY OF WISCONSIN AT MADISON",
+        "organization": "NCAR/CGD",
         "academicStatus": null,
         "isReconciled": true
       }
     },
     {
-      "requestPeopleRoleId": 572029,
+      "requestPeopleRoleId": 566405,
+      "roleType": "PI",
+      "username": "user_00000047",
+      "beginDate": "2026-07-06",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given47",
+        "middleName": null,
+        "lastName": "Surname47",
+        "email": "user47@example.invalid",
+        "phone": null,
+        "organization": "NCAR/CGD",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 566403,
       "roleType": "Allocation Manager",
-      "username": "user_00000070",
-      "beginDate": "2026-07-27",
+      "username": "user_00000047",
+      "beginDate": "2026-07-06",
       "endDate": null,
       "isAccountToBeCreated": false,
       "person": {
-        "firstName": "Given02",
+        "firstName": "Given47",
         "middleName": null,
-        "lastName": "Surname02",
-        "email": "user02@example.invalid",
+        "lastName": "Surname47",
+        "email": "user47@example.invalid",
         "phone": null,
-        "organization": "NCAR/EDECD",
-        "academicStatus": null,
+        "organization": "NCAR/CGD",
+        "academicStatus": "Graduate Student",
         "isReconciled": true
       }
     }
   ],
   "fos": [
     {
-      "fosTypeId": 500003,
-      "fosNum": "1",
-      "fosName": "Advanced Scientific Computing",
-      "fosAbbr": "Advanced Scientific Computing",
+      "fosTypeId": 500021,
+      "fosNum": "19",
+      "fosName": "Hydrologic Sciences",
+      "fosAbbr": "Hydrologic Sciences",
       "isPrimary": true
-    },
-    {
-      "fosTypeId": 500006,
-      "fosNum": "4",
-      "fosName": "Atmospheric Chemistry",
-      "fosAbbr": "Atmospheric Chemistry",
-      "isPrimary": false
-    },
-    {
-      "fosTypeId": 500025,
-      "fosNum": "23",
-      "fosName": "Mesoscale Meteorology",
-      "fosAbbr": "Mesoscale Meteorology",
-      "isPrimary": false
     }
   ],
   "panels": [
@@ -122,14 +129,14 @@
   "grants": [
     {
       "fundingAgency": "National Science Foundation",
-      "grantNumber": "DGE-2137424",
-      "programOfficerName": "Officer36",
-      "programOfficerEmail": "officer15@example.invalid",
-      "piName": "Officer37",
-      "title": "Graduate Research Fellowship Program (GRFP)",
-      "beginDate": "2024-08-15",
-      "endDate": "2027-07-31",
-      "awardedAmount": "0.0",
+      "grantNumber": "OIA-2429739",
+      "programOfficerName": "Officer23",
+      "programOfficerEmail": "officer10@example.invalid",
+      "piName": "Officer24",
+      "title": "EPSCoR Research Fellows: NSF: Enhancing Water Budget Simulations across CONUS: Modeling Vegetation Uptake of Rock Moisture",
+      "beginDate": "2025-02-01",
+      "endDate": "2027-01-31",
+      "awardedAmount": "300000.0",
       "awardedUnits": null,
       "percentageAward": null,
       "subAwardNumber": null,
@@ -147,10 +154,10 @@
       "attributeSetId": 537622,
       "attributeSetRelationType": "single_sel",
       "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
-      "opportunityAttributeId": 539637,
       "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
       "attributeValue": null,
-      "answer": "Click here to acknowledge and agree to the End User Agreement terms."
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "opportunityAttributeId": 539637
     }
   ]
 }

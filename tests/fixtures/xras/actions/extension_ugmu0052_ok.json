@@ -1,0 +1,91 @@
+{
+  "actionId": 388708,
+  "actionType": "Extension",
+  "actionBeginDate": "2025-07-28",
+  "actionEndDate": "2026-12-31",
+  "requestId": 1421054,
+  "requestNumber": "UGMU0052",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Evaluation of Land-atmosphere Feedback between Flux Site Observations and Model-derived Products",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 473114,
+      "roleType": "PI",
+      "username": "user_00000026",
+      "beginDate": "2025-07-28",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given26",
+        "middleName": null,
+        "lastName": "Surname26",
+        "email": "user26@example.invalid",
+        "phone": null,
+        "organization": "GEORGE MASON UNIVERSITY",
+        "academicStatus": "Post Doc",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 473113,
+      "roleType": "Allocation Manager",
+      "username": "user_00000027",
+      "beginDate": "2025-07-28",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given27",
+        "middleName": null,
+        "lastName": "Surname27",
+        "email": "user27@example.invalid",
+        "phone": "555-0116",
+        "organization": null,
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500021,
+      "fosNum": "19",
+      "fosName": "Hydrologic Sciences",
+      "fosAbbr": "Hydrologic Sciences",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500017,
+      "fosNum": "15",
+      "fosName": "Geomorphology and Surface Processes",
+      "fosAbbr": "Geomorphology and Surface Processes",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500041,
+      "fosNum": "39",
+      "fosName": "Ecological Studies",
+      "fosAbbr": "Ecological Studies",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

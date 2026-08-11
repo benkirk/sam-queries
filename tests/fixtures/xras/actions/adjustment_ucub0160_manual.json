@@ -1,0 +1,113 @@
+{
+  "actionId": 382993,
+  "actionType": "Adjustment",
+  "actionBeginDate": "2024-09-19",
+  "actionEndDate": "2026-09-30",
+  "requestId": 1324804,
+  "requestNumber": "UCUB0160",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Mesoscale Eddy Verification Framework",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 871197,
+      "resourceRepositoryKey": 145576,
+      "awardedAmount": "-500000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 871195,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "500000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 349444,
+      "roleType": "PI",
+      "username": "user_00000009",
+      "beginDate": "2024-09-19",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given09",
+        "middleName": null,
+        "lastName": "Surname09",
+        "email": "user09@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 349445,
+      "roleType": "Allocation Manager",
+      "username": "user_00000010",
+      "beginDate": "2024-09-19",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given10",
+        "middleName": null,
+        "lastName": "Surname10",
+        "email": "user10@example.invalid",
+        "phone": "555-0105",
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500024,
+      "fosNum": "22",
+      "fosName": "Mathematics and Statistics",
+      "fosAbbr": "Mathematics and Statistics",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500003,
+      "fosNum": "1",
+      "fosName": "Advanced Scientific Computing",
+      "fosAbbr": "Advanced Scientific Computing",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500005,
+      "fosNum": "3",
+      "fosName": "Algorithm Development",
+      "fosAbbr": "Algorithm Development",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500031,
+      "fosNum": "29",
+      "fosName": "Physical Oceanography",
+      "fosAbbr": "Physical Oceanography",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

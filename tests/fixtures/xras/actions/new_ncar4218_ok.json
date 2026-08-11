@@ -1,0 +1,143 @@
+{
+  "actionId": 387457,
+  "actionType": "New",
+  "actionBeginDate": "2026-07-15",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1444696,
+  "requestNumber": "NCAR4218",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Future precipitation in Central California",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532222,
+  "opportunityName": "Data Analysis Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Data Analysis",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 894119,
+      "resourceRepositoryKey": 145145,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 894117,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "5000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 894115,
+      "resourceRepositoryKey": 144552,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 566563,
+      "roleType": "Allocation Manager",
+      "username": "user_00000036",
+      "beginDate": "2026-07-07",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given36",
+        "middleName": null,
+        "lastName": "Surname36",
+        "email": "user36@example.invalid",
+        "phone": null,
+        "organization": "MASSACHUSETTS INSTITUTE OF TECHNOLOGY",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 566562,
+      "roleType": "User",
+      "username": "user_00000036",
+      "beginDate": "2026-07-07",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given36",
+        "middleName": null,
+        "lastName": "Surname36",
+        "email": "user36@example.invalid",
+        "phone": null,
+        "organization": "MASSACHUSETTS INSTITUTE OF TECHNOLOGY",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 566561,
+      "roleType": "PI",
+      "username": "user_00000036",
+      "beginDate": "2026-07-07",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given36",
+        "middleName": null,
+        "lastName": "Surname36",
+        "email": "user36@example.invalid",
+        "phone": null,
+        "organization": "MASSACHUSETTS INSTITUTE OF TECHNOLOGY",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500032,
+      "fosNum": "30",
+      "fosName": "Regional Climate",
+      "fosAbbr": "Regional Climate",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500039,
+      "fosNum": "37",
+      "fosName": "Weather Prediction",
+      "fosAbbr": "Weather Prediction",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": [
+    {
+      "attributeSetId": 534586,
+      "attributeSetRelationType": "textarea",
+      "attributeSetName": "Data Analysis projects require that you intend to use an NCAR-curated data set in the analysis. Which NCAR-curated data sets will you be using as part of your data analysis activities?",
+      "attributeName": "Briefly describe your planned use of NCAR data sets.",
+      "attributeValue": "CESM-HR and CESM-LR.",
+      "answer": "CESM-HR and CESM-LR.",
+      "opportunityAttributeId": 537062
+    },
+    {
+      "attributeSetId": 537624,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "opportunityAttributeId": 539639
+    }
+  ]
+}

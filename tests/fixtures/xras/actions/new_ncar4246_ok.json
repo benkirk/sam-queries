@@ -1,0 +1,129 @@
+{
+  "actionId": 390449,
+  "actionType": "New",
+  "actionBeginDate": "2026-08-04",
+  "actionEndDate": "2027-08-31",
+  "requestId": 1445824,
+  "requestNumber": "NCAR4246",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Thermodynamic and Dynamic Drivers of South American Low-Level Jet Moisture Transport in ERA5",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532222,
+  "opportunityName": "Data Analysis Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Data Analysis",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 906547,
+      "resourceRepositoryKey": 145145,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 906545,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "4000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 572007,
+      "roleType": "User",
+      "username": "user_00000042",
+      "beginDate": "2026-07-27",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given42",
+        "middleName": null,
+        "lastName": "Surname42",
+        "email": "user42@example.invalid",
+        "phone": null,
+        "organization": "DARTMOUTH COLLEGE",
+        "academicStatus": "Post Doc",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 572006,
+      "roleType": "Allocation Manager",
+      "username": "user_00000043",
+      "beginDate": "2026-07-27",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given43",
+        "middleName": null,
+        "lastName": "Surname43",
+        "email": "user43@example.invalid",
+        "phone": null,
+        "organization": "DARTMOUTH COLLEGE",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 572005,
+      "roleType": "PI",
+      "username": "user_00000043",
+      "beginDate": "2026-07-27",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given43",
+        "middleName": null,
+        "lastName": "Surname43",
+        "email": "user43@example.invalid",
+        "phone": null,
+        "organization": "DARTMOUTH COLLEGE",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": [
+    {
+      "attributeSetId": 534586,
+      "attributeSetRelationType": "textarea",
+      "attributeSetName": "Data Analysis projects require that you intend to use an NCAR-curated data set in the analysis. Which NCAR-curated data sets will you be using as part of your data analysis activities?",
+      "opportunityAttributeId": 537062,
+      "attributeName": "Briefly describe your planned use of NCAR data sets.",
+      "attributeValue": "I would like to use the ERA5 Hourly Reanalysis data by level and from various years between 1940 and today. This will include use of variables like the wind speed vectors, the temperature, the humidity, and more. Also, dependent on things working well with the ERA5 data, I would like to migrate this work to CESM2 data.",
+      "answer": "I would like to use the ERA5 Hourly Reanalysis data by level and from various years between 1940 and today. This will include use of variables like the wind speed vectors, the temperature, the humidity, and more. Also, dependent on things working well with the ERA5 data, I would like to migrate this work to CESM2 data."
+    },
+    {
+      "attributeSetId": 537624,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "opportunityAttributeId": 539639,
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms."
+    }
+  ]
+}

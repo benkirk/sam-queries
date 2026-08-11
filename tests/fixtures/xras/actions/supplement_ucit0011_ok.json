@@ -1,0 +1,148 @@
+{
+  "actionId": 388809,
+  "actionType": "Supplement",
+  "actionBeginDate": "2024-04-26",
+  "actionEndDate": "2028-09-30",
+  "requestId": 1267651,
+  "requestNumber": "UCIT0011",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Automatically Calibrating the CliMA Atmosphere Model with Earth Observations",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 533144,
+  "opportunityName": "Large Allocation (University) - Spring 2024",
+  "opportunityType": "Terminating",
+  "allocationType": "Large",
+  "awardDate": "2024-05-01",
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 895561,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "50000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 287095,
+      "roleType": "Allocation Manager",
+      "username": "user_00000057",
+      "beginDate": "2024-03-12",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given57",
+        "middleName": null,
+        "lastName": "Surname57",
+        "email": "user57@example.invalid",
+        "phone": "555-0134",
+        "organization": "CALIFORNIA INSTITUTE OF TECHNOLOGY",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 287094,
+      "roleType": "PI",
+      "username": "user_00000057",
+      "beginDate": "2024-03-12",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given57",
+        "middleName": null,
+        "lastName": "Surname57",
+        "email": "user57@example.invalid",
+        "phone": "555-0134",
+        "organization": "CALIFORNIA INSTITUTE OF TECHNOLOGY",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500014,
+      "fosNum": "12",
+      "fosName": "Fluid Dynamics and Turbulence",
+      "fosAbbr": "Fluid Dynamics and Turbulence",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500024,
+      "fosNum": "22",
+      "fosName": "Mathematics and Statistics",
+      "fosAbbr": "Mathematics and Statistics",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "External reviewers for CHAP",
+      "abbr": "CHAP External",
+      "isPrimary": false
+    },
+    {
+      "type": "Technical",
+      "name": "CISL HPC Allocation Panel",
+      "abbr": "CHAP",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "RISE-2530746",
+      "programOfficerName": "Officer15",
+      "programOfficerEmail": "officer07@example.invalid",
+      "piName": "Officer27",
+      "title": "Collaborative Research: CAIG: Unraveling Aerosol-Cloud Interactions and Sea Ice Thermodynamics with AI and Ensemble Kalman Diffusion Guidance",
+      "beginDate": "2025-10-01",
+      "endDate": "2028-09-30",
+      "awardedAmount": "658592.0",
+      "awardedUnits": "Dollars",
+      "percentageAward": null,
+      "subAwardNumber": "",
+      "primaryFos": {
+        "fosTypeId": 500018,
+        "fosNum": "16",
+        "fosName": "Geophysics",
+        "fosAbbr": "Geophysics"
+      },
+      "isPending": false
+    },
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "AGS-1835860",
+      "programOfficerName": "Officer15",
+      "programOfficerEmail": "officer07@example.invalid",
+      "piName": "Officer27",
+      "title": "Collaborative Research: HDR: Data-Driven Earth System Modeling",
+      "beginDate": "2018-11-01",
+      "endDate": "2024-12-31",
+      "awardedAmount": "2499842.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": 500009,
+        "fosNum": "7",
+        "fosName": "Climate",
+        "fosAbbr": "Climate"
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}

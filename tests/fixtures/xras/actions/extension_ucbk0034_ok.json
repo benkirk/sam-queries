@@ -1,0 +1,95 @@
+{
+  "actionId": 392183,
+  "actionType": "Extension",
+  "actionBeginDate": "2023-04-21",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1221239,
+  "requestNumber": "UCBK0034",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Assessing the leverage of forest regeneration processes on demographic outcomes in a vegetation demographic model",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 256781,
+      "roleType": "PI",
+      "username": "user_00000020",
+      "beginDate": "2023-12-04",
+      "endDate": null,
+      "isAccountToBeCreated": true,
+      "person": {
+        "firstName": "Given20",
+        "middleName": null,
+        "lastName": "Surname20",
+        "email": "user20@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF CALIFORNIA AT BERKELEY",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 223373,
+      "roleType": "Allocation Manager",
+      "username": "user_00000020",
+      "beginDate": "2023-05-31",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given20",
+        "middleName": null,
+        "lastName": "Surname20",
+        "email": "user20@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF CALIFORNIA AT BERKELEY",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 218586,
+      "roleType": "Allocation Manager",
+      "username": "user_00000021",
+      "beginDate": "2023-04-21",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given21",
+        "middleName": null,
+        "lastName": "Surname21",
+        "email": "user21@example.invalid",
+        "phone": "555-0114",
+        "organization": "UNIVERSITY OF CALIFORNIA AT BERKELEY",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500041,
+      "fosNum": "39",
+      "fosName": "Ecological Studies",
+      "fosAbbr": "Ecological Studies",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

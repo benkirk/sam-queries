@@ -1,0 +1,114 @@
+{
+  "actionId": 391528,
+  "actionType": "Supplement",
+  "actionBeginDate": "2026-03-25",
+  "actionEndDate": "2027-03-31",
+  "requestId": 1438545,
+  "requestNumber": "UGIT0044",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Assessing Global Oxygen Inventory, Trends and Variability through the Intercomparison of Observation-based Gridded Datasets",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532220,
+  "opportunityName": "Small Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Small",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 907846,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "1000000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 907844,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "-980000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 534206,
+      "roleType": "PI",
+      "username": "user_00000063",
+      "beginDate": "2026-03-13",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given63",
+        "middleName": null,
+        "lastName": "Surname63",
+        "email": "user63@example.invalid",
+        "phone": "555-0136",
+        "organization": "GEORGIA INSTITUTE OF TECHNOLOGY",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 534202,
+      "roleType": "Allocation Manager",
+      "username": "user_00000063",
+      "beginDate": "2026-03-13",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given63",
+        "middleName": null,
+        "lastName": "Surname63",
+        "email": "user63@example.invalid",
+        "phone": "555-0136",
+        "organization": "GEORGIA INSTITUTE OF TECHNOLOGY",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500008,
+      "fosNum": "6",
+      "fosName": "Chemical Oceanography",
+      "fosAbbr": "Chemical Oceanography",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "2446011",
+      "programOfficerName": "Officer30",
+      "programOfficerEmail": "officer12@example.invalid",
+      "piName": "Officer31",
+      "title": "Collaborative Research: Assessing Global Oxygen Inventory, Trends and Variability through the Intercomparison of Observation-based Gridded Datasets",
+      "beginDate": "2025-05-01",
+      "endDate": "2028-04-30",
+      "awardedAmount": "563629.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": 500008,
+        "fosNum": "6",
+        "fosName": "Chemical Oceanography",
+        "fosAbbr": "Chemical Oceanography"
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}
