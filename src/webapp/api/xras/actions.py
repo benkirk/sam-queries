@@ -238,14 +238,14 @@ def _fit(value, width):
 
 def _record(*, status, raw_payload, action_type=None, request_number=None,
             action_id=None, error_messages=None, http_status=None,
-            remote_actor=None, replay_of_id=None, processed_by=None):
+            remote_actor=None, source_action_id=None, processed_by=None):
     """Write one audit row on a private connection and commit. Returns its id.
 
     Deliberately does **not** use ``db.session``: this row must outlive a rollback of
     whatever transaction the handler runs in. Returns the id rather than the instance
     because the instance detaches when the session closes.
 
-    ``remote_actor`` / ``replay_of_id`` / ``processed_by`` exist for the replay path
+    ``remote_actor`` / ``source_action_id`` / ``processed_by`` exist for the replay path
     (``webapp/api/xras/replay.py``), which deliberately routes through *this* helper
     rather than its own insert: ``tests/api/test_xras_access.py``'s ``action_log``
     fixture captures rows by monkeypatching this function, so a second insert helper
@@ -275,7 +275,7 @@ def _record(*, status, raw_payload, action_type=None, request_number=None,
             action_id=_fit_int(action_id),
             error_messages=_fit_error_messages(error_messages),
             http_status=http_status,
-            replay_of_id=replay_of_id,
+            source_action_id=source_action_id,
             processed_by=_fit(processed_by, _PROCESSED_BY_WIDTH),
         )
         session.add(row)

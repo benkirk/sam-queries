@@ -218,17 +218,27 @@ def select_service(session, action) -> Optional[str]:
 
 
 def dispatch_action(session, action, *,
-                    enabled: Optional[FrozenSet[str]] = None) -> DispatchResult:
+                    enabled: Optional[FrozenSet[str]] = None,
+                    validate_only: bool = False) -> DispatchResult:
     """Select a handler and run it, or explain why nothing ran.
 
     *enabled* is passed in rather than read from config because nothing under ``sam/``
     imports Flask; ``webapp/api/xras/actions.py`` reads the setting and hands it over.
     ``None`` means everything is enabled.
 
+    *validate_only* runs the handler's assemble-and-check half and stops, returning
+    ``status='rechecked'`` — *"this would succeed if posted now"*. Nothing is written
+    on that path, and a payload that would still be rejected raises exactly as it
+    would live, carrying the same error list. Used by the re-check surface
+    (``webapp/api/xras/replay.py``) to answer "did our data fix take?" without
+    involving XRAS. The three parking arms below are unaffected: if nothing would
+    run, that is the honest answer to a re-check too.
+
     Raises:
         XrasActionRejected: the handler's assembly reported problems. Nothing was
             written — the contract is assemble → check once → execute, so this is
-            raised before any transaction opens.
+            raised before any transaction opens. Raised on the *validate_only* path
+            for the same reason, which is what makes a re-check informative.
     """
     action_type = canonical_action_type(get_field(action, 'actionType'))
     service = select_service(session, action)
@@ -250,4 +260,4 @@ def dispatch_action(session, action, *,
         return DispatchResult(status='manual', service=service,
                               reason=f'no handler is registered for {service!r}')
 
-    return handler(session, action)
+    return handler(session, action, validate_only=validate_only)

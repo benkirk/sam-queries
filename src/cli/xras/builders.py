@@ -46,16 +46,16 @@ def build_action_detail(session, action_id: int, *,
         return None
     action = rows[0]
 
-    # The replay lineage, both directions: what this replayed, and what replayed it.
-    children = get_recent_xras_actions(session, replay_of=action_id,
+    # The re-check lineage, both directions: what this re-checked, and what re-checked it.
+    children = get_recent_xras_actions(session, source_action=action_id,
                                        sort_by='received_time', sort_dir='asc')
 
     return {
         'kind':           'xras_action',
         'action_log_id':  action_id,
         'action':         action,
-        'replay_of_id':   action['replay_of_id'],
-        'replays':        [{'action_log_id': c['action_log_id'],
+        'source_action_id':   action['source_action_id'],
+        'rechecks':        [{'action_log_id': c['action_log_id'],
                             'received_time': c['received_time'],
                             'status':        c['status'],
                             'processed_by':  c['processed_by']}
@@ -91,12 +91,12 @@ def build_summary(session, *, filters: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def build_replay_result(action_id: int, new_id: int, *, actor: str,
+def build_recheck_result(action_id: int, new_id: int, *, actor: str,
                         action: Dict[str, Any]) -> Dict[str, Any]:
-    """The ``xras_replay`` envelope. Only ever reached via ``--json-writes``."""
+    """The ``xras_recheck`` envelope. Only ever reached via ``--json-writes``."""
     return {
-        'kind':           'xras_replay',
-        'replayed_id':    action_id,
+        'kind':           'xras_recheck',
+        'source_action_id': action_id,
         'new_action_id':  new_id,
         'actor':          actor,
         'status':         action['status'],

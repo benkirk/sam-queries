@@ -111,9 +111,10 @@ class SupplementHandler(ActionHandler):
         self.execute_plan(self.planned)
 
 
-def handle_supplement(session, action) -> DispatchResult:
-    """The registry's contract: ``(session, action) -> DispatchResult``."""
-    return SupplementHandler(session, action).run()
+def handle_supplement(session, action, *, validate_only: bool = False) -> DispatchResult:
+    """The registry's contract:
+    ``(session, action, *, validate_only=False) -> DispatchResult``."""
+    return SupplementHandler(session, action).run(validate_only=validate_only)
 
 
 register('supplement', handle_supplement)

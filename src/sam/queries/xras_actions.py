@@ -47,7 +47,7 @@ from sam.projects.projects import Project
 #: ``manual`` — that is the four-cause parking cohort operators filter on during
 #: triage — nor into ``failed``, which would inflate the failure rate the dashboard
 #: reports for something that never claimed to be supported.
-XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'replayed',
+XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked',
                         'unmapped')
 
 #: Action types on the wire, for the filter dropdown. This is legacy's own declared
@@ -208,7 +208,7 @@ def _apply_action_filters(
     http_status,
     has_errors,
     replays_only,
-    replay_of,
+    source_action,
     start_date,
     end_date,
 ):
@@ -238,7 +238,7 @@ def _apply_action_filters(
         _in(XrasActionLog.remote_actor, remote_actor),
         _in(XrasActionLog.processed_by, processed_by),
         _in(XrasActionLog.http_status, http_status),
-        _in(XrasActionLog.replay_of_id, replay_of),
+        _in(XrasActionLog.source_action_id, source_action),
     ):
         if clause is not None:
             query = query.filter(clause)
@@ -256,9 +256,9 @@ def _apply_action_filters(
                              | (XrasActionLog.error_messages == ''))
 
     if replays_only is True:
-        query = query.filter(XrasActionLog.replay_of_id.isnot(None))
+        query = query.filter(XrasActionLog.source_action_id.isnot(None))
     elif replays_only is False:
-        query = query.filter(XrasActionLog.replay_of_id.is_(None))
+        query = query.filter(XrasActionLog.source_action_id.is_(None))
 
     return query
 
@@ -276,7 +276,7 @@ def get_recent_xras_actions(
     http_status: Optional[Union[int, List[int]]] = None,
     has_errors: Optional[bool] = None,
     replays_only: Optional[bool] = None,
-    replay_of: Optional[Union[int, List[int]]] = None,
+    source_action: Optional[Union[int, List[int]]] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     include_payload: bool = False,
@@ -325,7 +325,7 @@ def get_recent_xras_actions(
         - ``action_type``, ``request_number``, ``status``, ``http_status``
         - ``errors`` (ordered ``list[str]``, ``[]`` when clean)
         - ``projcode_result``, ``processed_time``, ``processed_by``
-        - ``replay_of_id``, ``replay_count`` (how many replays this row has spawned)
+        - ``source_action_id``, ``recheck_count`` (how many replays this row has spawned)
         - ``request_is_project`` / ``result_is_project`` — whether that code
           actually resolves to a row in ``project`` (see below)
         - ``request_is_token`` — whether ``request_number`` looks like one of the
@@ -354,18 +354,18 @@ def get_recent_xras_actions(
                 else XrasActionLog.received_time)
 
     # Replay fan-out as a correlated scalar rather than a second round trip: the
-    # table renders a "replayed" chip per row, and N+1 on a 200-row page is the
+    # table renders a "rechecked" chip per row, and N+1 on a 200-row page is the
     # kind of thing that only shows up once production has volume.
-    replay_child = XrasActionLog.__table__.alias('replay_child')
-    replay_count = (
-        session.query(func.count(replay_child.c.xras_action_log_id))
-        .filter(replay_child.c.replay_of_id == XrasActionLog.xras_action_log_id)
+    recheck_child = XrasActionLog.__table__.alias('recheck_child')
+    recheck_count = (
+        session.query(func.count(recheck_child.c.xras_action_log_id))
+        .filter(recheck_child.c.source_action_id == XrasActionLog.xras_action_log_id)
         .correlate(XrasActionLog)
         .scalar_subquery()
     )
 
     query = _apply_action_filters(
-        session.query(XrasActionLog, replay_count.label('replay_count')),
+        session.query(XrasActionLog, recheck_count.label('recheck_count')),
         action_log_id=action_log_id,
         action_type=action_type,
         status=status,
@@ -376,7 +376,7 @@ def get_recent_xras_actions(
         http_status=http_status,
         has_errors=has_errors,
         replays_only=replays_only,
-        replay_of=replay_of,
+        source_action=source_action,
         start_date=start_date,
         end_date=end_date,
     )
@@ -409,8 +409,8 @@ def get_recent_xras_actions(
             'projcode_result': row.projcode_result,
             'processed_time': row.processed_time,
             'processed_by': row.processed_by,
-            'replay_of_id': row.replay_of_id,
-            'replay_count': n_replays or 0,
+            'source_action_id': row.source_action_id,
+            'recheck_count': n_replays or 0,
         }
         if include_payload:
             item['raw_payload'] = row.raw_payload
@@ -474,7 +474,7 @@ def count_recent_xras_actions(
     http_status: Optional[Union[int, List[int]]] = None,
     has_errors: Optional[bool] = None,
     replays_only: Optional[bool] = None,
-    replay_of: Optional[Union[int, List[int]]] = None,
+    source_action: Optional[Union[int, List[int]]] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
 ) -> int:
@@ -495,7 +495,7 @@ def count_recent_xras_actions(
         http_status=http_status,
         has_errors=has_errors,
         replays_only=replays_only,
-        replay_of=replay_of,
+        source_action=source_action,
         start_date=start_date,
         end_date=end_date,
     )
@@ -558,7 +558,7 @@ def summarize_xras_actions(
         http_status=None,
         has_errors=None,
         replays_only=None,
-        replay_of=None,
+        source_action=None,
         start_date=start_date,
         end_date=end_date,
     ).group_by(XrasActionLog.status, XrasActionLog.action_type)

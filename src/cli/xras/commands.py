@@ -9,14 +9,14 @@ from cli.xras import builders, display
 
 
 class XrasCommand(BaseCommand):
-    """Read and replay the XRAS action log.
+    """Read and re-check the XRAS action log.
 
     Extends ``BaseCommand`` directly rather than one of the entity-scoped bases:
     those exist only to carry a single-entity lookup helper, and this command is
     scoped to a table, not to a user/project/contract (see ``cli/core/base.py``).
     """
 
-    def execute(self, *, action_id=None, replay=None, summary=False,
+    def execute(self, *, action_id=None, recheck=None, summary=False,
                 validate_mapping=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
@@ -25,8 +25,8 @@ class XrasCommand(BaseCommand):
 
             if validate_mapping:
                 return self._validate_mapping()
-            if replay is not None:
-                return self._replay(replay)
+            if recheck is not None:
+                return self._recheck(recheck)
             if action_id is not None:
                 return self._show(action_id, show_payload)
             if summary:
@@ -98,10 +98,10 @@ class XrasCommand(BaseCommand):
         display.display_summary(self.ctx, payload)
         return EXIT_SUCCESS
 
-    def _replay(self, action_id) -> int:
+    def _recheck(self, action_id) -> int:
         """Re-submit a stored payload.
 
-        Needs a Flask application context, and that is not incidental: replay
+        Needs a Flask application context, and that is not incidental: re-check
         writes through ``webapp.api.xras.actions._record``, which commits on its
         own connection so an audit row outlives a handler rollback, and it reads
         ``XRAS_ACTIONS_CAPTURE_ONLY`` from app config. Reimplementing either here
@@ -110,7 +110,7 @@ class XrasCommand(BaseCommand):
         second path would leak committed rows into the shared test database.
 
         The app is built lazily, inside this method, so ``sam-admin xras`` with no
-        ``--replay`` never pays for it.
+        ``--recheck`` never pays for it.
         """
         import contextlib
         import getpass
@@ -123,13 +123,14 @@ class XrasCommand(BaseCommand):
         # redirected to stderr, matching the house rule that only payloads reach
         # stdout. The import must be inside the redirect, not just the call.
         with contextlib.redirect_stdout(sys.stderr):
-            from webapp.api.xras.replay import replay_action
+            from webapp.api.xras.recheck import recheck_action
             from webapp.run import create_app
             app = create_app()
 
         with app.app_context():
             try:
-                new_id = replay_action(action_id, actor=getpass.getuser())
+                new_id, _status = recheck_action(action_id,
+                                                 actor=getpass.getuser())
             except LookupError:
                 self.ctx.stderr_console.print(
                     f'No XRAS action with id {action_id}.', style='bold red')
@@ -137,10 +138,10 @@ class XrasCommand(BaseCommand):
 
         rows = builders.build_action_detail(self.session, new_id,
                                             include_payload=False)
-        payload = builders.build_replay_result(
+        payload = builders.build_recheck_result(
             action_id, new_id, actor=getpass.getuser(), action=rows['action'],
         )
-        display.display_replay_result(self.ctx, payload)
+        display.display_recheck_result(self.ctx, payload)
         return EXIT_SUCCESS
 
     # -- helpers ----------------------------------------------------------
