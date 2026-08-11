@@ -53,6 +53,7 @@ Usage
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -184,11 +185,38 @@ def scrub(payload, pseudo, *, keep_abstract=False):
     return doc
 
 
+#: A phone-shaped run of digits: 7+ digits with optional separators, or an E.164
+#: ``+``-prefixed number. Anchored loosely on purpose — this is a tripwire, and a
+#: false positive costs one look while a miss costs a PII commit.
+PHONE_RE = re.compile(r'(?:\+\d[\d ().-]{7,})|(?:\b\d{3}[ .-]\d{3}[ .-]\d{4}\b)')
+
+#: What a scrubbed person field must look like. Anything else in a name slot means
+#: the pseudonymiser did not reach it.
+PSEUDONYM_RE = re.compile(r'^(Given|M|Surname)\d{2}$')
+
+#: Person fields whose value must always be a pseudonym after scrubbing.
+NAME_PATHS = ('firstName', 'middleName', 'lastName')
+
+
 def audit(doc):
     """Return any string that still looks like a leaked contact detail.
 
     A guard against a field being added to the payload upstream and silently
-    bypassing the scrubber — the failure mode that matters here.
+    bypassing the scrubber — the failure mode that matters here, and the reason this
+    checks the *output* rather than trusting the field list above.
+
+    Three tripwires, because the field list is a whitelist and the wire is not ours:
+
+    1. **An address** — any ``@`` outside ``EMAIL_DOMAIN``.
+    2. **A phone number** — a digit run in any field, not just ``person.phone``.
+       ``555-01xx`` is the reserved fictional range the scrubber emits and is exempt.
+    3. **An unpseudonymised name** — a ``firstName`` / ``middleName`` / ``lastName``
+       that is not ``Given01`` / ``M01`` / ``Surname01`` shaped. This is what catches
+       a *second* roster array appearing under a new key, which the whitelist would
+       walk straight past.
+
+    Dates are exempt from the phone check: ``'2026-07-28'`` is not a phone number, and
+    every payload is full of them.
     """
     leaks = []
 
@@ -200,7 +228,13 @@ def audit(doc):
             for i, v in enumerate(node):
                 walk(v, f'{path}[{i}]')
         elif isinstance(node, str):
+            leaf = path.rsplit('.', 1)[-1]
             if '@' in node and EMAIL_DOMAIN not in node:
+                leaks.append((path, node))
+            elif (PHONE_RE.search(node) and not node.startswith('555-01')
+                    and 'Date' not in leaf and 'date' not in leaf):
+                leaks.append((path, node))
+            elif leaf in NAME_PATHS and not PSEUDONYM_RE.match(node):
                 leaks.append((path, node))
 
     walk(doc, '')
