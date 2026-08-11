@@ -6,6 +6,8 @@ do construct a ResponsibleParty row and flush it — those writes stay under
 the SAVEPOINT'd fixture so they roll back at test exit. Dropped decorative
 print() statements.
 """
+from datetime import datetime
+
 import pytest
 
 from sam import (
@@ -257,3 +259,49 @@ class TestProjectFacilityName:
         project = make_project(session)
         assert project.allocation_type_id is None
         assert project.facility_name is None
+
+
+# ============================================================================
+# Project.reactivate — the deactivation stamp
+# ============================================================================
+
+
+class TestProjectReactivate:
+    """``inactivate_time`` is stamped on deactivate (``sam-admin project``) and
+    was never cleared by anything. ``reactivate()`` is the one path that clears
+    it, kept deliberately separate from ``update(active=True)``."""
+
+    def test_reactivate_sets_active_and_clears_the_stamp(self, session):
+        project = make_project(session, active=False)
+        project.inactivate_time = datetime(2026, 1, 15, 9, 30)
+        session.flush()
+
+        result = project.reactivate()
+
+        assert result is project              # chainable
+        assert project.is_active
+        assert project.inactivate_time is None
+
+    def test_reactivate_is_idempotent_on_an_active_project(self, session):
+        project = make_project(session, active=True)
+        project.reactivate()
+        assert project.is_active
+        assert project.inactivate_time is None
+
+    def test_update_active_true_leaves_the_stamp_alone(self, session):
+        """The guard rail for the road not taken.
+
+        Making ``update()`` symmetric would clear ``inactivate_time`` on every
+        save of an already-active project, because the admin Details tab loads
+        with ``partial=True`` and only sends ``active`` when it is *checked*.
+        This test fails the moment someone widens ``update()``.
+        """
+        project = make_project(session, active=False)
+        stamp = datetime(2026, 1, 15, 9, 30)
+        project.inactivate_time = stamp
+        session.flush()
+
+        project.update(active=True)
+
+        assert project.is_active
+        assert project.inactivate_time == stamp

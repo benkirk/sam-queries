@@ -228,6 +228,32 @@ webapp:
     # ~6h in the DB's future, so freshly-granted access read back as inactive.
     # system_status keeps its own explicit naive-UTC clock (sam.fmt.utcnow_naive).
     TZ: "America/Denver"
+    # ── Notifications (sam.notify) ────────────────────────────────────
+    # Relay facts MEASURED from a pod on nwc1, 2026-08-09
+    # (docs/plans/NOTIFICATION_FRAMEWORK.md § 9):
+    #   ndir.ucar.edu:25 reachable — no NetworkPolicy restricts webapp egress
+    #   EHLO advertises STARTTLS, and NOT AUTH  → no ExternalSecret needed,
+    #     which is why MAIL_USERNAME/MAIL_PASSWORD are absent here entirely
+    #   pod egress is the NODE address (128.117.217.72/.73), inside
+    #     ucar.edu's SPF ip4:128.117.0.0/16 → sam-admin@ucar.edu SPF-passes
+    #   one real message pod → benkirk@ucar.edu landed in the inbox
+    #
+    # ⚠️  A future node OUTSIDE 128.117.0.0/16 falls out of that SPF record.
+    #     `?all` is neutral rather than a hard fail, so mail would still be
+    #     accepted — it would just start scoring worse, silently.
+    MAIL_SERVER: "ndir.ucar.edu"
+    MAIL_PORT: "25"
+    MAIL_USE_TLS: "true"
+    MAIL_TIMEOUT: "10"
+    MAIL_DEFAULT_FROM: "sam-admin@ucar.edu"
+    # ⚠️  EXPLICIT, not inherited. NOTIFY_ENABLED is fail-closed everywhere
+    #     (sam.notify.NotifyConfig defaults it false) precisely so a dev
+    #     container cannot mail real users. Production is the one place that
+    #     must opt in, and it must do so visibly — ProductionConfig.validate()
+    #     warns at startup if this is unset, so the disabled state is never
+    #     silent.
+    NOTIFY_ENABLED: "1"
+    NOTIFY_TRANSPORT: "smtp"
     STATUS_DB_DRIVER: "postgresql"
     STATUS_DB_SERVER: "csg-postgres.k8s.ucar.edu"
     # STATUS_DB_POOL_* defaults (size=2, overflow=4, recycle=600) live in
@@ -281,8 +307,16 @@ webapp:
     FS_SCAN_PG_PORT: "5432"
     FS_SCAN_PG_DB: "campaign"
     FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:destor"
-    # disable creating projects until ID system transition & GID pool
-    CREATE_PROJECTS_ENABLED: "0"
+    # XRAS action ingestion. CAPTURE_ONLY is the safety interlock: while it is "1" the
+    # endpoint authenticates, parses and audits every post but dispatches nothing,
+    # because legacy SAM at sam.ucar.edu is still the system of record. It flips to "0"
+    # only at cutover, in step with XRAS repointing its base URL to sam.hpc.ucar.edu —
+    # dispatching before then would double-apply actions legacy has already applied.
+    XRAS_ACTIONS_CAPTURE_ONLY: "1"
+    # Per-type triage lever, checked only once CAPTURE_ONLY is off. "all" | "none" |
+    # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
+    # manual without a revert; an unknown token leaves that type disabled.
+    XRAS_ACTIONS_ENABLED: "all"
 
   # system_status DB credentials (injected as STATUS_DB_USERNAME / STATUS_DB_PASSWORD).
   # MUST be a non-superuser role — connecting as the postgres SUPERUSER causes

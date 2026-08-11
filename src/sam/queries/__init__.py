@@ -106,6 +106,33 @@ from .allocations import (
     get_allocation_summary_with_usage,
 )
 
+# XRAS action log (POST /api/xras/v1/actions audit trail)
+from .xras_actions import (
+    XRAS_ACTION_SORT_COLUMNS,
+    XRAS_ACTION_STATUSES,
+    XRAS_ACTION_TYPE_ALIASES,
+    XRAS_ACTION_TYPES,
+    XRAS_REQUEST_TOKEN_EXAMPLE,
+    XRAS_REQUEST_TOKEN_PREFIXES,
+    canonical_action_type,
+    count_recent_xras_actions,
+    get_observed_action_types,
+    get_projects_by_ids,
+    get_recent_xras_actions,
+    summarize_xras_actions,
+)
+from .xras_activation import (
+    ACTIVITY_TAGS,
+    XRAS_SERVICE_KINDS,
+    activity_tags,
+    get_latest_xras_action_id,
+    get_xras_activation_events,
+    get_xras_activity,
+    get_xras_pending_recipients,
+    parse_xras_dedup_key,
+    xras_dedup_key,
+)
+
 # Usage cache
 from .usage_cache import (
     cached_allocation_usage,
@@ -235,6 +262,28 @@ __all__ = [
     'get_allocation_summary_by_facility',
     'get_allocation_summary',
     'get_allocation_summary_with_usage',
+    # XRAS action log
+    'XRAS_ACTION_SORT_COLUMNS',
+    'XRAS_ACTION_STATUSES',
+    'XRAS_ACTION_TYPE_ALIASES',
+    'XRAS_ACTION_TYPES',
+    'XRAS_REQUEST_TOKEN_EXAMPLE',
+    'XRAS_REQUEST_TOKEN_PREFIXES',
+    'canonical_action_type',
+    'get_recent_xras_actions',
+    'count_recent_xras_actions',
+    'summarize_xras_actions',
+    'ACTIVITY_TAGS',
+    'XRAS_SERVICE_KINDS',
+    'activity_tags',
+    'get_xras_activity',
+    'parse_xras_dedup_key',
+    'xras_dedup_key',
+    'get_latest_xras_action_id',
+    'get_observed_action_types',
+    'get_projects_by_ids',
+    'get_xras_activation_events',
+    'get_xras_pending_recipients',
     # Usage cache
     'cached_allocation_usage',
     'purge_usage_cache',

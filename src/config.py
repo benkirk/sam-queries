@@ -31,7 +31,11 @@ class SAMConfig:
     # -------------------------------------------------------------------- Mail
     MAIL_SERVER       = os.getenv('MAIL_SERVER', 'ndir.ucar.edu')
     MAIL_PORT         = int(os.getenv('MAIL_PORT', '25'))
-    MAIL_USE_TLS      = os.getenv('MAIL_USE_TLS', 'false').lower() == 'true'
+    # Defaults TRUE: docs/plans/NOTIFICATION_FRAMEWORK.md § 9 measured
+    # ndir.ucar.edu advertising STARTTLS and negotiating it cleanly from the
+    # cluster. It defaulted false and nothing ever exercised it.
+    # sam.notify.NotifyConfig carries the same default; keep the two in step.
+    MAIL_USE_TLS      = os.getenv('MAIL_USE_TLS', 'true').lower() in ('true', '1', 'yes')
     MAIL_USERNAME     = os.getenv('MAIL_USERNAME', '')
     MAIL_PASSWORD     = os.getenv('MAIL_PASSWORD', '')
     MAIL_DEFAULT_FROM = os.getenv('MAIL_DEFAULT_FROM', 'sam-admin@ucar.edu')

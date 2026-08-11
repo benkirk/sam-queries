@@ -263,15 +263,93 @@
             </div>
         </div>
 
+        {# ── Notifications (sam.notify config + notification_log counts) ──
+             ⚠️ NO RECIPIENT ADDRESSES on this tile. It is VIEW_SYSTEM_CONFIG;
+             the activity log behind "Details »" names real people and is
+             SYSTEM_ADMIN. `Redirecting to` is the one deliberate exception —
+             an operator-configured sink, not a subject's address. #}
+        <div class="col-12 col-xl-6">
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4 d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-envelope me-1"></i> Notifications</h5>
+                    {# The card is VIEW_SYSTEM_CONFIG but the activity log is
+                       SYSTEM_ADMIN, because every row of it names a real person's
+                       email address. Gated to match, so operators are not offered a
+                       link that 403s — same tier split as the Caching card above. #}
+                    {% if has_permission(Permission.SYSTEM_ADMIN) %}
+                    <a href="{{ url_for('admin_dashboard.notifications') }}"
+                       class="small text-decoration-none">
+                        Details &raquo;
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if state.notifications.unavailable %}
+                    <p class="text-muted small mb-0">
+                        <i class="fas fa-circle-info"></i>
+                        Delivery statistics are unavailable — the
+                        <code>notification_log</code> table is not present on
+                        this database.
+                    </p>
+                    {% else %}
+                    <dl class="config-stats mb-3 small">
+                        {{ stat('Enabled', state.notifications.enabled) }}
+                        {{ stat('Transport', state.notifications.transport or '—') }}
+                        {{ stat('Relay', state.notifications.relay ~ (' (STARTTLS)' if state.notifications.use_tls else '') if state.notifications.relay else '—') }}
+                        {{ stat('From', state.notifications.mail_from or '—') }}
+                    </dl>
+
+                    {% if state.notifications.redirect_to %}
+                    {# A staging box quietly swallowing mail is the failure
+                       mode this line exists to prevent. #}
+                    <div class="alert alert-warning py-2 px-3 small mb-3">
+                        <i class="fas fa-shuffle me-1"></i>
+                        <strong>Redirecting to</strong>
+                        <code>{{ state.notifications.redirect_to }}</code>
+                        — no message reaches its intended recipient.
+                    </div>
+                    {% endif %}
+
+                    <hr class="my-3">
+                    <div class="text-muted small mb-2">
+                        <strong>Last {{ state.notifications.window_hours }}h</strong>
+                    </div>
+                    <dl class="config-stats mb-0 small">
+                        {{ stat('Sent',       state.notifications.sent | fmt_number) }}
+                        {% if state.notifications.redirected %}
+                        {{ stat('Redirected', state.notifications.redirected | fmt_number) }}
+                        {% endif %}
+                        {{ stat('Failed',     state.notifications.failed | fmt_number) }}
+                        {{ stat('Suppressed', state.notifications.suppressed | fmt_number) }}
+                    </dl>
+
+                    {% if state.notifications.queued_stuck %}
+                    {# Non-zero means a process died between writing `queued`
+                       and writing the outcome. Those rows stop suppressing
+                       their own retry at the same horizon this counts from,
+                       so this line is how an operator learns it happened. #}
+                    <div class="alert alert-warning py-2 px-3 small mt-3 mb-0">
+                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        <strong>{{ state.notifications.queued_stuck | fmt_number }}</strong>
+                        delivery attempt(s) stuck in <code>queued</code> — a
+                        process died mid-send.
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
         {# ── Rate limiting (Flask-Limiter facade; webapp.limiter) ──────── #}
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
                 <div class="card-header mb-4 d-flex justify-content-between align-items-center">
                     <h5><i class="fas fa-traffic-light me-1"></i> Rate limiting</h5>
-                    {# Link target lands in the dedicated admin page commit; left
-                       as a relative path so this tile renders before that route
-                       is registered. #}
-                    <a href="/admin/htmx/rate-limits" class="small text-decoration-none">
+                    {# Ungated on purpose, unlike Notifications above: this page is
+                       VIEW_SYSTEM_CONFIG, the same tier as the card, so the link
+                       cannot 403. #}
+                    <a href="{{ url_for('admin_dashboard.rate_limits') }}"
+                       class="small text-decoration-none">
                         Details &raquo;
                     </a>
                 </div>

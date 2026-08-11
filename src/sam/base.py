@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Set
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Date, Boolean, Numeric,
     ForeignKey, ForeignKeyConstraint, PrimaryKeyConstraint,
-    Text, BigInteger, TIMESTAMP, text, and_, or_, Index, exists, select
+    Text, BigInteger, SmallInteger, TIMESTAMP, text, and_, or_, Index, exists, select
 )
 from sqlalchemy.orm import relationship, declarative_base, declared_attr, Session, validates
 from sqlalchemy.ext.associationproxy import association_proxy

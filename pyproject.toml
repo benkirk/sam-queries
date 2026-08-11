@@ -34,6 +34,11 @@ dependencies = [
     "flask-sqlalchemy",
     "flask-wtf",
     "gunicorn",
+    # Declared, not inherited. sam.notify.render imports jinja2 directly, and
+    # until now it only arrived transitively via flask — which makes a
+    # flask-less `sam` install (the CLI is not a Flask app) an ImportError
+    # waiting for someone to try it.
+    "jinja2",
     "limits[redis]",
     "marshmallow-sqlalchemy",
     "matplotlib",
@@ -93,6 +98,13 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Notification templates ship INSIDE the package. There is no MANIFEST.in and
+# nothing else here declares package data, so without this line
+# sam/notify/templates/ is simply absent from a built wheel — invisible today
+# only because everything runs from an editable install.
+[tool.setuptools.package-data]
+"sam.notify" = ["templates/*"]
 
 [tool.coverage.run]
 source = ["src/sam", "src/system_status", "src/webapp"]

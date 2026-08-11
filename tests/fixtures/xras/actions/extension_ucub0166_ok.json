@@ -1,0 +1,106 @@
+{
+  "actionId": 391986,
+  "actionType": "Extension",
+  "actionBeginDate": "2024-12-11",
+  "actionEndDate": "2026-12-31",
+  "requestId": 1348290,
+  "requestNumber": "UCUB0166",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Refactoring NCAR LES and expanding coupling capabilities",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532220,
+  "opportunityName": "Small Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Small",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 375463,
+      "roleType": "PI",
+      "username": "user_00000003",
+      "beginDate": "2024-12-11",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given03",
+        "middleName": null,
+        "lastName": "Surname03",
+        "email": "user03@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 375462,
+      "roleType": "Allocation Manager",
+      "username": "user_00000004",
+      "beginDate": "2024-12-11",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given04",
+        "middleName": null,
+        "lastName": "Surname04",
+        "email": "user04@example.invalid",
+        "phone": "555-0101",
+        "organization": null,
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500014,
+      "fosNum": "12",
+      "fosName": "Fluid Dynamics and Turbulence",
+      "fosAbbr": "Fluid Dynamics and Turbulence",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500007,
+      "fosNum": "5",
+      "fosName": "Biological Oceanography",
+      "fosAbbr": "Biological Oceanography",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "GRFP-2040434",
+      "programOfficerName": "Officer03",
+      "programOfficerEmail": "officer02@example.invalid",
+      "piName": "Officer04",
+      "title": "Graduate Research Fellowship Program (GRFP)",
+      "beginDate": "2023-09-01",
+      "endDate": "2026-08-31",
+      "awardedAmount": "0.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": null,
+        "fosNum": null,
+        "fosName": null,
+        "fosAbbr": null
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}

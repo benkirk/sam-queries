@@ -1,0 +1,30 @@
+Dear {{ recipient_name }},
+
+Additional allocation has been added to your project {{ project_code }} -
+"{{ project_title }}" on NSF NCAR computing resources.
+{% if added %}
+Added by this request:
+{% for r in added %}
+  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
+{%- endfor %}
+{% endif %}
+{% if resources %}
+Your project now holds:
+{% for r in resources %}
+  - {{ r.resource_name }}: {{ r.amount }}{% if r.units %} {{ r.units }}{% endif %}
+    {%- if r.end_date %} through {{ r.end_date }}{% endif %}
+{%- endfor %}
+{% endif %}
+The additional time is available now; no change to how you submit work.
+
+  - Documentation: https://ncar-hpc-docs.readthedocs.io/
+  - Manage your project and its members at https://sam.hpc.ucar.edu/
+{% if recipient_role != 'lead' %}
+Your project lead ({{ project_lead }}{% if project_lead_email %} /
+{{ project_lead_email }}{% endif %}) manages membership and any future
+extension or supplement requests.
+{% endif %}
+--
+This is an automated notification from the NSF NCAR Systems Accounting Manager.
+If you believe you received this message in error, please contact
+help@ucar.edu.

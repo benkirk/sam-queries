@@ -1,0 +1,304 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/window_pills.html' import window_pills %}
+{#
+  Recent XRAS outcomes — "Pending Activations & Recent Notifications".
+
+  Context:
+    rows            get_xras_activity(...) rows, already filtered
+    recipients      {project_id: [{'name','email','role'}]}  (MANAGE_XRAS only)
+    may_activate    {project_id: bool}                       (MANAGE_XRAS only)
+    may_manage      bool
+    window          {'days','since','until','start_date','end_date','custom'}
+    window_pill_choices  ((days, label), ...)
+    tag_values      [{'value','label','count'}]  self-excluding
+    type_values     [{'value','count'}]          self-excluding
+    selected_tags   [str]
+    selected_types  [str]
+    form_id, fragment_url, target_id
+
+  ── ONE ROW PER ACTION, NOT PER PROJECT ──────────────────────────────────
+  This replaced a project-keyed worklist filtered on `~Project.is_active`.
+  Three things followed from that key and are gone with it: activating a
+  project erased its own Notify button; a Supplement against a live project
+  was invisible; and a second action had to mark the first notification
+  "stale" because one row cannot represent two things happening. Nothing
+  leaves this table because somebody did their job.
+
+  ── WHERE THE COLLAPSE TOGGLE GOES ───────────────────────────────────────
+  On the first four cells, NOT on the <tr>. Bootstrap registers its collapse
+  data-api with EventHandler.on(document, …), which runs in the CAPTURE phase
+  — so a toggle on the row fires before any nested button's handler and
+  `data-stop-propagation` cannot help. The row carries up to four buttons.
+  Same structural fix as xras_table.html's Errors cell, and the reason
+  dashboards/fragments/collapse.html exists.
+
+  ── THE EXPANSION IS MANAGE_XRAS ONLY ────────────────────────────────────
+  It lists per-recipient addresses. The route does not even build
+  `recipients` for a VIEW_XRAS viewer, so this is a second gate over an
+  already-empty dict rather than the only one — the same route-level
+  discipline as the raw-payload panel.
+#}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center flex-wrap gap-2">
+        <i class="fas fa-paper-plane text-secondary"></i>
+        <strong>Pending Activations &amp; Recent Notifications</strong>
+        <span class="badge bg-secondary">{{ rows | length | fmt_number }}</span>
+        <div class="ms-auto">
+            {{ window_pills(form_id, window_pill_choices, window.days,
+                            custom=window.custom,
+                            start_date=window.start_date,
+                            end_date=window.end_date) }}
+        </div>
+    </div>
+
+    <div class="card-body border-bottom py-2">
+        <div class="facet-grid">
+            {{ facet_row('State', tag_values, form_id, 'tag',
+                         active=selected_tags) }}
+            {{ facet_row('Action', type_values, form_id, 'activity_type',
+                         active=selected_types) }}
+        </div>
+    </div>
+
+    {% if rows %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-subtle">
+                <tr>
+                    <th style="width:150px; white-space:nowrap;">Project</th>
+                    {# width:99% + max-width:0 on the cells is what makes
+                       text-overflow work at all in a table. min-width stops the
+                       column collapsing to "Sm…" once the other columns have
+                       taken their fixed widths on a phone — the wrapper scrolls,
+                       so a wider table costs nothing. #}
+                    <th style="width:99%; min-width:18rem;">Title</th>
+                    <th style="width:120px;">Action</th>
+                    <th style="white-space:nowrap;">Received</th>
+                    {# "State", not "Project" — the first column is already
+                       headed Project, and two identical headers over different
+                       data read as a rendering bug. #}
+                    <th style="width:150px;">State</th>
+                    <th style="white-space:nowrap;">Notified</th>
+                    {# No Recipients column: the addresses live in the row
+                       expansion, which every manageable row now has. Eight
+                       columns plus a four-button action group overflowed the
+                       card on every desktop width, putting Activate off-screen. #}
+                    {% if may_manage %}
+                    <th class="text-end" style="white-space:nowrap;">Actions</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                {% set detail_id = 'xras-activity-' ~ r.action_log_id %}
+                {# Expandable for every manageable row, not just notified ones.
+                   The expansion carries the recipient addresses, and an
+                   un-notified row is precisely where an operator wants to see
+                   who is about to be mailed. #}
+                {% set expandable = may_manage %}
+                <tr {% if r.dismissed %}class="opacity-75"{% endif %}>
+                    {# The four toggle cells. The Notified, Recipients and
+                       Actions cells are deliberately NOT toggles. #}
+                    {# nowrap: the chevron and the projcode are one unit. Without
+                       it the inline-block button wraps below the icon as soon as
+                       the column is at all tight. #}
+                    <td style="white-space:nowrap;"
+                        {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
+                        {% if expandable %}
+                        <i class="fas fa-chevron-right small text-muted me-1 xras-collapse-icon"
+                           style="transition: transform 0.2s;"></i>
+                        {% endif %}
+                        <button type="button" class="btn btn-link p-0 align-baseline"
+                                hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"
+                                hx-target="#projectDetailsModalBody"
+                                hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#projectDetailsModal">
+                            {{ r.projcode }}
+                        </button>
+                    </td>
+                    <td class="text-truncate{% if expandable %} cursor-pointer{% endif %}"
+                        style="max-width:0;" title="{{ r.title }}"
+                        {% if expandable %}{{ collapse_toggle(detail_id) }}{% endif %}>
+                        {{ r.title }}
+                    </td>
+                    <td {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
+                        <span class="badge bg-secondary">{{ r.action_type or '—' }}</span>
+                    </td>
+                    <td class="small{% if expandable %} cursor-pointer{% endif %}"
+                        style="white-space:nowrap;"
+                        title="{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}"
+                        {% if expandable %}{{ collapse_toggle(detail_id) }}{% endif %}>
+                        {{ r.received_time | fmt_date }}
+                    </td>
+
+                    <td class="small">
+                        {% if r.dismissed %}
+                        <span class="badge bg-secondary"
+                              title="{{ r.dismissed_reason }}">
+                            Dismissed by {{ r.dismissed_by }}
+                        </span>
+                        {% elif r.needs_activation %}
+                        <span class="badge bg-warning text-dark">Needs activation</span>
+                        {% elif r.project_active %}
+                        <span class="badge bg-success-subtle text-success-emphasis">Active</span>
+                        {% else %}
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis">Inactive</span>
+                        {% endif %}
+                    </td>
+
+                    <td class="small" style="white-space:nowrap;">
+                        {% if r.notified %}
+                        <span class="badge bg-success-subtle text-success-emphasis"
+                              title="Delivered to {{ r.delivered_count }} recipient(s)">
+                            {{ r.notified_age | fmt_ago }} ago
+                        </span>
+                        {% if r.failed_count %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis">
+                            {{ r.failed_count }} failed
+                        </span>
+                        {% endif %}
+                        {% elif r.failed_count %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis">Failed</span>
+                        {% elif r.notifiable %}
+                        {# Losing the Recipients column must not lose the one
+                           thing in it that was a problem rather than a fact:
+                           a notifiable action with nobody to send to. #}
+                        {% if not recipients.get(r.project_id) %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis"
+                              title="No lead or admin email address on file">
+                            No recipients
+                        </span>
+                        {% else %}
+                        <span class="badge bg-warning-subtle text-warning-emphasis">Not notified</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="text-muted" title="No notice is defined for this action type">—</span>
+                        {% endif %}
+                    </td>
+
+                    {% if may_manage %}
+                    <td class="text-end" style="white-space:nowrap;">
+                        {% if r.notifiable %}
+                        <button class="btn btn-sm btn-outline-secondary"
+                                title="Preview and send the notice for this action"
+                                hx-get="{{ url_for('allocations_dashboard.xras_notify_form', project_id=r.project_id, action_id=r.action_log_id) }}"
+                                hx-target="#auditDetailsModalBody"
+                                hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                            <i class="fas fa-envelope"></i>
+                            {{ 'Notify again' if r.notified else 'Notify' }}
+                        </button>
+                        {% endif %}
+                        {% if r.needs_activation and may_activate.get(r.project_id) %}
+                        <button class="btn btn-sm btn-outline-success"
+                                title="Activate this project"
+                                hx-post="{{ url_for('allocations_dashboard.xras_activate', project_id=r.project_id) }}"
+                                hx-confirm="Activate {{ r.projcode }}? Its allocations become usable right away, and the activation is added to the project's history."
+                                data-confirm-title="Activate project"
+                                data-confirm-variant="info"
+                                data-confirm-label="Activate"
+                                hx-swap="none">
+                            <i class="fas fa-circle-check"></i> Activate
+                        </button>
+                        {% endif %}
+                        {% if r.dismissed %}
+                        <button class="btn btn-sm btn-outline-secondary"
+                                title="Return this project to the worklist"
+                                hx-post="{{ url_for('allocations_dashboard.xras_restore', project_id=r.project_id) }}"
+                                hx-swap="none">
+                            <i class="fas fa-rotate-left"></i>
+                        </button>
+                        {% elif r.needs_activation %}
+                        <button class="btn btn-sm btn-outline-warning"
+                                title="This should not be activated via XRAS"
+                                hx-get="{{ url_for('allocations_dashboard.xras_dismiss_form', project_id=r.project_id) }}"
+                                hx-target="#auditDetailsModalBody"
+                                hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                            <i class="fas fa-eye-slash"></i>
+                        </button>
+                        {% endif %}
+                        <button class="btn btn-sm btn-outline-secondary"
+                                title="Activation history and comments"
+                                hx-get="{{ url_for('allocations_dashboard.xras_history', project_id=r.project_id) }}"
+                                hx-target="#auditDetailsModalBody"
+                                hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                            <i class="fas fa-comment"></i>
+                            {% if r.comment_count %}
+                            <span class="badge bg-secondary">{{ r.comment_count }}</span>
+                            {% endif %}
+                        </button>
+                    </td>
+                    {% endif %}
+                </tr>
+
+                {% if expandable %}
+                <tr class="collapse" id="{{ detail_id }}">
+                    <td colspan="7" class="bg-body-tertiary small">
+                        <div class="px-2 py-1">
+                            {% set people = recipients.get(r.project_id, []) %}
+                            <span class="text-muted text-uppercase small">Recipients</span>
+                            <div class="mt-1 mb-2">
+                                {% if people %}
+                                {% for p in people %}
+                                <code class="user-select-all me-2">{{ p.email }}</code>
+                                {% endfor %}
+                                {% elif r.notifiable %}
+                                <span class="text-danger-emphasis">
+                                    <i class="fas fa-circle-exclamation"></i>
+                                    No lead or admin email address on file
+                                </span>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </div>
+
+                            {% if r.notifications %}
+                            <span class="text-muted text-uppercase small">Delivery</span>
+                            <table class="table table-sm table-borderless mb-0 mt-1">
+                                {% for n in r.notifications %}
+                                <tr>
+                                    <td style="width:1%; white-space:nowrap;">
+                                        {{ status_badge(n.status) }}
+                                    </td>
+                                    <td><code class="user-select-all">{{ n.recipient }}</code>
+                                        {% if n.intended_recipient %}
+                                        <span class="text-warning-emphasis"
+                                              title="Redirected by NOTIFY_REDIRECT_TO">
+                                            (for {{ n.intended_recipient }})
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-muted" style="white-space:nowrap;">
+                                        {{ n.creation_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}
+                                    </td>
+                                    <td class="text-muted">{{ n.requested_by }}</td>
+                                    <td class="text-danger-emphasis">{{ n.error or '' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </table>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="card-body">
+        <div class="alert alert-light border small mb-0">
+            <strong>No XRAS activity in this window.</strong>
+            This table lists successfully processed XRAS actions, and it only sees
+            what the action log knows about — while <code>POST /actions</code> is in
+            capture mode and legacy is still the system of record, an empty list here
+            <strong>does not mean nothing is pending</strong>. Widen the window, clear
+            any filters, or check the action log below for failures.
+        </div>
+    </div>
+    {% endif %}
+</div>

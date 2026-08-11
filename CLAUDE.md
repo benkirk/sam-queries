@@ -88,7 +88,7 @@ sam-queries/
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
 │   ├── core/                # Context, base command classes, exit codes
 │   ├── user/ project/ allocations/ accounting/   # Command + display modules
-│   ├── notifications/ templates/                 # Expiration emails
+│   ├── notifications/                            # Expiration-notice display helpers
 │   └── cmds/                # Entry points (search.py, admin.py)
 ├── src/webapp/           # Flask web application (see src/webapp/README.md)
 │   ├── api/v1/              # REST blueprints (+ legacy-compat, see §API below)
@@ -444,8 +444,7 @@ for project, allocation, resource_name, days_remaining in get_projects_by_alloca
 ## Testing
 
 Suite size, timings, and tier breakdown live in **`docs/TESTING.md`** — keep
-counts there, not here. Currently ~3,100 collected tests in ~1.5 min under
-xdist.
+counts there, not here. `perf` and `stress` are gated off by default.
 
 ```bash
 # One-time setup: isolated test container + URL
@@ -462,8 +461,12 @@ pytest -n 0                                 # force serial
   (`join_transaction_mode="create_savepoint"`) — xdist workers share one DB
   safely. **Safety guard**: `tests/conftest.py` refuses any database other
   than the allowlisted mysql-test container (host port 3307).
-- **pytest.ini gates**: `-m "not perf"` (perf suite runs only on request),
-  `--maxfail=5`, 300 s per-test timeout, `-n auto`.
+- **pytest.ini gates**: `-m "not perf and not stress"` — both tiers run only on
+  request (`pytest -m perf -n 0`, `pytest -m stress`) — plus `--maxfail=5`,
+  300 s per-test timeout, `-n auto`. Each gated tier owns a declaration file the
+  tests check themselves against: `tests/perf/baselines.json` for query-count
+  limits, `tests/stress/scenarios.json` for what each scenario expects the
+  `xras_action_log` row to say.
 - **Route handlers use Flask-SQLAlchemy's `db.session`** (its own connection) —
   they only see committed snapshot rows, and route-level writes would COMMIT.
   House convention: HTTP-layer tests cover auth/validation/404/render smoke;
@@ -549,6 +552,44 @@ Jinja2 filters are registered in `create_app()` — use them in every template.
 
 **Do NOT** use raw `'{:,.0f}'.format(x)` or `.strftime(…)` in templates or CLI
 display code. (Migration history: `docs/plans/implemented/FORMAT_DISPLAY.md`.)
+
+---
+
+## Notifications — `sam.notify`
+
+One mailer, two consumers: `sam-admin project --upcoming-expirations --notify`
+and the webapp's XRAS activation Notify button. Design and measurements:
+`docs/plans/NOTIFICATION_FRAMEWORK.md`.
+
+```python
+from sam.notify import Message, Notifier, Recipient
+notifier = Notifier(ledger=NotificationLedger(lambda: Session(engine)))
+notifier.send(Message(kind='expiration', recipient=Recipient(...), subject=...,
+                      dedup_key='expiration:SCSG0001:2026-09-30:pi@x.edu'))
+```
+
+⚠️ **Fail-closed.** `NOTIFY_ENABLED` defaults to **false** everywhere; only
+`helm/values.yaml` sets it. Every dev container runs an obfuscated production
+snapshot, obfuscation does not remove the mail relay, and `ndir.ucar.edu`
+relays for the whole `128.117.0.0/16` — a mailer that defaults on can reach
+**any address on the internet**. `TestingConfig` also pins
+`NOTIFY_TRANSPORT='null'`, and an autouse fixture in `tests/conftest.py`
+makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
+
+| | |
+|---|---|
+| **Suppression** | every `Message` carries a `dedup_key`; `sent`/`redirected` suppress a repeat, `failed`/`suppressed` do not. `--force` overrides. |
+| **Stale `queued`** | a `queued` row suppresses only until `NOTIFY_QUEUED_STALE_SECONDS`. Without that horizon one crash suppresses a recipient **permanently** — the counter on the admin card is the same predicate inverted. |
+| **The key is pre-redirect** | built from the *intended* recipient, so `NOTIFY_REDIRECT_TO` cannot collapse a staging run onto one key. |
+| **Ledger transactions** | `notification_log` commits on its **own** session — mail cannot be un-sent by a rollback. This is the inverse of `xras_activation_event`, which commits *inside* `management_transaction`. |
+| **`preview()` writes no row** | a preview is not an attempt; a stray row would poison the dedup query. |
+| **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
+| **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
+
+❌ **DON'T** add eager imports to `sam/notify/__init__.py` — `sam/__init__.py`
+exports `NotificationLog`, so eager imports there put jinja2 and the
+transports into every ORM consumer's import graph.
+`tests/unit/test_notify_import_graph.py` is the gate.
 
 ---
 

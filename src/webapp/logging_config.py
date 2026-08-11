@@ -65,7 +65,13 @@ def configure_logging(app):
     # ERROR in total, so at the default INFO this adds no output at all — it
     # only makes LOG_LEVEL=DEBUG mean what it says. Named explicitly rather
     # than configuring root, which would also unmute every other library.
-    for plugin_pkg in ('job_history', 'fs_scans'):
+    # `sam` joins them for the same reason and one sharper one: sam.notify
+    # logs every send, suppression and failure, and without a handler here a
+    # delivery is completely unobservable from inside the app — the mailer
+    # would be the one subsystem whose whole job is side effects and whose
+    # diagnostics went nowhere. It is also the package the CLI shares, so a
+    # `sam-admin` run and a webapp send now report identically.
+    for plugin_pkg in ('job_history', 'fs_scans', 'sam'):
         plog = logging.getLogger(plugin_pkg)
         plog.handlers = []
         plog.setLevel(level)

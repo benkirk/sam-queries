@@ -1,0 +1,163 @@
+{# XRAS action details — HTMX fragment rendered into #auditDetailsModalBody.
+
+   Context:
+     r               a single row dict from get_recent_xras_actions
+     may_see_payload whether the viewer holds MANAGE_XRAS
+
+   Style matches partials/transaction_details_modal.html — the .project-stats-box /
+   .stat-item language, and empty fields omitted rather than rendered as "— ".
+
+   The raw payload is gated on MANAGE_XRAS in the ROUTE as well as here: without it
+   `r` has no `raw_payload` key at all, so the PII never reaches the response body.
+   The {% if %} below is the second of two locks, not the only one. #}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+
+{# Retitle the shared audit modal out-of-band — the same shell serves Transactions,
+   Adjustments and this. #}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    XRAS Action Details
+</h5>
+
+<div class="mb-3 d-flex align-items-center flex-wrap gap-2">
+    {% if r.action_type %}
+    <span class="badge bg-secondary fs-6">{{ r.action_type }}</span>
+    {% else %}
+    <span class="badge bg-secondary fs-6">unparsed</span>
+    {% endif %}
+    <span class="text-muted">·</span>
+    {{ status_badge(r.status) }}
+    {% if r.http_status %}
+    <span class="text-muted small">HTTP {{ r.http_status }}</span>
+    {% endif %}
+    {% if r.replay_of_id %}
+    <span class="badge bg-info text-dark" title="This row is a replay">
+        <i class="fas fa-redo me-1"></i>replay of #{{ r.replay_of_id }}
+    </span>
+    {% endif %}
+</div>
+
+<div class="project-stats-box" style="grid-template-columns: auto minmax(0, 1fr);">
+    <h6><i class="fas fa-info-circle"></i> Action Information</h6>
+
+    <div class="stat-item">
+        <span class="stat-label">Received:</span>
+        <span class="stat-value">{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</span>
+    </div>
+
+    {% if r.processed_time %}
+    <div class="stat-item">
+        <span class="stat-label">Processed:</span>
+        <span class="stat-value">{{ r.processed_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.action_type %}
+    <div class="stat-item">
+        <span class="stat-label">Action type:</span>
+        <span class="stat-value">{{ r.action_type }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.request_number %}
+    <div class="stat-item">
+        {# The two columns diverge exactly on the New path, which is why both exist. #}
+        <span class="stat-label">Request #:</span>
+        <span class="stat-value">{{ r.request_number }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.projcode_result %}
+    <div class="stat-item">
+        <span class="stat-label">Resulting projcode:</span>
+        <span class="stat-value">{{ r.projcode_result }}</span>
+    </div>
+    {% endif %}
+
+    <div class="stat-item">
+        <span class="stat-label">Status:</span>
+        <span class="stat-value">{{ r.status }}</span>
+    </div>
+
+    {% if r.http_status %}
+    <div class="stat-item">
+        <span class="stat-label">HTTP status:</span>
+        <span class="stat-value">{{ r.http_status }}</span>
+    </div>
+    {% endif %}
+
+    <div class="stat-item">
+        <span class="stat-label">Posted by:</span>
+        <span class="stat-value"><code>{{ r.remote_actor }}</code></span>
+    </div>
+
+    {% if r.processed_by %}
+    <div class="stat-item">
+        <span class="stat-label">Replayed by:</span>
+        <span class="stat-value">{{ r.processed_by }}</span>
+    </div>
+    {% endif %}
+
+    <div class="stat-item">
+        <span class="stat-label">Action ID:</span>
+        <span class="stat-value"><code>{{ r.action_log_id }}</code></span>
+    </div>
+
+    {% if r.replay_of_id %}
+    <div class="stat-item">
+        <span class="stat-label">Replay of:</span>
+        <span class="stat-value">
+            {# Navigating the lineage without leaving the modal: swap this same
+               body for the parent's. #}
+            <button class="btn btn-link p-0"
+                    hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.replay_of_id) }}"
+                    hx-target="#auditDetailsModalBody"
+                    hx-swap="innerHTML">
+                <code>#{{ r.replay_of_id }}</code>
+            </button>
+        </span>
+    </div>
+    {% endif %}
+
+    {% if r.replay_count %}
+    <div class="stat-item">
+        <span class="stat-label">Replays:</span>
+        <span class="stat-value">{{ r.replay_count }}</span>
+    </div>
+    {% endif %}
+
+    {% if r.errors %}
+    <div class="stat-item stat-item-block">
+        <span class="stat-label d-block mb-1">
+            Errors ({{ r.errors | length }}) — verbatim, in the order XRAS was told:
+        </span>
+        <ol class="stat-value mb-0 ps-3 small" style="font-weight:normal;">
+            {% for e in r.errors %}
+            <li><code>{{ e }}</code></li>
+            {% endfor %}
+        </ol>
+    </div>
+    {% endif %}
+
+    {% if may_see_payload %}
+    <div class="stat-item stat-item-block">
+        <span class="stat-label d-block mb-1">
+            Raw payload
+            <span class="text-muted small fw-normal">
+                — the request body verbatim, before parsing
+            </span>
+        </span>
+        <pre class="stat-value mb-0 p-2 bg-body-tertiary border rounded"
+             style="white-space:pre-wrap; word-break:break-all; font-size:0.75rem; font-weight:normal; max-height:20rem; overflow:auto;">{{ r.raw_payload }}</pre>
+    </div>
+    {% else %}
+    <div class="stat-item stat-item-block">
+        <span class="stat-label d-block mb-1">Raw payload:</span>
+        <span class="stat-value text-muted small" style="font-weight:normal;">
+            <i class="fas fa-lock me-1"></i>
+            Hidden — the payload carries participant names, emails and phone
+            numbers. Requires the XRAS management permission.
+        </span>
+    </div>
+    {% endif %}
+
+</div>

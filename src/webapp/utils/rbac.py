@@ -151,6 +151,25 @@ class Permission(Enum):
     MANAGE_SYSTEM_STATUS = "manage_system_status"  # Update system status data (collector/API)
     EDIT_SYSTEM_STATUS = "edit_system_status"  # GUI create/edit/delete outages
     VIEW_SYSTEM_CONFIG = "view_system_config"  # Read-only Configuration tab on Admin dashboard
+    # XRAS integration triage. Split in two on purpose, because reading the audit
+    # trail, reading the payloads, and re-submitting one are three different
+    # authorities:
+    #
+    #   VIEW_XRAS    the Allocations > XRAS page — the action log, its filters and
+    #                its error lists. Named ``view_*`` so ALL_VIEW auto-grants it to
+    #                the operator bundles: this is an audit surface and the people
+    #                who already read every other audit table should read this one.
+    #
+    #   MANAGE_XRAS  the raw payload panel AND the replay button. The payload is the
+    #                request body verbatim and carries real PII — participant names,
+    #                emails, phone numbers, grant-officer contacts — so it is gated
+    #                above the audit view rather than with it. Replay is a write.
+    #
+    # MANAGE_XRAS is picked up by NO ``ALL_*`` aggregate (they match ``view_``/
+    # ``edit_``/``create_``/``delete_`` prefixes on the *value*, and there is no
+    # ALL_MANAGE), so it must be granted explicitly — see _ALLOCATION_ADMIN below.
+    VIEW_XRAS = "view_xras"
+    MANAGE_XRAS = "manage_xras"
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 
@@ -233,6 +252,13 @@ _ALLOCATION_ADMIN: Set[Permission] = (
         Permission.DELETE_ORG_METADATA,
         Permission.DELETE_CONTRACTS,
         Permission.IMPERSONATE_USERS,
+        # XRAS payloads + replay. Explicit because no ALL_* aggregate matches a
+        # ``manage_`` prefix — which is the behaviour we want: an integration-admin
+        # capability should not be swept in by a naming coincidence. This tier is
+        # where it belongs: NUSD fields the XRAS failure mail from hdt@ucar.edu
+        # today, and XRAS actions are allocation provisioning by another name.
+        # (VIEW_XRAS needs no entry — ALL_VIEW above already carries it.)
+        Permission.MANAGE_XRAS,
     }
 )
 
@@ -341,6 +367,15 @@ USER_FACILITY_PERMISSIONS: Dict[str, Dict[str, Set[Permission]]] = {
             Permission.VIEW_FACILITIES,
             Permission.VIEW_USERS,
             Permission.VIEW_GROUPS,
+            # NOTE — VIEW_XRAS / MANAGE_XRAS are deliberately absent, and this is
+            # the one VIEW_* domain the "add every new one here" rule above does
+            # NOT apply to. An XRAS action is not facility-scopable: it arrives
+            # before we know its facility (a New action has no project yet, only a
+            # requestNumber), and a malformed body has no facility at all — there
+            # is nothing to intersect a scope against. Rather than invent a
+            # fallback rule for the unscopable rows, the XRAS routes gate on plain
+            # require_permission(), so a facility-scoped manager gets a clean 403
+            # instead of a partial, misleading view of an integration log.
         },
     },
 }

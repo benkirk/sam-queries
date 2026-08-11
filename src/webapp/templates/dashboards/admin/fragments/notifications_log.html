@@ -1,0 +1,131 @@
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{#
+  Notification delivery log — HTMX fragment.
+
+  Context:
+    rows            list[NotificationLog], newest first
+    total           the table's real filtered row count
+    page            {'n', 'per_page', 'days'}
+    filters         what the route parsed
+    *_facets        [{'value','count'}], SELF-EXCLUDING (see the route)
+    form_id         the filter form the chips write into
+    target_id       this container's id, for pagination swaps
+    fragment_url    this endpoint
+    has_more        whether another page exists
+
+  ⚠️  SYSTEM_ADMIN territory: every row names a real person's address. The
+  gate is on the route, not here.
+
+  The headline count is `total` — the table's real filtered row count, and
+  deliberately NOT any facet's total: with each facet unscoped in one
+  dimension, none of those is the number of rows on screen.
+#}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-1 small">
+    <span class="text-muted">Showing</span>
+    <strong>{{ total | fmt_number }}</strong>
+    <span class="text-muted">
+        attempt{{ '' if total == 1 else 's' }} in the last {{ page.days }} day{{ '' if page.days == 1 else 's' }}
+    </span>
+</div>
+
+<div class="facet-grid mb-2">
+    {{ facet_row('Status', status_facets, form_id, 'status',
+                 filters.statuses or [], badge=True) }}
+    {{ facet_row('Kind', kind_facets, form_id, 'kind', filters.kinds or []) }}
+    {{ facet_row('Channel', channel_facets, form_id, 'channel',
+                 filters.channels or []) }}
+</div>
+
+<div id="notificationsTable">
+    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+        <thead class="table-subtle">
+            <tr>
+                <th style="white-space:nowrap;">Time</th>
+                <th style="width:140px;">Kind</th>
+                <th style="width:120px;">Status</th>
+                <th style="width:90px;">Channel</th>
+                <th style="width:220px;">Recipient</th>
+                <th style="width:99%;">Subject</th>
+                <th style="width:110px;">Project</th>
+                <th style="width:120px;">Requested by</th>
+                <th class="text-end" style="white-space:nowrap;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                {# The column shows the date; the tooltip carries the time of
+                   day, which is what separates a batch sent in one second. #}
+                <td style="white-space:nowrap;"
+                    title="{{ r.creation_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
+                    {{ r.creation_time | fmt_date }}
+                </td>
+                <td><span class="badge bg-secondary">{{ r.kind }}</span></td>
+                <td>{{ status_badge(r.status) }}</td>
+                <td class="text-muted small">{{ r.channel }}</td>
+                <td>
+                    <code class="user-select-all small">{{ r.recipient }}</code>
+                    {% if r.intended_recipient %}
+                    {# The whole point of keeping `redirected` distinct: this
+                       row reached `recipient`, but it was FOR someone else. #}
+                    <div class="text-muted small" title="Intended recipient">
+                        <i class="fas fa-arrow-right-arrow-left"></i>
+                        for {{ r.intended_recipient }}
+                    </div>
+                    {% endif %}
+                </td>
+                <td class="small">{{ r.subject or '—' }}</td>
+                <td>
+                    {% if r.projcode %}
+                    <code class="small">{{ r.projcode }}</code>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td class="text-muted small">{{ r.requested_by }}</td>
+                <td class="text-end" style="white-space:nowrap;">
+                    <button class="btn btn-sm btn-outline-secondary"
+                            title="Delivery detail"
+                            hx-get="{{ url_for('admin_dashboard.notification_detail', log_id=r.notification_log_id) }}"
+                            hx-target="#auditDetailsModalBody"
+                            hx-swap="innerHTML"
+                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                        <i class="fas fa-magnifying-glass"></i>
+                    </button>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" class="text-muted text-center py-4">
+                    No delivery attempts match these filters.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if page.n > 1 or has_more %}
+<div class="d-flex justify-content-between align-items-center mt-2 small">
+    <div class="text-muted">Page {{ page.n }}</div>
+    <div class="btn-group btn-group-sm">
+        <button class="btn btn-outline-secondary"
+                {% if page.n <= 1 %}disabled{% endif %}
+                hx-get="{{ fragment_url }}?page={{ page.n - 1 }}"
+                hx-include="#{{ form_id }}"
+                hx-target="#{{ target_id }}"
+                hx-swap="innerHTML">
+            <i class="fas fa-chevron-left"></i> Newer
+        </button>
+        <button class="btn btn-outline-secondary"
+                {% if not has_more %}disabled{% endif %}
+                hx-get="{{ fragment_url }}?page={{ page.n + 1 }}"
+                hx-include="#{{ form_id }}"
+                hx-target="#{{ target_id }}"
+                hx-swap="innerHTML">
+            Older <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+</div>
+{% endif %}

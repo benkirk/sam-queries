@@ -54,6 +54,23 @@ class SAMWebappConfig(SAMConfig):
     # the create POST route 403s. Lets ops temporarily freeze project creation.
     CREATE_PROJECTS_ENABLED = os.getenv('CREATE_PROJECTS_ENABLED', '1').lower() in ('1', 'true', 'yes')
 
+    # POST /api/xras/v1/actions capture mode. When ON (the default) the endpoint
+    # authenticates, parses and writes its xras_action_log row, then returns 200
+    # WITHOUT dispatching to a handler — legacy SAM is still the system of record
+    # for these actions until cutover, and the audit rows are how we harvest real
+    # payloads in the meantime. Flip OFF per handler as each one lands.
+    XRAS_ACTIONS_CAPTURE_ONLY = os.getenv('XRAS_ACTIONS_CAPTURE_ONLY', '1').lower() in ('1', 'true', 'yes')
+
+    # Per-type triage lever for POST /api/xras/v1/actions. NOT a rollout mechanism —
+    # all six handlers ship enabled in one deploy, because XRAS repoints its base URL
+    # once and every action type arrives at the same moment. This exists so a
+    # misbehaving payload class can be parked by config instead of by revert: a
+    # disabled type takes the manual-fallback path, audited and visible, and a human
+    # applies it. 'all' (the default), 'none', or a comma-separated list of action
+    # types — 'Extension,Supplement'. An unknown token is logged and dropped, which
+    # leaves that type DISABLED rather than enabling something nobody meant to.
+    XRAS_ACTIONS_ENABLED = os.getenv('XRAS_ACTIONS_ENABLED', 'all')
+
     # OIDC configuration (active when AUTH_PROVIDER='oidc')
     OIDC_CLIENT_ID = os.getenv('OIDC_CLIENT_ID', '')
     OIDC_CLIENT_SECRET = os.getenv('OIDC_CLIENT_SECRET', '')
@@ -294,6 +311,19 @@ class ProductionConfig(SAMWebappConfig):
                 "Generate keys with: python scripts/gen_api_key.py",
                 stacklevel=2,
             )
+        # Notifications are fail-closed (NOTIFY_ENABLED defaults false), so a
+        # dropped env var means "no mail" rather than "mail the wrong people".
+        # That is the right way round, but it is silent — warn so the disabled
+        # state is noticed within a day rather than at the next expiration
+        # round. docs/plans/NOTIFICATION_FRAMEWORK.md § 3.
+        if os.getenv('NOTIFY_ENABLED', '0').lower() not in ('1', 'true', 'yes'):
+            import warnings
+            warnings.warn(
+                "NOTIFY_ENABLED is not set. No notification will be sent — "
+                "expiration notices and XRAS activation mail will be recorded "
+                "as 'suppressed'. Set NOTIFY_ENABLED=1 to enable delivery.",
+                stacklevel=2,
+            )
         # Fail CLOSED: production must run OIDC, never stub/ldap [PR295 P0-2].
         # StubAuthProvider accepts any non-empty password, so a single dropped
         # env var must never silently downgrade a public deployment to it.
@@ -370,6 +400,29 @@ class TestingConfig(SAMWebappConfig):
     # test container does not provide. Disable eager load at startup;
     # route-level tests stub the service layer instead.
     FS_SCANS_ENABLED = False
+
+    # Notifications OFF and pinned to the recording transport, on the same
+    # reasoning as the zeroed cache TTLs above: a test tier that CAN reach
+    # shared state is a test tier that eventually does. Here "shared state"
+    # is the internet — ndir.ucar.edu relays for the whole UCAR /16 and
+    # accepts arbitrary external recipients
+    # (docs/plans/NOTIFICATION_FRAMEWORK.md § 9). Belt and braces with the
+    # autouse no-socket fixture in tests/conftest.py, which is the gate that
+    # holds even when a test builds its own config.
+    NOTIFY_ENABLED   = False
+    NOTIFY_TRANSPORT = 'null'
+
+    # Pinned for the same reason, and because it was measurably NOT pinned:
+    # `SAMWebappConfig.XRAS_ACTIONS_CAPTURE_ONLY` reads os.getenv at class-body
+    # time, so a developer with XRAS_ACTIONS_CAPTURE_ONLY=0 in their `.env` —
+    # which is exactly what a local dispatch smoke test needs — silently ran
+    # the whole API tier against the dispatching arm and watched ten capture
+    # tests fail for reasons that had nothing to do with their change.
+    #
+    # Tests that want the other arm override `app.config` explicitly
+    # (tests/api/test_xras_access.py::TestDispatchArms), which is the right
+    # way round: the default is deterministic and the exception is declared.
+    XRAS_ACTIONS_CAPTURE_ONLY = True
 
 
 _configs = {

@@ -23,6 +23,7 @@ from cli.project.commands import (
 from cli.accounting.commands import AccountingAdminCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
 from cli.contracts.commands import ContractsAuditCommand
+from cli.xras.commands import XrasCommand
 
 # Default base URL for the running webapp (matches the systems-integration
 # shell client, scripts/apis/systems_integration_apis.sh).
@@ -95,7 +96,10 @@ def user(ctx: Context, username, validate, list_projects, verbose, provisioning)
 @click.option('--dry-run', is_flag=True, help='Preview emails without sending (requires --notify)')
 @click.option('--email-list', type=str, help='Comma-separated list of additional email recipients')
 @click.option('--deactivate', is_flag=True, help='Deactivate expired projects (requires --recent-expirations)')
-@click.option('--force', is_flag=True, help='Skip confirmation prompt (requires --deactivate)')
+@click.option('--force', is_flag=True,
+              help='With --deactivate: skip the confirmation prompt. '
+                   'With --notify: re-send to recipients already notified '
+                   'about this expiration (overrides suppression).')
 @click.option('--since', type=click.DateTime(formats=['%Y-%m-%d']), default=None,
               help='Look back to this date for --recent-expirations (e.g., 2024-01-01)')
 @click.option('--list-users', is_flag=True, help='List all users')
@@ -134,9 +138,11 @@ def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_reso
         ctx.console.print("Error: --deactivate requires --recent-expirations", style="bold red")
         sys.exit(1)
 
-    # Validate that --force requires --deactivate
-    if force and not deactivate:
-        ctx.console.print("Error: --force requires --deactivate", style="bold red")
+    # --force means "skip the protection" on both surfaces that have one:
+    # the deactivation confirmation prompt, and notification suppression.
+    if force and not (deactivate or notify):
+        ctx.console.print("Error: --force requires --deactivate or --notify",
+                          style="bold red")
         sys.exit(1)
 
     # DB-wide tree audit — no projcode (the invariant spans trees, not projects)
@@ -156,7 +162,8 @@ def project(ctx: Context, projcode, validate, reconcile, audit_trees, audit_reso
             facility_filter=facility_filter,
             notify=notify,
             dry_run=dry_run,
-            email_list=email_list
+            email_list=email_list,
+            force=force,
         )
         sys.exit(exit_code)
 
@@ -660,6 +667,94 @@ def cache(ctx: Context, refresh: bool, category, base_url):
         table.add_row(cat, str(count))
     ctx.console.print(table)
     sys.exit(EXIT_SUCCESS)
+
+
+@cli.command()
+@click.option('--show', 'action_id', type=int, default=None,
+              help='[detail] Show one action by id')
+@click.option('--payload', 'show_payload', is_flag=True,
+              help='[detail] Include the raw payload (requires --show; contains PII)')
+@click.option('--replay', type=int, default=None,
+              help='[write] Re-submit a stored payload as a new, linked audit row')
+@click.option('--summary', is_flag=True,
+              help='[rollup] Counts by status and action type')
+@click.option('--validate-mapping', is_flag=True,
+              help='[check] Report SAM resources XRAS cannot name (pre-cutover gate)')
+@click.option('--status', multiple=True,
+              type=click.Choice(['received', 'processed', 'manual',
+                                 'failed', 'replayed']),
+              help='[list/rollup] Filter by status (repeatable)')
+@click.option('--type', 'action_type', multiple=True,
+              help='[list/rollup] Filter by action type, e.g. New (repeatable)')
+@click.option('--request', 'request_number', type=str, default=None,
+              help='[list] Filter by XRAS request number / projcode')
+@click.option('--last', type=str, default=None,
+              help='[list/rollup] Time window, e.g. 7d, 24h, 2w (default: all time)')
+@click.option('--limit', type=int, default=50, show_default=True,
+              help='[list] Maximum rows to return')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@pass_context
+def xras(ctx: Context, action_id, show_payload, replay, summary, validate_mapping,
+         status, action_type, request_number, last, limit, verbose):
+    """Inspect and replay the XRAS action log.
+
+    \b
+    Reads xras_action_log — the audit trail written by POST /api/xras/v1/actions.
+    Every post lands there before dispatch, so a request that fails is still
+    recorded and still replayable.
+
+    \b
+    Modes:
+      (default)    list recent actions
+      --show ID    one action in full, with its replay lineage
+      --summary    counts by status, and by status x action type
+      --replay ID  re-submit that action's stored bytes
+
+    \b
+    Replay honours XRAS_ACTIONS_CAPTURE_ONLY. While capture mode is on — which it
+    is until the POST cutover — legacy SAM is still applying these actions, so a
+    replay re-validates the stored payload and records the outcome WITHOUT
+    dispatching. That is deliberate: dispatching would double-apply an action
+    legacy has already performed.
+
+    \b
+    Examples:
+      sam-admin xras --last 7d
+      sam-admin xras --status failed --type Extension
+      sam-admin xras --show 42 --payload
+      sam-admin xras --summary --last 30d
+      sam-admin xras --validate-mapping
+      sam-admin xras --replay 42
+      sam-admin --format json xras --summary | jq .by_status
+    """
+    if verbose:
+        ctx.verbose = True
+
+    if show_payload and action_id is None:
+        ctx.console.print('Error: --payload requires --show', style='bold red')
+        sys.exit(EXIT_ERROR)
+
+    # Writes have no JSON contract: the envelope is for consumers reading state,
+    # and a machine-readable success receipt for a side-effecting command invites
+    # scripting a write loop that no one reviewed. Same rule as src/cli/README.md.
+    if replay is not None and ctx.output_format == 'json':
+        import json
+        click.echo(json.dumps({'error': 'json_unsupported_for_writes'},
+                              indent=2, sort_keys=False))
+        sys.exit(EXIT_ERROR)
+
+    sys.exit(XrasCommand(ctx).execute(
+        action_id=action_id,
+        show_payload=show_payload,
+        replay=replay,
+        summary=summary,
+        validate_mapping=validate_mapping,
+        status=status,
+        action_type=action_type,
+        request_number=request_number,
+        last=last,
+        limit=limit,
+    ))
 
 
 if __name__ == '__main__':

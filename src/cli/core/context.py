@@ -1,6 +1,5 @@
 """Context class for SAM CLI."""
 
-import os
 import sys
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -26,10 +25,11 @@ class Context:
         self.console = Console()
         self.stderr_console = Console(file=sys.stderr)
 
-        # Email configuration from environment
-        self.mail_server = os.getenv('MAIL_SERVER', 'ndir.ucar.edu')
-        self.mail_port = int(os.getenv('MAIL_PORT', '25'))
-        self.mail_use_tls = os.getenv('MAIL_USE_TLS', 'false').lower() == 'true'
-        self.mail_username = os.getenv('MAIL_USERNAME')
-        self.mail_password = os.getenv('MAIL_PASSWORD')
-        self.mail_from = os.getenv('MAIL_DEFAULT_FROM', 'sam-admin@ucar.edu')
+        # NO mail configuration here, deliberately.
+        #
+        # This block used to re-read the same six MAIL_* vars off os.getenv
+        # with the same defaults as src/config.py:31-37 — a SECOND source of
+        # truth, which is why the CLI never honoured a SAMConfig change (and
+        # why MAIL_USE_TLS could be flipped in one place and stay false in the
+        # other). sam.notify.NotifyConfig replaces both and reads Flask config
+        # or the environment, so the CLI and the webapp cannot disagree.

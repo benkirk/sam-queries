@@ -33,7 +33,18 @@ jobs:
       - name: TruffleHog scan
         uses: trufflesecurity/trufflehog@v3.96.0
         with:
-          extra_args: --only-verified --results=verified,unknown
+          # --exclude-detectors=lob: the Lob (postal mail API) detector matches
+          # `test_` followed by 35 word characters, so ANY Python test method
+          # named exactly 40 characters is reported -- as `verified`, since the
+          # Lob verifier accepts them. 99 such names are already committed here.
+          # They pass today only because TruffleHog scans a commit range rather
+          # than the tree, so a PR that adds or touches one fails out of
+          # nowhere; renaming does not help, because every commit in the range
+          # is scanned and so are commit messages. SAM does not use Lob.
+          extra_args: >-
+            --only-verified
+            --results=verified,unknown
+            --exclude-detectors=lob
 
   lint:
     name: Lint
