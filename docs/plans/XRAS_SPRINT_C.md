@@ -1346,11 +1346,12 @@ pseudonym-numbering reason in `scrub_payload.py`'s docstring.
   matches legacy (there is no `DateAdjustProjectActionService`). Its shape is
   Extension-like: dates, `resources: []`. Whether to service it is an open question
   for ACCESS.
-- ⚠️ **One `actionId` spans a failure and its retry.** `388865` arrives twice with
-  different bodies — `NCAR4236` (legacy failed it) and `UCHI0020` (legacy applied it
-  as an update). `xras_action_log.action_id` is therefore **not** an identity key, and
-  it is the only direct evidence we hold on the broker-retry question that gate 4 of
-  the runbook calls the riskiest open unknown.
+- ⚠️ **One `actionId` spans a failure and the re-push after it.** `388865` arrives
+  twice with different bodies — `NCAR4236` (legacy failed it) and `UCHI0020` (legacy
+  applied it as an update). `xras_action_log.action_id` is therefore **not** an
+  identity key. ACCESS has since confirmed that POSTs are human-triggered and never
+  auto-retried, so this is one admin pushing the button twice — see the runbook's
+  gate 4, now closed.
 - **Ambiguous lead roles occur in production.** Two payloads name two current holders
   of a lead role. Neither routes to a roster-building service, so `ambiguous_role`
   never fires — but the shape is real, and legacy would have silently picked by array

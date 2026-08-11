@@ -155,9 +155,12 @@ def dedupe(records, seen_digests=()):
     Measured in that same forward: ``actionId=388865`` arrives twice with *different
     bodies* — once as ``requestNumber=NCAR4236``, which legacy failed, and once as
     ``requestNumber=UCHI0020``, which legacy applied as an update. So one action id
-    spans a failure and its retry, and the two are different posts with different
-    outcomes. Deduping on it silently discarded the failure. See
+    spans a failure and the re-push that followed it, and the two are different posts
+    with different outcomes. Deduping on it silently discarded the failure. See
     :func:`action_id_collisions`, which reports the pattern rather than hiding it.
+
+    (A re-push, not an automatic retry: ACCESS confirmed on 2026-08-11 that XRAS
+    POSTs are human-triggered from xras_admin and never retried automatically.)
 
     *seen_digests* holds payloads already staged elsewhere, so re-extracting a forward
     that overlaps the existing corpus does not produce a second copy under a new name.

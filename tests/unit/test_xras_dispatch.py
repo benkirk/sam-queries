@@ -341,6 +341,25 @@ class TestDateAdjustmentParks:
     def test_all_four_are_present(self):
         assert len(self.NAMES) == 4, self.NAMES
 
+    def test_it_is_declared_but_deliberately_unserviced(self, session):
+        """Listed in the vocabulary, absent from the selector — and that pairing is
+        the point, not an oversight half-finished.
+
+        It is in ``XRAS_ACTION_TYPES`` so the XRAS tab offers it as a filter chip
+        before the first row exists. It has no ``select_service`` arm because legacy
+        has no serviceable for it, and inventing one would be new behaviour under a
+        cutover with no observation window.
+
+        If a future change adds a dispatch arm, this test fails and asks for the
+        decision to be made deliberately. Read
+        ``sam.queries.xras_actions.XRAS_ACTION_TYPES``' note first: routing it to
+        ``extend`` is one line and wrong twice over.
+        """
+        from sam.queries.xras_actions import XRAS_ACTION_TYPES
+        assert 'Date Adjustment' in XRAS_ACTION_TYPES
+        for name in self.NAMES:
+            assert select_service(session, load_fixture(name)) is None
+
     @pytest.mark.parametrize('name', NAMES)
     def test_the_wire_really_sends_this_action_type(self, name):
         """From the bytes, not from the subject line that first revealed it."""
@@ -389,11 +408,18 @@ class TestOneActionIdSpansAFailureAndItsRetry:
        "have I seen this action before?" (``XRAS_STRESS_AND_SCHEMA.md`` § *Verdicts*),
        and the honest answer here is "yes, but not with this body". Any triage that
        treats a repeated ``action_id`` as a duplicate post would collapse a failure
-       and its successful retry into one row.
-    2. **It is the only direct evidence we hold on broker retry behaviour**, which the
-       cutover runbook calls the riskiest open unknown (gate 4, issue #433). It shows
-       the broker does re-post after a failure, and that the body can change between
-       attempts. It does **not** show the retry interval or the attempt limit.
+       and its retry into one row.
+    2. **A repeat is a person, not a machine.** ACCESS answered the retry question on
+       2026-08-11 (Steven Peckins, XRAS): *"POSTs are not automatically retried. They
+       are triggered by a human — a user in xras_admin pushes a button."* So this pair
+       is one admin pushing the button, seeing it fail, and pushing it again once the
+       project existed — not a broker retry loop.
+
+       ⚠️ An earlier version of this docstring called it *"the only direct evidence we
+       hold on broker retry behaviour"*. That was written before Steve's reply and is
+       wrong in the direction that mattered: it implied an automatic retry, which is
+       the loop the runbook feared. There is no such loop. The observation itself
+       stands — same id, two bodies, two services.
     """
 
     PAIR = ('new_ncar4236_failed.json', 'new_uchi0020_ok.json')
