@@ -61,8 +61,11 @@ DATA_ACCESS = 145145
 
 #: The (opportunity, allocation type, panel) triple copied from
 #: `new_ncar4253_ok.json`, which is a real payload that resolves an exact
-#: (panel, type) pair. Do not improvise one — six of the eight corpus payloads
-#: resolve and two do not, and the difference is not guessable.
+#: (panel, type) pair. Do not improvise one — the corpus reaches only 5 of the 11
+#: allocation-type strategies and the pair a given triple lands on is not guessable.
+#: (Measured again at 41 payloads: still 5. The chain agrees with production on all
+#: 30 corpus projects that exist in the snapshot, so copying a real triple is the
+#: reliable way to get a resolvable one.)
 OPPORTUNITY = 'Small Allocation (University)'
 ALLOCATION_TYPE = 'Small'
 PANEL = {'type': 'Technical', 'name': 'CISL Resource Support',

@@ -1318,14 +1318,57 @@ a DBA ticket either way; choosing the wrong shape to save one would cost two.
 
 ## What the corpus still does not cover
 
-- **No co-PI role has ever appeared** in any of the eight payloads, so its `roleType`
-  spelling is unknown. This one touches the New/Update roster build.
-- **`Transfer`, `Renewal` and `Advance` have zero samples.** Transfer routes to manual, so
-  it is not blocking; `Renewal` shares the Update path.
+✅ **The bulk forward arrived 2026-08-11** (Travis Fair, three messages, 82 attachments
+→ 36 unique actions → **41-payload corpus**). This section is rewritten against what it
+actually settled. Extraction is now `scripts/xras/extract_email_payloads.py`; the
+corpus is still grown by scrubbing the *whole* staged set in one run, for the
+pseudonym-numbering reason in `scrub_payload.py`'s docstring.
 
-Both close the same two ways: a bulk forward from `hdt@ucar.edu` (the query and the ask
-are in `XRAS_SPRINT_A.md` § 3b — include the manual-fallback subject, which is how the
-Adjustment payload nearly went unnoticed), or production capture once the DDL lands.
+**Closed, or as closed as this site can make them:**
+
+- **The co-PI spelling is still unknown — and that is now the finding.** The corpus
+  `roleType` vocabulary is exactly `PI` (45), `Allocation Manager` (43), `User` (13)
+  across 41 payloads and ~35 distinct projects. Not a small sample any more: this site
+  does not send a co-PI role. The synthetic `copi_role_spelling` scenario stays, and
+  its note says so.
+- **`Renewal` still has zero samples as an `actionType`** — but three payloads carry
+  `requestType: 'Renewal'`. They route to extend / supplement / park, because
+  `requestType` selects nothing. That is the strongest available restatement of "only
+  `actionType` may dispatch", and it is pinned by
+  `test_request_type_renewal_never_implies_a_renewal_action`.
+- **`Transfer` and `Advance`: still zero.** Unchanged, and still not blocking.
+
+**Opened:**
+
+- ⚠️ **`Date Adjustment` is a wire `actionType` nobody knew existed.** Four samples,
+  absent from `XRAS_ACTION_TYPES` and from every doc. It reached us only through the
+  manual-fallback subject — exactly the mechanism § 1.4 predicted. It **parks**, which
+  matches legacy (there is no `DateAdjustProjectActionService`). Its shape is
+  Extension-like: dates, `resources: []`. Whether to service it is an open question
+  for ACCESS.
+- ⚠️ **One `actionId` spans a failure and its retry.** `388865` arrives twice with
+  different bodies — `NCAR4236` (legacy failed it) and `UCHI0020` (legacy applied it
+  as an update). `xras_action_log.action_id` is therefore **not** an identity key, and
+  it is the only direct evidence we hold on the broker-retry question that gate 4 of
+  the runbook calls the riskiest open unknown.
+- **Ambiguous lead roles occur in production.** Two payloads name two current holders
+  of a lead role. Neither routes to a roster-building service, so `ambiguous_role`
+  never fires — but the shape is real, and legacy would have silently picked by array
+  order where SAM 422s.
+- **One empty string exists after all.** `grants[].subAwardNumber` in one payload. The
+  `null`-not-`""` reading still holds for every field SAM reads.
+- **`fosName` is not byte-equal to SAM's string.** One of 92 entries differs in case
+  (`Ecological studies` vs `Ecological Studies`). Harmless — resolution keys on
+  `fosNum` — but `area_of_interest` is `utf8mb3_bin`, so a name-keyed `LIKE` would
+  miss.
+
+**Unmoved, and now measured rather than excused:**
+
+- **Still 5 of the 11 allocation-type strategies**, at 5× the payloads. Six strategies
+  see no traffic at this site. The chain now agrees with production on all **30** corpus
+  projects present in the snapshot (was 6), with zero disagreements.
+
+What remains closes only one way now: production capture after cutover.
 
 ---
 

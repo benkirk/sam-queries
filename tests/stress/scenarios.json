@@ -1,299 +1,330 @@
 {
-    "_comment": [
-        "XRAS stress scenarios. Mirrors tests/perf/baselines.json in shape and role.",
-        "",
-        "The organising principle is NOT 'stress the handlers'. It is:",
-        "",
-        "    stress the handlers and assert on the AUDIT ROW.",
-        "",
-        "Every scenario declares what `xras_action_log` must say afterwards, because",
-        "that row is the only artefact that survives into triage week. Cutover is an",
-        "abrupt repoint with no observation window: if an operator cannot answer a",
-        "question from the row alone, the answer is a missing column — and the DBA",
-        "ticket is still unfiled, which is the last cheap window to learn that.",
-        "",
-        "Each entry:",
-        "  what        — one line, what is being pushed",
-        "  expect      — the terminal audit-row state: received|processed|manual|failed",
-        "  http        — the status code the route answers",
-        "  triage      — the operator question this scenario answers FROM THE ROW",
-        "  verdict     — 'answered' when the row suffices; otherwise the column that",
-        "                would be needed. A 'verdict' that names a column is schema",
-        "                evidence, NOT a failing test.",
-        "",
-        "Run:  pytest -m stress -n 0",
-        "",
-        "-n 0 is deliberate in the docs but not enforced: these write audit rows on",
-        "their own connection, and the `action_log` fixture deletes by captured PK",
-        "precisely so they are xdist-safe. See tests/xras_audit.py."
-    ],
-
-    "oversize_error_messages": {
-        "what": "1000 resources on a New, each with an unmapped key AND a bad amount",
-        "expect": "failed",
-        "http": 422,
-        "triage": "Did the audit write survive an error list larger than the column?",
-        "verdict": "answered",
-        "notes": [
-            "Under STRICT_TRANS_TABLES (confirmed on) an oversized value does not",
-            "truncate, it RAISES — losing the audit row entirely, which is the one",
-            "failure this table cannot afford.",
-            "",
-            "WHICH PATH reaches the condition was the useful finding, and it moved",
-            "once the resource key field name was corrected:",
-            "  Supplement  1.00x  — a failed key resolution `continue`s before the",
-            "                       amount is read, so one message per resource,",
-            "                       against an entry of almost identical length.",
-            "                       NOT reachable: the body hits its limit first.",
-            "  New         1.79x  — `_plan_allocations` calls resolve_resource AND",
-            "                       transaction_amount unconditionally, so one",
-            "                       resource yields TWO messages. Measured 59,090",
-            "                       bytes of body producing 105,999 of messages.",
-            "So the guard sits on the only path that can reach it. A `resources[]`",
-            "field name shorter than `resourceRepositoryKey` would change this."
-        ]
-    },
-
-    "oversize_raw_payload": {
-        "what": "a POST body larger than the raw_payload column",
-        "expect": "failed",
-        "http": 422,
-        "triage": "Does an oversized body still leave a row behind?",
-        "verdict": "answered",
-        "notes": [
-            "The action is REFUSED, not applied: a body we cannot record is one we",
-            "cannot audit or replay, so processing it would write allocations against",
-            "a record that does not survive. 422 rather than 413 because the error",
-            "list is what XRAS's own panel renders.",
-            "`raw_payload` is TEXT NOT NULL and was written unguarded, at the FIRST",
-            "write, before dispatch. An oversized body therefore lost the row before",
-            "anything else could go wrong.",
-            "Largest observed corpus payload is 4,819 bytes — ~13x headroom — so this",
-            "is a tail risk rather than a live one. It is guarded anyway because the",
-            "cost of being wrong is the whole audit trail for that action."
-        ]
-    },
-
-    "astral_unicode_payload": {
-        "what": "an emoji in a project title, inside the POST body",
-        "expect": "received",
-        "http": 200,
-        "triage": "Does a 4-byte character lose the row the way an oversized one did?",
-        "verdict": "answered",
-        "notes": [
-            "A THIRD way to lose an audit row, and the first that is not about length.",
-            "utf8mb3 cannot represent a codepoint above the BMP at all, so MySQL raises",
-            "1366 Incorrect string value rather than 1406 Data too long. Same outcome",
-            "under STRICT_TRANS_TABLES: the INSERT fails, _record has no try/except, the",
-            "route 500s and the row is gone.",
-            "",
-            "MEASURED against the test container before the fix:",
-            "  emoji in raw_payload (utf8mb3)  -> LOST, DataError 1366",
-            "  emoji in raw_payload (utf8mb4)  -> OK,   {\"title\":\"Ocean [wave] model\"}",
-            "",
-            "Reachable from ordinary traffic, unlike the two oversize scenarios which are",
-            "tail risks: raw_payload is the XRAS body verbatim, carrying project titles",
-            "and abstracts, and error_messages interpolates those values back out.",
-            "",
-            "FIXED BY CHARSET, not by code — raw_payload and error_messages are utf8mb4.",
-            "That was free only because the table did not exist in production yet; the",
-            "DBA ticket carrying zz-90/zz-91 is still unfiled. Afterwards it would have",
-            "been an ALTER on a table with an audit trail in it."
-        ]
-    },
-
-    "astral_unicode_identifier": {
-        "what": "the same emoji in actionType, which stays utf8mb3",
-        "expect": "received",
-        "http": 200,
-        "triage": "Do the columns that could NOT move to utf8mb4 still keep the row?",
-        "verdict": "answered",
-        "notes": [
-            "action_type and request_number are read off the raw dict on the 400/422",
-            "arms, before the schema could reject them, so they are untrusted — and they",
-            "cannot follow raw_payload to utf8mb4, because sam/queries/xras_activation.py",
-            "joins request_number and projcode_result against project.projcode",
-            "(utf8mb3_general_ci).",
-            "",
-            "MEASURED on production (sam-sql.ucar.edu, MySQL 8.0.41-32) — the mixed",
-            "comparison works, and stops seeking:",
-            "  projcode = _utf8mb4'SCSG0001' COLLATE utf8mb4_general_ci",
-            "    -> type: index   rows: 4650    full index scan",
-            "  projcode = 'SCSG0001'",
-            "    -> type: const   rows: 1       index seek",
-            "",
-            "So _fit() sanitises instead: astral codepoints become U+FFFD before the",
-            "width slice, in that order so the replacement cannot be cut in half. Lossy",
-            "and losing nothing wanted — these columns hold projcodes and a fixed action",
-            "vocabulary. The original spelling stays recoverable from raw_payload."
-        ]
-    },
-
-    "unmapped_path_oversize_body": {
-        "what": "a body twice the raw_payload column, POSTed to an unmapped path",
-        "expect": "unmapped",
-        "http": 404,
-        "triage": "Does the newest ingress guard the same column the oldest one does?",
-        "verdict": "answered",
-        "notes": [
-            "The catch-all is the widest door into this table — any URL under",
-            "/api/xras/, not one — and the least guarded. post_action REFUSES an",
-            "oversized body with a 422 before recording, an explicit pre-check.",
-            "unmapped_path has no equivalent: it records unconditionally and relies",
-            "entirely on _fit_payload, with MAX_CONTENT_LENGTH at 16 MB.",
-            "",
-            "Truncating rather than refusing is right here, and for a different reason",
-            "than on the actions path: there is nothing to apply, so the only question",
-            "is whether the row survives to say XRAS called something we do not",
-            "implement. The request line is kept at the front, where it is readable."
-        ]
-    },
-
-    "unmapped_path_astral": {
-        "what": "an emoji in both the path and the body of an unmapped call",
-        "expect": "unmapped",
-        "http": 404,
-        "triage": "Do BOTH charset guards hold on the same request?",
-        "verdict": "answered",
-        "notes": [
-            "The one scenario that exercises the two mechanisms against each other.",
-            "The path is echoed into outcome_reason, varchar(255) and still utf8mb3, so",
-            "it survives only because _fit sanitises. The body lands in raw_payload,",
-            "utf8mb4, so it survives verbatim. Change either guard alone and this file",
-            "goes half-red.",
-            "",
-            "Before either, this lost the row and answered 500 — on a feature whose",
-            "entire purpose is leaving a record."
-        ]
-    },
-
-    "repeat_post_supplement": {
-        "what": "the same Supplement posted three times",
-        "expect": "processed",
-        "http": 200,
-        "triage": "Is this the same action I saw an hour ago?",
-        "verdict": "answered — action_id landed; this now proves detection",
-        "notes": [
-            "Supplement is ADDITIVE: three posts of 250,000 leave 750,000. That is",
-            "correct per-post behaviour and the wrong total.",
-            "Three rows were identical in every column an operator can filter on;",
-            "`actionId` lived only as bytes inside `raw_payload`, so detecting the",
-            "duplicate meant parsing JSON out of a TEXT column.",
-            "RESOLVED: `action_id` is an indexed column. XRAS still owns the retry —",
-            "this was always about DETECTION, which no later code change could add",
-            "without a second DBA ticket."
-        ]
-    },
-
-    "repeat_post_extension": {
-        "what": "the same Extension posted twice",
-        "expect": "processed",
-        "http": 200,
-        "triage": "Same question, on the 60%-of-traffic path",
-        "verdict": "answered",
-        "notes": [
-            "Extension is near-idempotent, via the equal-end-date skip alone: the",
-            "second post finds every account already at the requested end and writes",
-            "nothing. The blast radius of a double-post is therefore zero HERE and",
-            "not zero for Supplement — which is the asymmetry worth knowing before",
-            "cutover, since Extension is 60% of traffic and Supplement is 15%."
-        ]
-    },
-
-    "park_no_service": {
-        "what": "an actionType no service matches",
-        "expect": "manual",
-        "http": 200,
-        "triage": "Why did this park?",
-        "verdict": "answered — service + outcome_reason landed",
-        "notes": [
-            "One of FOUR parking causes that produce byte-identical rows: nothing",
-            "matched, the type is disabled by XRAS_ACTIONS_ENABLED, no handler is",
-            "registered, or Transfer parked by design.",
-            "`DispatchResult` has carried `service` and `reason` since Sprint C and",
-            "the route logged them; k8s app logs are ephemeral, so within days the row",
-            "was all that was left and it could not tell the four apart.",
-            "RESOLVED: both are columns now. A NULL `service` is itself the answer for",
-            "this cause — no service was ever selected."
-        ]
-    },
-
-    "park_disabled_type": {
-        "what": "a type disabled by the XRAS_ACTIONS_ENABLED triage lever",
-        "expect": "manual",
-        "http": 200,
-        "triage": "Did my 3am config change park this, or did it never match?",
-        "verdict": "answered — service + outcome_reason landed",
-        "notes": [
-            "The lever exists to park a misbehaving payload class by config instead",
-            "of by revert. An operator who pulls it and then cannot confirm from the",
-            "table that it took effect is flying blind during the incident it exists",
-            "for."
-        ]
-    },
-
-    "park_transfer_by_design": {
-        "what": "Transfer, which is deliberately not serviced",
-        "expect": "manual",
-        "http": 200,
-        "triage": "Which project was this about?",
-        "verdict": "answered",
-        "notes": [
-            "The ONLY one of the four parking causes with an in-table discriminator,",
-            "and only because Transfer has a dedicated action_type.",
-            "`projcode_result` carries the projcode on the manual arm (C.1a) and",
-            "`outcome_reason` now carries NOT_IMPLEMENTED_REASON — the sentence",
-            "written specifically for whoever reads this row at 3am."
-        ]
-    },
-
-    "unsampled_renewal": {
-        "what": "actionType 'Renewal' — declared on the wire, never sampled",
-        "expect": "failed",
-        "http": 422,
-        "triage": "Does a wire type we have never seen route correctly?",
-        "verdict": "answered",
-        "notes": [
-            "Shares the Update path with New-against-an-existing-project. Zero",
-            "instances in the 175 measured posts and none in the corpus, so this is",
-            "the first time the code has seen one.",
-            "",
-            "MEASURED: it reaches UpdateHandler and returns six real error strings —",
-            "Missing title / Missing pi role / No FieldOfScience (fos) objects /",
-            "Unable to determine allocation type from action data / Missing begin",
-            "date for allocation(s) / Missing end date for allocation(s).",
-            "'failed' is the CORRECT outcome for a minimal payload; the claim being",
-            "made is that an unsampled type produces a reviewable 422 rather than a",
-            "500 or a silent park. Legacy answers an opaque 500 here."
-        ]
-    },
-
-    "unsampled_advance": {
-        "what": "actionType 'Advance' — declared, with no legacy service",
-        "expect": "manual",
-        "http": 200,
-        "triage": "Confirm it parks rather than erroring, and that the row says so",
-        "verdict": "answered — service + outcome_reason landed",
-        "notes": [
-            "Legacy has no AdvanceProjectActionService at all, so it falls off the",
-            "end of the selector chain. Parking is correct; being indistinguishable",
-            "from the other three parks is not."
-        ]
-    },
-
-    "copi_role_spelling": {
-        "what": "'Co-PI' and 'CoPi' — the spelling is still unknown",
-        "expect": "processed",
-        "http": 200,
-        "triage": "Does an unknown roleType spelling break the roster?",
-        "verdict": "answered",
-        "notes": [
-            "The roster ignores roleType entirely when building MEMBERSHIP — it takes",
-            "every username in roles[] — so both spellings survive. The risk was only",
-            "ever on role ASSIGNMENT, where only 'PI' and 'Allocation Manager' are",
-            "matched and anything else is simply not a candidate.",
-            "This closes a question the corpus could not: hdt@ucar.edu has not sent a",
-            "sample and production capture only starts at cutover."
-        ]
-    }
+  "_comment": [
+    "XRAS stress scenarios. Mirrors tests/perf/baselines.json in shape and role.",
+    "",
+    "The organising principle is NOT 'stress the handlers'. It is:",
+    "",
+    "    stress the handlers and assert on the AUDIT ROW.",
+    "",
+    "Every scenario declares what `xras_action_log` must say afterwards, because",
+    "that row is the only artefact that survives into triage week. Cutover is an",
+    "abrupt repoint with no observation window: if an operator cannot answer a",
+    "question from the row alone, the answer is a missing column — and the DBA",
+    "ticket is still unfiled, which is the last cheap window to learn that.",
+    "",
+    "Each entry:",
+    "  what        — one line, what is being pushed",
+    "  expect      — the terminal audit-row state: received|processed|manual|failed",
+    "  http        — the status code the route answers",
+    "  triage      — the operator question this scenario answers FROM THE ROW",
+    "  verdict     — 'answered' when the row suffices; otherwise the column that",
+    "                would be needed. A 'verdict' that names a column is schema",
+    "                evidence, NOT a failing test.",
+    "",
+    "Run:  pytest -m stress -n 0",
+    "",
+    "-n 0 is deliberate in the docs but not enforced: these write audit rows on",
+    "their own connection, and the `action_log` fixture deletes by captured PK",
+    "precisely so they are xdist-safe. See tests/xras_audit.py."
+  ],
+  "oversize_error_messages": {
+    "what": "1000 resources on a New, each with an unmapped key AND a bad amount",
+    "expect": "failed",
+    "http": 422,
+    "triage": "Did the audit write survive an error list larger than the column?",
+    "verdict": "answered",
+    "notes": [
+      "Under STRICT_TRANS_TABLES (confirmed on) an oversized value does not",
+      "truncate, it RAISES — losing the audit row entirely, which is the one",
+      "failure this table cannot afford.",
+      "",
+      "WHICH PATH reaches the condition was the useful finding, and it moved",
+      "once the resource key field name was corrected:",
+      "  Supplement  1.00x  — a failed key resolution `continue`s before the",
+      "                       amount is read, so one message per resource,",
+      "                       against an entry of almost identical length.",
+      "                       NOT reachable: the body hits its limit first.",
+      "  New         1.79x  — `_plan_allocations` calls resolve_resource AND",
+      "                       transaction_amount unconditionally, so one",
+      "                       resource yields TWO messages. Measured 59,090",
+      "                       bytes of body producing 105,999 of messages.",
+      "So the guard sits on the only path that can reach it. A `resources[]`",
+      "field name shorter than `resourceRepositoryKey` would change this."
+    ]
+  },
+  "oversize_raw_payload": {
+    "what": "a POST body larger than the raw_payload column",
+    "expect": "failed",
+    "http": 422,
+    "triage": "Does an oversized body still leave a row behind?",
+    "verdict": "answered",
+    "notes": [
+      "The action is REFUSED, not applied: a body we cannot record is one we",
+      "cannot audit or replay, so processing it would write allocations against",
+      "a record that does not survive. 422 rather than 413 because the error",
+      "list is what XRAS's own panel renders.",
+      "`raw_payload` is TEXT NOT NULL and was written unguarded, at the FIRST",
+      "write, before dispatch. An oversized body therefore lost the row before",
+      "anything else could go wrong.",
+      "Largest observed corpus payload is 4,819 bytes — ~13x headroom — so this",
+      "is a tail risk rather than a live one. It is guarded anyway because the",
+      "cost of being wrong is the whole audit trail for that action."
+    ]
+  },
+  "astral_unicode_payload": {
+    "what": "an emoji in a project title, inside the POST body",
+    "expect": "received",
+    "http": 200,
+    "triage": "Does a 4-byte character lose the row the way an oversized one did?",
+    "verdict": "answered",
+    "notes": [
+      "A THIRD way to lose an audit row, and the first that is not about length.",
+      "utf8mb3 cannot represent a codepoint above the BMP at all, so MySQL raises",
+      "1366 Incorrect string value rather than 1406 Data too long. Same outcome",
+      "under STRICT_TRANS_TABLES: the INSERT fails, _record has no try/except, the",
+      "route 500s and the row is gone.",
+      "",
+      "MEASURED against the test container before the fix:",
+      "  emoji in raw_payload (utf8mb3)  -> LOST, DataError 1366",
+      "  emoji in raw_payload (utf8mb4)  -> OK,   {\"title\":\"Ocean [wave] model\"}",
+      "",
+      "Reachable from ordinary traffic, unlike the two oversize scenarios which are",
+      "tail risks: raw_payload is the XRAS body verbatim, carrying project titles",
+      "and abstracts, and error_messages interpolates those values back out.",
+      "",
+      "FIXED BY CHARSET, not by code — raw_payload and error_messages are utf8mb4.",
+      "That was free only because the table did not exist in production yet; the",
+      "DBA ticket carrying zz-90/zz-91 is still unfiled. Afterwards it would have",
+      "been an ALTER on a table with an audit trail in it."
+    ]
+  },
+  "astral_unicode_identifier": {
+    "what": "the same emoji in actionType, which stays utf8mb3",
+    "expect": "received",
+    "http": 200,
+    "triage": "Do the columns that could NOT move to utf8mb4 still keep the row?",
+    "verdict": "answered",
+    "notes": [
+      "action_type and request_number are read off the raw dict on the 400/422",
+      "arms, before the schema could reject them, so they are untrusted — and they",
+      "cannot follow raw_payload to utf8mb4, because sam/queries/xras_activation.py",
+      "joins request_number and projcode_result against project.projcode",
+      "(utf8mb3_general_ci).",
+      "",
+      "MEASURED on production (sam-sql.ucar.edu, MySQL 8.0.41-32) — the mixed",
+      "comparison works, and stops seeking:",
+      "  projcode = _utf8mb4'SCSG0001' COLLATE utf8mb4_general_ci",
+      "    -> type: index   rows: 4650    full index scan",
+      "  projcode = 'SCSG0001'",
+      "    -> type: const   rows: 1       index seek",
+      "",
+      "So _fit() sanitises instead: astral codepoints become U+FFFD before the",
+      "width slice, in that order so the replacement cannot be cut in half. Lossy",
+      "and losing nothing wanted — these columns hold projcodes and a fixed action",
+      "vocabulary. The original spelling stays recoverable from raw_payload."
+    ]
+  },
+  "unmapped_path_oversize_body": {
+    "what": "a body twice the raw_payload column, POSTed to an unmapped path",
+    "expect": "unmapped",
+    "http": 404,
+    "triage": "Does the newest ingress guard the same column the oldest one does?",
+    "verdict": "answered",
+    "notes": [
+      "The catch-all is the widest door into this table — any URL under",
+      "/api/xras/, not one — and the least guarded. post_action REFUSES an",
+      "oversized body with a 422 before recording, an explicit pre-check.",
+      "unmapped_path has no equivalent: it records unconditionally and relies",
+      "entirely on _fit_payload, with MAX_CONTENT_LENGTH at 16 MB.",
+      "",
+      "Truncating rather than refusing is right here, and for a different reason",
+      "than on the actions path: there is nothing to apply, so the only question",
+      "is whether the row survives to say XRAS called something we do not",
+      "implement. The request line is kept at the front, where it is readable."
+    ]
+  },
+  "unmapped_path_astral": {
+    "what": "an emoji in both the path and the body of an unmapped call",
+    "expect": "unmapped",
+    "http": 404,
+    "triage": "Do BOTH charset guards hold on the same request?",
+    "verdict": "answered",
+    "notes": [
+      "The one scenario that exercises the two mechanisms against each other.",
+      "The path is echoed into outcome_reason, varchar(255) and still utf8mb3, so",
+      "it survives only because _fit sanitises. The body lands in raw_payload,",
+      "utf8mb4, so it survives verbatim. Change either guard alone and this file",
+      "goes half-red.",
+      "",
+      "Before either, this lost the row and answered 500 — on a feature whose",
+      "entire purpose is leaving a record."
+    ]
+  },
+  "repeat_post_supplement": {
+    "what": "the same Supplement posted three times",
+    "expect": "processed",
+    "http": 200,
+    "triage": "Is this the same action I saw an hour ago?",
+    "verdict": "answered — action_id landed; this now proves detection",
+    "notes": [
+      "Supplement is ADDITIVE: three posts of 250,000 leave 750,000. That is",
+      "correct per-post behaviour and the wrong total.",
+      "Three rows were identical in every column an operator can filter on;",
+      "`actionId` lived only as bytes inside `raw_payload`, so detecting the",
+      "duplicate meant parsing JSON out of a TEXT column.",
+      "RESOLVED: `action_id` is an indexed column. XRAS still owns the retry —",
+      "this was always about DETECTION, which no later code change could add",
+      "without a second DBA ticket."
+    ]
+  },
+  "repeat_post_extension": {
+    "what": "the same Extension posted twice",
+    "expect": "processed",
+    "http": 200,
+    "triage": "Same question, on the 60%-of-traffic path",
+    "verdict": "answered",
+    "notes": [
+      "Extension is near-idempotent, via the equal-end-date skip alone: the",
+      "second post finds every account already at the requested end and writes",
+      "nothing. The blast radius of a double-post is therefore zero HERE and",
+      "not zero for Supplement — which is the asymmetry worth knowing before",
+      "cutover, since Extension is 60% of traffic and Supplement is 15%."
+    ]
+  },
+  "park_no_service": {
+    "what": "an actionType no service matches",
+    "expect": "manual",
+    "http": 200,
+    "triage": "Why did this park?",
+    "verdict": "answered — service + outcome_reason landed",
+    "notes": [
+      "One of FOUR parking causes that produce byte-identical rows: nothing",
+      "matched, the type is disabled by XRAS_ACTIONS_ENABLED, no handler is",
+      "registered, or Transfer parked by design.",
+      "`DispatchResult` has carried `service` and `reason` since Sprint C and",
+      "the route logged them; k8s app logs are ephemeral, so within days the row",
+      "was all that was left and it could not tell the four apart.",
+      "RESOLVED: both are columns now. A NULL `service` is itself the answer for",
+      "this cause — no service was ever selected."
+    ]
+  },
+  "park_disabled_type": {
+    "what": "a type disabled by the XRAS_ACTIONS_ENABLED triage lever",
+    "expect": "manual",
+    "http": 200,
+    "triage": "Did my 3am config change park this, or did it never match?",
+    "verdict": "answered — service + outcome_reason landed",
+    "notes": [
+      "The lever exists to park a misbehaving payload class by config instead",
+      "of by revert. An operator who pulls it and then cannot confirm from the",
+      "table that it took effect is flying blind during the incident it exists",
+      "for."
+    ]
+  },
+  "park_transfer_by_design": {
+    "what": "Transfer, which is deliberately not serviced",
+    "expect": "manual",
+    "http": 200,
+    "triage": "Which project was this about?",
+    "verdict": "answered",
+    "notes": [
+      "The ONLY one of the four parking causes with an in-table discriminator,",
+      "and only because Transfer has a dedicated action_type.",
+      "`projcode_result` carries the projcode on the manual arm (C.1a) and",
+      "`outcome_reason` now carries NOT_IMPLEMENTED_REASON — the sentence",
+      "written specifically for whoever reads this row at 3am."
+    ]
+  },
+  "unsampled_renewal": {
+    "what": "actionType 'Renewal' — declared on the wire, never sampled",
+    "expect": "failed",
+    "http": 422,
+    "triage": "Does a wire type we have never seen route correctly?",
+    "verdict": "answered",
+    "notes": [
+      "Shares the Update path with New-against-an-existing-project. Zero",
+      "instances in the 175 measured posts and none in the corpus, so this is",
+      "the first time the code has seen one.",
+      "",
+      "MEASURED: it reaches UpdateHandler and returns six real error strings —",
+      "Missing title / Missing pi role / No FieldOfScience (fos) objects /",
+      "Unable to determine allocation type from action data / Missing begin",
+      "date for allocation(s) / Missing end date for allocation(s).",
+      "'failed' is the CORRECT outcome for a minimal payload; the claim being",
+      "made is that an unsampled type produces a reviewable 422 rather than a",
+      "500 or a silent park. Legacy answers an opaque 500 here.",
+      "",
+      "STILL UNSAMPLED AT 41 PAYLOADS — and the forward supplied a near-miss worth",
+      "naming: three payloads carry requestType 'Renewal' (extension_unid0003_ok,",
+      "supplement_uwku0002_ok, date_adjustment_uwas0141_manual). None carries",
+      "actionType 'Renewal'. requestType does not select a handler, so those three",
+      "route to extend / supplement / park and none of them reaches this path.",
+      "See test_xras_actions.py::test_request_type_renewal_never_implies_a_renewal_action."
+    ]
+  },
+  "unsampled_advance": {
+    "what": "actionType 'Advance' — declared, with no legacy service",
+    "expect": "manual",
+    "http": 200,
+    "triage": "Confirm it parks rather than erroring, and that the row says so",
+    "verdict": "answered — service + outcome_reason landed",
+    "notes": [
+      "Legacy has no AdvanceProjectActionService at all, so it falls off the",
+      "end of the selector chain. Parking is correct; being indistinguishable",
+      "from the other three parks is not."
+    ]
+  },
+  "copi_role_spelling": {
+    "what": "'Co-PI' and 'CoPi' — the spelling is still unknown",
+    "expect": "processed",
+    "http": 200,
+    "triage": "Does an unknown roleType spelling break the roster?",
+    "verdict": "answered",
+    "notes": [
+      "The roster ignores roleType entirely when building MEMBERSHIP — it takes",
+      "every username in roles[] — so both spellings survive. The risk was only",
+      "ever on role ASSIGNMENT, where only 'PI' and 'Allocation Manager' are",
+      "matched and anything else is simply not a candidate.",
+      "This closes a question the corpus could not: hdt@ucar.edu has not sent a",
+      "sample and production capture only starts at cutover.",
+      "",
+      "STILL UNSAMPLED AT 41 PAYLOADS (2026-08-11 forward). The corpus roleType",
+      "vocabulary is exactly {PI: 45, Allocation Manager: 43, User: 13} across 41",
+      "payloads and ~35 distinct projects. That is no longer 'we have a small",
+      "sample' — it is evidence that this site does not send a co-PI role at all,",
+      "and the synthetic case above is the right way to cover it."
+    ]
+  },
+  "park_unknown_action_type": {
+    "what": "actionType 'Date Adjustment' — a real wire type with no serviceable",
+    "expect": "manual",
+    "http": 200,
+    "triage": "An action type we do not implement arrived. Is that visible, or silent?",
+    "verdict": "answered — NULL service + 'no service matches' in outcome_reason",
+    "notes": [
+      "Driven from the real bytes (tests/fixtures/xras/actions/date_adjustment_*),",
+      "not a synthesised type. Four samples arrived in the 2026-08-11 forward.",
+      "",
+      "'Date Adjustment' was UNKNOWN until that forward: it is absent from",
+      "XRAS_ACTION_TYPES, from every doc, and from the first eight payloads. It",
+      "reached us only through the manual-fallback subject line, which",
+      "XRAS_REIMPLEMENTATION.md § 1.4 identifies as the only record of the action",
+      "types SAM does not service.",
+      "",
+      "PARKING IS CORRECT AND MATCHES LEGACY. There is no",
+      "DateAdjustProjectActionService; all four of these produced a manual-fallback",
+      "email and a bare 200 in production. Servicing it would be NEW behaviour",
+      "introduced under a cutover with no observation window.",
+      "",
+      "Distinct from park_no_service, which uses an existing type against a",
+      "nonexistent project: here the project EXISTS (all four projcodes are in the",
+      "snapshot) and it is the type that matches nothing. Same row shape, different",
+      "cause — which is the point of recording outcome_reason.",
+      "",
+      "Shape note: these carry actionBeginDate + actionEndDate and resources: [],",
+      "which is the Extension signature. Whether to route them to 'extend' is an",
+      "open question for ACCESS, not an inference to make from four payloads — the",
+      "begin date in particular is something Extension ignores entirely."
+    ]
+  }
 }
