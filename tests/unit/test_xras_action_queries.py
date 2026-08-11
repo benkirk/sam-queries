@@ -41,7 +41,7 @@ from sam.queries.xras_activation import (
 
 def _action(session, *, status='received', action_type='Extension',
             request_number='UCUB0166', http_status=200, errors=None,
-            received_time=None, replay_of_id=None, projcode_result=None,
+            received_time=None, source_action_id=None, projcode_result=None,
             processed_by=None, payload='{"actionType":"Extension"}'):
     row = XrasActionLog(
         received_time=received_time or datetime.now(),
@@ -54,7 +54,7 @@ def _action(session, *, status='received', action_type='Extension',
         error_messages='\n'.join(errors) if errors else None,
         projcode_result=projcode_result,
         processed_by=processed_by,
-        replay_of_id=replay_of_id,
+        source_action_id=source_action_id,
     )
     session.add(row)
     session.flush()
@@ -181,8 +181,8 @@ class TestFilters:
 
     def test_replays_only_is_tri_state(self, session):
         original = _action(session)
-        _action(session, replay_of_id=original.xras_action_log_id,
-                status='replayed')
+        _action(session, source_action_id=original.xras_action_log_id,
+                status='rechecked')
         only = count_recent_xras_actions(session, replays_only=True)
         originals = count_recent_xras_actions(session, replays_only=False)
         assert only >= 1 and originals >= 1
@@ -190,10 +190,10 @@ class TestFilters:
 
     def test_replay_of_finds_the_children_of_one_row(self, session):
         parent = _action(session)
-        child = _action(session, replay_of_id=parent.xras_action_log_id,
-                        status='replayed')
+        child = _action(session, source_action_id=parent.xras_action_log_id,
+                        status='rechecked')
         got = get_recent_xras_actions(session,
-                                      replay_of=parent.xras_action_log_id)
+                                      source_action=parent.xras_action_log_id)
         assert [r['action_log_id'] for r in got] == [child.xras_action_log_id]
 
     def test_date_bounds_are_inclusive(self, session):
@@ -262,15 +262,15 @@ class TestReplayCount:
     def test_counts_children(self, session):
         parent = _action(session)
         for _ in range(3):
-            _action(session, replay_of_id=parent.xras_action_log_id)
+            _action(session, source_action_id=parent.xras_action_log_id)
         got = get_recent_xras_actions(session,
                                       action_log_id=parent.xras_action_log_id)
-        assert got[0]['replay_count'] == 3
+        assert got[0]['recheck_count'] == 3
 
     def test_is_zero_not_none_for_an_unreplayed_row(self, session):
         row = _action(session)
         got = get_recent_xras_actions(session, action_log_id=row.xras_action_log_id)
-        assert got[0]['replay_count'] == 0
+        assert got[0]['recheck_count'] == 0
 
 
 class TestProjectExistenceFlags:

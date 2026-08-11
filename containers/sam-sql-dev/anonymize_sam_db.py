@@ -1004,7 +1004,7 @@ class SAMAnonymizer:
         the committed real payloads live scrubbed in ``tests/fixtures/xras/actions/``.
 
         Uses DELETE rather than TRUNCATE because the table carries a self-referential
-        FK (``replay_of_id``); TRUNCATE is refused on a table with FK constraints.
+        FK (``source_action_id``); TRUNCATE is refused on a table with FK constraints.
         """
         print("\n[*] Purging xras_action_log table...")
 
@@ -1015,7 +1015,7 @@ class SAMAnonymizer:
         if not self.dry_run:
             # Children first: replay rows reference the original they replay.
             session.execute(text(
-                "DELETE FROM xras_action_log WHERE replay_of_id IS NOT NULL"))
+                "DELETE FROM xras_action_log WHERE source_action_id IS NOT NULL"))
             session.execute(text("DELETE FROM xras_action_log"))
             session.commit()
 

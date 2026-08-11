@@ -137,9 +137,9 @@ class TestXrasPageAccess:
     def test_every_read_fragment_is_gated(self, non_admin_client, path):
         assert non_admin_client.get(path).status_code == 403
 
-    def test_replay_is_gated_on_manage_not_view(self, view_only_client):
+    def test_recheck_is_gated_on_manage_not_view(self, view_only_client):
         """The write needs MANAGE_XRAS even though the page needs only VIEW."""
-        resp = view_only_client.post('/allocations/xras_replay/1')
+        resp = view_only_client.post('/allocations/xras_recheck/1')
         assert resp.status_code == 403
 
     def test_view_only_user_still_gets_the_page(self, view_only_client):
@@ -152,7 +152,7 @@ class TestXrasFragments:
         assert resp.status_code == 200
         # The summary strip enumerates every status, including at zero — an
         # absent bucket would read as "not measured" rather than "none".
-        for state in (b'Received', b'Processed', b'Manual', b'Failed', b'Replayed'):
+        for state in (b'Received', b'Processed', b'Manual', b'Failed', b'Would succeed'):
             assert state in resp.data
 
     def test_table_fragment_survives_a_junk_sort_key(self, auth_client):

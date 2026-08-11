@@ -103,7 +103,7 @@ class XrasActionLog(Base):
         Index('xras_action_log_triage', 'status', 'action_type'),
         Index('xras_action_log_request', 'request_number'),
         Index('xras_action_log_action', 'action_id'),
-        Index('xras_action_log_replay_fk', 'replay_of_id'),
+        Index('xras_action_log_replay_fk', 'source_action_id'),
     )
 
     xras_action_log_id = Column(Integer, primary_key=True, autoincrement=True)
@@ -166,11 +166,14 @@ class XrasActionLog(Base):
     processed_time = Column(DateTime)
     processed_by = Column(String(35))
 
-    replay_of_id = Column(Integer, ForeignKey('xras_action_log.xras_action_log_id'))
+    source_action_id = Column(Integer, ForeignKey('xras_action_log.xras_action_log_id'))
 
-    replay_of = relationship('XrasActionLog', remote_side=[xras_action_log_id],
-                             back_populates='replays')
-    replays = relationship('XrasActionLog', back_populates='replay_of')
+    #: The row this one re-checks, and the re-checks of this row. A tree, not a
+    #: flat list: re-checking a re-check points at what was clicked, so the lineage
+    #: is preserved rather than collapsed to the root.
+    source_action = relationship('XrasActionLog', remote_side=[xras_action_log_id],
+                                 back_populates='rechecks')
+    rechecks = relationship('XrasActionLog', back_populates='source_action')
 
     def __str__(self):
         return f"{self.action_type or '<unparsed>'} {self.request_number or ''} ({self.status})"

@@ -235,9 +235,10 @@ class NewHandler(ActionHandler):
         project.update(active=False)
 
 
-def handle_new(session, action) -> DispatchResult:
-    """The registry's contract: ``(session, action) -> DispatchResult``."""
-    return NewHandler(session, action).run()
+def handle_new(session, action, *, validate_only: bool = False) -> DispatchResult:
+    """The registry's contract:
+    ``(session, action, *, validate_only=False) -> DispatchResult``."""
+    return NewHandler(session, action).run(validate_only=validate_only)
 
 
 def _lead_organization(lead: User):

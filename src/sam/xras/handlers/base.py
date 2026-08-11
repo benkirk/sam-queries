@@ -105,10 +105,37 @@ class ActionHandler(ABC):
 
     # ---- the template ----------------------------------------------------------
 
-    def run(self) -> DispatchResult:
-        """Assemble, check once, execute, report. The whole contract, in five lines."""
+    def run(self, *, validate_only: bool = False) -> DispatchResult:
+        """Assemble, check once, execute, report. The whole contract, in five lines.
+
+        ``validate_only`` stops after the check and returns ``status='rechecked'``,
+        answering *"would this action succeed if posted now?"* without applying it.
+        That is a complete and faithful answer rather than an approximation, because
+        :meth:`assemble` is contractually write-free and the transaction is not
+        opened until after ``raise_if_any()``. A payload that would be rejected
+        raises :class:`XrasActionRejected` on this path exactly as on the live one,
+        carrying the same ordered error list — which is the whole point: the caller
+        wants the real reasons, not a boolean.
+
+        ⚠️ **This must not call :meth:`result`.** Subclasses override it to report
+        what execution produced and read state that only ``execute`` creates —
+        ``ExtensionHandler.result`` dereferences ``self.extended``, which does not
+        exist on this path and raises ``AttributeError``. The four common fields are
+        restated here instead, deliberately, so that a subclass adding a post-commit
+        report cannot break re-checking.
+
+        ``projcode`` is the ``requestNumber`` the action carried, never
+        ``projcode_result`` — that is minted *during* ``execute`` on the New path, so
+        reporting it would name a project this call did not create. Assembly-time
+        ``warnings`` do come along: a roster disagreement is exactly what a re-check
+        should surface.
+        """
         self.assemble()
         self.errors.raise_if_any()
+        if validate_only:
+            return DispatchResult(status='rechecked', service=self.service,
+                                  projcode=self.projcode or None,
+                                  warnings=tuple(self.warnings))
         with management_transaction(self.session):
             self.execute()
         return self.result()

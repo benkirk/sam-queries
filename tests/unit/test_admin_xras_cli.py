@@ -7,7 +7,7 @@ Rows come from the Layer-2 factory path via `_record` where a committed row is
 needed, and from an empty table otherwise — the envelope shape must be correct in
 both cases.
 
-The `--replay` path is deliberately NOT exercised end-to-end here: it builds a
+The `--recheck` path is deliberately NOT exercised end-to-end here: it builds a
 full Flask app to get an application context (see `XrasCommand._replay` for why
 that is the right call rather than a second write path). Its behaviour is covered
 at `tests/api/test_xras_access.py::TestReplay`; what is tested here is the
@@ -100,7 +100,7 @@ class TestSummaryMode:
         payload = json.loads(result.output)
         assert payload['kind'] == 'xras_action_summary'
         assert set(payload['by_status']) >= {
-            'received', 'processed', 'manual', 'failed', 'replayed'}
+            'received', 'processed', 'manual', 'failed', 'rechecked'}
 
     def test_summary_total_matches_the_status_buckets(self, runner, cli_session):
         payload = json.loads(
@@ -161,10 +161,10 @@ class TestDetailMode:
 
 
 class TestWriteGuards:
-    def test_json_format_is_rejected_for_replay(self, runner, cli_session):
+    def test_json_format_is_rejected_for_recheck(self, runner, cli_session):
         """Writes have no JSON contract — a machine-readable success receipt
         invites scripting a write loop nobody reviewed."""
-        result = runner.invoke(cli, ['--format', 'json', 'xras', '--replay', '1'])
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--recheck', '1'])
         assert result.exit_code == 2
         assert json.loads(result.output)['error'] == 'json_unsupported_for_writes'
 
@@ -172,7 +172,7 @@ class TestWriteGuards:
         """If it did not, the rejection would cost a full Flask app construction."""
         with patch('webapp.run.create_app') as create_app:
             result = runner.invoke(
-                cli, ['--format', 'json', 'xras', '--replay', '1'])
+                cli, ['--format', 'json', 'xras', '--recheck', '1'])
         assert result.exit_code == 2
         create_app.assert_not_called()
 
@@ -181,14 +181,14 @@ class TestHelp:
     def test_help_documents_every_mode(self, runner):
         result = runner.invoke(cli, ['xras', '--help'])
         assert result.exit_code == 0
-        for flag in ('--show', '--summary', '--replay', '--status', '--last'):
+        for flag in ('--show', '--summary', '--recheck', '--status', '--last'):
             assert flag in result.output
 
-    def test_help_states_the_capture_mode_behaviour(self, runner):
-        """The most surprising thing about replay, so it belongs in --help."""
+    def test_help_states_that_recheck_applies_nothing(self, runner):
+        """The most surprising thing about --recheck, so it belongs in --help."""
         result = runner.invoke(cli, ['xras', '--help'])
-        assert 'XRAS_ACTIONS_CAPTURE_ONLY' in result.output
-        assert 'WITHOUT' in result.output
+        assert 'APPLIES NOTHING' in result.output
+        assert 'Applies nothing' in result.output
 
 
 class TestWindowParsing:

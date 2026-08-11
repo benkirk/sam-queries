@@ -287,16 +287,16 @@ class TestRegistration:
 
     def test_an_unknown_service_name_raises(self, clean_registry):
         with pytest.raises(ValueError, match='unknown XRAS service'):
-            register('nonsense', lambda s, a: None)
+            register('nonsense', lambda s, a, *, validate_only=False: None)
 
     def test_registering_twice_raises(self, clean_registry):
-        register('extend', lambda s, a: None)
+        register('extend', lambda s, a, *, validate_only=False: None)
         with pytest.raises(ValueError, match='already registered'):
-            register('extend', lambda s, a: None)
+            register('extend', lambda s, a, *, validate_only=False: None)
 
     def test_every_service_name_is_registrable(self, clean_registry):
         for service in SERVICES:
-            register(service, lambda s, a: None)
+            register(service, lambda s, a, *, validate_only=False: None)
         assert set(clean_registry) == set(SERVICES)
 
 
@@ -323,7 +323,7 @@ class TestDispatchAction:
     def test_a_registered_handler_runs(self, session, clean_registry):
         from factories import make_project
         project = make_project(session)
-        register('extend', lambda s, a: DispatchResult(
+        register('extend', lambda s, a, *, validate_only=False: DispatchResult(
             status='processed', service='extend', projcode=project.projcode))
 
         result = dispatch_action(session, act('Extension', project.projcode))
@@ -335,7 +335,7 @@ class TestDispatchAction:
         from factories import make_project
         project = make_project(session)
         ran = []
-        register('extend', lambda s, a: ran.append(1) or DispatchResult(
+        register('extend', lambda s, a, *, validate_only=False: ran.append(1) or DispatchResult(
             status='processed', service='extend'))
 
         result = dispatch_action(session, act('Extension', project.projcode),
@@ -348,7 +348,7 @@ class TestDispatchAction:
     def test_enabled_none_means_everything_is_allowed(self, session, clean_registry):
         from factories import make_project
         project = make_project(session)
-        register('extend', lambda s, a: DispatchResult(status='processed',
+        register('extend', lambda s, a, *, validate_only=False: DispatchResult(status='processed',
                                                        service='extend'))
         assert dispatch_action(session, act('Extension', project.projcode),
                                enabled=None).status == 'processed'
@@ -359,8 +359,8 @@ class TestDispatchAction:
         processing New actions" means."""
         from factories import make_project
         project = make_project(session)
-        register('add', lambda s, a: DispatchResult(status='processed', service='add'))
-        register('update', lambda s, a: DispatchResult(status='processed',
+        register('add', lambda s, a, *, validate_only=False: DispatchResult(status='processed', service='add'))
+        register('update', lambda s, a, *, validate_only=False: DispatchResult(status='processed',
                                                        service='update'))
         enabled = ALL_ACTION_TYPES - {'New'}
 
@@ -373,7 +373,7 @@ class TestDispatchAction:
                                                                   clean_registry):
         from factories import make_project
         project = make_project(session)
-        register('adjust', lambda s, a: DispatchResult(status='processed',
+        register('adjust', lambda s, a, *, validate_only=False: DispatchResult(status='processed',
                                                        service='adjust'))
         enabled = parse_enabled_action_types('Adjust')
 
@@ -391,7 +391,7 @@ class TestDispatchAction:
         from factories import make_project
         project = make_project(session)
 
-        def rejecting_handler(s, a):
+        def rejecting_handler(s, a, *, validate_only=False):
             errs = ActionErrors()
             errs.report('Missing title')
             errs.raise_if_any()
@@ -407,7 +407,7 @@ class TestDispatchAction:
         project = make_project(session)
         seen = {}
 
-        def handler(s, a):
+        def handler(s, a, *, validate_only=False):
             seen['session'] = s
             seen['action'] = a
             return DispatchResult(status='processed', service='extend')

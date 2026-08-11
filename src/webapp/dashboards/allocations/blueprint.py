@@ -21,7 +21,7 @@ from webapp.utils.htmx import (
     htmx_success_message, modal_triggers, read_flag, read_layout, read_theme,
     register_typeahead,
 )
-from webapp.api.xras.replay import replay_action
+from webapp.api.xras.recheck import recheck_action
 from sam import fmt
 from sam.enums import ResourceTypeName
 from sam.integration.xras import (
@@ -1601,7 +1601,7 @@ def _record_activation_event(project, event_type, *, comment=None,
     """Append one operator event, with the prompting action as provenance.
 
     Runs inside ``management_transaction`` — deliberately unlike
-    :func:`webapp.api.xras.replay.replay_action`, which commits its audit row on a
+    :func:`webapp.api.xras.recheck.recheck_action`, which commits its audit row on a
     private connection precisely so it survives a handler rollback. Its value is
     "we received this even though processing it blew up".
 
@@ -2144,21 +2144,37 @@ def xras_action_details(action_id: int):
     )
 
 
-@bp.route('/xras_replay/<int:action_id>', methods=['POST'])
+@bp.route('/xras_recheck/<int:action_id>', methods=['POST'])
 @login_required
 @require_permission(Permission.MANAGE_XRAS)
-def xras_replay(action_id: int):
-    """Re-submit a stored payload's bytes as a new, linked audit row."""
+def xras_recheck(action_id: int):
+    """Re-validate a stored payload against today's code and data. Applies nothing.
+
+    Reports the **verdict**, not the mechanism: an operator clicks this to learn
+    whether a data fix took, so "Recorded as action #N" would answer a question
+    nobody asked. The three outcomes map onto the ingest vocabulary — see
+    ``webapp/api/xras/recheck.py``.
+    """
     try:
-        new_id = replay_action(action_id, actor=current_user.username)
+        new_id, status = recheck_action(action_id, actor=current_user.username)
     except LookupError:
         return htmx_not_found('Action')
-    except Exception as exc:                       # pragma: no cover - defensive
-        current_app.logger.exception('XRAS replay failed for id=%s', action_id)
-        return (f'<div class="alert alert-danger mb-0">Replay failed: {exc}</div>', 500)
+    except Exception:                              # pragma: no cover - defensive
+        current_app.logger.exception('XRAS re-check failed for id=%s', action_id)
+        # Deliberately does not interpolate the exception: this renders into the
+        # operator's page, and an exception string is neither actionable nor
+        # guaranteed to be free of internals. The traceback is in the log.
+        return ('<div class="alert alert-danger mb-0">Re-check failed — '
+                'see the application log.</div>', 500)
+
+    headline = {
+        'rechecked': 'Would succeed now.',
+        'failed':    'Would still fail.',
+        'manual':    'Nothing would run for this action.',
+    }.get(status, 'Re-check complete.')
 
     return htmx_success_message(
         {'refreshXrasTab': {}},
-        f'Replayed action #{action_id}.',
-        detail=f'Recorded as action #{new_id}.',
+        f'{headline} (action #{action_id})',
+        detail=f'Nothing was applied. Recorded as #{new_id}; open it for details.',
     )

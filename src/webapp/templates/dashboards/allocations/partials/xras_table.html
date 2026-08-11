@@ -19,7 +19,7 @@
   construction (see dashboards/fragments/collapse.html for the full write-up).
 
   This table has three interactive things inside its rows: the Request # and
-  Result project-modal buttons, the details button, and the replay button. So the
+  Result project-modal buttons, the details button, and the re-check button. So the
   toggle lives on the Errors <td> ALONE. That cell is also the best affordance:
   the error list is what an operator is triaging, and "3 errors ⌄" says what will
   happen when you click it.
@@ -77,9 +77,9 @@
                    is what separates six actions posted in the same second. #}
                 <td style="white-space:nowrap;"
                     title="{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
-                    {% if r.replay_of_id %}
+                    {% if r.source_action_id %}
                     <i class="fas fa-redo text-muted me-1"
-                       title="Replay of action #{{ r.replay_of_id }}"></i>
+                       title="Re-check of action #{{ r.source_action_id }}"></i>
                     {% endif %}
                     {{ r.received_time | fmt_date }}
                 </td>
@@ -131,10 +131,10 @@
                        only thing that separates "unparseable" from "rejected". #}
                     <span class="text-muted small ms-1">{{ r.http_status }}</span>
                     {% endif %}
-                    {% if r.replay_count %}
+                    {% if r.recheck_count %}
                     <span class="badge bg-secondary ms-1"
-                          title="Replayed {{ r.replay_count }} time{{ '' if r.replay_count == 1 else 's' }}">
-                        <i class="fas fa-redo"></i> {{ r.replay_count }}
+                          title="Re-checked {{ r.recheck_count }} time{{ '' if r.recheck_count == 1 else 's' }}">
+                        <i class="fas fa-redo"></i> {{ r.recheck_count }}
                     </span>
                     {% endif %}
                 </td>
@@ -185,13 +185,21 @@
                             hx-swap="innerHTML">
                         <i class="fas fa-info-circle"></i>
                     </button>
-                    {% if has_permission(Permission.MANAGE_XRAS) %}
+                    {# Re-check is offered only where the question means something.
+                       A `processed` row already changed the data it would run
+                       against — a successful New now finds its own project, so the
+                       dispatcher would route it to Update and the answer would
+                       describe a different action. `received` rows have not been
+                       tried yet, so there is nothing to re-check either. That
+                       leaves the two cohorts an operator is actually chasing. #}
+                    {% if has_permission(Permission.MANAGE_XRAS)
+                          and r.status in ('failed', 'manual', 'rechecked') %}
                     <button class="btn btn-sm btn-outline-secondary"
-                            title="Replay this action"
-                            hx-post="{{ url_for('allocations_dashboard.xras_replay', action_id=r.action_log_id) }}"
-                            hx-confirm="Re-submit the stored payload for action #{{ r.action_log_id }}? This writes a new, linked audit row."
+                            title="Re-check: would this succeed if posted now?"
+                            hx-post="{{ url_for('allocations_dashboard.xras_recheck', action_id=r.action_log_id) }}"
+                            hx-confirm="Re-check action #{{ r.action_log_id }} against today's code and data?&#10;&#10;Nothing is applied and XRAS is not contacted — this only answers whether a resend would succeed. A new linked audit row records the verdict."
                             hx-swap="none">
-                        <i class="fas fa-redo"></i>
+                        <i class="fas fa-clipboard-check"></i>
                     </button>
                     {% endif %}
                 </td>
