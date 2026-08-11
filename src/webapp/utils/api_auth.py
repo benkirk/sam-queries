@@ -31,7 +31,7 @@ Usage:
 import time
 import bcrypt
 from functools import wraps
-from typing import Optional
+from typing import Callable, Iterable, Optional
 from flask import request, jsonify, current_app, g, make_response, url_for
 from flask_limiter.util import get_remote_address
 from flask_login import current_user
@@ -119,10 +119,12 @@ def _verify_api_key(username: str, password: str) -> Optional[dict]:
 
 
 def _set_api_identity(ident: dict) -> None:
-    """Stash the authenticated API identity on ``g`` for logging / future authz.
+    """Stash the authenticated API identity on ``g`` for logging and authz.
 
-    ``g.api_key_roles`` is captured now but not yet enforced — see
-    ApiCredentials.as_api_key_map and login_or_token_required's docstring.
+    ``g.api_key_roles`` holds the role names carried by the ``api_credentials``
+    row (see ``ApiCredentials.as_api_key_map``); it is always populated for
+    logging, and is *enforced* on routes that pass ``roles=`` to
+    ``login_or_token_required``. Config-sourced keys always resolve to ``[]``.
     """
     g.api_key_user = ident['username']
     g.api_key_source = ident['source']
@@ -166,7 +168,12 @@ def api_key_required(f):
     )(decorated_function)
 
 
-def login_or_token_required(permission: Optional[Permission] = None):
+def login_or_token_required(
+    permission: Optional[Permission] = None,
+    *,
+    roles: Optional[Iterable[str]] = None,
+    deny: Optional[Callable[[int, str], object]] = None,
+):
     """
     Decorator factory: grants access via HTTP Basic Auth API key OR Flask-Login session.
 
@@ -176,9 +183,9 @@ def login_or_token_required(permission: Optional[Permission] = None):
     Token path (``Authorization: Basic ...`` header present):
       - Validates credentials against config ``API_KEYS`` bcrypt hashes and, as a
         fallback, the enabled ``api_credentials`` DB rows (same as ``api_key_required``)
-      - No RBAC check; any valid key grants access. DB-sourced keys carry their
-        role names in ``g.api_key_roles`` for a future permission gate, but those
-        roles are NOT yet enforced here.
+      - If ``roles`` is given, the caller must hold at least one of them
+        (see below); otherwise any valid key grants access, with the key's role
+        names available on ``g.api_key_roles`` for logging
       - Sets ``g.api_key_user`` / ``g.api_key_source`` for downstream logging
 
     Session path (no ``Authorization`` header):
@@ -187,8 +194,29 @@ def login_or_token_required(permission: Optional[Permission] = None):
       - Returns HTMX-aware 401 (``HX-Redirect`` to login) or JSON 401; JSON 403 on permission failure
 
     Args:
-        permission: Optional ``Permission`` enum value. Session users must hold this permission.
-                    Token users bypass RBAC entirely. ``None`` means just be authenticated.
+        permission: Optional ``Permission`` enum value. Session users must hold this
+                    permission. Token users bypass RBAC entirely — ``roles`` is the
+                    token-path analogue, not a substitute. ``None`` means just be
+                    authenticated.
+        roles:      Optional iterable of API-key role names, as carried by
+                    ``api_credentials`` via ``role_api_credentials`` (e.g. ``ROLE_XRAS``).
+                    The token caller must hold at least one, else 403.
+
+                    ⚠️ When ``roles`` is given the **session path is closed** and an
+                    unauthenticated request is a 401: a browser session has no API-key
+                    roles at all, so "holds an API-key role" and "is logged in via
+                    Flask-Login" are mutually exclusive conditions. Routes needing both
+                    want two decorated views, not this parameter.
+
+                    ⚠️ Config-sourced keys (``API_KEYS_<USER>``) always resolve with an
+                    empty role list, because config carries no role assignments. Defining
+                    a key in config that a ``roles``-gated route expects therefore fails
+                    **closed**, silently, while other routes keep working.
+        deny:       Optional ``callable(status: int, message: str)`` returning a Flask
+                    response, for blueprints whose error bodies are part of a fixed
+                    legacy wire contract. Defaults to this module's standard shapes —
+                    ``_auth_challenge`` for 401 (which carries ``WWW-Authenticate``) and
+                    a JSON 403 — so every existing call site is byte-unchanged.
 
     Usage::
 
@@ -203,9 +231,24 @@ def login_or_token_required(permission: Optional[Permission] = None):
         def simple():
             ...
 
+        # M2M with role enforcement and a caller-supplied wire contract
+        @bp.route('/xras', methods=['GET'])
+        @login_or_token_required(roles=('ROLE_XRAS',), deny=_xras_deny)
+        def xras_only():
+            ...
+
     Note: Do NOT combine with ``@require_project_access`` / ``@require_project_member_access``
     — those decorators assume a session ``current_user`` and are incompatible with token callers.
     """
+    required_roles = frozenset(roles) if roles else None
+
+    def _deny(status: int, message: str):
+        if deny is not None:
+            return deny(status, message)
+        if status == 401:
+            return _auth_challenge(message)
+        return jsonify({'error': message}), status
+
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
@@ -215,16 +258,27 @@ def login_or_token_required(permission: Optional[Permission] = None):
             if request.authorization:
                 auth = request.authorization
                 if not auth.username or not auth.password:
-                    return _auth_challenge()
+                    return _deny(401, 'Authentication required')
 
                 ident = _verify_api_key(auth.username, auth.password)
                 if ident is None:
-                    return _auth_challenge('Invalid credentials')
+                    return _deny(401, 'Invalid credentials')
 
                 _set_api_identity(ident)
+
+                if required_roles is not None and not required_roles.intersection(
+                    ident['roles']
+                ):
+                    return _deny(403, 'Forbidden - insufficient permissions')
+
                 return f(*args, **kwargs)
 
             # ── Session path ──────────────────────────────────────────────────
+            # A ``roles`` gate is API-key-only by construction: session users carry
+            # no API-key roles, so there is nothing here that could satisfy it.
+            if required_roles is not None:
+                return _deny(401, 'Authentication required')
+
             if not current_user.is_authenticated:
                 # Mirror run.py unauthorized_handler: HTMX gets HX-Redirect,
                 # plain API callers get a JSON 401.

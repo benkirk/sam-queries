@@ -1,0 +1,143 @@
+{% extends 'dashboards/base.html' %}
+{#
+  Notification delivery log — the page behind the Configuration tile's
+  "Details »".
+
+  ⚠️  SYSTEM_ADMIN, one tier above the tile: every row below names a real
+  person's email address. The gate is on the ROUTE, not here, so a
+  view-source cannot reveal what the page chose not to draw.
+
+  Context:
+    summary       sam.queries.notifications.summarize_notifications(...)
+    config        NotifyConfig.summary()
+    form_id       the filter form the facet chips write into
+    target_id     the swap target for the table fragment
+    fragment_url  GET .../notifications/log
+    all_statuses / all_kinds / default_days
+#}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
+{% block title %}Notifications — SAM admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-end">
+        <div>
+            <h2 class="mb-1"><i class="fas fa-envelope"></i> Notifications</h2>
+            <p class="text-muted mb-0">
+                Every delivery attempt, for every channel. Transport:
+                <code>{{ config.transport or '—' }}</code> ·
+                {% if config.enabled %}<span class="text-success">enabled</span>
+                {% else %}<span class="text-danger">disabled</span>{% endif %}
+                {% if config.relay %} · relay <code>{{ config.relay }}</code>{% endif %}
+            </p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin_dashboard.projects') }}">
+            <i class="fas fa-chevron-left"></i> Back to Admin
+        </a>
+    </div>
+</div>
+
+{% if config.redirect_to %}
+<div class="alert alert-warning">
+    <i class="fas fa-shuffle me-1"></i>
+    <strong>All mail on this deployment is redirected to
+    <code>{{ config.redirect_to }}</code>.</strong>
+    Rows below marked <em>redirected</em> reached that address, not the
+    recipient they name.
+</div>
+{% endif %}
+
+{% if summary.queued_stuck %}
+<div class="alert alert-warning">
+    <i class="fas fa-triangle-exclamation me-1"></i>
+    <strong>{{ summary.queued_stuck | fmt_number }}</strong> attempt(s) are
+    stuck in <code>queued</code> — a process died between writing the attempt
+    and writing its outcome. Those rows have aged past
+    <code>NOTIFY_QUEUED_STALE_SECONDS</code>, so they no longer suppress a
+    retry: sending again will go through.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-xl-4">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong>Last {{ summary.window_hours }}h</strong></div>
+            <div class="card-body small">
+                <dl class="config-stats mb-0">
+                    <dt>Sent</dt>       <dd>{{ summary.sent | fmt_number }}</dd>
+                    <dt>Redirected</dt> <dd>{{ summary.redirected | fmt_number }}</dd>
+                    <dt>Failed</dt>     <dd>{{ summary.failed | fmt_number }}</dd>
+                    <dt>Suppressed</dt> <dd>{{ summary.suppressed | fmt_number }}</dd>
+                    <dt>Queued (stuck)</dt><dd>{{ summary.queued_stuck | fmt_number }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-8">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong>Filter</strong></div>
+            <div class="card-body">
+                {# Each dimension is a hidden multi-value control the facet
+                   chips write into; the visible controls are free text and
+                   the window. Same arrangement as the XRAS action log. #}
+                <form id="{{ form_id }}"
+                      hx-get="{{ fragment_url }}"
+                      hx-target="#{{ target_id }}"
+                      hx-swap="innerHTML"
+                      hx-trigger="submit, change from:select"
+                      class="row g-2 align-items-end">
+                    <div class="col-12 col-md-5">
+                        <label class="form-label small mb-1" for="notifySearch">
+                            Recipient or project
+                        </label>
+                        <input type="search" class="form-control form-control-sm"
+                               id="notifySearch" name="search"
+                               placeholder="name@example.edu or SCSG0001">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small mb-1" for="notifyDays">Window</label>
+                        <select class="form-select form-select-sm" id="notifyDays" name="days">
+                            <option value="1">Last 24 hours</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="365">Last year</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            <i class="fas fa-filter"></i> Apply
+                        </button>
+                    </div>
+
+                    {# Written by the facet chips (data-action set-filter-submit). #}
+                    <select name="status" multiple hidden>
+                        {% for s in all_statuses %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                    </select>
+                    <select name="kind" multiple hidden>
+                        {% for k in all_kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+                    </select>
+                    <select name="channel" multiple hidden>
+                        <option value="email">email</option>
+                    </select>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="{{ target_id }}"
+     hx-get="{{ fragment_url }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <div class="text-muted small p-3">
+        <i class="fas fa-circle-notch fa-spin"></i> Loading delivery log…
+    </div>
+</div>
+
+{% include 'dashboards/allocations/partials/audit_details_modal.html' %}
+{% endblock %}

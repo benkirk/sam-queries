@@ -92,3 +92,59 @@ class NewClient(_BaseClient):
 
     def wallclock_exemption(self) -> dict:
         return self._get('/api/v1/wallclock_exemption/')
+
+
+class XrasClient(_BaseClient):
+    """Client for the `/api/xras/v1/*` surface, on either stack.
+
+    Unlike the other clients this one is *base-URL parameterised* rather than
+    stack-specific: legacy and the port serve the same paths under the same
+    prefix, which is the whole point of a drop-in replacement. Instantiate it
+    twice, once per host.
+
+    It also needs its own credential (`SAM_XRAS_USER`/`SAM_XRAS_PASS`): the
+    `/api/xras/**` chain requires `ROLE_XRAS`, which the `SAM_LEGACY_*` account
+    does not hold.
+
+    Every method returns **raw bytes**, not parsed JSON. Byte-exact comparison
+    is the entire contract here — a length-preserving bug (swapped
+    firstName/lastName, a `%.1f` drift, a reordered field) is invisible to a
+    parsed comparison.
+    """
+
+    def _get_raw(self, path: str, *, allow: tuple[int, ...] = (200,)) -> tuple[int, bytes]:
+        """Return (status, body-bytes) without parsing, raising on a status
+        outside *allow*."""
+        url = f'{self.base_url}{path}'
+        resp = self._session.get(url, timeout=self.timeout)
+        if resp.status_code not in allow:
+            raise RuntimeError(
+                f'GET {url} returned HTTP {resp.status_code}: {resp.text[:200]}'
+            )
+        return resp.status_code, resp.content
+
+    def people(self) -> tuple[int, bytes]:
+        # Legacy's own caller requests this as a bare `?`; keep it identical.
+        return self._get_raw('/api/xras/v1/people?')
+
+    def person(self, username: str, *, allow_404: bool = False) -> tuple[int, bytes]:
+        allow = (200, 404) if allow_404 else (200,)
+        return self._get_raw(
+            f'/api/xras/v1/people/{quote(username, safe="")}', allow=allow)
+
+    def request(self, request_number: str) -> tuple[int, bytes]:
+        return self._get_raw(
+            f'/api/xras/v1/requests/request/{quote(request_number, safe="")}')
+
+    def requests_by_user(self, username: str) -> tuple[int, bytes]:
+        return self._get_raw(
+            f'/api/xras/v1/requests/user/{quote(username, safe="")}')
+
+    def requests_by_role(self, role: str, username: str) -> tuple[int, bytes]:
+        return self._get_raw(
+            f'/api/xras/v1/requests/role/{quote(role, safe="")}'
+            f'/{quote(username, safe="")}')
+
+    def request_dates(self, request_numbers: str) -> tuple[int, bytes]:
+        return self._get_raw(
+            f'/api/xras/v1/dates/requests/{quote(request_numbers, safe=",")}')

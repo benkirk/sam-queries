@@ -211,12 +211,13 @@ def schema_drift(engine, ttl_seconds: float = _SCHEMA_DRIFT_TTL_SECONDS) -> Dict
       ``test_database_columns_in_orm``, which is informational for the same
       reason.
     - **Tables absent from the database are reported but do NOT flip the
-      status.** That is a different, already-ticketed condition — see
-      ``containers/sam-sql-dev/initdb.d/zz-9*.sql``, which supply
-      ``notification_log`` and the XRAS tables to dev/CI because they do not
-      exist in production yet. Counting those as drift would pin prod at 503
-      permanently and train everyone to ignore this check. The bug class this
-      guards is specifically "table exists, column does not".
+      status.** A table that a deployment has not been given yet is an
+      operational state with its own remedy, not schema drift; counting it here
+      would pin an environment at 503 and train everyone to ignore this check.
+      The bug class this guards is specifically "table exists, column does not".
+      ``missing_tables`` is still reported, so the condition stays visible —
+      that key going from populated to absent is how the 2026-08-10 XRAS /
+      notification tables were confirmed live in production.
 
     Memoized for ``ttl_seconds``; ``/api/v1/health/`` is public and exempt from
     rate limiting, so this costs at most one INFORMATION_SCHEMA query per
@@ -638,6 +639,54 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'active_blocks_count': 0,
         }
 
+    # --- Notifications (sam.notify config + notification_log counts)
+    #
+    # Config comes from NotifyConfig.summary(), which never returns
+    # MAIL_PASSWORD — the masking rule this whole module exists for holds by
+    # construction rather than by the template remembering.
+    #
+    # ⚠️ NO ADDRESSES. The card is VIEW_SYSTEM_CONFIG; every row of the
+    # activity log names a real person's email and is SYSTEM_ADMIN. The one
+    # deliberate exception is `redirect_to`, which is an operator-configured
+    # sink rather than a subject's address, and hiding it would defeat the
+    # line's purpose — a staging box quietly swallowing mail is exactly what
+    # it exists to surface.
+    try:
+        from sam.notify import NotifyConfig
+        from sam.queries.notifications import summarize_notifications
+
+        notify_config = NotifyConfig.from_environment()
+        notifications_block = dict(notify_config.summary())
+        notifications_block.update(summarize_notifications(
+            db.session,
+            queued_stale_seconds=notify_config.queued_stale_seconds))
+    except Exception:
+        # The table may not exist yet (it awaits a DBA in production), and a
+        # config card that 500s is worse than one that says "unavailable".
+        #
+        # Roll back first. The failure above came from a *statement*, which leaves
+        # SQLAlchemy's transaction marked as needing rollback — so without this any
+        # later use of `db.session` in the same request raises PendingRollbackError
+        # rather than the error it would have raised on its own. No caller does DB
+        # work after this block today, which is exactly why the trap is worth
+        # closing now instead of when someone adds one.
+        try:
+            db.session.rollback()
+        except Exception:                    # pragma: no cover - defensive
+            pass
+        notifications_block = {
+            'enabled':      False,
+            'transport':    None,
+            'relay':        None,
+            'redirect_to':  None,
+            'unavailable':  True,
+            'sent': 0, 'redirected': 0, 'failed': 0, 'suppressed': 0,
+            'queued_stuck': 0, 'total': 0, 'by_status': {},
+            # The template reads this outside the `unavailable` short-circuit, so it
+            # has to be present even though nothing renders it in this state.
+            'window_hours': None,
+        }
+
     # --- Audit & Logging
     audit_path = cfg.get('AUDIT_LOG_PATH', '')
     audit_logging = {
@@ -656,6 +705,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'databases':     databases,
         'auth':          auth,
         'caching':       caching_block,
+        'notifications': notifications_block,
         'rate_limits':   rate_limits_block,
         'audit_logging': audit_logging,
         'audit_tail':    audit_tail,

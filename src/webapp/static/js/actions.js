@@ -159,7 +159,31 @@
             field.appendChild(opt);
         }
         field.value = value;
+        /* data-clear-fields: blank these siblings before submitting. A window
+         * pill sets `days`, but an explicit start/end range OUTRANKS `days`
+         * server-side — so without clearing them the pill would submit and
+         * appear to do nothing. Names, comma-separated; missing ones ignored. */
+        (el.dataset.clearFields || '').split(',').forEach(function (name) {
+            var other = form.elements[name.trim()];
+            if (other) { other.value = ''; }
+        });
         htmx.trigger(form, 'submit');
+    });
+
+    /* Reveal the custom date inputs beside a set of window pills. Plain
+     * d-none toggle rather than a Bootstrap collapse: this sits inside a
+     * filter form, and Bootstrap's collapse data-api runs in the CAPTURE
+     * phase on document, which is what makes it hostile to controls nested
+     * near buttons (see dashboards/fragments/collapse.html). */
+    window.registerAction('toggle-custom-window', function (el) {
+        var panel = document.querySelector(el.dataset.target);
+        if (!panel) { return; }
+        var hidden = panel.classList.toggle('d-none');
+        el.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+        if (!hidden) {
+            var first = panel.querySelector('input');
+            if (first) { first.focus(); }
+        }
     });
 
     /* Confirm-gated plain-form submit (samConfirm is an async Bootstrap

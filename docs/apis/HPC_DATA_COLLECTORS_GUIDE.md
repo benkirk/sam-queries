@@ -34,23 +34,54 @@ Dashboard displays latest data
 
 Data collectors require `MANAGE_SYSTEM_STATUS` permission.
 
-**Create API credentials** (via SAM admin interface or database):
-```sql
--- Example: Create service account for Derecho collector
-INSERT INTO api_credentials (username, password_hash, description, active)
-VALUES (
-    'derecho_collector',
-    '$2b$12$...', -- bcrypt hash of password
-    'Derecho system status collector',
-    1
-);
+Two storage backends exist, and **the environment variable wins**: if
+`API_KEYS_<USERNAME>` is set, `_verify_api_key` checks the credential against that
+hash only and never consults the database (`src/webapp/utils/api_auth.py`). Use the
+env var for webapp-only clients; use the database when legacy Java SAM must accept
+the same credential, since it reads `api_credentials` and nothing else.
 
--- Assign permission
+**Option A — environment variable** (simplest; this is how the deployed `collector`
+account works, see `helm/values.yaml`):
+
+```bash
+python scripts/gen_api_key.py --username collector --rounds 12
+# → API_KEYS_COLLECTOR=<hash>   in compose.yaml / Helm values / SSM
+```
+
+**Option B — database row.** `scripts/gen_api_key.py --sql` prints exactly the
+statements below with the hash already substituted:
+
+```sql
+-- username is varchar(11) and UNIQUE; longer names are rejected under STRICT mode.
+-- Generate the hash with: scripts/gen_api_key.py --username collector --prefix 2a --sql
+START TRANSACTION;
+INSERT INTO api_credentials (username, password, enabled)
+VALUES ('collector', '$2a$12$...', 1);
+
+-- Grant a role. role_id and api_credentials_id are resolved here rather than
+-- hardcoded, because both are environment-specific auto-increment values.
 INSERT INTO role_api_credentials (role_id, api_credentials_id)
 SELECT r.role_id, ac.api_credentials_id
 FROM role r, api_credentials ac
-WHERE r.role_name = 'admin' AND ac.username = 'derecho_collector';
+WHERE r.name = 'ROLE_API_ADMIN' AND ac.username = 'collector';
+
+-- Verify before committing: expect exactly one row, correct role, enabled = 1.
+SELECT ac.api_credentials_id, ac.username, ac.enabled, r.name
+FROM api_credentials ac
+JOIN role_api_credentials rac USING (api_credentials_id)
+JOIN role r USING (role_id)
+WHERE ac.username = 'collector';
+COMMIT;
 ```
+
+Columns are `password` (60-char bcrypt in a `char(64)`) and `enabled`; the role name
+column is `role.name`. Use the `$2a$` variant for database rows — every credential
+legacy SAM already holds uses it, and both stacks verify it.
+
+⚠️ Roles are **captured but not yet enforced** on the API-token path: any valid key
+currently reaches any token-authenticated endpoint (`ApiCredentials.as_api_key_map`
+in `src/sam/security/roles.py`). Grant the narrowest role anyway, so enforcement is a
+one-line change rather than a re-provisioning exercise.
 
 **Store credentials securely**:
 ```bash

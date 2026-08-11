@@ -1406,17 +1406,24 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 /* ============================================================================
-   JOB FACET CHIPS — the live value-count strip between the jobs explorer's
-   filter panel and its tab strip (_jobs_facet_chips.html).
+   FACET CHIPS — a live value-count strip whose chips double as filter
+   controls. Two callers: the jobs explorer, between its filter panel and its
+   tab strip (_jobs_facet_chips.html), and the XRAS action log
+   (fragments/facet_chips.html).
 
    One grid row per dimension: the label column self-sizes to the widest
    label and the values wrap inside their own cell, so "Exit code" can
    never end up mid-line with its chips orphaned under "QoS". White
    surface with the bottom edge open, so the strip reads as the top of the
    card the .nav-tabs below continue.
+
+   `.facet-grid*` are the neutral names; the `.jobs-facets*` aliases are kept
+   so the jobs templates need no churn for a second caller. New callers should
+   use .facet-grid; jobs can migrate whenever it is touched anyway.
    ========================================================================= */
 
-.jobs-facets {
+.jobs-facets,
+.facet-grid {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
     column-gap: 0.75rem;
@@ -1428,7 +1435,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     border-bottom: 0;
 }
 
-.jobs-facet-label {
+.jobs-facet-label,
+.facet-grid-label {
     justify-self: end;
     white-space: nowrap;
     font-size: 0.75rem;
@@ -1438,7 +1446,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--text-tertiary);
 }
 
-.jobs-facet-values {
+.jobs-facet-values,
+.facet-grid-values {
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem;
@@ -1498,19 +1507,53 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: rgba(255, 255, 255, 0.75);
 }
 
+/* A chip whose value carries its OWN colour — the XRAS status badges use the
+   same palette as the status column in the rows below, and that one-to-one
+   mapping is the reason the badge is there at all. The default .is-active fill
+   would paint over it, so selection is marked with a ring instead: the surface
+   and the badge stay put, the border thickens to the brand colour.
+
+   The ring is drawn with an inset box-shadow rather than a wider border so the
+   chip does not change size when selected — a row of chips that reflows on
+   click is hard to double-click and reads as a layout bug. */
+/* The ring is --text-link, NOT --ncar-blue. The brand blue is a fixed hex in
+   both themes, and against the dark chip surface it measures 2.12:1 — under the
+   3:1 WCAG 1.4.11 wants for a non-text UI component, so the selected state was
+   effectively invisible in dark mode. (The plain .is-active rule above gets away
+   with it because it FILLS: the fill carries the signal and the border is
+   incidental. A ring has only the border.) --text-link is the theme-aware
+   member of the same family — identical #0057c2 in light, lightened to
+   --ncar-sky in dark — so light is unchanged and dark clears the bar. */
+.facet-chip.has-badge.is-active {
+    background-color: var(--surface-raised);
+    border-color: var(--text-link);
+    color: var(--text-primary);
+    box-shadow: inset 0 0 0 1px var(--text-link);
+}
+
+/* The count is a secondary reading in both states; the .is-active rule above
+   flips it to a light-on-brand tint, which is wrong here where the surface
+   never went dark. Put it back. */
+.facet-chip.has-badge.is-active .facet-chip-count {
+    color: var(--text-tertiary);
+}
+
 /* Phones: the label column costs more than it aligns — give each
    dimension its own line above its values. */
 @media (max-width: 575.98px) {
-    .jobs-facets {
+    .jobs-facets,
+    .facet-grid {
         grid-template-columns: minmax(0, 1fr);
         row-gap: 0.125rem;
     }
 
-    .jobs-facet-label {
+    .jobs-facet-label,
+    .facet-grid-label {
         justify-self: start;
     }
 
-    .jobs-facet-label:not(:first-child) {
+    .jobs-facet-label:not(:first-child),
+    .facet-grid-label:not(:first-child) {
         margin-top: 0.375rem;
     }
 }

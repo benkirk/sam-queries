@@ -33,6 +33,12 @@ __all__ = [
     'CarveoutFrontier',
     'date_ranges_overlap',
     'InheritingAllocationException',
+    # The XRAS integration primitives. `manage/extend.py` added its own on the way
+    # in and this module did not, so the stated public surface was three names
+    # short of the real one.
+    'log_integration_transaction',
+    'supplement_allocation',
+    'adjust_allocation',
 ]
 
 
@@ -69,7 +75,7 @@ def validate_allocation_dates(start_date: datetime, end_date: Optional[datetime]
 def log_allocation_transaction(
     session: Session,
     allocation: Allocation,
-    user_id: int,
+    user_id: Optional[int],
     transaction_type: str,
     comment: Optional[str] = None,
     old_values: Optional[Dict[str, Any]] = None,
@@ -88,10 +94,26 @@ def log_allocation_transaction(
     Args:
         session: SQLAlchemy session
         allocation: Allocation object being modified
-        user_id: User making the change (from flask_login.current_user)
+        user_id: User making the change (from flask_login.current_user), or
+            **None for an integration actor** — see below
         transaction_type: One of AllocationTransactionType constants
         comment: Optional custom comment
         old_values: Dict with previous values (for EDIT type) - keys: amount, start_date, end_date, description
+
+    ``user_id=None`` means *no human did this* — an integration wrote the row on its
+    own authority. ``allocation_transaction.user_id`` is nullable
+    (``sam/accounting/allocations.py``) and nothing here validates or dereferences it,
+    so ``None`` writes SQL NULL.
+
+    That is not a loophole, it is the established convention for this column: legacy
+    Java SAM writes NULL for every XRAS-driven transaction, and **25,048 rows in
+    production carry it** (measured 2026-08-07). Reproducing it is what keeps the
+    XRAS port's audit rows diffable against the ones legacy has been writing for
+    years. The type hint said ``int`` only because every caller so far has been a
+    web request with a logged-in user.
+
+    Do not invent a service account to avoid the NULL. A synthetic user id would be
+    indistinguishable from a real person in every report that joins this column.
 
     Returns:
         AllocationTransaction: The created transaction record
@@ -1032,3 +1054,199 @@ def link_allocation_to_parent(
         comment=f"Re-linked to parent allocation #{parent.allocation_id}",
     )
     return child
+
+
+def log_integration_transaction(
+    session: Session,
+    allocation: Allocation,
+    transaction_type: str,
+    *,
+    comment: Optional[str] = None,
+    transaction_amount: Optional[float] = None,
+    requested_amount: Optional[float] = None,
+    alloc_start_date: Optional[datetime] = None,
+    alloc_end_date: Optional[datetime] = None,
+    auth_at_panel_mtg: Optional[bool] = None,
+    propagated: bool = False,
+) -> AllocationTransaction:
+    """Write an audit row with the **exact** column shape an integration needs.
+
+    :func:`log_allocation_transaction` snapshots the allocation's current state into
+    every row: ``alloc_start_date``, ``alloc_end_date``, ``requested_amount`` and a
+    ``transaction_amount`` derived from the type. That is the right default for a
+    human-driven edit, where the snapshot is the record of what the operator saw.
+
+    It is the wrong shape for the XRAS and AMIE integrations, whose rows have a
+    different and long-established convention — measured, not assumed:
+
+    ==============  =====================================================================
+    ``EXTENSION``   20,603 of 20,618 production rows carry NULL ``transaction_amount``,
+                    ``requested_amount`` *and* ``alloc_start_date``. Only the new
+                    ``alloc_end_date`` is meaningful.
+    ``SUPPLEMENT``  all 3,203 integration-written rows carry NULL ``alloc_start_date``
+                    and ``alloc_end_date``; ``transaction_amount`` is the **increment**,
+                    not the new total; 2,752 also carry NULL ``requested_amount``.
+    ==============  =====================================================================
+
+    So this delegates to the shared logger — keeping one insert site, one place for the
+    ``LEGACY_TYPE_MAP`` translation, and one place any future audit hook would go — and
+    then sets the informational columns explicitly. Every column it can write is a
+    keyword, defaulting to ``None``, so a caller states the whole shape at the call site
+    rather than inheriting a default it did not think about.
+
+    ``user_id`` is always ``NULL``: that is the integration-actor convention, and the
+    reason this function exists rather than a flag on the shared one. See
+    :func:`log_allocation_transaction` for why a synthetic service account is the wrong
+    answer.
+
+    Does NOT commit; the caller owns the transaction.
+    """
+    txn = log_allocation_transaction(
+        session, allocation, None, transaction_type,
+        comment=comment, propagated=propagated,
+    )
+    txn.transaction_amount = transaction_amount
+    txn.requested_amount = requested_amount
+    txn.alloc_start_date = alloc_start_date
+    txn.alloc_end_date = alloc_end_date
+    if auth_at_panel_mtg is not None:
+        txn.auth_at_panel_mtg = auth_at_panel_mtg
+    session.flush()
+    return txn
+
+
+def _add_to_subtree(
+    session: Session,
+    allocation: Allocation,
+    *,
+    amount: float,
+    comment: Optional[str],
+    transaction_type: AllocationTransactionType,
+    auth_at_panel_mtg: Optional[bool] = None,
+) -> List[Allocation]:
+    """Add *amount* to an allocation and every inheriting child, logging one row each.
+
+    The mechanism shared by :func:`supplement_allocation` and
+    :func:`adjust_allocation`, whose bodies were byte-identical apart from the
+    transaction type and the panel flag. They stay as two public functions because
+    the *policy* differs and their docstrings are where that is recorded — this is
+    only the part that cannot be allowed to drift.
+
+    Legacy shape, reproduced: ``disinherit()`` before ``supplement()``, routed
+    through :func:`detach_allocation` so it leaves the audit row legacy never wrote;
+    then ``TreeWalker.walk`` so every inheriting child receives the same increment
+    and its own row, with ``propagated`` false on all of them.
+
+    ⚠️ **``auth_at_panel_mtg`` defaults to ``None`` and callers must leave it that
+    way when the column should be NULL.** :func:`log_integration_transaction` sets
+    it only ``if auth_at_panel_mtg is not None``, so passing ``False`` "to be
+    explicit" writes 0 where legacy writes NULL — different bytes on an audit row.
+    ``buildAdjustAllocationCommand`` never sets it; the supplement one does. Pinned
+    by ``test_auth_at_panel_mtg_is_null_not_zero``.
+
+    Runs inside the caller's ``management_transaction()`` — does NOT commit.
+    """
+    if allocation.is_inheriting:
+        detach_allocation(session, allocation.allocation_id, None)
+
+    modified: List[Allocation] = []
+    subtree: List[Allocation] = []
+    allocation._walk_tree(lambda node: subtree.append(node))
+
+    for node in subtree:
+        node.amount = float(node.amount or 0.0) + float(amount)
+        log_integration_transaction(
+            session, node, transaction_type,
+            comment=comment,
+            transaction_amount=float(amount),
+            auth_at_panel_mtg=auth_at_panel_mtg,
+        )
+        modified.append(node)
+
+    session.flush()
+    return modified
+
+
+def supplement_allocation(
+    session: Session,
+    allocation: Allocation,
+    *,
+    amount: float,
+    comment: Optional[str] = None,
+    auth_at_panel_mtg: bool = False,
+) -> List[Allocation]:
+    """Add ``amount`` to an allocation and its child subtree. Additive, not absolute.
+
+    ⚠️ **The single most important porting semantic in the XRAS integration.**
+    ``awardedAmount`` on a Supplement action is the **increment**, not the new total —
+    legacy's ``AllocationTransactionType.SUPPLEMENT`` replays as
+    ``addAmount(transaction_amount)``. :func:`update_allocation` *sets* ``amount``, so
+    using it here would overwrite a 4,000,000-core-hour allocation with a 250,000-hour
+    supplement. There was no additive primitive before this one.
+
+    The subtree walk is legacy's: ``Allocation.supplement`` calls
+    ``TreeWalker.walk``, so every inheriting child receives the same increment and its
+    own ``SUPPLEMENT`` row. ``propagated`` stays false on all of them, matching the
+    3,203 integration-written rows in production.
+
+    Detaching first is also legacy's (``disinherit()`` before ``supplement()``), routed
+    through :func:`detach_allocation` so it leaves the audit row legacy never wrote.
+
+    Runs inside the caller's ``management_transaction()`` — does NOT commit.
+
+    Args:
+        session: SQLAlchemy session.
+        allocation: the allocation to supplement; its child subtree comes too.
+        amount: the increment. Legacy's factories gate on ``> 0`` before calling;
+            the Adjustment handler deliberately does not (see its module docstring).
+        comment: ``transaction_comment``, normally the normalized
+            ``resources[].comments`` from the wire, or ``None``.
+        auth_at_panel_mtg: the CSL/CHAP rule's answer. Set on 1,264 of the 3,203
+            integration rows, so it is not vestigial.
+
+    Returns:
+        Every node modified, root first.
+    """
+    return _add_to_subtree(session, allocation, amount=amount, comment=comment,
+                           transaction_type=AllocationTransactionType.SUPPLEMENT,
+                           auth_at_panel_mtg=auth_at_panel_mtg)
+
+
+def adjust_allocation(
+    session: Session,
+    allocation: Allocation,
+    *,
+    amount: float,
+    comment: Optional[str] = None,
+) -> List[Allocation]:
+    """Apply a signed correction to an allocation and its child subtree.
+
+    The sibling of :func:`supplement_allocation`, and structurally near-identical —
+    legacy's ``AdjustProjectAllocationActionCommandsFactory`` is a near-verbatim copy of
+    the supplement one. Two differences, both real:
+
+    * ``ADJUSTMENT`` rather than ``SUPPLEMENT``. Both replay as
+      ``addAmount(transaction_amount)``, so the arithmetic is the same; the type is what
+      an operator filters on.
+    * **No ``auth_at_panel_mtg``.** ``buildAdjustAllocationCommand`` never sets it,
+      where the supplement one does.
+
+    ⚠️ **``amount`` may be negative, and that is the point.** Legacy gates its adjust
+    factory on ``> 0`` — the same copy-pasted guard as supplement — which silently drops
+    the one thing an adjustment exists to do. Combined with legacy defect 4 (it tests
+    ``"Adjust"`` while the wire says ``"Adjustment"``) that handler has never serviced a
+    single action, so nothing depends on the guard. Callers gate as they see fit; this
+    primitive does not.
+
+    It does **not** guard the resulting amount either — that is the handler's decision,
+    because "may this allocation go negative" is a policy question and this is a
+    mechanism. Legacy's ``verifyValidateState`` checks only the end date, so it has no
+    such guard anywhere.
+
+    Runs inside the caller's ``management_transaction()`` — does NOT commit.
+
+    Returns:
+        Every node modified, root first.
+    """
+    return _add_to_subtree(session, allocation, amount=amount, comment=comment,
+                           transaction_type=AllocationTransactionType.ADJUSTMENT)

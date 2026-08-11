@@ -1218,6 +1218,27 @@
     ]
   ],
   [
+    "admin_dashboard.notification_detail",
+    "/admin/htmx/notifications/<int:log_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.notifications",
+    "/admin/htmx/notifications",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.notifications_log",
+    "/admin/htmx/notifications/log",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.nsf_program_contracts",
     "/admin/nsf-program/<int:nsf_program_id>/contracts",
     [
@@ -1432,6 +1453,97 @@
     "/allocations/usage/<projcode>/<resource>",
     [
       "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras",
+    "/allocations/xras",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_action_details",
+    "/allocations/xras_action_details/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_activate",
+    "/allocations/xras_activate/<int:project_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_comment",
+    "/allocations/xras_comment/<int:project_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dismiss",
+    "/allocations/xras_dismiss/<int:project_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dismiss_form",
+    "/allocations/xras_dismiss_form/<int:project_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_fragment",
+    "/allocations/xras_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_history",
+    "/allocations/xras_history/<int:project_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_notify",
+    "/allocations/xras_notify/<int:project_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_notify_form",
+    "/allocations/xras_notify_form/<int:project_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_pending_fragment",
+    "/allocations/xras_pending_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_replay",
+    "/allocations/xras_replay/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_restore",
+    "/allocations/xras_restore/<int:project_id>",
+    [
+      "POST"
     ]
   ],
   [

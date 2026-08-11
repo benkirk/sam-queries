@@ -1,0 +1,224 @@
+{% from 'dashboards/fragments/pagination.html' import pagination %}
+{% from 'dashboards/fragments/sort_link.html' import sort_link with context %}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{#
+  XRAS action-log HTMX fragment.
+
+  Context:
+    rows, total, summary, page, sort, filters
+    fragment_url, target_id, form_id, sortable_columns
+
+  ⚠️  WHERE THE COLLAPSE TOGGLE GOES, AND WHY IT IS NOT ON THE <tr>
+
+  Bootstrap registers its collapse data-api with EventHandler.on(document, ...),
+  which runs in the CAPTURE phase. Capture descends document -> row -> button, so
+  a data-bs-toggle="collapse" on the <tr> has ALREADY fired before any handler on
+  a nested button executes — `data-stop-propagation` is powerless against it by
+  construction (see dashboards/fragments/collapse.html for the full write-up).
+
+  This table has three interactive things inside its rows: the Request # and
+  Result project-modal buttons, the details button, and the replay button. So the
+  toggle lives on the Errors <td> ALONE. That cell is also the best affordance:
+  the error list is what an operator is triaging, and "3 errors ⌄" says what will
+  happen when you click it.
+
+  Rows with no errors get no toggle at all — a chevron that expands to nothing
+  reads as broken.
+#}
+
+{# Facet strip — clickable. A chip writes its value into the filter form and
+   re-submits it, so the whole fragment (chips included) re-renders with new
+   counts and new active states. Clicking the active chip clears that filter.
+
+   The counts come from SELF-EXCLUDING rollups (see xras_fragment): each
+   dimension's chips ignore its own filter, so they stay a way to move between
+   values rather than collapsing to zeros as soon as one is picked.
+
+   The headline count is `total` — the table's real filtered row count. It is
+   deliberately NOT either facet's total: with each facet unscoped in one
+   dimension, neither of those is the number of rows on screen. #}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-1 small">
+    <span class="text-muted">Showing</span>
+    <strong>{{ total | fmt_number }}</strong>
+    <span class="text-muted">action{{ '' if total == 1 else 's' }}</span>
+</div>
+
+<div class="facet-grid mb-2">
+    {# Both lists are shaped in the route — ordering and the NULL drop are data
+       decisions, not layout ones, and display code here takes ready dicts. #}
+    {{ facet_row('Status', status_facets,
+                 form_id, 'status', filters.status or [], badge=True) }}
+    {{ facet_row('Action type', action_type_facets,
+                 form_id, 'action_type', filters.action_type or []) }}
+</div>
+
+{# The id is the htmx.onLoad marker admin-cards.js gates chevron wiring on —
+   same mechanism as #contractsTable. #}
+<div id="xrasActionsTable">
+    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+        <thead class="table-subtle">
+            <tr>
+                <th style="white-space:nowrap;">{{ sort_link('received_time', 'Received') }}</th>
+                <th style="width:120px;">{{ sort_link('action_type', 'Type') }}</th>
+                <th style="width:130px;">{{ sort_link('request_number', 'Request #') }}</th>
+                <th style="width:150px;">{{ sort_link('status', 'Status') }}</th>
+                <th style="width:130px;">{{ sort_link('projcode_result', 'Result') }}</th>
+                <th style="width:99%;">Errors</th>
+                <th class="text-end" style="white-space:nowrap;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            {% set errors_id = 'xras-errors-' ~ r.action_log_id %}
+            <tr>
+                {# Column shows the date; the tooltip carries the time of day, which
+                   is what separates six actions posted in the same second. #}
+                <td style="white-space:nowrap;"
+                    title="{{ r.received_time | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }}">
+                    {% if r.replay_of_id %}
+                    <i class="fas fa-redo text-muted me-1"
+                       title="Replay of action #{{ r.replay_of_id }}"></i>
+                    {% endif %}
+                    {{ r.received_time | fmt_date }}
+                </td>
+                <td>
+                    {% if r.action_type %}
+                    <span class="badge bg-secondary">{{ r.action_type }}</span>
+                    {% else %}
+                    {# NULL action_type is meaningful: the body would not parse, so
+                       we genuinely do not know what was being asked for. #}
+                    <span class="text-muted" title="Body could not be parsed">—</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {# Three states, because "not a project" means two different
+                       things. On the New path request_number is a request token
+                       (NCAR#### here — XRAS_REQUEST_TOKEN_PREFIXES) and having no
+                       project yet is the normal, expected case. On every other
+                       path it IS a projcode, so failing to resolve means the
+                       project is gone, renamed, or the payload was mis-sent —
+                       which is worth an operator's attention. Linking either one
+                       blindly would 404 on the 21% of traffic that fails most. #}
+                    {% if r.request_number and r.request_is_project %}
+                    <button class="btn btn-link p-0"
+                            title="View project details"
+                            data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                            hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.request_number) }}"
+                            hx-target="#projectDetailsModalBody"
+                            hx-swap="innerHTML"
+                            data-stop-propagation>
+                        <strong>{{ r.request_number }}</strong>
+                    </button>
+                    {% elif r.request_number and r.request_is_token %}
+                    <span title="XRAS request number — no project exists yet, which is normal for a New action">
+                        {{ r.request_number }}
+                    </span>
+                    {% elif r.request_number %}
+                    <span class="text-warning-emphasis"
+                          title="Not a SAM project, and not a recognised XRAS request number — the project may have been deleted or renamed">
+                        <i class="fas fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
+                    </span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                    {{ status_badge(r.status) }}
+                    {% if r.http_status %}
+                    {# 400 vs 422 both live under status='failed'; the code is the
+                       only thing that separates "unparseable" from "rejected". #}
+                    <span class="text-muted small ms-1">{{ r.http_status }}</span>
+                    {% endif %}
+                    {% if r.replay_count %}
+                    <span class="badge bg-secondary ms-1"
+                          title="Replayed {{ r.replay_count }} time{{ '' if r.replay_count == 1 else 's' }}">
+                        <i class="fas fa-redo"></i> {{ r.replay_count }}
+                    </span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if r.projcode_result and r.result_is_project %}
+                    <button class="btn btn-link p-0"
+                            title="View project details"
+                            data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                            hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode_result) }}"
+                            hx-target="#projectDetailsModalBody"
+                            hx-swap="innerHTML"
+                            data-stop-propagation>
+                        <strong>{{ r.projcode_result }}</strong>
+                    </button>
+                    {% elif r.projcode_result %}
+                    <span title="Project not found in SAM">{{ r.projcode_result }}</span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                {# THE toggle cell — the only one. See the header note. #}
+                {% if r.errors %}
+                <td class="cursor-pointer small" {{ collapse_toggle(errors_id) }}>
+                    <i class="fas fa-chevron-right small text-muted me-1 xras-collapse-icon"
+                       style="transition: transform 0.2s;"></i>
+                    {# text-danger-emphasis, NOT text-danger: the latter is the
+                       saturated brand red, which measures 3.35:1 against the dark
+                       card (--surface-card #1b2733) and fails WCAG AA. The
+                       -emphasis token is theme-aware and measures 6.00:1 dark /
+                       7.9:1 light. Measured in the browser, not eyeballed. #}
+                    <span class="text-danger-emphasis">
+                        {{ r.errors | length }} error{{ '' if r.errors | length == 1 else 's' }}
+                    </span>
+                    <span class="text-muted ms-1"
+                          style="display:inline-block; max-width:38ch; overflow:hidden;
+                                 text-overflow:ellipsis; white-space:nowrap;
+                                 vertical-align:bottom;">{{ r.errors[0] }}</span>
+                </td>
+                {% else %}
+                <td class="text-muted small">—</td>
+                {% endif %}
+                <td class="text-end text-nowrap">
+                    <button class="btn btn-sm btn-outline-secondary"
+                            title="View action details"
+                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                            hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.action_log_id) }}"
+                            hx-target="#auditDetailsModalBody"
+                            hx-swap="innerHTML">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                    {% if has_permission(Permission.MANAGE_XRAS) %}
+                    <button class="btn btn-sm btn-outline-secondary"
+                            title="Replay this action"
+                            hx-post="{{ url_for('allocations_dashboard.xras_replay', action_id=r.action_log_id) }}"
+                            hx-confirm="Re-submit the stored payload for action #{{ r.action_log_id }}? This writes a new, linked audit row."
+                            hx-swap="none">
+                        <i class="fas fa-redo"></i>
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% if r.errors %}
+            <tr class="collapse" id="{{ errors_id }}">
+                <td colspan="7" class="bg-body-tertiary">
+                    {# The ordered list IS the wire contract — this is verbatim what
+                       XRAS was told in the 422 body, in the order it was told. #}
+                    <ol class="mb-0 small">
+                        {% for e in r.errors %}
+                        <li><code>{{ e }}</code></li>
+                        {% endfor %}
+                    </ol>
+                </td>
+            </tr>
+            {% endif %}
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                    <i class="fas fa-inbox"></i>
+                    No XRAS actions match the current filter.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {{ pagination(page, total, fragment_url, target_id, form_id, sort) }}
+</div>

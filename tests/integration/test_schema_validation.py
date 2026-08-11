@@ -443,6 +443,85 @@ class TestModelCoverage:
 # ============================================================================
 
 
+#: The seven columns that must be utf8mb4 while their tables default to utf8mb3.
+#:
+#: This is a **data-loss guard, not a preference.** utf8mb3 cannot hold a 4-byte
+#: character at all, and under ``STRICT_TRANS_TABLES`` (which production runs)
+#: storing one raises ``1366 Incorrect string value`` and **loses the whole row** —
+#: for `xras_action_log` that is the audit record of an action SAM just applied.
+#: These columns carry human text: project titles, abstracts, operator notes,
+#: display names, mail subjects.
+#:
+#: The identifier columns deliberately do **not** follow. `request_number` and
+#: `projcode_result` join against `project.projcode` (utf8mb3_general_ci), and a
+#: mixed-charset comparison stops using the index — measured as
+#: ``type: const, rows: 1`` degrading to ``type: index, rows: 4650``. They are
+#: guarded by `_strip_astral` in the application instead.
+UTF8MB4_COLUMNS = {
+    ('xras_action_log',       'raw_payload'),
+    ('xras_action_log',       'error_messages'),
+    ('xras_activation_event', 'comment'),
+    ('xras_activation_event', 'notified_to'),
+    ('notification_log',      'recipient_name'),
+    ('notification_log',      'subject'),
+    ('notification_log',      'error'),
+}
+
+
+class TestCharsetSplit:
+    """The utf8mb3/utf8mb4 split, asserted rather than remembered.
+
+    ⚠️ **This is the only automated record of the split that runs by default.**
+    SQLAlchemy does not encode collation on these models, so the ORM cannot carry
+    it; the `initdb.d/zz-9*.sql` files that used to be its written source were
+    retired once production and the committed snapshot both had the tables. The
+    stress tier proves the *behaviour* (an emoji survives a POST) but is gated off
+    the default run, so without this the split could silently vanish from a
+    regenerated snapshot and nothing would notice until an audit row went missing
+    in production.
+
+    Getting it back later is not free either: it is an ``ALTER`` on a table with
+    an audit trail in it, where today it is a property of an empty table.
+    """
+
+    def test_the_seven_text_columns_are_utf8mb4(self, session):
+        rows = session.execute(text("""
+            SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME
+              FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME IN ('xras_action_log', 'xras_activation_event',
+                                  'notification_log')
+               AND CHARACTER_SET_NAME IS NOT NULL
+        """)).all()
+
+        actual = {(t, c) for t, c, cs in rows if cs == 'utf8mb4'}
+        assert actual == UTF8MB4_COLUMNS, (
+            "utf8mb4 column set drifted.\n"
+            f"  missing (would lose rows on a 4-byte char): {UTF8MB4_COLUMNS - actual}\n"
+            f"  unexpected (breaks an indexed join if it is an identifier): "
+            f"{actual - UTF8MB4_COLUMNS}"
+        )
+
+    def test_the_identifier_columns_stay_utf8mb3(self, session):
+        """The other half. A well-meaning "just make it all utf8mb4" is the change
+        this guards against — it would silently drop these joins to a full scan."""
+        joined = [('xras_action_log', 'request_number'),
+                  ('xras_action_log', 'projcode_result'),
+                  ('notification_log', 'projcode')]
+        rows = dict(((t, c), cs) for t, c, cs in session.execute(text("""
+            SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME
+              FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME IN ('xras_action_log', 'notification_log')
+        """)).all())
+        for key in joined:
+            assert rows.get(key) == 'utf8mb3', (
+                f"{key[0]}.{key[1]} is {rows.get(key)}, not utf8mb3 — it joins "
+                f"against project.projcode and a mixed-charset comparison stops "
+                f"using the index"
+            )
+
+
 class TestCriticalSchemas:
 
     @pytest.mark.parametrize("model_name,table_name,expected_pk", [

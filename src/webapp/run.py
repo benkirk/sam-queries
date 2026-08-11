@@ -2,9 +2,35 @@
 import os
 import re
 import socket
+import sys
 import uuid
 import time
 from datetime import datetime
+
+# ── Disarm a module-name shadow, BEFORE any project import ──────────────────
+#
+# The dev container runs `python3 ./src/webapp/run.py` (containers/webapp/
+# Dockerfile, development target), which makes src/webapp `sys.path[0]`. The
+# top-level module name `config` (src/config.py, the SAMConfig both this
+# package and sam.fmt import) is then shadowed by THIS directory's config.py,
+# and webapp/config.py's own `from config import SAMConfig` resolves to
+# itself:
+#
+#     ImportError: cannot import name 'SAMConfig' from partially initialized
+#     module 'config' (.../src/webapp/config.py)
+#
+# Whether that fires depends on import ORDER — on whether anything asks for
+# `config` before it is correctly cached — which makes it a landmine that an
+# unrelated change re-arms. Adding `sam.notify` to sam/__init__.py hoisted
+# sam.fmt to the front of the chain and detonated it exactly that way.
+#
+# Dropping the script directory is safe: every project package is reachable
+# via src/ (editable install), and this file's own imports are all absolute
+# and package-qualified. Under gunicorn (`webapp.run:create_app()`)
+# sys.path[0] is the cwd, so this is a no-op.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path[:] = [p for p in sys.path
+               if os.path.abspath(p or os.getcwd()) != _HERE]
 
 _HEALTH_PATH_RE = re.compile(r'^/api/v\d+/health(/|$)')
 os.environ['FLASK_ACTIVE'] = '1'
@@ -38,6 +64,7 @@ from webapp.api.v1.fstree_access import bp as api_fstree_access_bp
 from webapp.api.v1.queue import bp as api_queue_bp
 from webapp.api.v1.wallclock_exemption import bp as api_wallclock_exemption_bp
 from webapp.api.v1.admin import bp as api_admin_bp
+from webapp.api.xras import bp as api_xras_bp
 from webapp.config import get_webapp_config
 from webapp.logging_config import configure_logging
 
@@ -415,6 +442,9 @@ def create_app(*, config_overrides: dict | None = None):
     app.register_blueprint(api_queue_bp, url_prefix='/api/v1/queue')
     app.register_blueprint(api_wallclock_exemption_bp, url_prefix='/api/v1/wallclock_exemption')
     app.register_blueprint(api_admin_bp, url_prefix='/api/v1/admin')
+    # XRAS is the one API surface not under /api/v1 — the prefix is legacy's,
+    # mapped by web.xml to a dedicated DispatcherServlet at /api/xras/*.
+    app.register_blueprint(api_xras_bp, url_prefix='/api/xras/v1')
 
     # Register centralized formatting filters (fmt_number, fmt_pct, fmt_date, fmt_size)
     import sam.fmt as fmt

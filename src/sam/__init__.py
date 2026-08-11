@@ -179,8 +179,13 @@ from .summaries.archive_summaries import (
 )
 
 # 9. Integration and security
-# XRAS table model (actual table, not a view)
-from .integration.xras import XrasResourceRepositoryKeyResource
+# XRAS table models (actual tables, not views)
+from .integration.xras import (
+    XrasResourceRepositoryKeyResource,
+    XrasActionLog,
+    XrasActivationEvent,
+    XRAS_ACTIVATION_EVENT_TYPES,
+)
 
 # XRAS view models (read-only database views)
 from .integration.xras_views import (
@@ -191,6 +196,16 @@ from .integration.xras_views import (
     XrasHpcAllocationAmountView,
     XrasRequestView
 )
+
+# Notification delivery ledger.
+#
+# ⚠️ This costs an import of `sam.notify`, whose __init__ therefore imports
+# ONLY sam.notify.base eagerly and defers the rest via PEP 562 __getattr__.
+# Eager imports there would put jinja2, three transports and sam.fmt into the
+# import graph of every ORM consumer — and sam.fmt imports the top-level
+# `config` module, which `python3 src/webapp/run.py` shadows with
+# webapp/config.py. See the sam/notify/__init__.py docstring.
+from .notify.models import NotificationLog
 
 from .security.roles import Role, RoleUser, ApiCredentials, RoleApiCredentials
 from .security.access import AccessBranch, AccessBranchResource
@@ -251,9 +266,12 @@ __all__ = [
     'DiskChargeSummary', 'DiskChargeSummaryStatus',
     'ArchiveChargeSummary', 'ArchiveChargeSummaryStatus',
     # Integration
-    'XrasResourceRepositoryKeyResource',
+    'XrasResourceRepositoryKeyResource', 'XrasActionLog',
+    'XrasActivationEvent', 'XRAS_ACTIVATION_EVENT_TYPES',
     'XrasUserView', 'XrasRoleView', 'XrasActionView',
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',
+    # Notifications
+    'NotificationLog',
     # Security
     'Role', 'RoleUser', 'ApiCredentials', 'RoleApiCredentials',
     'AccessBranch', 'AccessBranchResource',

@@ -294,3 +294,21 @@ tbody.alloc-tree-body.collapsing { transition: none !important; }
     text-underline-offset: 2px;
     text-decoration-thickness: 1px;
 }
+
+/* <code> inside an alert.
+   Measured: the global code colour on .alert-warning is 1.21:1, against 8.57:1
+   for the alert's own body text — effectively invisible. Alert palettes pick a
+   foreground for their own background, so the only safe colour in there is the
+   one the alert already chose.
+
+   Not cosmetic. The string this hides most often IS the redirect address —
+   "your mail is going HERE, not to the PI" on the XRAS Notify modal and the
+   admin Notifications card. A safety interlock nobody can read is not one.
+
+   Colour only — no background tint. A tint here would be a new raw colour
+   (test_no_new_raw_colours is the gate) for no benefit: the monospace face
+   already separates the address from the prose, and the 8.57:1 comes from
+   inheriting the alert's own foreground, not from anything behind it. */
+.alert code {
+    color: inherit;
+}

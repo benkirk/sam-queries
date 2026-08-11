@@ -340,8 +340,33 @@ def htmx_not_found(name='Resource', status=404):
     """Standard 404 response fragment for missing entities.
 
     Returns a tuple suitable as a Flask response (HTML, status).
+
+    For a fragment that lands **inside an already-open modal**, use
+    :func:`htmx_modal_not_found` instead — see its docstring for why the status
+    differs.
     """
     return f'<div class="alert alert-danger">{name} not found</div>', status
+
+
+def htmx_modal_not_found(name='Resource'):
+    """Not-found body for a fragment swapped into an **already-open** modal.
+
+    Two differences from :func:`htmx_not_found`, both deliberate:
+
+    * **200, not 404.** htmx does not swap a 4xx response by default, so a 404 here
+      leaves the modal showing a spinner or the previous entity's content — the one
+      outcome worse than saying "not found". The shell is already on screen; the
+      question is only what goes in its body.
+    * **Bare text, not an ``alert`` box.** A full-width alert inside a modal body
+      that exists to hold a detail panel reads as an error state of the page rather
+      than an answer to what was clicked.
+
+    ``text-danger-emphasis`` rather than ``text-danger``: the plain token fails WCAG
+    AA against the card surface in dark mode. That is why this markup exists at all
+    — three XRAS routes had forked their own copy of it to get the contrast right,
+    which is a fix that belongs in the shared helper rather than beside it.
+    """
+    return f'<p class="text-danger-emphasis mb-0">{name} not found.</p>'
 
 
 def handle_htmx_soft_delete(obj, *, name='Resource'):

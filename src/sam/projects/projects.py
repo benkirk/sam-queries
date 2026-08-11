@@ -364,6 +364,32 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         self.session.flush()
         return self
 
+    def reactivate(self) -> 'Project':
+        """Mark this project active and clear the deactivation stamp.
+
+        Deliberately separate from ``update(active=True)``, which does **not**
+        clear ``inactivate_time`` and must not start doing so. The admin Details
+        tab loads with ``partial=True``, and a partial load skips ``load_default``
+        entirely (verified against the installed marshmallow) — so ``active``
+        reaches the update dict only when the checkbox is *checked*. A symmetric
+        ``update()`` would therefore clear ``inactivate_time`` on every save of
+        any already-active project, silently destroying a historical stamp on an
+        unrelated edit, while the stamping half would never fire from the web at
+        all.
+
+        The stamping half lives in ``sam-admin project --deactivate``
+        (``cli/project/commands.py``), which assigns directly and shares one batch
+        timestamp across a run. A matching ``Project.deactivate()`` to unify them
+        is a reasonable follow-up and is deliberately not part of this change.
+
+        Returns:
+            self (for chaining).
+        """
+        self.active = True
+        self.inactivate_time = None
+        self.session.flush()
+        return self
+
     # # Active account users (filtered join)
     # account_users = relationship(
     #     'AccountUser',
