@@ -493,6 +493,51 @@ class TestResolveContract:
         errs = ActionErrors()
         assert resolve_contract(session, 'ABC-9990005X', errs) is contract
 
+    def test_a_wildcard_grant_number_is_matched_literally(self, session):
+        """``%`` off the wire must be a character, not "every contract in the table".
+
+        ``extract_core_number`` returns its input *trimmed whole* whenever the ≥6-digit
+        pattern misses, so an unescaped ``grantNumber`` of ``%`` reached ``ilike`` as a
+        wildcard — an unbounded read whose every row is then named in the ambiguity
+        message and stored in ``xras_action_log.error_messages``. Not an injection
+        (the parameter is bound), but not the broker's decision either.
+        """
+        from factories import make_contract
+        make_contract(session, contract_number='9990006')
+        errs = ActionErrors()
+        assert resolve_contract(session, '%', errs) is None
+        # "cannot find", not "ambiguous": nothing ends in a literal '%'.
+        assert len(errs) == 1
+        assert list(errs)[0].startswith('Cannot find contract')
+
+    def test_an_underscore_is_matched_literally_too(self, session):
+        """``_`` is LIKE's single-character wildcard, and the one people forget.
+
+        Note the grant number here has **no run of six or more digits**, which is what
+        sends `extract_core_number` down its fall-through branch and puts the raw wire
+        string in front of LIKE. A number like ``'_9990007'`` would not do: the pattern
+        matches, group 2 is ``'9990007'``, and the underscore never reaches the query.
+        """
+        from factories import make_contract
+        make_contract(session, contract_number='QQABCX123')
+        errs = ActionErrors()
+        assert resolve_contract(session, 'QQABC_123', errs) is None
+        assert list(errs)[0].startswith('Cannot find contract')
+
+    def test_a_literal_escaped_suffix_still_matches(self, session):
+        """The escaping must not break a contract number that genuinely contains one
+        of these characters — otherwise the guard has traded a wildcard bug for a
+        lookup that can never succeed.
+
+        The stored number is *longer* than the grant number on purpose, so step 1's
+        exact match misses and this actually exercises the suffix query.
+        """
+        from factories import make_contract
+        contract = make_contract(session, contract_number='NSFQQABC_123')
+        errs = ActionErrors()
+        assert resolve_contract(session, 'QQABC_123', errs) is contract
+        assert not errs
+
 
 # ---------------------------------------------------------------------------
 # Mnemonic code — 24% of legacy's XRAS failures.

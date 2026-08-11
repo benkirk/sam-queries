@@ -966,10 +966,13 @@ that rewrote the tests meant to cover them (risk #4). Measured after:
 
 ### Still outstanding
 
-- **`zz-92` on PR #424's DBA ticket.** One table, not two. This is the
-  design's only remaining external dependency.
-- **Staging needs all three `zz-9*` run by hand once** —
-  `infrastructure/scripts/init-rds.sh` restores the raw `.xz` with no initdb
-  hook.
+- ~~**`zz-92` on PR #424's DBA ticket.**~~ ✅ **Closed 2026-08-10.** `hpc-writer`
+  was granted DDL and all three tables were created in production by hand; the
+  `zz-9*` scripts have since been retired entirely. The design has **no
+  remaining external dependency.** See `DBA_PRIVILEGE_REQUEST.md`.
+- **ECS-staging's RDS still lacks the tables.** `infrastructure/scripts/init-rds.sh`
+  restores the `.xz` with no initdb hook, and it is a one-time bootstrap — the
+  regenerated snapshot carries all three, but an existing instance never re-runs
+  it. CIRRUS/k8s is the deployment target, so this is a render-check concern.
 - **Whether the expiration notices should become a CronJob** — deliberately
   not decided here.

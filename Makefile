@@ -178,9 +178,9 @@ docker-build: ## Build docker containers
 	@# starts mysql-test. Without it `docker compose build` silently skips every
 	@# profile-gated service, so mysql-test keeps running whatever image it was
 	@# last built from — even after `down -v`, which only drops the volume, not
-	@# the image. That is invisible until a schema change lands in
-	@# containers/sam-sql-dev/initdb.d/ and appears in `mysql` but not
-	@# `mysql-test`, i.e. everywhere except where pytest looks.
+	@# the image. That is invisible until a schema change lands in the restored
+	@# snapshot and appears in `mysql` but not `mysql-test`, i.e. everywhere
+	@# except where pytest looks.
 	@docker compose --profile test build
 
 docker-up: ## Start docker containers (waits until every service reports healthy)

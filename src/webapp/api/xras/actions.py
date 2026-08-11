@@ -289,6 +289,12 @@ def _finish(log_id, *, status, projcode_result=None, error_messages=None,
     with Session(db.engine) as session:
         row = session.get(XrasActionLog, log_id)
         if row is None:                      # pragma: no cover - defensive
+            # Say so. A row that vanished between _record and _finish means the
+            # audit trail lost an action, which is the one thing this table exists
+            # to prevent — silence here would make it undiagnosable.
+            current_app.logger.error(
+                'XRAS audit row %s disappeared before close-out (status=%s)',
+                log_id, status)
             return
         row.status = status
         row.processed_time = datetime.now()
@@ -409,11 +415,16 @@ def _enabled_action_types():
 def _dispatch(log_id, action):
     """Run the dispatcher and close out the audit row. Returns the HTTP response.
 
-    The three terminal states, and the reason each is what it is:
+    The four terminal states, and the reason each is what it is:
 
     - ``XrasActionRejected`` → ``failed`` + **422** carrying the accumulated, ordered
       error list. Nothing was written: the handler contract is assemble → check once →
       execute, so a rejection happens before any transaction opens.
+    - **any other exception** → ``failed`` + **500**, with ``outcome_reason`` naming
+      the exception class, then re-raised. Every exit from this function must leave a
+      terminal status behind: the pre-dispatch row says ``received``, and so does the
+      capture-only backlog, so a row left at ``received`` by a crash is invisible
+      among rows that are merely waiting.
     - ``processed`` → 200, with ``projcode_result`` recorded. This is the status that
       has never once existed in this table.
     - ``manual`` → 200. Legacy's ``catch (BadRequestException)`` arm, except that
@@ -436,6 +447,37 @@ def _dispatch(log_id, action):
         _finish(log_id, status='failed', error_messages=exc.messages,
                 http_status=422, service=select_service(db.session, action))
         return _errors(exc.messages, 422)
+    except Exception as exc:
+        # A handler that RAISED is not the capture backlog — but without this arm the
+        # row keeps `status='received'` / `http_status=200` / `processed_time IS NULL`,
+        # which is byte-identical to what CAPTURE_ONLY writes at :530. Triage week
+        # queries exactly that status, so an exhausted projcode counter would read as
+        # "captured, not yet dispatched". `XrasProjectCreationFailed` is deliberately
+        # not an `XrasActionRejected` *because* "the route's error handling records
+        # it" (sam/xras/handlers/new.py) — this is that recording.
+        #
+        # The whole close-out is best-effort and re-raises the ORIGINAL exception:
+        # a diagnostic that throws its own error, masking the failure it was written
+        # to explain, is worse than no diagnostic.
+        try:
+            # `db.session` may need a rollback before it can answer anything.
+            # `management_transaction` rolls back on its way out, but `assemble()`
+            # runs *before* that transaction opens, so this arm can be reached with
+            # a session that is still poisoned.
+            db.session.rollback()
+            service = select_service(db.session, action)
+        except Exception:                    # pragma: no cover - defensive
+            service = None
+        try:
+            _finish(log_id, status='failed', http_status=500, service=service,
+                    outcome_reason=f'handler raised: {type(exc).__name__}')
+        except Exception:                    # pragma: no cover - defensive
+            current_app.logger.exception(
+                'XRAS audit close-out failed, row stays received: id=%s', log_id)
+        current_app.logger.exception(
+            'XRAS action raised: id=%s service=%s type=%s',
+            log_id, service, action.get('actionType'))
+        raise
 
     if result.warnings:
         # Non-fatal disagreements the action survived — today, only the legacy defect-3

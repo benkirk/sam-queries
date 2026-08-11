@@ -708,7 +708,7 @@ class TestPostActionsCapture:
 
 
 class TestDispatchArms:
-    """The three terminal states the route maps, with a stub handler standing in.
+    """The four terminal states the route maps, with a stub handler standing in.
 
     No real handler is registered yet, so ``processed`` and ``failed`` are unreachable
     from a live post — but the route code that maps them ships now, and code that
@@ -813,6 +813,70 @@ class TestDispatchArms:
         log_id = action_log.one()['id']
         assert f'id={log_id}' in caplog.text
         assert 'jdoe' in caplog.text and 'asmith' in caplog.text
+
+    @pytest.fixture
+    def crashing_handler(self, dispatching):
+        """A registered handler that raises something that is NOT XrasActionRejected.
+
+        ``XrasProjectCreationFailed`` is the live instance of this class — an exhausted
+        projcode counter or GID pool. It is deliberately a ``RuntimeError`` rather than
+        an ``XrasActionRejected`` because nothing about the request is wrong, so a 422
+        telling XRAS to fix its payload would be a lie.
+        """
+        def _boom(session, action):
+            raise RuntimeError('projcode counter exhausted')
+
+        dispatching.register('extend', _boom)
+        return dispatching
+
+    def test_a_raising_handler_closes_the_row_out_as_failed(
+            self, app, xras_client, action_log, crashing_handler):
+        """A crash must not leave the row looking like the capture backlog.
+
+        This is the whole point. Without the ``except Exception`` arm the row keeps
+        ``status='received'`` / ``http_status=200`` / ``processed_time IS NULL``, which
+        is **byte-identical** to what ``XRAS_ACTIONS_CAPTURE_ONLY`` writes. Triage week
+        queries exactly that status (``sam-admin xras --status received``), so an
+        operational failure would read as "captured, not yet dispatched" — the one
+        reading that makes someone *not* investigate.
+        """
+        # Let the blueprint's 500 handler answer instead of TESTING re-raising.
+        # Restore rather than pop: Flask's `app.propagate_exceptions` reads this key
+        # unconditionally, so deleting it turns every later test into a KeyError.
+        saved = app.config['PROPAGATE_EXCEPTIONS']
+        app.config['PROPAGATE_EXCEPTIONS'] = False
+        try:
+            resp = xras_client.post(
+                self.PATH, data=_payload('extension_ucub0166_ok.json'),
+                content_type='application/json', headers=_auth())
+        finally:
+            app.config['PROPAGATE_EXCEPTIONS'] = saved
+
+        assert resp.status_code == 500
+        row = action_log.one()
+        assert row['status'] == 'failed'
+        assert row['status'] != 'received'          # the bug, stated as itself
+        assert row['http_status'] == 500
+        assert row['processed_time'] is not None
+        # The exception class is what tells an operator this was operational rather
+        # than a payload problem, so it has to survive into the row.
+        assert 'RuntimeError' in row['outcome_reason']
+
+    def test_a_raising_handler_still_propagates_the_original_exception(
+            self, xras_client, action_log, crashing_handler):
+        """The close-out is a diagnostic, not a swallow.
+
+        Recording the row must not change what the caller sees, and must not replace
+        the original traceback with one from the recording code — a diagnostic that
+        masks the failure it exists to explain is worse than no diagnostic.
+        """
+        with pytest.raises(RuntimeError, match='projcode counter exhausted'):
+            xras_client.post(
+                self.PATH, data=_payload('extension_ucub0166_ok.json'),
+                content_type='application/json', headers=_auth())
+
+        # Still closed out, even on the propagating path.
+        assert action_log.one()['status'] == 'failed'
 
     def test_a_rejected_action_is_422_carrying_the_ordered_error_list(
             self, xras_client, action_log, dispatching):
