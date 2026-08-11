@@ -152,9 +152,10 @@ class AdjustmentHandler(ActionHandler):
         self.execute_plan(self.planned)
 
 
-def handle_adjustment(session, action) -> DispatchResult:
-    """The registry's contract: ``(session, action) -> DispatchResult``."""
-    return AdjustmentHandler(session, action).run()
+def handle_adjustment(session, action, *, validate_only: bool = False) -> DispatchResult:
+    """The registry's contract:
+    ``(session, action, *, validate_only=False) -> DispatchResult``."""
+    return AdjustmentHandler(session, action).run(validate_only=validate_only)
 
 
 register('adjust', handle_adjustment)

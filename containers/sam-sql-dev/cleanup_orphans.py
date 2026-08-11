@@ -10,7 +10,7 @@ Two properties of that job are easy to get wrong, and both bit us on the ``xras_
 tables:
 
 **Deleting orphans creates orphans.** A single pass is only correct for FK chains one
-level deep. Emptying ``xras_action_log`` of rows whose ``replay_of_id`` is dangling
+level deep. Emptying ``xras_action_log`` of rows whose ``source_action_id`` is dangling
 strands any ``xras_activation_event`` row that referenced them, and nothing revisits
 it. So the sweep repeats until a full pass deletes nothing — a fixed point, which
 terminates because passes only ever remove rows.

@@ -674,15 +674,15 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[detail] Show one action by id')
 @click.option('--payload', 'show_payload', is_flag=True,
               help='[detail] Include the raw payload (requires --show; contains PII)')
-@click.option('--replay', type=int, default=None,
-              help='[write] Re-submit a stored payload as a new, linked audit row')
+@click.option('--recheck', type=int, default=None,
+              help='[check] Would this action succeed if posted now? Applies nothing')
 @click.option('--summary', is_flag=True,
               help='[rollup] Counts by status and action type')
 @click.option('--validate-mapping', is_flag=True,
               help='[check] Report SAM resources XRAS cannot name (pre-cutover gate)')
 @click.option('--status', multiple=True,
               type=click.Choice(['received', 'processed', 'manual',
-                                 'failed', 'replayed']),
+                                 'failed', 'rechecked']),
               help='[list/rollup] Filter by status (repeatable)')
 @click.option('--type', 'action_type', multiple=True,
               help='[list/rollup] Filter by action type, e.g. New (repeatable)')
@@ -694,28 +694,29 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[list] Maximum rows to return')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
-def xras(ctx: Context, action_id, show_payload, replay, summary, validate_mapping,
+def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
          status, action_type, request_number, last, limit, verbose):
-    """Inspect and replay the XRAS action log.
+    """Inspect and re-check the XRAS action log.
 
     \b
     Reads xras_action_log — the audit trail written by POST /api/xras/v1/actions.
     Every post lands there before dispatch, so a request that fails is still
-    recorded and still replayable.
+    recorded and still re-checkable.
 
     \b
     Modes:
       (default)    list recent actions
-      --show ID    one action in full, with its replay lineage
+      --show ID    one action in full, with its re-check lineage
       --summary    counts by status, and by status x action type
-      --replay ID  re-submit that action's stored bytes
+      --recheck ID would this action succeed now? (applies nothing)
 
     \b
-    Replay honours XRAS_ACTIONS_CAPTURE_ONLY. While capture mode is on — which it
-    is until the POST cutover — legacy SAM is still applying these actions, so a
-    replay re-validates the stored payload and records the outcome WITHOUT
-    dispatching. That is deliberate: dispatching would double-apply an action
-    legacy has already performed.
+    --recheck answers "would this succeed if XRAS posted it now?" It re-parses the
+    stored payload and runs the handler's validation half against today's code and
+    data, then records the verdict as a new linked row. It APPLIES NOTHING, in any
+    configuration — the write path is never reached, rather than being suppressed by
+    a flag. Use it after fixing data a post failed on, to learn whether asking XRAS
+    to resend will land.
 
     \b
     Examples:
@@ -724,7 +725,7 @@ def xras(ctx: Context, action_id, show_payload, replay, summary, validate_mappin
       sam-admin xras --show 42 --payload
       sam-admin xras --summary --last 30d
       sam-admin xras --validate-mapping
-      sam-admin xras --replay 42
+      sam-admin xras --recheck 42
       sam-admin --format json xras --summary | jq .by_status
     """
     if verbose:
@@ -737,7 +738,7 @@ def xras(ctx: Context, action_id, show_payload, replay, summary, validate_mappin
     # Writes have no JSON contract: the envelope is for consumers reading state,
     # and a machine-readable success receipt for a side-effecting command invites
     # scripting a write loop that no one reviewed. Same rule as src/cli/README.md.
-    if replay is not None and ctx.output_format == 'json':
+    if recheck is not None and ctx.output_format == 'json':
         import json
         click.echo(json.dumps({'error': 'json_unsupported_for_writes'},
                               indent=2, sort_keys=False))
@@ -746,7 +747,7 @@ def xras(ctx: Context, action_id, show_payload, replay, summary, validate_mappin
     sys.exit(XrasCommand(ctx).execute(
         action_id=action_id,
         show_payload=show_payload,
-        replay=replay,
+        recheck=recheck,
         summary=summary,
         validate_mapping=validate_mapping,
         status=status,

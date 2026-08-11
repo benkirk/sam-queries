@@ -18,7 +18,7 @@ _STATUS_STYLE = {
     'processed': 'green',
     'manual':    'yellow',
     'failed':    'red',
-    'replayed':  'dim',
+    'rechecked':  'dim',
 }
 
 
@@ -65,9 +65,9 @@ def display_action_list(ctx, payload) -> None:
         else:
             error_cell = BLANK
 
-        replay_marker = f" [dim]↩{a['replay_of_id']}[/dim]" if a['replay_of_id'] else ''
+        recheck_marker = f" [dim]↩{a['source_action_id']}[/dim]" if a['source_action_id'] else ''
         table.add_row(
-            str(a['action_log_id']) + replay_marker,
+            str(a['action_log_id']) + recheck_marker,
             _timestamp(a['received_time']),
             text(a['action_type']),
             text(a['request_number']),
@@ -81,7 +81,7 @@ def display_action_list(ctx, payload) -> None:
 
 
 def display_action_detail(ctx, payload) -> None:
-    """One action in full, with its replay lineage and optionally its payload."""
+    """One action in full, with its re-check lineage and optionally its payload."""
     a = payload['action']
 
     table = Table(show_header=False, box=None, padding=(0, 2, 0, 0))
@@ -100,11 +100,11 @@ def display_action_detail(ctx, payload) -> None:
     table.add_row('Posted by', text(a['remote_actor']))
     if a['processed_by']:
         table.add_row('Replayed by', text(a['processed_by']))
-    if a['replay_of_id']:
-        table.add_row('Replay of', f"#{a['replay_of_id']}")
-    if payload['replays']:
+    if a['source_action_id']:
+        table.add_row('Replay of', f"#{a['source_action_id']}")
+    if payload['rechecks']:
         table.add_row('Replays', ', '.join(f"#{c['action_log_id']} ({c['status']})"
-                                           for c in payload['replays']))
+                                           for c in payload['rechecks']))
 
     ctx.console.print(Panel(table, title=f"XRAS action #{a['action_log_id']}",
                             border_style='blue'))
@@ -151,14 +151,24 @@ def display_summary(ctx, payload) -> None:
     ctx.console.print(by_type)
 
 
-def display_replay_result(ctx, payload) -> None:
-    """Confirmation after a replay."""
+def display_recheck_result(ctx, payload) -> None:
+    """The verdict, which is the only thing the operator asked for."""
+    verdict = {
+        'rechecked': ('Would succeed now.', 'green'),
+        'failed':    ('Would STILL FAIL.', 'bold red'),
+        'manual':    ('Nothing would run for this action.', 'yellow'),
+    }.get(payload['status'], ('Re-check complete.', 'green'))
     ctx.console.print(
-        f"Replayed action #{payload['replayed_id']} → "
-        f"new action #{payload['new_action_id']} "
+        f"{verdict[0]}  action #{payload['source_action_id']} → "
+        f"recorded as #{payload['new_action_id']} "
         f"({_status(payload['status'])})",
-        style='green',
+        style=verdict[1],
     )
+    if payload['status'] == 'failed':
+        ctx.console.print(
+            f"  Nothing was applied. "
+            f"See `sam-admin xras --show {payload['new_action_id']}` for the reasons.",
+            style='dim')
 
 
 def display_mapping_report(ctx, payload) -> None:

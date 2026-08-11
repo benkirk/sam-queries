@@ -303,9 +303,10 @@ class UpdateHandler(ActionHandler):
                                         member.user_id)
 
 
-def handle_update(session, action) -> DispatchResult:
-    """The registry's contract: ``(session, action) -> DispatchResult``."""
-    return UpdateHandler(session, action).run()
+def handle_update(session, action, *, validate_only: bool = False) -> DispatchResult:
+    """The registry's contract:
+    ``(session, action, *, validate_only=False) -> DispatchResult``."""
+    return UpdateHandler(session, action).run(validate_only=validate_only)
 
 
 register('update', handle_update)

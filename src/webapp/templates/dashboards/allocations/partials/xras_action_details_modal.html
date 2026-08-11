@@ -29,9 +29,9 @@
     {% if r.http_status %}
     <span class="text-muted small">HTTP {{ r.http_status }}</span>
     {% endif %}
-    {% if r.replay_of_id %}
-    <span class="badge bg-info text-dark" title="This row is a replay">
-        <i class="fas fa-redo me-1"></i>replay of #{{ r.replay_of_id }}
+    {% if r.source_action_id %}
+    <span class="badge bg-info text-dark" title="This row is a re-check">
+        <i class="fas fa-redo me-1"></i>re-check of #{{ r.source_action_id }}
     </span>
     {% endif %}
 </div>
@@ -92,7 +92,7 @@
 
     {% if r.processed_by %}
     <div class="stat-item">
-        <span class="stat-label">Replayed by:</span>
+        <span class="stat-label">Re-checked by:</span>
         <span class="stat-value">{{ r.processed_by }}</span>
     </div>
     {% endif %}
@@ -102,26 +102,26 @@
         <span class="stat-value"><code>{{ r.action_log_id }}</code></span>
     </div>
 
-    {% if r.replay_of_id %}
+    {% if r.source_action_id %}
     <div class="stat-item">
-        <span class="stat-label">Replay of:</span>
+        <span class="stat-label">Re-check of:</span>
         <span class="stat-value">
             {# Navigating the lineage without leaving the modal: swap this same
                body for the parent's. #}
             <button class="btn btn-link p-0"
-                    hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.replay_of_id) }}"
+                    hx-get="{{ url_for('allocations_dashboard.xras_action_details', action_id=r.source_action_id) }}"
                     hx-target="#auditDetailsModalBody"
                     hx-swap="innerHTML">
-                <code>#{{ r.replay_of_id }}</code>
+                <code>#{{ r.source_action_id }}</code>
             </button>
         </span>
     </div>
     {% endif %}
 
-    {% if r.replay_count %}
+    {% if r.recheck_count %}
     <div class="stat-item">
-        <span class="stat-label">Replays:</span>
-        <span class="stat-value">{{ r.replay_count }}</span>
+        <span class="stat-label">Re-checks:</span>
+        <span class="stat-value">{{ r.recheck_count }}</span>
     </div>
     {% endif %}
 

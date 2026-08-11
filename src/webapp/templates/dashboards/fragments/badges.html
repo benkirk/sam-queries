@@ -9,7 +9,7 @@
 
   Known states (case-insensitive): active, inactive, locked, expired, open-ended,
   plus the six xras_action_log states (received, processed, manual, failed,
-  replayed, unmapped) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
+  rechecked, unmapped) — see sam/queries/xras_actions.py::XRAS_ACTION_STATUSES.
   test_xras_dashboard.py asserts every member of that tuple has an entry in all
   three dicts below.
   Unknown states fall back to bg-secondary with the raw label rendered.
@@ -28,7 +28,7 @@
     'processed':  'bg-success',
     'manual':     'bg-warning text-dark',
     'failed':     'bg-danger',
-    'replayed':   'bg-secondary',
+    'rechecked':   'bg-secondary',
     'unmapped':   'bg-dark',
     'sent':       'bg-success',
     'queued':     'bg-info text-dark',
@@ -45,7 +45,7 @@
     'processed':  'Processed',
     'manual':     'Manual',
     'failed':     'Failed',
-    'replayed':   'Replayed',
+    'rechecked':  'Would succeed',
     'unmapped':   'Unmapped',
     'sent':       'Sent',
     'queued':     'Queued',
@@ -64,7 +64,7 @@
     'processed':  'A handler applied this action successfully.',
     'manual':     'Parked for a human: no handler services this action type.',
     'failed':     'Rejected. See the error list for what XRAS was told.',
-    'replayed':   'An operator re-submitted the stored payload; it was re-validated but not dispatched.',
+    'rechecked':   'Re-checked against current code and data: this action would succeed if XRAS posted it now. Nothing was applied.',
     'unmapped':   'XRAS called a path SAM does not implement. Nothing was applied — decide whether it should be.',
     'sent':       'Handed to the relay and accepted.',
     'queued':     'Written before the send. Still queued long after means a process died mid-send.',

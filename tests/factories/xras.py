@@ -64,7 +64,7 @@ def make_xras_key_mapping(session, *, resource=None, key=None):
 
 def make_xras_action(session, *, status='received', action_type='Extension',
                      request_number='UCUB0166', http_status=200, errors=None,
-                     received_time=None, replay_of_id=None, projcode_result=None,
+                     received_time=None, source_action_id=None, projcode_result=None,
                      processed_by=None, action_id=None, service=None,
                      outcome_reason=None,
                      payload='{"actionType":"Extension"}'):
@@ -90,7 +90,7 @@ def make_xras_action(session, *, status='received', action_type='Extension',
         error_messages='\n'.join(errors) if errors else None,
         projcode_result=projcode_result,
         processed_by=processed_by,
-        replay_of_id=replay_of_id,
+        source_action_id=source_action_id,
         action_id=action_id,
         service=service,
         outcome_reason=outcome_reason,
