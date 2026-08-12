@@ -129,10 +129,22 @@
     });
 
     /* Filter-bar "Reset" buttons: reset the form, then re-submit it so
-     * the htmx fragment reloads with defaults. */
+     * the htmx fragment reloads with defaults.
+     *
+     * form.reset() restores every input's defaultValue — including a ladder's
+     * two range thumbs — but it cannot undo what JavaScript painted: the fill
+     * bar's inline --lo/--hi, the readout text, aria-valuetext, and the
+     * --custom modifier all survive it. Without the repaint below, Clear on a
+     * panel carrying a ladder leaves the thumbs at the default while the bar
+     * and the readout still describe the window the user last dragged. */
     window.registerAction('form-reset-submit', function (el) {
         var form = document.getElementById(el.dataset.formId);
         form.reset();
+        var ladders = form.querySelectorAll('[data-ladder-range]');
+        for (var i = 0; i < ladders.length; i++) {
+            var s = ladderRangeState(ladders[i]);
+            if (s && s.bands.length) { ladderRangePaint(s); }
+        }
         htmx.trigger(form, 'submit');
     });
 
@@ -188,8 +200,11 @@
         var lo = root.querySelector('[data-ladder-lo]');
         var hi = root.querySelector('[data-ladder-hi]');
         if (!lo || !hi) { return null; }
-        /* Thumbs must not cross: clamp whichever one moved to the other. */
-        if (+lo.value > +hi.value) {
+        /* Thumbs must not cross: clamp whichever one moved to the other.
+         * Only when `el` IS a thumb — callers that pass the root (the reset
+         * repaint) have nothing to clamp, and assigning .value to a <div>
+         * would be a silent no-op that reads like it did something. */
+        if ((el === lo || el === hi) && +lo.value > +hi.value) {
             el.value = (el === lo) ? hi.value : lo.value;
         }
         var block = root.querySelector('.ladder-range-bands');
@@ -252,6 +267,29 @@
             f.value = (v === null || v === undefined) ? '' : v;
         }
         htmx.trigger(form, 'submit');
+    });
+
+    /* Typing into the exact inputs puts the control in its CUSTOM state, which
+     * is what the server renders for span=None. Without this the readout keeps
+     * naming the last span while the fields underneath hold something else —
+     * the control would actively misdescribe the filter about to be submitted,
+     * which on an audit surface is worse than saying nothing.
+     *
+     * Deliberately does NOT try to detect that a typed value happens to land on
+     * a band edge. `bands` carries per-band bounds, not cumulative spans, so
+     * that check needs the arithmetic this control keeps server-side; the
+     * server re-derives the true span on the next full render (bands_for).
+     * Erring toward "custom" understates, which is the safe direction — the
+     * alternative claims a span nothing verified.
+     *
+     * Repaint only. Submitting here would fire a request per keystroke, and the
+     * exact inputs already have the panel's own Search button. */
+    window.registerAction('ladder-range-typed', function (el) {
+        var root = el.closest('[data-ladder-range]');
+        if (!root) { return; }
+        root.classList.add('ladder-range--custom');
+        var out = root.querySelector('.ladder-range-readout');
+        if (out) { out.textContent = 'Custom range'; }
     });
 
     /* Reveal the custom date inputs beside a set of window pills. Plain

@@ -178,6 +178,10 @@
      WCAG 2.5.3 "Label in Name" satisfied; the caller's semantic wording rides
      along as the description (`title`).
 
+     `ladder-range-typed` on change is what stops the readout above from
+     describing a span these fields no longer hold — see actions.js. It only
+     repaints; the panel's own Search button is still what submits.
+
      ⚠️ Hidden until an axis end is clicked — but only where there IS an end to
      click. The mobile presentation is two selects with no end-labels, so it
      keeps the fields visible rather than hiding them behind no trigger at all.
@@ -194,6 +198,7 @@
       <label class="ladder-range-sublabel" for="{{ form_id }}-{{ slug }}-{{ f.key }}">{{ f.sublabel }}</label>
       <input type="{{ f.type }}" class="form-control form-control-sm"
              data-ladder-field data-thumb="{{ f.thumb }}"
+             data-action-change="ladder-range-typed"
              id="{{ form_id }}-{{ slug }}-{{ f.key }}"
              name="{{ f.name }}" value="{{ f.value if f.value is not none else '' }}"
              title="{{ f.title }}"
