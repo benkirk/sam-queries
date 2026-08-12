@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/action_buttons.html' import edit_modal_button with context %}
 {% from 'dashboards/admin/fragments/institution_filters.html' import institution_filters %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {#
   Admin Institutions table fragment (HTMX-swapped).
 
@@ -52,23 +53,24 @@
         </thead>
         {% if institution_types_grouped %}
         {% for it, insts in institution_types_grouped %}
-        {# ── Institution Type row (clickable trigger) ── #}
+        {# ── Institution Type row (every cell but Actions is the trigger) ──
+           The toggle cannot live on the <tr>: it would fire on the Edit button
+           too, and no button-side guard can prevent that (Bootstrap's data-api
+           runs in the capture phase). See dashboards/fragments/collapse.html. #}
+        {% set it_toggle = 'inst-type-' ~ it.institution_type_id %}
         <tbody>
-            <tr class="cursor-pointer table-subtle fw-semibold"
-                data-bs-toggle="collapse"
-                data-bs-target="#inst-type-{{ it.institution_type_id }}"
-                aria-expanded="false">
-                <td>
+            <tr class="table-subtle fw-semibold">
+                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}>
                     <i class="fas fa-chevron-right small text-muted me-1 inst-type-collapse-icon"
                        style="transition: transform 0.2s;"></i>
                     {{ it.type }}
                 </td>
-                <td class="text-muted small">{{ insts|length }} institution{{ 's' if insts|length != 1 else '' }}</td>
-                <td></td>
-                <td></td>
+                <td class="text-muted small cursor-pointer" {{ collapse_toggle(it_toggle) }}>{{ insts|length }} institution{{ 's' if insts|length != 1 else '' }}</td>
+                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}></td>
+                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}></td>
                 {% if show_users_projects %}
-                <td></td>
-                <td></td>
+                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}></td>
+                <td class="cursor-pointer" {{ collapse_toggle(it_toggle) }}></td>
                 {% endif %}
                 <td class="text-end">
                     {{ edit_modal_button(
@@ -76,7 +78,6 @@
                         modal_id='editInstitutionTypeModal',
                         target_id='editInstitutionTypeFormContainer',
                         title='Edit institution type',
-                        stop_propagation=True,
                         permission=Permission.EDIT_ORG_METADATA) }}
                 </td>
             </tr>

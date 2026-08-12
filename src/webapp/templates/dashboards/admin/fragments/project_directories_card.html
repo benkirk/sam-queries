@@ -146,7 +146,6 @@
                             modal_id='editProjectDirectoryModal',
                             target_id='editProjectDirectoryFormContainer',
                             title='Edit directory',
-                            stop_propagation=True,
                             permission=Permission.EDIT_PROJECTS) }}
                         {% if has_permission(Permission.EDIT_PROJECTS) and pd.is_active %}
                         <button class="btn btn-sm btn-outline-danger ms-1"
