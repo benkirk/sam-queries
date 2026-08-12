@@ -8,14 +8,24 @@ JSON body rather than convenience. The right family is the plain-``marshmallow``
 input schemas in :mod:`sam.schemas.charges` (``BaseChargeSummaryInputSchema``), with
 ``unknown = EXCLUDE`` set explicitly.
 
-Written against eight real production payloads (see
-``tests/fixtures/xras/actions/``), not against the Java POJOs alone. The tolerances
-below are measured, and each one is load-bearing:
+Written against **41** real production payloads (see ``tests/fixtures/xras/actions/``),
+not against the Java POJOs alone. The tolerances below are measured, and each one is
+load-bearing:
 
-1. **Absent scalars arrive as JSON ``null``, never ``""``.** Across all eight payloads
-   and ~400 scalar fields there is not a single empty string. XRAS always sends the
-   key, so the Java ``private String x = ""`` initialisers never fire on real traffic.
-   Hence ``allow_none=True`` almost everywhere; ``load_default`` is the defensive belt.
+1. **Absent scalars arrive as JSON ``null``, essentially never ``""``.** XRAS always
+   sends the key, so the Java ``private String x = ""`` initialisers hardly ever fire
+   on real traffic. Hence ``allow_none=True`` almost everywhere; ``load_default`` is
+   the defensive belt.
+
+   ⚠️ At eight payloads this was absolute — ~400 scalar fields, not one empty string —
+   and that measurement is what settled this schema on ``allow_none`` rather than
+   empty-string handling. At 41 payloads and ~2,000 scalars there is exactly **one**:
+   ``grants[].subAwardNumber`` in ``supplement_ucit0011_ok.json``, a field declared
+   here and read by nothing. So the design conclusion stands and no field SAM *reads*
+   has ever arrived ``""`` — but "never" was too strong, and those initialisers
+   evidently can fire. Pinned by
+   ``tests/unit/test_xras_actions.py::KNOWN_EMPTY_STRINGS``, which still fails on a
+   second one.
 2. **Ints arrive in String-declared fields.** ``awardPeriod`` is ``12`` and
    ``fos[].fosTypeId`` is ``500006``, both ``private String`` in Java — Jackson coerces
    silently, marshmallow will not. ``_Coerced*`` fields below accept either.
@@ -26,9 +36,13 @@ below are measured, and each one is load-bearing:
    ``resources[].resourceQA`` are sent by XRAS and declared by no POJO, so legacy
    discards them. ``unknown = EXCLUDE`` reproduces that. ``opportunityQA`` carries the
    NWSC End User Agreement acknowledgement — including HTML in ``attributeSetName`` —
-   which SAM currently throws away. It is non-empty on **all three** ``New`` payloads
-   and empty on all five Extension / Supplement / Adjustment ones: the acknowledgement
-   is collected once, when the request is created, not on every subsequent action.
+   which SAM currently throws away. It is non-empty on **all 16** ``New`` payloads and
+   empty on all 25 others: the acknowledgement is collected once, when the request is
+   created, not on every subsequent action. (Held at 3 payloads, still holds at 41 —
+   strong enough now to state as a rule rather than an observation.)
+
+   The 41-payload corpus added **no new undeclared field**: it is still exactly these
+   three, which is the best evidence available that the wire is stable.
 5. **The forgiving boolean is one field only** — ``roles[].isAccountToBeCreated``.
    Observed ``false`` in every sampled role but one, and ``true`` in that one
    (``new_uwis0071_existing_ok.json``, on the incoming NCAR username of a PI who
@@ -308,11 +322,20 @@ class XrasActionSchema(_XrasBase):
     of a project that already existed — legacy emitted the "Existing XRAS project
     updated" subject for it. Only the database can tell the two apart.
 
-    ``requestType`` is **not** ``actionType`` and is useless for dispatch: all eight
-    sampled payloads carry ``requestType: 'New'``, including both Extensions, both
-    Supplements and the Adjustment. Only ``actionType`` selects a handler — and even
-    that is not enough on its own. Legacy dispatches on the **pair**
-    ``(actionType, does the project exist)``:
+    ``requestType`` is **not** ``actionType`` and is useless for dispatch. At eight
+    payloads the evidence was that it is a *constant* — every one carried ``'New'``,
+    including both Extensions, both Supplements and the Adjustment. At 41 the stronger
+    form holds: it **varies** (``'New'`` ×38, ``'Renewal'`` ×3) and still tracks the
+    action type on nothing. ``extension_unid0003_ok``, ``supplement_uwku0002_ok`` and
+    ``date_adjustment_uwas0141_manual`` all carry ``requestType: 'Renewal'`` while
+    their ``actionType`` is Extension / Supplement / Date Adjustment respectively.
+
+    ⚠️ Note the third especially: legacy routes ``actionType: 'Renewal'`` to the Update
+    handler, but none of these three go there — the selector reads ``actionType``.
+    Dispatching on ``requestType`` would send all three somewhere different.
+
+    Only ``actionType`` selects a handler — and even that is not enough on its own.
+    Legacy dispatches on the **pair** ``(actionType, does the project exist)``:
 
     =====================================  ===============================================
     service                                selector

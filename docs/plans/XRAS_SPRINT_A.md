@@ -102,6 +102,13 @@ Observed value space across the four, for anyone writing extractor tests:
    The Java `= ""` initialisers only ever fire for a *missing key*, and XRAS sends the key.
    So `allow_none=True` is the **norm across the board**, not a per-field exception — this
    inverts the emphasis in the doc's tolerance #2.
+
+   > ⚠️ **"never" was too strong (corrected 2026-08-11).** At 41 payloads and ~2,000 scalars
+   > there is exactly one empty string — and it is in `grants[].subAwardNumber`, named in the
+   > list above as always-`null`. So the Java initialisers evidently *can* fire. The design
+   > conclusion is unchanged: nothing SAM reads has ever arrived `""`, and `allow_none` is
+   > still the right norm. Pinned by `tests/unit/test_xras_actions.py::KNOWN_EMPTY_STRINGS`,
+   > which still fails on a second one.
 6. **`person.organization` can be `null`, and it matters only on the PI.** It is null for the
    UFSU0023 **PI** (which failed) and for the UCUB0166 **Allocation Manager** (which *succeeded*).
    So the mnemonic/affiliation extractors read the **lead's** affiliation only — a sharp,
@@ -504,6 +511,10 @@ Sprint B (4th Allocations tab, `sam-admin xras`, replay UI, `Permission.MANAGE_X
 is open against `staging` and mergeable; it deploys independently), and the `POST /actions` cutover
 itself — which additionally needs the 400/422 error-contract change confirmed with
 `allocations@access-ci.org`.
+
+> **Update 2026-08-11:** confirmed, but not at that address. It went to Steven Peckins
+> &lt;speckins@illinois.edu&gt; (XRAS/UIUC), who approved the change as-is and answered the
+> retry question: XRAS does not auto-retry a 4xx. `XRAS_CUTOVER_RUNBOOK.md` § gate 4.
 
 Parked per today's decision: asking XRAS for their own post records, and a capture-only dual-post
 arrangement. Nathan Tolbert is out until Mon Aug 9; the thread opened today stays useful for the

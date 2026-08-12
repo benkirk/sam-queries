@@ -21,11 +21,24 @@ choose — so it covers the three seams nothing else does:
 
 What it is not
 --------------
-Eight payloads reach roughly 6 of the 34 error strings and 5 of the 11 allocation-type
-strategies. It is a regression harness, not a proof, and it **cannot falsify the wire
-contract** — a payload we chose validates a reading we already hold. Real payloads did
-the falsifying, in Sprint A. The synthetic error-path fixtures cover the branches this
-cannot reach.
+It is a regression harness, not a proof, and it **cannot falsify the wire contract** —
+a payload we chose validates a reading we already hold. Real payloads did the
+falsifying, in Sprint A and again on 2026-08-11. The synthetic error-path fixtures
+cover the branches this cannot reach.
+
+⚠️ **Growing the corpus 5× did not widen the strategy coverage at all.** At eight
+payloads this section read "5 of the 11 allocation-type strategies" with the implied
+excuse that the sample was small. At 41 it is still exactly 5 (asserted in
+``test_xras_extractors.py::test_five_distinct_strategies_are_exercised``), which turns
+the number from a sampling artifact into a measurement: six strategies see no traffic
+at this site, and only the unit tests pin them. The same is true of the error
+vocabulary — a minority of the 34 strings is reachable from real payloads, because
+most describe malformed requests XRAS does not send.
+
+What 41 payloads *did* change is the shape coverage: 16 New (11 minting, 5 against an
+existing project), 9 Extension, 9 Supplement, 3 Adjustment and 4 ``Date Adjustment``,
+across three legacy outcomes — where eight payloads gave one Update sample and no
+parking sample at all.
 
 Referents are substituted, not sampled
 --------------------------------------
@@ -40,6 +53,7 @@ See ``docs/plans/XRAS_SPRINT_C.md`` § *The oracle*.
 """
 
 import json
+from collections import Counter
 from datetime import datetime
 
 import pytest
@@ -157,7 +171,26 @@ class TestEveryPayloadLoadsAndRoutes:
     """The cheapest end-to-end claim, and the one that would catch a wire change."""
 
     def test_the_corpus_is_present(self):
-        assert len(ALL_FIXTURES) == 8, ALL_FIXTURES
+        """The corpus, by the two things a payload is filed under.
+
+        A bare count would go green on 41 files that were all Extensions. What makes
+        the corpus evidence is its *spread* across action types and across the three
+        legacy outcomes, so that is what this pins. The outcome is carried in the
+        fixture name because the only record of it is the subject line of the
+        notification email the payload arrived paired with.
+        """
+        assert len(ALL_FIXTURES) == 41, ALL_FIXTURES
+
+        by_type = Counter(json.loads((FIXTURE_DIR / n).read_text())['actionType']
+                          for n in ALL_FIXTURES)
+        assert by_type == {
+            'New': 16, 'Extension': 9, 'Supplement': 9,
+            'Date Adjustment': 4, 'Adjustment': 3,
+        }, by_type
+
+        by_outcome = Counter(n.rsplit('_', 1)[-1].removesuffix('.json')
+                             for n in ALL_FIXTURES)
+        assert by_outcome == {'ok': 28, 'manual': 7, 'failed': 6}, by_outcome
 
     @pytest.mark.parametrize('name', ALL_FIXTURES)
     def test_bytes_load_through_the_real_schema(self, name):

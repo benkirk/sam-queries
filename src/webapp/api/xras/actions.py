@@ -43,9 +43,22 @@ happy-path test would catch.
 
 Status codes are a deliberate improvement, not a port: legacy answers 500 with an
 opaque timestamp for both a malformed body and a failed validation, and 200 for an
-action it silently parked for a human. Ours distinguishes all four. The 422 body is the
-headline deliverable — XRAS admins read it directly in their "Accounting Service Posts"
-panel — so it carries the accumulated, ordered error list rather than a summary.
+action it silently parked for a human. Ours separates the malformed body (400) from the
+failed validation (422). The 422 body is the headline deliverable — XRAS admins read it
+directly in their "Accounting Service Posts" panel — so it carries the accumulated,
+ordered error list rather than a summary. ACCESS confirmed on 2026-08-11 that this is
+wanted: *"the response body is saved and made available in xras_admin for the admin to
+see, so it's nice to include something informative"*, quoting legacy's opaque
+``Unhandled SAM exception ... (timestamp ...)`` as the thing to fix.
+
+⚠️ **A parked action is NOT distinguished on the wire.** ``processed`` and ``manual``
+both return ``xras_response(message='OK')``, byte-identical, so an admin who posts an
+action SAM quietly deferred to a human is told it worked. That is what legacy does too,
+so it is not a regression — and it is now the *common* case rather than a hypothetical,
+because ``Date Adjustment`` parks and is 4 of the 41 corpus payloads. The four outcomes
+are distinguished in ``xras_action_log`` (``status`` / ``service`` /
+``outcome_reason``), not in the response. Whether to change that is an open decision:
+``docs/plans/XRAS_CUTOVER_RUNBOOK.md`` § gate 4.
 """
 
 import json

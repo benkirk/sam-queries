@@ -48,10 +48,17 @@ __all__ = [
     'xras_client',
 ]
 
-#: The eight real, scrubbed XRAS payloads. Prefer these over a hand-built dict for
+#: The 41 real, scrubbed XRAS payloads. Prefer these over a hand-built dict for
 #: anything about shape — a hand-built dict is where the ``key`` /
 #: ``resourceRepositoryKey`` bug lived, because it agreed with the code rather than
 #: with XRAS.
+#:
+#: Named ``{actionType}_{requestNumber}_{outcome}.json``, where the outcome is what
+#: **legacy** did with it: ``ok`` / ``failed`` / ``manual``. That is not derivable
+#: from the payload — it comes from the subject line of the notification email each
+#: one arrived paired with, which is why the corpus is grown by
+#: ``scripts/xras/extract_email_payloads.py`` from a forward rather than by saving
+#: attachments.
 FIXTURE_DIR = Path(__file__).parent / 'fixtures' / 'xras' / 'actions'
 
 

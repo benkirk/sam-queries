@@ -1,0 +1,77 @@
+{
+  "actionId": 366279,
+  "actionType": "Date Adjustment",
+  "actionBeginDate": "2025-09-17",
+  "actionEndDate": "2026-07-31",
+  "requestId": 1430748,
+  "requestNumber": "UCOR0097",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Machine Learning for Weather Pattern Prediction & Class-Based Forecast Training",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532223,
+  "opportunityName": "Classroom Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Educational",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 490201,
+      "roleType": "PI",
+      "username": "user_00000013",
+      "beginDate": "2025-09-12",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given13",
+        "middleName": null,
+        "lastName": "Surname13",
+        "email": "user13@example.invalid",
+        "phone": "555-0108",
+        "organization": "CORNELL UNIVERSITY",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 490175,
+      "roleType": "Allocation Manager",
+      "username": "user_00000014",
+      "beginDate": "2025-09-12",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given14",
+        "middleName": null,
+        "lastName": "Surname14",
+        "email": "user14@example.invalid",
+        "phone": "555-0109",
+        "organization": "CORNELL UNIVERSITY",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500037,
+      "fosNum": "35",
+      "fosName": "Training",
+      "fosAbbr": "Training",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

@@ -25,3 +25,9 @@ Vermilion_NSFNCAR-UCAR-UCP_BrandGuide.pdf
 .playwright-mcp/
 legacy_sam
 data/
+
+# Raw XRAS action payloads carry real names, emails and phone numbers. They are
+# staged outside the working tree (~/xras_payloads_raw/) and reach the repo only
+# after scripts/xras/scrub_payload.py. These patterns are the belt to that braces.
+xras_payloads_raw/
+*_payloads_raw/

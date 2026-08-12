@@ -1,0 +1,106 @@
+{
+  "actionId": 390087,
+  "actionType": "Supplement",
+  "actionBeginDate": "2025-05-08",
+  "actionEndDate": "2027-05-31",
+  "requestId": 1395940,
+  "requestNumber": "UCLA0076",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Assessing vegetation impacts on hydrology in the western United States",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 899870,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "500000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 899868,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "15000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 425228,
+      "roleType": "Allocation Manager",
+      "username": "user_00000058",
+      "beginDate": "2025-05-07",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given58",
+        "middleName": null,
+        "lastName": "Surname58",
+        "email": "user58@example.invalid",
+        "phone": null,
+        "organization": null,
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 425213,
+      "roleType": "PI",
+      "username": "user_00000059",
+      "beginDate": "2025-05-07",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given59",
+        "middleName": null,
+        "lastName": "Surname59",
+        "email": "user59@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF CALIFORNIA LOS ANGELES",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500021,
+      "fosNum": "19",
+      "fosName": "Hydrologic Sciences",
+      "fosAbbr": "Hydrologic Sciences",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500015,
+      "fosNum": "13",
+      "fosName": "Geography and Spatial Science",
+      "fosAbbr": "Geography and Spatial Science",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

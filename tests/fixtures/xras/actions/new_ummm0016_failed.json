@@ -1,0 +1,235 @@
+{
+  "actionId": 383236,
+  "actionType": "New",
+  "actionBeginDate": "2026-06-12",
+  "actionEndDate": "2027-06-11",
+  "requestId": 1443150,
+  "requestNumber": "UMMM0016",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Summer 2026 MPAS-A and MPAS-JEDI Tutorials",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532223,
+  "opportunityName": "Classroom Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Educational",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 898782,
+      "resourceRepositoryKey": 146036,
+      "awardedAmount": "1500.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 876107,
+      "resourceRepositoryKey": 145576,
+      "awardedAmount": "5000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 898780,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "5000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 876105,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "50000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 559111,
+      "roleType": "User",
+      "username": "user_00000048",
+      "beginDate": "2026-06-05",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given48",
+        "middleName": null,
+        "lastName": "Surname48",
+        "email": "user48@example.invalid",
+        "phone": "555-0126",
+        "organization": "NCAR/MMM",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 559110,
+      "roleType": "User",
+      "username": "user_00000049",
+      "beginDate": "2026-06-05",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given49",
+        "middleName": null,
+        "lastName": "Surname49",
+        "email": "user49@example.invalid",
+        "phone": "555-0127",
+        "organization": "NCAR/MMM",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 559109,
+      "roleType": "User",
+      "username": "user_00000050",
+      "beginDate": "2026-06-05",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given50",
+        "middleName": null,
+        "lastName": "Surname50",
+        "email": "user50@example.invalid",
+        "phone": "555-0128",
+        "organization": "NCAR/MMM",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 559108,
+      "roleType": "User",
+      "username": "user_00000051",
+      "beginDate": "2026-06-05",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given51",
+        "middleName": null,
+        "lastName": "Surname51",
+        "email": "user51@example.invalid",
+        "phone": "555-0129",
+        "organization": "NCAR/MMM",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 559107,
+      "roleType": "User",
+      "username": "user_00000052",
+      "beginDate": "2026-06-05",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given52",
+        "middleName": null,
+        "lastName": "Surname52",
+        "email": "user52@example.invalid",
+        "phone": "555-0130",
+        "organization": "NCAR/MMM",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 559106,
+      "roleType": "Allocation Manager",
+      "username": "user_00000053",
+      "beginDate": "2026-06-05",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given53",
+        "middleName": "M53",
+        "lastName": "Surname53",
+        "email": "user53@example.invalid",
+        "phone": "555-0131",
+        "organization": "NCAR/MMM",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 559105,
+      "roleType": "PI",
+      "username": "user_00000053",
+      "beginDate": "2026-06-05",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given53",
+        "middleName": "M53",
+        "lastName": "Surname53",
+        "email": "user53@example.invalid",
+        "phone": "555-0131",
+        "organization": "NCAR/MMM",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500037,
+      "fosNum": "35",
+      "fosName": "Training",
+      "fosAbbr": "Training",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500039,
+      "fosNum": "37",
+      "fosName": "Weather Prediction",
+      "fosAbbr": "Weather Prediction",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": null,
+      "programOfficerName": null,
+      "programOfficerEmail": null,
+      "piName": null,
+      "title": null,
+      "beginDate": null,
+      "endDate": null,
+      "awardedAmount": "0.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": null,
+        "fosNum": null,
+        "fosName": null,
+        "fosAbbr": null
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": [
+    {
+      "attributeSetId": 537625,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "opportunityAttributeId": 539640
+    }
+  ]
+}

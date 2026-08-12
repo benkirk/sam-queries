@@ -58,6 +58,39 @@ def test_park_no_service(xras_client, action_log, dispatching, scenario):
     assert 'no service matches' in row['outcome_reason']
 
 
+def test_park_unknown_action_type(xras_client, action_log, dispatching, scenario,
+                                  snapshot_project):
+    """``Date Adjustment`` — a real wire type with no serviceable, from real bytes.
+
+    ⚠️ The project must **exist**, or this collapses into ``test_park_no_service``:
+    with a nonexistent project every type falls off the selector chain, so the row
+    would be identical for the wrong reason. ``snapshot_project`` is a committed row,
+    which is what the route's own session can see.
+
+    The payload body is the real ``date_adjustment_*`` shape — dates, no resources —
+    retargeted at a project the route can find. Only the referent moves.
+    """
+    import sam.xras.handlers  # noqa: F401
+
+    from xras_helpers import load_fixture
+    payload = dict(load_fixture('date_adjustment_uazn0052_manual.json'))
+    payload['requestNumber'] = snapshot_project.projcode
+
+    resp = _post(xras_client, payload)
+
+    assert resp.status_code == scenario['http']
+    row = action_log.one()
+    assert row['status'] == scenario['expect']
+    assert row['error_messages'] is None
+
+    # Recorded verbatim: the audit trail's job is to say what actually arrived, and
+    # this is the column an operator filters on when a run of these shows up.
+    assert row['action_type'] == 'Date Adjustment'
+
+    assert row['service'] is None
+    assert 'no service matches' in row['outcome_reason']
+
+
 def test_park_disabled_type(xras_client, action_log, dispatching, scenario, app,
                             snapshot_project):
     """The same shape, parked for a completely different reason.

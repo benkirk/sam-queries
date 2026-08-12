@@ -297,6 +297,21 @@ Still open on the wire contract: **no co-PI role has ever appeared in a sampled 
 so whether `roleType` is `'Co-PI'` or `'CoPi'` is unknown — still true across all eight.
 `Transfer`, `Renewal` and `Advance` also remain unsampled. One bulk forward closes them.
 
+> **Update 2026-08-11.** The bulk forward arrived and the corpus is now **41**. It closed
+> less than this paragraph hoped, and that is the finding:
+>
+> - **The 400/422 change is confirmed** — by Steven Peckins &lt;speckins@illinois.edu&gt;, not
+>   `allocations@access-ci.org`. He also answered the retry question (XRAS does not
+>   auto-retry). `XRAS_CUTOVER_RUNBOOK.md` § gate 4.
+> - **co-PI is still unsampled, and now measurably so**: 41 payloads across ~35 projects
+>   carry exactly `PI` / `Allocation Manager` / `User`. This site does not send one. It
+>   agrees with the GET side, where `webapp/api/xras/requests.py:244` already documents
+>   `co_pi` as *"valid and always empty — nothing ever emits the 'CoPi' literal."*
+> - **`Transfer`, `Renewal` and `Advance` are still unsampled** as `actionType`. Three
+>   payloads carry `requestType: 'Renewal'`, which is a different field and reaches the
+>   Renewal arm of nothing.
+> - **A wire type nobody had listed turned up**: `Date Adjustment`, ×4, which parks.
+
 ---
 
 ## Verification

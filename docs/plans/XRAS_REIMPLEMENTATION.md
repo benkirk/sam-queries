@@ -77,7 +77,8 @@ never sent. It is fixed, and the systemic check that would have caught it —
 2. **The DBA ticket** for both tables, prod and staging.
 3. **`--api xras` against the deployed `sam.hpc.ucar.edu`**, on our own `samuel`
    credential.
-4. **The 400/422 contract confirmed** with `allocations@access-ci.org`.
+4. ✅ **The 400/422 contract confirmed** — 2026-08-11, by Steven Peckins (XRAS/UIUC), not by
+   `allocations@access-ci.org`.
 5. **XRAS repoints its base URL** — the cutover, and the moment
    `XRAS_ACTIONS_CAPTURE_ONLY` flips to `"0"` in `helm/values.yaml`.
 
@@ -108,9 +109,11 @@ in parallel, not after:
   *is* the cutover. An early ticket buys lead time, not payloads. Growing the corpus
   ahead of cutover would need a dual-post arrangement, which is **ruled out** — see
   § 6 Phase 5.5.
-- **Confirming the 400/422 contract change with `allocations@access-ci.org`** (§ 2.5).
-  Broker retry behaviour on 4xx is unknown, and it is the riskiest open unknown on the
-  cutover path. It is an email, not code.
+- ✅ **The 400/422 contract change is confirmed** (§ 2.5), 2026-08-11, by Steven Peckins
+  (XRAS/UIUC). It was an email, not code, and it retired what this document repeatedly
+  called the riskiest open unknown: **XRAS does not auto-retry a 4xx.** Posts are
+  human-triggered from xras_admin. Full quote and consequences in
+  `XRAS_CUTOVER_RUNBOOK.md` § gate 4.
 
 Three sequencing points that are easy to get wrong:
 
@@ -121,9 +124,12 @@ Three sequencing points that are easy to get wrong:
   Sprint A deliverables: `XrasActionSchema` (seven nested schemas, the most likely thing to be
   wrong) and the New handler (21% of posts at 30% success, against a repo that then held exactly
   **one** sample payload). Borne out — the harvest *was* Sprint A, and it corrected about twenty
-  points of the inferred contract. The corpus is now 8 and nothing is sample-blocked, but the
-  principle still applies to what remains unsampled (co-PI `roleType`, `Transfer`, `Renewal`,
-  `Advance`), and production capture is now the cheapest way to get it.
+  points of the inferred contract. **The corpus is now 41** (2026-08-11 bulk forward) and nothing
+  is sample-blocked. The principle held a second time: that forward falsified five claims the
+  eight-payload corpus supported and revealed an `actionType` — `Date Adjustment` — that no
+  document listed. What remains unsampled is now *measured* rather than merely absent: no co-PI
+  role in 41 payloads across ~35 projects, and `Transfer` / `Renewal` / `Advance` still at zero.
+  Production capture is the only remaining way to get those.
 - **SMTP can genuinely be deferred.** XRAS projects arrive `active = 0` and the success email is
   the human activation trigger — but **legacy keeps sending those emails until `POST /actions`
   cuts over**, which is cutover step 4, after Sprint C. No notification gap opens before then.
@@ -208,9 +214,13 @@ all the pain. Build `Extension` first to establish the pipeline on the easy path
 ### 1.4 The manual-fallback path fires rarely — but it does fire
 
 `ManualFallbackActionPostService` is reachable *only* via `catch (BadRequestException)` — i.e.
-`ProjectActionServiceSelector` finding no serviceable, which is what an `Adjustment` or `Advance`
-actionType produces. (The selector's guard string is `"Adjust"`, not `"Adjustment"` — **legacy
-defect 4**, § 9 — and there is no `"Advance"` serviceable at all.) It logs only at `LOG.debug()`,
+`ProjectActionServiceSelector` finding no serviceable, which is what an `Adjustment`, an
+`Advance`, or a **`Date Adjustment`** actionType produces. (The selector's guard string is
+`"Adjust"`, not `"Adjustment"` — **legacy defect 4**, § 9 — and there is no `"Advance"`
+serviceable at all. `Date Adjustment` has none either, and is not in `Action.java` at all: it was
+unknown until the 2026-08-11 forward, where it is **4 of 41** payloads and the most common thing
+on this path. Everything this section argues is the reason we ever saw it.) It logs only at
+`LOG.debug()`,
 which is suppressed, so it cannot be grepped; detected instead by comparing access-log 200s
 against `EmailingActionPostService` INFO lines per day. **Δ = 0 on every day with coverage — zero
 invocations in the measured 30-day window.**
@@ -406,13 +416,32 @@ action objects from all seven `requests/*` probes):
 
 | Field | Present | Note |
 |---|---:|---|
-| `xrasActionIds` | **0 / 134** | never set by `RequestFactory` |
-| `allocations[].actionType` | **0 / 555** | as are `xrasActionId` / `xrasActionResourceId` on both `Allocation` and `Action` |
+| `xrasActionIds` | **0 / 134** | never set by `RequestFactory`. ⚠️ **ACCESS depends on this** — see below |
+| `allocations[].actionType` | **0 / 555** | as are `xrasActionId` / `xrasActionResourceId` on both `Allocation` and `Action`. ⚠️ **ACCESS depends on these** — see below |
 | `resourceRepositoryKey` | **376 / 555** (68%) | omitted when null — this *is* the unmapped-resource gap (§4.1) surfacing on the wire |
 | `remainingAmount` | **243 / 555** (44%) | HPC-only |
 | `actions[].amount` | **811 / 1109** (73%) | see the `actionType` correlation below |
 | `actions[].endDate` | **867 / 1109** (78%) | same |
 | every other field above | 100% | always emitted |
+
+⚠️ **The first two rows are a defect ACCESS has noticed, reported 2026-08-11.** Steven
+Peckins (XRAS/UIUC), on refactoring xras_admin's handling of `GET /v1/requests/*`:
+
+> I found some anomalies with the NCAR responses. […] one thing was that they do not
+> return the "xrasActionId" or "xrasActionResourceId". XRAS Admin uses this to match up
+> the actions reported by the client accounting service with actions from the database
+> and then renders links to them. I considered writing some code to attempt to correlate
+> actions by dates and resource amounts, but even the dates were out of whack with what
+> XRAS had.
+
+So these zeros are not merely unused fields — they are why xras_admin cannot link back to
+NCAR actions, and the *dates* discrepancy is a second, unmeasured thing on top. We
+reproduced all of it bug-for-bug on purpose, which was the right call for the cutover and
+is the wrong end state.
+
+**Post-cutover by construction**: emitting these moves response bytes, which invalidates
+the gate 3 parity run (`XRAS_CUTOVER_RUNBOOK.md`). Do not fix it before the repoint.
+Steve is digging up the details; this table is where they belong when they arrive.
 
 The two optional `actions[]` fields track `actionType`, because the underlying
 `allocation_transaction` columns are populated per transaction kind:
@@ -525,10 +554,17 @@ body either. Both the success and the failure mail carry the attachment
 (`EmailingActionPostService.sendSuccessEmail` / `sendErrorEmail`), so hdt holds ~108 successes
 plus 67 failures.
 
-**Four real payloads have since been harvested** (New and Extension, one success and one failure
-each) and live scrubbed in `tests/fixtures/xras/actions/`. They correct roughly twenty points of
-the shape inferred from the POJOs — see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) § *Track 0*, which
-is authoritative, and `tests/unit/test_xras_actions.py`, which enforces it.
+**41 real payloads have since been harvested** — 4 in Sprint A, 4 more on 2026-08-07, and 33 in
+the 2026-08-11 bulk forward — and live scrubbed in `tests/fixtures/xras/actions/`
+(16 New, 9 Extension, 9 Supplement, 4 `Date Adjustment`, 3 Adjustment; 28 legacy successes,
+6 failures, 7 parked). They correct roughly twenty points of the shape inferred from the POJOs —
+see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) § *Track 0*, which is authoritative **as amended by its
+own dated update notes**, and `tests/unit/test_xras_actions.py`, which enforces it.
+
+Extraction is `scripts/xras/extract_email_payloads.py` (pairs each notification `.eml` with the
+JSON that produced it, so the legacy *outcome* survives); scrubbing is
+`scripts/xras/scrub_payload.py`, which must be run over the **whole** staged set in one
+invocation because pseudonyms are numbered in first-seen order.
 
 ### 2.5 Status codes
 
@@ -554,8 +590,16 @@ failure email. XRAS admins read the response body directly in their "Accounting 
 panel, so today they see `Unhandled SAM exception … (timestamp 1785384269504)` where they could see
 `PI kquagraine-user-89o84 is not in database` and self-service the fix.
 
-Confirm the 4xx change with `allocations@access-ci.org` before the `POST /actions` cutover step —
-broker retry behaviour on 4xx is unknown.
+✅ **Confirmed 2026-08-11** by Steven Peckins (XRAS/UIUC): *"Your changes on the POST /v1/actions
+endpoint are fine; XRAS won't notice. POSTs are not automatically retried. They are triggered by a
+human — a user in xras_admin pushes a button."* He also asked for exactly the improvement above,
+quoting our current `Unhandled SAM exception … (timestamp …)` back as the thing to fix. So the 4xx
+split needs no further clearance, and no retry loop is possible. See
+`XRAS_CUTOVER_RUNBOOK.md` § gate 4.
+
+⚠️ The contact is **not** `allocations@access-ci.org`, which this document said for weeks. Reach
+XRAS through Steven Peckins &lt;speckins@illinois.edu&gt;, with Nathan Tolbert &lt;tolbert@illinois.edu&gt;
+and Rob Light &lt;light@psc.edu&gt;.
 
 ---
 
@@ -727,7 +771,7 @@ zero-padded ISO-8601 — one of the open questions Phase 5.1 resolves from real 
 | **Contract suffix collisions are live** | 3 cores collide today: `1049089` (`1049089` \| `PLR-1049089`), `1744587` (`OPP-` \| `PLR-`), `2146709` (`2146709` \| `AGS-2146709`) | legacy's `LIKE '%core'` + `uniqueResult()` guarantees `NonUniqueResultException` → 500 for any grant citing these. Resolve deterministically: exact match, then unique suffix, else report |
 | `allocation_type` has duplicate names | `Small` ×2, `Education` ×2 | resolve by `(panel, type)` |
 | `xras_resource_repository_key_resource` | **13 rows**, 6 of them pointing at decommissioned kit (Yellowstone, Janus, Geyser_Caldera, HPSS, GLADE fs1, Cheyenne) | **11 active SAM resources have no mapping row**: Boreas, Destor, GLADE user, GLADE work, Gust, Gust GPU, hpc, hpc-dev, HPC_Futures_Lab, Laramie, Quasar. An award citing one fails with `No resource found in SAM corresponding to key %s` — see §9 |
-| `fos_aoi` (FOS → AreaOfInterest) | exists in prod, **18 rows** | ⚠️ **"Prefer `fos_aoi`" was wrong and is retired** (Sprint C). The two id spaces are disjoint: `fos_aoi.fos_id` holds 5-digit AMIE/XSEDE codes (`10202`, `10501`, …) while XRAS sends `1`–`40`, which is the `area_of_interest` **primary key** space. Legacy's `findOne(fosInt)` is a PK lookup and it is correct — every corpus payload's primary `fosNum` equals the `area_of_interest_id` its real project carries, and the `fosName` XRAS sends is SAM's `area_of_interest` string verbatim. Routing through `fos_aoi` would file every XRAS project under the wrong research area, silently. `FosAoi` is the AMIE path; leave it alone |
+| `fos_aoi` (FOS → AreaOfInterest) | exists in prod, **18 rows** | ⚠️ **"Prefer `fos_aoi`" was wrong and is retired** (Sprint C). The two id spaces are disjoint: `fos_aoi.fos_id` holds 5-digit AMIE/XSEDE codes (`10202`, `10501`, …) while XRAS sends `1`–`40`, which is the `area_of_interest` **primary key** space. Legacy's `findOne(fosInt)` is a PK lookup and it is correct — every corpus payload's primary `fosNum` equals the `area_of_interest_id` its real project carries. Routing through `fos_aoi` would file every XRAS project under the wrong research area, silently. `FosAoi` is the AMIE path; leave it alone. ⚠️ **The `fosName` is *not* byte-equal** (corrected 2026-08-11): at 41 payloads it is 90 exact, 2 differing in one letter's case, 0 in substance. Irrelevant on the PK path every real payload takes; it would bite the non-numeric-`fosNum` name fallback, because `area_of_interest` is `utf8mb3_bin` and therefore case-sensitive |
 | **GID allocation is live in legacy** | pool `99000–99999`, `nextGid = 99025`; `modified_time` matches the 2026-08-05 09:58:49 XRAS post to the second | legacy allocates GIDs locally for XRAS projects (since 2026-07-16, `UMIT0083` = 99001). **`project.unix_gid` is NULL for 0 of 5,795 rows** — never leave it NULL |
 | XRAS-created projects arrive `active = 0` | 21 of 23 have since been activated by hand | by design (`InactivateNewProject`); the success email is the human trigger |
 | XRAS allocation transactions | `user_id IS NULL`; comment `XrasAction Extension Request` (current) / `XRAS Extension Request` (pre-2025-10) | the actor convention to preserve — see Phase 3 |
@@ -1164,8 +1208,9 @@ NRIT P2-63.
 > **Sprint C** — the cold-start handoff is [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md); this section is
 > the contract it implements. The order is easy-path-first
 > (Extension → Supplement → Adjustment → Update → **New last**) so the pipeline is proven before
-> the 30%-success path is attempted. The eight harvested payloads cover **New at both outcomes,
-> Extension at both outcomes, Supplement ×2 and Adjustment ×1**, so no handler is sample-blocked.
+> the 30%-success path is attempted. The harvested payloads (**41** as of 2026-08-11) cover
+> **New ×16 at both outcomes, Extension ×9 at both, Supplement ×9, Adjustment ×3 and
+> `Date Adjustment` ×4**, so no handler is sample-blocked.
 > Two caveats on that order: "Update" is `New`/`Renewal` against an existing project, so it and
 > New are one dispatch decision rather than two; and Adjustment has no known-good production
 > outcome to compare against, because legacy has never once serviced one (defect 4, § 9).
@@ -1268,9 +1313,10 @@ three-module domain pattern in `src/cli/README.md:137-168`.
 
 ### Phase 5 — Parity and cutover
 
-1. ⚠️ **Harvest real payloads** from the `hdt@ucar.edu` mailbox (**not** `sweg-notify`, see §2.4).
-   **Eight** are in hand, scrubbed into `tests/fixtures/xras/actions/`: New ×3 (two success, one
-   failure), Extension ×2 (one of each), Supplement ×2, Adjustment ×1. All three original open
+1. ✅ **Harvest real payloads** from the `hdt@ucar.edu` mailbox (**not** `sweg-notify`, see §2.4).
+   **41** are in hand, scrubbed into `tests/fixtures/xras/actions/`: New ×16, Extension ×9,
+   Supplement ×9, `Date Adjustment` ×4, Adjustment ×3 — 28 legacy successes, 6 failures, 7
+   parked. All three original open
    questions are **closed**: the `roleType` on stale placeholder entries is `'PI'`/`'User'` (full
    vocabulary `'PI'` / `'Allocation Manager'` / `'User'`, space separated, and *not* the
    `Pi`/`CoPi`/`AllocationManager` keys of endpoint #5); `isReconciled` is always `true` —
@@ -1288,10 +1334,17 @@ three-module domain pattern in `src/cli/README.md:137-168`.
      of `Small`/`Large`/`Educational`) and matches no `allocation_type` row in SAM. It is inert on
      this path — legacy reads it only on the GET side — so this is a trap, not a blocker.
 
-   Still open, and the reason this is ⚠️ rather than ✅: **no co-PI has appeared** in any of the
-   eight, so its spelling is still unknown, and `Transfer` / `Renewal` / `Advance` have zero
-   samples. One bulk forward from hdt closes all four — ask for successes as well as failures,
-   and include the manual-fallback subject (§ 1.4).
+   **The bulk forward happened (2026-08-11)** and closed less than hoped — which is itself the
+   result. At 41 payloads: **still no co-PI role**, so its spelling remains unknown, but the
+   vocabulary is now measured as exactly `PI` / `Allocation Manager` / `User` across ~35 projects,
+   which says this site does not send one. `Transfer` / `Renewal` / `Advance` still have zero
+   samples as `actionType` (three payloads carry `requestType: 'Renewal'`, a different field that
+   dispatches nothing). Only production capture can close these now.
+
+   ⚠️ It also *opened* one: **`Date Adjustment`**, ×4, an `actionType` in no document and no
+   Java enum, which parks. Asking for the manual-fallback subject (§ 1.4) is exactly why it
+   surfaced — that clause was added to the harvest request after the Adjustment payload nearly
+   went unnoticed, and it paid for itself twice.
 
 2. ✅ **GET parity harness — `--api xras`.** `XrasClient` in `clients.py` (base-URL parameterised, so
    the same class serves both stacks), `compare_xras` in `comparators.py`, plus the import block, a
@@ -1354,7 +1407,7 @@ three-module domain pattern in `src/cli/README.md:137-168`.
    | # | Prerequisite | Lead time |
    |---|---|---|
    | 1 | `xras_action_log` + `xras_activation_event` in production, and run by hand on staging | **external** — DBA ticket, unblocked, file it now |
-   | 2 | The 400/422 contract confirmed with `allocations@access-ci.org` — broker retry behaviour on 4xx is unknown | **external** — an email, start it in the same week |
+   | 2 | ✅ **Done 2026-08-11.** The 400/422 contract confirmed by Steven Peckins (XRAS/UIUC) — approved as-is, and **XRAS does not auto-retry a 4xx** | **external** — was an email; not `allocations@access-ci.org` |
    | 3 | Phase 3 handlers, all six paths | Sprint C |
    | 4 | ✅ **Per-type enablement.** Sprint C added `XRAS_ACTIONS_CAPTURE_ONLY: "1"` and `XRAS_ACTIONS_ENABLED: "all"` to `helm/values.yaml:291,295`. Under a single repoint this is not a rollout mechanism — it is the **triage lever** that parks one misbehaving action type on the manual path by config, without a revert. ⚠️ It also means the cutover flip is a one-line helm values change plus a deploy, on a known path | ✅ Sprint C |
    | 5 | The replay-and-diff oracle (item 6) — there is no other way to verify a write path | Sprint C |
@@ -1505,8 +1558,9 @@ content is still checked byte-exact while an order neither side can be held to i
   organization), causing 24% of legacy's XRAS failures. Fixing it is outside this project, but the
   port must surface it as a reviewable 422 — otherwise we ship the same invisible failure with better
   plumbing.
-- **The 400/422 error-contract change needs confirmation from `allocations@access-ci.org`** before
-  cutover step 4. Broker retry behaviour on 4xx is unknown.
+- ✅ **CLOSED 2026-08-11. The 400/422 error-contract change is confirmed** and no retry loop is
+  possible: XRAS posts are human-triggered from xras_admin and never auto-retried (Steven Peckins,
+  XRAS/UIUC). This was the largest risk on this list. `XRAS_CUTOVER_RUNBOOK.md` § gate 4.
 - **11 active SAM resources have no mapping** in `xras_resource_repository_key_resource` (§4.1).
   ⚠️ **Expected, not a gap** — not every internal resource is offered for allocation through
   XRAS. Retained below as the description of the *mechanism*, which still matters for the case

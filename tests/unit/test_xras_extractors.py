@@ -56,27 +56,73 @@ def action(**overrides):
 
 
 class TestTheCorpusOracle:
-    """Eight real payloads through the chain, six checked against production rows."""
+    """41 real payloads through the chain, 30 checked against production rows.
 
-    #: fixture → the pair the chain must produce. The six marked ``(verified)`` are
-    #: the ``(panel, allocation_type)`` the real project carries in production today;
-    #: NCAR4232 was never created (it is the failure fixture) and NCAR4253 is absent
-    #: from the subsetted sample, so those two are derived. Both derive through the
-    #: same branch as a verified sibling.
+    ⚠️ **Only the 30 marked ``verified`` are an oracle.** For those, the pair below is
+    the ``(panel_name, allocation_type)`` the real project carries in the snapshot
+    today — read from ``project.allocation_type_id``, independently of anything this
+    code computes — so agreement means the chain reproduces what legacy decided. All
+    30 agree, none differ.
+
+    The 11 marked ``derived`` are the ``NCAR####`` request tokens. No project exists
+    under a token (the New that carried it minted a projcode instead), so there is
+    nothing to check against and these entries pin *our own* output. They are
+    regression protection, not evidence — and they are labelled so nobody reads the
+    count as 41 verified.
+
+    One derived entry does get corroborated, by accident of the retry pair: NCAR4236
+    and UCHI0020 are the same ``actionId`` before and after a failure, and the derived
+    pair for the token equals the verified pair for the project it became.
+    """
+
+    #: fixture → the pair the chain must produce.
     EXPECTED = {
-        # Strategy 1, exact lookup on the SAM type name.
-        'adjustment_uwis0064_manual.json': ('UNIV USS', 'Small'),          # verified
-        'extension_ucub0166_ok.json': ('UNIV USS', 'Small'),               # verified
-        'new_uwis0071_existing_ok.json': ('UNIV USS', 'Small'),            # verified
-        'new_ncar4253_ok.json': ('UNIV USS', 'Small'),                     # derived
-        # Strategy 5: 'Large' misses the exact lookup (its type name is 'CHAP').
-        'extension_ufsu0023_failed.json': ('CHAP', 'CHAP'),                # verified
-        # Strategy 6: 'Exploratory Allocation' is a non-NSF marker.
-        'supplement_ucub0182_ok.json': ('UNIV USS', 'Small (No NSF award)'),  # verified
-        # Strategy 8: 'Educational' misses; the opportunity name decides.
-        'new_ncar4232_failed.json': ('UNIV USS', 'Classroom'),             # derived
-        # Strategy 9.
-        'supplement_ubrn0027_ok.json': ('UNIV USS', 'Data'),               # verified
+        # -- Strategy 1: exact lookup on the SAM type name. -------------------
+        'adjustment_uwis0064_manual.json': ('UNIV USS', 'Small'),             # verified
+        'extension_ucsd0048_ok.json': ('UNIV USS', 'Small'),                  # verified
+        'extension_ucsd0073_ok.json': ('UNIV USS', 'Small'),                  # verified
+        'extension_ucub0166_ok.json': ('UNIV USS', 'Small'),                  # verified
+        'extension_uwho0019_ok.json': ('UNIV USS', 'Small'),                  # verified
+        'new_uida0008_ok.json': ('UNIV USS', 'Small'),                        # verified
+        'new_umsb0003_ok.json': ('UNIV USS', 'Small'),                        # verified
+        'new_uwis0071_existing_ok.json': ('UNIV USS', 'Small'),               # verified
+        'supplement_ucsu0114_ok.json': ('UNIV USS', 'Small'),                 # verified
+        'supplement_ugit0044_ok.json': ('UNIV USS', 'Small'),                 # verified
+        'new_ncar4229_ok.json': ('UNIV USS', 'Small'),                        # derived
+        'new_ncar4253_ok.json': ('UNIV USS', 'Small'),                        # derived
+        # -- Strategy 5: 'Large' misses the exact lookup (type name is 'CHAP').
+        'date_adjustment_ucub0155_manual.json': ('CHAP', 'CHAP'),             # verified
+        'date_adjustment_uwas0141_manual.json': ('CHAP', 'CHAP'),             # verified
+        'extension_ufsu0023_failed.json': ('CHAP', 'CHAP'),                   # verified
+        'extension_unid0003_ok.json': ('CHAP', 'CHAP'),                       # verified
+        'supplement_ucit0011_ok.json': ('CHAP', 'CHAP'),                      # verified
+        'supplement_uwku0002_ok.json': ('CHAP', 'CHAP'),                      # verified
+        # -- Strategy 6: 'Exploratory Allocation' is a non-NSF marker. --------
+        'adjustment_ucsu0146_manual.json': ('UNIV USS', 'Small (No NSF award)'),   # verified
+        'adjustment_ucub0160_manual.json': ('UNIV USS', 'Small (No NSF award)'),   # verified
+        'extension_ucbk0034_ok.json': ('UNIV USS', 'Small (No NSF award)'),        # verified
+        'extension_ugmu0052_ok.json': ('UNIV USS', 'Small (No NSF award)'),        # verified
+        'extension_uiuc0073_ok.json': ('UNIV USS', 'Small (No NSF award)'),        # verified
+        'supplement_uahv0010_ok.json': ('UNIV USS', 'Small (No NSF award)'),       # verified
+        'supplement_ucla0076_ok.json': ('UNIV USS', 'Small (No NSF award)'),       # verified
+        'supplement_ucla0080_ok.json': ('UNIV USS', 'Small (No NSF award)'),       # verified
+        'supplement_ucub0182_ok.json': ('UNIV USS', 'Small (No NSF award)'),       # verified
+        'new_ncar4214_ok.json': ('UNIV USS', 'Small (No NSF award)'),              # derived
+        'new_ncar4223_ok.json': ('UNIV USS', 'Small (No NSF award)'),              # derived
+        'new_ncar4227_failed.json': ('UNIV USS', 'Small (No NSF award)'),          # derived
+        'new_ncar4228_failed.json': ('UNIV USS', 'Small (No NSF award)'),          # derived
+        'new_ncar4250_ok.json': ('UNIV USS', 'Small (No NSF award)'),              # derived
+        # -- Strategy 8: 'Educational' misses; the opportunity name decides. ---
+        'date_adjustment_uazn0052_manual.json': ('UNIV USS', 'Classroom'),    # verified
+        'date_adjustment_ucor0097_manual.json': ('UNIV USS', 'Classroom'),    # verified
+        'new_ummm0016_failed.json': ('UNIV USS', 'Classroom'),                # verified
+        'new_ncar4232_failed.json': ('UNIV USS', 'Classroom'),                # derived
+        # -- Strategy 9. ------------------------------------------------------
+        'new_uchi0020_ok.json': ('UNIV USS', 'Data'),                         # verified
+        'supplement_ubrn0027_ok.json': ('UNIV USS', 'Data'),                  # verified
+        'new_ncar4218_ok.json': ('UNIV USS', 'Data'),                         # derived
+        'new_ncar4236_failed.json': ('UNIV USS', 'Data'),                     # derived
+        'new_ncar4246_ok.json': ('UNIV USS', 'Data'),                         # derived
     }
 
     def test_the_corpus_is_complete(self):
@@ -89,9 +135,14 @@ class TestTheCorpusOracle:
         assert parms == SelectionParms(*self.EXPECTED[name])
 
     def test_five_distinct_strategies_are_exercised(self):
-        """Coverage claim, asserted rather than asserted-in-prose: the corpus reaches
-        five of the eleven strategies, so six are pinned only by the unit tests below.
-        Sprint C's deviations section says so; this keeps that statement honest."""
+        """Coverage claim, asserted rather than asserted-in-prose.
+
+        ⚠️ **Still five of eleven at 41 payloads.** Growing the corpus 5× moved this
+        number not at all, which converts it from "the sample is small" into a
+        measurement: six strategies see no real traffic at this site, and are pinned
+        only by the unit tests below. Sprint C's deviations section says so; this
+        keeps that statement honest.
+        """
         assert len(set(self.EXPECTED.values())) == 5
 
 
@@ -350,16 +401,38 @@ class TestAreaOfInterest:
         assert not errs
         assert row.area_of_interest_id == expected_id
 
+    #: ``fosNum`` → (SAM's string, the string XRAS sends). The two differ in **case
+    #: only**, on one entry out of 92 across the corpus. Pinned rather than smoothed
+    #: over so that a divergence which is *not* just case still fails this test.
+    KNOWN_FOS_CASE_DIFFERENCES = {
+        '39': ('Ecological studies', 'Ecological Studies'),
+    }
+
     def test_the_fos_name_xras_sends_is_sams_own_string(self, session):
         """Corroborates the id reading from the other side: XRAS's FOS vocabulary *is*
-        SAM's ``area_of_interest`` table, not a foreign taxonomy needing a mapping."""
+        SAM's ``area_of_interest`` table, not a foreign taxonomy needing a mapping.
+
+        ⚠️ **Equal ignoring case, not byte-equal.** At eight payloads every name
+        matched exactly; at 41 there are 90 exact matches and 2 that differ in one
+        letter's case (:data:`KNOWN_FOS_CASE_DIFFERENCES`). Zero differ in substance.
+
+        Harmless *here* because ``resolve_area_of_interest`` keys on ``fosNum``, which
+        is an ``area_of_interest_id`` — the name is never the lookup key. Recorded
+        because it is precisely what would break a name-keyed lookup, and because
+        ``area_of_interest`` is one of the ``utf8mb3_bin`` (case-**sensitive**) text
+        columns: a ``LIKE`` against this string would silently miss.
+        """
         from sam.projects.areas import AreaOfInterest
         for name in sorted(p.name for p in FIXTURE_DIR.glob('*.json')):
             data = load_fixture(name)
             for entry in data['fos']:
                 row = session.get(AreaOfInterest, int(entry['fosNum']))
                 assert row is not None, entry
-                assert row.area_of_interest == entry['fosName'], (name, entry)
+                assert row.area_of_interest.lower() == entry['fosName'].lower(), (
+                    name, entry)
+                if row.area_of_interest != entry['fosName']:
+                    assert self.KNOWN_FOS_CASE_DIFFERENCES.get(entry['fosNum']) == (
+                        row.area_of_interest, entry['fosName']), (name, entry)
 
     def test_empty_fos_reports_rather_than_raising(self, session):
         errs = ActionErrors()

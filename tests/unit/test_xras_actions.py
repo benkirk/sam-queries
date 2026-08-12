@@ -63,7 +63,7 @@ def load_schema(name):
 
 def test_corpus_is_present():
     """Guard against a silently empty parametrization."""
-    assert len(ALL_FIXTURES) == 8, ALL_FIXTURES
+    assert len(ALL_FIXTURES) == 41, ALL_FIXTURES
 
 
 # ---------------------------------------------------------------------------
@@ -72,20 +72,44 @@ def test_corpus_is_present():
 
 @pytest.mark.parametrize('name', ALL_FIXTURES)
 def test_every_real_payload_loads(name):
-    """The headline assertion: the schema accepts real production bytes."""
+    """The headline assertion: the schema accepts real production bytes.
+
+    ⚠️ ``'Date Adjustment'`` is on this list because the wire sends it, not because
+    SAM services it — it has no serviceable and parks as ``manual``, exactly as it
+    does in legacy. It was unknown until the 2026-08-11 forward; see
+    ``XRAS_REIMPLEMENTATION.md`` § 1.4 on why the manual-fallback subject is the only
+    record of the action types SAM does not service.
+    """
     data = load_schema(name)
-    assert data['actionType'] in ('New', 'Extension', 'Supplement', 'Adjustment')
+    assert data['actionType'] in ('New', 'Extension', 'Supplement', 'Adjustment',
+                                  'Date Adjustment')
     assert data['requestNumber']
+
+
+#: The only empty string in the corpus, pinned so a *second* one still fails this
+#: test. ``grants[].subAwardNumber`` is declared by the schema and read by nothing
+#: (grep it: the declaration is its only occurrence under ``src/``), so an empty
+#: string here reaches no handler and decides nothing.
+KNOWN_EMPTY_STRINGS = {
+    'supplement_ucit0011_ok.json': ['grants[0].subAwardNumber'],
+}
 
 
 @pytest.mark.parametrize('name', ALL_FIXTURES)
 def test_no_empty_strings_in_the_corpus(name):
-    """Absent scalars arrive as ``null``, never ``""``.
+    """Absent scalars arrive as ``null``, essentially never ``""``.
 
-    This is the measured fact that inverts the doc's tolerance emphasis: across eight
-    payloads and ~400 scalar fields there is not one empty string, so the Java
-    ``= ""`` field initialisers never fire on real traffic and ``allow_none`` — not
-    empty-string handling — is what the schema actually needs.
+    ⚠️ **Corrected by the 2026-08-11 forward.** At eight payloads this was absolute —
+    ~400 scalar fields, not one empty string — and that measurement is what settled
+    the schema on ``allow_none`` rather than empty-string handling. At 41 payloads and
+    ~2,000 scalars there is exactly **one**, in a field nothing reads
+    (:data:`KNOWN_EMPTY_STRINGS`).
+
+    The design conclusion is unchanged and the emphasis is still right: ``null`` is
+    the wire's way of saying absent, and no field SAM *reads* has ever arrived ``""``.
+    But "never" was too strong, and the Java ``= ""`` initialisers evidently can fire.
+    Pinning the exception rather than deleting the test keeps the guard: a new empty
+    string in a field that matters still turns this red.
     """
     empties = []
 
@@ -100,7 +124,7 @@ def test_no_empty_strings_in_the_corpus(name):
             empties.append(path)
 
     walk(load_fixture(name))
-    assert empties == []
+    assert empties == KNOWN_EMPTY_STRINGS.get(name, [])
 
 
 @pytest.mark.parametrize('name', ALL_FIXTURES)
@@ -152,14 +176,48 @@ def test_dates_are_zero_padded_iso_date_only(name):
 def test_request_type_is_not_action_type(name):
     """``requestType`` is useless for dispatch and must not be mistaken for the selector.
 
-    All eight payloads carry ``requestType: 'New'`` — including both Extensions, both
-    Supplements and the Adjustment.
+    At eight payloads the evidence was that ``requestType`` is a *constant*: every one
+    carried ``'New'``, including both Extensions, both Supplements and the Adjustment.
+    The 2026-08-11 forward supplies the stronger form — ``requestType`` **varies**
+    (``'New'`` ×38, ``'Renewal'`` ×3) and still tracks the action type on nothing:
+
+    ==========  ===============  =====================================
+    requestType actionType       fixture
+    ==========  ===============  =====================================
+    Renewal     Extension        ``extension_unid0003_ok.json``
+    Renewal     Supplement       ``supplement_uwku0002_ok.json``
+    Renewal     Date Adjustment  ``date_adjustment_uwas0141_manual.json``
+    ==========  ===============  =====================================
+
+    ⚠️ Note the third row especially: a ``requestType: 'Renewal'`` exists whose
+    ``actionType`` is **not** ``Renewal``. Legacy's selector routes ``Renewal`` to the
+    Update handler — but it reads ``actionType``, so none of these three go there.
+    Dispatching on ``requestType`` would send all three somewhere different.
     """
     data = load_schema(name)
-    assert data['requestType'] == 'New'
-    # ...and it disagrees with actionType on 3 of the 8, which is the whole point.
-    if data['actionType'] != 'New':
+    assert data['requestType'] in ('New', 'Renewal')
+    # The whole point: where the two disagree, only actionType may select.
+    if data['actionType'] != data['requestType']:
         assert data['requestType'] != data['actionType']
+
+
+def test_request_type_renewal_never_implies_a_renewal_action():
+    """No payload has ever carried ``actionType: 'Renewal'`` — only ``requestType``.
+
+    So the Update handler's ``Renewal`` arm remains unsampled after 41 payloads, and
+    ``tests/stress/scenarios.json::unsampled_renewal`` stays synthetic. Recorded here
+    because the three ``requestType: 'Renewal'`` payloads look at a glance like the
+    sample that would close it, and they are not.
+    """
+    renewals = {n for n in ALL_FIXTURES
+                if load_fixture(n)['requestType'] == 'Renewal'}
+    assert renewals == {
+        'extension_unid0003_ok.json',
+        'supplement_uwku0002_ok.json',
+        'date_adjustment_uwas0141_manual.json',
+    }, renewals
+    assert not [n for n in ALL_FIXTURES
+                if load_fixture(n)['actionType'] == 'Renewal']
 
 
 # ---------------------------------------------------------------------------
@@ -446,10 +504,13 @@ def test_one_person_can_hold_pi_and_manager_under_one_username():
 def test_opportunity_qa_is_populated_only_on_new_actions():
     """The End User Agreement acknowledgement is collected once, at request creation.
 
-    Non-empty on all three ``New`` payloads and empty on every Extension, Supplement
-    and Adjustment. It is undeclared by any POJO and dropped by ``EXCLUDE``, so SAM
-    throws the acknowledgement away — recorded here because that is a product
-    decision, not an accident.
+    Non-empty on **every** ``New`` payload and empty on every other action type. It
+    is undeclared by any POJO and dropped by ``EXCLUDE``, so SAM throws the
+    acknowledgement away — recorded here because that is a product decision, not an
+    accident.
+
+    Held at 3 payloads and still holds at 41 (16 New, 25 not), which is now a strong
+    enough correlation to state as a rule rather than an observation.
     """
     by_type = {}
     for name in ALL_FIXTURES:
@@ -457,8 +518,8 @@ def test_opportunity_qa_is_populated_only_on_new_actions():
         by_type.setdefault(raw['actionType'], []).append(len(raw['opportunityQA']))
 
     assert all(n > 0 for n in by_type['New']), by_type
-    assert len(by_type['New']) == 3
-    for action_type in ('Extension', 'Supplement', 'Adjustment'):
+    assert len(by_type['New']) == 16
+    for action_type in ('Extension', 'Supplement', 'Adjustment', 'Date Adjustment'):
         assert by_type[action_type] == [0] * len(by_type[action_type]), by_type
 
     # HTML in the wire text, which is one more reason not to render it blindly.

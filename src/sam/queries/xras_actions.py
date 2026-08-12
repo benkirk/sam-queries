@@ -66,7 +66,26 @@ XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked'
 #: Advance still have zero samples), so an unrecognised type must still list and
 #: still filter. Callers union this with whatever ``DISTINCT action_type`` holds.
 XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
-                     'Transfer', 'Adjustment', 'Advance')
+                     'Transfer', 'Adjustment', 'Advance', 'Date Adjustment')
+
+#: ⚠️ ``Date Adjustment`` was added 2026-08-11 and is **not serviced**. It reached us
+#: through the manual-fallback subject line of four forwarded payloads — the mechanism
+#: ``XRAS_REIMPLEMENTATION.md`` § 1.4 identifies as the only record of the action types
+#: SAM does not service — and it is absent from every other document because nothing
+#: had ever seen it.
+#:
+#: It is listed here so the XRAS tab offers it as a filter chip **before** the first
+#: row exists (``_xras_action_types`` unions this with observed values, so after that
+#: it would appear anyway). Listing it changes no dispatch: ``select_service`` has no
+#: arm for it, so it parks as ``manual`` — which is exactly what legacy does, there
+#: being no ``DateAdjustProjectActionService``.
+#:
+#: Not serviced on purpose. Its payloads are Extension-shaped (dates, no resources),
+#: so routing them to ``extend`` is a one-line change — and wrong twice over: an
+#: Extension ignores ``actionBeginDate`` entirely (``date_adjustment_uwas0141`` asks
+#: for one that differs from its allocation's), and rejects an end date earlier than
+#: the current one, which is the likeliest reason a *separate* action type exists at
+#: all. See ``docs/plans/XRAS_SPRINT_C.md`` § *What the corpus still does not cover*.
 
 #: Wire spellings that mean the same handler, ``alias -> canonical``.
 #:

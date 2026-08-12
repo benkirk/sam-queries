@@ -1,0 +1,105 @@
+{
+  "actionId": 376014,
+  "actionType": "Date Adjustment",
+  "actionBeginDate": "2024-10-28",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1320368,
+  "requestNumber": "UWAS0141",
+  "requestType": "Renewal",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Reconstructing Earth's energy imbalance over the last millennium",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 533606,
+  "opportunityName": "Large Allocation (University) - Fall 2024",
+  "opportunityType": "Terminating",
+  "allocationType": "Large",
+  "awardDate": "2024-10-31",
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 344694,
+      "roleType": "Allocation Manager",
+      "username": "user_00000018",
+      "beginDate": "2024-09-06",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given18",
+        "middleName": null,
+        "lastName": "Surname18",
+        "email": "user18@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF WASHINGTON",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 344693,
+      "roleType": "PI",
+      "username": "user_00000019",
+      "beginDate": "2024-09-06",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given19",
+        "middleName": null,
+        "lastName": "Surname19",
+        "email": "user19@example.invalid",
+        "phone": "555-0113",
+        "organization": "UNIVERSITY OF WASHINGTON",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500028,
+      "fosNum": "26",
+      "fosName": "Paleoclimate",
+      "fosAbbr": "Paleoclimate",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "External reviewers for CHAP",
+      "abbr": "CHAP External",
+      "isPrimary": false
+    },
+    {
+      "type": "Technical",
+      "name": "CISL HPC Allocation Panel",
+      "abbr": "CHAP",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "AGS-2202526",
+      "programOfficerName": "Officer11",
+      "programOfficerEmail": "officer06@example.invalid",
+      "piName": "Officer12",
+      "title": "Reconstructing Earth Energy Imbalance",
+      "beginDate": "2022-08-01",
+      "endDate": "2026-07-31",
+      "awardedAmount": "0.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": null,
+        "fosNum": null,
+        "fosName": null,
+        "fosAbbr": null
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}

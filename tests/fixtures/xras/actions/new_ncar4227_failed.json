@@ -1,0 +1,141 @@
+{
+  "actionId": 388011,
+  "actionType": "New",
+  "actionBeginDate": "2026-07-20",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1444934,
+  "requestNumber": "NCAR4227",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Exploratory Analyses for assessing  Extreme Weather and Climate in past, present, and future scenarios",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 896211,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "300000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 896209,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "5000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 567662,
+      "roleType": "Allocation Manager",
+      "username": "placeholder38-user-00038",
+      "beginDate": "2026-07-10",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given38",
+        "middleName": "M38",
+        "lastName": "Surname38",
+        "email": "user38@example.invalid",
+        "phone": "555-0123",
+        "organization": "TEXAS A & M UNIVERSITY",
+        "academicStatus": "Postdoctorate",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 567661,
+      "roleType": "PI",
+      "username": "placeholder38-user-00038",
+      "beginDate": "2026-07-10",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given38",
+        "middleName": "M38",
+        "lastName": "Surname38",
+        "email": "user38@example.invalid",
+        "phone": "555-0123",
+        "organization": "TEXAS A & M UNIVERSITY",
+        "academicStatus": "Postdoctorate",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 567660,
+      "roleType": "User",
+      "username": "placeholder38-user-00038",
+      "beginDate": "2026-07-10",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given38",
+        "middleName": "M38",
+        "lastName": "Surname38",
+        "email": "user38@example.invalid",
+        "phone": "555-0123",
+        "organization": "TEXAS A & M UNIVERSITY",
+        "academicStatus": "Postdoctorate",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500020,
+      "fosNum": "18",
+      "fosName": "Global Atmospheric Dynamics",
+      "fosAbbr": "Global Atmospheric Dynamics",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500025,
+      "fosNum": "23",
+      "fosName": "Mesoscale Meteorology",
+      "fosAbbr": "Mesoscale Meteorology",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500039,
+      "fosNum": "37",
+      "fosName": "Weather Prediction",
+      "fosAbbr": "Weather Prediction",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": [
+    {
+      "attributeSetId": 537623,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "opportunityAttributeId": 539638,
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms."
+    }
+  ]
+}

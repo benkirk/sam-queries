@@ -1,0 +1,176 @@
+{
+  "actionId": 371610,
+  "actionType": "Date Adjustment",
+  "actionBeginDate": "2024-05-01",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1267628,
+  "requestNumber": "UCUB0155",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Understanding and constraining Arctic warming rates from 1950 to 2060 by bringing together proven tools in the Community Earth System Model",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 533144,
+  "opportunityName": "Large Allocation (University) - Spring 2024",
+  "opportunityType": "Terminating",
+  "allocationType": "Large",
+  "awardDate": "2024-05-01",
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 489142,
+      "roleType": "Allocation Manager",
+      "username": "user_00000015",
+      "beginDate": "2025-09-09",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given15",
+        "middleName": null,
+        "lastName": "Surname15",
+        "email": "user15@example.invalid",
+        "phone": "555-0110",
+        "organization": "UNIVERSITY OF WASHINGTON",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 489141,
+      "roleType": "PI",
+      "username": "user_00000016",
+      "beginDate": "2025-09-09",
+      "endDate": null,
+      "isAccountToBeCreated": true,
+      "person": {
+        "firstName": "Given16",
+        "middleName": null,
+        "lastName": "Surname16",
+        "email": "user16@example.invalid",
+        "phone": "555-0111",
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": "University Research Staff (excluding postdoctorates)",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 286938,
+      "roleType": "PI",
+      "username": "user_00000017",
+      "beginDate": "2024-03-12",
+      "endDate": "2025-09-08",
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given17",
+        "middleName": null,
+        "lastName": "Surname17",
+        "email": "user17@example.invalid",
+        "phone": "555-0112",
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": "Center Research Staff",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 286942,
+      "roleType": "Allocation Manager",
+      "username": "user_00000017",
+      "beginDate": "2024-03-12",
+      "endDate": "2025-09-08",
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given17",
+        "middleName": null,
+        "lastName": "Surname17",
+        "email": "user17@example.invalid",
+        "phone": "555-0112",
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": "Center Research Staff",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500020,
+      "fosNum": "18",
+      "fosName": "Global Atmospheric Dynamics",
+      "fosAbbr": "Global Atmospheric Dynamics",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500032,
+      "fosNum": "30",
+      "fosName": "Regional Climate",
+      "fosAbbr": "Regional Climate",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "External reviewers for CHAP",
+      "abbr": "CHAP External",
+      "isPrimary": false
+    },
+    {
+      "type": "Technical",
+      "name": "CISL HPC Allocation Panel",
+      "abbr": "CHAP",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "OPP-2233421",
+      "programOfficerName": "Officer07",
+      "programOfficerEmail": "officer04@example.invalid",
+      "piName": "Officer08",
+      "title": "Collaborative Research: Assessing the Causal Influence of Atmospheric Opacity and Sea Ice on Arctic Warming in a Novel Circulation-controlled Framework",
+      "beginDate": "2023-08-01",
+      "endDate": "2027-07-31",
+      "awardedAmount": "161000.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": 500009,
+        "fosNum": "7",
+        "fosName": "Climate",
+        "fosAbbr": "Climate"
+      },
+      "isPending": false
+    },
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "OPP-2233420",
+      "programOfficerName": "Officer09",
+      "programOfficerEmail": "officer05@example.invalid",
+      "piName": "Officer10",
+      "title": "Collaborative Research: Assessing the Causal Influence of Atmospheric Opacity and Sea Ice on Arctic Warming in a Novel Circulation-controlled Framework",
+      "beginDate": "2023-08-01",
+      "endDate": "2027-07-31",
+      "awardedAmount": "513000.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": null,
+        "fosNum": null,
+        "fosName": null,
+        "fosAbbr": null
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}

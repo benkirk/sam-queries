@@ -161,9 +161,15 @@ def _access_strategy(action) -> Optional[SelectionParms]:
     ``'Exploratory'`` and ``'Data Analysis'`` all miss here too and are resolved further
     down by ``opportunityName``.
 
-    Five of the eight corpus payloads take the fall-through path and one takes the
-    short-circuit, so both are live. § 3.2's "may return null and fall through" covers
-    only half of it.
+    Both arms are live across the corpus: of 41 payloads, 12 short-circuit here on
+    ``'Small'`` and the other 29 fall through (14 ``'Exploratory'``, 6 ``'Large'``,
+    5 ``'Data Analysis'``, 4 ``'Educational'``). § 3.2's "may return null and fall
+    through" covers only half of it.
+
+    ⚠️ The corpus reaches **5 of the 11 strategies**, and growing it 8 → 41 did not
+    move that number at all — so it is a measurement, not a small sample. The other six
+    see no traffic at this site and are pinned only by unit tests. See
+    ``tests/unit/test_xras_extractors.py::test_five_distinct_strategies_are_exercised``.
     """
     allocation_type = _clean(get_field(action, 'allocationType'))
     if allocation_type is not None:
@@ -377,16 +383,24 @@ def resolve_area_of_interest(session, action, errs: ActionErrors) -> Optional[Ar
     *primary-key* lookup — the ``fos_aoi`` mapping table is not on this path at all.
     It cannot be: its ``fos_id`` values are five-digit AMIE/XSEDE codes (``10202``,
     ``10501``, …) while XRAS sends ``1``–``40``, the ``area_of_interest`` id space.
-    Confirmed against production — every one of the eight corpus payloads' primary
-    ``fosNum`` equals the ``area_of_interest_id`` its real project carries, and the
-    ``fosName`` XRAS sends is the SAM ``area_of_interest`` string verbatim. Reading
-    this through ``fos_aoi`` would file every XRAS project under the wrong research
-    area, silently.
+    Confirmed against production — every corpus payload's primary ``fosNum`` equals the
+    ``area_of_interest_id`` its real project carries. Reading this through ``fos_aoi``
+    would file every XRAS project under the wrong research area, silently.
 
     Non-numeric ``fosNum`` falls back to a lookup by name, mirroring the
     ``NumberFormatException`` arm — ``Integer.decode`` also accepts ``0x``/``0``
     prefixed forms, which ``int(…, 0)`` reproduces closely enough that no real payload
     can tell them apart.
+
+    ⚠️ **That fallback is by name, and the names are not byte-equal.** At eight payloads
+    the ``fosName`` XRAS sends was the SAM ``area_of_interest`` string *verbatim*; at 41
+    it is 90 exact, 2 differing in one letter's case (``fosNum`` 39 —
+    ``'Ecological studies'`` here, ``'Ecological Studies'`` on the wire), 0 differing in
+    substance. Harmless on the **id** path above, which is what every real payload
+    takes. It is the name fallback that would bite: ``area_of_interest`` is
+    ``utf8mb3_bin``, so the comparison is case-**sensitive** and a wire spelling that
+    differs only in case finds nothing. Pinned by
+    ``tests/unit/test_xras_extractors.py::KNOWN_FOS_CASE_DIFFERENCES``.
     """
     fos = primary_fos_num(action)
     if fos is None:

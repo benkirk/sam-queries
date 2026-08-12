@@ -1,0 +1,106 @@
+{
+  "actionId": 391384,
+  "actionType": "Extension",
+  "actionBeginDate": "2025-09-18",
+  "actionEndDate": "2027-06-30",
+  "requestId": 1431082,
+  "requestNumber": "UCSD0073",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Advancing subseasonal prediction of precipitation extremes on the west coast of North America",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532220,
+  "opportunityName": "Small Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Small",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 492286,
+      "roleType": "Allocation Manager",
+      "username": "user_00000024",
+      "beginDate": "2025-09-18",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given24",
+        "middleName": null,
+        "lastName": "Surname24",
+        "email": "user24@example.invalid",
+        "phone": "555-0115",
+        "organization": "UNIVERSITY OF CALIFORNIA AT SAN DIEGO",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 492269,
+      "roleType": "PI",
+      "username": "user_00000025",
+      "beginDate": "2025-09-18",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given25",
+        "middleName": null,
+        "lastName": "Surname25",
+        "email": "user25@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF CALIFORNIA AT SAN DIEGO",
+        "academicStatus": "Post Doc",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500032,
+      "fosNum": "30",
+      "fosName": "Regional Climate",
+      "fosAbbr": "Regional Climate",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "AGS-2105654",
+      "programOfficerName": "Officer15",
+      "programOfficerEmail": "officer07@example.invalid",
+      "piName": "Officer16",
+      "title": "Collaborative Research:  Dynamics of Seasonal Forecast Uncertainty: Cross-Basin Ocean-Atmosphere Interactions",
+      "beginDate": "2021-07-15",
+      "endDate": "2026-06-30",
+      "awardedAmount": "482252.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": null,
+        "fosNum": null,
+        "fosName": null,
+        "fosAbbr": null
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}

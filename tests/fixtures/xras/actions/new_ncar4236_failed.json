@@ -1,0 +1,147 @@
+{
+  "actionId": 388865,
+  "actionType": "New",
+  "actionBeginDate": "2026-07-28",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1445244,
+  "requestNumber": "NCAR4236",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Stratospheric water vapor and temperature variability in WACCM and satellite observations",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532222,
+  "opportunityName": "Data Analysis Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Data Analysis",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 902004,
+      "resourceRepositoryKey": 145145,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 902002,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "10000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 902000,
+      "resourceRepositoryKey": 144552,
+      "awardedAmount": "1.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 569150,
+      "roleType": "PI",
+      "username": "user_00000041",
+      "beginDate": "2026-07-16",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given41",
+        "middleName": null,
+        "lastName": "Surname41",
+        "email": "user41@example.invalid",
+        "phone": "555-0125",
+        "organization": "NCAR/ACOM",
+        "academicStatus": "Post Doc",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 569146,
+      "roleType": "Allocation Manager",
+      "username": "user_00000041",
+      "beginDate": "2026-07-16",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given41",
+        "middleName": null,
+        "lastName": "Surname41",
+        "email": "user41@example.invalid",
+        "phone": "555-0125",
+        "organization": "NCAR/ACOM",
+        "academicStatus": "Post Doc",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500006,
+      "fosNum": "4",
+      "fosName": "Atmospheric Chemistry",
+      "fosAbbr": "Atmospheric Chemistry",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": null,
+      "programOfficerName": null,
+      "programOfficerEmail": null,
+      "piName": null,
+      "title": null,
+      "beginDate": null,
+      "endDate": null,
+      "awardedAmount": "0.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": null,
+        "fosNum": null,
+        "fosName": null,
+        "fosAbbr": null
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": [
+    {
+      "attributeSetId": 534586,
+      "attributeSetRelationType": "textarea",
+      "attributeSetName": "Data Analysis projects require that you intend to use an NCAR-curated data set in the analysis. Which NCAR-curated data sets will you be using as part of your data analysis activities?",
+      "opportunityAttributeId": 537062,
+      "attributeName": "Briefly describe your planned use of NCAR data sets.",
+      "attributeValue": "This project will use the Gridded cold-point tropopause temperature records from CDAAC Merged Radio Occultation Data. In addition, we will analyze Specified Dynamics WACCM (SD-WACCM) simulations archived on NCAR Derecho, including temperature and water vapor fields.",
+      "answer": "This project will use the Gridded cold-point tropopause temperature records from CDAAC Merged Radio Occultation Data. In addition, we will analyze Specified Dynamics WACCM (SD-WACCM) simulations archived on NCAR Derecho, including temperature and water vapor fields."
+    },
+    {
+      "attributeSetId": 537624,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "opportunityAttributeId": 539639,
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms."
+    }
+  ]
+}
