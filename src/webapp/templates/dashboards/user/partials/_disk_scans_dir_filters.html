@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
 {% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
 {#
   Reusable Large-directories filter panel in the Unity .filter-sidebar house
   style (navy panel + gold title + white controls + "Clear filters"), matching
@@ -17,12 +18,17 @@
     user_search_url fk-picker search endpoint (admin_dashboard.htmx_search_users, fk)
     resource_name / scope / fileset   scope context echoed back on submit
     limit_options   row-count choices for the limit selector
+    age_bands       age_bands.band_map() rows, or falsy to fall back to the bare
+                    date pair (plugin absent, or no scan date to anchor on)
+    age_band_span   (lo, hi) or None — None renders the "custom" state
+    layout          'mobile' | 'tablet' | 'desktop', picks the presentation
 
   The user picker stores a SAM user_id under ``owner_user_id``; the route
   resolves it to the unix UID the scan data is keyed on (see _resolve_owner).
 #}
 {% macro dir_filters(form_id, fragment_url, target_id, filters, user_search_url,
-                     resource_name, scope, fileset, limit_options, mode='project') %}
+                     resource_name, scope, fileset, limit_options, mode='project',
+                     age_bands=None, age_band_span=None, layout='desktop') %}
 {% call filter_panel_shell(form_id, fragment_url, target_id) %}
 
   {# Scope context — submitted alongside the visible filter controls. Inside the
@@ -37,18 +43,34 @@
   <input type="hidden" name="browse" value="1">
 
   <div class="d-flex flex-wrap align-items-end gap-3">
+    {# One control for both edges, because they are one question: how old? The
+       bands are the access-history chart's own ladder, so a band here and a bar
+       click there select the same rows. Falls back to the bare date pair when
+       the plugin can't supply a ladder or there is no scan date to anchor on. #}
     <div>
+      {% if age_bands %}
+      {{ age_band_range(form_id, age_bands, 'accessed_after', 'accessed_before',
+                        after_value=filters.accessed_after_str,
+                        before_value=filters.accessed_before_str,
+                        span=age_band_span, label='File age',
+                        after_label='Accessed after',
+                        before_label='Accessed before',
+                        layout=layout) }}
+      {% else %}
       <label class="form-label"><strong>Accessed after</strong></label>
       <input type="date" class="form-control"
              name="accessed_after" value="{{ filters.accessed_after_str }}"
              style="width:160px;">
+      {% endif %}
     </div>
+    {% if not age_bands %}
     <div>
       <label class="form-label"><strong>Accessed before</strong></label>
       <input type="date" class="form-control"
              name="accessed_before" value="{{ filters.accessed_before_str }}"
              style="width:160px;">
     </div>
+    {% endif %}
 
     {# User mode ("My Data") pins the owner to the logged-in user server-side,
        so the owner picker is omitted — it must not be possible to re-filter the

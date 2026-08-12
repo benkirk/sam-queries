@@ -58,7 +58,8 @@ from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.disk_scans.scope import resolve_scan_scope, resolve_scan_scope_grouped
 from webapp.disk_scans.session import get_module, is_enabled
 from webapp.extensions import db
-from webapp.utils.htmx import is_truthy
+from webapp.utils import age_bands
+from webapp.utils.htmx import is_truthy, read_layout
 from webapp.utils.rbac import Permission, require_permission
 
 bp = Blueprint('disk_scans', __name__)
@@ -176,6 +177,35 @@ def _dir_filters() -> dict:
         'min_avg_size': request.args.get('min_avg_size', type=int),
         'max_avg_size': request.args.get('max_avg_size', type=int),
         'leaves_only': _truthy(request.args.get('leaves_only')),
+    }
+
+
+def _age_band_ctx(scope, flt: dict) -> dict:
+    """Template context for the age-band range control, or an empty ladder.
+
+    ``age_bands`` is the whole ladder pre-resolved to dates, which is what lets
+    the browser index it instead of doing date arithmetic. ``age_band_span`` is
+    the inverse lookup: which bands the filter currently in force describes, or
+    ``None`` when it describes none of them — a hand-typed range — so the control
+    renders its "custom" state rather than snapping its handles somewhere the
+    filter isn't.
+
+    Degrades to ``{'age_bands': None}`` when the plugin has no ladder or the
+    scope has no scan date to anchor on, and the panel falls back to the bare
+    date pair. Anchoring is on the *scan* date, never today — see
+    ``service.scan_reference_date``.
+    """
+    ladder = age_bands.atime_ladder()
+    anchor = service.scan_reference_date(scope) if ladder else None
+    if not ladder or not anchor:
+        return {'age_bands': None, 'age_band_span': None}
+    return {
+        'age_bands': age_bands.band_map(ladder, anchor,
+                                        'accessed_after', 'accessed_before'),
+        'age_band_span': age_bands.bands_for(
+            ladder, anchor,
+            flt['accessed_after_str'] or None,
+            flt['accessed_before_str'] or None),
     }
 
 
@@ -475,8 +505,9 @@ def directories_page(project):
         mode='project', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
-        limit_options=_LIMIT_OPTIONS, browse=True,
-        scope_groups=scope_groups, scope_dir_count=scope_dir_count, **ctx,
+        limit_options=_LIMIT_OPTIONS, browse=True, layout=read_layout(),
+        scope_groups=scope_groups, scope_dir_count=scope_dir_count,
+        **_age_band_ctx(_scope_for('project', ctx)(), flt), **ctx,
     )
 
 
@@ -499,7 +530,8 @@ def directories_resource_page(resource):
         mode='resource', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=_user_search_url(),
-        limit_options=_LIMIT_OPTIONS, browse=True, **ctx,
+        limit_options=_LIMIT_OPTIONS, browse=True, layout=read_layout(),
+        **_age_band_ctx(_scope_for('resource', ctx)(), flt), **ctx,
     )
 
 
@@ -673,7 +705,8 @@ def directories_user_page(resource):
         mode='user', fragment_url=fragment_url,
         initial_url=_initial_fragment_url(fragment_url, ctx, flt, browse=True),
         filters=flt, user_search_url=None,
-        limit_options=_LIMIT_OPTIONS, browse=True, **ctx,
+        limit_options=_LIMIT_OPTIONS, browse=True, layout=read_layout(),
+        **_age_band_ctx(_scope_for('user', ctx)(), flt), **ctx,
     )
 
 

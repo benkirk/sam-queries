@@ -2094,3 +2094,97 @@ def test_single_owner_band_without_window_keeps_table(app):
     assert 'benkirk' in body                            # user still listed
     assert 'Top users by' in body                       # per-user table kept
     assert 'owner_uid=7' not in body                    # but no directory drill
+
+
+# ---------------------------------------------------------------------------
+# Age-band range control on the explorer filter panel
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def _anchored_scan(monkeypatch):
+    """Pin the scan date the age bands are measured back from.
+
+    Anchoring is on the scan, not today (service.scan_reference_date), so the
+    control's dates match the access-history chart's bands exactly — pinning it
+    is what makes the expected dates below stable.
+    """
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'scan_reference_date',
+                        lambda scope: datetime(2026, 6, 1))
+    return datetime(2026, 6, 1)
+
+
+def _explore(auth_client, project, query=''):
+    return auth_client.get(
+        f'/dashboards/user/disk-scans/{project.projcode}/directories/explore'
+        f'?resource={_RES}{query}'
+    ).get_data(as_text=True)
+
+
+def test_age_bands_render_with_the_ladder_as_a_data_block(
+        auth_client, active_project, _anchored_scan):
+    """The ladder travels as JSON so the browser only indexes it — no date
+    arithmetic, and therefore no timezone reasoning, in JavaScript."""
+    body = _explore(auth_client, active_project)
+    assert 'age-range-bands' in body
+    assert '&lt; 1 Month' in body or '< 1 Month' in body
+    # Both thumbs present, and each announces a band name rather than an index.
+    assert body.count('data-action-change="age-band-commit"') == 2
+    assert 'aria-valuetext=' in body
+
+
+def test_the_two_date_inputs_remain_the_only_named_fields(
+        auth_client, active_project, _anchored_scan):
+    """Everything else in the control is unnamed UI that writes into these two.
+    Two same-named controls would make form.elements[name] a RadioNodeList and
+    silently break assignment — the trap window_pills.html documents."""
+    body = _explore(auth_client, active_project)
+    assert body.count('name="accessed_after"') == 1
+    assert body.count('name="accessed_before"') == 1
+    # The range inputs carry no name, so they submit nothing.
+    assert 'type="range"' in body
+    assert 'name="age' not in body
+
+
+def test_a_filter_on_band_edges_marks_that_span(
+        auth_client, active_project, _anchored_scan):
+    """Dates that ARE band edges put the thumbs on those bands: '< 1 Month' is
+    ages [0, 30) from the 2026-06-01 scan."""
+    body = _explore(auth_client, active_project,
+                    '&accessed_after=2026-05-02&accessed_before=2026-06-01')
+    assert 'value="0"' in body
+    assert 'Custom range' not in body
+
+
+def test_a_hand_typed_range_renders_the_custom_state(
+        auth_client, active_project, _anchored_scan):
+    """Dates that describe no whole band must not snap the handles somewhere
+    the filter isn't."""
+    body = _explore(auth_client, active_project,
+                    '&accessed_after=2026-03-17&accessed_before=2026-04-02')
+    assert 'Custom range' in body
+    # The typed values still round-trip into the exact-date inputs.
+    assert 'value="2026-03-17"' in body
+    assert 'value="2026-04-02"' in body
+
+
+def test_mobile_gets_selects_instead_of_thumbs(
+        auth_client, active_project, _anchored_scan):
+    """Two thumbs a few pixels apart is the worst case at 390px, so the layout
+    axis picks the presentation server-side rather than rendering both."""
+    body = _explore(auth_client, active_project, '&layout=mobile')
+    assert 'type="range"' not in body
+    assert body.count('data-action-change="age-band-commit"') == 2   # the selects
+    assert body.count('name="accessed_before"') == 1
+
+
+def test_no_scan_date_falls_back_to_the_bare_date_pair(
+        auth_client, active_project, monkeypatch):
+    """No anchor means no bands can be computed. The panel must still filter —
+    the same degrade-not-500 contract every fs-scans surface has."""
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'scan_reference_date', lambda scope: None)
+    body = _explore(auth_client, active_project)
+    assert 'age-range-bands' not in body
+    assert 'Accessed after' in body and 'Accessed before' in body
+    assert body.count('name="accessed_before"') == 1

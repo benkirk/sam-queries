@@ -1549,6 +1549,164 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 /* ============================================================================
+   AGE-BAND RANGE — a discrete two-thumb range over named age bands
+   (fragments/age_band_range.html). Lives inside .filter-sidebar, so every
+   colour here is measured against --ncar-navy (#00357a), NOT a card surface.
+
+   ⚠️ Do NOT reach for the .btn-group preset treatment above: its inactive fill
+   is --ncar-blue (#0057c2), which is 1.76:1 against the navy panel — under the
+   3:1 WCAG floor for non-text UI. --surface-on-brand (white) is 11.7:1, so the
+   selected span is that and the unselected track is a wash of it.
+
+   Both --ncar-navy and --text-on-brand are theme-invariant (variables.css), so
+   unlike almost everything else in this file this block needs no dark variant.
+   ========================================================================= */
+
+.age-range {
+    min-width: 260px;
+}
+
+.age-range-readout {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: var(--font-weight-semi-bold);
+    color: var(--text-on-brand);
+    margin-bottom: 0.25rem;
+    min-height: 1.2em;   /* reserve the line so a change doesn't reflow the panel */
+}
+
+/* The track holds both inputs stacked. --thumb is the geometry contract shared
+   with .age-range-fill: a native range thumb is inset by half its width at each
+   end, so the fill has to use the same inset or it drifts off the thumbs. */
+.age-range-track {
+    --thumb: 18px;
+    position: relative;
+    height: var(--thumb);
+    margin: 0.125rem 0 0.25rem;
+}
+
+.age-range-track::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 4px;
+    transform: translateY(-50%);
+    border-radius: 2px;
+    background-color: rgba(var(--surface-on-brand-rgb), 0.28);
+    /* One gradient, one tick per stop — cheaper and less brittle than N nodes. */
+    background-image: repeating-linear-gradient(
+        to right,
+        rgba(var(--surface-on-brand-rgb), 0.45) 0 1px,
+        transparent 1px calc((100% - 1px) / (var(--n) - 1))
+    );
+}
+
+.age-range-fill {
+    position: absolute;
+    top: 50%;
+    height: 4px;
+    transform: translateY(-50%);
+    border-radius: 2px;
+    background-color: var(--surface-on-brand);
+    left: calc(var(--thumb) / 2 + (var(--lo) / (var(--n) - 1))
+               * (100% - var(--thumb)));
+    right: calc(var(--thumb) / 2 + (1 - var(--hi) / (var(--n) - 1))
+                * (100% - var(--thumb)));
+}
+
+/* pointer-events: none on the input, auto on the thumb — otherwise the upper
+   input's full-width box swallows every click and the lower thumb can never be
+   grabbed once they coincide. */
+/* Custom state: a hand-typed range the bands cannot express. The thumbs sit at
+   the extremes because they have nowhere honest to be, so the fill recedes to a
+   wash rather than reading as "the whole range is selected". */
+.age-range--custom .age-range-fill {
+    background-color: rgba(var(--surface-on-brand-rgb), 0.35);
+}
+
+.age-range--custom .age-range-readout {
+    font-style: italic;
+    color: rgba(var(--surface-on-brand-rgb), 0.8);
+}
+
+.age-range-thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    background: transparent;
+    appearance: none;
+    -webkit-appearance: none;
+    pointer-events: none;
+}
+
+.age-range-thumb::-webkit-slider-runnable-track {
+    background: transparent;
+    height: var(--thumb);
+}
+
+.age-range-thumb::-moz-range-track {
+    background: transparent;
+    height: var(--thumb);
+}
+
+.age-range-thumb::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    pointer-events: auto;
+    width: var(--thumb);
+    height: var(--thumb);
+    border-radius: 50%;
+    background-color: var(--surface-on-brand);
+    /* Navy ring keeps two adjacent thumbs legible as two. */
+    box-shadow: 0 0 0 2px var(--ncar-navy);
+    cursor: grab;
+}
+
+.age-range-thumb::-moz-range-thumb {
+    pointer-events: auto;
+    width: var(--thumb);
+    height: var(--thumb);
+    border: 0;
+    border-radius: 50%;
+    background-color: var(--surface-on-brand);
+    box-shadow: 0 0 0 2px var(--ncar-navy);
+    cursor: grab;
+}
+
+/* Focus has to read on a white thumb over navy, so it is a halo rather than an
+   outline — an outline-offset ring would sit on the navy and vanish. */
+.age-range-thumb:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 2px var(--ncar-navy), 0 0 0 6px rgba(var(--surface-on-brand-rgb), 0.5);
+}
+
+.age-range-thumb:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 2px var(--ncar-navy), 0 0 0 6px rgba(var(--surface-on-brand-rgb), 0.5);
+}
+
+.age-range-thumb:focus {
+    outline: none;   /* replaced by the halo above */
+}
+
+.age-range-ends {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: rgba(var(--surface-on-brand-rgb), 0.75);
+    margin-bottom: 0.25rem;
+}
+
+.age-range-dash {
+    color: rgba(var(--surface-on-brand-rgb), 0.7);
+}
+
+.age-range-exact input[type="date"] {
+    width: 140px;
+}
+
+/* ============================================================================
    FILTER SIDEBAR — Unity NCAR navy panel for any filter form on the site.
    Defined here (not allocations.css) so it's available on every page.
    ========================================================================= */

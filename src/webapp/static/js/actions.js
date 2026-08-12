@@ -170,6 +170,68 @@
         htmx.trigger(form, 'submit');
     });
 
+    /* Age-band range control (dashboards/fragments/age_band_range.html).
+     *
+     * Two handlers, on two channels, because the split is the whole point:
+     * `input` fires continuously while a thumb is dragged and only repaints;
+     * `change` fires once on release (and on each keyboard step) and is what
+     * submits. Wiring the submit to `input` would fire a request per pixel.
+     *
+     * Neither does any date arithmetic. The band -> dates map is resolved
+     * server-side by webapp.utils.age_bands and travels in a JSON data block,
+     * so these only ever index it. That keeps one source of truth for the
+     * ladder and keeps timezone reasoning out of the browser entirely. */
+    function ageRangeState(el) {
+        var root = el.closest('[data-age-range]');
+        if (!root) { return null; }
+        var lo = root.querySelector('[data-age-lo]');
+        var hi = root.querySelector('[data-age-hi]');
+        if (!lo || !hi) { return null; }
+        /* Thumbs must not cross: clamp whichever one moved to the other. */
+        if (+lo.value > +hi.value) {
+            el.value = (el === lo) ? hi.value : lo.value;
+        }
+        var block = root.querySelector('.age-range-bands');
+        return {
+            root: root, lo: lo, hi: hi,
+            bands: block ? JSON.parse(block.textContent) : [],
+        };
+    }
+
+    window.registerAction('age-band-preview', function (el) {
+        var s = ageRangeState(el);
+        if (!s || !s.bands.length) { return; }
+        var lo = +s.lo.value, hi = +s.hi.value;
+        var fill = s.root.querySelector('.age-range-fill');
+        if (fill) {
+            fill.style.setProperty('--lo', lo);
+            fill.style.setProperty('--hi', hi);
+        }
+        /* aria-valuetext is what makes a thumb announce "3-4 Years" rather
+         * than "6"; it has to track the value, not just the initial render. */
+        s.lo.setAttribute('aria-valuetext', s.bands[lo].label);
+        s.hi.setAttribute('aria-valuetext', s.bands[hi].label);
+        var out = s.root.querySelector('.age-range-readout');
+        if (out) {
+            out.textContent = (lo === hi) ? s.bands[lo].label
+                                          : s.bands[lo].label + ' – ' + s.bands[hi].label;
+        }
+    });
+
+    window.registerAction('age-band-commit', function (el) {
+        var s = ageRangeState(el);
+        if (!s || !s.bands.length) { return; }
+        var form = document.getElementById(s.root.dataset.formId);
+        if (!form) { return; }
+        var after = s.root.querySelector('[data-age-after]');
+        var before = s.root.querySelector('[data-age-before]');
+        /* A later band is an OLDER file, so the span's older edge comes from
+         * the HIGH thumb and its newer edge from the LOW one. */
+        if (after) { after.value = s.bands[+s.hi.value][after.name] || ''; }
+        if (before) { before.value = s.bands[+s.lo.value][before.name] || ''; }
+        htmx.trigger(form, 'submit');
+    });
+
     /* Reveal the custom date inputs beside a set of window pills. Plain
      * d-none toggle rather than a Bootstrap collapse: this sits inside a
      * filter form, and Bootstrap's collapse data-api runs in the CAPTURE

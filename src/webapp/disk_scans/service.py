@@ -60,6 +60,28 @@ def scan_overview(session, project, resource_name: str) -> Dict[str, Any]:
     return {'collections': collections, 'scan_dates': scan_dates, 'reference': reference}
 
 
+def scan_reference_date(scope) -> Optional[datetime]:
+    """The newest scan date across *scope*'s collections, or ``None``.
+
+    This is the anchor every age band is measured back from, and it must be the
+    scan date rather than today: a file's age is measured from when it was
+    *observed*, and a scan can be days old. Anchoring on today would shift every
+    band by the scan's staleness and — worse — make the filter panel's bands
+    disagree with the access-history chart above it, which anchors here
+    (``scan_distribution`` → ``reference_scan_date``).
+
+    Uncached on purpose: this is a ``scan_metadata`` lookup, the same one
+    ``scan_overview`` runs for its freshness badge, and it does not depend on the
+    path prefixes that key the scan cache.
+    """
+    mod, _path_prefixes, collections = scope.resolve()
+    if not collections:
+        return None
+    q = mod.FsScanQueries(filesystems=collections, database=scope.database)
+    dates = q.scan_dates(filesystems=collections)
+    return max(dates) if dates else None
+
+
 def _drop_nested(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Keep only the outermost directories — drop any row whose ancestor path
     is also present.
