@@ -4578,10 +4578,15 @@ def test_job_age_bands_render_on_the_explorer(
         app, auth_client, active_project, monkeypatch):
     """The after/before split was inherited from disk scans; the question is
     the same one, so it gets the same control."""
+    import re
     body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
     assert 'ladder-range-bands' in body
     assert 'Job age' in body
-    assert body.count('data-action-change="ladder-range-commit"') == 2
+    # Scoped by the control's own id namespace: the panel now carries seven
+    # ladders (age plus the six numeric ones), so a page-wide count of the
+    # shared action would pass on the wrong control's markup.
+    assert len(re.findall(r'id="[^"]*-age-lo"', body)) == 1
+    assert len(re.findall(r'id="[^"]*-age-hi"', body)) == 1
 
 
 def test_job_age_ladder_is_shorter_than_the_disk_one(app):
@@ -4622,3 +4627,87 @@ def test_explorer_default_window_lands_on_a_band_edge(app, auth_client, active_p
     opens showing a real span rather than its custom state."""
     body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
     assert 'Custom range' not in body
+
+
+def test_numeric_dimensions_get_machine_shaped_ladders(
+        app, auth_client, active_project, monkeypatch):
+    """All six numeric filters become sliders, over the plugin's own histogram
+    ladders — so a band picked here is a band the matching chart draws."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    for dim in ('nodes', 'cpus', 'gpus', 'wait', 'duration', 'memory'):
+        assert len(re.findall(rf'id="[^"]*-{dim}-lo"', body)) == 1, dim
+        assert len(re.findall(rf'id="[^"]*-{dim}-hi"', body)) == 1, dim
+    # The bounds are still the panel's own display-unit fields; the sliders
+    # write into them rather than introducing a second spelling.
+    for field in ('min_nodes', 'max_nodes', 'min_wait_hours',
+                  'max_elapsed_hours', 'min_reqmem_gb'):
+        assert body.count(f'name="{field}"') == 1, field
+
+
+def test_the_size_section_is_collapsed_until_a_bound_is_set(
+        app, auth_client, active_project, monkeypatch):
+    """The disclosure is what makes six sliders affordable: the resting panel
+    is shorter than the six min/max pairs they replace."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    assert 'Size &amp; runtime' in body
+    section = re.search(r'id="[^"]*-size-runtime"\s+class="([^"]*)"', body)
+    assert section and 'd-none' in section.group(1)
+    toggle = re.search(r'<button[^>]*class="filter-section-toggle"[^>]*>', body)
+    assert toggle and 'aria-expanded="false"' in toggle.group(0)
+
+
+def test_a_deep_linked_bound_opens_the_size_section(
+        app, auth_client, active_project, monkeypatch):
+    """A deep link or a bar drill must never hide the filter it just applied."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode,
+                         query='&min_nodes=4')
+    section = re.search(r'id="[^"]*-size-runtime"\s+class="([^"]*)"', body)
+    assert section and 'd-none' not in section.group(1)
+
+
+def test_the_nodes_ladder_is_right_sized_per_machine(app):
+    """Casper tops out around 128 nodes and derecho around 2488, so one static
+    ladder would be wrong for both. The plugin supplies each."""
+    from webapp.utils import ladders
+    casper = ladders.machine_ladder('casper', 'nodes')
+    derecho = ladders.machine_ladder('derecho', 'nodes')
+    if casper is None or derecho is None:
+        import pytest
+        pytest.skip('job_history histogram_buckets not available')
+    assert len(casper) < len(derecho)
+
+
+def test_a_wait_band_edge_survives_the_hours_round_trip(app):
+    """The sliders write DISPLAY units into fields the route converts back with
+    round(). The '5-15m' band's floor is 300 s, shown as 0.0833 h — and
+    int(0.0833 * 3600) is 299, which is why the conversion rounds. A bound one
+    second off would fail to match a band edge and render the custom state."""
+    from webapp.utils import ladders
+    from webapp.jobs.routes import _SECS_PER_HOUR
+    ladder = ladders.machine_ladder('derecho', 'wait')
+    if ladder is None:
+        import pytest
+        pytest.skip('job_history histogram_buckets not available')
+    for _label, lo, hi in ladder:
+        for native in (lo, hi):
+            if native is None:
+                continue
+            shown = ladders.to_display(native, _SECS_PER_HOUR)
+            assert round(shown * _SECS_PER_HOUR) == native, (native, shown)
+
+
+def test_a_bar_drill_now_shows_in_the_panel(
+        app, auth_client, active_project, monkeypatch):
+    """Regression: a wait/elapsed/memory histogram bar drill writes the
+    PLUGIN-native param (min_eligible_secs), which the query has always
+    honoured — but the panel's own box rendered empty, so the viewer saw a
+    filtered table with no visible filter and no way to clear it without going
+    back to the chart."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode,
+                         query='&min_eligible_secs=3600')
+    box = re.search(r'<input[^>]*name="min_wait_hours"[^>]*>', body)
+    assert box and 'value="1.0"' in box.group(0)

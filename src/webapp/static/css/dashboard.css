@@ -2422,3 +2422,29 @@ tr.tree-node-current {
     color: var(--bs-danger-text-emphasis) !important;
     border-color: var(--bs-danger-border-subtle);
 }
+
+/* Section disclosure inside a filter panel ("Size & runtime"). Styled as a
+   quiet heading rather than a button, because it groups controls rather than
+   performing an action — but it IS a button, for keyboard reach. Same navy
+   backdrop as .ladder-range-*, so the same role tokens apply. */
+.filter-section-toggle {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 0.8rem;
+    font-weight: var(--font-weight-semi-bold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(var(--surface-on-brand-rgb), 0.85);
+    cursor: pointer;
+}
+
+.filter-section-toggle:hover {
+    color: var(--surface-on-brand);
+}
+
+.filter-section-toggle:focus-visible {
+    outline: none;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 0 0 2px var(--surface-on-brand);
+}

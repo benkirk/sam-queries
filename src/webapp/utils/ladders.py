@@ -115,6 +115,47 @@ def band_map(ladder: Ladder, lo_key: str, hi_key: str) -> list[dict]:
             for label, lo, hi in ladder]
 
 
+def to_display(native: Optional[int], factor: int) -> Optional[float]:
+    """Re-express a native band edge in display units, losslessly.
+
+    The plugin's ladders are in the column's own units — seconds, bytes — while
+    the panel's fields are human ones (hours, GB), converted back by the route
+    with ``round(value * factor)``. A naive ``native / factor`` is correct but
+    unreadable: the ``<1m`` wait band's edge becomes ``0.016388888888888887``.
+
+    So: the SHORTEST rounding that still recovers *native* exactly. ``59`` s
+    yields ``0.0164`` (4 places is the first that round-trips), ``3600`` s
+    yields ``1.0``, and the one genuinely awkward edge — requested memory's
+    ``1 GiB - 1`` byte — yields ``0.999999999`` rather than a tidy ``1.0`` that
+    would name a different byte.
+
+    ⚠️ Tidying that last one is the trap. Rounding it to ``1.0`` makes the
+    control emit a bound one byte off the chart's, which :func:`span_for` then
+    fails to match — so picking a band would render the *custom* state instead.
+    An ugly number in a collapsed escape hatch is the cheaper of the two.
+
+    ``factor == 1`` (the count dimensions) short-circuits, so ints stay ints.
+    """
+    if native is None:
+        return None
+    if factor == 1:
+        return native
+    exact = native / factor
+    for places in range(1, 13):
+        candidate = round(exact, places)
+        if round(candidate * factor) == native:
+            return candidate
+    return exact
+
+
+def scaled(ladder: Ladder, factor: int) -> Ladder:
+    """*ladder* with every edge re-expressed in display units by :func:`to_display`."""
+    if factor == 1:
+        return ladder
+    return tuple((label, to_display(lo, factor), to_display(hi, factor))
+                 for label, lo, hi in ladder)
+
+
 def size_ladder() -> Optional[Ladder]:
     """The fs-scans file-size ladder, or ``None`` when the plugin is absent.
 

@@ -76,7 +76,7 @@ from webapp.jobs.scope import (
 )
 from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
-from webapp.utils import age_bands
+from webapp.utils import age_bands, ladders
 from webapp.utils.htmx import read_flag, read_layout, read_page, read_sort
 from webapp.utils.rbac import (
     Permission,
@@ -527,6 +527,29 @@ _SECS_PER_HOUR = 3600
 # _BYTES_PER_GB); the "GB" panel labels match its bucket-label vocabulary.
 _BYTES_PER_GB = 1024 ** 3
 
+#: The explorer's numeric range dimensions, one row per slider.
+#:
+#: ``dimension`` is the plugin's histogram vocabulary, which is what makes the
+#: control and the matching chart share a ladder: both resolve it through
+#: ``job_history.histogram_buckets``, so a band picked here and the equivalent
+#: bar clicked there produce the same bounds.
+#:
+#: Each bound has TWO spellings — the panel's display-unit field (``lo``/``hi``)
+#: and the plugin-native param a bar drill writes (``native_lo``/``native_hi``),
+#: differing by ``factor``. One row carries both because the span must always be
+#: resolved from the native pair: the ladder's edges are native ints, and
+#: matching them against converted floats would make band selection depend on
+#: rounding.
+_NUMERIC_LADDERS = (
+    # dimension, label,             lo,                  hi,                  native_lo,           native_hi,           factor
+    ('nodes',    'Nodes',           'min_nodes',         'max_nodes',         'min_nodes',         'max_nodes',         1),
+    ('cpus',     'CPUs',            'min_cpus',          'max_cpus',          'min_cpus',          'max_cpus',          1),
+    ('gpus',     'GPUs',            'min_gpus',          'max_gpus',          'min_gpus',          'max_gpus',          1),
+    ('wait',     'Wait (hours)',    'min_wait_hours',    'max_wait_hours',    'min_eligible_secs', 'max_eligible_secs', _SECS_PER_HOUR),
+    ('duration', 'Elapsed (hours)', 'min_elapsed_hours', 'max_elapsed_hours', 'min_elapsed',       'max_elapsed',       _SECS_PER_HOUR),
+    ('memory',   'Req mem (GB)',    'min_reqmem_gb',     'max_reqmem_gb',     'min_reqmem',        'max_reqmem',        _BYTES_PER_GB),
+)
+
 
 def _parse_int_arg(name: str) -> Optional[int]:
     raw = (request.args.get(name) or '').strip()
@@ -603,12 +626,18 @@ def _parse_job_filters(include_user: bool = True) -> dict:
         v = _parse_int_arg(key)
         if v is not None:
             f[key] = v
+    # round(), not int(). Truncation loses a unit whenever the display value is
+    # a rounded form of an exact native bound, which is exactly what the range
+    # sliders emit: the "5-15m" wait band's floor is 300 s, shown as 0.0833 h,
+    # and int(0.0833 * 3600) is 299 — a bound one second below the band the
+    # viewer picked, so the control would come back in its "custom" state.
+    # Hand-typed values are unaffected (1.5 h is 5400 s either way).
     min_wait = _parse_float_arg('min_wait_hours')
     max_wait = _parse_float_arg('max_wait_hours')
     if min_wait is not None:
-        f['min_eligible_secs'] = int(min_wait * _SECS_PER_HOUR)
+        f['min_eligible_secs'] = round(min_wait * _SECS_PER_HOUR)
     if max_wait is not None:
-        f['max_eligible_secs'] = int(max_wait * _SECS_PER_HOUR)
+        f['max_eligible_secs'] = round(max_wait * _SECS_PER_HOUR)
     for arg, target, factor in (
             ('min_elapsed_hours', 'min_elapsed', _SECS_PER_HOUR),
             ('max_elapsed_hours', 'max_elapsed', _SECS_PER_HOUR),
@@ -616,7 +645,7 @@ def _parse_job_filters(include_user: bool = True) -> dict:
             ('max_reqmem_gb',     'max_reqmem',  _BYTES_PER_GB)):
         v = _parse_float_arg(arg)
         if v is not None:
-            f[target] = int(v * factor)
+            f[target] = round(v * factor)
     for key in ('min_eligible_secs', 'max_eligible_secs',
                 'min_elapsed', 'max_elapsed',
                 'min_reqmem', 'max_reqmem',
@@ -1355,6 +1384,83 @@ def _age_band_ctx(panel: dict) -> dict:
     }
 
 
+def _effective_native(display_key: str, native_key: str, factor: int):
+    """The bound in PLUGIN units, however the request happened to spell it.
+
+    Two spellings reach the same filter: the panel's display-unit field
+    (``min_wait_hours``) and the plugin-native one a histogram bar drill writes
+    (``min_eligible_secs``). ``_parse_job_filters`` already lets native win;
+    this mirrors that precedence so the control agrees with the query.
+    """
+    native = _parse_int_arg(native_key)
+    if native is not None:
+        return native
+    shown = _parse_float_arg(display_key)
+    return None if shown is None else round(shown * factor)
+
+
+def _shown(display_key: str, native_key: str, factor: int):
+    """The bound in DISPLAY units, however the request spelled it.
+
+    The mirror of :func:`_effective_native`, for the panel's own input boxes.
+    An explicit display value wins; otherwise a native one is converted back
+    through :func:`ladders.to_display`, which picks the shortest form that
+    still round-trips rather than emitting ``0.016388888888888887``.
+    """
+    shown = _parse_float_arg(display_key)
+    if shown is not None:
+        return shown
+    return ladders.to_display(_parse_int_arg(native_key), factor)
+
+
+def _numeric_ladder_ctx(machine: str) -> list:
+    """Per-dimension ladder + current span for the explorer's numeric sliders.
+
+    One entry per row of :data:`_NUMERIC_LADDERS`, in that order, and always
+    all six: a dimension whose ladder the plugin cannot supply keeps its row
+    with ``bands=None``, so the panel falls back to that dimension's bare
+    min/max pair. One loop in the template, and the same degrade-not-500
+    contract the age control has.
+
+    ``bands`` are re-expressed in the panel's display units so the browser can
+    write them straight into the fields; ``span`` is resolved from the NATIVE
+    bounds, which is the whole reason one table carries both spellings.
+    """
+    rows = []
+    for (dim, label, lo_f, hi_f, nat_lo, nat_hi, factor) in _NUMERIC_LADDERS:
+        ladder = ladders.machine_ladder(machine, dim)
+        rows.append({
+            'dimension': dim,
+            'label': label,
+            'lo_field': lo_f,
+            'hi_field': hi_f,
+            'step': '1' if factor == 1 else 'any',
+            'width': '90px' if factor == 1 else '110px',
+            'bands': (ladders.band_map(ladders.scaled(ladder, factor), lo_f, hi_f)
+                      if ladder else None),
+            'span': (ladders.span_for(
+                ladder,
+                _effective_native(lo_f, nat_lo, factor),
+                _effective_native(hi_f, nat_hi, factor)) if ladder else None),
+        })
+    return rows
+
+
+def _numeric_filters_in_force() -> bool:
+    """Is any numeric bound set, in either spelling?
+
+    Drives whether the "Size & runtime" disclosure renders open, so a deep link
+    or a histogram bar drill never collapses the filter it just applied. Server
+    side because it is a property of the request, not of the browser — which is
+    also what spares it any client-side state to persist.
+    """
+    return any(
+        _effective_native(lo_f, nat_lo, factor) is not None
+        or _effective_native(hi_f, nat_hi, factor) is not None
+        for (_dim, _label, lo_f, hi_f, nat_lo, nat_hi, factor) in _NUMERIC_LADDERS
+    )
+
+
 def _panel_filters(machine: str) -> dict:
     """Raw (display-unit) filter values for the explorer's sidebar panel."""
     username, user_id, user_label = _resolve_user_filter()
@@ -1388,12 +1494,17 @@ def _panel_filters(machine: str) -> dict:
         'max_cpus':  _parse_int_arg('max_cpus'),
         'min_gpus':  _parse_int_arg('min_gpus'),
         'max_gpus':  _parse_int_arg('max_gpus'),
-        'min_wait_hours': _parse_float_arg('min_wait_hours'),
-        'max_wait_hours': _parse_float_arg('max_wait_hours'),
-        'min_elapsed_hours': _parse_float_arg('min_elapsed_hours'),
-        'max_elapsed_hours': _parse_float_arg('max_elapsed_hours'),
-        'min_reqmem_gb': _parse_float_arg('min_reqmem_gb'),
-        'max_reqmem_gb': _parse_float_arg('max_reqmem_gb'),
+        # Fall back to the plugin-native spelling. A histogram bar drill writes
+        # min_eligible_secs / min_elapsed / min_reqmem, which _parse_job_filters
+        # honours — but until this fallback the panel's own box rendered EMPTY,
+        # so the viewer saw a filtered table with no visible filter and no way
+        # to widen or clear it without going back to the chart.
+        'min_wait_hours': _shown('min_wait_hours', 'min_eligible_secs', _SECS_PER_HOUR),
+        'max_wait_hours': _shown('max_wait_hours', 'max_eligible_secs', _SECS_PER_HOUR),
+        'min_elapsed_hours': _shown('min_elapsed_hours', 'min_elapsed', _SECS_PER_HOUR),
+        'max_elapsed_hours': _shown('max_elapsed_hours', 'max_elapsed', _SECS_PER_HOUR),
+        'min_reqmem_gb': _shown('min_reqmem_gb', 'min_reqmem', _BYTES_PER_GB),
+        'max_reqmem_gb': _shown('max_reqmem_gb', 'max_reqmem', _BYTES_PER_GB),
         'per_page': per_page,
         'qos_options': _qos_options_safe(machine),
     }
@@ -1508,6 +1619,8 @@ def _explorer_card_context(*, mode: str, machine: str, project=None,
     # handles sit. Safe to hang off `panel` because _explorer_panel_params
     # projects through an explicit key whitelist, so neither reaches a URL.
     panel.update(_age_band_ctx(panel))
+    panel['numeric_ladders'] = _numeric_ladder_ctx(machine)
+    panel['numeric_open'] = _numeric_filters_in_force()
     return panel, _card_context(
         active_tab=active_tab,
         mode=mode, machine=machine,
