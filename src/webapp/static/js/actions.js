@@ -182,7 +182,7 @@
      * server-side and travels in a JSON data block, so these only ever index
      * it. That keeps one source of truth for the ladder, and for the date
      * ladders it keeps timezone reasoning out of the browser entirely. */
-    function ageRangeState(el) {
+    function ladderRangeState(el) {
         var root = el.closest('[data-ladder-range]');
         if (!root) { return null; }
         var lo = root.querySelector('[data-ladder-lo]');
@@ -192,16 +192,16 @@
         if (+lo.value > +hi.value) {
             el.value = (el === lo) ? hi.value : lo.value;
         }
-        var block = root.querySelector('.age-range-bands');
+        var block = root.querySelector('.ladder-range-bands');
         return {
             root: root, lo: lo, hi: hi,
             bands: block ? JSON.parse(block.textContent) : [],
         };
     }
 
-    function ageRangePaint(s) {
+    function ladderRangePaint(s) {
         var lo = +s.lo.value, hi = +s.hi.value;
-        var fill = s.root.querySelector('.age-range-fill');
+        var fill = s.root.querySelector('.ladder-range-fill');
         if (fill) {
             fill.style.setProperty('--lo', lo);
             fill.style.setProperty('--hi', hi);
@@ -210,30 +210,30 @@
          * than "6"; it has to track the value, not just the initial render. */
         s.lo.setAttribute('aria-valuetext', s.bands[lo].label);
         s.hi.setAttribute('aria-valuetext', s.bands[hi].label);
-        var out = s.root.querySelector('.age-range-readout');
+        var out = s.root.querySelector('.ladder-range-readout');
         if (out) {
             out.textContent = (lo === hi) ? s.bands[lo].label
                                           : s.bands[lo].label + ' – ' + s.bands[hi].label;
         }
         /* Any move lands on band edges by definition, so whatever hand-typed
          * range put the control in its custom state is no longer in force. */
-        s.root.classList.remove('age-range--custom');
+        s.root.classList.remove('ladder-range--custom');
     }
 
-    window.registerAction('age-band-preview', function (el) {
-        var s = ageRangeState(el);
+    window.registerAction('ladder-range-preview', function (el) {
+        var s = ladderRangeState(el);
         if (!s || !s.bands.length) { return; }
-        ageRangePaint(s);
+        ladderRangePaint(s);
     });
 
-    window.registerAction('age-band-commit', function (el) {
-        var s = ageRangeState(el);
+    window.registerAction('ladder-range-commit', function (el) {
+        var s = ladderRangeState(el);
         if (!s || !s.bands.length) { return; }
         /* Repaint here too rather than relying on `input` having fired first:
          * a <select> and a programmatic change can both arrive as `change`
          * alone, and a readout that disagrees with the thumbs is worse than
          * one that repaints twice. */
-        ageRangePaint(s);
+        ladderRangePaint(s);
         var form = document.getElementById(s.root.dataset.formId);
         if (!form) { return; }
         /* Which thumb feeds which bound is DECLARED per field, not assumed:

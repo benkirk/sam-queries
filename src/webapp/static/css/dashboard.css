@@ -1549,9 +1549,10 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 /* ============================================================================
-   AGE-BAND RANGE — a discrete two-thumb range over named age bands
-   (fragments/age_band_range.html). Lives inside .filter-sidebar, so every
-   colour here is measured against --ncar-navy (#00357a), NOT a card surface.
+   LADDER RANGE — a discrete two-thumb range over an ordinal ladder of named
+   bands (fragments/ladder_range.html; age_band_range.html is one caller).
+   Lives inside .filter-sidebar, so every colour here is measured against
+   --ncar-navy (#00357a), NOT a card surface.
 
    ⚠️ Do NOT reach for the .btn-group preset treatment above: its inactive fill
    is --ncar-blue (#0057c2), which is 1.76:1 against the navy panel — under the
@@ -1562,11 +1563,11 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    unlike almost everything else in this file this block needs no dark variant.
    ========================================================================= */
 
-.age-range {
+.ladder-range {
     min-width: 260px;
 }
 
-.age-range-readout {
+.ladder-range-readout {
     display: block;
     font-size: 0.8rem;
     font-weight: var(--font-weight-semi-bold);
@@ -1576,16 +1577,16 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 }
 
 /* The track holds both inputs stacked. --thumb is the geometry contract shared
-   with .age-range-fill: a native range thumb is inset by half its width at each
+   with .ladder-range-fill: a native range thumb is inset by half its width at each
    end, so the fill has to use the same inset or it drifts off the thumbs. */
-.age-range-track {
+.ladder-range-track {
     --thumb: 18px;
     position: relative;
     height: var(--thumb);
     margin: 0.125rem 0 0.25rem;
 }
 
-.age-range-track::before {
+.ladder-range-track::before {
     content: '';
     position: absolute;
     left: 0;
@@ -1603,7 +1604,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     );
 }
 
-.age-range-fill {
+.ladder-range-fill {
     position: absolute;
     top: 50%;
     height: 4px;
@@ -1622,16 +1623,16 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 /* Custom state: a hand-typed range the bands cannot express. The thumbs sit at
    the extremes because they have nowhere honest to be, so the fill recedes to a
    wash rather than reading as "the whole range is selected". */
-.age-range--custom .age-range-fill {
+.ladder-range--custom .ladder-range-fill {
     background-color: rgba(var(--surface-on-brand-rgb), 0.35);
 }
 
-.age-range--custom .age-range-readout {
+.ladder-range--custom .ladder-range-readout {
     font-style: italic;
     color: rgba(var(--surface-on-brand-rgb), 0.8);
 }
 
-.age-range-thumb {
+.ladder-range-thumb {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -1642,17 +1643,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     pointer-events: none;
 }
 
-.age-range-thumb::-webkit-slider-runnable-track {
+.ladder-range-thumb::-webkit-slider-runnable-track {
     background: transparent;
     height: var(--thumb);
 }
 
-.age-range-thumb::-moz-range-track {
+.ladder-range-thumb::-moz-range-track {
     background: transparent;
     height: var(--thumb);
 }
 
-.age-range-thumb::-webkit-slider-thumb {
+.ladder-range-thumb::-webkit-slider-thumb {
     appearance: none;
     -webkit-appearance: none;
     pointer-events: auto;
@@ -1665,7 +1666,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     cursor: grab;
 }
 
-.age-range-thumb::-moz-range-thumb {
+.ladder-range-thumb::-moz-range-thumb {
     pointer-events: auto;
     width: var(--thumb);
     height: var(--thumb);
@@ -1678,19 +1679,19 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 /* Focus has to read on a white thumb over navy, so it is a halo rather than an
    outline — an outline-offset ring would sit on the navy and vanish. */
-.age-range-thumb:focus-visible::-webkit-slider-thumb {
+.ladder-range-thumb:focus-visible::-webkit-slider-thumb {
     box-shadow: 0 0 0 2px var(--ncar-navy), 0 0 0 6px rgba(var(--surface-on-brand-rgb), 0.5);
 }
 
-.age-range-thumb:focus-visible::-moz-range-thumb {
+.ladder-range-thumb:focus-visible::-moz-range-thumb {
     box-shadow: 0 0 0 2px var(--ncar-navy), 0 0 0 6px rgba(var(--surface-on-brand-rgb), 0.5);
 }
 
-.age-range-thumb:focus {
+.ladder-range-thumb:focus {
     outline: none;   /* replaced by the halo above */
 }
 
-.age-range-ends {
+.ladder-range-ends {
     display: flex;
     justify-content: space-between;
     font-size: 0.7rem;
@@ -1698,7 +1699,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin-bottom: 0.25rem;
 }
 
-.age-range-dash {
+.ladder-range-dash {
     color: rgba(var(--surface-on-brand-rgb), 0.7);
     /* Sits on the input line, not the label line, so the row aligns on the
        controls rather than floating between the two rows. */
@@ -1708,7 +1709,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 /* Deliberately NOT .form-label: `.filter-sidebar .form-label` is a same-weight
    selector defined later in this file and would win the tie, forcing full-white
    on what should be a quieter sub-label. */
-.age-range-sublabel {
+.ladder-range-sublabel {
     display: block;
     margin-bottom: 0.125rem;
     font-size: 0.7rem;
@@ -1718,8 +1719,8 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: rgba(var(--surface-on-brand-rgb), 0.75);
 }
 
-.age-range-exact,
-.age-range-selects {
+.ladder-range-exact,
+.ladder-range-selects {
     display: flex;
     align-items: flex-end;
     gap: 0.375rem;
@@ -1728,7 +1729,7 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin-top: 0.25rem;
 }
 
-.age-range-exact input[type="date"] {
+.ladder-range-exact input[type="date"] {
     width: 140px;
 }
 
@@ -1737,18 +1738,18 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
    would squash them side by side. Stacked, each label sits directly above its
    own field and the dash is redundant. */
 @media (max-width: 575.98px) {
-    .age-range-exact,
-    .age-range-selects {
+    .ladder-range-exact,
+    .ladder-range-selects {
         flex-direction: column;
         align-items: stretch;
         gap: 0.5rem;
     }
 
-    .age-range-exact .age-range-dash {
+    .ladder-range-exact .ladder-range-dash {
         display: none;
     }
 
-    .age-range-exact input[type="date"] {
+    .ladder-range-exact input[type="date"] {
         width: 100%;
     }
 }

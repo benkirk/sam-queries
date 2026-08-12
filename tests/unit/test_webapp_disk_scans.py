@@ -2126,10 +2126,10 @@ def test_age_bands_render_with_the_ladder_as_a_data_block(
     """The ladder travels as JSON so the browser only indexes it — no date
     arithmetic, and therefore no timezone reasoning, in JavaScript."""
     body = _explore(auth_client, active_project)
-    assert 'age-range-bands' in body
+    assert 'ladder-range-bands' in body
     assert '&lt; 1 Month' in body or '< 1 Month' in body
     # Both thumbs present, and each announces a band name rather than an index.
-    assert body.count('data-action-change="age-band-commit"') == 2
+    assert body.count('data-action-change="ladder-range-commit"') == 2
     assert 'aria-valuetext=' in body
 
 
@@ -2174,7 +2174,7 @@ def test_mobile_gets_selects_instead_of_thumbs(
     axis picks the presentation server-side rather than rendering both."""
     body = _explore(auth_client, active_project, '&layout=mobile')
     assert 'type="range"' not in body
-    assert body.count('data-action-change="age-band-commit"') == 2   # the selects
+    assert body.count('data-action-change="ladder-range-commit"') == 2   # the selects
     assert body.count('name="accessed_before"') == 1
 
 
@@ -2185,7 +2185,7 @@ def test_no_scan_date_falls_back_to_the_bare_date_pair(
     from webapp.disk_scans import service
     monkeypatch.setattr(service, 'scan_reference_date', lambda scope: None)
     body = _explore(auth_client, active_project)
-    assert 'age-range-bands' not in body
+    assert 'ladder-range-bands' not in body
     assert 'Accessed after' in body and 'Accessed before' in body
     assert body.count('name="accessed_before"') == 1
 

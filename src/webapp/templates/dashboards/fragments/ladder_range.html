@@ -76,33 +76,33 @@
 {# --custom: the bounds in force describe no whole span, so the thumbs have no
    honest position. They fall back to the full range, and the modifier mutes the
    fill so the control doesn't *claim* a span it hasn't got. #}
-<div class="age-range{{ ' age-range--custom' if not span else '' }}"
+<div class="ladder-range{{ ' ladder-range--custom' if not span else '' }}"
      data-ladder-range data-form-id="{{ form_id }}">
   <label class="form-label"><strong>{{ label }}</strong></label>
 
   {# Data, not code: the CSP lint's inline-script regex exempts
      application/json precisely so payloads can travel this way. #}
-  <script type="application/json" class="age-range-bands">{{ bands | tojson }}</script>
+  <script type="application/json" class="ladder-range-bands">{{ bands | tojson }}</script>
 
   {% if layout == 'mobile' %}
   {# Phones: two selects. Dragging two thumbs a few px apart is the worst case
      at 390px, and the panel already forces its controls full-width there. #}
-  <div class="age-range-selects">
-    <div class="age-range-field">
-      <label class="age-range-sublabel" for="{{ form_id }}-{{ slug }}-lo">{{ lo_thumb }}</label>
+  <div class="ladder-range-selects">
+    <div class="ladder-range-field">
+      <label class="ladder-range-sublabel" for="{{ form_id }}-{{ slug }}-lo">{{ lo_thumb }}</label>
       <select class="form-control" data-ladder-lo id="{{ form_id }}-{{ slug }}-lo"
               title="{{ lo_title }}"
-              data-action-change="age-band-commit">
+              data-action-change="ladder-range-commit">
         {% for b in bands %}
         <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == lo else '' }}>{{ b.label }}</option>
         {% endfor %}
       </select>
     </div>
-    <div class="age-range-field">
-      <label class="age-range-sublabel" for="{{ form_id }}-{{ slug }}-hi">{{ hi_thumb }}</label>
+    <div class="ladder-range-field">
+      <label class="ladder-range-sublabel" for="{{ form_id }}-{{ slug }}-hi">{{ hi_thumb }}</label>
       <select class="form-control" data-ladder-hi id="{{ form_id }}-{{ slug }}-hi"
               title="{{ hi_title }}"
-              data-action-change="age-band-commit">
+              data-action-change="ladder-range-commit">
         {% for b in bands %}
         <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == hi else '' }}>{{ b.label }}</option>
         {% endfor %}
@@ -110,29 +110,29 @@
     </div>
   </div>
   {% else %}
-  <output class="age-range-readout" aria-live="polite">
+  <output class="ladder-range-readout" aria-live="polite">
     {{ bands[lo].label if span else 'Custom range' }}{% if span and lo != hi %} – {{ bands[hi].label }}{% endif %}
   </output>
 
   {# Two overlaid native range inputs rather than a custom widget: each thumb is
      then a real focusable control with native keyboard stepping, and
      aria-valuetext makes it announce "3-4 Years" instead of "6". #}
-  <div class="age-range-track" style="--n: {{ n }};">
-    <div class="age-range-fill" style="--lo: {{ lo }}; --hi: {{ hi }};"></div>
-    <input type="range" class="age-range-thumb" data-ladder-lo
+  <div class="ladder-range-track" style="--n: {{ n }};">
+    <div class="ladder-range-fill" style="--lo: {{ lo }}; --hi: {{ hi }};"></div>
+    <input type="range" class="ladder-range-thumb" data-ladder-lo
            min="0" max="{{ n - 1 }}" step="1" value="{{ lo }}"
            aria-label="{{ lo_title }}"
            aria-valuetext="{{ bands[lo].label }}"
-           data-action-input="age-band-preview"
-           data-action-change="age-band-commit">
-    <input type="range" class="age-range-thumb" data-ladder-hi
+           data-action-input="ladder-range-preview"
+           data-action-change="ladder-range-commit">
+    <input type="range" class="ladder-range-thumb" data-ladder-hi
            min="0" max="{{ n - 1 }}" step="1" value="{{ hi }}"
            aria-label="{{ hi_title }}"
            aria-valuetext="{{ bands[hi].label }}"
-           data-action-input="age-band-preview"
-           data-action-change="age-band-commit">
+           data-action-input="ladder-range-preview"
+           data-action-change="ladder-range-commit">
   </div>
-  <div class="age-range-ends">
+  <div class="ladder-range-ends">
     <span>{{ bands[0].label }}</span>
     <span>{{ bands[n - 1].label }}</span>
   </div>
@@ -152,13 +152,13 @@
      The visible text is the accessible name (via <label for>), which keeps
      WCAG 2.5.3 "Label in Name" satisfied; the caller's semantic wording rides
      along as the description (`title`). #}
-  <div class="age-range-exact">
+  <div class="ladder-range-exact">
     {%- for f in fields %}
     {%- if not loop.first %}
-    <span class="age-range-dash" aria-hidden="true">–</span>
+    <span class="ladder-range-dash" aria-hidden="true">–</span>
     {%- endif %}
-    <div class="age-range-field">
-      <label class="age-range-sublabel" for="{{ form_id }}-{{ slug }}-{{ f.key }}">{{ f.sublabel }}</label>
+    <div class="ladder-range-field">
+      <label class="ladder-range-sublabel" for="{{ form_id }}-{{ slug }}-{{ f.key }}">{{ f.sublabel }}</label>
       <input type="{{ f.type }}" class="form-control form-control-sm"
              data-ladder-field data-thumb="{{ f.thumb }}"
              id="{{ form_id }}-{{ slug }}-{{ f.key }}"

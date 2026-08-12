@@ -4579,9 +4579,9 @@ def test_job_age_bands_render_on_the_explorer(
     """The after/before split was inherited from disk scans; the question is
     the same one, so it gets the same control."""
     body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
-    assert 'age-range-bands' in body
+    assert 'ladder-range-bands' in body
     assert 'Job age' in body
-    assert body.count('data-action-change="age-band-commit"') == 2
+    assert body.count('data-action-change="ladder-range-commit"') == 2
 
 
 def test_job_age_ladder_is_shorter_than_the_disk_one(app):
