@@ -76,7 +76,8 @@ from webapp.jobs.scope import (
 )
 from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
-from webapp.utils.htmx import read_flag, read_page, read_sort
+from webapp.utils import age_bands
+from webapp.utils.htmx import read_flag, read_layout, read_page, read_sort
 from webapp.utils.rbac import (
     Permission,
     has_permission_any_facility,
@@ -1331,6 +1332,29 @@ def _qos_options_safe(machine: str) -> list:
         return []
 
 
+def _age_band_ctx(panel: dict) -> dict:
+    """Ladder + current span for the explorer's job-age range control.
+
+    Anchored on today, unlike the disk-scans equivalent: jobs arrive
+    continuously, so "3 months old" means three months from now rather than
+    from a scan.
+
+    The control writes ``start``/``end`` directly and never touches ``days``,
+    which keeps it clear of the one asymmetry in this module — ``days``
+    outranks an explicit range in ``_parse_job_filters``. A panel submit
+    carries no ``days`` (it is not a field of the form), so there is nothing
+    for the range to lose to.
+    """
+    anchor = datetime.combine(date.today(), datetime.min.time())
+    return {
+        'age_bands': age_bands.band_map(service.JOBS_AGE_BANDS, anchor,
+                                        'start', 'end'),
+        'age_band_span': age_bands.bands_for(
+            service.JOBS_AGE_BANDS, anchor,
+            panel.get('start') or None, panel.get('end') or None),
+    }
+
+
 def _panel_filters(machine: str) -> dict:
     """Raw (display-unit) filter values for the explorer's sidebar panel."""
     username, user_id, user_label = _resolve_user_filter()
@@ -1480,6 +1504,10 @@ def _explorer_card_context(*, mode: str, machine: str, project=None,
                                           include_user=(username is None))
     active_tab = _parse_active_tab()
     panel['active_tab'] = active_tab      # the form round-trips it back
+    # Display-only, like active_tab: the age control's ladder and where its
+    # handles sit. Safe to hang off `panel` because _explorer_panel_params
+    # projects through an explicit key whitelist, so neither reaches a URL.
+    panel.update(_age_band_ctx(panel))
     return panel, _card_context(
         active_tab=active_tab,
         mode=mode, machine=machine,
@@ -1563,6 +1591,7 @@ def explore_page(project):
         scope=scope,
         card_url=_explorer_card_url('project', machine,
                                     projcode=project.projcode, scope=scope),
+        layout=read_layout(),
         filters=panel, user_search_url=_user_search_url(),
         per_page_options=_PER_PAGE_OPTIONS, card=card,
     )
@@ -1588,6 +1617,7 @@ def explore_machine_page(machine):
         'dashboards/user/jobs_explore_page.html',
         mode='machine', enabled=True, machine=machine,
         card_url=_explorer_card_url('machine', machine),
+        layout=read_layout(),
         filters=panel, user_search_url=_user_search_url(),
         per_page_options=_PER_PAGE_OPTIONS, card=card,
     )
@@ -1624,6 +1654,7 @@ def explore_user_page(machine):
         mode='user', enabled=True, machine=machine,
         username=current_user.username,
         card_url=_explorer_card_url('user', machine),
+        layout=read_layout(),
         filters=panel, user_search_url=_user_search_url(),
         per_page_options=_PER_PAGE_OPTIONS, card=card,
     )

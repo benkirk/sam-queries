@@ -4561,3 +4561,64 @@ def test_charges_is_a_first_class_metric_everywhere():
     # ...and the remainder row has to be computable in every one of them.
     for metric in _METRICS:
         assert set(_JOBS_METRIC_KEYS[metric]) <= set(_USAGE_METRIC_KEYS), metric
+
+
+# ---------------------------------------------------------------------------
+# Job-age band control on the explorer filter panel
+# ---------------------------------------------------------------------------
+
+def _explore_body(app, auth_client, monkeypatch, projcode, query=''):
+    _install_mock_plugin(app, monkeypatch)
+    return auth_client.get(
+        f'/dashboards/user/jobs/{projcode}/explore?machine=derecho{query}'
+    ).get_data(as_text=True)
+
+
+def test_job_age_bands_render_on_the_explorer(
+        app, auth_client, active_project, monkeypatch):
+    """The after/before split was inherited from disk scans; the question is
+    the same one, so it gets the same control."""
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    assert 'age-range-bands' in body
+    assert 'Job age' in body
+    assert body.count('data-action-change="age-band-commit"') == 2
+
+
+def test_job_age_ladder_is_shorter_than_the_disk_one(app):
+    """Job history is asked about in days and weeks; beyond ~2 years the
+    question is 'everything older', not which year."""
+    from webapp.jobs import service
+
+    labels = [label for label, _ in service.JOBS_AGE_BANDS]
+    assert labels[0] == '< 1 Week'
+    assert labels[-1] == '2+ Years'
+    assert service.JOBS_AGE_BANDS[-1][1] is None      # open-ended
+    assert len(labels) < 10                           # ATIME_BUCKETS is 10
+
+
+def test_the_age_ladder_is_not_the_days_pill_whitelist(app):
+    """The control writes start/end directly and never sets ?days=, so it needs
+    no entry in JOBS_WINDOW_CHOICES and _parse_days can't reject it. Pinning
+    that keeps someone from 'aligning' the two and silently making 7d a
+    rejected pill value."""
+    from webapp.jobs import service
+
+    band_days = {upper for _label, upper in service.JOBS_AGE_BANDS if upper}
+    assert 7 in band_days
+    assert 7 not in service.JOBS_WINDOW_CHOICES
+
+
+def test_explorer_age_control_writes_start_and_end_only(app, auth_client, active_project, monkeypatch):
+    """`days` outranks an explicit range in _parse_job_filters, so the control
+    stays clear of it entirely — a panel submit carries no days at all."""
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    assert body.count('name="start"') == 1
+    assert body.count('name="end"') == 1
+    assert 'name="days"' not in body
+
+
+def test_explorer_default_window_lands_on_a_band_edge(app, auth_client, active_project, monkeypatch):
+    """The 90-day default is also a band edge ('1-3 Months'), so the control
+    opens showing a real span rather than its custom state."""
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    assert 'Custom range' not in body

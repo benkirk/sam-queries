@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
 {% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
 {#
   Reusable jobs-explorer filter panel in the Unity .filter-sidebar house
   style (navy panel + gold title + white controls + "Clear filters"),
@@ -33,7 +34,7 @@
 #}
 {% macro jobs_filters(form_id, card_url, card_target, filters,
                       user_search_url, machine, scope, per_page_options,
-                      mode='project', active_tab='jobs') %}
+                      mode='project', active_tab='jobs', layout='desktop') %}
 {# hx-swap is outerHTML here, not innerHTML: the submit re-renders the whole
    jobs card rather than one table body. #}
 {% call filter_panel_shell(form_id, card_url, card_target, hx_swap='outerHTML') %}
@@ -51,18 +52,32 @@
          data-jobs-active-tab-input>
 
   <div class="d-flex flex-wrap align-items-end gap-3">
+    {# One control for both edges. The after/before split was inherited from the
+       disk-scans explorer, but the question here is the same one: how far back?
+       Bands remove the date arithmetic; the exact inputs remain underneath. #}
     <div>
+      {% if filters.age_bands %}
+      {{ age_band_range(form_id, filters.age_bands, 'start', 'end',
+                        after_value=filters.start, before_value=filters.end,
+                        span=filters.age_band_span, label='Job age',
+                        after_label='Jobs ending after',
+                        before_label='Jobs ending before',
+                        layout=layout) }}
+      {% else %}
       <label class="form-label"><strong>Jobs ending after</strong></label>
       <input type="date" class="form-control"
              name="start" value="{{ filters.start }}"
              style="width:160px;">
+      {% endif %}
     </div>
+    {% if not filters.age_bands %}
     <div>
       <label class="form-label"><strong>Jobs ending before</strong></label>
       <input type="date" class="form-control"
              name="end" value="{{ filters.end }}"
              style="width:160px;">
     </div>
+    {% endif %}
 
     {% if mode != 'user' %}
     <div style="min-width:240px;">

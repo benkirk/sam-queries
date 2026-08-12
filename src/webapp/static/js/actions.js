@@ -198,9 +198,7 @@
         };
     }
 
-    window.registerAction('age-band-preview', function (el) {
-        var s = ageRangeState(el);
-        if (!s || !s.bands.length) { return; }
+    function ageRangePaint(s) {
         var lo = +s.lo.value, hi = +s.hi.value;
         var fill = s.root.querySelector('.age-range-fill');
         if (fill) {
@@ -216,11 +214,25 @@
             out.textContent = (lo === hi) ? s.bands[lo].label
                                           : s.bands[lo].label + ' – ' + s.bands[hi].label;
         }
+        /* Any move lands on band edges by definition, so whatever hand-typed
+         * range put the control in its custom state is no longer in force. */
+        s.root.classList.remove('age-range--custom');
+    }
+
+    window.registerAction('age-band-preview', function (el) {
+        var s = ageRangeState(el);
+        if (!s || !s.bands.length) { return; }
+        ageRangePaint(s);
     });
 
     window.registerAction('age-band-commit', function (el) {
         var s = ageRangeState(el);
         if (!s || !s.bands.length) { return; }
+        /* Repaint here too rather than relying on `input` having fired first:
+         * a <select> and a programmatic change can both arrive as `change`
+         * alone, and a readout that disagrees with the thumbs is worse than
+         * one that repaints twice. */
+        ageRangePaint(s);
         var form = document.getElementById(s.root.dataset.formId);
         if (!form) { return; }
         var after = s.root.querySelector('[data-age-after]');
