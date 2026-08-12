@@ -3,7 +3,7 @@
 
 Legacy SAM emails the verbatim POST body to ``hdt@ucar.edu`` on every XRAS action, so
 a bulk forward from that mailbox is the only way to grow the corpus before cutover
-(``docs/plans/XRAS_SPRINT_A.md`` § 3b). Travis Fair's forwards arrive as one message
+(``docs/xras/incoming/implemented/XRAS_SPRINT_A.md`` § 3b). Travis Fair's forwards arrive as one message
 carrying alternating pairs: the notification ``.eml`` legacy sent, then the JSON body
 that produced it.
 

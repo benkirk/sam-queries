@@ -204,7 +204,7 @@ def _accounting_response(projcodes):
 
     # Legacy emits masters in Java HashMap bucket order over the projcode keys —
     # an artifact of its data structure, not of the data. Deliberate divergence:
-    # we sort. See docs/plans/XRAS_REIMPLEMENTATION.md section 7.
+    # we sort. See docs/xras/incoming/XRAS_REIMPLEMENTATION.md section 7.
     return {
         'projectIdLabel': None,
         'masters': [masters[code] for code in sorted(masters)],

@@ -223,7 +223,7 @@ class XrasActionRoleSchema(_XrasBase):
     that. **A resolver must filter on the date window, not pick the first match** —
     this payload is the measured case that legacy's pick-first
     ``getUsernameByRoleType()`` resolves wrongly (defect 1 in
-    ``docs/plans/XRAS_REIMPLEMENTATION.md`` § 9).
+    ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` § 9).
     """
 
     requestPeopleRoleId = _opt_int()

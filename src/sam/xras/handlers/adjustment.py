@@ -41,7 +41,7 @@ computed, carried through the creations tuple, unpacked, and then never applied.
 
 Verified against ``~/codes/sam`` at tag 2.0.3
 (``AdjustProjectAllocationActionCommandsFactory``, ``Allocation.adjust``).
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Adjustment*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Adjustment*.
 """
 
 import logging

@@ -7,7 +7,7 @@ double space that are typos in the Java we reproduce on purpose.
 
 If one of these fails, the question is never "is the new string nicer" — it is
 "did someone tidy a contract". See ``src/sam/xras/errors.py`` for the emitters at
-``file:line``, and ``docs/plans/XRAS_SPRINT_C.md`` § *The error vocabulary* for the
+``file:line``, and ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The error vocabulary* for the
 verified table (⚠️ **not** ``XRAS_REIMPLEMENTATION.md`` § 3.4, which is wrong in
 seven places).
 """

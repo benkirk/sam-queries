@@ -9,7 +9,7 @@ the resulting number would look entirely plausible.
 The other trap is the asymmetry with Extension: this walks ``resources[]`` and looks
 accounts up **unfiltered**, so a supplement lands where an extension would skip.
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Supplement*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Supplement*.
 """
 
 import json

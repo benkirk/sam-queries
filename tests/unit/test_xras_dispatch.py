@@ -12,7 +12,7 @@ Five of the eight corpus projcodes are present in the obfuscated snapshot, so
 :class:`TestTheCorpusDispatches` is a real oracle rather than a restatement of the
 table.
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *The dispatcher*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The dispatcher*.
 """
 
 import json

@@ -16,7 +16,7 @@ the one after it:
    ``redirected``, never ``sent``;
 5. the transport runs → ``sent`` or ``failed``.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 1, § 3 and § 5.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 1, § 3 and § 5.
 """
 
 from __future__ import annotations

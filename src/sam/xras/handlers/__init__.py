@@ -15,7 +15,7 @@ Each handler takes ``(session, action)`` and returns a
 :class:`~sam.xras.dispatch.DispatchResult`, or raises
 :class:`~sam.xras.errors.XrasActionRejected` with the accumulated 422 list.
 None of them opens a transaction until validation has passed — see
-``docs/plans/XRAS_SPRINT_C.md`` § *Assemble → check once → execute*.
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Assemble → check once → execute*.
 """
 
 from . import extension  # noqa: F401  — imported for its registration side effect

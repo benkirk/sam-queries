@@ -13,7 +13,7 @@ must never silence that. Operational feeds are opt-in. Any future table then
 expresses only *deviation* from the kind's default, which is what keeps it
 small.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 1 and § 6.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 1 and § 6.
 """
 
 from __future__ import annotations

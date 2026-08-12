@@ -9,7 +9,7 @@ ledger must not enrol in the request's transaction. It therefore gets a
 factory that opens fresh sessions on ``db.engine``, the same discipline
 ``webapp/api/xras/replay.py`` uses for its audit row.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 5 and § 7.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 5 and § 7.
 """
 
 from __future__ import annotations

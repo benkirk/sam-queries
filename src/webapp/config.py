@@ -315,7 +315,7 @@ class ProductionConfig(SAMWebappConfig):
         # dropped env var means "no mail" rather than "mail the wrong people".
         # That is the right way round, but it is silent — warn so the disabled
         # state is noticed within a day rather than at the next expiration
-        # round. docs/plans/NOTIFICATION_FRAMEWORK.md § 3.
+        # round. docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 3.
         if os.getenv('NOTIFY_ENABLED', '0').lower() not in ('1', 'true', 'yes'):
             import warnings
             warnings.warn(
@@ -406,7 +406,7 @@ class TestingConfig(SAMWebappConfig):
     # shared state is a test tier that eventually does. Here "shared state"
     # is the internet — ndir.ucar.edu relays for the whole UCAR /16 and
     # accepts arbitrary external recipients
-    # (docs/plans/NOTIFICATION_FRAMEWORK.md § 9). Belt and braces with the
+    # (docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 9). Belt and braces with the
     # autouse no-socket fixture in tests/conftest.py, which is the gate that
     # holds even when a test builds its own config.
     NOTIFY_ENABLED   = False

@@ -20,10 +20,10 @@ Reproduce, don't tidy. A cleaned-up string is a contract change nobody asked for
 and it would break any grep an operator has saved. Every one of these is pinned by
 a test asserting the exact bytes, so a well-meant cleanup fails loudly.
 
-⚠️ ``docs/plans/XRAS_REIMPLEMENTATION.md`` § 3.4 lists these too, and **it is wrong
+⚠️ ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` § 3.4 lists these too, and **it is wrong
 in seven places** — a double space dropped, two strings collapsed into one, four
 missing entirely. It was written from the POJOs before anyone read the emitters.
-``docs/plans/XRAS_SPRINT_C.md`` § *The error vocabulary* carries the verified table
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The error vocabulary* carries the verified table
 and cites this module as the implementation. Trust these two; not § 3.4.
 
 Accumulation, and why a set

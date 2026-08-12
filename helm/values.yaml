@@ -230,7 +230,7 @@ webapp:
     TZ: "America/Denver"
     # ── Notifications (sam.notify) ────────────────────────────────────
     # Relay facts MEASURED from a pod on nwc1, 2026-08-09
-    # (docs/plans/NOTIFICATION_FRAMEWORK.md § 9):
+    # (docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 9):
     #   ndir.ucar.edu:25 reachable — no NetworkPolicy restricts webapp egress
     #   EHLO advertises STARTTLS, and NOT AUTH  → no ExternalSecret needed,
     #     which is why MAIL_USERNAME/MAIL_PASSWORD are absent here entirely

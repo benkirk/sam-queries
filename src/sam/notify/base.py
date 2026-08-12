@@ -5,7 +5,7 @@ point: the dataclasses below are what a caller builds, what a transport
 receives and what the ledger records, so they must be constructible from a CLI
 command, a Flask route and a test with equal ease.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 1.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 1.
 """
 
 from __future__ import annotations

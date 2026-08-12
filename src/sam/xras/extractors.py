@@ -36,7 +36,7 @@ data are worth naming up front:
    ``Education`` each name two different ``allocation_type`` rows.
 
 Verified against ``~/codes/sam`` at tag 2.0.3. Design notes and the production
-measurements behind them: ``docs/plans/XRAS_SPRINT_C.md``.
+measurements behind them: ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
 """
 
 import re

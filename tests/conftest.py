@@ -141,7 +141,7 @@ ADMIN_TESTING_BUNDLE = 'admin-testing-only'
 
 # ---- No test may open an SMTP socket --------------------------------------
 #
-# STRUCTURAL, not belt-and-braces. docs/plans/NOTIFICATION_FRAMEWORK.md § 9
+# STRUCTURAL, not belt-and-braces. docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 9
 # measured ndir.ucar.edu relaying for the whole 128.117.0.0/16 and returning
 # `250 2.1.5 Ok` for an ARBITRARY EXTERNAL recipient. Any host that can run
 # this suite can therefore mail anyone on the internet, over an envelope-from

@@ -559,7 +559,7 @@ display code. (Migration history: `docs/plans/implemented/FORMAT_DISPLAY.md`.)
 
 One mailer, two consumers: `sam-admin project --upcoming-expirations --notify`
 and the webapp's XRAS activation Notify button. Design and measurements:
-`docs/plans/NOTIFICATION_FRAMEWORK.md`.
+`docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`.
 
 ```python
 from sam.notify import Message, Notifier, Recipient

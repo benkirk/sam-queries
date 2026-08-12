@@ -11,7 +11,7 @@ with:
 * an adjustment that would take an allocation **below zero** is rejected, which legacy
   does not do because legacy never applies one
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Adjustment*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Adjustment*.
 """
 
 import json

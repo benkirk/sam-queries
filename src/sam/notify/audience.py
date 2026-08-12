@@ -15,7 +15,7 @@ the product called him "Ben Kirk". ``display_name`` is (nickname or first) +
 last; XRAS keeps ``full_name`` then ``username`` behind it as the fallback
 chain, since ``display_name`` drops a middle name.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 7.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 7.
 """
 
 from __future__ import annotations

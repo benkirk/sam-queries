@@ -11,7 +11,7 @@ Three legacy bugs live here, and this port treats them differently:
   braces) → fixed
 * the ``UNDO AUTO/DEFAULT`` compensating adjustment → not ported, warned (defect 5)
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Update*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Update*.
 """
 
 import os

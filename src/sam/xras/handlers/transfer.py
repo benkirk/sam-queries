@@ -40,7 +40,7 @@ action was recognised, deliberately not applied, and by whose decision.
 
 ⚠️ **If Transfer traffic ever appears, this is the thing to notice.** The
 ``xras_action_log`` query for it is ``status='manual' AND action_type='Transfer'``.
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Write primitives* item 5.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Write primitives* item 5.
 """
 
 import logging
