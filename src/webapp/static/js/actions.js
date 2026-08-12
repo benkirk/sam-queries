@@ -170,22 +170,23 @@
         htmx.trigger(form, 'submit');
     });
 
-    /* Age-band range control (dashboards/fragments/age_band_range.html).
+    /* Ladder range control (dashboards/fragments/ladder_range.html, and its
+     * age_band_range wrapper).
      *
      * Two handlers, on two channels, because the split is the whole point:
      * `input` fires continuously while a thumb is dragged and only repaints;
      * `change` fires once on release (and on each keyboard step) and is what
      * submits. Wiring the submit to `input` would fire a request per pixel.
      *
-     * Neither does any date arithmetic. The band -> dates map is resolved
-     * server-side by webapp.utils.age_bands and travels in a JSON data block,
-     * so these only ever index it. That keeps one source of truth for the
-     * ladder and keeps timezone reasoning out of the browser entirely. */
+     * Neither does any arithmetic. The band -> values map is resolved
+     * server-side and travels in a JSON data block, so these only ever index
+     * it. That keeps one source of truth for the ladder, and for the date
+     * ladders it keeps timezone reasoning out of the browser entirely. */
     function ageRangeState(el) {
-        var root = el.closest('[data-age-range]');
+        var root = el.closest('[data-ladder-range]');
         if (!root) { return null; }
-        var lo = root.querySelector('[data-age-lo]');
-        var hi = root.querySelector('[data-age-hi]');
+        var lo = root.querySelector('[data-ladder-lo]');
+        var hi = root.querySelector('[data-ladder-hi]');
         if (!lo || !hi) { return null; }
         /* Thumbs must not cross: clamp whichever one moved to the other. */
         if (+lo.value > +hi.value) {
@@ -235,12 +236,21 @@
         ageRangePaint(s);
         var form = document.getElementById(s.root.dataset.formId);
         if (!form) { return; }
-        var after = s.root.querySelector('[data-age-after]');
-        var before = s.root.querySelector('[data-age-before]');
-        /* A later band is an OLDER file, so the span's older edge comes from
-         * the HIGH thumb and its newer edge from the LOW one. */
-        if (after) { after.value = s.bands[+s.hi.value][after.name] || ''; }
-        if (before) { before.value = s.bands[+s.lo.value][before.name] || ''; }
+        /* Which thumb feeds which bound is DECLARED per field, not assumed:
+         * most ranges are uncrossed, but on an age ladder a later band is an
+         * OLDER file, so its older edge comes from the HIGH thumb. The band
+         * row is keyed by the field's own `name`, so one loop serves every
+         * vocabulary without a dimension->field table living here. */
+        var fields = s.root.querySelectorAll('[data-ladder-field]');
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            var band = s.bands[f.dataset.thumb === 'hi' ? +s.hi.value : +s.lo.value];
+            var v = band[f.name];
+            /* Not `|| ''` — a numeric ladder's floor is a legitimate 0, and
+             * `0 || ''` would blank the bound instead of setting it. Only a
+             * genuinely absent bound (the open-ended band) clears the field. */
+            f.value = (v === null || v === undefined) ? '' : v;
+        }
         htmx.trigger(form, 'submit');
     });
 

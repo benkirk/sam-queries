@@ -1,35 +1,23 @@
+{% from 'dashboards/fragments/ladder_range.html' import ladder_range %}
 {#
   Age-band range control: pick a contiguous span of named age bands instead of
   typing two calendar dates.
 
-  ── Why this exists ──────────────────────────────────────────────────────
-  "Files not touched in 3 years" and "jobs from the last 90 days" are how people
-  actually think, but a bare pair of <input type="date"> makes them convert that
-  to an absolute date first. The bands remove the arithmetic, and they are not a
-  new vocabulary — they are the same ladder the access-history chart's clickable
-  bands use, so a slider position and the equivalent chart-band click select the
-  *same* rows by construction.
+  A thin caller of `ladder_range` — the whole control lives there. What this
+  wrapper owns is the *date* vocabulary:
 
-  ── The two dates are the only real fields ───────────────────────────────
-  Everything else here — selects, sliders — carries no `name` and submits
-  nothing. It is UI that writes into the two date inputs, which is what lets the
-  presentation change per layout without ever putting two same-named controls in
-  one form. (Two would make `form.elements[name]` a RadioNodeList, and assigning
-  `.value` to that silently does nothing — see window_pills.html.)
+  ⚠️ **The two dates are crossed.** A later band index is an OLDER file, so the
+  span's older edge (`after_field`) comes from the HIGH thumb and its newer edge
+  (`before_field`) from the LOW one. And the visual order is the opposite of the
+  slider's again: the slider's axis is age (youngest left) while the boxes are
+  calendar dates (earliest left), so `From` — the left box — is the OLDER bound
+  even though it holds the smaller date. Both inversions are declared below
+  rather than commented, which is why `thumb` is a per-field value.
 
-  ── No date arithmetic in JavaScript ─────────────────────────────────────
-  `bands` arrives already resolved to dates by webapp.utils.age_bands.band_map,
-  and is emitted below as a <script type="application/json"> block (CSP-legal —
-  the policy is nonce-free and forbids executable inline script, not data). The
-  handler in static/js/actions.js only *indexes* it. So the ladder has exactly
-  one source of truth, server-side, and no timezone or DST reasoning happens on
-  the client.
-
-  ── Layout ───────────────────────────────────────────────────────────────
-  `layout` picks the presentation server-side via webapp.utils.htmx.read_layout:
-  two selects on mobile, the dual-thumb slider above it. Rendering one or the
-  other (never both) is what keeps the "only the dates are named" rule true, and
-  reuses the existing layout axis rather than inventing a breakpoint swap.
+  The sublabels `From` / `To` are the accessible names (via `<label for>`),
+  which keeps WCAG 2.5.3 "Label in Name" satisfied where an `aria-label` of
+  "Accessed after" over a visible "From" would not. The caller's semantic
+  wording rides along as the description.
 
   Args:
     form_id       id of the enclosing filter form to write into and submit
@@ -43,7 +31,7 @@
                   age_bands.bands_for(); None means the dates in force do not
                   describe whole bands, so no span is marked
     label         visible legend, e.g. 'File age'
-    after_label   aria/visible label for the older date input
+    after_label   semantic description for the older date input
     before_label  ditto for the newer one
     layout        'mobile' | 'tablet' | 'desktop'
 #}
@@ -51,106 +39,14 @@
                         after_value='', before_value='', span=None,
                         label='Age', after_label='Older than',
                         before_label='Newer than', layout='desktop') %}
-{% if bands %}
-{%- set n = bands | length -%}
-{%- set lo = span[0] if span else 0 -%}
-{%- set hi = span[1] if span else (n - 1) -%}
-{# --custom: the dates in force describe no whole span, so the thumbs have no
-   honest position. They fall back to the full range, and the modifier mutes the
-   fill so the control doesn't *claim* a span it hasn't got. #}
-<div class="age-range{{ ' age-range--custom' if not span else '' }}"
-     data-age-range data-form-id="{{ form_id }}">
-  <label class="form-label"><strong>{{ label }}</strong></label>
-
-  {# Data, not code: the CSP lint's inline-script regex exempts
-     application/json precisely so payloads can travel this way. #}
-  <script type="application/json" class="age-range-bands">{{ bands | tojson }}</script>
-
-  {% if layout == 'mobile' %}
-  {# Phones: two selects. Dragging two thumbs a few px apart is the worst case
-     at 390px, and the panel already forces its controls full-width there. #}
-  <div class="age-range-selects">
-    <div class="age-range-field">
-      <label class="age-range-sublabel" for="{{ form_id }}-age-lo">Newest</label>
-      <select class="form-control" data-age-lo id="{{ form_id }}-age-lo"
-              title="Newest {{ label | lower }} band"
-              data-action-change="age-band-commit">
-        {% for b in bands %}
-        <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == lo else '' }}>{{ b.label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="age-range-field">
-      <label class="age-range-sublabel" for="{{ form_id }}-age-hi">Oldest</label>
-      <select class="form-control" data-age-hi id="{{ form_id }}-age-hi"
-              title="Oldest {{ label | lower }} band"
-              data-action-change="age-band-commit">
-        {% for b in bands %}
-        <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == hi else '' }}>{{ b.label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-  </div>
-  {% else %}
-  <output class="age-range-readout" aria-live="polite">
-    {{ bands[lo].label if span else 'Custom range' }}{% if span and lo != hi %} – {{ bands[hi].label }}{% endif %}
-  </output>
-
-  {# Two overlaid native range inputs rather than a custom widget: each thumb is
-     then a real focusable control with native keyboard stepping, and
-     aria-valuetext makes it announce "3-4 Years" instead of "6". #}
-  <div class="age-range-track" style="--n: {{ n }};">
-    <div class="age-range-fill" style="--lo: {{ lo }}; --hi: {{ hi }};"></div>
-    <input type="range" class="age-range-thumb" data-age-lo
-           min="0" max="{{ n - 1 }}" step="1" value="{{ lo }}"
-           aria-label="Newest {{ label | lower }} band"
-           aria-valuetext="{{ bands[lo].label }}"
-           data-action-input="age-band-preview"
-           data-action-change="age-band-commit">
-    <input type="range" class="age-range-thumb" data-age-hi
-           min="0" max="{{ n - 1 }}" step="1" value="{{ hi }}"
-           aria-label="Oldest {{ label | lower }} band"
-           aria-valuetext="{{ bands[hi].label }}"
-           data-action-input="age-band-preview"
-           data-action-change="age-band-commit">
-  </div>
-  <div class="age-range-ends">
-    <span>{{ bands[0].label }}</span>
-    <span>{{ bands[n - 1].label }}</span>
-  </div>
-  {% endif %}
-
-  {# The escape hatch, and the only named fields. Typing here produces dates that
-     need not land on band edges, which is exactly the "custom" state the server
-     renders by passing span=None.
-
-     ⚠️ From/To are load-bearing, not decoration. This pair reads in the OPPOSITE
-     direction to the slider above it: the slider's axis is *age*, so youngest is
-     on the left, while these are calendar dates, so the earliest is on the left.
-     The left box is therefore the OLDER bound (`after_field`) even though it
-     holds the smaller date. Without the labels the two controls look like they
-     disagree.
-
-     The visible text is the accessible name (via <label for>), which keeps
-     WCAG 2.5.3 "Label in Name" satisfied; the semantic wording the caller passes
-     ("Accessed after", "Jobs ending after") rides along as the description. #}
-  <div class="age-range-exact">
-    <div class="age-range-field">
-      <label class="age-range-sublabel" for="{{ form_id }}-age-from">From</label>
-      <input type="date" class="form-control form-control-sm" data-age-after
-             id="{{ form_id }}-age-from"
-             name="{{ after_field }}" value="{{ after_value }}"
-             title="{{ after_label }}">
-    </div>
-    <span class="age-range-dash" aria-hidden="true">–</span>
-    <div class="age-range-field">
-      <label class="age-range-sublabel" for="{{ form_id }}-age-to">To</label>
-      <input type="date" class="form-control form-control-sm" data-age-before
-             id="{{ form_id }}-age-to"
-             name="{{ before_field }}" value="{{ before_value }}"
-             title="{{ before_label }}">
-    </div>
-  </div>
-</div>
-{% endif %}
+{{ ladder_range(
+     form_id, bands,
+     [{'key': 'from', 'name': after_field, 'thumb': 'hi', 'type': 'date',
+       'sublabel': 'From', 'title': after_label, 'value': after_value},
+      {'key': 'to', 'name': before_field, 'thumb': 'lo', 'type': 'date',
+       'sublabel': 'To', 'title': before_label, 'value': before_value}],
+     label=label, span=span, layout=layout, slug='age',
+     lo_thumb='Newest', hi_thumb='Oldest',
+     lo_title='Newest ' ~ label | lower ~ ' band',
+     hi_title='Oldest ' ~ label | lower ~ ' band') }}
 {% endmacro %}

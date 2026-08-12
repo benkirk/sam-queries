@@ -1,0 +1,174 @@
+{#
+  Ladder range control: pick a contiguous span of named bands instead of typing
+  two bounds.
+
+  ── Why this exists ──────────────────────────────────────────────────────
+  "Files not touched in 3 years", "jobs from the last 90 days", "runs on more
+  than 64 nodes" are how people actually think, but a bare pair of inputs makes
+  them convert that to an absolute value first. The bands remove the arithmetic,
+  and they are not a new vocabulary — they are the same ladder the matching
+  distribution chart's clickable bands use, so a slider position and the
+  equivalent chart-band click select the *same* rows by construction.
+
+  ── The named fields are the only real fields ────────────────────────────
+  Everything else here — selects, sliders — carries no `name` and submits
+  nothing. It is UI that writes into the `fields` inputs, which is what lets the
+  presentation change per layout without ever putting two same-named controls in
+  one form. (Two would make `form.elements[name]` a RadioNodeList, and assigning
+  `.value` to that silently does nothing — see window_pills.html.)
+
+  ── No arithmetic in JavaScript ──────────────────────────────────────────
+  `bands` arrives already resolved to *values* server-side, and is emitted below
+  as a <script type="application/json"> block (CSP-legal — the policy is
+  nonce-free and forbids executable inline script, not data). The handler in
+  static/js/actions.js only *indexes* it. So the ladder has exactly one source
+  of truth, server-side; for the date ladders that also keeps all timezone and
+  DST reasoning off the client.
+
+  ── Direction is declared, not assumed ───────────────────────────────────
+  Each field names the thumb that feeds it via `thumb`. Most ranges are
+  uncrossed (`min` ← low thumb, `max` ← high thumb), but the age ladders are
+  *crossed*: a later band is an OLDER file, so the span's older edge comes from
+  the HIGH thumb. Making that a declared per-field value rather than a comment
+  is the point — it is exactly the kind of inversion a later tidy-up would
+  silently swap.
+
+  ── Layout ───────────────────────────────────────────────────────────────
+  `layout` picks the presentation server-side via webapp.utils.htmx.read_layout:
+  two selects on mobile, the dual-thumb slider above it. Rendering one or the
+  other (never both) is what keeps the "only the fields are named" rule true,
+  and reuses the existing layout axis rather than inventing a breakpoint swap.
+
+  Args:
+    form_id   id of the enclosing filter form to write into and submit
+    bands     [{'label', <field name>: <value>, ...}, ...] in ladder order —
+              one key per entry in `fields`, from a *_band_map() helper
+    fields    the named inputs, in visual order. Each is a dict:
+                key      short id suffix ('from', 'to', 'min', 'max')
+                name     the form field name
+                thumb    'lo' | 'hi' — which thumb supplies this bound
+                type     input type ('date', 'number')
+                sublabel visible label; this is the accessible name, so it must
+                         be what the user sees (WCAG 2.5.3 "Label in Name")
+                title    the semantic wording, e.g. 'Accessed after'
+                value    current raw value, or ''
+                step/min optional passthrough for numeric inputs
+    label     visible legend, e.g. 'File age'
+    span      (lo, hi) band indices, or None for "custom" — None means the
+              bounds in force do not describe whole bands, so no span is marked
+    layout    'mobile' | 'tablet' | 'desktop'
+    slug      id namespace within the form, so two controls can coexist
+    lo_thumb  short label for the low-index end ('Newest', 'Min')
+    hi_thumb  ditto for the high-index end ('Oldest', 'Max')
+    lo_title  full description for the low thumb / select
+    hi_title  ditto for the high thumb
+#}
+{% macro ladder_range(form_id, bands, fields, label='Range', span=None,
+                      layout='desktop', slug='range',
+                      lo_thumb='Min', hi_thumb='Max',
+                      lo_title=None, hi_title=None) %}
+{% if bands and fields %}
+{%- set n = bands | length -%}
+{%- set lo = span[0] if span else 0 -%}
+{%- set hi = span[1] if span else (n - 1) -%}
+{%- set lo_title = lo_title or (lo_thumb ~ ' ' ~ label | lower) -%}
+{%- set hi_title = hi_title or (hi_thumb ~ ' ' ~ label | lower) -%}
+{# --custom: the bounds in force describe no whole span, so the thumbs have no
+   honest position. They fall back to the full range, and the modifier mutes the
+   fill so the control doesn't *claim* a span it hasn't got. #}
+<div class="age-range{{ ' age-range--custom' if not span else '' }}"
+     data-ladder-range data-form-id="{{ form_id }}">
+  <label class="form-label"><strong>{{ label }}</strong></label>
+
+  {# Data, not code: the CSP lint's inline-script regex exempts
+     application/json precisely so payloads can travel this way. #}
+  <script type="application/json" class="age-range-bands">{{ bands | tojson }}</script>
+
+  {% if layout == 'mobile' %}
+  {# Phones: two selects. Dragging two thumbs a few px apart is the worst case
+     at 390px, and the panel already forces its controls full-width there. #}
+  <div class="age-range-selects">
+    <div class="age-range-field">
+      <label class="age-range-sublabel" for="{{ form_id }}-{{ slug }}-lo">{{ lo_thumb }}</label>
+      <select class="form-control" data-ladder-lo id="{{ form_id }}-{{ slug }}-lo"
+              title="{{ lo_title }}"
+              data-action-change="age-band-commit">
+        {% for b in bands %}
+        <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == lo else '' }}>{{ b.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="age-range-field">
+      <label class="age-range-sublabel" for="{{ form_id }}-{{ slug }}-hi">{{ hi_thumb }}</label>
+      <select class="form-control" data-ladder-hi id="{{ form_id }}-{{ slug }}-hi"
+              title="{{ hi_title }}"
+              data-action-change="age-band-commit">
+        {% for b in bands %}
+        <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == hi else '' }}>{{ b.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% else %}
+  <output class="age-range-readout" aria-live="polite">
+    {{ bands[lo].label if span else 'Custom range' }}{% if span and lo != hi %} – {{ bands[hi].label }}{% endif %}
+  </output>
+
+  {# Two overlaid native range inputs rather than a custom widget: each thumb is
+     then a real focusable control with native keyboard stepping, and
+     aria-valuetext makes it announce "3-4 Years" instead of "6". #}
+  <div class="age-range-track" style="--n: {{ n }};">
+    <div class="age-range-fill" style="--lo: {{ lo }}; --hi: {{ hi }};"></div>
+    <input type="range" class="age-range-thumb" data-ladder-lo
+           min="0" max="{{ n - 1 }}" step="1" value="{{ lo }}"
+           aria-label="{{ lo_title }}"
+           aria-valuetext="{{ bands[lo].label }}"
+           data-action-input="age-band-preview"
+           data-action-change="age-band-commit">
+    <input type="range" class="age-range-thumb" data-ladder-hi
+           min="0" max="{{ n - 1 }}" step="1" value="{{ hi }}"
+           aria-label="{{ hi_title }}"
+           aria-valuetext="{{ bands[hi].label }}"
+           data-action-input="age-band-preview"
+           data-action-change="age-band-commit">
+  </div>
+  <div class="age-range-ends">
+    <span>{{ bands[0].label }}</span>
+    <span>{{ bands[n - 1].label }}</span>
+  </div>
+  {% endif %}
+
+  {# The escape hatch, and the only named fields. Typing here produces bounds
+     that need not land on band edges, which is exactly the "custom" state the
+     server renders by passing span=None.
+
+     ⚠️ The visual order of `fields` need not match the slider's axis, and for
+     the age ladders it deliberately doesn't: the slider's axis is *age* so the
+     youngest band is on the left, while the date boxes are *calendar dates* so
+     the earliest is on the left. The left box is therefore the OLDER bound even
+     though it holds the smaller date. That is why each field declares its own
+     `from` thumb, and why `sublabel` is load-bearing rather than decoration.
+
+     The visible text is the accessible name (via <label for>), which keeps
+     WCAG 2.5.3 "Label in Name" satisfied; the caller's semantic wording rides
+     along as the description (`title`). #}
+  <div class="age-range-exact">
+    {%- for f in fields %}
+    {%- if not loop.first %}
+    <span class="age-range-dash" aria-hidden="true">–</span>
+    {%- endif %}
+    <div class="age-range-field">
+      <label class="age-range-sublabel" for="{{ form_id }}-{{ slug }}-{{ f.key }}">{{ f.sublabel }}</label>
+      <input type="{{ f.type }}" class="form-control form-control-sm"
+             data-ladder-field data-thumb="{{ f.thumb }}"
+             id="{{ form_id }}-{{ slug }}-{{ f.key }}"
+             name="{{ f.name }}" value="{{ f.value if f.value is not none else '' }}"
+             title="{{ f.title }}"
+             {%- if f.get('min') is not none %} min="{{ f.get('min') }}"{% endif %}
+             {%- if f.get('step') %} step="{{ f.get('step') }}"{% endif %}>
+    </div>
+    {%- endfor %}
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
