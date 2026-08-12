@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 {% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
 {#
   Shared filter bar for audit-style tables (Transactions, Adjustments).
 
@@ -13,6 +14,19 @@
     target_id     - id of the fragment container (innerHTML swap)
     start_date    - initial YYYY-MM-DD string
     end_date      - initial YYYY-MM-DD string
+    age_bands     - the AUDIT_AGE_BANDS ladder pre-resolved to dates, from
+                    _window_control_context(). The window control is the only
+                    thing that writes start_date/end_date, so this is NOT
+                    optional: ladder_range renders nothing at all when `bands`
+                    is empty, which would ship a panel with no date fields and
+                    no way to change the window. There is no if/else fallback
+                    here (unlike _jobs_filters / _disk_scans_dir_filters, whose
+                    ladders come from an optional plugin and must degrade) —
+                    the anchor is always `now` and the ladder is a constant, so
+                    the fallback would be untestable dead code. The guard is
+                    test_audit_panels_render_exactly_one_named_date_pair.
+    age_band_span - (lo, hi) band indices, or None for the "custom" state
+    layout        - 'mobile' | 'tablet' | 'desktop', from read_layout()
     projcode      - initial projcode value (string or '')
     username      - initial username value
     all_resources - list of available resource names (for the multi-select)
@@ -25,26 +39,29 @@
 #}
 {% macro audit_filters(form_id, fragment_url, target_id,
                        start_date='', end_date='',
+                       age_bands=None, age_band_span=None, layout='desktop',
                        projcode='', username='',
                        all_resources=[], selected_resources=[],
                        allowed_facilities=[], selected_facilities=[]) %}
 {# Unity NCAR navy panel — same .filter-sidebar tokens as the allocations
    facility filter, so audit filters match the rest of the dashboard. #}
 {% call filter_panel_shell(form_id, fragment_url, target_id) %}
-    <div class="d-flex flex-wrap align-items-start gap-3">
+    {# align-items-end, not -start: the window control is ~4x the height of a
+       date box, and -start would leave every other field floating at its top
+       edge. Matches _jobs_filters and _disk_scans_dir_filters, the two panels
+       that already carry this control. #}
+    <div class="d-flex flex-wrap align-items-end gap-3">
 
+        {# One control for both edges. "How far back?" is the question this
+           panel is actually asked; the bands remove the date arithmetic and
+           the exact From/To pair lives on underneath, one click away. #}
         <div>
-            <label class="form-label"><strong>From</strong></label>
-            <input type="date" class="form-control"
-                   name="start_date" value="{{ start_date }}"
-                   style="width:150px;">
-        </div>
-
-        <div>
-            <label class="form-label"><strong>To</strong></label>
-            <input type="date" class="form-control"
-                   name="end_date" value="{{ end_date }}"
-                   style="width:150px;">
+            {{ age_band_range(form_id, age_bands, 'start_date', 'end_date',
+                              after_value=start_date, before_value=end_date,
+                              span=age_band_span, label='Age',
+                              after_label='Changes after',
+                              before_label='Changes before',
+                              layout=layout) }}
         </div>
 
         <div>

@@ -2151,6 +2151,22 @@ def test_the_two_date_inputs_remain_the_only_named_fields(
     assert 'name="age' not in body
 
 
+def test_typing_an_exact_bound_marks_the_control_custom(
+        auth_client, active_project, _anchored_scan):
+    """Every named field carries the hook, on both ladders.
+
+    Without it the readout keeps naming the last span while the fields hold
+    something else, so the control misdescribes the filter it is about to
+    submit. `span=None` is exactly what the server renders for a hand-typed
+    range; this is the client-side half of the same state.
+    """
+    import re
+    body = _explore(auth_client, active_project)
+    named = re.findall(r'<input[^>]*data-ladder-field[^>]*>', body)
+    assert named, 'no named ladder fields on the page'
+    assert all('data-action-change="ladder-range-typed"' in f for f in named)
+
+
 def test_a_filter_on_band_edges_marks_that_span(
         auth_client, active_project, _anchored_scan):
     """Dates that ARE band edges put the thumbs on those bands: '< 1 Month' is
