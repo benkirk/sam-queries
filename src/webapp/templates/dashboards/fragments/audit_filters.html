@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 {#
   Shared filter bar for audit-style tables (Transactions, Adjustments).
 
@@ -80,35 +81,11 @@
                    placeholder="username" style="width:160px;">
         </div>
 
-        {% if allowed_facilities %}
-        <div>
-            <label class="form-label"><strong>Facilities</strong></label>
-            <select class="form-control"
-                    name="facilities" multiple size="{{ [allowed_facilities|length, 4]|min }}"
-                    style="width:160px;">
-                {% for facility_name in allowed_facilities %}
-                <option value="{{ facility_name }}"
-                    {% if facility_name in selected_facilities %}selected{% endif %}>{{ facility_name }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
-        {% endif %}
+        {{ multiselect_filter('Facilities', 'facilities', allowed_facilities,
+                              selected_facilities, width='160px') }}
 
-        {% if all_resources %}
-        <div>
-            <label class="form-label"><strong>Resources</strong></label>
-            <select class="form-control"
-                    name="resource_name" multiple size="4"
-                    style="width:220px;">
-                {% for res in all_resources %}
-                <option value="{{ res }}"
-                    {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
-        {% endif %}
+        {{ multiselect_filter('Resources', 'resource_name', all_resources,
+                              selected_resources, width='220px') }}
 
         <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
     </div>

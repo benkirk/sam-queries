@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 {#
   Filter bar for the XRAS action log (Allocations > XRAS).
 
@@ -83,35 +84,11 @@
                    style="width:160px;">
         </div>
 
-        {% if all_statuses %}
-        <div>
-            <label class="form-label"><strong>Status</strong></label>
-            <select class="form-control"
-                    name="status" multiple size="{{ [all_statuses|length, 5]|min }}"
-                    style="width:150px;">
-                {% for s in all_statuses %}
-                <option value="{{ s }}"
-                    {% if s in selected_statuses %}selected{% endif %}>{{ s }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
-        {% endif %}
+        {{ multiselect_filter('Status', 'status', all_statuses,
+                              selected_statuses, width='150px', max_size=5) }}
 
-        {% if all_action_types %}
-        <div>
-            <label class="form-label"><strong>Action type</strong></label>
-            <select class="form-control"
-                    name="action_type" multiple size="{{ [all_action_types|length, 5]|min }}"
-                    style="width:160px;">
-                {% for t in all_action_types %}
-                <option value="{{ t }}"
-                    {% if t in selected_action_types %}selected{% endif %}>{{ t }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
-        {% endif %}
+        {{ multiselect_filter('Action type', 'action_type', all_action_types,
+                              selected_action_types, width='160px', max_size=5) }}
 
         <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
     </div>
