@@ -69,19 +69,27 @@
   {% if layout == 'mobile' %}
   {# Phones: two selects. Dragging two thumbs a few px apart is the worst case
      at 390px, and the panel already forces its controls full-width there. #}
-  <div class="age-range-selects d-flex flex-column gap-2">
-    <select class="form-control" data-age-lo aria-label="Newest {{ label | lower }} band"
-            data-action-change="age-band-commit">
-      {% for b in bands %}
-      <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == lo else '' }}>{{ b.label }}</option>
-      {% endfor %}
-    </select>
-    <select class="form-control" data-age-hi aria-label="Oldest {{ label | lower }} band"
-            data-action-change="age-band-commit">
-      {% for b in bands %}
-      <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == hi else '' }}>{{ b.label }}</option>
-      {% endfor %}
-    </select>
+  <div class="age-range-selects">
+    <div class="age-range-field">
+      <label class="age-range-sublabel" for="{{ form_id }}-age-lo">Newest</label>
+      <select class="form-control" data-age-lo id="{{ form_id }}-age-lo"
+              title="Newest {{ label | lower }} band"
+              data-action-change="age-band-commit">
+        {% for b in bands %}
+        <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == lo else '' }}>{{ b.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="age-range-field">
+      <label class="age-range-sublabel" for="{{ form_id }}-age-hi">Oldest</label>
+      <select class="form-control" data-age-hi id="{{ form_id }}-age-hi"
+              title="Oldest {{ label | lower }} band"
+              data-action-change="age-band-commit">
+        {% for b in bands %}
+        <option value="{{ loop.index0 }}"{{ ' selected' if loop.index0 == hi else '' }}>{{ b.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
   {% else %}
   <output class="age-range-readout" aria-live="polite">
@@ -114,15 +122,34 @@
 
   {# The escape hatch, and the only named fields. Typing here produces dates that
      need not land on band edges, which is exactly the "custom" state the server
-     renders by passing span=None. #}
-  <div class="age-range-exact d-flex align-items-center gap-1">
-    <input type="date" class="form-control form-control-sm" data-age-after
-           name="{{ after_field }}" value="{{ after_value }}"
-           aria-label="{{ after_label }}">
-    <span class="age-range-dash">–</span>
-    <input type="date" class="form-control form-control-sm" data-age-before
-           name="{{ before_field }}" value="{{ before_value }}"
-           aria-label="{{ before_label }}">
+     renders by passing span=None.
+
+     ⚠️ From/To are load-bearing, not decoration. This pair reads in the OPPOSITE
+     direction to the slider above it: the slider's axis is *age*, so youngest is
+     on the left, while these are calendar dates, so the earliest is on the left.
+     The left box is therefore the OLDER bound (`after_field`) even though it
+     holds the smaller date. Without the labels the two controls look like they
+     disagree.
+
+     The visible text is the accessible name (via <label for>), which keeps
+     WCAG 2.5.3 "Label in Name" satisfied; the semantic wording the caller passes
+     ("Accessed after", "Jobs ending after") rides along as the description. #}
+  <div class="age-range-exact">
+    <div class="age-range-field">
+      <label class="age-range-sublabel" for="{{ form_id }}-age-from">From</label>
+      <input type="date" class="form-control form-control-sm" data-age-after
+             id="{{ form_id }}-age-from"
+             name="{{ after_field }}" value="{{ after_value }}"
+             title="{{ after_label }}">
+    </div>
+    <span class="age-range-dash" aria-hidden="true">–</span>
+    <div class="age-range-field">
+      <label class="age-range-sublabel" for="{{ form_id }}-age-to">To</label>
+      <input type="date" class="form-control form-control-sm" data-age-before
+             id="{{ form_id }}-age-to"
+             name="{{ before_field }}" value="{{ before_value }}"
+             title="{{ before_label }}">
+    </div>
   </div>
 </div>
 {% endif %}

@@ -2188,3 +2188,26 @@ def test_no_scan_date_falls_back_to_the_bare_date_pair(
     assert 'age-range-bands' not in body
     assert 'Accessed after' in body and 'Accessed before' in body
     assert body.count('name="accessed_before"') == 1
+
+
+def test_from_and_to_label_the_opposite_ends_from_the_slider(
+        auth_client, active_project, _anchored_scan):
+    """The exact-date pair reads in the OPPOSITE direction to the slider above
+    it: the slider's axis is age (youngest left), these are calendar dates
+    (earliest left). So `From` binds the OLDER bound — `accessed_after` — even
+    though it holds the smaller date. Pinning it because the two controls look
+    like they disagree without the labels, and a future 'tidy-up' that swaps
+    them would be silently wrong.
+    """
+    import re
+    body = _explore(auth_client, active_project)
+
+    def field_for(label_text):
+        m = re.search(r'<label[^>]*for="([^"]+)"[^>]*>\s*' + label_text, body)
+        assert m, f'no <label> for {label_text}'
+        m2 = re.search(r'<input[^>]*id="' + re.escape(m.group(1)) + r'"[^>]*>', body)
+        assert m2, f'no input carrying id {m.group(1)}'
+        return m2.group(0)
+
+    assert 'name="accessed_after"' in field_for('From')
+    assert 'name="accessed_before"' in field_for('To')
