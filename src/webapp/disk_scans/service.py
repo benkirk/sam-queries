@@ -26,6 +26,7 @@ from flask import current_app
 
 from webapp.disk_scans.cache import cached_scan
 from webapp.disk_scans.scope import ProjectScanScope
+from webapp.utils import age_bands
 from webapp.disk_scans.session import (
     collections_for_resource,
     database_for_resource,
@@ -86,33 +87,28 @@ def _atime_band_bounds(reference_scan_date, bucket_labels) -> Dict[str, Dict[str
     ``YYYY-MM-DD`` date strings, so the band → user → directories drill-down can
     filter directories to exactly the clicked band's date window.
 
+    The ladder maths lives in ``webapp.utils.age_bands`` because the age-range
+    filter control needs the same mapping over a *span* of bands, plus its
+    inverse. This function is the single-band case, and stays here because the
+    band → filter-window contract is a disk-scans concept (see ``_BAND_SPECS``).
+
     Bounds come from the plugin's ``ATIME_BUCKETS`` day thresholds (the single
-    source of truth, imported here) relative to the scan date. A directory is
-    in band ``i`` when its last-access *age* (days from the scan) is in
-    ``[lower, upper)``; since access-time = scan − age, that maps to
-    ``accessed_after = scan − upper`` (older edge; ``None`` for the open-ended
-    oldest band) and ``accessed_before = scan − lower`` (newer edge; the scan
-    date itself for band 0). Returns ``{}`` if the plugin or scan date is
-    unavailable.
+    source of truth) relative to the scan date. A directory is in band ``i``
+    when its last-access *age* (days from the scan) is in ``[lower, upper)``;
+    since access-time = scan − age, that maps to ``accessed_after = scan −
+    upper`` (older edge; ``None`` for the open-ended oldest band) and
+    ``accessed_before = scan − lower`` (newer edge; the scan date itself for
+    band 0). Returns ``{}`` if the plugin or scan date is unavailable.
     """
-    try:
-        from fs_scans.core.models import ATIME_BUCKETS
-    except Exception:
-        return {}
-    if not reference_scan_date or not bucket_labels:
+    ladder = age_bands.atime_ladder()
+    if ladder is None or not reference_scan_date or not bucket_labels:
         return {}
     wanted = set(bucket_labels)
     out: Dict[str, Dict[str, Optional[str]]] = {}
-    prev = 0  # cumulative lower threshold (days) carried across bands in order
-    for label, upper in ATIME_BUCKETS:
-        lower = prev
-        if upper is not None:
-            prev = upper
+    for i, label in enumerate(age_bands.labels(ladder)):
         if label not in wanted:
             continue
-        before = (reference_scan_date - timedelta(days=lower)).strftime('%Y-%m-%d')
-        after = (None if upper is None
-                 else (reference_scan_date - timedelta(days=upper)).strftime('%Y-%m-%d'))
+        after, before = age_bands.band_bounds(ladder, reference_scan_date, i, i)
         out[label] = {'accessed_after': after, 'accessed_before': before}
     return out
 
