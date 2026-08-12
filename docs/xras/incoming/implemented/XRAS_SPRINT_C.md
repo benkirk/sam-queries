@@ -39,7 +39,7 @@
 
 **Handoff doc.** Written for a cold start: you should be able to execute this without
 the session that produced it. The wire contract, the measured production data and the
-design decisions live in [`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md) — §
+design decisions live in [`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md) — §
 references below point there. The as-built records of the two prior sprints are
 [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) (ingestion) and
 [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) (the operator surface).

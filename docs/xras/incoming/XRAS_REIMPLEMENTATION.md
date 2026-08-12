@@ -33,9 +33,9 @@ in the working tree are byte-identical to the deployed tag.
 |---|---|---|
 | **0** — Prerequisites | **partly done** | credential ✅, role enforcement ✅, `VIEW_XRAS` + `MANAGE_XRAS` ✅ (Sprint B). `xras_action_log` and `xras_activation_event` exist in **dev and CI only** — the prod DDL is one DBA ticket, now unblocked. SMTP still open |
 | **1** — Read endpoints (6 GETs) | ✅ **done** | PR #424; 94% of traffic |
-| **2** — Action ingestion + audit trail | ✅ **done, capture-only** | `xras_action_log` + `XrasActionSchema` + `POST /actions` shipped behind `XRAS_ACTIONS_CAPTURE_ONLY`; see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md). Dispatch is Phase 3 |
-| **3** — Handlers | ✅ **done** | **Sprint C** — see [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). All six services registered: Extension, Supplement, Adjustment, New, Update; Transfer is a *registered* handler that parks with a reason. Behind `XRAS_ACTIONS_CAPTURE_ONLY`, which flips **only at cutover** |
-| **4** — XRAS as the 4th Allocations tab | ✅ **done** | **Sprint B** — see [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md). Tab, replay, `sam-admin xras`, the activation worklist; and it settled `xras_activation_event` so one DBA ticket carries both tables |
+| **2** — Action ingestion + audit trail | ✅ **done, capture-only** | `xras_action_log` + `XrasActionSchema` + `POST /actions` shipped behind `XRAS_ACTIONS_CAPTURE_ONLY`; see [`XRAS_SPRINT_A.md`](implemented/XRAS_SPRINT_A.md). Dispatch is Phase 3 |
+| **3** — Handlers | ✅ **done** | **Sprint C** — see [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md). All six services registered: Extension, Supplement, Adjustment, New, Update; Transfer is a *registered* handler that parks with a reason. Behind `XRAS_ACTIONS_CAPTURE_ONLY`, which flips **only at cutover** |
+| **4** — XRAS as the 4th Allocations tab | ✅ **done** | **Sprint B** — see [`XRAS_SPRINT_B.md`](implemented/XRAS_SPRINT_B.md). Tab, replay, `sam-admin xras`, the activation worklist; and it settled `xras_activation_event` so one DBA ticket carries both tables |
 | **5** — Parity and cutover | **partly done** | `--api xras` harness ✅, `sam-admin xras --validate-mapping` ✅ (a diagnostic, not a gate — see § *What is left*). **Next gate: merge and deploy, then run parity against the deployed host.** Sequence and commands: [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) |
 
 ### Sprint map
@@ -47,18 +47,18 @@ up, which pushes SMTP to D.
 
 | Sprint | Contents | State |
 |---|---|---|
-| **A** — Action ingestion | Phase 2: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions` in capture mode | ✅ shipped — [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) |
-| **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) |
-| **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
-| **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ✅ shipped — [`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md) § *Deviations*. Suite 5,213 → **5,223** |
-| **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **3 columns built** — the ticket is a transcription of `zz-90` |
-| **D** — SMTP | Phase 0.2: lift `EmailNotificationService` out of the CLI into a channel-agnostic `src/sam/notify/`, plus the delivery ledger both consumers lack | ✅ **built** on `smtp_notify` — [`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md) § *As built*. **ONE** more table (`notification_log`), not two: the subscription table was cut. `zz-92` joins PR #424's DBA ticket, which is now this work's only external dependency |
+| **A** — Action ingestion | Phase 2: `xras_action_log`, ORM, `XrasActionSchema`, `POST /actions` in capture mode | ✅ shipped — [`XRAS_SPRINT_A.md`](implemented/XRAS_SPRINT_A.md) |
+| **B** — Operator surface | Phase 4: the 4th Allocations tab, `sam-admin xras`, replay, `VIEW_XRAS`/`MANAGE_XRAS`, the activation worklist | ✅ shipped — [`XRAS_SPRINT_B.md`](implemented/XRAS_SPRINT_B.md) |
+| **C** — Handlers | Phase 3: the dispatcher and all six handler paths, and the replay-and-diff oracle that verifies them | ✅ shipped — [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md). Suite 4,708 → **5,213** |
+| **C.1a** — Handler refactor | The `ActionHandler` base class the six handlers should have shared. Six bugs the duplication produced, one of them live | ✅ shipped — [`XRAS_HANDLER_REFACTOR.md`](implemented/XRAS_HANDLER_REFACTOR.md) § *Deviations*. Suite 5,213 → **5,223** |
+| **C.1b** — Stress + schema | Stress the handlers with the **audit row** as the assertion target, then decide the remaining `xras_action_log` columns | ✅ shipped — [`XRAS_STRESS_AND_SCHEMA.md`](implemented/XRAS_STRESS_AND_SCHEMA.md) § *Verdicts*. Found a live wire-contract bug; **3 columns built** — the ticket is a transcription of `zz-90` |
+| **D** — SMTP | Phase 0.2: lift `EmailNotificationService` out of the CLI into a channel-agnostic `src/sam/notify/`, plus the delivery ledger both consumers lack | ✅ **built** on `smtp_notify` — [`NOTIFICATION_FRAMEWORK.md`](../../plans/implemented/NOTIFICATION_FRAMEWORK.md) § *As built*. **ONE** more table (`notification_log`), not two: the subscription table was cut. `zz-92` joins PR #424's DBA ticket, which is now this work's only external dependency |
 | **Cutover** | The five remaining gates, none of them code | ☐ — [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) |
 
 **Both follow-ups are done, and the DBA ticket is a transcription rather than a
 design question.** Three columns — `action_id`, `service`, `outcome_reason` — are
 built end to end: `zz-90`, the ORM, `_record`/`_finish` and the query layer, each with
-written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md)
+written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](implemented/XRAS_STRESS_AND_SCHEMA.md)
 § *Verdicts*. A fourth candidate (`warnings`) was declined with reasons, and two more
 gaps were closed in code rather than schema.
 
@@ -98,7 +98,7 @@ in parallel, not after:
   Sprint B's definition-of-done condition for filing it is met.
 
   ⚠️ **`zz-90` grew three columns in C.1b** — `action_id`, `service`, `outcome_reason` —
-  each with written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](XRAS_STRESS_AND_SCHEMA.md)
+  each with written evidence in [`XRAS_STRESS_AND_SCHEMA.md`](implemented/XRAS_STRESS_AND_SCHEMA.md)
   § *Verdicts*. They are built end to end and the ticket is a transcription of the
   current file, not a design question. File the file, not an older copy of it. Nothing can be captured
   or cut over until it lands, and it is the only item here with a third party's
@@ -558,7 +558,7 @@ plus 67 failures.
 the 2026-08-11 bulk forward — and live scrubbed in `tests/fixtures/xras/actions/`
 (16 New, 9 Extension, 9 Supplement, 4 `Date Adjustment`, 3 Adjustment; 28 legacy successes,
 6 failures, 7 parked). They correct roughly twenty points of the shape inferred from the POJOs —
-see [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md) § *Track 0*, which is authoritative **as amended by its
+see [`XRAS_SPRINT_A.md`](implemented/XRAS_SPRINT_A.md) § *Track 0*, which is authoritative **as amended by its
 own dated update notes**, and `tests/unit/test_xras_actions.py`, which enforces it.
 
 Extraction is `scripts/xras/extract_email_payloads.py` (pairs each notification `.eml` with the
@@ -697,7 +697,7 @@ is `CSL` or `CHAP`.
 > single end-date row is also two different validators on two different handler paths.
 >
 > The verified table, with every emitter at `file:line`, is
-> [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md) § *The error vocabulary*; it is implemented in
+> [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md) § *The error vocabulary*; it is implemented in
 > `src/sam/xras/errors.py` and pinned byte-for-byte by `tests/unit/test_xras_errors.py`.
 > Kept below as the historical record of what was inferred before the source was read.
 
@@ -1033,12 +1033,12 @@ Phases are ordered by **production volume × failure rate**.
    second request costs another round of the same lead time. Staging needs both run by hand once —
    `infrastructure/scripts/init-rds.sh` restores the raw `.xz` with no initdb hook.
 
-   ⚠️ **And it may carry four.** [`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md) § 5-6
+   ⚠️ **And it may carry four.** [`NOTIFICATION_FRAMEWORK.md`](../../plans/implemented/NOTIFICATION_FRAMEWORK.md) § 5-6
    proposes `notification_log` and `notification_subscription` on this same ticket, for exactly
    the reason `zz-91` joined it. Decide before filing.
 
 2. ☐ **SMTP from the k8s webapp.** ⚠️ **Superseded — see
-   [`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md).** The design work found that the
+   [`NOTIFICATION_FRAMEWORK.md`](../../plans/implemented/NOTIFICATION_FRAMEWORK.md).** The design work found that the
    assessment below is wrong in one important way: it is **not** just a move plus a config
    wire-up. A mailer living in `src/sam/` can mail real users from any dev container running an
    obfuscated production snapshot, so it needs fail-closed safety defaults; and neither consumer
@@ -1187,8 +1187,8 @@ NRIT P2-63.
 
 > **Sprint A.** The as-built record — the measured wire contract, the DDL, how the new table
 > reaches dev *and* CI without regenerating the LFS snapshot, and the capture-first running
-> order — is in [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md). The original handoff is retired to
-> [`implemented/XRAS_ACTION_INGESTION.md`](implemented/XRAS_ACTION_INGESTION.md). What follows
+> order — is in [`XRAS_SPRINT_A.md`](implemented/XRAS_SPRINT_A.md). The original handoff is retired to
+> [`XRAS_ACTION_INGESTION.md`](../../plans/implemented/XRAS_ACTION_INGESTION.md). What follows
 > is the contract summary.
 
 1. **`xras_action_log`**: `id`, `received_time`, `remote_actor`, `action_type`, `request_number`,
@@ -1205,7 +1205,7 @@ NRIT P2-63.
 
 ### Phase 3 — Handlers, in production-frequency order ☐
 
-> **Sprint C** — the cold-start handoff is [`XRAS_SPRINT_C.md`](XRAS_SPRINT_C.md); this section is
+> **Sprint C** — the cold-start handoff is [`XRAS_SPRINT_C.md`](implemented/XRAS_SPRINT_C.md); this section is
 > the contract it implements. The order is easy-path-first
 > (Extension → Supplement → Adjustment → Update → **New last**) so the pipeline is proven before
 > the 30%-success path is attempted. The harvested payloads (**41** as of 2026-08-11) cover
@@ -1263,7 +1263,7 @@ rollback-on-error and nothing else. Audit rows exist because manage functions *e
 
 > **Sprint B.** The as-built record — 12 routes, the replay interlock, the `VIEW_XRAS`/`MANAGE_XRAS`
 > split, `xras_activation_event` and the pending-activation worklist, and 11 numbered deviations
-> from this section — is [`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md). What follows is the design it was
+> from this section — is [`XRAS_SPRINT_B.md`](implemented/XRAS_SPRINT_B.md). What follows is the design it was
 > built from, kept because its "six places a 4th tab touches" list is the reusable part.
 
 Ship the free Flask-Admin view first as a stopgap. Then the real surface: a **4th tab on the

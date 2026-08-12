@@ -339,7 +339,7 @@ Until this tier the Python suite had zero coverage of the ~3,000 lines of
 dashboard JavaScript. PR #378 fixed two bugs that nothing could have caught: a
 dead edit pencil (its modal shell was never included on the page) and a scroll
 overshoot past a card title. See
-[`docs/plans/FRONTEND_TEST_NET.md`](plans/FRONTEND_TEST_NET.md) for the full
+[`docs/plans/FRONTEND_TEST_NET.md`](plans/implemented/FRONTEND_TEST_NET.md) for the full
 decision record, including why a JS unit harness (vitest/jsdom) was rejected.
 
 Two complementary layers, both driven by pytest:

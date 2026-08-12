@@ -1,5 +1,9 @@
 # XRAS Sprint A — revised: real payloads in hand, capture-first ingestion
 
+> **Paths in § *Track 1* and § *Files* are as of Sprint A** and are left verbatim
+> as the as-built record. The XRAS plan docs have since moved: the live ones to
+> `docs/xras/incoming/`, the shipped ones to `docs/xras/incoming/implemented/`.
+
 ## Context
 
 `docs/plans/implemented/XRAS_ACTION_INGESTION.md` (the original handoff, since retired)

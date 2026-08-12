@@ -2,7 +2,7 @@
 
 **Handoff doc.** Execution plan for the next XRAS sprint. The wire contract, the measured
 production data and the design decisions live in
-[`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md) — this document does not repeat them,
+[`XRAS_REIMPLEMENTATION.md`](../../xras/incoming/XRAS_REIMPLEMENTATION.md) — this document does not repeat them,
 it tells you what to build and in what order. Section references like §2.4 point there.
 
 **Prior sprint:** Phase 1 (the six GET endpoints) is complete — PR #424.
@@ -31,7 +31,7 @@ the sprint.
 
 ### 1. Harvest real payloads — ✅ DONE (4 payloads), and the mailbox premise was wrong
 
-**Superseded by [`XRAS_SPRINT_A.md`](../XRAS_SPRINT_A.md) § *Track 0*, which is authoritative for
+**Superseded by [`XRAS_SPRINT_A.md`](../../xras/incoming/implemented/XRAS_SPRINT_A.md) § *Track 0*, which is authoritative for
 the measured wire contract.** Kept here because the correction matters more than the
 original instruction.
 
@@ -73,7 +73,7 @@ numbers (`roles[].person`) plus grant-officer contacts (`grants[].programOfficer
 
 ### 2. Raise the prod DDL ticket — ⚠️ WITHDRAWN, do not do this
 
-**Superseded by [`XRAS_SPRINT_B.md`](../XRAS_SPRINT_B.md) § *The decision that reorders
+**Superseded by [`XRAS_SPRINT_B.md`](../../xras/incoming/implemented/XRAS_SPRINT_B.md) § *The decision that reorders
 everything*.** Filing early was correct only if the schema was settled, and it was not:
 the table was designed from inference and nothing had rendered it. Amending the init
 script is free until production has the table, so the ticket is deliberately held until

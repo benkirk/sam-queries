@@ -74,7 +74,7 @@ Deliberately **no `DROP`**, so the worst case stays additive. `REFERENCES` is th
 non-obvious half and the reason a ticket saying "we need CREATE TABLE" would have
 failed: MySQL 8.0 requires it on the **parent** of every foreign key, and `zz-90` has a
 self-referential FK while `zz-91` points at `project`. `CREATE` alone yields only
-`zz-92`. Full evidence in [`DBA_PRIVILEGE_REQUEST.md`](DBA_PRIVILEGE_REQUEST.md).
+`zz-92`. Full evidence in [`DBA_PRIVILEGE_REQUEST.md`](../../plans/implemented/DBA_PRIVILEGE_REQUEST.md).
 
 All **three** files were then applied by hand to `sam-sql.ucar.edu`, in this order —
 `zz-91`'s FK references `zz-90`, so the order is load-bearing:
@@ -86,7 +86,7 @@ mysql --defaults-file=<creds> < containers/sam-sql-dev/initdb.d/zz-92-notificati
 ```
 
 **Three files, not two.** `zz-92-notification_log.sql` (Sprint D,
-[`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md)) belongs to the same round;
+[`NOTIFICATION_FRAMEWORK.md`](../../plans/implemented/NOTIFICATION_FRAMEWORK.md)) belongs to the same round;
 this gate listed only the two XRAS tables for a while, which is precisely the
 one-table-short mistake the "one ticket" rule exists to prevent.
 
