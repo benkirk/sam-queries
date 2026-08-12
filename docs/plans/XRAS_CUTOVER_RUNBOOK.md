@@ -24,7 +24,7 @@ no code is left.** The design, the measurements and the reasoning live in
 
 | # | Precondition | How to prove it |
 |---|---|---|
-| 1 | All six handlers built and registered | `pytest -q` → 5,280 passed; `pytest -m stress -n 0` → 21 passed |
+| 1 | All six handlers built and registered | `pytest -q` → 6,200 passed; `pytest -m stress -n 0` → 22 passed |
 | 1b | The whole legacy surface is mapped — all eight endpoints, not the seven XRAS calls today | `pytest tests/api/test_xras_roles.py tests/api/test_xras_unmapped.py -q` |
 | 2 | ✅ **Done 2026-08-10.** The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
 | 2b | ✅ **Done 2026-08-10.** ⚠️ The DDL applied is the **current** `zz-90`/`zz-91`/`zz-92` — **exactly 7** columns must come back utf8mb4: `raw_payload`, `error_messages`, `comment`, `notified_to`, `recipient_name`, `subject`, `error` | `SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='sam' AND TABLE_NAME IN ('xras_action_log','xras_activation_event','notification_log') AND CHARACTER_SET_NAME='utf8mb4'` |
@@ -160,9 +160,26 @@ dates were out of whack with what XRAS had."* We ported those responses byte-for
 we inherited this exactly. It is **post-cutover work by construction** — closing it moves
 response bytes and would invalidate the gate 3 parity run. He is digging up details.
 
-💡 **Offered: a test instance.** *"We do have a test instance of xras_admin; we could set
-that up against your new accounting service, if it would be helpful."* This is the
-observation window this document says does not exist. Worth taking.
+💡 **Offered and DECLINED: a test instance.** Steve offered *"a test instance of
+xras_admin; we could set that up against your new accounting service, if it would be
+helpful."*
+
+**Not taken for this cutover — decision 2026-08-11.** The cutover stays abrupt and every
+precondition in this document still stands as written: the § *One fact* banner above is
+unchanged, and the pre-cutover evidence remains the 41-payload corpus and the oracle.
+Nothing here depends on a test instance, and nobody should arrive on the day wondering
+whether one was set up.
+
+**Noted for future us.** If a later XRAS-facing change wants a rehearsal — the GET
+serialiser work in the paragraph above is the obvious candidate, since it deliberately
+moves response bytes — this offer is the way to get one, and it costs a
+conversation rather than a code change.
+
+⚠️ **This is not dual-posting and does not reopen it.** Dual-posting is ruled out (§ *One
+fact*, and `XRAS_REIMPLEMENTATION.md` § 6 Phase 5.5): it means production traffic
+reaching two systems. A test instance is a harness driven by us against a stack XRAS
+production never touches. Declining the harness does not weaken that ruling, and taking
+it later would not either.
 
 ### 5 · The repoint — this is the cutover
 

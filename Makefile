@@ -151,6 +151,13 @@ perf: ## Run perf regression + benchmark suite (serial)
 	$(config_env) && source etc/config_env.sh && \
 	    python3 -m pytest -m perf -n 0 -v
 
+# `-n 0` matches CI and is faster here (xdist startup dominates 22 tests), but it
+# is a preference, not a requirement — the tier is xdist-safe by design. See
+# tests/xras_audit.py and the `_comment` at the head of tests/stress/scenarios.json.
+stress: ## Run XRAS audit-row stress scenarios (serial; gated off by default)
+	$(config_env) && source etc/config_env.sh && \
+	    python3 -m pytest -m stress -n 0 -v
+
 # Where the browser tier points. Defaults to the compose `webapp` service —
 # the gunicorn/production target, and so the more honest thing to smoke.
 # Override for the dev server:  make e2e SAM_E2E_BASE_URL=http://localhost:5050

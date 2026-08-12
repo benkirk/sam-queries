@@ -54,6 +54,10 @@ payloads and no handler lacks one. Not on the DDL — dev and CI have both table
 tracked init scripts. Not on SMTP. The two items with external lead time (§ *Run these
 in parallel*) sit beside this sprint, not in front of it.
 
+> **As of 2026-08-11 the corpus is 41**, not eight. Sprint C shipped against eight; every
+> count in this document reads as of that time unless a dated note says otherwise. What
+> the larger corpus changed is collected in § *What the corpus still does not cover*.
+
 ---
 
 ## What this sprint delivers
@@ -95,11 +99,15 @@ Neither is code. Both have external lead time. Start them the day this sprint st
    corpus is 8 for the duration of this sprint; see § *What the corpus still does not
    cover* and the synthetic follow-on.
 
-2. **Confirm the 400/422 contract change with `allocations@access-ci.org`** (§ 2.5).
+2. ✅ **Done 2026-08-11. The 400/422 contract change is confirmed** (§ 2.5).
    Legacy answers 200/500; this port answers 400 for a malformed body and 422 with the
-   accumulated error list. **Broker retry behaviour on 4xx is unknown** and it is the
-   riskiest open unknown on the cutover path. One caller has ever hit this surface —
-   `18.223.62.77`, User-Agent `Ruby` — so this is a single-party conversation (§ 1.1).
+   accumulated error list. Steven Peckins (XRAS/UIUC) approved it as-is and answered
+   what this document called the riskiest open unknown: **XRAS does not auto-retry a
+   4xx** — posts are human-triggered from xras_admin. So the loop this bullet feared
+   cannot happen, and § 1258's *"XRAS owns the retry"* was right all along.
+   One caller has ever hit this surface — `18.223.62.77`, User-Agent `Ruby` — so this
+   was a single-party conversation (§ 1.1), and the party was Steve, not
+   `allocations@access-ci.org`. Full quote: `XRAS_CUTOVER_RUNBOOK.md` § gate 4.
 
 ---
 
@@ -176,10 +184,19 @@ wins, registration order Add → Update → Supplement → Adjust → Transfer �
 
 Three traps the corpus proved, each of which would produce a wrong dispatch:
 
-1. **"Update" is not an `actionType`.** It is a handler. The wire vocabulary is
-   `New, Renewal, Extension, Supplement, Transfer, Adjustment, Advance`
-   (`action/domain/model/Action.java:6`), encoded as `XRAS_ACTION_TYPES` in
-   `src/sam/queries/xras_actions.py`.
+1. **"Update" is not an `actionType`.** It is a handler. Legacy's *declared* vocabulary
+   is `New, Renewal, Extension, Supplement, Transfer, Adjustment, Advance`
+   (`action/domain/model/Action.java:6`).
+
+   > ⚠️ **Update 2026-08-11: the wire exceeds Java's list.** The 41-payload corpus
+   > contains four `Date Adjustment` actions — a type declared nowhere in `Action.java`,
+   > nowhere in these docs, and absent from the first eight payloads. `XRAS_ACTION_TYPES`
+   > in `src/sam/queries/xras_actions.py` now has **eight** members and is no longer a
+   > transcription of the Java enum. It parks, exactly as legacy does.
+   >
+   > This is § 1.4 of `XRAS_REIMPLEMENTATION.md` paying off: the manual-fallback subject
+   > line is the only record of the action types SAM does not service, which is the sole
+   > reason we found out at all.
 2. **`New` does not imply a request token.** `new_uwis0071_existing_ok.json` is an
    `actionType: 'New'` whose `requestNumber` is the projcode of a project that already
    existed — legacy routed it to `UpdateProjectActionService` and emitted the "Existing
@@ -187,6 +204,13 @@ Three traps the corpus proved, each of which would produce a wrong dispatch:
    resolve the projcode first, then branch. New and Update are one decision.
 3. **`requestType` is useless for dispatch.** All eight sampled payloads carry
    `requestType: 'New'`, including both Extensions, both Supplements and the Adjustment.
+
+   > **Stronger as of 2026-08-11, and the evidence inverted.** At 41 payloads
+   > `requestType` is not a constant — 38 `'New'`, 3 `'Renewal'` — and it *still*
+   > predicts the handler on nothing: those three are an Extension, a Supplement and a
+   > `Date Adjustment`. Note the last especially: legacy routes `actionType: 'Renewal'`
+   > to Update, and none of these three goes there. Dispatching on `requestType` would
+   > misroute all three.
 
 Accept **both** `Adjust` and `Adjustment`. The alias already exists for the query layer —
 `XRAS_ACTION_TYPE_ALIASES` and `canonical_action_type()`,
@@ -212,6 +236,12 @@ without touching the route again.
 
 **Corpus dispatch, verified against the snapshot.** Five of the eight projcodes are
 present in the obfuscated test database, so these are real lookups:
+
+> **2026-08-11: 30 of 41.** Every corpus projcode is now in the snapshot; the only
+> absentees are the eleven `NCAR####` request tokens, which are absent *because* they are
+> tokens — a New that had not yet minted a projcode when it was captured. The full
+> fixture → service map lives in
+> `tests/unit/test_xras_dispatch.py::TestTheCorpusDispatches`.
 
 | Payload | `actionType` | Project in snapshot | → |
 |---|---|---|---|
@@ -569,6 +599,7 @@ first, but the guard stays explicit rather than implied.
 
 Eight scrubbed production payloads in `tests/fixtures/xras/actions/`. Nothing except
 Transfer is sample-blocked, and Transfer routes to manual regardless.
+*(41 as of 2026-08-11; Transfer is still the only sample-blocked handler.)*
 
 | Handler | Fixtures |
 |---|---|
@@ -732,6 +763,13 @@ test coverage by it: `Small (No NSF award)` 146 · `Small` 87 · `Data` 79 ·
 project carries today.** That closes the question the table above could only answer by
 inspection:
 
+> **2026-08-11: 30 of 41, zero disagreements.** Every corpus projcode present in the
+> snapshot agrees, read independently from `project.allocation_type_id`. The other 11 are
+> request tokens with no project to check against and are labelled `derived` in
+> `tests/unit/test_xras_extractors.py::TestTheCorpusOracle` rather than counted as
+> evidence. ⚠️ The strategy coverage did **not** move: still 5 of 11 at 5× the payloads,
+> which makes it a measurement rather than a small sample.
+
 | Payload | Wire `allocationType` | Strategy | Resolved | Production |
 |---|---|---|---|---|
 | UCUB0166 / UWIS0064 / UWIS0071 | `Small` | 1, exact | `UNIV USS` / `Small` | ✅ same |
@@ -777,6 +815,12 @@ payload's primary `fosNum` equals the `area_of_interest_id` its real project car
 and every `fosName` XRAS sends is SAM's `area_of_interest` string verbatim. Reading
 this through `fos_aoi` would have mis-filed every XRAS project's research area
 silently, with no error. `XRAS_REIMPLEMENTATION.md` § *Data* is corrected.
+
+> ⚠️ **The third way weakened at 41 payloads (2026-08-11): "verbatim" → "ignoring
+> case".** 90 names match exactly, 2 differ in one letter's case (`fosNum` 39 —
+> SAM `'Ecological studies'`, wire `'Ecological Studies'`), none differ in substance.
+> The first two ways are untouched and the conclusion stands. It matters only for the
+> name fallback below, where `utf8mb3_bin` makes the comparison case-sensitive.
 
 Non-numeric `fosNum` falls back to a name lookup, mirroring the `NumberFormatException`
 arm. Empty `fos: []` → `No FieldOfScience (fos) objects`.
@@ -904,6 +948,25 @@ ambiguous role** (so none would be rejected by the defect-1 rule), and **every c
 payload names a PI** (so `Missing pi role` is reserved for a genuinely malformed
 request).
 
+> ⚠️ **The first fact did not survive the corpus growing to 41 (2026-08-11); the second
+> did.** Two payloads now name two current holders of a lead role —
+> `extension_ucbk0034_ok` (two Allocation Managers, both open-ended) and
+> `date_adjustment_ucub0155_manual`. So ambiguous roles **do** occur in production
+> traffic.
+>
+> It still cannot bite, and the reason is structural rather than lucky: only Add and
+> Update build a roster. Extension reads `actionEndDate` alone and never looks at
+> `roles[]`; `Date Adjustment` parks before any handler runs. **Zero of the 16
+> add/update payloads are ambiguous**, and that — not the corpus-wide claim — is what
+> `test_no_roster_building_payload_is_ambiguous` now asserts.
+>
+> Worth knowing because `ambiguous_role` is one of the three error strings SAM added
+> that legacy lacks: legacy picks by array order and never reports it. If this shape
+> ever arrives on a New, SAM 422s where legacy silently chose. See § *What the corpus
+> still does not cover*.
+>
+> All 41 still name a PI.
+
 **Defect 3 is live in the corpus, not hypothetical.** `adjustment_uwis0064_manual`
 carries roles beginning 2025-08-06 against an `actionBeginDate` of 2021-08-15. The
 roster excludes both people; both role assignments resolve. Legacy would set a lead and
@@ -922,7 +985,9 @@ Two divergences beyond the plan's list:
    so an *absent* `endDate` compares less than any real date and Java skips the role
    entirely. All eight corpus payloads send `endDate` as JSON `null`, never absent and
    never `""`, so the observed wire is unaffected — and "no end date" plainly means
-   current. `username` and `roleType` keep the `""` reading, because
+   current. *(Re-checked at 41 on 2026-08-11: still true of `roles[].endDate`. The one
+   empty string the larger corpus turned up is `grants[].subAwardNumber`, not on this
+   path.)* `username` and `roleType` keep the `""` reading, because
    `Username␣␣is missing` is the exact bytes legacy emits for a role with no person.
 2. **`User.is_active` is `active AND NOT locked`**; Java's `isActive()` is `active`
    alone. House rule § 5 says use the hybrid. Measured: production has **zero** locked
@@ -1259,6 +1324,13 @@ And a replay of a **successful** action is a double-apply on four of the six han
 once the data is fixed, so a replay that applied would race a resend with no idempotency
 key between them — `actionId` is in every payload but is not a column, only bytes inside
 `raw_payload`.
+
+✅ **Confirmed externally 2026-08-11**, having been inferred here from log evidence
+alone: *"POSTs are not automatically retried. They are triggered by a human — a user in
+xras_admin pushes a button."* (Steven Peckins, XRAS/UIUC). The resend is a person, which
+is stronger than this paragraph assumed — and the corpus shows one:
+`actionId` 388865 arrives as `NCAR4236` (failed) and again as `UCHI0020` (applied). See
+`tests/unit/test_xras_dispatch.py::TestOneActionIdSpansAFailureAndItsRetry`.
 
 What remains is the half that was always the valuable one: replay re-parses and
 re-validates stored bytes against the **current** schema code, writes nothing, and
