@@ -18,8 +18,8 @@ from typing import List, Dict
 from webapp.extensions import db, cache, user_aware_cache_key
 from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
-    htmx_success_message, modal_triggers, read_flag, read_layout, read_theme,
-    register_typeahead,
+    htmx_success_message, modal_triggers, read_flag, read_layout, read_page,
+    read_sort, read_theme, register_typeahead,
 )
 from webapp.api.xras.recheck import recheck_action
 from sam import fmt
@@ -801,25 +801,9 @@ def _parse_audit_filters(request_args, sort_whitelist):
         'end_date': end_date,
     }
 
-    sort_by = request_args.get('sort_by') or None
-    if sort_by and sort_by not in sort_whitelist:
-        sort_by = None
-    sort_dir = request_args.get('sort_dir', 'desc')
-    if sort_dir not in ('asc', 'desc'):
-        sort_dir = 'desc'
-
-    try:
-        page_n = max(1, int(request_args.get('page', 1)))
-    except (TypeError, ValueError):
-        page_n = 1
-    try:
-        per_page = int(request_args.get('per_page', 50))
-    except (TypeError, ValueError):
-        per_page = 50
-    per_page = max(10, min(per_page, 200))
-
-    return filters, {'sort_by': sort_by, 'sort_dir': sort_dir}, \
-           {'n': page_n, 'per_page': per_page}
+    return (filters,
+            read_sort(request_args, sort_whitelist),
+            read_page(request_args))
 
 
 @bp.route('/transactions_fragment')
@@ -1207,9 +1191,10 @@ def _parse_xras_filters(request_args):
 
     Deliberately a sibling of ``_parse_audit_filters`` rather than a
     generalisation of it. The sort/page halves are identical by convention (that
-    is what makes the shared ``sort_link`` / ``pagination`` macros work), but the
-    filter halves have nothing in common — projcode/resource/username/facility
-    versus status/action-type/request-number. Merging them would mean a parameter
+    is what makes the shared ``sort_link`` / ``pagination`` macros work) and now
+    come from the shared ``read_sort`` / ``read_page``; the filter halves have
+    nothing in common — projcode/resource/username/facility versus
+    status/action-type/request-number. Merging *those* would mean a parameter
     for every field either page has.
 
     Returns ``(filters, sort, page)`` with the same shapes ``_parse_audit_filters``
@@ -1261,25 +1246,9 @@ def _parse_xras_filters(request_args):
         'end_date': end_date,
     }
 
-    sort_by = request_args.get('sort_by') or None
-    if sort_by and sort_by not in XRAS_ACTION_SORT_COLUMNS:
-        sort_by = None
-    sort_dir = request_args.get('sort_dir', 'desc')
-    if sort_dir not in ('asc', 'desc'):
-        sort_dir = 'desc'
-
-    try:
-        page_n = max(1, int(request_args.get('page', 1)))
-    except (TypeError, ValueError):
-        page_n = 1
-    try:
-        per_page = int(request_args.get('per_page', 50))
-    except (TypeError, ValueError):
-        per_page = 50
-    per_page = max(10, min(per_page, 200))
-
-    return filters, {'sort_by': sort_by, 'sort_dir': sort_dir}, \
-           {'n': page_n, 'per_page': per_page}
+    return (filters,
+            read_sort(request_args, XRAS_ACTION_SORT_COLUMNS),
+            read_page(request_args))
 
 
 def _xras_action_types():

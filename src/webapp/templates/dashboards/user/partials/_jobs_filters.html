@@ -1,4 +1,7 @@
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
+{% from 'dashboards/fragments/ladder_range.html' import ladder_range %}
 {#
   Reusable jobs-explorer filter panel in the Unity .filter-sidebar house
   style (navy panel + gold title + white controls + "Clear filters"),
@@ -32,30 +35,10 @@
 #}
 {% macro jobs_filters(form_id, card_url, card_target, filters,
                       user_search_url, machine, scope, per_page_options,
-                      mode='project', active_tab='jobs') %}
-<form id="{{ form_id }}"
-      hx-get="{{ card_url }}"
-      hx-target="#{{ card_target }}"
-      hx-swap="outerHTML"
-      hx-trigger="submit">
-  <div class="filter-sidebar-header">
-    <h2 class="filter-sidebar-title">
-      <button class="filter-sidebar-toggle" type="button"
-              data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
-              aria-expanded="true" aria-controls="{{ form_id }}-fields">
-        Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
-      </button>
-    </h2>
-    {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
-       form and re-triggers its htmx submit. fk-picker.js also clears its
-       badge on the native reset event, so the user picker clears too. #}
-    <a class="filter-sidebar-clear" style="cursor: pointer;"
-       data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
-  </div>
-
-  {# Collapsed by default on phones (dashboard-init.js strips .show below md).
-     data-no-persist: the responsive default owns the initial state. #}
-  <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
+                      mode='project', active_tab='jobs', layout='desktop') %}
+{# hx-swap is outerHTML here, not innerHTML: the submit re-renders the whole
+   jobs card rather than one table body. #}
+{% call filter_panel_shell(form_id, card_url, card_target, hx_swap='outerHTML') %}
 
   {# Scope context — submitted alongside the visible filter controls, so
      the card route can rebuild the panel URLs. (The per-panel target_id
@@ -70,18 +53,32 @@
          data-jobs-active-tab-input>
 
   <div class="d-flex flex-wrap align-items-end gap-3">
+    {# One control for both edges. The after/before split was inherited from the
+       disk-scans explorer, but the question here is the same one: how far back?
+       Bands remove the date arithmetic; the exact inputs remain underneath. #}
     <div>
+      {% if filters.age_bands %}
+      {{ age_band_range(form_id, filters.age_bands, 'start', 'end',
+                        after_value=filters.start, before_value=filters.end,
+                        span=filters.age_band_span, label='Job age',
+                        after_label='Jobs ending after',
+                        before_label='Jobs ending before',
+                        layout=layout) }}
+      {% else %}
       <label class="form-label"><strong>Jobs ending after</strong></label>
       <input type="date" class="form-control"
              name="start" value="{{ filters.start }}"
              style="width:160px;">
+      {% endif %}
     </div>
+    {% if not filters.age_bands %}
     <div>
       <label class="form-label"><strong>Jobs ending before</strong></label>
       <input type="date" class="form-control"
              name="end" value="{{ filters.end }}"
              style="width:160px;">
     </div>
+    {% endif %}
 
     {% if mode != 'user' %}
     <div style="min-width:240px;">
@@ -135,29 +132,59 @@
     </div>
   </div>
 
-  <div class="d-flex flex-wrap align-items-end gap-3 mt-2">
-    {# step='any' on the float pairs — the browser's default step=1 would
-       reject fractional bounds like 1.5 h at submit time. #}
-    {% for lo_name, hi_name, label, width, step in [
-        ('min_nodes', 'max_nodes', 'Nodes', '90px', '1'),
-        ('min_cpus',  'max_cpus',  'CPUs',  '90px', '1'),
-        ('min_gpus',  'max_gpus',  'GPUs',  '90px', '1'),
-        ('min_wait_hours', 'max_wait_hours', 'Wait (hours)', '110px', 'any'),
-        ('min_elapsed_hours', 'max_elapsed_hours', 'Elapsed (hours)', '110px', 'any'),
-        ('min_reqmem_gb', 'max_reqmem_gb', 'Req mem (GB)', '110px', 'any')] %}
+  {# ── Size & runtime ───────────────────────────────────────────────────
+     Six range controls is a lot of panel, and most visits never touch them, so
+     they live behind a disclosure — which makes the RESTING panel shorter than
+     the six min/max pairs it replaces, not taller. It renders open whenever any
+     of the twelve bounds is in force, so a deep link or a histogram bar drill
+     never hides the filter it just applied; that also means there is no
+     client-side state to persist.
+
+     d-none, not a Bootstrap collapse: this is inside a filter form, and the
+     collapse data-api runs in the CAPTURE phase (see fragments/collapse.html). #}
+  <div id="{{ form_id }}-size-runtime"
+       class="d-flex flex-wrap align-items-end gap-3 mt-2{{ '' if filters.numeric_open else ' d-none' }}">
+    {# One row per dimension, ladder or not. `bands` is None when the plugin
+       can't supply one, and that row falls back to the bare pair it always
+       was — step='any' on the float ones, because the browser's default
+       step=1 would reject a fractional bound like 1.5 h at submit time. #}
+    {% for d in filters.numeric_ladders or [] %}
     <div>
-      <label class="form-label"><strong>{{ label }}</strong></label>
+      {% if d.bands %}
+      {{ ladder_range(form_id, d.bands,
+                      [{'key': 'min', 'name': d.lo_field, 'thumb': 'lo',
+                        'type': 'number', 'sublabel': 'Min',
+                        'title': 'Minimum ' ~ d.label,
+                        'value': filters[d.lo_field], 'min': 0, 'step': d.step},
+                       {'key': 'max', 'name': d.hi_field, 'thumb': 'hi',
+                        'type': 'number', 'sublabel': 'Max',
+                        'title': 'Maximum ' ~ d.label,
+                        'value': filters[d.hi_field], 'min': 0, 'step': d.step}],
+                      label=d.label, span=d.span, layout=layout,
+                      slug=d.dimension,
+                      lo_thumb='Smallest', hi_thumb='Largest',
+                      lo_title='Smallest ' ~ d.label ~ ' band',
+                      hi_title='Largest ' ~ d.label ~ ' band') }}
+      {% else %}
+      <label class="form-label"><strong>{{ d.label }}</strong></label>
       <div class="d-flex gap-1">
-        <input type="number" class="form-control" name="{{ lo_name }}"
-               value="{{ filters[lo_name] if filters[lo_name] is not none }}"
-               placeholder="min" min="0" step="{{ step }}" style="width:{{ width }};">
-        <input type="number" class="form-control" name="{{ hi_name }}"
-               value="{{ filters[hi_name] if filters[hi_name] is not none }}"
-               placeholder="max" min="0" step="{{ step }}" style="width:{{ width }};">
+        <input type="number" class="form-control" name="{{ d.lo_field }}"
+               value="{{ filters[d.lo_field] if filters[d.lo_field] is not none }}"
+               placeholder="min" min="0" step="{{ d.step }}" style="width:{{ d.width }};">
+        <input type="number" class="form-control" name="{{ d.hi_field }}"
+               value="{{ filters[d.hi_field] if filters[d.hi_field] is not none }}"
+               placeholder="max" min="0" step="{{ d.step }}" style="width:{{ d.width }};">
       </div>
+      {% endif %}
     </div>
     {% endfor %}
+  </div>
 
+  {# Rows + Apply sit OUTSIDE the disclosure. They were in the same flex row as
+     the numeric pairs before this control existed, and leaving them there would
+     have hidden the submit button whenever the section was collapsed — which is
+     its default state. #}
+  <div class="d-flex flex-wrap align-items-end gap-3 mt-2">
     <div>
       <label class="form-label"><strong>Rows</strong></label>
       <select class="form-select" name="per_page" style="width:100px;">
@@ -167,10 +194,17 @@
       </select>
     </div>
 
+    <button type="button" class="filter-section-toggle align-self-center"
+            data-action="toggle-custom-window"
+            data-target="#{{ form_id }}-size-runtime"
+            aria-controls="{{ form_id }}-size-runtime"
+            aria-expanded="{{ 'true' if filters.numeric_open else 'false' }}">
+      <i class="fas fa-sliders-h me-1"></i> Size &amp; runtime
+    </button>
+
     <button type="submit" class="btn btn-outline-white ms-auto">
       <i class="fas fa-filter me-1"></i> Apply
     </button>
   </div>
-  </div>
-</form>
+{% endcall %}
 {% endmacro %}

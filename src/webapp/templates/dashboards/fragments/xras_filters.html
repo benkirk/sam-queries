@@ -1,3 +1,5 @@
+{% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
 {#
   Filter bar for the XRAS action log (Allocations > XRAS).
 
@@ -13,10 +15,11 @@
   as the "an entity needing more than the spec expresses stays bespoke" rule in
   dashboards/admin/crud.py.
 
-  NOTE the panel-chrome block below is now copy-pasted in five places
-  (audit_filters, institution_filters, jobs_filters, _disk_scans_dir_filters, here).
-  It is a fair candidate for a `filter_panel_shell` macro — but extracting it is a
-  five-template refactor and does not belong in a feature change.
+  The panel chrome now comes from `filter_panel_shell`
+  (dashboards/fragments/filter_panel.html), shared with audit_filters,
+  institution_filters, jobs_filters and _disk_scans_dir_filters. The two
+  hand-rolled panels in allocations/projects.html and admin/projects.html stay
+  bespoke — neither uses htmx, and one has no collapse at all.
 
   Parameters:
     form_id        - unique id for this form (e.g. "xras-filters")
@@ -37,28 +40,7 @@
                       all_statuses=[], selected_statuses=[],
                       all_action_types=[], selected_action_types=[],
                       request_example='') %}
-<form id="{{ form_id }}"
-      hx-get="{{ fragment_url }}"
-      hx-target="#{{ target_id }}"
-      hx-swap="innerHTML"
-      hx-trigger="submit">
-    <div class="filter-sidebar-header">
-        <h2 class="filter-sidebar-title">
-            <button class="filter-sidebar-toggle" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
-                    aria-expanded="true" aria-controls="{{ form_id }}-fields">
-                Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
-            </button>
-        </h2>
-        {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
-           form and re-triggers its htmx submit — no inline onclick. #}
-        <a class="filter-sidebar-clear" style="cursor: pointer;"
-           data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
-    </div>
-
-    {# Collapsed by default on phones (dashboard-init.js strips .show below
-       md). data-no-persist: the responsive default owns the initial state. #}
-    <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
+{% call filter_panel_shell(form_id, fragment_url, target_id) %}
     <div class="d-flex flex-wrap align-items-start gap-3">
 
         <div>
@@ -83,38 +65,13 @@
                    style="width:160px;">
         </div>
 
-        {% if all_statuses %}
-        <div>
-            <label class="form-label"><strong>Status</strong></label>
-            <select class="form-control"
-                    name="status" multiple size="{{ [all_statuses|length, 5]|min }}"
-                    style="width:150px;">
-                {% for s in all_statuses %}
-                <option value="{{ s }}"
-                    {% if s in selected_statuses %}selected{% endif %}>{{ s }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
-        {% endif %}
+        {{ multiselect_filter('Status', 'status', all_statuses,
+                              selected_statuses, width='150px', max_size=5) }}
 
-        {% if all_action_types %}
-        <div>
-            <label class="form-label"><strong>Action type</strong></label>
-            <select class="form-control"
-                    name="action_type" multiple size="{{ [all_action_types|length, 5]|min }}"
-                    style="width:160px;">
-                {% for t in all_action_types %}
-                <option value="{{ t }}"
-                    {% if t in selected_action_types %}selected{% endif %}>{{ t }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
-        {% endif %}
+        {{ multiselect_filter('Action type', 'action_type', all_action_types,
+                              selected_action_types, width='160px', max_size=5) }}
 
         <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
     </div>
-    </div>
-</form>
+{% endcall %}
 {% endmacro %}

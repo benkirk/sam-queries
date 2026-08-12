@@ -1,0 +1,52 @@
+{% from 'dashboards/fragments/ladder_range.html' import ladder_range %}
+{#
+  Age-band range control: pick a contiguous span of named age bands instead of
+  typing two calendar dates.
+
+  A thin caller of `ladder_range` — the whole control lives there. What this
+  wrapper owns is the *date* vocabulary:
+
+  ⚠️ **The two dates are crossed.** A later band index is an OLDER file, so the
+  span's older edge (`after_field`) comes from the HIGH thumb and its newer edge
+  (`before_field`) from the LOW one. And the visual order is the opposite of the
+  slider's again: the slider's axis is age (youngest left) while the boxes are
+  calendar dates (earliest left), so `From` — the left box — is the OLDER bound
+  even though it holds the smaller date. Both inversions are declared below
+  rather than commented, which is why `thumb` is a per-field value.
+
+  The sublabels `From` / `To` are the accessible names (via `<label for>`),
+  which keeps WCAG 2.5.3 "Label in Name" satisfied where an `aria-label` of
+  "Accessed after" over a visible "From" would not. The caller's semantic
+  wording rides along as the description.
+
+  Args:
+    form_id       id of the enclosing filter form to write into and submit
+    bands         [{'label', <after_field>, <before_field>}, ...] in ladder
+                  order, newest first — from age_bands.band_map()
+    after_field   form field name for the OLDER edge  (e.g. 'accessed_after')
+    before_field  form field name for the NEWER edge  (e.g. 'accessed_before')
+    after_value   current raw value, 'YYYY-MM-DD' or ''
+    before_value  ditto
+    span          (lo, hi) band indices, or None for "custom" — from
+                  age_bands.bands_for(); None means the dates in force do not
+                  describe whole bands, so no span is marked
+    label         visible legend, e.g. 'File age'
+    after_label   semantic description for the older date input
+    before_label  ditto for the newer one
+    layout        'mobile' | 'tablet' | 'desktop'
+#}
+{% macro age_band_range(form_id, bands, after_field, before_field,
+                        after_value='', before_value='', span=None,
+                        label='Age', after_label='Older than',
+                        before_label='Newer than', layout='desktop') %}
+{{ ladder_range(
+     form_id, bands,
+     [{'key': 'from', 'name': after_field, 'thumb': 'hi', 'type': 'date',
+       'sublabel': 'From', 'title': after_label, 'value': after_value},
+      {'key': 'to', 'name': before_field, 'thumb': 'lo', 'type': 'date',
+       'sublabel': 'To', 'title': before_label, 'value': before_value}],
+     label=label, span=span, layout=layout, slug='age',
+     lo_thumb='Newest', hi_thumb='Oldest',
+     lo_title='Newest ' ~ label | lower ~ ' band',
+     hi_title='Oldest ' ~ label | lower ~ ' band') }}
+{% endmacro %}

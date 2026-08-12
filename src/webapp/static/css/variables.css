@@ -186,6 +186,13 @@
        this follow --surface-card would put a near-black badge on a blue pill. */
     --surface-on-brand: #ffffff;
 
+    /* Channels for the same role, so translucent washes ON a brand fill stay
+       token-driven — `rgba(var(--surface-on-brand-rgb), .28)`, the same idiom
+       `--ncar-blue-rgb` exists for. The age-band range control needs several
+       (track, ticks, focus halo, secondary labels) and every one of them sits
+       on the navy filter panel, not on a card. */
+    --surface-on-brand-rgb: 255, 255, 255;
+
     /* --- Lines --- */
     --border-default: #E2E8F0;
 

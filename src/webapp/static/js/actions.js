@@ -170,19 +170,118 @@
         htmx.trigger(form, 'submit');
     });
 
+    /* Ladder range control (dashboards/fragments/ladder_range.html, and its
+     * age_band_range wrapper).
+     *
+     * Two handlers, on two channels, because the split is the whole point:
+     * `input` fires continuously while a thumb is dragged and only repaints;
+     * `change` fires once on release (and on each keyboard step) and is what
+     * submits. Wiring the submit to `input` would fire a request per pixel.
+     *
+     * Neither does any arithmetic. The band -> values map is resolved
+     * server-side and travels in a JSON data block, so these only ever index
+     * it. That keeps one source of truth for the ladder, and for the date
+     * ladders it keeps timezone reasoning out of the browser entirely. */
+    function ladderRangeState(el) {
+        var root = el.closest('[data-ladder-range]');
+        if (!root) { return null; }
+        var lo = root.querySelector('[data-ladder-lo]');
+        var hi = root.querySelector('[data-ladder-hi]');
+        if (!lo || !hi) { return null; }
+        /* Thumbs must not cross: clamp whichever one moved to the other. */
+        if (+lo.value > +hi.value) {
+            el.value = (el === lo) ? hi.value : lo.value;
+        }
+        var block = root.querySelector('.ladder-range-bands');
+        return {
+            root: root, lo: lo, hi: hi,
+            bands: block ? JSON.parse(block.textContent) : [],
+        };
+    }
+
+    function ladderRangePaint(s) {
+        var lo = +s.lo.value, hi = +s.hi.value;
+        var fill = s.root.querySelector('.ladder-range-fill');
+        if (fill) {
+            fill.style.setProperty('--lo', lo);
+            fill.style.setProperty('--hi', hi);
+        }
+        /* aria-valuetext is what makes a thumb announce "3-4 Years" rather
+         * than "6"; it has to track the value, not just the initial render. */
+        s.lo.setAttribute('aria-valuetext', s.bands[lo].label);
+        s.hi.setAttribute('aria-valuetext', s.bands[hi].label);
+        var out = s.root.querySelector('.ladder-range-readout');
+        if (out) {
+            out.textContent = (lo === hi) ? s.bands[lo].label
+                                          : s.bands[lo].label + ' – ' + s.bands[hi].label;
+        }
+        /* Any move lands on band edges by definition, so whatever hand-typed
+         * range put the control in its custom state is no longer in force. */
+        s.root.classList.remove('ladder-range--custom');
+    }
+
+    window.registerAction('ladder-range-preview', function (el) {
+        var s = ladderRangeState(el);
+        if (!s || !s.bands.length) { return; }
+        ladderRangePaint(s);
+    });
+
+    window.registerAction('ladder-range-commit', function (el) {
+        var s = ladderRangeState(el);
+        if (!s || !s.bands.length) { return; }
+        /* Repaint here too rather than relying on `input` having fired first:
+         * a <select> and a programmatic change can both arrive as `change`
+         * alone, and a readout that disagrees with the thumbs is worse than
+         * one that repaints twice. */
+        ladderRangePaint(s);
+        var form = document.getElementById(s.root.dataset.formId);
+        if (!form) { return; }
+        /* Which thumb feeds which bound is DECLARED per field, not assumed:
+         * most ranges are uncrossed, but on an age ladder a later band is an
+         * OLDER file, so its older edge comes from the HIGH thumb. The band
+         * row is keyed by the field's own `name`, so one loop serves every
+         * vocabulary without a dimension->field table living here. */
+        var fields = s.root.querySelectorAll('[data-ladder-field]');
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            var band = s.bands[f.dataset.thumb === 'hi' ? +s.hi.value : +s.lo.value];
+            var v = band[f.name];
+            /* Not `|| ''` — a numeric ladder's floor is a legitimate 0, and
+             * `0 || ''` would blank the bound instead of setting it. Only a
+             * genuinely absent bound (the open-ended band) clears the field. */
+            f.value = (v === null || v === undefined) ? '' : v;
+        }
+        htmx.trigger(form, 'submit');
+    });
+
     /* Reveal the custom date inputs beside a set of window pills. Plain
      * d-none toggle rather than a Bootstrap collapse: this sits inside a
      * filter form, and Bootstrap's collapse data-api runs in the CAPTURE
      * phase on document, which is what makes it hostile to controls nested
      * near buttons (see dashboards/fragments/collapse.html). */
     window.registerAction('toggle-custom-window', function (el) {
-        var panel = document.querySelector(el.dataset.target);
+        var sel = el.dataset.target;
+        var panel = document.querySelector(sel);
         if (!panel) { return; }
         var hidden = panel.classList.toggle('d-none');
-        el.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+        /* Mirror the state onto EVERY trigger aimed at this panel, not just
+         * the one clicked: ladder_range gives its panel two (one per axis
+         * end), and a stale aria-expanded on the other is a lie to a screen
+         * reader. A lone trigger — window_pills — is the same code path. */
+        Array.prototype.forEach.call(
+            document.querySelectorAll('[data-action="toggle-custom-window"]'),
+            function (trigger) {
+                if (trigger.dataset.target === sel) {
+                    trigger.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+                }
+            });
         if (!hidden) {
-            var first = panel.querySelector('input');
-            if (first) { first.focus(); }
+            /* data-focus names the input this particular trigger is about;
+             * without it the first one wins, which is right for a single
+             * trigger and wrong for two that mean different bounds. */
+            var focus = (el.dataset.focus && panel.querySelector(el.dataset.focus))
+                || panel.querySelector('input');
+            if (focus) { focus.focus(); }
         }
     });
 

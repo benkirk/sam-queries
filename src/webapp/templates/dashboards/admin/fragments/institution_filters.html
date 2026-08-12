@@ -1,3 +1,4 @@
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
 {#
   Filter bar for the admin Institutions tab.
 
@@ -24,32 +25,13 @@
                              active_only=False,
                              show_users_projects=False,
                              active_users_projects=False) %}
-<form id="{{ form_id }}"
-      hx-get="{{ fragment_url }}"
-      hx-target="#{{ target_id }}"
-      hx-swap="innerHTML"
-      hx-trigger="submit">
+{% call filter_panel_shell(form_id, fragment_url, target_id) %}
 
-    {# Outer Organizations-card state — preserved across inner submits. #}
+    {# Outer Organizations-card state — preserved across inner submits. Inside
+       the collapse so the header keeps it as an immediate sibling; htmx submits
+       it either way. #}
     <input type="hidden" name="active_only" value="{{ 1 if active_only else 0 }}">
 
-    <div class="filter-sidebar-header">
-        <h2 class="filter-sidebar-title">
-            <button class="filter-sidebar-toggle" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
-                    aria-expanded="true" aria-controls="{{ form_id }}-fields">
-                Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
-            </button>
-        </h2>
-        {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
-           form and re-triggers its htmx submit — no inline onclick. #}
-        <a class="filter-sidebar-clear" style="cursor: pointer;"
-           data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
-    </div>
-
-    {# Collapsed by default on phones (dashboard-init.js strips .show below
-       md). data-no-persist: the responsive default owns the initial state. #}
-    <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
     <div class="d-flex flex-wrap align-items-start gap-3">
 
         <div>
@@ -135,6 +117,5 @@
         </button>
 
     </div>
-    </div>
-</form>
+{% endcall %}
 {% endmacro %}

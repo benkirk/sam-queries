@@ -2094,3 +2094,255 @@ def test_single_owner_band_without_window_keeps_table(app):
     assert 'benkirk' in body                            # user still listed
     assert 'Top users by' in body                       # per-user table kept
     assert 'owner_uid=7' not in body                    # but no directory drill
+
+
+# ---------------------------------------------------------------------------
+# Age-band range control on the explorer filter panel
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def _anchored_scan(monkeypatch):
+    """Pin the scan date the age bands are measured back from.
+
+    Anchoring is on the scan, not today (service.scan_reference_date), so the
+    control's dates match the access-history chart's bands exactly — pinning it
+    is what makes the expected dates below stable.
+    """
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'scan_reference_date',
+                        lambda scope: datetime(2026, 6, 1))
+    return datetime(2026, 6, 1)
+
+
+def _explore(auth_client, project, query=''):
+    return auth_client.get(
+        f'/dashboards/user/disk-scans/{project.projcode}/directories/explore'
+        f'?resource={_RES}{query}'
+    ).get_data(as_text=True)
+
+
+def test_age_bands_render_with_the_ladder_as_a_data_block(
+        auth_client, active_project, _anchored_scan):
+    """The ladder travels as JSON so the browser only indexes it — no date
+    arithmetic, and therefore no timezone reasoning, in JavaScript."""
+    body = _explore(auth_client, active_project)
+    assert 'ladder-range-bands' in body
+    assert '&lt; 1 Month' in body or '< 1 Month' in body
+    # Both thumbs present, and each announces a band name rather than an index.
+    # Scoped by the control's own id namespace: the panel carries a second
+    # ladder (average file size), so a page-wide count would pass on the
+    # wrong control's markup.
+    import re
+    assert len(re.findall(r'id="[^"]*-age-lo"', body)) == 1
+    assert len(re.findall(r'id="[^"]*-age-hi"', body)) == 1
+    assert 'aria-valuetext=' in body
+
+
+def test_the_two_date_inputs_remain_the_only_named_fields(
+        auth_client, active_project, _anchored_scan):
+    """Everything else in the control is unnamed UI that writes into these two.
+    Two same-named controls would make form.elements[name] a RadioNodeList and
+    silently break assignment — the trap window_pills.html documents."""
+    body = _explore(auth_client, active_project)
+    assert body.count('name="accessed_after"') == 1
+    assert body.count('name="accessed_before"') == 1
+    # The range inputs carry no name, so they submit nothing.
+    assert 'type="range"' in body
+    assert 'name="age' not in body
+
+
+def test_a_filter_on_band_edges_marks_that_span(
+        auth_client, active_project, _anchored_scan):
+    """Dates that ARE band edges put the thumbs on those bands: '< 1 Month' is
+    ages [0, 30) from the 2026-06-01 scan."""
+    body = _explore(auth_client, active_project,
+                    '&accessed_after=2026-05-02&accessed_before=2026-06-01')
+    assert 'value="0"' in body
+    assert 'Custom range' not in body
+
+
+def test_a_hand_typed_range_renders_the_custom_state(
+        auth_client, active_project, _anchored_scan):
+    """Dates that describe no whole band must not snap the handles somewhere
+    the filter isn't."""
+    body = _explore(auth_client, active_project,
+                    '&accessed_after=2026-03-17&accessed_before=2026-04-02')
+    assert 'Custom range' in body
+    # The typed values still round-trip into the exact-date inputs.
+    assert 'value="2026-03-17"' in body
+    assert 'value="2026-04-02"' in body
+
+
+def test_mobile_gets_selects_instead_of_thumbs(
+        auth_client, active_project, _anchored_scan):
+    """Two thumbs a few pixels apart is the worst case at 390px, so the layout
+    axis picks the presentation server-side rather than rendering both."""
+    body = _explore(auth_client, active_project, '&layout=mobile')
+    assert 'type="range"' not in body
+    # The two <select>s stand in for the two thumbs, under the same ids.
+    # Matched on `id=` rather than the bare suffix: on this layout each also
+    # has a <label for>, so a substring count would see two of everything.
+    import re
+    assert len(re.findall(r'id="[^"]*-age-lo"', body)) == 1
+    assert len(re.findall(r'id="[^"]*-age-hi"', body)) == 1
+    assert body.count('name="accessed_before"') == 1
+
+
+def test_no_scan_date_falls_back_to_the_bare_date_pair(
+        auth_client, active_project, monkeypatch):
+    """No anchor means no bands can be computed. The panel must still filter —
+    the same degrade-not-500 contract every fs-scans surface has."""
+    from webapp.disk_scans import service
+    monkeypatch.setattr(service, 'scan_reference_date', lambda scope: None)
+    body = _explore(auth_client, active_project)
+    # Only the AGE ladder degrades. The size ladder is anchor-free, so it is
+    # still there — asserting on the age control's own ids rather than on the
+    # shared class is what keeps this test about the thing it names.
+    import re
+    assert not re.search(r'id="[^"]*-age-lo"', body)
+    assert 'Accessed after' in body and 'Accessed before' in body
+    assert body.count('name="accessed_before"') == 1
+
+
+def test_from_and_to_label_the_opposite_ends_from_the_slider(
+        auth_client, active_project, _anchored_scan):
+    """The exact-date pair reads in the OPPOSITE direction to the slider above
+    it: the slider's axis is age (youngest left), these are calendar dates
+    (earliest left). So `From` binds the OLDER bound — `accessed_after` — even
+    though it holds the smaller date. Pinning it because the two controls look
+    like they disagree without the labels, and a future 'tidy-up' that swaps
+    them would be silently wrong.
+    """
+    import re
+    body = _explore(auth_client, active_project)
+
+    def field_for(label_text):
+        m = re.search(r'<label[^>]*for="([^"]+)"[^>]*>\s*' + label_text, body)
+        assert m, f'no <label> for {label_text}'
+        m2 = re.search(r'<input[^>]*id="' + re.escape(m.group(1)) + r'"[^>]*>', body)
+        assert m2, f'no input carrying id {m.group(1)}'
+        return m2.group(0)
+
+    assert 'name="accessed_after"' in field_for('From')
+    assert 'name="accessed_before"' in field_for('To')
+
+
+def test_exact_inputs_hide_behind_the_axis_ends(
+        auth_client, active_project, _anchored_scan):
+    """The escape hatch costs no vertical space until asked for. Both axis
+    end-labels are buttons onto the same panel, which starts collapsed while a
+    whole span is in force."""
+    import re
+    body = _explore(auth_client, active_project)
+    panel = re.search(
+        r'<div class="ladder-range-exact([^"]*)"\s+id="([^"]*-age-exact)"', body)
+    assert panel, 'no exact panel for the age control'
+    assert 'd-none' in panel.group(1)
+    ends = [e for e in re.findall(r'<button[^>]*class="ladder-range-end"[^>]*>', body)
+            if f'data-target="#{panel.group(2)}"' in e]
+    assert len(ends) == 2, 'each control gets exactly two ends, both its own'
+    for end in ends:
+        assert 'aria-expanded="false"' in end
+
+
+def test_each_axis_end_focuses_its_own_bound(
+        auth_client, active_project, _anchored_scan):
+    """The reveal is direction-aware, and on an age ladder that is CROSSED: the
+    left (newest) end of the axis opens onto `accessed_before`, which is the
+    box on the RIGHT. Resolving by declared thumb rather than by position is
+    the whole reason `thumb` is a per-field value — a tidy-up that paired them
+    left-to-left would be silently wrong in exactly the way the From/To labels
+    above already guard against."""
+    import re
+    body = _explore(auth_client, active_project)
+    ends = re.findall(r'<button[^>]*class="ladder-range-end"[^>]*>', body)
+    focus = [re.search(r'data-focus="#([^"]+)"', e).group(1) for e in ends]
+
+    def name_of(element_id):
+        m = re.search(r'<input[^>]*id="' + re.escape(element_id) + r'"[^>]*>', body)
+        assert m, f'no input carrying id {element_id}'
+        return re.search(r'name="([^"]+)"', m.group(0)).group(1)
+
+    # Left end == newest == the NEWER bound; right end == oldest == the older.
+    assert name_of(focus[0]) == 'accessed_before'
+    assert name_of(focus[1]) == 'accessed_after'
+
+
+def test_a_custom_range_renders_the_exact_inputs_open(
+        auth_client, active_project, _anchored_scan):
+    """A hand-typed range came from that panel, so collapsing it on reload
+    would hide the only control that explains the filter in force."""
+    import re
+    body = _explore(auth_client, active_project,
+                    '&accessed_after=2026-03-17&accessed_before=2026-04-02')
+    panel = re.search(r'<div class="ladder-range-exact([^"]*)"\s+id="', body)
+    assert panel and 'd-none' not in panel.group(1)
+    assert body.count('aria-expanded="true"') >= 2
+
+
+def test_mobile_keeps_the_exact_inputs_visible(
+        auth_client, active_project, _anchored_scan):
+    """The mobile presentation is two selects with no axis end-labels, so
+    there is nothing to hang the reveal on. Hiding the panel there would leave
+    it unreachable rather than merely tucked away."""
+    import re
+    body = _explore(auth_client, active_project, '&layout=mobile')
+    assert 'ladder-range-end' not in body
+    panel = re.search(r'<div class="ladder-range-exact([^"]*)"\s+id="', body)
+    assert panel and 'd-none' not in panel.group(1)
+
+
+def test_average_file_size_gets_its_own_ladder(auth_client, active_project):
+    """`min_avg_size`/`max_avg_size` have always reached the service, but until
+    now the only way to set them was clicking a file-size histogram bar — so a
+    viewer who arrived that way could not adjust or clear the filter. The panel
+    now carries the same ladder the chart plots."""
+    import re
+    body = _explore(auth_client, active_project)
+    assert len(re.findall(r'id="[^"]*-size-lo"', body)) == 1
+    assert len(re.findall(r'id="[^"]*-size-hi"', body)) == 1
+    assert body.count('name="min_avg_size"') == 1
+    assert body.count('name="max_avg_size"') == 1
+
+
+def test_the_size_ladder_is_the_charts_own_vocabulary(auth_client, active_project):
+    """Not a second vocabulary: the band edges the control offers are exactly
+    the plugin's SIZE_BUCKETS, which is what the file-size histogram bins on and
+    what its band clicks drill with. A slider position and the equivalent bar
+    click therefore select the same directories."""
+    import json
+    import re
+    from fs_scans.core.models import SIZE_BUCKETS
+    body = _explore(auth_client, active_project)
+    blocks = re.findall(
+        r'<script type="application/json" class="ladder-range-bands">(.*?)</script>',
+        body, re.S)
+    payloads = [json.loads(b) for b in blocks]
+    size = next(p for p in payloads if 'min_avg_size' in p[0])
+    assert [(r['label'], r['min_avg_size'], r['max_avg_size']) for r in size] == \
+        [tuple(b) for b in SIZE_BUCKETS]
+
+
+def test_the_size_ladders_floor_is_a_real_zero(auth_client, active_project):
+    """The bottom band's lower edge is 0, and it has to survive as 0 into the
+    JSON the browser indexes. A falsy check anywhere on this path would submit
+    "no lower bound" instead — see the `|| ''` note in actions.js."""
+    import json
+    import re
+    body = _explore(auth_client, active_project)
+    blocks = re.findall(
+        r'<script type="application/json" class="ladder-range-bands">(.*?)</script>',
+        body, re.S)
+    size = next(p for p in (json.loads(b) for b in blocks) if 'min_avg_size' in p[0])
+    assert size[0]['min_avg_size'] == 0
+    assert size[-1]['max_avg_size'] is None       # open-ended top band
+
+
+def test_a_size_band_drill_puts_the_slider_on_that_band(auth_client, active_project):
+    """The round-trip that proves the two entry points share one vocabulary:
+    arrive with the bounds a histogram band click produces, and the control
+    comes back showing that span rather than its custom state."""
+    body = _explore(auth_client, active_project,
+                    '&min_avg_size=1048576&max_avg_size=10485760')
+    assert 'value="1048576"' in body
+    assert body.count('Custom range') == 0 or 'Avg file size' in body

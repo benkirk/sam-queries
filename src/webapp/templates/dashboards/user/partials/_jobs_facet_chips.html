@@ -1,8 +1,14 @@
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {#
   Facet chip strip for the jobs explorer — live value counts per filter
   dimension, computed by service.jobs_facets under the table's exact
   filter set (self-exclusion on: a dimension's own chips stay complete
   while its filter is active, so chips double as switchers).
+
+  The chips themselves come from the neutral `facet_row`
+  (dashboards/fragments/facet_chips.html), which was generalised from this
+  template. What stays here is what is jobs-shaped: the dimension list, the
+  NULL-FK drop, and the "no rows at all → no surface" rule.
 
   Rendered by jobs_card.html inside the card wrapper, so the strip is
   re-rendered by the same request that re-renders the panels — which is
@@ -12,17 +18,12 @@
   previous filter set's counts. Sorting and paging no longer recompute
   it, either — neither can change a count.)
 
-  Layout is a two-column grid (.jobs-facets, dashboard.css): one row per
+  Layout is the two-column .facet-grid (dashboard.css): one row per
   dimension, so a label always opens its own line and its values wrap
   under themselves rather than trailing into the next dimension's chips.
   With everything on one flex line, a long queue list pushed "QoS:" and
   "Exit:" into the middle of a row and their overflow wrapped away from
   any label at all.
-
-  A chip click writes its value into the named field of the filter panel
-  form and re-submits it (data-action "set-filter-submit" in
-  static/js/actions.js — CSP-clean, no inline handlers). The active chip
-  is filled and clicking it clears the filter (empty data-value).
 
   Args:
     facets   — {dim: [{'value', 'count'}, …]} from service.jobs_facets
@@ -33,10 +34,12 @@
 {% if facets %}
 {#- Collect first, render second: a dimension with no filterable values
     contributes no grid row, and a strip with no rows at all must not
-    render its surface. .append() returns None, so the {% if %} body
-    stays empty — the list-building idiom for a template environment
-    without the jinja `do` extension. NULL-FK rows are counts, not
-    values you can filter by, so they never become chips. -#}
+    render its surface — which is why the .facet-grid div cannot simply
+    wrap three unconditional facet_row calls the way the other callers do.
+    .append() returns None, so the {% if %} body stays empty — the
+    list-building idiom for a template environment without the jinja `do`
+    extension. NULL-FK rows are counts, not values you can filter by, so
+    they never become chips. -#}
 {% set _groups = [] %}
 {% for dim, label in [('queue', 'Queue'), ('qos', 'QoS'),
                       ('exit_status', 'Exit code')] %}
@@ -44,24 +47,12 @@
   {%- if _rows and _groups.append((dim, label, _rows)) -%}{%- endif -%}
 {% endfor %}
 {% if _groups %}
-<div class="jobs-facets">
+<div class="facet-grid">
   {% for dim, label, rows in _groups %}
-  <div class="jobs-facet-label">{{ label }}</div>
-  <div class="jobs-facet-values">
-    {% for row in rows %}
-      {% set active = ((filters.get(dim) or '') | string == row.value | string) %}
-      <button type="button"
-              class="facet-chip{{ ' is-active' if active }}"
-              data-action="set-filter-submit"
-              data-form-id="{{ form_id }}"
-              data-field="{{ dim }}"
-              data-value="{{ '' if active else row.value }}"
-              title="{{ 'Clear this filter' if active else 'Filter by ' ~ label ~ ' ' ~ row.value }}">
-        <span class="facet-chip-value">{{ row.value }}</span>
-        <span class="facet-chip-count">{{ row.count | fmt_number }}</span>
-      </button>
-    {% endfor %}
-  </div>
+  {#- One selection per dimension here, so the active list is the single
+      current value; facet_row compares it as a string. -#}
+  {{ facet_row(label, rows, form_id, dim,
+               [filters.get(dim)] if filters.get(dim) else []) }}
   {% endfor %}
 </div>
 {% endif %}
