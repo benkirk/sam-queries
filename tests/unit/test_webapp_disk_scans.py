@@ -2211,3 +2211,67 @@ def test_from_and_to_label_the_opposite_ends_from_the_slider(
 
     assert 'name="accessed_after"' in field_for('From')
     assert 'name="accessed_before"' in field_for('To')
+
+
+def test_exact_inputs_hide_behind_the_axis_ends(
+        auth_client, active_project, _anchored_scan):
+    """The escape hatch costs no vertical space until asked for. Both axis
+    end-labels are buttons onto the same panel, which starts collapsed while a
+    whole span is in force."""
+    import re
+    body = _explore(auth_client, active_project)
+    panel = re.search(r'<div class="ladder-range-exact([^"]*)"\s+id="([^"]+)"', body)
+    assert panel, 'no exact panel'
+    assert 'd-none' in panel.group(1)
+    ends = re.findall(r'<button[^>]*class="ladder-range-end"[^>]*>', body)
+    assert len(ends) == 2
+    for end in ends:
+        assert f'data-target="#{panel.group(2)}"' in end
+        assert 'aria-expanded="false"' in end
+
+
+def test_each_axis_end_focuses_its_own_bound(
+        auth_client, active_project, _anchored_scan):
+    """The reveal is direction-aware, and on an age ladder that is CROSSED: the
+    left (newest) end of the axis opens onto `accessed_before`, which is the
+    box on the RIGHT. Resolving by declared thumb rather than by position is
+    the whole reason `thumb` is a per-field value — a tidy-up that paired them
+    left-to-left would be silently wrong in exactly the way the From/To labels
+    above already guard against."""
+    import re
+    body = _explore(auth_client, active_project)
+    ends = re.findall(r'<button[^>]*class="ladder-range-end"[^>]*>', body)
+    focus = [re.search(r'data-focus="#([^"]+)"', e).group(1) for e in ends]
+
+    def name_of(element_id):
+        m = re.search(r'<input[^>]*id="' + re.escape(element_id) + r'"[^>]*>', body)
+        assert m, f'no input carrying id {element_id}'
+        return re.search(r'name="([^"]+)"', m.group(0)).group(1)
+
+    # Left end == newest == the NEWER bound; right end == oldest == the older.
+    assert name_of(focus[0]) == 'accessed_before'
+    assert name_of(focus[1]) == 'accessed_after'
+
+
+def test_a_custom_range_renders_the_exact_inputs_open(
+        auth_client, active_project, _anchored_scan):
+    """A hand-typed range came from that panel, so collapsing it on reload
+    would hide the only control that explains the filter in force."""
+    import re
+    body = _explore(auth_client, active_project,
+                    '&accessed_after=2026-03-17&accessed_before=2026-04-02')
+    panel = re.search(r'<div class="ladder-range-exact([^"]*)"\s+id="', body)
+    assert panel and 'd-none' not in panel.group(1)
+    assert body.count('aria-expanded="true"') >= 2
+
+
+def test_mobile_keeps_the_exact_inputs_visible(
+        auth_client, active_project, _anchored_scan):
+    """The mobile presentation is two selects with no axis end-labels, so
+    there is nothing to hang the reveal on. Hiding the panel there would leave
+    it unreachable rather than merely tucked away."""
+    import re
+    body = _explore(auth_client, active_project, '&layout=mobile')
+    assert 'ladder-range-end' not in body
+    panel = re.search(r'<div class="ladder-range-exact([^"]*)"\s+id="', body)
+    assert panel and 'd-none' not in panel.group(1)

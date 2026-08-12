@@ -260,13 +260,28 @@
      * phase on document, which is what makes it hostile to controls nested
      * near buttons (see dashboards/fragments/collapse.html). */
     window.registerAction('toggle-custom-window', function (el) {
-        var panel = document.querySelector(el.dataset.target);
+        var sel = el.dataset.target;
+        var panel = document.querySelector(sel);
         if (!panel) { return; }
         var hidden = panel.classList.toggle('d-none');
-        el.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+        /* Mirror the state onto EVERY trigger aimed at this panel, not just
+         * the one clicked: ladder_range gives its panel two (one per axis
+         * end), and a stale aria-expanded on the other is a lie to a screen
+         * reader. A lone trigger — window_pills — is the same code path. */
+        Array.prototype.forEach.call(
+            document.querySelectorAll('[data-action="toggle-custom-window"]'),
+            function (trigger) {
+                if (trigger.dataset.target === sel) {
+                    trigger.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+                }
+            });
         if (!hidden) {
-            var first = panel.querySelector('input');
-            if (first) { first.focus(); }
+            /* data-focus names the input this particular trigger is about;
+             * without it the first one wins, which is right for a single
+             * trigger and wrong for two that mean different bounds. */
+            var focus = (el.dataset.focus && panel.querySelector(el.dataset.focus))
+                || panel.querySelector('input');
+            if (focus) { focus.focus(); }
         }
     });
 

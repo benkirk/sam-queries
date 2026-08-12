@@ -73,6 +73,13 @@
 {%- set hi = span[1] if span else (n - 1) -%}
 {%- set lo_title = lo_title or (lo_thumb ~ ' ' ~ label | lower) -%}
 {%- set hi_title = hi_title or (hi_thumb ~ ' ' ~ label | lower) -%}
+{%- set exact_id = form_id ~ '-' ~ slug ~ '-exact' -%}
+{# Which field each axis end opens onto. Resolved by declared `thumb`, not by
+   position: the age ladders put the low thumb's field on the RIGHT. #}
+{%- set lo_field = fields | selectattr('thumb', 'equalto', 'lo') | first -%}
+{%- set hi_field = fields | selectattr('thumb', 'equalto', 'hi') | first -%}
+{# Only the slider presentation has end-labels to hang the reveal on. #}
+{%- set revealable = layout != 'mobile' -%}
 {# --custom: the bounds in force describe no whole span, so the thumbs have no
    honest position. They fall back to the full range, and the modifier mutes the
    fill so the control doesn't *claim* a span it hasn't got. #}
@@ -132,9 +139,25 @@
            data-action-input="ladder-range-preview"
            data-action-change="ladder-range-commit">
   </div>
+  {# The axis end-labels double as the way in to exact entry: each end reveals
+     the same panel but focuses ITS OWN bound, which is what `data-focus` is
+     for. Real <button>s, not the styled <span>s these were — a span takes no
+     keyboard focus, and this is now the only route to the escape hatch. #}
   <div class="ladder-range-ends">
-    <span>{{ bands[0].label }}</span>
-    <span>{{ bands[n - 1].label }}</span>
+    <button type="button" class="ladder-range-end"
+            data-action="toggle-custom-window"
+            data-target="#{{ exact_id }}"
+            {% if lo_field %}data-focus="#{{ form_id }}-{{ slug }}-{{ lo_field.key }}"{% endif %}
+            aria-controls="{{ exact_id }}"
+            aria-expanded="{{ 'false' if span else 'true' }}"
+            title="Set an exact value">{{ bands[0].label }}</button>
+    <button type="button" class="ladder-range-end"
+            data-action="toggle-custom-window"
+            data-target="#{{ exact_id }}"
+            {% if hi_field %}data-focus="#{{ form_id }}-{{ slug }}-{{ hi_field.key }}"{% endif %}
+            aria-controls="{{ exact_id }}"
+            aria-expanded="{{ 'false' if span else 'true' }}"
+            title="Set an exact value">{{ bands[n - 1].label }}</button>
   </div>
   {% endif %}
 
@@ -151,8 +174,16 @@
 
      The visible text is the accessible name (via <label for>), which keeps
      WCAG 2.5.3 "Label in Name" satisfied; the caller's semantic wording rides
-     along as the description (`title`). #}
-  <div class="ladder-range-exact">
+     along as the description (`title`).
+
+     ⚠️ Hidden until an axis end is clicked — but only where there IS an end to
+     click. The mobile presentation is two selects with no end-labels, so it
+     keeps the fields visible rather than hiding them behind no trigger at all.
+     And whenever the bounds in force describe no whole span, this renders OPEN:
+     those values came from here, and collapsing them on reload would hide the
+     only control that explains the filter. Same rule window_pills.html uses. #}
+  <div class="ladder-range-exact{{ ' d-none' if (revealable and span) else '' }}"
+       id="{{ exact_id }}">
     {%- for f in fields %}
     {%- if not loop.first %}
     <span class="ladder-range-dash" aria-hidden="true">–</span>

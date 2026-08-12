@@ -1699,6 +1699,37 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     margin-bottom: 0.25rem;
 }
 
+/* The end-labels are buttons that reveal the exact-entry panel, so they have
+   to look like the labels they replaced while still reading as actionable —
+   hence a full button reset plus a dotted underline. Dotted rather than solid:
+   solid on both ends of a slider axis reads as two links out of the control,
+   which is not what they do. */
+.ladder-range-end {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+}
+
+.ladder-range-end:hover {
+    color: var(--surface-on-brand);
+}
+
+/* Same reason as the thumbs: an outline ring on a translucent white label over
+   navy all but disappears, so focus is a filled chip instead. */
+.ladder-range-end:focus-visible {
+    outline: none;
+    border-radius: var(--radius-sm);
+    color: var(--ncar-navy);
+    background-color: var(--surface-on-brand);
+    text-decoration: none;
+    box-shadow: 0 0 0 2px var(--surface-on-brand);
+}
+
 .ladder-range-dash {
     color: rgba(var(--surface-on-brand-rgb), 0.7);
     /* Sits on the input line, not the label line, so the row aligns on the
