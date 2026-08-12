@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
 {#
   Reusable jobs-explorer filter panel in the Unity .filter-sidebar house
   style (navy panel + gold title + white controls + "Clear filters"),
@@ -33,29 +34,9 @@
 {% macro jobs_filters(form_id, card_url, card_target, filters,
                       user_search_url, machine, scope, per_page_options,
                       mode='project', active_tab='jobs') %}
-<form id="{{ form_id }}"
-      hx-get="{{ card_url }}"
-      hx-target="#{{ card_target }}"
-      hx-swap="outerHTML"
-      hx-trigger="submit">
-  <div class="filter-sidebar-header">
-    <h2 class="filter-sidebar-title">
-      <button class="filter-sidebar-toggle" type="button"
-              data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
-              aria-expanded="true" aria-controls="{{ form_id }}-fields">
-        Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
-      </button>
-    </h2>
-    {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
-       form and re-triggers its htmx submit. fk-picker.js also clears its
-       badge on the native reset event, so the user picker clears too. #}
-    <a class="filter-sidebar-clear" style="cursor: pointer;"
-       data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
-  </div>
-
-  {# Collapsed by default on phones (dashboard-init.js strips .show below md).
-     data-no-persist: the responsive default owns the initial state. #}
-  <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
+{# hx-swap is outerHTML here, not innerHTML: the submit re-renders the whole
+   jobs card rather than one table body. #}
+{% call filter_panel_shell(form_id, card_url, card_target, hx_swap='outerHTML') %}
 
   {# Scope context — submitted alongside the visible filter controls, so
      the card route can rebuild the panel URLs. (The per-panel target_id
@@ -171,6 +152,5 @@
       <i class="fas fa-filter me-1"></i> Apply
     </button>
   </div>
-  </div>
-</form>
+{% endcall %}
 {% endmacro %}

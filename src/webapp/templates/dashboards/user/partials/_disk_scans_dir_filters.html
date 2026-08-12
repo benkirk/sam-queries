@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
 {#
   Reusable Large-directories filter panel in the Unity .filter-sidebar house
   style (navy panel + gold title + white controls + "Clear filters"), matching
@@ -22,34 +23,11 @@
 #}
 {% macro dir_filters(form_id, fragment_url, target_id, filters, user_search_url,
                      resource_name, scope, fileset, limit_options, mode='project') %}
-<form id="{{ form_id }}"
-      hx-get="{{ fragment_url }}"
-      hx-target="#{{ target_id }}"
-      hx-swap="innerHTML"
-      hx-trigger="submit">
-  <div class="filter-sidebar-header">
-    <h2 class="filter-sidebar-title">
-      <button class="filter-sidebar-toggle" type="button"
-              data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
-              aria-expanded="true" aria-controls="{{ form_id }}-fields">
-        Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
-      </button>
-    </h2>
-    {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the form
-       and re-triggers its htmx submit. fk-picker.js also clears its badge on
-       the native reset event, so the user picker clears too. #}
-    <a class="filter-sidebar-clear" style="cursor: pointer;"
-       data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
-  </div>
+{% call filter_panel_shell(form_id, fragment_url, target_id) %}
 
-  {# Collapsed by default on phones (dashboard-init.js strips .show below md).
-     data-no-persist: the responsive default owns the initial state. The hidden
-     scope inputs live inside so the header keeps the collapse as its next
-     sibling (the collapsed-state CSS relies on the adjacency); htmx reads
-     them regardless of visibility. #}
-  <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
-
-  {# Scope context — submitted alongside the visible filter controls. #}
+  {# Scope context — submitted alongside the visible filter controls. Inside the
+     collapse so the header keeps it as an immediate sibling (the collapsed-state
+     CSS relies on the adjacency); htmx reads it regardless of visibility. #}
   <input type="hidden" name="resource" value="{{ resource_name }}">
   {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
   {% if fileset %}<input type="hidden" name="fileset" value="{{ fileset }}">{% endif %}
@@ -109,6 +87,5 @@
       <i class="fas fa-filter me-1"></i> Apply
     </button>
   </div>
-  </div>
-</form>
+{% endcall %}
 {% endmacro %}

@@ -1,0 +1,67 @@
+{#
+  The Unity navy filter-panel shell: the <form>, the collapsible header with its
+  chevron toggle, the "Clear filters" reset, and the collapse wrapper the fields
+  live in. Everything inside the collapse is the caller's.
+
+  Use it with {% call %}:
+
+      {% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+
+      {% call filter_panel_shell(form_id, fragment_url, target_id) %}
+        <input type="hidden" name="scope" value="{{ scope }}">
+        <div class="d-flex flex-wrap align-items-start gap-3">
+          ...fields...
+          <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
+        </div>
+      {% endcall %}
+
+  The button row stays with the caller on purpose: the five panels disagree on
+  the button set (Search / Search+Reset / Apply), the icon, and the field-row
+  alignment (align-items-start vs -end). So does anything hidden — put hidden
+  inputs inside the call body, not around it, so the header keeps the collapse
+  as its immediate next sibling (the collapsed-state CSS in dashboard.css uses
+  `:has(+ .collapse:not(.show))`). htmx submits them either way; visibility is
+  irrelevant to a form GET.
+
+  The caller also supplies the surrounding <div class="filter-sidebar">.
+
+  Args:
+    form_id   — unique id for this form instance. The collapse target is
+                derived from it as `{form_id}-fields`, and the Clear link
+                addresses the form by it.
+    hx_get    — endpoint to GET on submit
+    hx_target — id (no '#') of the container the response swaps into
+    hx_swap   — swap mode. 'innerHTML' for a panel that replaces a table body;
+                'outerHTML' where the response is the whole card (the jobs
+                explorer, which re-renders its card rather than its table).
+#}
+{% macro filter_panel_shell(form_id, hx_get, hx_target, hx_swap='innerHTML') %}
+<form id="{{ form_id }}"
+      hx-get="{{ hx_get }}"
+      hx-target="#{{ hx_target }}"
+      hx-swap="{{ hx_swap }}"
+      hx-trigger="submit">
+  <div class="filter-sidebar-header">
+    <h2 class="filter-sidebar-title">
+      <button class="filter-sidebar-toggle" type="button"
+              data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
+              aria-expanded="true" aria-controls="{{ form_id }}-fields">
+        Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
+      </button>
+    </h2>
+    {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the form
+       and re-triggers its htmx submit — no inline onclick. Where the panel
+       carries an fk-picker, fk-picker.js also clears its badge on the native
+       reset event, so the picker clears with everything else. #}
+    <a class="filter-sidebar-clear" style="cursor: pointer;"
+       data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
+  </div>
+
+  {# Collapsed by default on phones (dashboard-init.js strips .show below md).
+     data-no-persist: the responsive default owns the initial state, so this one
+     collapse opts out of the persisted-state machinery. #}
+  <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
+{{ caller() }}
+  </div>
+</form>
+{% endmacro %}

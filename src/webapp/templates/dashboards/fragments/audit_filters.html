@@ -1,4 +1,5 @@
 {% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
 {#
   Shared filter bar for audit-style tables (Transactions, Adjustments).
 
@@ -29,28 +30,7 @@
                        allowed_facilities=[], selected_facilities=[]) %}
 {# Unity NCAR navy panel — same .filter-sidebar tokens as the allocations
    facility filter, so audit filters match the rest of the dashboard. #}
-<form id="{{ form_id }}"
-      hx-get="{{ fragment_url }}"
-      hx-target="#{{ target_id }}"
-      hx-swap="innerHTML"
-      hx-trigger="submit">
-    <div class="filter-sidebar-header">
-        <h2 class="filter-sidebar-title">
-            <button class="filter-sidebar-toggle" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
-                    aria-expanded="true" aria-controls="{{ form_id }}-fields">
-                Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
-            </button>
-        </h2>
-        {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
-           form and re-triggers its htmx submit — no inline onclick. #}
-        <a class="filter-sidebar-clear" style="cursor: pointer;"
-           data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
-    </div>
-
-    {# Collapsed by default on phones (dashboard-init.js strips .show below
-       md). data-no-persist: the responsive default owns the initial state. #}
-    <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
+{% call filter_panel_shell(form_id, fragment_url, target_id) %}
     <div class="d-flex flex-wrap align-items-start gap-3">
 
         <div>
@@ -89,6 +69,5 @@
 
         <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
     </div>
-    </div>
-</form>
+{% endcall %}
 {% endmacro %}
