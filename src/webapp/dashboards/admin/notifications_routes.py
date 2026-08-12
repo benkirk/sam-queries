@@ -17,7 +17,7 @@ XRAS precedent where CLI and web share a query layer *so the two cannot
 drift*. ``sam/queries/notifications.py`` is still built as a shared layer —
 the door stays open — but nothing on the CLI consumes it yet.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 8.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 8.
 """
 
 import logging

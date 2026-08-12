@@ -25,7 +25,7 @@ like the obvious source for `/people`. It is the wrong one, for two reasons:
 The named query already carries `(:username IS NULL OR username = :username)`,
 which is exactly the shape needed to serve both endpoints from one statement.
 
-See `docs/plans/XRAS_REIMPLEMENTATION.md` section 4.2.
+See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` section 4.2.
 """
 
 from typing import Any, Dict, List, Optional
@@ -239,7 +239,7 @@ def get_person(session: Session, username: str) -> Optional[Dict[str, Any]]:
 #
 # The ORDER BYs below are not cosmetic — they are the array order of the
 # response, and `ORDER BY end_date` additionally decides which request is
-# labelled "New". See `docs/plans/XRAS_REIMPLEMENTATION.md` section 2.3.
+# labelled "New". See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` section 2.3.
 #
 # Each carries a primary-key tiebreaker that legacy does not have. Legacy's
 # `ORDER BY al.start_date DESC` is not a total order — one production project

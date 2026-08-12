@@ -35,7 +35,7 @@ topologySpread:
 #   - Flask-Caching chart cache (CACHE_REDIS_URL → DB 0)
 #   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI → DB 1)
 # Single replica, no persistence, no HA. Eviction = allkeys-lru.
-# See docs/plans/REDIS.md.
+# See docs/plans/implemented/REDIS.md.
 #
 # maxmemory sizing: one instance holds all 15 chart SVG caches, both jobs
 # aggregation buckets, both fs-scans buckets, the allocation-usage cache
@@ -230,7 +230,7 @@ webapp:
     TZ: "America/Denver"
     # ── Notifications (sam.notify) ────────────────────────────────────
     # Relay facts MEASURED from a pod on nwc1, 2026-08-09
-    # (docs/plans/NOTIFICATION_FRAMEWORK.md § 9):
+    # (docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 9):
     #   ndir.ucar.edu:25 reachable — no NetworkPolicy restricts webapp egress
     #   EHLO advertises STARTTLS, and NOT AUTH  → no ExternalSecret needed,
     #     which is why MAIL_USERNAME/MAIL_PASSWORD are absent here entirely

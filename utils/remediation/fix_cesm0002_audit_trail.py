@@ -4,7 +4,7 @@
 Repairs the legacy-fstree mismatches introduced on 2026-04-23 when the
 new "Extend Project Tree" flow + a follow-up amount edit wrote audit
 rows that the legacy SAM replay path could not reproduce. See
-``docs/plans/FIX_TREE_EXTENSION_bugs.md`` for the full context. This
+``docs/plans/implemented/FIX_TREE_EXTENSION_bugs.md`` for the full context. This
 script is the **Stream A** remediation: append-only corrective
 ``ADJUSTMENT`` rows that bring legacy replay back into agreement with
 ``allocation.amount``. Stream B (commits B1/B2/B3) prevents recurrence

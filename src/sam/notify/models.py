@@ -2,7 +2,7 @@
 
 This is an actual database TABLE (not a view). DDL and the full rationale:
 ``containers/sam-sql-dev/initdb.d/zz-92-notification_log.sql`` and
-``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 5.
+``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 5.
 
 It lives under ``sam/notify/`` rather than in a domain module because it is
 part of the framework's contract, not of any one domain's model graph — and

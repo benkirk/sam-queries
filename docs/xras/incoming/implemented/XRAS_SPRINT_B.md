@@ -2,7 +2,7 @@
 
 **Handoff doc.** Written for a cold start: you should be able to execute this without the
 session that produced it. The wire contract, the measured production data and the
-design decisions live in [`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md); the
+design decisions live in [`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md); the
 as-built record of the previous sprint is [`XRAS_SPRINT_A.md`](XRAS_SPRINT_A.md).
 Section references like §3.1 point at the reference doc. This document does not repeat
 them — it tells you what to build and in what order.
@@ -384,7 +384,7 @@ and then implemented in the same PR, which is what proved the shape before
 production commits to it.
 
 Full DDL, the rejected alternatives, and the timestamp rule that makes it both the
-anti-spam and the re-open mechanism: **[`implemented/XRAS_SPRINT_B_FOLLOWUP.md`](implemented/XRAS_SPRINT_B_FOLLOWUP.md)**.
+anti-spam and the re-open mechanism: **[`XRAS_SPRINT_B_FOLLOWUP.md`](../../../plans/implemented/XRAS_SPRINT_B_FOLLOWUP.md)**.
 
 One change from the DDL recorded there, made while building:
 
@@ -718,8 +718,8 @@ What Sprint A left you, and where:
 
 | Thing | Where |
 |---|---|
-| Reference doc (wire contract, prod data, divergences) | `docs/plans/XRAS_REIMPLEMENTATION.md` |
-| Sprint A as-built (the 20 measured contract corrections) | `docs/plans/XRAS_SPRINT_A.md` § *Track 0* |
+| Reference doc (wire contract, prod data, divergences) | `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` |
+| Sprint A as-built (the 20 measured contract corrections) | `docs/xras/incoming/implemented/XRAS_SPRINT_A.md` § *Track 0* |
 | Retired Sprint A handoff | `docs/plans/implemented/XRAS_ACTION_INGESTION.md` |
 | Table DDL (amend here) | `containers/sam-sql-dev/initdb.d/zz-90-xras_action_log.sql` |
 | ORM model | `src/sam/integration/xras.py` — `XrasActionLog` |

@@ -14,7 +14,7 @@ reasonable implementation gets them wrong:
 UFSU0023 is the regression oracle for the failure path — a real production 422 with a
 known-exact string.
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Extension*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Extension*.
 """
 
 import json

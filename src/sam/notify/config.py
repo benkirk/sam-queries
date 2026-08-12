@@ -12,7 +12,7 @@ It also collapses a duplication. ``MAIL_*`` had **two** sources of truth:
 six vars off ``os.getenv`` with the same defaults and so never honoured a
 ``SAMConfig`` change. ``NotifyConfig`` replaces both.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 2.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 2.
 """
 
 from __future__ import annotations

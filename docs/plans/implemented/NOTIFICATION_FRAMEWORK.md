@@ -4,7 +4,7 @@
 > § *As built* at the end for what changed on the way, including **four
 > claims in this document that measurement disproved**. This is the design
 > for Sprint D of
-> [`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md) § 2.1 / Phase 0.2 — the
+> [`XRAS_REIMPLEMENTATION.md`](../../xras/incoming/XRAS_REIMPLEMENTATION.md) § 2.1 / Phase 0.2 — the
 > row that reads *"lift `EmailNotificationService` into `src/sam/notifications/`"*.
 >
 > Headline: it is **not** just a move plus a config wire-up, as that row assumes.
@@ -21,9 +21,9 @@ the relay unknowns are now **measured** (§ 9); a dormant subscription table and
 an activity chart are **cut** (§ 6, § 8); § 5 gained a suppression case that
 would have shipped as a deadlock.
 
-**Prior work:** PR #424 ([`XRAS_SPRINT_B.md`](XRAS_SPRINT_B.md) § *Notify, with
+**Prior work:** PR #424 ([`XRAS_SPRINT_B.md`](../../xras/incoming/implemented/XRAS_SPRINT_B.md) § *Notify, with
 SMTP still deferred*, and
-[`implemented/XRAS_SPRINT_B_FOLLOWUP.md`](implemented/XRAS_SPRINT_B_FOLLOWUP.md)
+[`XRAS_SPRINT_B_FOLLOWUP.md`](XRAS_SPRINT_B_FOLLOWUP.md)
 § *The adjacent bug*). Sprint B deliberately shipped a record-only Notify button
 and a *"not implemented"* dialog rather than `mailto:` or a rushed mailer. This
 document is the follow-on it named.

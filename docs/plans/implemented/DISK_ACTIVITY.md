@@ -1,7 +1,7 @@
 # Layer 2 — Populate `disk_activity` / `disk_charge` During Import
 
 > **Branch**: `disk_activity` (current).
-> **Source**: refines `docs/plans/DISK_ACTIVITY.md` based on
+> **Source**: refines `docs/plans/implemented/DISK_ACTIVITY.md` based on
 > verification of current code state on 2026-04-28.
 
 ## Context
@@ -490,5 +490,5 @@ Webapp Resource Details for a multi-fileset project on Campaign_Store:
 - `docs/plans/DISK_PER_FILESET.md` — replace the "schema-add" sketch
   with a pointer to this plan and a note that we chose the
   no-schema-change path.
-- `docs/plans/DISK_ACTIVITY.md` — mark "DONE" once Layer 2 ships and
+- `docs/plans/implemented/DISK_ACTIVITY.md` — mark "DONE" once Layer 2 ships and
   this plan is verified end-to-end.

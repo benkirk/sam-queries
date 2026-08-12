@@ -12,7 +12,7 @@
 >
 > All three tables were then created by hand and verified — 7 utf8mb4 columns,
 > 3 FK constraints, 27 index rows, 0 rows of data. See
-> [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) § 2 for the applied
+> [`XRAS_CUTOVER_RUNBOOK.md`](../../xras/incoming/XRAS_CUTOVER_RUNBOOK.md) § 2 for the applied
 > sequence and the verification queries.
 >
 > **What this changes going forward:** a new table in `sam` is no longer a DBA
@@ -28,7 +28,7 @@ original grants confirmed against production before filing — see § *Confirmed
 production*.
 
 **What this replaces:** the per-table DBA ticket described in
-[`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) § 2. That ticket is still
+[`XRAS_CUTOVER_RUNBOOK.md`](../../xras/incoming/XRAS_CUTOVER_RUNBOOK.md) § 2. That ticket is still
 needed *this round* (§ *File both in one ticket*); the privilege grant is what
 stops there being a next one.
 

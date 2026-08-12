@@ -196,7 +196,7 @@ services:
 
   #------------------------------------
   # Redis container: shared cache + rate-limit storage
-  # See docs/plans/REDIS.md. No persistence; eviction = allkeys-lru.
+  # See docs/plans/implemented/REDIS.md. No persistence; eviction = allkeys-lru.
   cache:
     container_name: samuel-cache
     image: redis:7-alpine

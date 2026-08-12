@@ -7,7 +7,7 @@ untouched, so template ``url_for`` calls and htmx attributes keep working:
 1. the form-layer OO refactor (handler classes, the CRUD registrar), and
 2. the fs-scans ↔ job-history consolidation, which moves the two
    navigators' 37 fragment routes onto a shared ``ModeSpec``/``PanelSpec``
-   registrar (``docs/plans/FS_SCANS_JOBS_CONSOLIDATION.md``).
+   registrar (``docs/plans/implemented/FS_SCANS_JOBS_CONSOLIDATION.md``).
 
 This test pins that promise to a checked-in snapshot. A legitimate route
 addition/removal regenerates it:

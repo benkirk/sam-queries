@@ -17,8 +17,8 @@ resolve_contract``), which also keeps the dependency direction visible at each c
 site.
 
 The design and the measured production data behind it are in
-``docs/plans/XRAS_SPRINT_C.md``; the wire contract is in
-``docs/plans/XRAS_REIMPLEMENTATION.md``.
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``; the wire contract is in
+``docs/xras/incoming/XRAS_REIMPLEMENTATION.md``.
 """
 
 from .errors import (

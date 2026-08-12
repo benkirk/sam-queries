@@ -28,7 +28,7 @@ Serialization — including why ``jsonify`` is unusable here and why null handli
 is per-DTO rather than global — lives in :mod:`webapp.api.xras.serialize`.
 
 Deliberate divergences from legacy, and their reasons, are recorded in
-``docs/plans/XRAS_REIMPLEMENTATION.md`` section 7. In short: we do not reproduce
+``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` section 7. In short: we do not reproduce
 the 431-byte Tomcat HTML error pages, we answer an unrecognised ``{role}`` with
 400 rather than 500, and we sort ``masters[]`` by projcode rather than emulating
 Java ``HashMap`` bucket order.

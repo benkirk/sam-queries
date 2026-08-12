@@ -46,7 +46,7 @@ startup dies with a confusing partially-initialised-module ``ImportError``.
 
 The rule this encodes: **the ORM must be importable without the mailer.**
 
-Design, measurements and rationale: ``docs/plans/NOTIFICATION_FRAMEWORK.md``.
+Design, measurements and rationale: ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md``.
 """
 
 from sam.notify.base import (

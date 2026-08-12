@@ -58,7 +58,7 @@ so it is not a regression — and it is now the *common* case rather than a hypo
 because ``Date Adjustment`` parks and is 4 of the 41 corpus payloads. The four outcomes
 are distinguished in ``xras_action_log`` (``status`` / ``service`` /
 ``outcome_reason``), not in the response. Whether to change that is an open decision:
-``docs/plans/XRAS_CUTOVER_RUNBOOK.md`` § gate 4.
+``docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`` § gate 4.
 """
 
 import json
@@ -497,7 +497,7 @@ def _dispatch(log_id, action):
         # roster/role split. `sam.xras.roster` already logs each one, but against
         # `actionId`; `log_id` is the handle an operator actually has, and only the
         # route knows it. Whether these earn a column of their own is deferred to
-        # `docs/plans/XRAS_STRESS_AND_SCHEMA.md`.
+        # `docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md`.
         current_app.logger.warning(
             'XRAS action completed with %d warning(s): id=%s service=%s — %s',
             len(result.warnings), log_id, result.service,

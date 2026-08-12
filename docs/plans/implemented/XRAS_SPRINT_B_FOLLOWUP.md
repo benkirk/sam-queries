@@ -1,14 +1,14 @@
 # XRAS Sprint B follow-up — the activation worklist
 
 **Handoff doc.** Written for a cold start. Sprint B's as-built record is
-[`XRAS_SPRINT_B.md`](../XRAS_SPRINT_B.md); the wire contract and production data live
-in [`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md).
+[`XRAS_SPRINT_B.md`](../../xras/incoming/implemented/XRAS_SPRINT_B.md); the wire contract and production data live
+in [`XRAS_REIMPLEMENTATION.md`](../../xras/incoming/XRAS_REIMPLEMENTATION.md).
 
 > **Status: BUILT.** Both halves shipped together on PR #424 — the table *and*
 > the feature, so the schema was proven by something that renders before
 > production commits to it. What actually landed, and the six deliberate
 > departures from this document, are recorded in
-> [`XRAS_SPRINT_B.md`](../XRAS_SPRINT_B.md) § *Deviations* item 10 and
+> [`XRAS_SPRINT_B.md`](../../xras/incoming/implemented/XRAS_SPRINT_B.md) § *Deviations* item 10 and
 > § *Schema deltas*. **Read those first** — three sections below are now
 > superseded:
 >
@@ -284,7 +284,7 @@ it. That is also why `notified_to` is stored: it is what the operator was handed
 > **Update (2026-08-09).** This section was written to record the bug and
 > name the moment to fix it: *"if a notification ledger is ever wanted, that
 > is the moment to fold both in."* That moment arrived — see
-> [`../NOTIFICATION_FRAMEWORK.md`](../NOTIFICATION_FRAMEWORK.md).
+> [`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md).
 > `notification_log` now records every attempt and
 > `expiration:{projcode}:{latest_end_date}:{recipient}` suppresses the
 > re-send. Verified end to end against the obfuscated snapshot: 602 sent,

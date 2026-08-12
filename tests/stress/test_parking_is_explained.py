@@ -3,7 +3,7 @@
 ⚠️ **This file used to document a gap; it now proves the fix.** Every scenario here
 once asserted that the row could *not* answer "why did this park", which was the
 evidence behind the ``service`` / ``outcome_reason`` verdict in
-``docs/plans/XRAS_STRESS_AND_SCHEMA.md``. The columns landed, so the assertions are
+``docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md``. The columns landed, so the assertions are
 inverted: what was proof of a deficiency is now proof of a feature.
 
 ``dispatch.py`` argued for exactly this in its own docstring — *"knowing that an

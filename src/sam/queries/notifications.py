@@ -5,7 +5,7 @@ Built as a shared query layer even though only the webapp consumes it —
 door stays open, and the counts the admin card renders are computed here
 rather than in a route, so a future CLI cannot drift from the page.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 8.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 8.
 """
 
 from __future__ import annotations

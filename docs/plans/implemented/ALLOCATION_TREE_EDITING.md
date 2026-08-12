@@ -3,7 +3,7 @@
 ## Context
 
 Implements differentiated UX for three allocation tree topologies on the Edit Project allocations tab.
-This is a **revised** version of `docs/plans/ALLOCATION_TREE_EDITING.md` that corrects three flaws
+This is a **revised** version of `docs/plans/implemented/ALLOCATION_TREE_EDITING.md` that corrects three flaws
 identified in feedback review before any code is written.
 
 ---

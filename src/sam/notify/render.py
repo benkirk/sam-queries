@@ -14,7 +14,7 @@ it in one line.
 wrote ``app.jinja_env``, so a standalone ``Environment`` had none of them.
 It now takes either an app or an environment.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 4.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 4.
 """
 
 from __future__ import annotations

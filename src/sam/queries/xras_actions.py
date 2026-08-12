@@ -94,7 +94,7 @@ XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
 #: Extension ignores ``actionBeginDate`` entirely (``date_adjustment_uwas0141`` asks
 #: for one that differs from its allocation's), and rejects an end date earlier than
 #: the current one, which is the likeliest reason a *separate* action type exists at
-#: all. See ``docs/plans/XRAS_SPRINT_C.md`` § *What the corpus still does not cover*.
+#: all. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *What the corpus still does not cover*.
 
 #: Wire spellings that mean the same handler, ``alias -> canonical``.
 #:
@@ -104,7 +104,7 @@ XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
 #: never match, so that handler has never once fired and every Adjustment falls
 #: through ``ProjectActionServiceSelector`` to the manual-email fallback. Nothing has
 #: shipped here yet, so SAM accepts **both** spellings rather than reproducing the
-#: mismatch (see ``docs/plans/XRAS_REIMPLEMENTATION.md`` § 9, legacy defect 4).
+#: mismatch (see ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` § 9, legacy defect 4).
 #:
 #: This is a **read-side** concern only. ``xras_action_log.action_type`` always
 #: records what actually arrived, verbatim — the audit trail's whole job.

@@ -9,7 +9,7 @@
 layer and the CLI were built as stacked sprints over one long build. The domain core had
 already been through a dedicated refactor ([`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md)),
 but the Sprint A/B layers had not, and cutover is abrupt — see
-[`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md). This was the last cheap moment to
+[`XRAS_CUTOVER_RUNBOOK.md`](../XRAS_CUTOVER_RUNBOOK.md). This was the last cheap moment to
 change shape.
 
 ---

@@ -49,7 +49,7 @@ them. **The wire shape stays the real bytes**; only the referents move. That dis
 is the whole reason this is worth running: the schema, the dispatch decision and the
 row-shape assertions all see production structure.
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *The oracle*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The oracle*.
 """
 
 import json

@@ -12,7 +12,7 @@ silent**: Bootstrap found no modal, htmx aborted on a dangling target, and
 nothing reached the console or the network tab. A browser-driven sweep catches
 the htmx half (htmx does ``console.error("htmx:targetError")``), but a dangling
 ``data-bs-target`` produces no output at all — so this Python tier is the only
-thing that can see it. See ``docs/plans/FRONTEND_TEST_NET.md``.
+thing that can see it. See ``docs/plans/implemented/FRONTEND_TEST_NET.md``.
 
 Three checks, in increasing cost:
 

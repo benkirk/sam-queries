@@ -4,7 +4,7 @@ Pins a structural fingerprint of every chart's rendered output (see
 ``chart_fingerprint.svg_fingerprint`` for what is extracted and why). Written
 *before* any source moves, so the refactor has something to move against.
 
-The discipline this enforces (docs/plans/CHART_ARCHITECTURE.md § The
+The discipline this enforces (docs/plans/implemented/CHART_ARCHITECTURE.md § The
 discipline) is **declared visual change, not zero visual change**: PR 1 is
 allowed to change how charts look, but only in commits that say so. A
 fingerprint delta in a commit whose stated purpose was "extract theme.py" is a

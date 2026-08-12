@@ -12,7 +12,7 @@ heavy concurrency. Use this AFTER peer `hpc-usage-queries` DB-query optimization
 re-baseline and confirm the protection chain still holds (and that scans got faster).
 
 > Context: this verifies SAM PR #323 (gthread + `statement_timeout`) and the
-> `csg-postgres-ro` replica repoint. See `docs/plans/K8S_DEPLOYMENT_HARDENING.md`
+> `csg-postgres-ro` replica repoint. See `docs/plans/implemented/K8S_DEPLOYMENT_HARDENING.md`
 > for the design + the original findings. Peer CNPG hardening = hpc-usage-queries #78.
 
 ---
