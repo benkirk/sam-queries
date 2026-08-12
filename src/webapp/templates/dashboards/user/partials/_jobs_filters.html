@@ -142,16 +142,6 @@
 
      d-none, not a Bootstrap collapse: this is inside a filter form, and the
      collapse data-api runs in the CAPTURE phase (see fragments/collapse.html). #}
-  <div class="mt-2">
-    <button type="button" class="filter-section-toggle"
-            data-action="toggle-custom-window"
-            data-target="#{{ form_id }}-size-runtime"
-            aria-controls="{{ form_id }}-size-runtime"
-            aria-expanded="{{ 'true' if filters.numeric_open else 'false' }}">
-      <i class="fas fa-sliders-h me-1"></i> Size &amp; runtime
-    </button>
-  </div>
-
   <div id="{{ form_id }}-size-runtime"
        class="d-flex flex-wrap align-items-end gap-3 mt-2{{ '' if filters.numeric_open else ' d-none' }}">
     {# One row per dimension, ladder or not. `bands` is None when the plugin
@@ -188,7 +178,13 @@
       {% endif %}
     </div>
     {% endfor %}
+  </div>
 
+  {# Rows + Apply sit OUTSIDE the disclosure. They were in the same flex row as
+     the numeric pairs before this control existed, and leaving them there would
+     have hidden the submit button whenever the section was collapsed — which is
+     its default state. #}
+  <div class="d-flex flex-wrap align-items-end gap-3 mt-2">
     <div>
       <label class="form-label"><strong>Rows</strong></label>
       <select class="form-select" name="per_page" style="width:100px;">
@@ -197,6 +193,14 @@
         {% endfor %}
       </select>
     </div>
+
+    <button type="button" class="filter-section-toggle align-self-center"
+            data-action="toggle-custom-window"
+            data-target="#{{ form_id }}-size-runtime"
+            aria-controls="{{ form_id }}-size-runtime"
+            aria-expanded="{{ 'true' if filters.numeric_open else 'false' }}">
+      <i class="fas fa-sliders-h me-1"></i> Size &amp; runtime
+    </button>
 
     <button type="submit" class="btn btn-outline-white ms-auto">
       <i class="fas fa-filter me-1"></i> Apply

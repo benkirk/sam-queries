@@ -4654,7 +4654,7 @@ def test_the_size_section_is_collapsed_until_a_bound_is_set(
     assert 'Size &amp; runtime' in body
     section = re.search(r'id="[^"]*-size-runtime"\s+class="([^"]*)"', body)
     assert section and 'd-none' in section.group(1)
-    toggle = re.search(r'<button[^>]*class="filter-section-toggle"[^>]*>', body)
+    toggle = re.search(r'<button[^>]*class="filter-section-toggle[^"]*"[^>]*>', body)
     assert toggle and 'aria-expanded="false"' in toggle.group(0)
 
 
@@ -4711,3 +4711,21 @@ def test_a_bar_drill_now_shows_in_the_panel(
                          query='&min_eligible_secs=3600')
     box = re.search(r'<input[^>]*name="min_wait_hours"[^>]*>', body)
     assert box and 'value="1.0"' in box.group(0)
+
+
+def test_apply_and_rows_stay_outside_the_size_disclosure(
+        app, auth_client, active_project, monkeypatch):
+    """Regression: Rows and Apply shared a flex row with the numeric pairs, so
+    wrapping those in the disclosure swallowed the SUBMIT BUTTON — invisible
+    whenever the section was collapsed, which is its default. Every unit test
+    passed; only the rendered page showed it."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    section = re.search(
+        r'id="[^"]*-size-runtime"\s+class="[^"]*d-none[^"]*"(.*?)\n  </div>',
+        body, re.S)
+    assert section, 'size section not found (or no longer collapsed by default)'
+    assert 'type="submit"' not in section.group(1)
+    assert 'name="per_page"' not in section.group(1)
+    # ...and they are still on the page.
+    assert 'type="submit"' in body and 'name="per_page"' in body
