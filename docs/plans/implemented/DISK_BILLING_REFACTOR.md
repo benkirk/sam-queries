@@ -2,7 +2,7 @@
 
 ## Context
 
-`docs/plans/DISK_BILLING_REFACTOR.md` already lays out the *what* and the
+`docs/plans/implemented/DISK_BILLING_REFACTOR.md` already lays out the *what* and the
 *why* for the deferred Option-3 follow-up to the disk-charging cutover.
 Today every row of a `sam-admin accounting --disk` import is multiplied
 by the same hard-coded `--reporting-interval=7`. That is the entire
@@ -18,7 +18,7 @@ row exists (bootstrap).
 The goal of this document is to specify the implementation precisely
 enough to execute (file:line landings, function shapes, test cases)
 without further design discussion. On approval, port the plan back
-to `docs/plans/DISK_BILLING_REFACTOR.md`, replace the implementation
+to `docs/plans/implemented/DISK_BILLING_REFACTOR.md`, replace the implementation
 outline in §"What this plan does" with the concrete steps below, and
 proceed to coding.
 
@@ -294,7 +294,7 @@ One PR off `disk_charging`. Commits, in order:
    `DiskUsageEntry` and the kwarg from `_build_unidentified_disk_rows`.
 4. **docs**: update help text on `--reporting-interval`; rewrite the
    "Implementation outline" section of
-   `docs/plans/DISK_BILLING_REFACTOR.md` to reflect the landed
+   `docs/plans/implemented/DISK_BILLING_REFACTOR.md` to reflect the landed
    design (drop the "future work" framing).
 
 Each commit independently passes `pytest`. Operator action on next

@@ -707,7 +707,7 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 - [ ] Study CI/CD workflows (`.github/workflows/`)
 
 **Day 4: Production Considerations**
-- [ ] Read [docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/implemented/PRODUCTION_IMPROVEMENTS.md)
+- [ ] Read [docs/plans/implemented/PRODUCTION_IMPROVEMENTS.md](plans/implemented/PRODUCTION_IMPROVEMENTS.md)
 - [ ] Understand Gunicorn configuration
 - [ ] Review database connection pooling
 - [ ] Study logging and monitoring requirements
@@ -806,7 +806,7 @@ pipdeptree
    - Authentication and authorization
    - Development server setup
 
-4. **[docs/plans/PRODUCTION_IMPROVEMENTS.md](plans/implemented/PRODUCTION_IMPROVEMENTS.md)** - Production readiness
+4. **[docs/plans/implemented/PRODUCTION_IMPROVEMENTS.md](plans/implemented/PRODUCTION_IMPROVEMENTS.md)** - Production readiness
    - Security improvements
    - Operational enhancements
    - Deployment checklist

@@ -35,7 +35,7 @@ topologySpread:
 #   - Flask-Caching chart cache (CACHE_REDIS_URL → DB 0)
 #   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI → DB 1)
 # Single replica, no persistence, no HA. Eviction = allkeys-lru.
-# See docs/plans/REDIS.md.
+# See docs/plans/implemented/REDIS.md.
 #
 # maxmemory sizing: one instance holds all 15 chart SVG caches, both jobs
 # aggregation buckets, both fs-scans buckets, the allocation-usage cache

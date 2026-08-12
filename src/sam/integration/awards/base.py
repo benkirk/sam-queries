@@ -18,7 +18,7 @@ Three distinctions are load-bearing and easy to collapse by accident:
 * :class:`PersonRef` carries the agency's raw name/email and is
   deliberately *not* a SAM ``User``. Mapping one onto the other is
   :func:`sam.integration.awards.people.resolve_person`'s job and nothing
-  else's — see docs/plans/CONTRACT_IMPORTING_PLAN.md § F2, which wants to
+  else's — see docs/plans/implemented/CONTRACT_IMPORTING_PLAN.md § F2, which wants to
   move external contacts out of ``users`` eventually. Keeping the seam in
   one function makes that a change to one return type rather than a
   rewrite of the prefill path.

@@ -309,7 +309,7 @@ weeks.
 
 ## How to pick this up in a new session
 
-1. Read this file (`docs/plans/TEST_SUITE_RESIDUALS.md`) — it has
+1. Read this file (`docs/plans/implemented/TEST_SUITE_RESIDUALS.md`) — it has
    everything you need without re-reading the original plan.
 2. **Gap A is done.** The remaining work is Gap B (Pyright gradual
    type checking). It's independent of the perf tests and can be

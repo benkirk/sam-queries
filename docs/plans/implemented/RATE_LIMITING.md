@@ -15,7 +15,7 @@ We want protection against brute-force, runaway scripts, and accidental DoS — 
 `RateLimitEvent` MySQL table + dedicated admin page). Phase 2's
 prerequisite has shipped:
 
-- `docs/plans/REDIS.md` is merged (commit `df0e9cd`, PR #242).
+- `docs/plans/implemented/REDIS.md` is merged (commit `df0e9cd`, PR #242).
 - Both `compose.yaml` and `helm/templates/deployment.yaml` already inject
   `RATELIMIT_STORAGE_URI=redis://…/1` for the webapp.
 - The `webapp.caching.Caching` facade demonstrates the
@@ -191,7 +191,7 @@ Add to `SAMWebappConfig` in `src/webapp/config.py` after
 `CACHE_DEFAULT_TIMEOUT` (line 55):
 
 ```python
-# Rate limiting (see docs/plans/RATE_LIMITING.md). Storage URI is set in
+# Rate limiting (see docs/plans/implemented/RATE_LIMITING.md). Storage URI is set in
 # helm/compose; absence = memory:// fallback for local dev without Redis.
 RATELIMIT_ENABLED      = os.getenv('RATELIMIT_ENABLED', '1').lower() in ('1','true','yes')
 RATELIMIT_STORAGE_URI  = os.getenv('RATELIMIT_STORAGE_URI', '')   # empty = memory://

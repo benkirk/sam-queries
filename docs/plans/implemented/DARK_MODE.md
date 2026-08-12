@@ -6,7 +6,7 @@ PR 4, dark charts, on `dark_charts` — see § *PR 4 as built*, which supersedes
 Deviations from this plan are recorded in **Appendix E** — read that before
 treating any section below as a description of the shipped code.
 This is **PR 3** of the four-PR roadmap declared in
-`docs/plans/CHART_ARCHITECTURE.md` § *Roadmap*, which deferred it to "a
+`docs/plans/implemented/CHART_ARCHITECTURE.md` § *Roadmap*, which deferred it to "a
 separate planning session". Implementation branch: `dark_mode_sans_charts`,
 cut from `staging` at `bee0f4d`, PR targets `staging`.
 

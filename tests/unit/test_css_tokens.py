@@ -41,7 +41,7 @@ What does NOT count, and why:
 
 Fixing a violation means adding or reusing a **tier-2 role token**
 (`--surface-card`, `--text-primary`, `--border-default`, ...) — see
-`docs/plans/DARK_MODE.md` § *The token layer*. Do not "fix" it by pointing at
+`docs/plans/implemented/DARK_MODE.md` § *The token layer*. Do not "fix" it by pointing at
 a tier-1 primitive (`--ncar-navy`): those are brand constants and are
 theme-invariant by design, so a component that references one directly has
 the same problem in a different costume.
@@ -150,7 +150,7 @@ def test_no_new_raw_colours():
         msg.append(
             'New hardcoded colours in component CSS. Add or reuse a tier-2 '
             'role token in variables.css (see this test\'s docstring and '
-            'docs/plans/DARK_MODE.md) rather than raising ALLOWED:')
+            'docs/plans/implemented/DARK_MODE.md) rather than raising ALLOWED:')
         for name in sorted(grew):
             msg.append(f'  {name}: found {counts[name]}, allowed '
                        f'{ALLOWED.get(name, 0)}')
@@ -219,7 +219,7 @@ def test_tier1_matches_chart_palette():
     `variables.css` and `charts/theme.py` both spell out the NCAR brand
     colours — the CSS for the app chrome, the Python for matplotlib, which
     cannot read CSS. Consolidating them properly is a build-step question and
-    is explicitly out of scope (docs/plans/DARK_MODE.md § *Keep the palette
+    is explicitly out of scope (docs/plans/implemented/DARK_MODE.md § *Keep the palette
     single-sourced*), so assert agreement instead.
     """
     from webapp.dashboards.charts import theme as chart_theme

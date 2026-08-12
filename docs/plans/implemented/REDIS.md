@@ -7,7 +7,7 @@ PR #238 (`caching_unified`) is merged. The empirical findings in `docs/plans/SHA
 The fix is to replace the per-worker stores with a **shared Redis backend**. This unblocks:
 - chart-cache hit rates approaching 100% across all workers
 - consistent allocation-usage-cache behavior across workers
-- the rate-limiting work (`docs/plans/RATE_LIMITING.md`) moving from per-worker `memory://` directly to Redis instead of MySQL/Postgres on `system_status` (per user decision)
+- the rate-limiting work (`docs/plans/implemented/RATE_LIMITING.md`) moving from per-worker `memory://` directly to Redis instead of MySQL/Postgres on `system_status` (per user decision)
 - introspection of Flask-Cache groups (`directory_access`, `fstree_access`, `project_access`) becoming meaningful at deployment scope, not per-worker
 
 Per user decision: **centralized**, **Redis** (not memcached — rate limiting motivates it), **single small Deployment + Service**, **no persistence, no HA** for now.
@@ -124,7 +124,7 @@ The `Caching` facade (`webapp.caching.Caching`) and the `CacheBase` contract (`s
 
 ### Docs
 
-18. **`docs/plans/RATE_LIMITING.md`** — update the "Storage decision" paragraph (line 15) to:
+18. **`docs/plans/implemented/RATE_LIMITING.md`** — update the "Storage decision" paragraph (line 15) to:
     - Phase 1: `memory://` (unchanged)
     - Phase 2: **Redis** at `redis://samuel-redis:6379/1` (was: MySQL/Postgres on `system_status`). Reasoning: Redis is now provisioned for cache; rate-limit counters fit naturally; avoids write amplification on every-request DB hits. Update `RATELIMIT_STORAGE_URI` default in the plan's config snippet (line 59).
 

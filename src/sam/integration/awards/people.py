@@ -5,7 +5,7 @@ becomes a SAM row, and that is deliberate. Today
 ``contract.principal_investigator_user_id`` and ``contract_monitor_user_id``
 are both FKs into ``users``, so every NSF program director is a row in
 UCAR's identity table — 314 of the 387 distinct Monitors exist for no other
-reason. docs/plans/CONTRACT_IMPORTING_PLAN.md § F2 argues for a lightweight
+reason. docs/plans/implemented/CONTRACT_IMPORTING_PLAN.md § F2 argues for a lightweight
 ``external_contact`` table instead; keeping the mapping in one function means
 that change is a new return type here plus two FK columns, not a rewrite of
 the prefill path.

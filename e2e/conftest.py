@@ -5,7 +5,7 @@ a *running* stack over HTTP. That boundary is load-bearing: it is why CI can
 install a bare Python plus ``pytest-playwright`` instead of building the conda
 environment, and why `tests/conftest.py`'s DB safety guard is never involved.
 
-See ``docs/plans/FRONTEND_TEST_NET.md``.
+See ``docs/plans/implemented/FRONTEND_TEST_NET.md``.
 """
 import json
 import os

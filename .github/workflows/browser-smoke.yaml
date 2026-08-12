@@ -2,7 +2,7 @@ name: Browser Smoke
 
 # Front-end regression net: boots the compose stack and drives a real Chromium
 # over every dashboard page, failing on console errors, uncaught exceptions and
-# dangling htmx targets. See docs/plans/FRONTEND_TEST_NET.md.
+# dangling htmx targets. See docs/plans/implemented/FRONTEND_TEST_NET.md.
 #
 # Why its own workflow rather than a step bolted onto an existing one:
 # `test-install.yaml` exists to prove the piped-install path is healthy and

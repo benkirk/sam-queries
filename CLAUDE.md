@@ -661,8 +661,8 @@ A **categorical** axis of pre-formatted period strings (the jobs timeline
 plots band indices) calls `fmt.compact_date_labels()` on the labels instead —
 same vocabulary, and unparsable grains come back unchanged.
 
-Design + measurements: `docs/plans/MOBILE_CHARTS.md`,
-`docs/plans/TABLET_CHARTS.md`.
+Design + measurements: `docs/plans/implemented/MOBILE_CHARTS.md`,
+`docs/plans/implemented/TABLET_CHARTS.md`.
 
 ### The `theme` axis (light / dark)
 
@@ -681,7 +681,7 @@ that reloads, so cookie and browser can never disagree.
 | **Roles** | `Theme.muted_data` is the inert "Others" band and must **bypass** the lift — its job is to recede, and lifting it undoes that. `Theme.area_alpha` is 0.85 light / 1.0 dark because figures are transparent and composite against the card. |
 | **Surface** | `Theme.DARK.surface` == `--surface-card` == `#1b2733`, pinned by `test_dark_card_matches_chart_blend_target`. |
 
-Design + rationale: `docs/plans/DARK_MODE.md` § *PR 4 as built*.
+Design + rationale: `docs/plans/implemented/DARK_MODE.md` § *PR 4 as built*.
 
 ### Adding a chart
 
@@ -750,9 +750,9 @@ a row drill — row drills resolve within the clicked chart's pane.
    visible change — keys hash *input data*, not rendering code, so warm Redis
    entries serve old-code SVGs for up to 600 s.
 
-Design + rationale: `docs/plans/CHART_ARCHITECTURE.md` (the hierarchy),
-`docs/plans/DARK_MODE.md` (the theme axis),
-`docs/plans/MOBILE_CHARTS.md` + `docs/plans/TABLET_CHARTS.md` (the layout
+Design + rationale: `docs/plans/implemented/CHART_ARCHITECTURE.md` (the hierarchy),
+`docs/plans/implemented/DARK_MODE.md` (the theme axis),
+`docs/plans/implemented/MOBILE_CHARTS.md` + `docs/plans/implemented/TABLET_CHARTS.md` (the layout
 axis).
 
 ---

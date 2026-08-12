@@ -16,7 +16,7 @@ doc; verify with `git grep` if anything has shifted.
 
 ### Why this RBAC tier
 
-Today's two RBAC tiers (`docs/plans/EDIT_PROJECTS.md`,
+Today's two RBAC tiers (`docs/plans/implemented/EDIT_PROJECTS.md`,
 `webapp/utils/rbac.py`):
 
 1. **Bundle / system grants** (`GROUP_PERMISSIONS`,

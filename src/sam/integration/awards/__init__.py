@@ -8,7 +8,7 @@ Two entry points, and the difference matters:
   hit is chained back through ``resolve_award`` to fill it in.
 
 :func:`resolve_person` maps a provider's PI/program-officer onto a SAM user.
-See docs/plans/CONTRACT_IMPORTING_PLAN.md for the source survey behind the
+See docs/plans/implemented/CONTRACT_IMPORTING_PLAN.md for the source survey behind the
 two-provider design.
 """
 

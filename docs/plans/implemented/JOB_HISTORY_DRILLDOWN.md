@@ -47,7 +47,7 @@ three deliberate breaking renames) and will be advanced in tandem.
    `pytest job_history/tests/` after each commit; run the timed end-to-end measurements
    against local dev PG and write the figures into docstrings + plan doc.
 2. Push the branch (updates PR #99). Do NOT merge — Ben reviews.
-3. In SAM: write and commit `docs/plans/JOB_HISTORY_DASHBOARD.md` on `job_history_expansion`
+3. In SAM: write and commit `docs/plans/implemented/JOB_HISTORY_DASHBOARD.md` on `job_history_expansion`
    as the restart/handoff doc. It must be self-sufficient for a fresh session: the full
    SAM commit series (§SAM-side plan below), the **as-landed** plugin contract (actual
    signatures + return shapes + the pinned branch-tip sha), the route/template/cache/chart
@@ -62,7 +62,7 @@ three deliberate breaking renames) and will be advanced in tandem.
   `HPC_USAGE_QUERIES_REF=<sha> docker compose build webdev` and
   `HPC_USAGE_QUERIES_REF=<sha> source etc/config_env.sh`.
 - Restart Claude with cleared context + Playwright; point it at
-  `docs/plans/JOB_HISTORY_DASHBOARD.md`.
+  `docs/plans/implemented/JOB_HISTORY_DASHBOARD.md`.
 
 ### Session 2 (fresh context + Playwright): SAM side
 - Execute SAM Commits 1–8 from the handoff doc; run pytest directly after each commit
@@ -252,7 +252,7 @@ NOT in the route-map parity snapshot — only the two new page routes
 - Tests: client-supplied `?user=` ignored in all user fragments; 404 when no machines
 
 ### Commit 8 — docs
-- `docs/plans/JOB_HISTORY_DASHBOARD.md` (created in Session 1 as the handoff doc): update
+- `docs/plans/implemented/JOB_HISTORY_DASHBOARD.md` (created in Session 1 as the handoff doc): update
   to as-built status — final route table, any contract drift, deferred follow-ups (facet
   chips, By-Project user-mode tab, clickable histogram bars); `src/webapp/README.md`
   jobs/ line update

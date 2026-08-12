@@ -369,7 +369,7 @@ def create_app(*, config_overrides: dict | None = None):
     # page shells, so the theme is correct in the FIRST BYTE of HTML: no
     # flash to prevent, no <head> script for the nonce-free CSP to forbid,
     # no localStorage read racing the paint. See webapp/utils/htmx.py
-    # read_theme() and docs/plans/DARK_MODE.md.
+    # read_theme() and docs/plans/implemented/DARK_MODE.md.
     @app.context_processor
     def theme_context_processor():
         from webapp.utils.htmx import read_theme

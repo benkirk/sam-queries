@@ -114,7 +114,7 @@ class SAMWebappConfig(SAMConfig):
     # Distinct from the cachetools TTL below (which wraps a single query function).
     CACHE_DEFAULT_TIMEOUT = int(os.getenv('CACHE_DEFAULT_TIMEOUT', 300))
 
-    # Rate limiting (Flask-Limiter; see docs/plans/RATE_LIMITING.md).
+    # Rate limiting (Flask-Limiter; see docs/plans/implemented/RATE_LIMITING.md).
     # RATELIMIT_STORAGE_URI is injected by compose/helm when Redis is available;
     # empty value falls back to per-worker memory:// with a startup warning.
     RATELIMIT_ENABLED      = os.getenv('RATELIMIT_ENABLED', '1').lower() in ('1', 'true', 'yes')

@@ -35,7 +35,7 @@ plan below:
 Round 1 is complete: SAM **PR #381** (`job_history_expansion` → staging) is open with CI
 green; plugin **PR #99** (`jobs_plugin_search_drilldown`, tip `24a35ed`) awaits Ben's
 review. Merge order stays plugin → SAM. This round executes deferred items 1–5 from
-`docs/plans/JOB_HISTORY_DASHBOARD.md` as: **additional commits on PR #99** (memory
+`docs/plans/implemented/JOB_HISTORY_DASHBOARD.md` as: **additional commits on PR #99** (memory
 dimensions) + **ONE stacked SAM PR** on top of #381. Item 6 (RedisTTLAdapter shared
 `'usage:'` prefix for fs_scans/usage caches) is deliberately excluded — its own PR later.
 
@@ -68,7 +68,7 @@ if this bites in practice). Facet chips therefore compute within the current win
 ## How to resume (post-compact)
 
 - SAM: branch **`job_history_followups`** off `job_history_expansion`. Commit THIS plan as
-  `docs/plans/JOB_HISTORY_FOLLOWUPS.md` first (house convention).
+  `docs/plans/implemented/JOB_HISTORY_FOLLOWUPS.md` first (house convention).
 - Plugin: `~/codes/hpc-usage-queries/devel`, branch `jobs_plugin_search_drilldown` (PR #99).
   Plugin tests: `./conda-env/bin/python -m pytest job_history/tests/` (peer repo).
 - After pushing plugin commits, re-pin BOTH builds to the new tip:
@@ -120,7 +120,7 @@ Files: `job_history/queries/jobs.py`, `job_history/cli/cmds/jobhist.py`,
 Retarget the PR base to `staging` after #381 merges (stacked-PR reopen recipe if the
 parent merge closes it).
 
-### Commit S0 — commit this plan as `docs/plans/JOB_HISTORY_FOLLOWUPS.md` `[skip ci]`
+### Commit S0 — commit this plan as `docs/plans/implemented/JOB_HISTORY_FOLLOWUPS.md` `[skip ci]`
 
 ### Commit S1 — native-unit filter passthrough + memory dimension pills
 - `jobs/routes.py`: `_parse_job_filters` (and `_jobs_table_response`'s inline parse —
@@ -134,7 +134,7 @@ parent merge closes it).
 - Derecho caption in `jobs_histogram.html`: when `machine == 'derecho'` and
   `dimension == 'memory_wasted'` → note that whole-node scheduling assigns ~235 GB/node
   regardless of request, inflating "wasted" (Casper's shared nodes are the meaningful case).
-- Update the pinned sha note in `docs/plans/JOB_HISTORY_DASHBOARD.md`.
+- Update the pinned sha note in `docs/plans/implemented/JOB_HISTORY_DASHBOARD.md`.
   `_FAKE_COLUMN_SPECS` needs no change (COLUMNS untouched upstream).
 
 ### Commit S2 — explorer elapsed/reqmem inputs (item 5)

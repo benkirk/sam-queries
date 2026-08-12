@@ -291,7 +291,7 @@ indefinitely as a historical record:
 
 ### 6. CLI / docs
 
-- **`docs/plans/DISK_CHARGING.md`** — update to describe the one-tier
+- **`docs/plans/implemented/DISK_CHARGING.md`** — update to describe the one-tier
   pipeline and document that `disk_activity` / `disk_charge` are
   read-only legacy.
 - **`CLAUDE.md`** — under "Activity/Usage" remove `DiskActivity` /
