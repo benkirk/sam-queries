@@ -76,7 +76,7 @@ from webapp.jobs.scope import (
 )
 from webapp.utils.scope import resolve_scope_project as _scope_project
 from webapp.jobs.session import is_enabled
-from webapp.utils.htmx import read_flag
+from webapp.utils.htmx import read_flag, read_page, read_sort
 from webapp.utils.rbac import (
     Permission,
     has_permission_any_facility,
@@ -130,9 +130,8 @@ _SUPPRESSIBLE = {
     'cpu_charges', 'gpu_charges', 'memory_charges',
 }
 
+#: Rows per page. The clamp bounds are the shared ones in utils.htmx.
 _DEFAULT_PER_PAGE = 50
-_MIN_PER_PAGE = 10
-_MAX_PER_PAGE = 200
 
 
 def _parse_date(raw: Optional[str]) -> Optional[date]:
@@ -163,31 +162,6 @@ def _parse_days() -> Optional[int]:
 def _days_start(days: int) -> date:
     """Window start for a ``?days=`` lookback (always relative to today)."""
     return date.today() - timedelta(days=days)
-
-
-def _parse_pagination():
-    """Read page + per_page query args with defensive defaults."""
-    try:
-        page_n = max(1, int(request.args.get('page', 1)))
-    except (TypeError, ValueError):
-        page_n = 1
-    try:
-        per_page = int(request.args.get('per_page', _DEFAULT_PER_PAGE))
-    except (TypeError, ValueError):
-        per_page = _DEFAULT_PER_PAGE
-    per_page = max(_MIN_PER_PAGE, min(per_page, _MAX_PER_PAGE))
-    return {'n': page_n, 'per_page': per_page}
-
-
-def _parse_sort():
-    """Read sort_by + sort_dir; whitelist sort_by, default to no sort."""
-    sort_by = request.args.get('sort_by') or None
-    if sort_by and sort_by not in _SORT_WHITELIST:
-        sort_by = None
-    sort_dir = request.args.get('sort_dir', 'desc')
-    if sort_dir not in ('asc', 'desc'):
-        sort_dir = 'desc'
-    return {'sort_by': sort_by, 'sort_dir': sort_dir}
 
 
 def _visible_cols(default_cols, rows):
@@ -310,8 +284,8 @@ def _jobs_table_response(*, mode, machine, fragment_url,
     # families raise if it sneaks in beside the server-side pin).
     filters = _parse_job_filters(include_user=(pinned_user is None))
 
-    page = _parse_pagination()
-    sort = _parse_sort()
+    page = read_page(request.args, default=_DEFAULT_PER_PAGE)
+    sort = read_sort(request.args, _SORT_WHITELIST)
     offset = (page['n'] - 1) * page['per_page']
 
     # Always request the verbose column superset so the per-row drawer
@@ -1360,7 +1334,7 @@ def _qos_options_safe(machine: str) -> list:
 def _panel_filters(machine: str) -> dict:
     """Raw (display-unit) filter values for the explorer's sidebar panel."""
     username, user_id, user_label = _resolve_user_filter()
-    per_page = _parse_pagination()['per_page']
+    per_page = read_page(request.args, default=_DEFAULT_PER_PAGE)['per_page']
     start = (request.args.get('start') or '').strip()
     end = (request.args.get('end') or '').strip()
     if not start and not end:
