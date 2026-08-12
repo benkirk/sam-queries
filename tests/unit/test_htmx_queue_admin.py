@@ -465,36 +465,7 @@ class TestResourcesCardQueueButtons:
         assert 'Cleanup' in html
         assert 'queue-cleanup-form' in html
 
-    def test_no_action_button_inside_a_collapse_trigger_row(self, auth_client):
-        """Regression guard for the whole Resources card, not just Cleanup.
-
-        A <tr data-bs-toggle="collapse"> that also contains a button is a bug:
-        clicking the button expands the row too. Bootstrap registers its
-        data-api handlers on `document` in the CAPTURE phase, so they run
-        before any listener on the button — nothing the button does
-        (data-stop-propagation included) can prevent it. Rows with buttons
-        must put the toggle on their <td>s (see
-        templates/dashboards/fragments/collapse.html).
-
-        This caught two pre-existing instances (Resource Type and Resource
-        rows) alongside the Cleanup button that prompted it.
-        """
-        import re
-
-        html = auth_client.get('/admin/htmx/resources').get_data(as_text=True)
-
-        trigger_rows = 0
-        for m in re.finditer(r'<tr\b[^>]*>', html):
-            if 'data-bs-toggle="collapse"' not in m.group(0):
-                continue
-            trigger_rows += 1
-            row = html[m.end():html.find('</tr>', m.end())]
-            assert '<button' not in row, (
-                'A collapse-trigger <tr> contains a button, so clicking the '
-                'button will also expand the row. Move the toggle onto the '
-                'non-action <td>s. Offending row:\n' + row[:400]
-            )
-
-        # Guard against the guard silently passing on a fragment with no
-        # collapse rows at all (e.g. a markup refactor or an empty snapshot).
-        assert trigger_rows > 0, 'no collapse-trigger rows found — guard is vacuous'
+    # The collapse-trigger-row guard that used to live here rendered only
+    # /admin/htmx/resources, so it could not see the same bug when it landed in
+    # the contracts card (issue #356). It now scans the whole template tree
+    # statically — see tests/unit/test_collapse_trigger_rows.py.
