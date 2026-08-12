@@ -1,0 +1,99 @@
+{
+  "actionId": 375974,
+  "actionType": "Adjustment",
+  "actionBeginDate": "2026-04-07",
+  "actionEndDate": "2027-04-06",
+  "requestId": 1439530,
+  "requestNumber": "UCSU0146",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Application of a CONUS404-trained MLP to South America to Diagnose Regional Environmental and Convective Distinctiveness",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 844131,
+      "resourceRepositoryKey": 146036,
+      "awardedAmount": "-10000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 539808,
+      "roleType": "PI",
+      "username": "user_00000007",
+      "beginDate": "2026-04-02",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given07",
+        "middleName": null,
+        "lastName": "Surname07",
+        "email": "user07@example.invalid",
+        "phone": null,
+        "organization": "COLORADO STATE UNIVERSITY",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 539809,
+      "roleType": "Allocation Manager",
+      "username": "user_00000008",
+      "beginDate": "2026-04-02",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given08",
+        "middleName": null,
+        "lastName": "Surname08",
+        "email": "user08@example.invalid",
+        "phone": "555-0104",
+        "organization": "COLORADO STATE UNIVERSITY",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500039,
+      "fosNum": "37",
+      "fosName": "Weather Prediction",
+      "fosAbbr": "Weather Prediction",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500025,
+      "fosNum": "23",
+      "fosName": "Mesoscale Meteorology",
+      "fosAbbr": "Mesoscale Meteorology",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

@@ -113,9 +113,15 @@ The expected shape, from `replay.py`'s docstring — **verify it rather than tru
 | Update | applies the whole per-resource decision again |
 | Extension | near-idempotent, via the equal-end-date skip only |
 
-⚠️ XRAS owns the retry (established in the Sprint C retrospective), so this is not about
-adding a production replay path. It is about knowing the cost of an accidental double-post
-and whether the audit row lets you *detect* one.
+⚠️ XRAS owns the retry (established in the Sprint C retrospective, and **confirmed by
+ACCESS 2026-08-11** — *"POSTs are not automatically retried. They are triggered by a
+human"*, Steven Peckins, XRAS/UIUC), so this is not about adding a production replay
+path. It is about knowing the cost of an accidental double-post and whether the audit
+row lets you *detect* one.
+
+That detection question got sharper with the 41-payload corpus: `actionId` 388865
+arrives **twice with different bodies**, once failing and once applying. So a repeated
+`action_id` does not imply a duplicate post, and triage must not assume it does.
 
 ### 3. Combinatorial payloads
 
@@ -138,7 +144,9 @@ at once; boundary dates; a payload sized toward the `TEXT` ceiling.
 ⚠️ **PII guardrail, non-negotiable.** Generator output is real people, real awards, real
 organizations. It goes to a **gitignored** directory and never enters `tests/` or a commit.
 A scenario is promoted into `tests/fixtures/` only once its referents are *invented* rather
-than sampled. Committed tests use the 8 scrubbed fixtures and the obfuscated 3307 database.
+than sampled. Committed tests use the scrubbed fixtures (**41** as of 2026-08-11) and the
+obfuscated 3307 database. `.gitignore` now carries `xras_payloads_raw/` and `*_payloads_raw/`,
+so the staging convention is enforced rather than merely written down.
 
 ### 4. Unsampled wire shapes
 
@@ -156,6 +164,24 @@ production:
 Both close permanently the same two ways: a bulk forward from `hdt@ucar.edu`
 (`XRAS_SPRINT_A.md` § 3b has the ask — include the manual-fallback subject, which is how
 the Adjustment payload nearly went unnoticed), or production capture after cutover.
+
+> **Update 2026-08-11 — the bulk forward arrived; the list did not shrink to zero, and it
+> gained a fifth entry.** Corpus 8 → 41.
+>
+> - **`Co-PI`** — still unsampled, and now *measured*: 41 payloads, ~35 projects,
+>   `roleType` vocabulary exactly `PI` (45) / `Allocation Manager` (43) / `User` (13).
+>   This site does not send one, which agrees with the GET side
+>   (`webapp/api/xras/requests.py:244` documents `co_pi` as valid and always empty).
+>   The synthetic scenario stays and is the right coverage.
+> - **`Renewal`** — still unsampled as an `actionType`. ⚠️ Three payloads carry
+>   `requestType: 'Renewal'`, which looks like the sample and is not: `requestType`
+>   dispatches nothing, and those three route to extend / supplement / park.
+> - **`Advance`**, **`Transfer`** — unchanged, still zero.
+> - ⚠️ **New: `Date Adjustment`**, ×4. A wire `actionType` in no document and no Java
+>   enum, which parks with no serviceable — exactly as legacy does. It is now the most
+>   common thing on the manual-fallback path. `park_unknown_action_type` covers it.
+>
+> Only production capture can close what is left.
 
 ---
 

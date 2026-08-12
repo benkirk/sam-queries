@@ -24,7 +24,7 @@ no code is left.** The design, the measurements and the reasoning live in
 
 | # | Precondition | How to prove it |
 |---|---|---|
-| 1 | All six handlers built and registered | `pytest -q` → 5,280 passed; `pytest -m stress -n 0` → 21 passed |
+| 1 | All six handlers built and registered | `pytest -q` → 6,200 passed; `pytest -m stress -n 0` → 22 passed |
 | 1b | The whole legacy surface is mapped — all eight endpoints, not the seven XRAS calls today | `pytest tests/api/test_xras_roles.py tests/api/test_xras_unmapped.py -q` |
 | 2 | ✅ **Done 2026-08-10.** The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
 | 2b | ✅ **Done 2026-08-10.** ⚠️ The DDL applied is the **current** `zz-90`/`zz-91`/`zz-92` — **exactly 7** columns must come back utf8mb4: `raw_payload`, `error_messages`, `comment`, `notified_to`, `recipient_name`, `subject`, `error` | `SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='sam' AND TABLE_NAME IN ('xras_action_log','xras_activation_event','notification_log') AND CHARACTER_SET_NAME='utf8mb4'` |
@@ -123,17 +123,63 @@ independent of gate 4.
   `resourceRepositoryKey` is *omitted* when a resource is unmapped, so **adding a mapping
   row changes GET response bytes** and invalidates a previous clean run.
 
-### 4 · The 400/422 contract · ⏳ external
-
-An email to `allocations@access-ci.org`, not code. **Start it in the same week as gate 2.**
+### 4 · The 400/422 contract · ✅ **ANSWERED 2026-08-11**
 
 Legacy answers 500 for both a malformed body and a failed validation, and a bare 200 for
 an action it silently parked. We answer 400 / 422 / 200 and distinguish all of them.
 
-⚠️ **Broker retry behaviour on 4xx is unknown, and it is the riskiest open unknown on the
-cutover path.** If XRAS retries a 422 indefinitely, a single bad payload becomes a loop.
+Steven Peckins (XRAS, UIUC) answered on the *Planning for NCAR XRAS->SAM reintegration*
+thread. Verbatim, because each clause retires something:
 
-- **Done when** ACCESS confirms what their broker does with a 4xx.
+> Your changes on the POST /v1/actions endpoint are fine; XRAS won't notice. **POSTs are
+> not automatically retried. They are triggered by a human — a user in xras_admin pushes
+> a button.** Any status other than 200/OK is considered an error. XRAS itself does not
+> treat any non-200 error status specially, but it's fine to use different statuses. The
+> response body is saved and made available in xras_admin for the admin to see, so it's
+> nice to include something informative.
+
+- ✅ **The retry loop cannot happen.** This was the riskiest open unknown on the cutover
+  path; it is closed. A 422 is seen by the person who pushed the button.
+- ✅ **The 400/422 split is approved.** No change back.
+- ✅ **The structured error list is an improvement, not a risk.** Steve quoted what legacy
+  currently returns — `{"message":"Unhandled SAM exception processing XRAS request
+  (timestamp 1771966790970)","result":null}` — against ACCESS's own accounting service,
+  which explains *why* an action failed. Our accumulated 422 list is exactly that fix.
+
+⚠️ **One thing this opens.** The response body is shown to a human, and a **parked**
+action currently answers `message: 'OK'` — byte-identical to a success. So an admin who
+posts a `Date Adjustment` (or a Transfer, or anything disabled by the triage lever) is
+told it worked. Legacy does the same, so this is not a regression and not a cutover
+blocker, but Steve has explicitly invited an informative body. Cheap to fix and outside
+the parity gate, which covers the six **GET** endpoints only. **Decide before cutover.**
+
+⚠️ **Also raised, and not yet triaged.** Steve reports anomalies in the *GET*
+`/v1/requests/*` responses: NCAR does not return `xrasActionId` or `xrasActionResourceId`,
+which xras_admin uses to correlate actions and render links back to them, and *"even the
+dates were out of whack with what XRAS had."* We ported those responses byte-for-byte, so
+we inherited this exactly. It is **post-cutover work by construction** — closing it moves
+response bytes and would invalidate the gate 3 parity run. He is digging up details.
+
+💡 **Offered and DECLINED: a test instance.** Steve offered *"a test instance of
+xras_admin; we could set that up against your new accounting service, if it would be
+helpful."*
+
+**Not taken for this cutover — decision 2026-08-11.** The cutover stays abrupt and every
+precondition in this document still stands as written: the § *One fact* banner above is
+unchanged, and the pre-cutover evidence remains the 41-payload corpus and the oracle.
+Nothing here depends on a test instance, and nobody should arrive on the day wondering
+whether one was set up.
+
+**Noted for future us.** If a later XRAS-facing change wants a rehearsal — the GET
+serialiser work in the paragraph above is the obvious candidate, since it deliberately
+moves response bytes — this offer is the way to get one, and it costs a
+conversation rather than a code change.
+
+⚠️ **This is not dual-posting and does not reopen it.** Dual-posting is ruled out (§ *One
+fact*, and `XRAS_REIMPLEMENTATION.md` § 6 Phase 5.5): it means production traffic
+reaching two systems. A test instance is a harness driven by us against a stack XRAS
+production never touches. Declining the harness does not weaken that ruling, and taking
+it later would not either.
 
 ### 5 · The repoint — this is the cutover
 
@@ -233,8 +279,20 @@ new.
   would move New's success rate more than any code.
 - **Transfer parks by design**, with `outcome_reason` saying so. Zero production traffic.
 - **Wire shapes never seen in production**: `Co-PI` vs `CoPi` is **closed** — membership
-  ignores `roleType` entirely, so the spelling cannot matter, tested across three.
-  `Renewal` and `Advance` are exercised synthetically.
+  ignores `roleType` entirely, so the spelling cannot matter, tested across three. And
+  now measured: 41 payloads across ~35 projects carry exactly `PI` / `Allocation Manager`
+  / `User` and no co-PI at all. `Renewal` and `Advance` are exercised synthetically; the
+  2026-08-11 forward supplied three `requestType: 'Renewal'` payloads, which is **not**
+  the same thing and does not reach the Renewal arm.
+- ⚠️ **`Date Adjustment` is a real action type and it parks.** Four samples in the
+  2026-08-11 forward; unknown before that, because it only ever appears in the
+  manual-fallback subject line. Legacy has no serviceable for it either, so parking is
+  parity-correct and a human applies it exactly as today. It is listed in
+  `XRAS_ACTION_TYPES` so it is filterable on the XRAS tab from the first row.
+  **Expect these in triage week and do not treat them as failures.** Whether to service
+  it is a question for ACCESS: the payloads are Extension-shaped, but they carry an
+  `actionBeginDate` that Extension ignores, and a separate action type most likely
+  exists to move dates in directions Extension rejects.
 - **The audit table's charset is split, on purpose.** `raw_payload`, `error_messages`
   and `xras_activation_event.comment` / `.notified_to` are **utf8mb4**; every
   identifier column is **utf8mb3**. utf8mb3 cannot hold a 4-byte character at all, and

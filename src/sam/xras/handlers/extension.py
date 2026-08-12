@@ -122,9 +122,10 @@ class ExtensionHandler(ActionHandler):
         return super().result(**overrides)
 
 
-def handle_extension(session, action) -> DispatchResult:
-    """The registry's contract: ``(session, action) -> DispatchResult``."""
-    return ExtensionHandler(session, action).run()
+def handle_extension(session, action, *, validate_only: bool = False) -> DispatchResult:
+    """The registry's contract:
+    ``(session, action, *, validate_only=False) -> DispatchResult``."""
+    return ExtensionHandler(session, action).run(validate_only=validate_only)
 
 
 register('extend', handle_extension)

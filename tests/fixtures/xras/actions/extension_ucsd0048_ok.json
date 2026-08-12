@@ -1,0 +1,106 @@
+{
+  "actionId": 390652,
+  "actionType": "Extension",
+  "actionBeginDate": "2023-09-21",
+  "actionEndDate": "2026-08-31",
+  "requestId": 1225372,
+  "requestNumber": "UCSD0048",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Marine Cloud Brightening in Stratocumulus Regions and Associated Climate Feedbacks",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532220,
+  "opportunityName": "Small Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Small",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [],
+  "roles": [
+    {
+      "requestPeopleRoleId": 242239,
+      "roleType": "Allocation Manager",
+      "username": "user_00000022",
+      "beginDate": "2023-09-21",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given22",
+        "middleName": null,
+        "lastName": "Surname22",
+        "email": "user22@example.invalid",
+        "phone": null,
+        "organization": "YALE UNIVERSITY",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 242134,
+      "roleType": "PI",
+      "username": "user_00000023",
+      "beginDate": "2023-09-20",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given23",
+        "middleName": null,
+        "lastName": "Surname23",
+        "email": "user23@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF CALIFORNIA AT SAN DIEGO",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500032,
+      "fosNum": "30",
+      "fosName": "Regional Climate",
+      "fosAbbr": "Regional Climate",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [
+    {
+      "fundingAgency": "National Science Foundation",
+      "grantNumber": "DGE-2038238",
+      "programOfficerName": "Officer13",
+      "programOfficerEmail": "officer01@example.invalid",
+      "piName": "Officer14",
+      "title": "Graduate Research Fellowship Program (GRFP)",
+      "beginDate": "2020-08-01",
+      "endDate": "2025-08-31",
+      "awardedAmount": "21637497.0",
+      "awardedUnits": null,
+      "percentageAward": null,
+      "subAwardNumber": null,
+      "primaryFos": {
+        "fosTypeId": null,
+        "fosNum": null,
+        "fosName": null,
+        "fosAbbr": null
+      },
+      "isPending": false
+    }
+  ],
+  "opportunityQA": []
+}

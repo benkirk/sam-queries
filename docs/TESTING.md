@@ -2,9 +2,9 @@
 
 ## Overview
 
-The SAM test suite has **5,754 collected tests** (measured 2026-08-10) across
+The SAM test suite has **6,244 collected tests** (measured 2026-08-11) across
 five tiers. The default run — everything except the two gated tiers — is
-**5,711 tests in ~90 seconds** on a laptop with pytest-xdist parallelism.
+**6,200 tests in ~90 seconds** on a laptop with pytest-xdist parallelism.
 
 Regenerate both numbers with `pytest --collect-only -q | tail -1` (default run)
 and `pytest --collect-only -q -m "" | tail -1` (everything).
@@ -13,8 +13,20 @@ Two tiers are gated **off** by default and run only when asked for:
 
 | tier | size | command | what it is |
 |---|---|---|---|
-| `perf` | 22 | `pytest -m perf -n 0` | query-count and latency baselines |
-| `stress` | 21 | `pytest -m stress` | XRAS audit-row triage: oversize payloads, 4-byte unicode, the unmapped-path ingress, repeat posts, unsampled wire shapes |
+| `perf` | 22 | `pytest -m perf -n 0` (or `make perf`) | query-count and latency baselines |
+| `stress` | 22 | `pytest -m stress -n 0` (or `make stress`) | XRAS audit-row triage: oversize payloads, 4-byte unicode, the unmapped-path ingress, repeat posts, parking causes (incl. the unserviced `Date Adjustment`), unsampled wire shapes |
+
+The two `-n 0`s are **not** the same kind of `-n 0`:
+
+- **`perf` requires it.** `pytest-benchmark` is disabled under xdist, and a
+  query-count baseline is meaningless under concurrent load.
+- **`stress` merely prefers it** — faster (~2.5 s vs ~6.5 s; xdist startup
+  dominates 22 tests), matches CI, and sidesteps worker-count-dependent factory
+  bugs. The tier is genuinely xdist-safe: the `action_log` fixture captures the
+  row ids the route mints and reads/deletes by those PKs, so workers cannot see
+  or deadlock on each other's committed audit rows. The reasoning lives on the
+  fixture in `tests/xras_audit.py` and in the `_comment` at the head of
+  `tests/stress/scenarios.json`. **Plain `pytest -m stress` is also correct.**
 
 > This file is the single source of truth for suite size and timings —
 > other docs link here rather than restating numbers.
@@ -52,9 +64,10 @@ pytest --cov=src --cov-report=html --cov-fail-under=60
 make perf
 # or: pytest -m perf -n 0 -v
 
-# XRAS stress scenarios (~5s) — audit-row triage, oversize payloads,
-# repeat posts, and the wire shapes the corpus never sampled
-pytest -m stress
+# XRAS stress scenarios (~2.5s) — audit-row triage, oversize payloads,
+# repeat posts, parking causes, and the wire shapes the corpus never sampled
+make stress
+# or: pytest -m stress -n 0 -v   (plain `pytest -m stress` also works — see above)
 ```
 
 Both `perf` and `stress` are gated **off** by default via `addopts`
@@ -258,7 +271,9 @@ The primary CI workflow:
 1. Builds and starts all containers including `mysql-test` (via `--profile test`)
 2. Waits for both MySQL services to accept TCP connections
 3. Runs `pytest --cov=src --cov-fail-under=60` inside the webapp container
-4. On push to `main` only: runs `pytest -m perf -n 0` for performance regression checks
+4. Runs **both** gated tiers, each `if: always()` — `pytest -m perf -n 0` for
+   performance regression, and `pytest -m stress -n 0 -v` for XRAS audit-row
+   survival and parking
 5. Uploads coverage report as a GitHub Actions artifact
 
 ### `ci-staging.yaml`

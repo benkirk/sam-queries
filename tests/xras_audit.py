@@ -81,10 +81,10 @@ def action_log(app, monkeypatch):
                         'received_time': r.received_time,
                         # Sprint B columns. http_status separates the two things
                         # status='failed' conflates (400 vs 422); processed_by and
-                        # replay_of_id are the replay chain.
+                        # source_action_id are the replay chain.
                         'http_status': r.http_status,
                         'processed_by': r.processed_by,
-                        'replay_of_id': r.replay_of_id,
+                        'source_action_id': r.source_action_id,
                     }
                     for r in found
                 ]
@@ -107,7 +107,7 @@ def action_log(app, monkeypatch):
             # DESCENDING id, one PK-targeted DELETE each — NOT a single
             # `IN (...)`, which is what this used to be.
             #
-            # `replay_of_id` is a self-FK, so once a test replays an action the
+            # `source_action_id` is a self-FK, so once a test replays an action the
             # minted set contains both a parent and its child. A single statement
             # gives InnoDB no ordering guarantee and it fails with
             # `1451 Cannot delete or update a parent row`. Descending id is

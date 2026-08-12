@@ -1,0 +1,145 @@
+{
+  "actionId": 387173,
+  "actionType": "New",
+  "actionBeginDate": "2026-07-30",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1444621,
+  "requestNumber": "NCAR4214",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Exploring Sea-Ice representation in CAMulator + POP2 + CICE",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 903198,
+      "resourceRepositoryKey": 145576,
+      "awardedAmount": "1500.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 903197,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "500000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 903196,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "5000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 573131,
+      "roleType": "PI",
+      "username": "user_00000033",
+      "beginDate": "2026-07-29",
+      "endDate": null,
+      "isAccountToBeCreated": true,
+      "person": {
+        "firstName": "Given33",
+        "middleName": null,
+        "lastName": "Surname33",
+        "email": "user33@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 568952,
+      "roleType": "PI",
+      "username": "placeholder34-user-00034",
+      "beginDate": "2026-07-15",
+      "endDate": "2026-07-28",
+      "isAccountToBeCreated": true,
+      "person": {
+        "firstName": "Given34",
+        "middleName": "M34",
+        "lastName": "Surname34",
+        "email": "user34@example.invalid",
+        "phone": "555-0122",
+        "organization": "University of Colorado Boulder",
+        "academicStatus": "Undergraduate Student",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 568951,
+      "roleType": "Allocation Manager",
+      "username": "user_00000035",
+      "beginDate": "2026-07-15",
+      "endDate": null,
+      "isAccountToBeCreated": true,
+      "person": {
+        "firstName": "Given35",
+        "middleName": null,
+        "lastName": "Surname35",
+        "email": "user35@example.invalid",
+        "phone": null,
+        "organization": "NCAR/CGD",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 566195,
+      "roleType": "PI",
+      "username": "user_00000035",
+      "beginDate": "2026-07-05",
+      "endDate": "2026-07-14",
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given35",
+        "middleName": null,
+        "lastName": "Surname35",
+        "email": "user35@example.invalid",
+        "phone": null,
+        "organization": "NCAR/CGD",
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": [
+    {
+      "attributeSetId": 537623,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "opportunityAttributeId": 539638,
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms."
+    }
+  ]
+}

@@ -61,12 +61,16 @@ NOT_IMPLEMENTED_REASON = (
 )
 
 
-def handle_transfer(session, action) -> DispatchResult:
+def handle_transfer(session, action, *, validate_only: bool = False) -> DispatchResult:
     """Record the action for a human and return ``manual``.
 
-    Takes ``session`` and ``action`` it does not use, because it is a handler and the
-    registry's contract is uniform — a special case in the dispatcher would be a worse
-    trade than an unused argument here.
+    Takes ``session``, ``action`` and ``validate_only`` it does not use, because it is
+    a handler and the registry's contract is uniform — a special case in the dispatcher
+    would be a worse trade than unused arguments here.
+
+    ``validate_only`` changes nothing on purpose: a re-check of a Transfer should
+    answer *"nothing would run"*, which is the same answer as a live post. Returning
+    ``rechecked`` here would claim the action was validated when no validation exists.
     """
     projcode = (get_field(action, 'requestNumber') or '').strip()
     logger.warning(

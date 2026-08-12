@@ -54,6 +54,13 @@ on a single ticket. This is the last cheap opportunity to confirm the schema and
 operator workflow are right, and to settle the wording of the mail an NSF NCAR PI
 will actually receive.
 
+> **2026-08-11.** Two clauses above have moved, and neither changes the argument. The
+> `zz-9*` DDL was applied to production on 2026-08-10 and the init scripts retired
+> (`XRAS_CUTOVER_RUNBOOK.md` § gate 2), so that is no longer a pending ticket. And the
+> cutover is *still* abrupt by choice: ACCESS offered a test instance of xras_admin and
+> we **declined it** for this cutover (runbook gate 4). Dual-posting remains ruled out
+> and is a separate question.
+
 ---
 
 ## Preconditions
@@ -63,7 +70,7 @@ will actually receive.
 | ✅ | On `xras_incoming_smoke`, both PRs present | `git log --oneline -2` → `dfaf7eb`, `24965d9` |
 | ✅ | The three tables exist locally, and are empty | `SHOW TABLES LIKE 'xras%'` / `LIKE 'notification%'` → `xras_action_log`, `xras_activation_event`, `notification_log`, all at 0 rows — a clean slate |
 | ✅ | Containers up | `docker compose ps` → `webdev`, `webapp`, `mysql`, `mysql-test`, `cache` healthy |
-| ✅ | Resource key mapping seeded | `SELECT COUNT(*) FROM xras_resource_repository_key_resource` → 13, incl. keys `145575` (Derecho), `145576` (Derecho GPU), `145145` (Data_Access), `144650` (Casper) — every key the corpus uses resolves |
+| ✅ | Resource key mapping seeded | `SELECT COUNT(*) FROM xras_resource_repository_key_resource` → 13. **Re-verified 2026-08-11 against the 41-payload corpus**, which uses **7** distinct keys — `144650` Casper (×23), `145575` Derecho (×21), `145576` Derecho GPU (×10), `145145` Data_Access (×8), `144552` CMIP Analysis Platform (×6), `146036` Casper GPU (×2), `144646` Campaign_Store (×1). All 7 resolve, so the ✅ still holds; the three beyond the original four were not previously named |
 | ✅ | `benkirk` holds `MANAGE_XRAS` + `SYSTEM_ADMIN` | `USER_PERMISSION_OVERRIDES['benkirk'] = [p for p in Permission]` — `src/webapp/utils/rbac.py:304` |
 | ✅ | XRAS write credential in the shell | `source etc/config_env.sh && echo $SAM_XRAS_USER` → `samuel`; `api_credentials` is empty locally, so step 3 must write the row |
 
@@ -175,7 +182,10 @@ python scripts/xras/seed_dev_actions.py --errors
 Idempotently writes the `ROLE_XRAS` `api_credentials` row from
 `$SAM_XRAS_USER`/`$SAM_XRAS_PASS` (guarded to local hosts — the obfuscated snapshot
 ships the table empty, and config-based `API_KEYS_*` resolve to `roles=[]` and 403),
-then posts the 8 scrubbed production payloads plus a deliberate 400 and 422.
+then posts **every** scrubbed production payload plus a deliberate 400 and 422.
+`seed_dev_actions.py` globs the fixture directory (`sorted(source.glob('*.json'))`), so
+this grew from 8 to **41** with the 2026-08-11 corpus and will grow again on the next
+harvest — do not read the counts below as fixed.
 
 Some `New` actions will fail. That is the measured ~30 % success rate, and it is what
 makes the queue realistic enough to judge the operator surface.
@@ -184,7 +194,28 @@ makes the queue realistic enough to judge the operator surface.
   `SELECT status, COUNT(*) FROM xras_action_log GROUP BY status;` shows more than one
   status.
 
-✅ Credential created and `ROLE_XRAS` linked; 10 rows written — **4 `processed`,
+✅ **Re-run 2026-08-11 against the 41-payload corpus: 43 rows — 18 `processed`,
+20 `failed`, 4 `manual`, 1 `failed`/400.** By action type:
+
+| `action_type` | status | http | n |
+|---|---|---|---|
+| Extension | `processed` / `failed` | 200 / 422 | 8 / 1 |
+| Supplement | `processed` | 200 | 9 |
+| Adjustment | `processed` / `failed` | 200 / 422 | 1 / 2 |
+| New | `failed` | 422 | 17 |
+| **`Date Adjustment`** | **`manual`** | **200** | **4** |
+| *(malformed body)* | `failed` | 400 | 1 |
+
+All four `Date Adjustment` rows carry `service = NULL` and
+`outcome_reason = "no service matches actionType='Date Adjustment'"` — the parking path,
+visible and explained, which is the thing this step exists to confirm.
+
+The 17 `New` failures are the expected roster misses, not a regression: corpus usernames
+are scrubbed independently of the obfuscated snapshot and resolve to no rows.
+
+<details><summary>Original Round 1 result (8 payloads) — kept for provenance</summary>
+
+Credential created and `ROLE_XRAS` linked; 10 rows written — **4 `processed`,
 6 `failed`**, exactly the expected shape:
 
 | Payload | HTTP | service | Why |
@@ -196,6 +227,8 @@ makes the queue realistic enough to judge the operator surface.
 | `new_ncar4232_failed.json`, `new_ncar4253_ok.json` | 422 | `add` | roster: PI/AM *is not in database* |
 | `new_uwis0071_existing_ok.json` | 422 | `update` | same; note it correctly routed to `update`, not `add` |
 | malformed body / bad `awardPeriod` | 400 / 422 | — | error paths as designed |
+
+</details>
 
 ### 4 · Build the benkirk-lead payloads ✅
 
@@ -417,17 +450,20 @@ without.** A and B differ only in their allocation lists; the linked award
 their own grant — but it was the explicit reason for building two payloads, so
 record the decision rather than leave it implicit.
 
-**☐ 5 · The four processed corpus actions produced no card rows at all**, because
-every project they touched (`UWIS0064`, `UCUB0166`, `UBRN0027`, `UCUB0182`) is
-already active. So an Extension, an Adjustment and two Supplements against live
-projects were applied and left **no operator-visible trace on the worklist**. This is
+**☐ 5 · The processed corpus actions produced no card rows at all**, because
+every project they touched (`UWIS0064`, `UCUB0166`, `UBRN0027`, `UCUB0182` in Round 1;
+18 projects in the 2026-08-11 re-run) is already active. So Extensions, Adjustments and
+Supplements against live projects were applied and left **no operator-visible trace on
+the worklist**. The larger corpus makes the point 4½× harder rather than changing it.
+This is
 gotcha 1's corollary arriving unprompted, and it sharpens the design question: the
 pending card is an *activation* worklist, not an *action* worklist, and there is
 currently no surface that says "something changed on a project that is already
 running". Whether that matters is Ben's call; the XRAS log page does record it.
 
 **☐ 6 · No `New` action in the committed corpus can succeed on any local database.**
-All three fail on the roster (`PI user_00000009 is not in database`) because
+All 16 (was 3, before the 2026-08-11 corpus) fail on the roster
+(`PI user_000000NN is not in database`) because
 `scrub_payload.py` replaces usernames with pseudonyms, and
 `SELECT COUNT(*) FROM users WHERE username LIKE 'user\_000000%'` is **0** on the
 production clone (and the obfuscated snapshot uses a different `user_<hex>` shape).

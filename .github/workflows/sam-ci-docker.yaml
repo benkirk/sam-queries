@@ -201,14 +201,25 @@ jobs:
       # not truncate, it raises `1406 Data too long` and the audit row is lost —
       # and that row is what the whole cutover triage story assumes exists.
       #
-      # ⚠️ `-n 0` is required, and is also FASTER: 17 tests in ~2.5s serially
-      # versus ~6.5s under `-n auto`, where xdist startup dominates. It also makes
-      # this tier immune to the worker-count-dependent failures that have already
-      # bitten this suite once (see the `make_mnemonic_code` namespace fix).
+      # `-n 0` is PREFERRED, not required — and is also FASTER: 22 tests in ~2.5s
+      # serially versus ~6.5s under `-n auto`, where xdist startup dominates. It
+      # also makes this tier immune to the worker-count-dependent failures that
+      # have already bitten this suite once (see the `make_mnemonic_code`
+      # namespace fix).
       #
-      # Contains no PII by construction: it builds every payload synthetically
-      # (it needs a 65KB body and an unmapped key, which no real payload provides),
-      # never loads `tests/fixtures/xras/actions/`, and never reads the dev database.
+      # ⚠️ Not required, and the distinction matters: the tier IS xdist-safe. The
+      # `action_log` fixture captures the row ids the route mints and reads/deletes
+      # by those PKs precisely so parallel workers cannot see or deadlock on each
+      # other's rows — see `tests/xras_audit.py`, whose docstring names both
+      # failures it replaced. A reader who believes `-n 0` is load-bearing will go
+      # hunting for an isolation bug that does not exist.
+      #
+      # Contains no PII: it builds most payloads synthetically (it needs a 65KB
+      # body and an unmapped key, which no real payload provides), and the one
+      # scenario that does load `tests/fixtures/xras/actions/` reads a committed
+      # fixture — committed means scrubbed, which is what
+      # `scripts/xras/scrub_payload.py` exists to guarantee. Never reads the dev
+      # database.
       - name: Run XRAS stress tests (audit-row survival + parking)
         if: always()
         run: |

@@ -1,0 +1,102 @@
+{
+  "actionId": 387775,
+  "actionType": "New",
+  "actionBeginDate": "2026-07-20",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1444827,
+  "requestNumber": "NCAR4223",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Exploring the angular dimension of radiative transfer for heterogeneous surfaces and atmospheres",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 896199,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "500000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 896197,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "5000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 567213,
+      "roleType": "PI",
+      "username": "user_00000037",
+      "beginDate": "2026-07-08",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given37",
+        "middleName": null,
+        "lastName": "Surname37",
+        "email": "user37@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 567208,
+      "roleType": "Allocation Manager",
+      "username": "user_00000037",
+      "beginDate": "2026-07-08",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given37",
+        "middleName": null,
+        "lastName": "Surname37",
+        "email": "user37@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF COLORADO AT BOULDER",
+        "academicStatus": null,
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": [
+    {
+      "attributeSetId": 537623,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "opportunityAttributeId": 539638
+    }
+  ]
+}

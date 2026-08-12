@@ -1,0 +1,127 @@
+{
+  "actionId": 387981,
+  "actionType": "New",
+  "actionBeginDate": "2026-07-20",
+  "actionEndDate": "2027-07-31",
+  "requestId": 1444920,
+  "requestNumber": "NCAR4228",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "WRF Simulations to Investigate the Urban Influence on Sunset Light Precipitation",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 896215,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "300000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 896213,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "5000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 567592,
+      "roleType": "Allocation Manager",
+      "username": "placeholder39-user-00039",
+      "beginDate": "2026-07-10",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given39",
+        "middleName": null,
+        "lastName": "Surname39",
+        "email": "user39@example.invalid",
+        "phone": null,
+        "organization": "BOSTON UNIVERSITY",
+        "academicStatus": "Postdoctorate",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 567591,
+      "roleType": "PI",
+      "username": "placeholder39-user-00039",
+      "beginDate": "2026-07-10",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given39",
+        "middleName": null,
+        "lastName": "Surname39",
+        "email": "user39@example.invalid",
+        "phone": null,
+        "organization": "BOSTON UNIVERSITY",
+        "academicStatus": "Postdoctorate",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 567590,
+      "roleType": "User",
+      "username": "placeholder39-user-00039",
+      "beginDate": "2026-07-10",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given39",
+        "middleName": null,
+        "lastName": "Surname39",
+        "email": "user39@example.invalid",
+        "phone": null,
+        "organization": "BOSTON UNIVERSITY",
+        "academicStatus": "Postdoctorate",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500018,
+      "fosNum": "16",
+      "fosName": "Geophysics",
+      "fosAbbr": "Geophysics",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": [
+    {
+      "attributeSetId": 537623,
+      "attributeSetRelationType": "single_sel",
+      "attributeSetName": "As a condition to receiving access to the assets and resources provided by the NCAR-Wyoming Supercomputing Center (NWSC), you are required to acknowledge and agree to the terms of the <a href=\"https://arc.ucar.edu/docs/end-user-agreement\" target=\"_blank\">NWSC End User Agreement</a>. Project Leads, including instructors associated with classroom allocations, are responsible for ensuring that all users on their projects are aware of and comply with these End User Agreement terms and responsibilities.",
+      "attributeName": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "attributeValue": null,
+      "answer": "Click here to acknowledge and agree to the End User Agreement terms.",
+      "opportunityAttributeId": 539638
+    }
+  ]
+}

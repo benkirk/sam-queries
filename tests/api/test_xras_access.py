@@ -737,7 +737,7 @@ class TestDispatchArms:
     def test_a_processed_action_records_its_projcode_and_answers_200(
             self, xras_client, action_log, dispatching):
         """The status this table has never once held."""
-        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+        dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
             status='processed', service='extend', projcode='UCUB0166'))
 
         resp = xras_client.post(
@@ -760,7 +760,7 @@ class TestDispatchArms:
         the ephemeral app log and nowhere else — which defeats the module docstring's
         own promise that the triage query is ``status='manual' AND action_type=...``.
         """
-        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+        dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
             status='manual', service='extend', projcode='UCUB0166',
             reason='parked on purpose'))
 
@@ -778,7 +778,7 @@ class TestDispatchArms:
         """The three dispatcher-level parking arms carry no projcode, and must not
         invent one — ``no service matches`` is not a statement about a project."""
         app.config['XRAS_ACTIONS_ENABLED'] = 'Supplement'
-        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+        dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
             status='processed', service='extend', projcode='UCUB0166'))
 
         xras_client.post(self.PATH, data=_payload('extension_ucub0166_ok.json'),
@@ -802,7 +802,7 @@ class TestDispatchArms:
         ``docs/plans/XRAS_STRESS_AND_SCHEMA.md``'s ``warnings`` column candidate. This
         pins only that they stop vanishing.
         """
-        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+        dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
             status='processed', service='extend', projcode='UCUB0166',
             warnings=('jdoe', 'asmith')))
 
@@ -823,7 +823,7 @@ class TestDispatchArms:
         an ``XrasActionRejected`` because nothing about the request is wrong, so a 422
         telling XRAS to fix its payload would be a lie.
         """
-        def _boom(session, action):
+        def _boom(session, action, *, validate_only=False):
             raise RuntimeError('projcode counter exhausted')
 
         dispatching.register('extend', _boom)
@@ -884,7 +884,7 @@ class TestDispatchArms:
         accumulated list, in order, not a summary."""
         from sam.xras.errors import ActionErrors
 
-        def rejecting(session, action):
+        def rejecting(session, action, *, validate_only=False):
             errs = ActionErrors()
             errs.report('Missing title')
             errs.report('PI jdoe is not in database')
@@ -911,7 +911,7 @@ class TestDispatchArms:
         """The triage lever, end to end. An operator narrowing ``XRAS_ACTIONS_ENABLED``
         at 3am must get an audited ``manual`` row, not a dropped action."""
         ran = []
-        dispatching.register('extend', lambda s, a: ran.append(1) or
+        dispatching.register('extend', lambda s, a, *, validate_only=False: ran.append(1) or
                              dispatching.DispatchResult(status='processed',
                                                         service='extend'))
         app.config['XRAS_ACTIONS_ENABLED'] = 'Supplement'
@@ -927,7 +927,7 @@ class TestDispatchArms:
     def test_an_enabled_action_type_still_dispatches(
             self, app, xras_client, action_log, dispatching):
         """The other half of the lever: narrowing it must not disable everything."""
-        dispatching.register('extend', lambda s, a: dispatching.DispatchResult(
+        dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
             status='processed', service='extend', projcode='UCUB0166'))
         app.config['XRAS_ACTIONS_ENABLED'] = 'Extension,Supplement'
 
@@ -941,7 +941,7 @@ class TestDispatchArms:
         no allowlist setting may cause a dispatch — a double-apply against live
         allocations has no undo."""
         ran = []
-        dispatching.register('extend', lambda s, a: ran.append(1) or
+        dispatching.register('extend', lambda s, a, *, validate_only=False: ran.append(1) or
                              dispatching.DispatchResult(status='processed',
                                                         service='extend'))
         app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
@@ -1049,8 +1049,8 @@ class TestPostActionsErrors:
         assert row['action_type'] is None
 
 
-class TestReplay:
-    """``webapp.api.xras.replay.replay_action`` — the operator's re-submit path.
+class TestRecheck:
+    """``webapp.api.xras.recheck.recheck_action`` — the operator's re-check path.
 
     Exercised at the function level rather than through the dashboard route: the
     route is a five-line wrapper whose interesting behaviour is the permission
@@ -1059,7 +1059,7 @@ class TestReplay:
 
     Every row these tests create is minted through ``actions._record``, so the
     ``action_log`` fixture captures and deletes them. That is not incidental —
-    ``replay.py`` calls ``actions._record`` through the *module attribute* for
+    ``recheck.py`` calls ``actions._record`` through the *module attribute* for
     exactly this reason. A ``from .actions import _record`` would bind at import
     time, sail past the fixture's monkeypatch, and leak committed rows into the
     shared xdist database.
@@ -1073,84 +1073,103 @@ class TestReplay:
         assert resp.status_code == 200
         return resp.get_json()  # body is {'message': 'OK', 'result': None}
 
-    def test_replay_writes_a_new_linked_row(self, app, xras_client, action_log):
-        from webapp.api.xras.replay import replay_action
+    @pytest.fixture
+    def dispatching_recheck(self, app):
+        """An empty handler registry, restored afterwards.
+
+        Unlike ``TestDispatchArms.dispatching`` this leaves ``CAPTURE_ONLY`` alone:
+        a re-check is supposed to behave identically under either setting, so the
+        tests that care set it explicitly and the rest must not depend on it.
+        """
+        from sam.xras import dispatch
+
+        saved = dict(dispatch._HANDLERS)
+        dispatch._HANDLERS.clear()
+        try:
+            yield dispatch
+        finally:
+            app.config.pop('XRAS_ACTIONS_ENABLED', None)
+            dispatch._HANDLERS.clear()
+            dispatch._HANDLERS.update(saved)
+
+    def test_recheck_writes_a_new_linked_row(self, app, xras_client, action_log):
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
 
         with app.app_context():
-            new_id = replay_action(original['id'], actor='benkirk')
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
 
         assert new_id != original['id'], 'replay must create a row, not edit one'
         replayed = action_log.by_id(new_id)
-        assert replayed['replay_of_id'] == original['id']
+        assert replayed['source_action_id'] == original['id']
         assert replayed['processed_by'] == 'benkirk'
 
-    def test_replay_preserves_the_payload_byte_for_byte(
+    def test_recheck_preserves_the_payload_byte_for_byte(
             self, app, xras_client, action_log):
         """``raw_payload`` is byte-exact on purpose — a re-serialisation would
         silently make the replay a different request from the one that arrived."""
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
 
         with app.app_context():
-            new_id = replay_action(original['id'], actor='benkirk')
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
 
         assert action_log.by_id(new_id)['raw_payload'] == original['raw_payload']
 
-    def test_replay_inherits_the_original_remote_actor(
+    def test_recheck_inherits_the_original_remote_actor(
             self, app, xras_client, action_log):
         """The bytes still originated at XRAS, so ``remote_actor`` stays theirs.
 
         The human goes in ``processed_by`` — which is also the only column wide
         enough for a username (``remote_actor`` is varchar(11))."""
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
 
         with app.app_context():
-            new_id = replay_action(original['id'], actor='benkirk')
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
 
         assert action_log.by_id(new_id)['remote_actor'] == original['remote_actor']
 
-    def test_replay_does_not_stamp_the_original(self, app, xras_client, action_log):
-        """Marking the parent 'replayed' would destroy its own outcome, which IS
+    def test_recheck_does_not_stamp_the_original(self, app, xras_client, action_log):
+        """Marking the parent 'rechecked' would destroy its own outcome, which IS
         the audit record. "Has been replayed" is derived from the relationship."""
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
 
         with app.app_context():
-            replay_action(original['id'], actor='benkirk')
+            recheck_action(original['id'], actor='benkirk')
 
         after = action_log.by_id(original['id'])
         assert after['status'] == original['status'] == 'received'
         assert after['processed_by'] is None
-        assert after['replay_of_id'] is None
+        assert after['source_action_id'] is None
 
-    def test_replay_lands_replayed_under_capture_mode(
+    def test_recheck_lands_rechecked_under_capture_mode(
             self, app, xras_client, action_log):
         """Capture mode is on because legacy is still applying these actions, so a
         dispatching replay would double-apply. It re-validates instead."""
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
 
         app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
         with app.app_context():
-            new_id = replay_action(original['id'], actor='benkirk')
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
 
         row = action_log.by_id(new_id)
-        assert row['status'] == 'replayed'
+        assert row['status'] == 'rechecked'
         assert row['processed_time'] is not None
 
-    def test_replay_never_dispatches_even_with_capture_off(
+    def test_recheck_never_dispatches_even_with_capture_off(
             self, app, xras_client, action_log):
         """⚠️ The guard on the reversal, and the reason it exists.
 
@@ -1168,7 +1187,7 @@ class TestReplay:
         Note this test deliberately does **not** take ``no_handlers``: the real
         registry is live, and the assertion is that it still writes nothing.
         """
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
@@ -1176,17 +1195,17 @@ class TestReplay:
         app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False
         try:
             with app.app_context():
-                new_id = replay_action(original['id'], actor='benkirk')
+                new_id, _verdict = recheck_action(original['id'], actor='benkirk')
         finally:
             app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
 
-        assert action_log.by_id(new_id)['status'] == 'replayed'
+        assert action_log.by_id(new_id)['status'] == 'rechecked'
         assert action_log.by_id(new_id)['projcode_result'] is None
 
-    def test_replay_lands_replayed_regardless_of_the_flag(
+    def test_recheck_lands_rechecked_regardless_of_the_flag(
             self, app, xras_client, action_log):
         """Both settings, same outcome — the coupling is gone, not merely inverted."""
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
@@ -1195,19 +1214,19 @@ class TestReplay:
             app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = capture_only
             try:
                 with app.app_context():
-                    new_id = replay_action(original['id'], actor='benkirk')
+                    new_id, _verdict = recheck_action(original['id'], actor='benkirk')
             finally:
                 app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
-            assert action_log.by_id(new_id)['status'] == 'replayed', capture_only
+            assert action_log.by_id(new_id)['status'] == 'rechecked', capture_only
 
-    def test_replaying_a_rejected_payload_fails_again(
+    def test_rechecking_a_rejected_payload_fails_again(
             self, app, xras_client, action_log):
         """A replay must be able to FAIL, and fail the same way.
 
         This is the regression check the feature buys while capture mode is on: a
         payload harvested months ago is re-validated against today's schema code.
         """
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         resp = xras_client.post(
             '/api/xras/v1/actions',
@@ -1219,17 +1238,17 @@ class TestReplay:
         assert original['status'] == 'failed'
 
         with app.app_context():
-            new_id = replay_action(original['id'], actor='benkirk')
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
 
         row = action_log.by_id(new_id)
         assert row['status'] == 'failed'
         assert row['http_status'] == 422
         assert row['error_messages'] == 'awardPeriod: Not a valid string.'
-        assert row['replay_of_id'] == original['id']
+        assert row['source_action_id'] == original['id']
 
-    def test_replaying_a_malformed_body_records_a_400(
+    def test_rechecking_a_malformed_body_records_a_400(
             self, app, xras_client, action_log):
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         resp = xras_client.post('/api/xras/v1/actions', data='{"actionType": ',
                                 content_type='application/json', headers=_auth())
@@ -1237,36 +1256,154 @@ class TestReplay:
         original = action_log.one()
 
         with app.app_context():
-            new_id = replay_action(original['id'], actor='benkirk')
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
 
         row = action_log.by_id(new_id)
         assert row['status'] == 'failed'
         assert row['http_status'] == 400
         assert row['action_type'] is None
 
-    def test_replaying_a_replay_chains_rather_than_flattening(
+    # ---- the verdict: what the whole feature exists to answer ----------------
+
+    def test_a_recheck_that_would_still_fail_says_so_with_the_real_reasons(
+            self, app, xras_client, action_log, dispatching_recheck):
+        """**The defect this feature fixes.**
+
+        Before this, a re-check only re-ran `_parse_action` — wire schema, nothing
+        more — so a payload that would still be rejected by the *handler* came back
+        `rechecked`, indistinguishable from one that would now succeed. An operator
+        asking "did my data fix take?" got a false yes on the exact question they
+        were asking.
+
+        Now the handler's `assemble()` runs, so the row lands `failed` carrying the
+        same ordered error list a live post would produce.
+        """
+        from sam.xras.errors import ActionErrors, XrasActionRejected
+        from webapp.api.xras.recheck import recheck_action
+
+        def still_broken(session, action, *, validate_only=False):
+            errs = ActionErrors()
+            errs.report('Cannot find contract for grant number "NSF-1" ("1")')
+            errs.raise_if_any()
+
+        dispatching_recheck.register('extend', still_broken)
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            new_id, verdict = recheck_action(original['id'], actor='benkirk')
+
+        assert verdict == 'failed'
+        row = action_log.by_id(new_id)
+        assert row['status'] == 'failed'
+        assert row['http_status'] == 422
+        assert 'Cannot find contract' in row['error_messages']
+
+    def test_a_recheck_of_a_fixed_payload_says_it_would_succeed(
+            self, app, xras_client, action_log, dispatching_recheck):
+        """The other half of the loop: fix the data, re-check, get a green light.
+
+        `rechecked` now means "would succeed if XRAS posted it now" rather than
+        "still parses", which is what makes it worth acting on.
+        """
+        from webapp.api.xras.recheck import recheck_action
+
+        seen = []
+
+        def now_fine(session, action, *, validate_only=False):
+            seen.append(validate_only)
+            return dispatching_recheck.DispatchResult(
+                status='rechecked', service='extend')
+
+        dispatching_recheck.register('extend', now_fine)
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            new_id, verdict = recheck_action(original['id'], actor='benkirk')
+
+        assert verdict == 'rechecked'
+        assert action_log.by_id(new_id)['status'] == 'rechecked'
+        # The handler was asked to validate, never to execute.
+        assert seen == [True]
+
+    def test_a_recheck_never_reaches_the_write_path(
+            self, app, xras_client, action_log, dispatching_recheck):
+        """The safety property, asserted against the transaction rather than a flag.
+
+        A handler that would write is registered, and `execute` is booby-trapped: if
+        the re-check ever runs it, the test fails loudly. This is the guard that
+        would catch a future refactor re-arming dispatch — the flag-based tests above
+        cannot, because there is no longer a flag to set.
+        """
+        from webapp.api.xras.recheck import recheck_action
+
+        executed = []
+
+        def writing(session, action, *, validate_only=False):
+            if not validate_only:
+                executed.append(1)
+            return dispatching_recheck.DispatchResult(
+                status='rechecked' if validate_only else 'processed',
+                service='extend')
+
+        dispatching_recheck.register('extend', writing)
+        self._seed(xras_client)
+        original = action_log.one()
+
+        app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = False   # the worst case
+        try:
+            with app.app_context():
+                recheck_action(original['id'], actor='benkirk')
+        finally:
+            app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
+
+        assert executed == [], 'a re-check reached the execute path'
+
+    def test_a_recheck_of_a_parked_type_reports_that_nothing_would_run(
+            self, app, xras_client, action_log, dispatching_recheck):
+        """`XRAS_ACTIONS_ENABLED` is honoured: if the type is parked by config,
+        "nothing would run" is the true answer — and the operator who forgot the
+        lever is set is exactly who needs telling."""
+        from webapp.api.xras.recheck import recheck_action
+
+        dispatching_recheck.register(
+            'extend', lambda s, a, *, validate_only=False:
+                dispatching_recheck.DispatchResult(status='rechecked',
+                                                   service='extend'))
+        app.config['XRAS_ACTIONS_ENABLED'] = 'Supplement'
+        self._seed(xras_client)
+        original = action_log.one()
+
+        with app.app_context():
+            new_id, verdict = recheck_action(original['id'], actor='benkirk')
+
+        assert verdict == 'manual'
+        assert action_log.by_id(new_id)['outcome_reason']
+
+    def test_rechecking_a_recheck_chains_rather_than_flattening(
             self, app, xras_client, action_log):
-        """``replay_of_id`` points at whatever was replayed, so the lineage stays a
-        tree. Collapsing it to the root would lose who replayed what, when."""
-        from webapp.api.xras.replay import replay_action
+        """``source_action_id`` points at whatever was re-checked, so the lineage stays
+        a tree. Collapsing it to the root would lose who re-checked what, when."""
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
 
         with app.app_context():
-            first = replay_action(original['id'], actor='benkirk')
-            second = replay_action(first, actor='mcjones')
+            first, _ = recheck_action(original['id'], actor='benkirk')
+            second, _ = recheck_action(first, actor='mcjones')
 
-        assert action_log.by_id(first)['replay_of_id'] == original['id']
-        assert action_log.by_id(second)['replay_of_id'] == first
+        assert action_log.by_id(first)['source_action_id'] == original['id']
+        assert action_log.by_id(second)['source_action_id'] == first
         assert action_log.by_id(second)['processed_by'] == 'mcjones'
 
-    def test_replaying_a_missing_id_raises_lookup_error(self, app, action_log):
-        from webapp.api.xras.replay import replay_action
+    def test_rechecking_a_missing_id_raises_lookup_error(self, app, action_log):
+        from webapp.api.xras.recheck import recheck_action
 
         with app.app_context():
             with pytest.raises(LookupError):
-                replay_action(999_999_999, actor='benkirk')
+                recheck_action(999_999_999, actor='benkirk')
 
     def test_a_replay_carries_the_same_action_id_as_its_parent(
             self, app, xras_client, action_log):
@@ -1282,14 +1419,14 @@ class TestReplay:
         which was true until C.1b added it. The two parse ladders were copies, so the
         column reached one and not the other.
         """
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
         assert original['action_id'] == 391986, 'corpus payload carries actionId'
 
         with app.app_context():
-            new_id = replay_action(original['id'], actor='benkirk')
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
 
         assert action_log.by_id(new_id)['action_id'] == original['action_id']
 
@@ -1300,7 +1437,7 @@ class TestReplay:
         ``actions.py`` reads it off the *unvalidated* dict for exactly this reason, so
         the replay arm must as well.
         """
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         resp = xras_client.post(
             '/api/xras/v1/actions',
@@ -1312,7 +1449,7 @@ class TestReplay:
         assert original['action_id'] == 424242
 
         with app.app_context():
-            new_id = replay_action(original['id'], actor='benkirk')
+            new_id, _verdict = recheck_action(original['id'], actor='benkirk')
 
         row = action_log.by_id(new_id)
         assert row['status'] == 'failed'
@@ -1322,13 +1459,13 @@ class TestReplay:
             self, app, xras_client, action_log):
         """``processed_by`` is varchar(35). An over-long actor must not turn an
         audit write into a 500 — the row is the whole point."""
-        from webapp.api.xras.replay import replay_action
+        from webapp.api.xras.recheck import recheck_action
 
         self._seed(xras_client)
         original = action_log.one()
 
         with app.app_context():
-            new_id = replay_action(original['id'], actor='x' * 80)
+            new_id, _verdict = recheck_action(original['id'], actor='x' * 80)
 
         assert action_log.by_id(new_id)['processed_by'] == 'x' * 35
 

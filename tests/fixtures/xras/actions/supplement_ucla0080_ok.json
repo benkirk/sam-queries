@@ -1,0 +1,113 @@
+{
+  "actionId": 390088,
+  "actionType": "Supplement",
+  "actionBeginDate": "2025-07-01",
+  "actionEndDate": "2026-09-30",
+  "requestId": 1412982,
+  "requestNumber": "UCLA0080",
+  "requestType": "New",
+  "requestAbstract": "Scrubbed abstract. The real request abstract was removed by scripts/xras/scrub_payload.py; its content is not contract-relevant.",
+  "requestTitle": "Assessing Future Water Resource Vulnerability across the Western US in a Changing Climate: A Paleoclimate and Hydrologic Modeling Approach",
+  "requestShortTitle": null,
+  "requestGrantType": null,
+  "opportunityId": 532221,
+  "opportunityName": "Exploratory Allocation (University)",
+  "opportunityType": "Continuous",
+  "allocationType": "Exploratory",
+  "awardDate": null,
+  "awardPeriod": 12,
+  "resources": [
+    {
+      "actionResourceId": 899874,
+      "resourceRepositoryKey": 145575,
+      "awardedAmount": "500000.0",
+      "comments": null,
+      "resourceQA": []
+    },
+    {
+      "actionResourceId": 899872,
+      "resourceRepositoryKey": 144650,
+      "awardedAmount": "10000.0",
+      "comments": null,
+      "resourceQA": []
+    }
+  ],
+  "roles": [
+    {
+      "requestPeopleRoleId": 442305,
+      "roleType": "Allocation Manager",
+      "username": "user_00000058",
+      "beginDate": "2025-06-30",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given58",
+        "middleName": null,
+        "lastName": "Surname58",
+        "email": "user58@example.invalid",
+        "phone": null,
+        "organization": null,
+        "academicStatus": "Faculty",
+        "isReconciled": true
+      }
+    },
+    {
+      "requestPeopleRoleId": 442289,
+      "roleType": "PI",
+      "username": "user_00000060",
+      "beginDate": "2025-06-30",
+      "endDate": null,
+      "isAccountToBeCreated": false,
+      "person": {
+        "firstName": "Given60",
+        "middleName": null,
+        "lastName": "Surname60",
+        "email": "user60@example.invalid",
+        "phone": null,
+        "organization": "UNIVERSITY OF CALIFORNIA LOS ANGELES",
+        "academicStatus": "Graduate Student",
+        "isReconciled": true
+      }
+    }
+  ],
+  "fos": [
+    {
+      "fosTypeId": 500009,
+      "fosNum": "7",
+      "fosName": "Climate",
+      "fosAbbr": "Climate",
+      "isPrimary": true
+    },
+    {
+      "fosTypeId": 500010,
+      "fosNum": "8",
+      "fosName": "Decision, Risk, and Management Science",
+      "fosAbbr": "Decision, Risk, and Management Science",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500021,
+      "fosNum": "19",
+      "fosName": "Hydrologic Sciences",
+      "fosAbbr": "Hydrologic Sciences",
+      "isPrimary": false
+    },
+    {
+      "fosTypeId": 500028,
+      "fosNum": "26",
+      "fosName": "Paleoclimate",
+      "fosAbbr": "Paleoclimate",
+      "isPrimary": false
+    }
+  ],
+  "panels": [
+    {
+      "type": "Technical",
+      "name": "CISL Resource Support",
+      "abbr": "CISL RSD",
+      "isPrimary": true
+    }
+  ],
+  "grants": [],
+  "opportunityQA": []
+}

@@ -1533,8 +1533,8 @@
     ]
   ],
   [
-    "allocations_dashboard.xras_replay",
-    "/allocations/xras_replay/<int:action_id>",
+    "allocations_dashboard.xras_recheck",
+    "/allocations/xras_recheck/<int:action_id>",
     [
       "POST"
     ]

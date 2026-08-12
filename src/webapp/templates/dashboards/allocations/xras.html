@@ -58,7 +58,7 @@
 </div>
 
 {# data-refresh-url: read by dashboard-init.js on refreshXrasTab (fired by the
-   replay route's HX-Trigger), so a replay re-renders the table it came from. #}
+   re-check route's HX-Trigger), so a re-check re-renders the table it came from. #}
 <div id="alloc-xras-fragment"
      data-refresh-url="{{ url_for('allocations_dashboard.xras_fragment') }}"
      hx-get="{{ url_for('allocations_dashboard.xras_fragment') }}"

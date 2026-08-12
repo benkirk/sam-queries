@@ -73,7 +73,7 @@ class TestRosterIgnoresRoleType:
             'PI', 'User', 'Allocation Manager'}
         # Two distinct humans across three roles, all inside the window.
         assert roster_usernames(data) == (
-            'placeholder07-user-00007', 'user_00000008')
+            'placeholder66-user-00066', 'user_00000067')
 
     def test_a_role_beginning_after_the_action_is_strictly_excluded(self):
         assert roster_usernames(act(
@@ -207,15 +207,63 @@ class TestDefectThree:
 
 
 class TestNoCorpusPayloadHasAnAmbiguousRole:
-    """If one did, ``resolve_roster`` would reject it — so this is worth knowing
-    before the cutover rather than after."""
+    """Ambiguous roles **do** occur in production traffic — just never where it counts.
+
+    ⚠️ **Corrected by the 2026-08-11 forward.** At eight payloads no payload named two
+    current holders of a lead role, and this class asserted that flatly. At 41, two do
+    (:data:`AMBIGUOUS`).
+
+    It still does not bite, and the reason is structural rather than lucky: only the
+    Add and Update handlers resolve a roster. Extension reads ``actionEndDate`` alone
+    and ignores ``roles[]`` entirely, and ``Date Adjustment`` parks before any handler
+    runs. **Zero of the sixteen payloads that route to add/update are ambiguous**, and
+    that — not the corpus-wide claim — is the property worth guarding.
+
+    Worth knowing before the cutover rather than after, because ``ambiguous_role`` is
+    one of the three error strings SAM added that legacy does not have: legacy picks
+    by array order and never reports it. If one of these shapes ever arrives on a New,
+    SAM 422s where legacy would have silently chosen.
+    """
+
+    #: fixture → (current PIs, current Allocation Managers) where either exceeds one.
+    #: Both are on services that never build a roster; see the class docstring.
+    AMBIGUOUS = {
+        'date_adjustment_ucub0155_manual.json': (2, 2),   # parks: no serviceable
+        'extension_ucbk0034_ok.json': (1, 2),             # extend: ignores roles[]
+    }
+
+    #: Services that call ``resolve_roster``. The others never read ``roles[]``.
+    ROSTER_SERVICES = ('add', 'update')
 
     @pytest.mark.parametrize('name', sorted(p.name for p in FIXTURE_DIR.glob('*.json')))
     def test_each_payload_names_at_most_one_current_pi_and_manager(self, name):
         data = load_fixture(name)
-        assert len(role_candidates(data, PI_ROLE, today='2026-08-07')) <= 1
-        assert len(role_candidates(data, ALLOCATION_MANAGER_ROLE,
-                                   today='2026-08-07')) <= 1
+        counts = (len(role_candidates(data, PI_ROLE, today='2026-08-07')),
+                  len(role_candidates(data, ALLOCATION_MANAGER_ROLE,
+                                      today='2026-08-07')))
+        if name in self.AMBIGUOUS:
+            assert counts == self.AMBIGUOUS[name]
+        else:
+            assert counts[0] <= 1 and counts[1] <= 1, counts
+
+    def test_no_roster_building_payload_is_ambiguous(self, session):
+        """The claim that actually protects the cutover.
+
+        Swept against the real selector rather than against the action type, because
+        ``New`` routes to Add or Update depending on whether the project exists — and
+        both build a roster, which is the point.
+        """
+        from sam.xras.dispatch import select_service
+        offenders = []
+        for path in sorted(FIXTURE_DIR.glob('*.json')):
+            data = load_fixture(path.name)
+            if select_service(session, data) not in self.ROSTER_SERVICES:
+                continue
+            if (len(role_candidates(data, PI_ROLE, today='2026-08-07')) > 1
+                    or len(role_candidates(data, ALLOCATION_MANAGER_ROLE,
+                                           today='2026-08-07')) > 1):
+                offenders.append(path.name)
+        assert offenders == []
 
     def test_uwis0071_has_two_pi_roles_but_only_one_is_current(self):
         """The payload legacy resolved by array order. Our date filter makes it
@@ -223,7 +271,7 @@ class TestNoCorpusPayloadHasAnAmbiguousRole:
         2026-08-04, before the 2026-08-06 action date."""
         data = load_fixture('new_uwis0071_existing_ok.json')
         assert sum(1 for r in data['roles'] if r['roleType'] == PI_ROLE) == 2
-        assert role_candidates(data, PI_ROLE, today='2026-08-07') == ('user_00000011',)
+        assert role_candidates(data, PI_ROLE, today='2026-08-07') == ('user_00000070',)
 
 
 # ---------------------------------------------------------------------------
@@ -492,14 +540,47 @@ class TestTheCorpusResolvesWithoutStructuralErrors:
     here is the *arithmetic*, not the lookups."""
 
     EXPECTED_MEMBER_COUNTS = {
+        'adjustment_ucsu0146_manual.json': 2,
+        'adjustment_ucub0160_manual.json': 2,
         'adjustment_uwis0064_manual.json': 0,   # defect 3 — all roles post-date the action
+        'date_adjustment_uazn0052_manual.json': 2,
+        'date_adjustment_ucor0097_manual.json': 2,
+        'date_adjustment_ucub0155_manual.json': 1,
+        'date_adjustment_uwas0141_manual.json': 2,
+        'extension_ucbk0034_ok.json': 1,
+        'extension_ucsd0048_ok.json': 2,
+        'extension_ucsd0073_ok.json': 2,
         'extension_ucub0166_ok.json': 2,
         'extension_ufsu0023_failed.json': 2,
+        'extension_ugmu0052_ok.json': 2,
+        'extension_uiuc0073_ok.json': 2,
+        'extension_unid0003_ok.json': 1,
+        'extension_uwho0019_ok.json': 2,
+        'new_ncar4214_ok.json': 2,
+        'new_ncar4218_ok.json': 1,
+        'new_ncar4223_ok.json': 1,
+        'new_ncar4227_failed.json': 1,
+        'new_ncar4228_failed.json': 1,
+        'new_ncar4229_ok.json': 1,
         'new_ncar4232_failed.json': 2,          # 3 roles, 2 distinct humans
+        'new_ncar4236_failed.json': 1,
+        'new_ncar4246_ok.json': 2,
+        'new_ncar4250_ok.json': 2,
         'new_ncar4253_ok.json': 2,
+        'new_uchi0020_ok.json': 1,
+        'new_uida0008_ok.json': 2,
+        'new_ummm0016_failed.json': 6,          # 7 roles — the largest roster in the corpus
+        'new_umsb0003_ok.json': 1,
         'new_uwis0071_existing_ok.json': 1,     # 3 roles; one expired, two are one human
+        'supplement_uahv0010_ok.json': 2,
         'supplement_ubrn0027_ok.json': 1,       # PI and manager are the same person
+        'supplement_ucit0011_ok.json': 1,
+        'supplement_ucla0076_ok.json': 2,
+        'supplement_ucla0080_ok.json': 2,
+        'supplement_ucsu0114_ok.json': 2,
         'supplement_ucub0182_ok.json': 2,
+        'supplement_ugit0044_ok.json': 1,
+        'supplement_uwku0002_ok.json': 2,
     }
 
     def test_the_corpus_is_complete(self):
@@ -513,8 +594,12 @@ class TestTheCorpusResolvesWithoutStructuralErrors:
 
     @pytest.mark.parametrize('name', sorted(EXPECTED_MEMBER_COUNTS))
     def test_every_payload_names_a_pi(self, name):
-        """Not one of the eight would hit ``Missing pi role``, which is worth knowing
-        before the cutover: that error is reserved for a genuinely malformed request."""
+        """Not one of the 41 would hit ``Missing pi role``, which is worth knowing
+        before the cutover: that error is reserved for a genuinely malformed request.
+
+        Held at eight payloads and still holds at 41, across every action type
+        including the four that park.
+        """
         assert role_candidates(load_fixture(name), PI_ROLE, today='2026-08-07')
 
     def test_both_extensions_carry_a_roster_that_nothing_consumes(self):
