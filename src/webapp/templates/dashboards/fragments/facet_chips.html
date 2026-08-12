@@ -41,10 +41,14 @@
 
 {% macro facet_row(label, values, form_id, field, active=[], badge=False) %}
 {% if values %}
+{#- Membership is compared as strings: a selection arrives from the query string
+    (always str) while a value can be whatever the source column holds — jobs'
+    `exit_status` is an int. Comparing raw would silently mark nothing active. -#}
+{% set _active = active | map('string') | list %}
 <div class="facet-grid-label">{{ label }}</div>
 <div class="facet-grid-values">
     {% for row in values %}
-    {% set is_active = row.value in active %}
+    {% set is_active = row.value | string in _active %}
     <button type="button"
             class="facet-chip{{ ' has-badge' if badge }}{{ ' is-active' if is_active }}{{ ' opacity-50' if not row.count and not is_active }}"
             data-action="set-filter-submit"

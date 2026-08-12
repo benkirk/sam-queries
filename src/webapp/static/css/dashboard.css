@@ -1407,22 +1407,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 /* ============================================================================
    FACET CHIPS — a live value-count strip whose chips double as filter
-   controls. Two callers: the jobs explorer, between its filter panel and its
-   tab strip (_jobs_facet_chips.html), and the XRAS action log
-   (fragments/facet_chips.html).
+   controls. Every caller goes through the `facet_row` macro in
+   fragments/facet_chips.html: the jobs explorer (between its filter panel and
+   its tab strip), the XRAS action log, and the notification delivery log.
 
    One grid row per dimension: the label column self-sizes to the widest
    label and the values wrap inside their own cell, so "Exit code" can
    never end up mid-line with its chips orphaned under "QoS". White
    surface with the bottom edge open, so the strip reads as the top of the
    card the .nav-tabs below continue.
-
-   `.facet-grid*` are the neutral names; the `.jobs-facets*` aliases are kept
-   so the jobs templates need no churn for a second caller. New callers should
-   use .facet-grid; jobs can migrate whenever it is touched anyway.
    ========================================================================= */
 
-.jobs-facets,
 .facet-grid {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
@@ -1435,7 +1430,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     border-bottom: 0;
 }
 
-.jobs-facet-label,
 .facet-grid-label {
     justify-self: end;
     white-space: nowrap;
@@ -1446,7 +1440,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--text-tertiary);
 }
 
-.jobs-facet-values,
 .facet-grid-values {
     display: flex;
     flex-wrap: wrap;
@@ -1541,18 +1534,15 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 /* Phones: the label column costs more than it aligns — give each
    dimension its own line above its values. */
 @media (max-width: 575.98px) {
-    .jobs-facets,
     .facet-grid {
         grid-template-columns: minmax(0, 1fr);
         row-gap: 0.125rem;
     }
 
-    .jobs-facet-label,
     .facet-grid-label {
         justify-self: start;
     }
 
-    .jobs-facet-label:not(:first-child),
     .facet-grid-label:not(:first-child) {
         margin-top: 0.375rem;
     }

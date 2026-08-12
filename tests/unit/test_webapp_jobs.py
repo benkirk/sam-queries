@@ -2599,7 +2599,7 @@ def test_explore_page_renders_facet_chips_with_counts(
     # NULL-FK queue row renders no chip (nothing to filter by).
     assert 'data-value="None"' not in body
     # One grid row per dimension: every label opens its own line.
-    assert body.count('class="jobs-facet-label"') == 3
+    assert body.count('class="facet-grid-label"') == 3
     # Facets saw the same filter set as the panels.
     fkw = captured['last_jobs_facets_kwargs']
     assert fkw['queue'] == 'cpu'
@@ -2650,7 +2650,7 @@ def test_explore_chips_degrade_on_facets_error(
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'data-action="set-filter-submit"' not in body
-    assert 'class="jobs-facets"' not in body
+    assert 'class="facet-grid"' not in body
     assert 'id="jobs-explore-card"' in body
 
 
@@ -2671,7 +2671,7 @@ def test_explore_chips_omit_dimensions_with_nothing_to_offer(
         '?machine=derecho'
     ).get_data(as_text=True)
 
-    assert body.count('class="jobs-facet-label"') == 1
+    assert body.count('class="facet-grid-label"') == 1
     assert 'data-value="cpu"' in body
 
     _install_mock_plugin(
@@ -2683,7 +2683,7 @@ def test_explore_chips_omit_dimensions_with_nothing_to_offer(
         '?machine=derecho'
     ).get_data(as_text=True)
 
-    assert 'class="jobs-facets"' not in body
+    assert 'class="facet-grid"' not in body
 
 
 def test_explore_chips_project_scope_pins_account(
