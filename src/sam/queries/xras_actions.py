@@ -65,6 +65,15 @@ XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked'
 #: ``actionType`` (no co-PI role has ever been sampled, and Transfer / Renewal /
 #: Advance still have zero samples), so an unrecognised type must still list and
 #: still filter. Callers union this with whatever ``DISTINCT action_type`` holds.
+#:
+#: ⚠️  This is the **inbound** vocabulary and spells ``'Supplement'``. The
+#: *outbound* one in ``queries/xras_access.py`` (``_SQL_ACTIONS``) spells the
+#: same concept ``'Supplemental'``, because that CASE maps our own
+#: ``allocation_transaction.transaction_type`` onto legacy's response bytes.
+#: Neither is wrong and neither may be "fixed" to match the other — the
+#: outbound spelling is pinned by the byte-clean parity gate. Noted in both
+#: places because this codebase has already burned a sprint on a one-word
+#: field-name mismatch.
 XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
                      'Transfer', 'Adjustment', 'Advance', 'Date Adjustment')
 

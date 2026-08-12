@@ -333,6 +333,13 @@ _SQL_ALLOCATIONS = text("""
 #: `dateApplied` order is what makes `orderApplied` (1..n) meaningful. The CASE
 #: has no ELSE, so an unmapped `transaction_type` yields NULL — which the
 #: `Action` DTO then omits, since it is NON_NULL.
+#:
+#: ⚠️  These are **outbound** strings: legacy's response vocabulary, mapped from
+#: our own `allocation_transaction.transaction_type`. `SUPPLEMENT` becomes
+#: `'Supplemental'` here, while the *inbound* vocabulary in
+#: `queries/xras_actions.py` (`XRAS_ACTION_TYPES`) spells it `'Supplement'`.
+#: The one-character difference is deliberate on both sides: these bytes are the
+#: contract a parity run checks, so this spelling cannot be changed to match.
 _SQL_ACTIONS = text("""
     SELECT al.allocation_id AS allocationId,
            p.projcode       AS projectId,
