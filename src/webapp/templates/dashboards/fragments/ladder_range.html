@@ -127,12 +127,14 @@
   <div class="ladder-range-track" style="--n: {{ n }};">
     <div class="ladder-range-fill" style="--lo: {{ lo }}; --hi: {{ hi }};"></div>
     <input type="range" class="ladder-range-thumb" data-ladder-lo
+           id="{{ form_id }}-{{ slug }}-lo"
            min="0" max="{{ n - 1 }}" step="1" value="{{ lo }}"
            aria-label="{{ lo_title }}"
            aria-valuetext="{{ bands[lo].label }}"
            data-action-input="ladder-range-preview"
            data-action-change="ladder-range-commit">
     <input type="range" class="ladder-range-thumb" data-ladder-hi
+           id="{{ form_id }}-{{ slug }}-hi"
            min="0" max="{{ n - 1 }}" step="1" value="{{ hi }}"
            aria-label="{{ hi_title }}"
            aria-valuetext="{{ bands[hi].label }}"

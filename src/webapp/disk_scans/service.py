@@ -26,7 +26,7 @@ from flask import current_app
 
 from webapp.disk_scans.cache import cached_scan
 from webapp.disk_scans.scope import ProjectScanScope
-from webapp.utils import age_bands
+from webapp.utils import age_bands, ladders
 from webapp.disk_scans.session import (
     collections_for_resource,
     database_for_resource,
@@ -144,16 +144,13 @@ def _size_band_bounds(bucket_labels) -> Dict[str, Dict[str, Optional[int]]]:
     source of truth — mapped by label. The largest band's ``max`` is ``None``
     (open-ended). Returns ``{}`` if the plugin is unavailable.
     """
-    try:
-        from fs_scans.core.models import SIZE_BUCKETS
-    except Exception:
-        return {}
-    if not bucket_labels:
+    ladder = ladders.size_ladder()
+    if not ladder or not bucket_labels:
         return {}
     wanted = set(bucket_labels)
     return {
         label: {'size_min': mn, 'size_max': mx}
-        for label, mn, mx in SIZE_BUCKETS
+        for label, mn, mx in ladder
         if label in wanted
     }
 

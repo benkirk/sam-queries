@@ -1,6 +1,7 @@
 {% from 'dashboards/fragments/form_fields.html' import fk_search_field %}
 {% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
 {% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
+{% from 'dashboards/fragments/ladder_range.html' import ladder_range %}
 {#
   Reusable Large-directories filter panel in the Unity .filter-sidebar house
   style (navy panel + gold title + white controls + "Clear filters"), matching
@@ -21,6 +22,11 @@
     age_bands       age_bands.band_map() rows, or falsy to fall back to the bare
                     date pair (plugin absent, or no scan date to anchor on)
     age_band_span   (lo, hi) or None — None renders the "custom" state
+    size_bands      ladders.band_map() rows over the plugin's SIZE_BUCKETS,
+                    or falsy to omit the average-file-size control entirely
+                    (that filter has no bare-input fallback — it was only
+                    ever reachable from the file-size histogram)
+    size_band_span  (lo, hi) or None — None renders the "custom" state
     layout          'mobile' | 'tablet' | 'desktop', picks the presentation
 
   The user picker stores a SAM user_id under ``owner_user_id``; the route
@@ -28,7 +34,9 @@
 #}
 {% macro dir_filters(form_id, fragment_url, target_id, filters, user_search_url,
                      resource_name, scope, fileset, limit_options, mode='project',
-                     age_bands=None, age_band_span=None, layout='desktop') %}
+                     age_bands=None, age_band_span=None,
+                     size_bands=None, size_band_span=None,
+                     layout='desktop') %}
 {% call filter_panel_shell(form_id, fragment_url, target_id) %}
 
   {# Scope context — submitted alongside the visible filter controls. Inside the
@@ -69,6 +77,31 @@
       <input type="date" class="form-control"
              name="accessed_before" value="{{ filters.accessed_before_str }}"
              style="width:160px;">
+    </div>
+    {% endif %}
+
+    {# Average own-file size. The filter itself is not new — min_avg_size /
+       max_avg_size have always reached the service — but until now the ONLY
+       way to set it was clicking a bar on the file-size histogram, so a viewer
+       who arrived by that route could not adjust or clear it from the panel.
+       Same ladder as that chart (the plugin's SIZE_BUCKETS), so the two agree
+       by construction. #}
+    {% if size_bands %}
+    <div>
+      {{ ladder_range(form_id, size_bands,
+                      [{'key': 'min', 'name': 'min_avg_size', 'thumb': 'lo',
+                        'type': 'number', 'sublabel': 'Min',
+                        'title': 'Minimum average file size, bytes',
+                        'value': filters.min_avg_size, 'min': 0, 'step': 1},
+                       {'key': 'max', 'name': 'max_avg_size', 'thumb': 'hi',
+                        'type': 'number', 'sublabel': 'Max',
+                        'title': 'Maximum average file size, bytes',
+                        'value': filters.max_avg_size, 'min': 0, 'step': 1}],
+                      label='Avg file size', span=size_band_span,
+                      layout=layout, slug='size',
+                      lo_thumb='Smallest', hi_thumb='Largest',
+                      lo_title='Smallest average file size band',
+                      hi_title='Largest average file size band') }}
     </div>
     {% endif %}
 

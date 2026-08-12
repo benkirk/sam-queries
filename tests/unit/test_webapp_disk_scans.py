@@ -2129,7 +2129,12 @@ def test_age_bands_render_with_the_ladder_as_a_data_block(
     assert 'ladder-range-bands' in body
     assert '&lt; 1 Month' in body or '< 1 Month' in body
     # Both thumbs present, and each announces a band name rather than an index.
-    assert body.count('data-action-change="ladder-range-commit"') == 2
+    # Scoped by the control's own id namespace: the panel carries a second
+    # ladder (average file size), so a page-wide count would pass on the
+    # wrong control's markup.
+    import re
+    assert len(re.findall(r'id="[^"]*-age-lo"', body)) == 1
+    assert len(re.findall(r'id="[^"]*-age-hi"', body)) == 1
     assert 'aria-valuetext=' in body
 
 
@@ -2174,7 +2179,12 @@ def test_mobile_gets_selects_instead_of_thumbs(
     axis picks the presentation server-side rather than rendering both."""
     body = _explore(auth_client, active_project, '&layout=mobile')
     assert 'type="range"' not in body
-    assert body.count('data-action-change="ladder-range-commit"') == 2   # the selects
+    # The two <select>s stand in for the two thumbs, under the same ids.
+    # Matched on `id=` rather than the bare suffix: on this layout each also
+    # has a <label for>, so a substring count would see two of everything.
+    import re
+    assert len(re.findall(r'id="[^"]*-age-lo"', body)) == 1
+    assert len(re.findall(r'id="[^"]*-age-hi"', body)) == 1
     assert body.count('name="accessed_before"') == 1
 
 
@@ -2185,7 +2195,11 @@ def test_no_scan_date_falls_back_to_the_bare_date_pair(
     from webapp.disk_scans import service
     monkeypatch.setattr(service, 'scan_reference_date', lambda scope: None)
     body = _explore(auth_client, active_project)
-    assert 'ladder-range-bands' not in body
+    # Only the AGE ladder degrades. The size ladder is anchor-free, so it is
+    # still there — asserting on the age control's own ids rather than on the
+    # shared class is what keeps this test about the thing it names.
+    import re
+    assert not re.search(r'id="[^"]*-age-lo"', body)
     assert 'Accessed after' in body and 'Accessed before' in body
     assert body.count('name="accessed_before"') == 1
 
@@ -2220,13 +2234,14 @@ def test_exact_inputs_hide_behind_the_axis_ends(
     whole span is in force."""
     import re
     body = _explore(auth_client, active_project)
-    panel = re.search(r'<div class="ladder-range-exact([^"]*)"\s+id="([^"]+)"', body)
-    assert panel, 'no exact panel'
+    panel = re.search(
+        r'<div class="ladder-range-exact([^"]*)"\s+id="([^"]*-age-exact)"', body)
+    assert panel, 'no exact panel for the age control'
     assert 'd-none' in panel.group(1)
-    ends = re.findall(r'<button[^>]*class="ladder-range-end"[^>]*>', body)
-    assert len(ends) == 2
+    ends = [e for e in re.findall(r'<button[^>]*class="ladder-range-end"[^>]*>', body)
+            if f'data-target="#{panel.group(2)}"' in e]
+    assert len(ends) == 2, 'each control gets exactly two ends, both its own'
     for end in ends:
-        assert f'data-target="#{panel.group(2)}"' in end
         assert 'aria-expanded="false"' in end
 
 
@@ -2275,3 +2290,59 @@ def test_mobile_keeps_the_exact_inputs_visible(
     assert 'ladder-range-end' not in body
     panel = re.search(r'<div class="ladder-range-exact([^"]*)"\s+id="', body)
     assert panel and 'd-none' not in panel.group(1)
+
+
+def test_average_file_size_gets_its_own_ladder(auth_client, active_project):
+    """`min_avg_size`/`max_avg_size` have always reached the service, but until
+    now the only way to set them was clicking a file-size histogram bar — so a
+    viewer who arrived that way could not adjust or clear the filter. The panel
+    now carries the same ladder the chart plots."""
+    import re
+    body = _explore(auth_client, active_project)
+    assert len(re.findall(r'id="[^"]*-size-lo"', body)) == 1
+    assert len(re.findall(r'id="[^"]*-size-hi"', body)) == 1
+    assert body.count('name="min_avg_size"') == 1
+    assert body.count('name="max_avg_size"') == 1
+
+
+def test_the_size_ladder_is_the_charts_own_vocabulary(auth_client, active_project):
+    """Not a second vocabulary: the band edges the control offers are exactly
+    the plugin's SIZE_BUCKETS, which is what the file-size histogram bins on and
+    what its band clicks drill with. A slider position and the equivalent bar
+    click therefore select the same directories."""
+    import json
+    import re
+    from fs_scans.core.models import SIZE_BUCKETS
+    body = _explore(auth_client, active_project)
+    blocks = re.findall(
+        r'<script type="application/json" class="ladder-range-bands">(.*?)</script>',
+        body, re.S)
+    payloads = [json.loads(b) for b in blocks]
+    size = next(p for p in payloads if 'min_avg_size' in p[0])
+    assert [(r['label'], r['min_avg_size'], r['max_avg_size']) for r in size] == \
+        [tuple(b) for b in SIZE_BUCKETS]
+
+
+def test_the_size_ladders_floor_is_a_real_zero(auth_client, active_project):
+    """The bottom band's lower edge is 0, and it has to survive as 0 into the
+    JSON the browser indexes. A falsy check anywhere on this path would submit
+    "no lower bound" instead — see the `|| ''` note in actions.js."""
+    import json
+    import re
+    body = _explore(auth_client, active_project)
+    blocks = re.findall(
+        r'<script type="application/json" class="ladder-range-bands">(.*?)</script>',
+        body, re.S)
+    size = next(p for p in (json.loads(b) for b in blocks) if 'min_avg_size' in p[0])
+    assert size[0]['min_avg_size'] == 0
+    assert size[-1]['max_avg_size'] is None       # open-ended top band
+
+
+def test_a_size_band_drill_puts_the_slider_on_that_band(auth_client, active_project):
+    """The round-trip that proves the two entry points share one vocabulary:
+    arrive with the bounds a histogram band click produces, and the control
+    comes back showing that span rather than its custom state."""
+    body = _explore(auth_client, active_project,
+                    '&min_avg_size=1048576&max_avg_size=10485760')
+    assert 'value="1048576"' in body
+    assert body.count('Custom range') == 0 or 'Avg file size' in body
