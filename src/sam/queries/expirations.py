@@ -300,7 +300,8 @@ def get_all_expiring_allocations(
     end_date: Optional[datetime] = None,
     facility_names: Optional[List[str]] = None,
     resource_name: Optional[str] = None,
-    include_inactive_projects: bool = False
+    include_inactive_projects: bool = False,
+    now: Optional[datetime] = None
 ) -> List[Tuple['Project', 'Allocation', str, Optional[int]]]:
     """
     Find ALL allocations (not just latest per project) with end_dates in a date range.
@@ -317,6 +318,11 @@ def get_all_expiring_allocations(
         facility_names: Optional list of facility names to filter
         resource_name: Optional resource name to filter
         include_inactive_projects: If True, include projects marked inactive
+        now: the instant `days_from_now` is measured against. Defaults to the
+            wall clock, which is right for a CLI run. A **scheduled** caller
+            must pass its occurrence instead: the notice body says "expires in
+            N days", and a dispatch that ran 20 hours late would otherwise
+            render 37 where a punctual one rendered 38, for the same run.
 
     Returns:
         List of (Project, Allocation, resource_name, days_from_now) tuples,
@@ -334,7 +340,7 @@ def get_all_expiring_allocations(
         # This will return multiple allocations per project if they all expire
         # in the date range (e.g., Derecho, Casper, and Derecho GPU)
     """
-    now = datetime.now()
+    now = now if now is not None else datetime.now()
 
     # Main query - no subquery filter, returns ALL allocations in range
     query = (

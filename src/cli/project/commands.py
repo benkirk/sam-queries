@@ -1,7 +1,6 @@
 """Project command classes."""
 
 from datetime import datetime, timedelta
-from collections import defaultdict
 from cli.core.base import BaseProjectCommand
 from cli.core.output import output_json
 from cli.core.utils import EXIT_SUCCESS, EXIT_NOT_FOUND, EXIT_ERROR
@@ -26,8 +25,8 @@ from cli.project.display import (
     display_tree_audit,
     notification_progress,
 )
-from sam import Project, fmt
-from sam.enums import FacilityName, ResourceTypeName
+from sam import Project
+from sam.queries.expiration_notices import MILESTONES, build_expiration_messages
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations,
@@ -320,143 +319,26 @@ class ProjectExpirationCommand(BaseProjectCommand):
         """
         import getpass
 
-        from sam.notify import Message, Recipient
-
         try:
             requested_by = getpass.getuser()
         except Exception:                       # no passwd entry (container)
             requested_by = 'cli'
 
-        # Group by project to send one email per project
-        projects_map = defaultdict(list)
-        for proj, alloc, resource_name, days_remaining in expiring_data:
-            projects_map[proj.projcode].append({
-                'project': proj,
-                'allocation': alloc,
-                'resource_name': resource_name,
-                'days_remaining': days_remaining
-            })
+        # The audience and the payload are built by `sam.queries`, shared with
+        # the scheduled `expiration_notices` task. The CLI and the task MUST
+        # agree about the dedup key in particular — a disagreement there is
+        # silently a second copy in a PI's inbox.
+        #
+        # A CLI run is one rung: it has no schedule to tile against, so it
+        # sends the whole runway, which is what MILESTONES[0] spans today.
+        messages = build_expiration_messages(
+            expiring_data,
+            requested_by=requested_by,
+            milestone=MILESTONES[0],
+            additional_recipients=additional_recipients,
+        )
 
-        # Build the message list
-        messages = []
-        for projcode, resources_data in projects_map.items():
-            project = resources_data[0]['project']
-
-            # Get usage data for all resources
-            usage = project.get_detailed_allocation_usage()
-
-            # Calculate grace expiration (90 days after latest resource expiration)
-            latest_expiration = None
-            for item in resources_data:
-                if item['allocation'].end_date:
-                    if latest_expiration is None or item['allocation'].end_date > latest_expiration:
-                        latest_expiration = item['allocation'].end_date
-
-            latest_expiration_date = None
-            grace_expiration_date = None
-            if latest_expiration:
-                latest_expiration_date = latest_expiration.strftime("%Y-%m-%d")
-                grace_expiration_date = (latest_expiration + timedelta(days=90)).strftime("%Y-%m-%d")
-
-            # Determine facility for template selection
-            facility_name = None
-            if project.allocation_type and project.allocation_type.panel and project.allocation_type.panel.facility:
-                facility_name = project.allocation_type.panel.facility.facility_name
-
-            # Build resources list for email
-            resources = []
-            for item in resources_data:
-                resource_name = item['resource_name']
-                resource_usage = usage.get(resource_name, {})
-
-                resources.append({
-                    'resource_name': resource_name,
-                    'expiration_date': fmt.date_str(item['allocation'].end_date, null='N/A'),
-                    'days_remaining': item['days_remaining'],
-                    'allocated_amount': resource_usage.get('allocated', 0),
-                    'used_amount': resource_usage.get('used', 0),
-                    'remaining_amount': resource_usage.get('remaining', 0),
-                    # Was hardcoded 'core-hours', which told a PI with a DISK
-                    # or ARCHIVE allocation that their TiB-years were
-                    # core-hours. ResourceTypeName.allocation_unit is the one
-                    # source the dashboard and the CLI already share; it also
-                    # returns None for an access-boolean grant (amount == 1),
-                    # so the notice stops rendering "1 hours".
-                    'units': ResourceTypeName.allocation_unit(
-                        resource_usage.get('resource_type'),
-                        resource_usage.get('allocated')),
-                })
-
-            # Build recipients dict: email -> (name, role)
-            # Start with roster (all users default to 'user' role)
-            recipients = {}
-            for user in project.roster:
-                if user.primary_email:
-                    recipients[user.primary_email] = (user.display_name, 'user')
-
-            # Override with admin role (higher priority than user)
-            if project.admin and project.admin.primary_email:
-                recipients[project.admin.primary_email] = (project.admin.display_name, 'admin')
-
-            # Override with lead role (highest priority)
-            if project.lead and project.lead.primary_email:
-                recipients[project.lead.primary_email] = (project.lead.display_name, 'lead')
-
-            # Add additional recipients if provided (default to 'user' role)
-            if additional_recipients:
-                for email in additional_recipients.split(','):
-                    email = email.strip()
-                    if email and email not in recipients:
-                        recipients[email] = (email, 'user')
-
-            # Lead details for the templates.
-            #
-            # `.primary_email` used to be read unguarded, two lines below a
-            # guarded `project_lead_name`. Measured, that asymmetry is NOT the
-            # crash it looks like: `project.project_lead_user_id` is NOT NULL
-            # with an enforced FK (`project_lead_user_fk`, 0 dangling rows), so
-            # `project.lead` cannot be None, and `primary_email` returns None
-            # rather than raising when a lead has no address on file. The guard
-            # is kept for consistency with the line above it, not because it
-            # fixes a reachable AttributeError. What IS reachable — and what
-            # the templates must cope with — is `project_lead_email is None`.
-            project_lead_name = project.lead.display_name if project.lead else 'Project Lead'
-            project_lead_email = project.lead.primary_email if project.lead else None
-
-            subject = f'NSF NCAR Project {projcode} Expiration Notice'
-            if facility_name == FacilityName.WNA:
-                subject = f'NCAR/Wyoming Computing Project {projcode} Expiration Notice'
-
-            # One Message per recipient — the ledger records one row per
-            # person, and suppression keys on the recipient.
-            for recipient_email, (recipient_name, recipient_role) in recipients.items():
-                messages.append(Message(
-                    kind='expiration',
-                    recipient=Recipient(recipient_email, name=recipient_name,
-                                        role=recipient_role),
-                    subject=subject,
-                    context={
-                        'project_code': projcode,
-                        'project_title': project.title,
-                        'project_lead': project_lead_name,
-                        'project_lead_email': project_lead_email,
-                        'resources': resources,
-                        'latest_expiration': latest_expiration_date,
-                        'grace_expiration': grace_expiration_date,
-                        'facility': facility_name,
-                    },
-                    facility=facility_name,
-                    entity=('project', project.project_id),
-                    projcode=projcode,
-                    # Keyed on the expiration date, so a NEW expiration mints a
-                    # new key and is never wrongly suppressed — which is why
-                    # the suppression query needs no time window of its own.
-                    dedup_key=(f'expiration:{projcode}:{latest_expiration_date}'
-                               f':{recipient_email}'),
-                    requested_by=requested_by,
-                ))
-
-        total_projects = len(projects_map)
+        total_projects = len({m.projcode for m in messages})
         notifier = self._notifier()
 
         if dry_run:
