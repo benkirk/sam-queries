@@ -59,6 +59,31 @@ spec:
           - name: {{ $key }}
             value: {{ $value | quote }}
           {{- end }}
+          # The scheduled-task kill switch is DECLARED ONCE, on `tasks.env`,
+          # and consumed by BOTH pods: the CronJob obeys it, and the webapp's
+          # Admin -> Configuration card reports it.
+          #
+          # ⚠️ Without this the card reads the *webapp's* own environment,
+          # finds nothing, and renders a kill-switched dispatcher as perfectly
+          # healthy — the exact failure that card exists to prevent. Found by
+          # smoking production, where the card sat there quietly claiming all
+          # was well while `cleanup_status_snapshots` was switched off.
+          #
+          # Cross-block reference rather than a second declaration, on purpose:
+          # two copies of this value can drift, and drift here means the card
+          # lies again. cronjob-tasks.yaml reads .Values.webapp.env the same
+          # way for the DB settings.
+          #
+          # Nested `with` is the nil-safe idiom: `.Values.tasks.env.X` errors
+          # outright when `tasks` is absent.
+          {{- with .Values.tasks }}
+          {{- with .env }}
+          {{- with .SAM_TASKS_DISABLED }}
+          - name: SAM_TASKS_DISABLED
+            value: {{ . | quote }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
           # Concurrency model: gthread (threaded workers). fs-scans on-the-fly
           # scans measured ~76-85% blocked in Postgres and psycopg2 frees the
           # GIL, so threads absorb the waits — a slow scan holds a thread, not a
