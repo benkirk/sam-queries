@@ -12,6 +12,7 @@ lazy-connect refactor, means no SAM connection is ever opened.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from cli.core.base import BaseCommand
@@ -24,6 +25,10 @@ from cli.tasks import builders, display
 #: this deployment has.
 _BAD_OUTCOMES = ('failed', 'partial')
 
+#: Sentinel for "the operator typed an --occurrence we could not parse", which
+#: `None` cannot express because `None` already means "they did not pass one".
+_INVALID = object()
+
 
 class TasksCommand(BaseCommand):
     """Query and dispatch scheduled tasks."""
@@ -31,12 +36,14 @@ class TasksCommand(BaseCommand):
     def execute(self, *, list_tasks: bool = False, run_due: bool = False,
                 run: Optional[str] = None, history: bool = False,
                 task: Optional[str] = None, limit: int = 20,
-                dry_run: bool = False, force: bool = False) -> int:
+                dry_run: bool = False, force: bool = False,
+                occurrence: Optional[str] = None) -> int:
         try:
             if run_due:
                 return self._dispatch(only=None, dry_run=dry_run, force=False)
             if run:
-                return self._dispatch(only=run, dry_run=dry_run, force=force)
+                return self._dispatch(only=run, dry_run=dry_run, force=force,
+                                      occurrence=occurrence)
             if history:
                 return self._history(task_name=task, limit=limit)
             return self._list()
@@ -71,7 +78,7 @@ class TasksCommand(BaseCommand):
         return EXIT_SUCCESS
 
     def _dispatch(self, *, only: Optional[str], dry_run: bool,
-                  force: bool) -> int:
+                  force: bool, occurrence: Optional[str] = None) -> int:
         import os
 
         from scheduling.runner import run_due as _run_due
@@ -81,9 +88,13 @@ class TasksCommand(BaseCommand):
         if only and only not in registry:
             return self._not_found('task_dispatch', only)
 
+        occ = self._parse_occurrence(occurrence)
+        if occ is _INVALID:
+            return self._bad_occurrence(occurrence)
+
         result = _run_due(
             now=now, ledger=ledger, registry=registry, only=only,
-            force=force, dry_run=dry_run,
+            force=force, occurrence=occ, dry_run=dry_run,
             runner_id=os.getenv('RUNNER_ID'),
             status_session_factory=self._status_session_factory(),
             # `open_sam`, NOT `require_sam` — the latter calls sys.exit(1), and
@@ -130,6 +141,36 @@ class TasksCommand(BaseCommand):
             engine, _ = create_status_engine()
             self._status_factory = lambda: Session(engine)
         return self._status_factory
+
+    @staticmethod
+    def _parse_occurrence(raw: Optional[str]):
+        """ISO-8601 to a naive UTC datetime, or :data:`_INVALID`.
+
+        Any offset is converted and dropped: the ledger's occurrence keys and
+        `ctx.occurrence` are both naive UTC, so an aware value would key a row
+        by its wall time and select the wrong window.
+        """
+        from datetime import timezone
+
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw.strip())
+        except ValueError:
+            return _INVALID
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
+    def _bad_occurrence(self, raw: Optional[str]) -> int:
+        if self.ctx.output_format == 'json':
+            output_json({'kind': 'task_dispatch', 'error': 'bad_occurrence',
+                         'occurrence': raw})
+        else:
+            self.ctx.stderr_console.print(
+                f"Could not parse --occurrence {raw!r}. Expected ISO-8601, "
+                f"e.g. 2026-11-23T09:00.", style='bold red')
+        return EXIT_ERROR
 
     def _not_found(self, kind: str, name: str) -> int:
         if self.ctx.output_format == 'json':

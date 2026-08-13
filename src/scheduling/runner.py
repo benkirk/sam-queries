@@ -54,6 +54,7 @@ def run_due(*, now: datetime,
             registry: Optional[Dict[str, Task]] = None,
             only: Optional[str] = None,
             force: bool = False,
+            occurrence: Optional[datetime] = None,
             dry_run: bool = False,
             runner_id: Optional[str] = None,
             sam_session_factory: Optional[Callable] = None,
@@ -68,6 +69,8 @@ def run_due(*, now: datetime,
         only: run just this task, ignoring dueness. Its slot is still the real
             scheduled one unless ``force``.
         force: with ``only``, claim a **manual** occurrence key. See below.
+        occurrence: replay this slot instead of "now". **Requires ``force``**,
+            and is ignored without it — see below.
         dry_run: compute everything, write no ledger rows at all.
         runner_id: the pod name, recorded so a row ties back to `kubectl logs`.
 
@@ -102,7 +105,17 @@ def run_due(*, now: datetime,
 
         # 2. Which slot are we filling?
         if force:
-            occ = now.replace(microsecond=0)
+            # `occurrence` is honored ONLY here, and that is the whole safety
+            # argument: a forced run already claims an `M`-prefixed key, which
+            # by construction cannot collide with a scheduled slot. So a
+            # replay at an arbitrary instant can neither satisfy nor displace
+            # a real occurrence — it writes its own row and leaves the
+            # schedule's history alone.
+            #
+            # A task computes everything from `ctx.occurrence`, so this is how
+            # you ask "what would the Monday five weeks out have sent?"
+            # without waiting five weeks or editing a constant.
+            occ = (occurrence or now).replace(microsecond=0)
             key = 'M' + occurrence_key(occ)
             trigger = 'manual'
         else:

@@ -470,6 +470,60 @@ class TestOnlyAndForce:
         assert row.trigger_type == 'manual'
         assert row.occurrence_key != occurrence_key(datetime(2026, 8, 12, 8, 15))
 
+    def test_an_explicit_occurrence_is_what_the_task_receives(self, ledger):
+        """The replay affordance. A task computes everything from
+        `ctx.occurrence`, so handing it a future slot asks "what would that
+        run have done?" without waiting for it or editing a constant."""
+        seen = []
+        task = make_task(fn=lambda ctx: seen.append(ctx.occurrence) or TaskResult())
+        replay = datetime(2026, 11, 23, 9, 0)
+
+        run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                only='t', force=True, occurrence=replay)
+
+        assert seen == [replay]
+
+    def test_an_explicit_occurrence_still_writes_a_manual_key(self, ledger, rows):
+        """THE safety argument for honoring it only under --force: the key is
+        `M`-prefixed by construction, so a replay can neither satisfy nor
+        displace a real scheduled slot."""
+        replay = datetime(2026, 11, 23, 9, 0)
+        run_due(now=NOW, ledger=ledger, registry=registry_of(make_task()),
+                only='t', force=True, occurrence=replay)
+
+        row, = rows()
+        assert row.occurrence_key == 'M' + occurrence_key(replay)
+        assert row.trigger_type == 'manual'
+
+    def test_a_replay_does_not_settle_the_slot_it_replays(self, ledger):
+        """Replaying next month's Monday must not stop next month's Monday."""
+        calls = []
+        slot = datetime(2026, 8, 12, 8, 15)
+        task = make_task(fn=lambda ctx: calls.append(ctx.occurrence) or TaskResult())
+
+        run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                only='t', force=True, occurrence=slot)
+        run_due(now=NOW, ledger=ledger, registry=registry_of(task))
+
+        assert calls == [slot, slot], 'the scheduled run must still happen'
+
+    def test_an_occurrence_without_force_is_ignored(self, ledger):
+        """The CLI rejects the combination outright; the runner falls back to
+        the real slot rather than quietly honoring it, so the two layers
+        cannot disagree about what a scheduled key means."""
+        seen = []
+        task = make_task(fn=lambda ctx: seen.append(ctx.occurrence) or TaskResult())
+        run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                occurrence=datetime(2026, 11, 23, 9, 0))
+        assert seen == [datetime(2026, 8, 12, 8, 15)]
+
+    def test_microseconds_are_truncated_as_they_are_for_now(self, ledger, rows):
+        run_due(now=NOW, ledger=ledger, registry=registry_of(make_task()),
+                only='t', force=True,
+                occurrence=datetime(2026, 11, 23, 9, 0, 30, 123456))
+        assert rows()[0].occurrence_key == \
+            'M' + occurrence_key(datetime(2026, 11, 23, 9, 0, 30))
+
     def test_a_forced_run_does_not_satisfy_the_scheduled_slot(self, ledger, rows):
         """Documented at the flag: a forced 10:00 run does not stop tonight's."""
         calls = []
