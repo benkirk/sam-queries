@@ -394,6 +394,29 @@ run Ben most needs to hear about is the one that emails him nothing.
 
 ---
 
+## Verification tooling — enable these on the session that does the work
+
+Two MCP tools materially change how this plan is verified. **Neither was available in
+the session that authored it**; both are enabled per-session, so whoever executes must
+resume with them on. Without them the two weakest steps in this plan — "check the
+inbox" and "check the badge renders" — degrade to eyeballing, which is exactly where a
+600-message send and a shared Jinja macro hide their failures.
+
+| Tool | Used by | Turns this into an assertion |
+|---|---|---|
+| **Google MCP** (mail) | Phase V | count reconciliation, the `X-SAM-Original-To` safety check, template-variant sampling, and "zero new mail on the re-run" |
+| **Playwright** | commit 9 | badge present/absent/failure states, tooltip contents, and computed contrast in both themes |
+
+Both carry constraints worth stating up front:
+
+- **Google MCP reads a real mailbox** holding production-derived PII. Scope queries to
+  `from:sam-admin@ucar.edu` in the run window; report counts and header presence, never
+  bodies or addresses. See the warning at the end of Phase V.
+- **Playwright runs against local `webdev` (:5050) with stub Quick Login, not prod.**
+  Production OIDC needs Ben and a second factor, so a prod browser smoke is a handoff,
+  not something an agent completes — do not report prod login as verified from a local
+  or mocked run.
+
 ## Phase V — local validation, before any k8s work
 
 Runs from the `devel` checkout against the **development database**, using the real
@@ -462,24 +485,42 @@ an `M`-prefixed manual occurrence key, so it cannot collide with a scheduled slo
 
 ### What to check afterwards
 
-- **Inbox**: message count matches the reported audience; every message carries an
-  `X-SAM-Original-To` header (`transports/smtp.py:33`) naming the intended recipient;
-  UNIV and WNA recipients got the right template variant; the summary email arrived
-  and its numbers match the ledger.
+The inbox checks below are **assertions, not eyeballing** — run this phase from a
+`claude --resume` session with the Google MCP enabled (see *Verification tooling*).
+Scope every mailbox query to `from:sam-admin@ucar.edu` within the run window.
+
 - **Ledger**: `SELECT status, COUNT(*) FROM notification_log WHERE kind='expiration'
   GROUP BY status` — expect all `redirected`, zero `failed`, zero stuck `queued`.
-- **Throughput**: wall-clock of the run. This is the number that decides whether
-  `expected_runtime=20min` and `activeDeadlineSeconds=3000` are right. **Record it in
-  this doc.**
-- **Re-run V3 immediately.** Every message must come back `suppressed` and the inbox
-  must stay quiet — that is the dedup proof, and it is the same 602-sent-then-602-
-  suppressed check `NOTIFICATION_FRAMEWORK.md` used.
+- **Count reconciliation**: messages received == `redirected` in the ledger ==
+  `TaskResult.detail`'s count. Three independent sources; all three must agree.
+- **The safety assertion — no message may lack `X-SAM-Original-To`.** That header
+  (`transports/smtp.py:33`) is set *only* on the redirect path, so a message without
+  it is one that went to its real recipient. The check is not "most have it"; it is
+  **zero without it**. Assert the `To:` differs from the header value too.
+- **Template variants**: sample one UNIV and one WNA recipient (read the intended
+  address off `X-SAM-Original-To`) and confirm each got the right variant — and that
+  the HTML part matches the text part's variant. They are resolved together on
+  purpose; a WNA recipient with UNIV HTML is the specific bug that pairing prevents.
+- **The summary email** arrived, and its counts reconcile with the ledger.
+- **Throughput**: wall-clock of the run, on a **loaded** week. This is the number that
+  decides whether `expected_runtime=20min` and `activeDeadlineSeconds=3000` are right.
+  **Record it in this doc**, along with which week was exercised.
+- **Re-run V3 immediately.** Every message must come back `suppressed` and **zero new
+  mail** must arrive — the dedup proof, and the same 602-sent-then-602-suppressed check
+  `NOTIFICATION_FRAMEWORK.md` used. Asserting "no new messages since timestamp T" is
+  exactly the check a human skims past and a tool does reliably.
 - **The legacy-key bridge.** The dev DB carries `notification_log` rows from Ben's
-  real pre-refactor CLI runs, in the *old* key format — which makes it the only place
-  the bridge can be tested against genuine data. Confirm the overlap cohort (projects
-  notified in the last manual run whose end dates still fall in the 40-day window)
-  comes back `suppressed` rather than sending a second time. If that cohort is empty
-  in the dev snapshot, say so explicitly rather than recording a pass.
+  real pre-refactor CLI runs, in the *old* key format — the only place the bridge can
+  be tested against genuine data. Confirm the overlap cohort (projects notified in the
+  last manual run whose end dates still fall in the 40-day window) comes back
+  `suppressed` rather than sending twice. If that cohort is empty in the dev snapshot,
+  **say so explicitly rather than recording a pass.**
+
+⚠️ **These are real messages about real people.** The dev DB carries production data,
+so bodies contain PI names, project codes and usage, and `X-SAM-Original-To` carries
+real addresses. Report counts, header presence and variant names. Do **not** paste
+message bodies or recipient addresses into this doc, a commit message, or a summary —
+the same rule that keeps anything derived from port 3306 out of the repo.
 
 ---
 
@@ -531,6 +572,28 @@ prior year reads "Notified 400 days ago". The tooltip carries the absolute date 
 recipient count, making a stale one self-evident. Matching `dedup_key`'s embedded date
 against the card's currently-computed expiration is more precise and more fragile.
 
+**Browser smoke (Playwright, against `webdev` on :5050 with Quick Login):**
+
+1. `/admin/projects` → Expirations tab → for a project with `notification_log` rows,
+   the badge renders with `Notified <n> <unit> ago` and its `title` names the
+   recipient count.
+2. A project with **no** rows shows the `Not notified` state — not a blank, and not
+   an `—` from `fmt_ago`'s null path.
+3. A project with failed deliveries also shows the failure badge.
+4. **The badge is absent on the user dashboard.** `render_project_card` is shared, and
+   only the admin path sets the key. This is the regression a shared macro invites and
+   the single most valuable assertion here.
+5. **Computed contrast, both themes.** The badge uses `bg-success-subtle` /
+   `text-success-emphasis`; assert the *computed* WCAG ratio in the browser rather than
+   judging it by eye, in light and in dark. Dark mode is where subtle-background badge
+   pairs have failed before.
+6. While the browser is up and Phase V has left real rows behind, smoke Admin →
+   Configuration → Notifications and its `Details »` page, which now have data to render.
+
+`webapp` (:7050) and `webdev` (:5050) share Redis db 0. Neither `/admin/projects` nor
+`/admin/expirations` is cached, so this is low-risk here — but flush before any A/B
+comparison, or one port serves the other's cached fragments.
+
 ### 10. Docs
 
 Corrections to `SCHEDULED_TASKS.md` § 12 items 2 and 4 (both overridden); `CLAUDE.md`
@@ -578,9 +641,10 @@ Cadence-specific — these are the ones the weekly decision makes load-bearing:
 
 In-cluster, after Phase V and commit 8, per § 13's recipe: `kubectl create job
 --from=cronjob/samuel-tasks`, check logs, confirm a `succeeded` row **and that
-`NOTIFY_ENABLED` actually reached the pod**. Badge: load `/admin/projects` →
-Expirations, confirm it renders for a project with `notification_log` rows and is
-absent on the user dashboard.
+`NOTIFY_ENABLED` actually reached the pod**.
+
+The badge's browser smoke is specified with commit 9; the mailbox assertions with
+Phase V. Both need MCP tools this session did not have — see *Verification tooling*.
 
 ## Risks
 
