@@ -107,7 +107,7 @@ class TestClaim:
         row, = rows()
         assert row.task_run_id == run_id
         assert row.state == 'running'
-        assert row.trigger == 'schedule'
+        assert row.trigger_type == 'schedule'
         assert row.attempt == 1
         assert row.runner_id == 'pod-a'
         assert row.claimed_at == NOW and row.heartbeat_at == NOW
@@ -143,7 +143,7 @@ class TestClaim:
     def test_manual_trigger_is_recorded(self, ledger, rows):
         run_id = ledger.claim(TASK, 'M20260812T090000Z', now=NOW,
                               trigger='manual')
-        assert rows()[0].trigger == 'manual'
+        assert rows()[0].trigger_type == 'manual'
 
 
 # ------------------------------------------------------------ primitive B

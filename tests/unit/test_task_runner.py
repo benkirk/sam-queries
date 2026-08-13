@@ -415,7 +415,7 @@ class TestOnlyAndForce:
 
         row, = rows()
         assert row.occurrence_key.startswith('M')
-        assert row.trigger == 'manual'
+        assert row.trigger_type == 'manual'
         assert row.occurrence_key != occurrence_key(datetime(2026, 8, 12, 8, 15))
 
     def test_a_forced_run_does_not_satisfy_the_scheduled_slot(self, ledger, rows):

@@ -213,7 +213,7 @@ from datetime import datetime
 now = datetime.now()  # NOT datetime.now(UTC)
 ```
 SAM/MySQL is naive-Mountain; `system_status` is naive-UTC (use
-`sam.fmt.utcnow_naive`). TIMESTAMP columns auto-update via
+`system_status.timeutil.utcnow_naive`). TIMESTAMP columns auto-update via
 `server_default=text('CURRENT_TIMESTAMP')` + `onupdate`.
 
 ### 2. Primary Keys

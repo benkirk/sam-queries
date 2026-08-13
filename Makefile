@@ -5,7 +5,7 @@ CONDA_ROOT := $(shell conda info --base)
 # Common way to initialize environment across various types of systems
 config_env := module load conda >/dev/null 2>&1 || true && . $(CONDA_ROOT)/etc/profile.d/conda.sh
 
-.PHONY: help clean clobber distclean fixperms check perf e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
+.PHONY: help clean clobber distclean fixperms check perf helm-test e2e check-db-vs-orms docker-build docker-up docker-down docker-restart docker-watch docker-pytest \
         conda-env prune-old-envs print-env-hash migrate-legacy-env \
         migrate-status-current migrate-status-up migrate-status-down migrate-status-history migrate-status-revision migrate-status-stamp-head
 
@@ -146,6 +146,14 @@ fixperms: ## Fix file permissions for .env
 check: ## Run tests
 	$(config_env) && source etc/config_env.sh && python3 scripts/orm_inventory.py
 	$(config_env) && source etc/config_env.sh && python3 -m pytest -v -n auto
+
+# Globs helm/tests/*.sh rather than naming scripts. ci-staging.yaml calls this
+# target, so a new render test runs in CI the moment it exists — the previous
+# arrangement named test-oidc-render.sh explicitly, which is how a second one
+# gets written and then silently never runs.
+helm-test: ## Run every Helm render assertion script (needs helm v3+)
+	@command -v helm >/dev/null 2>&1 || { echo "helm not found in PATH"; exit 1; }
+	@for t in helm/tests/*.sh; do echo "==> $$t"; bash "$$t" || exit 1; done
 
 perf: ## Run perf regression + benchmark suite (serial)
 	$(config_env) && source etc/config_env.sh && \

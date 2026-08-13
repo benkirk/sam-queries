@@ -134,8 +134,11 @@ jobs:
       - name: Helm template renders cleanly (local dev values)
         run: helm template samuel helm/ -f helm/values.yaml -f helm/values-local.yaml > /dev/null
 
-      - name: OIDC + ExternalSecret render assertions
-        run: bash helm/tests/test-oidc-render.sh
+      # Every script in helm/tests/, not a hand-maintained list. Naming them
+      # individually is how a new render test gets written and then silently
+      # never runs.
+      - name: Helm render assertions
+        run: make helm-test
 
   test:
     name: Test Suite
