@@ -86,7 +86,11 @@ class TasksCommand(BaseCommand):
             force=force, dry_run=dry_run,
             runner_id=os.getenv('RUNNER_ID'),
             status_session_factory=self._status_session_factory(),
-            sam_session_factory=self.ctx.require_sam,
+            # `open_sam`, NOT `require_sam` — the latter calls sys.exit(1), and
+            # `runner._execute` catches Exception rather than BaseException, so a
+            # SystemExit raised here would escape run_due and kill the dispatcher
+            # instead of failing the one task. See Context.require_sam.
+            sam_session_factory=self.ctx.open_sam,
         )
         payload = builders.build_task_dispatch(result, dry_run=dry_run)
 

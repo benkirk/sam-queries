@@ -1,8 +1,13 @@
 # Expiration Notices — the scheduled-task consumer
 
-**Status: designed, not built.** Approved 2026-08-13. Written to be picked up
-cold; every claim carries a `file:line` so the next reader can verify rather
-than re-derive.
+**Status: designed; one prerequisite built.** Approved 2026-08-13. Written to be
+picked up cold; every claim carries a `file:line` so the next reader can verify
+rather than re-derive.
+
+| | |
+|---|---|
+| **Done** | The `open_sam` / `require_sam` split (see *Prerequisite, done*) — the SAM connect no longer `sys.exit`s out of a task body. Full suite green at 6,687 passed. |
+| **Not started** | Commits 1–10 below, and Phase V. |
 
 ## Context
 
@@ -68,22 +73,49 @@ activation notice the webapp sends.
 
 ### Why § 12 item 4 must be rejected
 
-`Context.require_sam()` calls `sys.exit(1)` on a connection failure
-(`cli/core/context.py:80`). `runner._execute` catches `Exception`, **not**
-`BaseException` — deliberately, so a pod's `activeDeadlineSeconds` kill leaves the
-row `running` for reclaim rather than mislabeling it `failed` (`runner.py:200-213`).
-A `SystemExit` raised inside a task body therefore escapes `run_due`, escapes
-`TasksCommand.execute`, and **terminates the dispatcher process** — skipping every
-later task and stranding a `running` row.
-
-Secondary: a fresh `Context` binds `console = Console()` on **stdout**, and the
-CronJob runs `sam-admin --format json tasks --run-due`, whose stdout is a JSON
-envelope operators pipe to `jq`. `notification_progress` (`display.py:529`) plus the
-two `display_*` calls would interleave rich tables and ANSI into it.
+A fresh `Context` binds `console = Console()` on **stdout**, and the CronJob runs
+`sam-admin --format json tasks --run-due`, whose stdout is a JSON envelope operators
+pipe to `jq`. `notification_progress` (`display.py:529`) plus the two `display_*`
+calls would interleave rich tables and ANSI into it. The task also needs to own its
+window (`execute()` hardcodes `now + 32 days` at `:143,159`), its `requested_by`, and
+its facility scoping — all of which `execute()` decides for it.
 
 Extraction also satisfies § 12 item 4's actual *requirement* — that the
 `json_mode and notify` guard (`commands.py:125-133`) stay a CLI-flag check — more
 cleanly, because `execute()` is not touched at all.
+
+> **Correction.** An earlier draft of this section led with a different argument:
+> that `Context.require_sam()`'s `sys.exit(1)` would let a `SystemExit` escape
+> `run_due` and kill the dispatcher, and that extraction avoided it because the task
+> "never constructs a `Context`". **The hazard was real; the escape was not.**
+> `cli/tasks/commands.py` hands the runner `ctx.require_sam` as its
+> `sam_session_factory`, so *any* task with `needs=('sam',)` reaches that `sys.exit`
+> through `ctx.sam_session` — extraction or no extraction. It was latent only because
+> `cleanup_status_snapshots` is status-only, and `expiration_notices` would have been
+> the first task to arm it.
+>
+> **Fixed separately and already landed** — see *Prerequisite, done* below. The
+> conclusion here is unchanged, but it now rests on the reasons above rather than on
+> a premise that did not hold.
+
+### Prerequisite, done: the SAM connect no longer exits
+
+`Context` now has two accessors (`src/cli/core/context.py`):
+
+- **`open_sam()`** — connects or raises `SamConnectionError`. Holds the caching.
+- **`require_sam()`** — a thin CLI wrapper that prints the red message and exits 1,
+  behaviourally identical to before for every subcommand.
+
+`cli/tasks/commands.py` passes **`open_sam`**, so a SAM outage now fails the one task
+that wanted the session — recorded `failed` with the error in `detail` — and the
+dispatcher continues to the next. Covered by `tests/unit/test_cli_context.py` (9
+tests, including a source-level guard on the wiring) and
+`TestASessionFactoryThatFails` in `tests/unit/test_task_runner.py`.
+
+The exit code stays **1** rather than `EXIT_ERROR` (2), which a connection failure
+arguably deserves. Changing it would touch 10+ `sys.exit(command.execute(...))` call
+sites with no top-level handler, and the codes are a contract kept in lockstep with
+`hpc-usage-queries`. Deliberate, and recorded in the `require_sam` docstring.
 
 ### Why weekly, and why Monday
 
@@ -312,6 +344,12 @@ structured data rather than a substring of `repr(exc)`.
 New `src/scheduling/tasks/expiration_notices.py` **plus registration in
 `scheduling/tasks/__init__.py`** — without the side-effect import the task simply
 never runs and nothing errors.
+
+⚠️ **This is the first task with `needs=('sam',)`.** `cleanup_status_snapshots` is
+status-only, so nothing has ever exercised the SAM session factory. That path is now
+safe (see *Prerequisite, done*) — `ctx.sam_session` routes through `open_sam`, and a
+SAM outage yields a `failed` ledger row while the dispatcher continues — but this task
+is the first thing to depend on it, so treat a change there as touching this feature.
 
 ```python
 @task(name='expiration_notices', schedule=Weekly(0, 9, 0, tz='America/Denver'),  # Mon 09:00
@@ -682,6 +720,12 @@ Phase V. Both need MCP tools this session did not have — see *Verification too
 - **Modifying a just-shipped framework.** `sam/notify/` has an import-graph gate and
   its own suite; commits 1–3 must be additive with defaults reproducing current
   behavior exactly.
+- **`expiration_notices` is the first `needs=('sam',)` task.** The SAM session factory
+  now raises rather than exits, but nothing else in the tree depends on that yet, so
+  `TestASessionFactoryThatFails` in `tests/unit/test_task_runner.py` plus the
+  source-level wiring guard in `test_cli_context.py` are the only things holding it.
+  If someone "tidies" `tasks/commands.py` back to `require_sam`, a SAM outage silently
+  becomes a dead dispatcher again — the guard test exists to make that loud.
 - **`expected_runtime` is being used as a tuning knob.** It is documented as "drives
   the lease, not a timeout". The honest fix is `TaskContext.heartbeat()` —
   `Task.long_running` already exists and is unused (`registry.py:70`). Not built here;

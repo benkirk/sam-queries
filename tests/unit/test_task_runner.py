@@ -506,3 +506,58 @@ class TestTaskContext:
         with pytest.raises(ValueError, match='unknown needs'):
             Task(name='x', schedule=Daily(1), fn=lambda ctx: None,
                  needs=('sam', 'postgres'))
+
+
+class TestASessionFactoryThatFails:
+    """A session factory that cannot connect must fail ONE task, not the run.
+
+    `cli/tasks/commands.py` supplies `Context.open_sam` here. Its sibling
+    `Context.require_sam` calls ``sys.exit(1)``, and `_execute` catches
+    `Exception` rather than `BaseException` on purpose — so handing the runner
+    the exiting variant would let a SAM outage terminate the dispatcher mid-loop
+    instead of failing the task that wanted the session. These tests are what
+    stop that wiring from regressing.
+    """
+
+    def test_a_failing_sam_connect_fails_only_that_task(self, ledger, rows):
+        def boom():
+            raise RuntimeError('Error connecting to database: refused')
+
+        ran = []
+        first = make_task(name='needs_sam', needs=('sam', 'status'),
+                          fn=lambda ctx: ctx.sam_session)
+        second = make_task(name='runs_after', needs=('status',),
+                           fn=lambda ctx: ran.append('yes') or TaskResult())
+
+        out = run_due(now=NOW, ledger=ledger,
+                      registry=registry_of(first, second),
+                      sam_session_factory=boom,
+                      status_session_factory=lambda: None)
+
+        by_task = {r['task']: r for r in out['results']}
+        assert by_task['needs_sam']['outcome'] == 'failed'
+        assert ran == ['yes'], 'a later task must still run'
+        assert by_task['runs_after']['outcome'] == 'succeeded'
+
+        failed = rows(task_name='needs_sam')[0]
+        assert failed.state == 'failed'
+        assert 'refused' in failed.detail
+
+    def test_a_systemexit_from_the_factory_is_not_swallowed(self, ledger):
+        """The bug this guards against, stated as an executable claim.
+
+        `_execute` must NOT catch SystemExit — that is what keeps an
+        `activeDeadlineSeconds` kill recorded as `running`-and-reclaimable. The
+        consequence is that an *exiting* session factory takes the dispatcher
+        with it, which is precisely why `open_sam` exists.
+        """
+        def exits():
+            raise SystemExit(1)
+
+        task = make_task(name='exiting', needs=('sam', 'status'),
+                         fn=lambda ctx: ctx.sam_session)
+
+        with pytest.raises(SystemExit):
+            run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                    sam_session_factory=exits,
+                    status_session_factory=lambda: None)
