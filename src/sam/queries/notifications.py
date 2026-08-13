@@ -13,9 +13,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Sequence
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from querykit import LogSpec, count_rows, facet_counts, page_rows
 from sam.notify.models import NotificationLog
 
 #: The status values the admin card renders as named rows, in card order.
@@ -125,22 +126,14 @@ def get_recent_notifications(session: Session, *,
     bounded the result some other way (a projcode ``IN`` list and a time
     window); a paginated table must always pass a number.
     """
-    query = select(NotificationLog).where(*_filters(
-        since=since, statuses=statuses, kinds=kinds, channels=channels,
-        search=search, projcodes=projcodes))
-    query = query.order_by(NotificationLog.creation_time.desc(),
-                           NotificationLog.notification_log_id.desc())
-    if limit is not None:
-        query = query.limit(limit)
-    return list(session.execute(query.offset(offset)).scalars())
+    return page_rows(session, SPEC, limit=limit, offset=offset,
+                     since=since, statuses=statuses, kinds=kinds,
+                     channels=channels, search=search, projcodes=projcodes)
 
 
 def count_recent_notifications(session: Session, **filters) -> int:
     """Total matching rows, for pagination."""
-    return session.execute(
-        select(func.count(NotificationLog.notification_log_id))
-        .where(*_filters(**filters))
-    ).scalar_one()
+    return count_rows(session, SPEC, **filters)
 
 
 def facet_notifications(session: Session, dimension: str,
@@ -157,27 +150,7 @@ def facet_notifications(session: Session, dimension: str,
     Args:
         dimension: ``'status'`` / ``'kind'`` / ``'channel'``.
     """
-    column = {
-        'status': NotificationLog.status,
-        'kind': NotificationLog.kind,
-        'channel': NotificationLog.channel,
-    }.get(dimension)
-    if column is None:
-        raise ValueError(
-            f'unknown facet dimension {dimension!r}; expected one of '
-            f'status, kind, channel')
-
-    own_filter = {'status': 'statuses', 'kind': 'kinds',
-                  'channel': 'channels'}[dimension]
-    scoped = {k: v for k, v in filters.items() if k != own_filter}
-
-    rows = session.execute(
-        select(column, func.count(NotificationLog.notification_log_id))
-        .where(*_filters(**scoped))
-        .group_by(column)
-        .order_by(column)
-    ).all()
-    return {value: count for value, count in rows}
+    return facet_counts(session, SPEC, dimension, **filters)
 
 
 def _filters(*, since: Optional[datetime] = None,
@@ -211,3 +184,23 @@ def _filters(*, since: Optional[datetime] = None,
             NotificationLog.projcode.ilike(term),
         ))
     return conditions
+
+
+#: Binds this table to the shared helpers in ``querykit``. Declared last
+#: because it closes over :func:`_filters`.
+#:
+#: ``dimensions`` insertion order is the order the vocabulary is quoted back in
+#: the ``ValueError`` for an unknown facet — declare it the way the chips read.
+SPEC = LogSpec(
+    model=NotificationLog,
+    id_column=NotificationLog.notification_log_id,
+    order_columns=(NotificationLog.creation_time.desc(),),
+    dimensions={
+        'status': NotificationLog.status,
+        'kind': NotificationLog.kind,
+        'channel': NotificationLog.channel,
+    },
+    owned_filter={'status': 'statuses', 'kind': 'kinds',
+                  'channel': 'channels'},
+    build_filters=_filters,
+)

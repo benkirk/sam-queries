@@ -85,6 +85,8 @@ sam-queries/
 │   │   └── forms/           # HTMX/API form-validation schemas (per domain)
 │   └── caching/, session/, fmt.py, enums.py, geography.py, plugins.py
 ├── src/system_status/    # Separate status DB (own bind, Alembic-managed)
+├── src/querykit/         # Faceted-log query facade — SQLAlchemy only, imports
+│                         #   nothing from sam/ or system_status/ (see its README)
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
 │   ├── core/                # Context, base command classes, exit codes
 │   ├── user/ project/ allocations/ accounting/   # Command + display modules

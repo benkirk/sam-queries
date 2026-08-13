@@ -568,6 +568,10 @@ sam-queries/
 │   │   ├── models/              # Status tracking models
 │   │   └── queries/             # Status query functions
 │   │
+│   ├── querykit/                # Faceted-log query facade (see querykit/README.md)
+│   │   ├── README.md            # Why this is a peer package, and what belongs in it
+│   │   └── faceted.py           # LogSpec + count/page/facet, SQLAlchemy-only
+│   │
 │   ├── cli/                     # Modular CLI architecture
 │   │   ├── README.md            # CLI architecture documentation
 │   │   ├── core/                # Shared infrastructure (Context, base classes)
