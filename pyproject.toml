@@ -107,7 +107,7 @@ where = ["src"]
 "sam.notify" = ["templates/*"]
 
 [tool.coverage.run]
-source = ["src/sam", "src/system_status", "src/webapp"]
+source = ["src/sam", "src/scheduling", "src/system_status", "src/webapp"]
 omit = [
     "src/sam/queries/examples.py",
         "src/webapp/utils/project_permissions.py",
