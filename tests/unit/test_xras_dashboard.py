@@ -610,11 +610,18 @@ class TestActivityCardGating:
 class TestStatusVocabularyIsRenderable:
     """Every status the table can hold must have a badge, a label and a tooltip.
 
-    ``XRAS_ACTION_STATUSES`` and ``badges.html`` are two files that have to agree, and
+    The vocabulary tuples and ``badges.html`` are files that have to agree, and
     nothing else makes them. The macro falls back to ``bg-secondary`` with the raw string
     for an unknown state, so a missing entry does not raise — it renders a grey chip
     labelled ``unmapped`` with no explanation, on the page an operator reaches for when
     something has gone wrong. Silent, and exactly when it matters most.
+
+    ``badges.html`` is a **shared** namespace: three domains' vocabularies live in one
+    flat set of dicts. Only XRAS was gated here originally; notification statuses and
+    scheduled-task run states are covered now too, so the next domain to join cannot
+    quietly render grey. (The collision that namespace already carries is ``manual``,
+    which is XRAS's — scheduled-task *triggers* are deliberately NOT rendered through
+    this macro for that reason. See the note in badges.html.)
 
     Parsed out of the template source rather than rendered, because these are Jinja
     ``{%- set -%}`` literals with no macro that exposes them.
@@ -629,13 +636,26 @@ class TestStatusVocabularyIsRenderable:
         assert body, f'{dict_name} not found in badges.html'
         return set(re.findall(r"'([^']+)':", body.group(1)))
 
+    @staticmethod
+    def _vocabulary(name):
+        if name == 'XRAS_ACTION_STATUSES':
+            from sam.queries.xras_actions import XRAS_ACTION_STATUSES
+            return XRAS_ACTION_STATUSES
+        if name == 'NOTIFICATION_STATUSES':
+            from sam.notify import NOTIFICATION_STATUSES
+            return NOTIFICATION_STATUSES
+        from system_status.models.task_run import TASK_STATES
+        return TASK_STATES
+
     @pytest.mark.parametrize(
         'dict_name', ['_STATUS_VARIANTS', '_STATUS_LABELS', '_STATUS_TOOLTIPS'])
-    def test_every_status_has_an_entry(self, dict_name):
-        from sam.queries.xras_actions import XRAS_ACTION_STATUSES
-
-        missing = set(XRAS_ACTION_STATUSES) - self._keys(dict_name)
-        assert not missing, f'{dict_name} is missing {sorted(missing)}'
+    @pytest.mark.parametrize(
+        'vocabulary', ['XRAS_ACTION_STATUSES', 'NOTIFICATION_STATUSES',
+                       'TASK_STATES'])
+    def test_every_status_has_an_entry(self, dict_name, vocabulary):
+        missing = set(self._vocabulary(vocabulary)) - self._keys(dict_name)
+        assert not missing, \
+            f'{dict_name} is missing {sorted(missing)} from {vocabulary}'
 
 
 class TestNotifyForceToggle:

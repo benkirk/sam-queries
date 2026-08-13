@@ -687,6 +687,61 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'window_hours': None,
         }
 
+    # --- Scheduled tasks (registry + SAM_TASKS_DISABLED + task_run counts)
+    #
+    # No addresses and no PII: task rows carry task names, states and pod
+    # names. `runner_id` is a pod name and `detail` can hold a traceback
+    # naming hosts and paths, which is why the per-row detail modal sits a
+    # tier above this card — but neither reaches here.
+    try:
+        from scheduling.registry import TASKS
+        from scheduling.runner import disabled_tasks
+        from system_status.queries.task_runs import summarize_task_runs
+
+        # Import for the registration side effects — TASKS is populated by
+        # the @task decorator at import time.
+        import scheduling.tasks  # noqa: F401
+
+        disabled = sorted(disabled_tasks())
+        scheduled_tasks_block = {
+            'tasks': [
+                {
+                    'name': name,
+                    'schedule': task.schedule.describe(),
+                    'description': task.description,
+                    'disabled': name in disabled,
+                }
+                for name, task in sorted(TASKS.items())
+            ],
+            'disabled': disabled,
+        }
+        scheduled_tasks_block.update(summarize_task_runs(db.session))
+    except Exception:
+        # `task_run` does not exist until Alembic 0006 is applied, and it is
+        # NOT applied on staging or production yet — so this card will render
+        # before its table exists. A Configuration tab that 500s is worse
+        # than one that says "unavailable".
+        #
+        # Roll back first, for the reason spelled out in the notifications
+        # block above: the failure came from a statement, and without this any
+        # later `db.session` use in the request raises PendingRollbackError
+        # instead of its own error.
+        try:
+            db.session.rollback()
+        except Exception:                    # pragma: no cover - defensive
+            pass
+        scheduled_tasks_block = {
+            'tasks': [],
+            'disabled': [],
+            'unavailable': True,
+            'succeeded': 0, 'partial': 0, 'failed': 0, 'skipped': 0,
+            'stale_running': 0, 'total': 0, 'by_state': {},
+            'last_dispatch': None, 'last_dispatch_age': None,
+            # Read by the template outside the `unavailable` short-circuit, so
+            # it must be present even though nothing renders it in this state.
+            'window_hours': None,
+        }
+
     # --- Audit & Logging
     audit_path = cfg.get('AUDIT_LOG_PATH', '')
     audit_logging = {
@@ -706,6 +761,7 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         'auth':          auth,
         'caching':       caching_block,
         'notifications': notifications_block,
+        'scheduled_tasks': scheduled_tasks_block,
         'rate_limits':   rate_limits_block,
         'audit_logging': audit_logging,
         'audit_tail':    audit_tail,

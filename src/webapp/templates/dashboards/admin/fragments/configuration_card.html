@@ -340,6 +340,89 @@
             </div>
         </div>
 
+        {# ── Scheduled tasks (scheduling registry + task_run counts) ──────
+             No PII on this tile or the table behind it — task names, states,
+             pod names. The per-row detail modal IS SYSTEM_ADMIN, because
+             `detail` can hold a traceback naming hosts and paths. #}
+        <div class="col-12 col-xl-6">
+            <div class="card inner-card h-100">
+                <div class="card-header mb-4 d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-clock me-1"></i> Scheduled tasks</h5>
+                    {# Ungated on purpose, unlike Notifications above: the run
+                       history page is VIEW_SYSTEM_CONFIG, the same tier as this
+                       card, so the link cannot 403. Only the detail modal sits
+                       higher. Same reasoning as Rate limiting below. #}
+                    <a href="{{ url_for('admin_dashboard.scheduled_tasks') }}"
+                       class="small text-decoration-none">
+                        Details &raquo;
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if state.scheduled_tasks.unavailable %}
+                    <p class="text-muted small mb-0">
+                        <i class="fas fa-circle-info"></i>
+                        Run history is unavailable — the
+                        <code>task_run</code> table is not present on this
+                        database (it arrives with Alembic <code>0006</code>).
+                    </p>
+                    {% else %}
+                    {% if state.scheduled_tasks.disabled %}
+                    {# The kill switch gets the same treatment as the mailer's
+                       redirect_to, and for the identical reason: a dispatcher
+                       waking hourly and deliberately doing nothing looks
+                       exactly like a healthy one. It ships non-empty. #}
+                    <div class="alert alert-warning py-2 px-3 small mb-3">
+                        <i class="fas fa-ban me-1"></i>
+                        <strong>Disabled:</strong>
+                        {% for name in state.scheduled_tasks.disabled %}
+                        <code>{{ name }}</code>{{ '' if loop.last else ', ' }}
+                        {%- endfor %}
+                        — the dispatcher still wakes, and these do nothing.
+                    </div>
+                    {% endif %}
+
+                    <dl class="config-stats mb-3 small">
+                        {{ stat('Registered', state.scheduled_tasks.tasks | length) }}
+                        {{ stat('Last dispatch', (state.scheduled_tasks.last_dispatch_age | fmt_ago ~ ' ago') if state.scheduled_tasks.last_dispatch_age else 'never') }}
+                    </dl>
+
+                    {% if state.scheduled_tasks.tasks %}
+                    <dl class="config-stats mb-3 small">
+                        {% for task in state.scheduled_tasks.tasks %}
+                        {{ stat(task.name, task.schedule ~ (' — disabled' if task.disabled else '')) }}
+                        {% endfor %}
+                    </dl>
+                    {% endif %}
+
+                    <hr class="my-3">
+                    <div class="text-muted small mb-2">
+                        <strong>Last {{ state.scheduled_tasks.window_hours }}h</strong>
+                    </div>
+                    <dl class="config-stats mb-0 small">
+                        {{ stat('Succeeded', state.scheduled_tasks.succeeded | fmt_number) }}
+                        {% if state.scheduled_tasks.partial %}
+                        {{ stat('Partial',   state.scheduled_tasks.partial | fmt_number) }}
+                        {% endif %}
+                        {{ stat('Failed',    state.scheduled_tasks.failed | fmt_number) }}
+                        {{ stat('Skipped',   state.scheduled_tasks.skipped | fmt_number) }}
+                    </dl>
+
+                    {% if state.scheduled_tasks.stale_running %}
+                    {# Non-zero means a runner claimed a slot and died before
+                       writing an outcome. Those rows become reclaimable at the
+                       same lease horizon this counts from. #}
+                    <div class="alert alert-warning py-2 px-3 small mt-3 mb-0">
+                        <i class="fas fa-triangle-exclamation me-1"></i>
+                        <strong>{{ state.scheduled_tasks.stale_running | fmt_number }}</strong>
+                        run(s) stuck in <code>running</code> past the lease — a
+                        runner died mid-task.
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
         {# ── Rate limiting (Flask-Limiter facade; webapp.limiter) ──────── #}
         <div class="col-12 col-xl-6">
             <div class="card inner-card h-100">
