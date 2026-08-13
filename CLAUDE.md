@@ -85,6 +85,10 @@ sam-queries/
 │   │   └── forms/           # HTMX/API form-validation schemas (per domain)
 │   └── caching/, session/, fmt.py, enums.py, geography.py, plugins.py
 ├── src/system_status/    # Separate status DB (own bind, Alembic-managed)
+├── src/scheduling/       # Ledger-backed task dispatcher (schedules, registry,
+│                         #   ledger, runner) — no Click/Flask/k8s imports
+├── src/querykit/         # Faceted-log query facade — SQLAlchemy only, imports
+│                         #   nothing from sam/ or system_status/ (see its README)
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
 │   ├── core/                # Context, base command classes, exit codes
 │   ├── user/ project/ allocations/ accounting/   # Command + display modules
@@ -213,7 +217,7 @@ from datetime import datetime
 now = datetime.now()  # NOT datetime.now(UTC)
 ```
 SAM/MySQL is naive-Mountain; `system_status` is naive-UTC (use
-`sam.fmt.utcnow_naive`). TIMESTAMP columns auto-update via
+`system_status.timeutil.utcnow_naive`). TIMESTAMP columns auto-update via
 `server_default=text('CURRENT_TIMESTAMP')` + `onupdate`.
 
 ### 2. Primary Keys
@@ -559,7 +563,7 @@ display code. (Migration history: `docs/plans/implemented/FORMAT_DISPLAY.md`.)
 
 One mailer, two consumers: `sam-admin project --upcoming-expirations --notify`
 and the webapp's XRAS activation Notify button. Design and measurements:
-`docs/plans/NOTIFICATION_FRAMEWORK.md`.
+`docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`.
 
 ```python
 from sam.notify import Message, Notifier, Recipient
@@ -661,8 +665,8 @@ A **categorical** axis of pre-formatted period strings (the jobs timeline
 plots band indices) calls `fmt.compact_date_labels()` on the labels instead —
 same vocabulary, and unparsable grains come back unchanged.
 
-Design + measurements: `docs/plans/MOBILE_CHARTS.md`,
-`docs/plans/TABLET_CHARTS.md`.
+Design + measurements: `docs/plans/implemented/MOBILE_CHARTS.md`,
+`docs/plans/implemented/TABLET_CHARTS.md`.
 
 ### The `theme` axis (light / dark)
 
@@ -681,7 +685,7 @@ that reloads, so cookie and browser can never disagree.
 | **Roles** | `Theme.muted_data` is the inert "Others" band and must **bypass** the lift — its job is to recede, and lifting it undoes that. `Theme.area_alpha` is 0.85 light / 1.0 dark because figures are transparent and composite against the card. |
 | **Surface** | `Theme.DARK.surface` == `--surface-card` == `#1b2733`, pinned by `test_dark_card_matches_chart_blend_target`. |
 
-Design + rationale: `docs/plans/DARK_MODE.md` § *PR 4 as built*.
+Design + rationale: `docs/plans/implemented/DARK_MODE.md` § *PR 4 as built*.
 
 ### Adding a chart
 
@@ -750,9 +754,9 @@ a row drill — row drills resolve within the clicked chart's pane.
    visible change — keys hash *input data*, not rendering code, so warm Redis
    entries serve old-code SVGs for up to 600 s.
 
-Design + rationale: `docs/plans/CHART_ARCHITECTURE.md` (the hierarchy),
-`docs/plans/DARK_MODE.md` (the theme axis),
-`docs/plans/MOBILE_CHARTS.md` + `docs/plans/TABLET_CHARTS.md` (the layout
+Design + rationale: `docs/plans/implemented/CHART_ARCHITECTURE.md` (the hierarchy),
+`docs/plans/implemented/DARK_MODE.md` (the theme axis),
+`docs/plans/implemented/MOBILE_CHARTS.md` + `docs/plans/implemented/TABLET_CHARTS.md` (the layout
 axis).
 
 ---

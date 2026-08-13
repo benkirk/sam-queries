@@ -7,7 +7,7 @@ from `/static/vendor/...`; **the app loads no third-party origins at runtime.**
 ## Why these are vendored
 
 Vendoring is a prerequisite for the webapp's Content-Security-Policy, which is
-essentially all-`'self'` (see `docs/plans/CSP.md`). The alternative — allowlisting
+essentially all-`'self'` (see `docs/plans/implemented/CSP.md`). The alternative — allowlisting
 a CDN such as `script-src https://cdn.jsdelivr.net https://unpkg.com` — would let
 an injected `<script src>` tag pull *any* npm package those CDNs serve, sidestepping
 CSP entirely (Google's CSP Evaluator flags exactly these origins). Browser cache
@@ -158,5 +158,5 @@ gives you a clean cache-bust for free.
 - `src/webapp/vendor_assets.py` — the registry (source of truth) + recipe docstring
 - `src/webapp/utils/csp.py` — how the registry becomes the CSP header
 - `tests/unit/test_vendor_assets.py` — the hash / presence checks described above
-- `docs/plans/CSP.md`, `docs/plans/implemented/CSP-discussion.md` — full CSP rationale
+- `docs/plans/implemented/CSP.md`, `docs/plans/implemented/CSP-discussion.md` — full CSP rationale
 ```

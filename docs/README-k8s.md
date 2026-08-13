@@ -241,6 +241,14 @@ Logout needs no equivalent setting: it already derives
 | Future: ECS production | tbd | oidc | AWS SSM `/sam/production/oidc-*` | tbd |
 | Future: k8s staging | tbd | oidc | OpenBao `csg/sam-staging-oidc` | tbd |
 
+Scheduled tasks, by environment:
+
+| Deployment | `tasks.enabled` | Notes |
+|---|---|---|
+| Local Docker Compose (`webdev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
+| Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
+| CIRRUS k8s (this chart) | `true`, kill-switched | `SAM_TASKS_DISABLED=cleanup_status_snapshots` until the soak completes |
+
 When the per-environment Entra app strategy is adopted (separate `sam-production`
 and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
 templates and Terraform modules stay identical.
@@ -291,7 +299,45 @@ helm rollback samuel -n <namespace>
 kubectl get pods -n <namespace>
 kubectl get externalsecrets -n <namespace>   # check ESO sync status
 kubectl get ingress -n <namespace>
+kubectl get cronjob -n <namespace>           # samuel-tasks (see below)
 kubectl logs -n <namespace> -l app=samuel --tail=50
+```
+
+### Scheduled tasks
+
+The chart deploys **one** CronJob, `samuel-tasks`, which wakes hourly at `:07`
+and asks each registered task "what slot are we in?". Individual schedules are
+Python declarations in `src/scheduling/tasks/`, not chart values — adding a task
+is a code change. A `task_run` ledger in `system_status` makes a late or
+duplicate dispatch a no-op, so the CronJob's own cron string is arbitrary.
+
+Design and rationale: `docs/plans/SCHEDULED_TASKS.md`.
+
+```bash
+# What exists, and when each task last ran. Reads the ledger; changes nothing.
+kubectl exec -n <namespace> deploy/samuel -- sam-admin tasks --list
+kubectl exec -n <namespace> deploy/samuel -- sam-admin --format json tasks --history | jq
+
+# Don't wait for the top of the hour
+kubectl create job -n <namespace> --from=cronjob/samuel-tasks tasks-manual-1
+kubectl logs -n <namespace> job/tasks-manual-1
+```
+
+⚠️ **The kill switch.** `tasks.env.SAM_TASKS_DISABLED` is a comma-separated list
+of task names to skip, flippable in `values.yaml` with no code deploy. It ships
+**non-empty** (`cleanup_status_snapshots`) so that merging the chart deploys a
+dispatcher which runs hourly, writes `skipped` rows and deletes nothing — the
+24 h soak that proves credentials, DNS, image and Postgres reachability from a
+pod that is not the webapp, with zero blast radius. Clearing it is a separate,
+reviewable one-line commit.
+
+`tasks.enabled: false` in `values-local.yaml`: on Docker Desktop nothing should
+silently DELETE local data. To smoke-test it there:
+
+```bash
+helm upgrade --install samuel ./helm -f helm/values.yaml -f helm/values-local.yaml \
+  -n samuel-dev --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
+  --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots'
 ```
 
 ### Destroy

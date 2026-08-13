@@ -48,13 +48,13 @@ Three legacy bugs, and what this port does with each
 3. **The ``UNDO AUTO/DEFAULT`` compensating adjustment.** ``ActionTag`` writers use
    ``.name()`` while the detector compares ``.getValue()``; they never match, and
    production holds **zero** ``UNDO`` rows of either spelling. **Not ported** — detected
-   and warned. See ``docs/plans/XRAS_SPRINT_C.md`` § *Legacy defect 5*. The separate
+   and warned. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Legacy defect 5*. The separate
    *contingent-resource* short-circuit compares ``.name()`` on both sides and does work,
    so that one **is** ported.
 
 Verified against ``~/codes/sam`` at tag 2.0.3 (``UpdateProjectAssembler``,
 ``UpdateProjectActionCommandFactory``, ``UpdateProjectAllocationActionCommandsFactory``).
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Update*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Update*.
 """
 
 import logging

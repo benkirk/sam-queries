@@ -1,10 +1,12 @@
 """Click wiring for `sam-search contracts` — guards, exit codes, envelopes.
 
-The `mock_db_session` fixture patches `cli.cmds.search.Session`, a **different
-import site** from `test_cli_contracts.py`'s `cli.cmds.admin.Session`. Both
-patches are required: without the second, the CLI opens its own connection and
-escapes the test's SAVEPOINT, so nothing it writes is rolled back and nothing
-this test creates is visible to it.
+The `mock_db_session` fixture patches `cli.core.context.Session` — the single
+site where `Context.require_sam()` builds a session, shared by `sam-search` and
+`sam-admin` alike. (Before the lazy-connect refactor each entry point built its
+own, so this and `test_cli_contracts.py` patched two different modules.) The
+patch is required: without it the CLI opens its own connection and escapes the
+test's SAVEPOINT, so nothing it writes is rolled back and nothing this test
+creates is visible to it.
 
 Exit codes are the point of several tests here. `sam-search contracts` uses the
 three-outcome convention shared by every other `sam-search` subcommand —
@@ -42,7 +44,7 @@ def runner():
 def mock_db_session(session):
     """Bind the CLI group to the test's SAVEPOINT session."""
     with patch('sam.session.create_sam_engine') as mock_engine, \
-         patch('cli.cmds.search.Session') as mock_session_cls:
+         patch('cli.core.context.Session') as mock_session_cls:
         mock_engine.return_value = (MagicMock(), None)
         mock_session_cls.return_value = session
         yield session

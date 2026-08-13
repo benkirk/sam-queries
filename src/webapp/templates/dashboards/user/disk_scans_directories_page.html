@@ -92,7 +92,10 @@
   <div class="filter-sidebar mb-3">
     {{ dir_filters('disk-scans-filters-' ~ target_id, fragment_url, target_id,
                    filters, user_search_url, resource_name, scope, fileset,
-                   limit_options, mode=mode) }}
+                   limit_options, mode=mode,
+                   age_bands=age_bands, age_band_span=age_band_span,
+                   size_bands=size_bands, size_band_span=size_band_span,
+                   layout=layout) }}
   </div>
 
   <div class="card">

@@ -8,7 +8,7 @@ against a committed byte corpus. The real captured corpus is production PII
 stacks where the data is real by construction and nothing needs scrubbing.
 
 Every constant here was measured against production on 2026-08-05/06 with the
-`samuel` ROLE_XRAS credential. See `docs/plans/XRAS_REIMPLEMENTATION.md`.
+`samuel` ROLE_XRAS credential. See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md`.
 
 Auth note: a `make_api_credentials` row is invisible to an HTTP request, because
 routes read Flask-SQLAlchemy's `db.session` on a separate connection that only
@@ -799,7 +799,7 @@ class TestDispatchArms:
         ``log_id``, which only the route has.
 
         Where warnings ultimately *belong* is a schema question — see
-        ``docs/plans/XRAS_STRESS_AND_SCHEMA.md``'s ``warnings`` column candidate. This
+        ``docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md``'s ``warnings`` column candidate. This
         pins only that they stop vanishing.
         """
         dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(

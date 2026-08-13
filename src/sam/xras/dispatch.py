@@ -59,7 +59,7 @@ Until one does, its service selects and then falls through to ``manual`` — exa
 behaviour the route had hardcoded before this module existed. That is what lets each
 handler land as its own commit without touching the route again.
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *The dispatcher*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The dispatcher*.
 """
 
 import logging

@@ -1,7 +1,7 @@
 """Provider selection: source-specific first, then generic.
 
 Two providers today, and the survey behind
-docs/plans/CONTRACT_IMPORTING_PLAN.md says it stays two: NSF is the only
+docs/plans/implemented/CONTRACT_IMPORTING_PLAN.md says it stays two: NSF is the only
 public API carrying a program officer, and USAspending is the only
 cross-agency source with award data at all (Federal RePORTER, the one other
 candidate, has been dead since March 2022). The seam exists so a third can

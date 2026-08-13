@@ -35,7 +35,7 @@ topologySpread:
 #   - Flask-Caching chart cache (CACHE_REDIS_URL → DB 0)
 #   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI → DB 1)
 # Single replica, no persistence, no HA. Eviction = allkeys-lru.
-# See docs/plans/REDIS.md.
+# See docs/plans/implemented/REDIS.md.
 #
 # maxmemory sizing: one instance holds all 15 chart SVG caches, both jobs
 # aggregation buckets, both fs-scans buckets, the allocation-usage cache
@@ -226,11 +226,12 @@ webapp:
     # app stamps naive datetimes (AccountUser.start_date, allocation dates, …)
     # that are compared against the DB's NOW()/func.now(); a UTC pod put them
     # ~6h in the DB's future, so freshly-granted access read back as inactive.
-    # system_status keeps its own explicit naive-UTC clock (sam.fmt.utcnow_naive).
+    # system_status keeps its own explicit naive-UTC clock
+    # (system_status.timeutil.utcnow_naive — there is no such symbol in sam.fmt).
     TZ: "America/Denver"
     # ── Notifications (sam.notify) ────────────────────────────────────
     # Relay facts MEASURED from a pod on nwc1, 2026-08-09
-    # (docs/plans/NOTIFICATION_FRAMEWORK.md § 9):
+    # (docs/plans/implemented/NOTIFICATION_FRAMEWORK.md § 9):
     #   ndir.ucar.edu:25 reachable — no NetworkPolicy restricts webapp egress
     #   EHLO advertises STARTTLS, and NOT AUTH  → no ExternalSecret needed,
     #     which is why MAIL_USERNAME/MAIL_PASSWORD are absent here entirely
@@ -394,3 +395,55 @@ webapp:
     clientSecretKey: client_secret        # OIDC client secret
     issuerKey: issuer                     # OIDC issuer URL (e.g. https://login.microsoftonline.com/{tenant}/v2.0)
     flaskSecretKeyKey: flask_secret_key   # Per-environment Flask session signing key (32-byte hex)
+
+# ── Scheduled tasks ───────────────────────────────────────────────────
+# ONE CronJob for all tasks. Each task's schedule lives in
+# src/scheduling/tasks/ as a Python declaration; this block only controls how
+# often the dispatcher wakes up. The `task_run` ledger makes a late or
+# duplicate dispatch a no-op, so the cron string here is arbitrary and adding
+# a task is a code change, not a chart change.
+#
+# Design + rationale: docs/plans/SCHEDULED_TASKS.md § 8.
+tasks:
+  enabled: true
+  name: samuel-tasks
+  suspend: false
+  # Offset from :00 to dodge the top-of-hour herd, and disjoint from the
+  # collectors' */5. The exact minute is arbitrary — the ledger keys off each
+  # TASK's schedule, not this one.
+  schedule: "7 * * * *"
+  # Etc/UTC so the controller never sees a DST gap or fold. Requires k8s ≥1.25
+  # (GA 1.27); nwc1 is on 1.35.6, verified 2026-08-12. Set to "" to drop the
+  # field on an older cluster.
+  timeZone: "Etc/UTC"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  # Failures are worth keeping longer than successes. Both small, matching the
+  # chart's revisionHistoryLimit instinct about ArgoCD clutter.
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  backoffLimit: 0
+  activeDeadlineSeconds: 3000             # 50 min — strictly under the interval
+  # Appended after `sam-admin --format json tasks`.
+  args: ["--run-due"]
+  resources:
+    requests:
+      memory: 256Mi                       # floor is Python import overhead
+      cpu: 100m
+    limits:
+      memory: 1Gi                         # absorbs a surprise
+      cpu: 1
+  env:
+    # One year. The status dashboards support long lookback, and a year-wide
+    # cutoff also means the first production run is not a multi-year DELETE.
+    # The default lives in src/system_status/retention.py; this overrides it.
+    STATUS_RETENTION_DAYS: "365"
+    # ⚠️ Comma-separated task names to skip, WITHOUT a code deploy.
+    #
+    # Ships non-empty on purpose. The rollout is: merge with the destructive
+    # task named here, let the dispatcher run hourly for 24 h writing `skipped`
+    # rows and deleting nothing — proving credentials, DNS, image,
+    # securityContext and Postgres reachability from a pod that is not the
+    # webapp, with zero blast radius — then clear this in a SECOND commit.
+    # That soak is the entire reason the kill switch exists.
+    SAM_TASKS_DISABLED: "cleanup_status_snapshots"

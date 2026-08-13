@@ -1,6 +1,10 @@
+import logging
+
 from sqlalchemy import create_engine, URL
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -31,7 +35,14 @@ def init_status_db_defaults():
 
     database = os.getenv('STATUS_DB_NAME', 'system_status')
 
-    print(f'{username}:$STATUS_DB_PASSWORD@{server}/{database}')
+    # DEBUG, not print. This module is imported by `sam-admin`, whose
+    # `--format json` contract (src/cli/README.md) is that stdout carries the
+    # JSON envelope and nothing else. A bare print() here put one unparseable
+    # line in front of every envelope — invisible to a human reading a Rich
+    # table, fatal to `... | jq` and to the scheduled-task CronJob, which runs
+    # `sam-admin --format json tasks --run-due` and is log-scraped.
+    logger.debug('status db: %s:$STATUS_DB_PASSWORD@%s/%s',
+                 username, server, database)
 
     # Build connection string based on configured driver
     driver = os.getenv('STATUS_DB_DRIVER', 'mysql').lower()

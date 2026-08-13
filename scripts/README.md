@@ -46,10 +46,13 @@ cluster. All use the same idioms: colored PASS/WARN/FAIL output, exit codes
 `-n/--namespace`, `-r/--release`, `--context`, `-v/--verbose`, `-h/--help`
 flags.
 
-- **`cirrus_healthcheck.sh`** — "is the cluster healthy?" 11-section probe of
+- **`cirrus_healthcheck.sh`** — "is the cluster healthy?" 12-section probe of
   the Helm release: pods, rollout safety, Redis, resource usage, ingress/TLS,
   edge security headers, ExternalSecrets, the in-pod health endpoint, recent
-  logs, and events.
+  logs, events, and the scheduled-task CronJob. That last section is the only
+  place the dispatcher's liveness is observable — `task_run` records
+  *occurrences*, not wake-ups, so a healthy hourly dispatcher writes one row a
+  day and the row count cannot distinguish that from a dead one.
 
 - **`cirrus_weblog_audit.sh`** — "who's hitting the public site, and is anything
   abusive getting through?" Harvests the webapp's stdout (and the Redis
@@ -171,7 +174,12 @@ Python scripts for managing the `system_status` database:
 
 - `setup_status_db.py` - Create system status database tables
 - `test_status_db.py` - Test system status database connection
-- `cleanup_status_data.py` - Clean up old status snapshots
+- `cleanup_status_data.py` - Hand-run prune of old status snapshots. Owns no
+  policy: the retention window, the table list and the cutoff all live in
+  `src/system_status/retention.py`, shared with the `cleanup_status_snapshots`
+  scheduled task so a manual prune and the nightly one cannot disagree.
+  Snapshot tables only — outages and reservations are curated records and are
+  never pruned automatically.
 - `ingest_mock_status.py` - Ingest mock status data for testing
 - `create_status_db.sql` - SQL script for database creation
 
@@ -212,7 +220,8 @@ python scripts/setup_status_db.py
 # Test connection
 python scripts/test_status_db.py
 
-# Cleanup old data
+# Cleanup old data — defaults to the shared 365-day policy
+python scripts/cleanup_status_data.py --dry-run
 python scripts/cleanup_status_data.py
 ```
 

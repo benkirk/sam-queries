@@ -15,7 +15,7 @@ Because the role-assignment rule reads the *current date*, every test that touch
 pins ``today`` explicitly. A test that let it float would pass or fail depending on
 when it ran.
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *The roster*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The roster*.
 """
 
 

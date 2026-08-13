@@ -9,7 +9,7 @@
 layer and the CLI were built as stacked sprints over one long build. The domain core had
 already been through a dedicated refactor ([`XRAS_HANDLER_REFACTOR.md`](XRAS_HANDLER_REFACTOR.md)),
 but the Sprint A/B layers had not, and cutover is abrupt — see
-[`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md). This was the last cheap moment to
+[`XRAS_CUTOVER_RUNBOOK.md`](../XRAS_CUTOVER_RUNBOOK.md). This was the last cheap moment to
 change shape.
 
 ---
@@ -94,16 +94,66 @@ is legacy's.
 
 ### Explicitly not done
 
+> **2026-08-11 — five of these six were revisited on `ux_polish`.** A census
+> re-counted each one against the tree rather than against this list, and the
+> counts below turned out to be wrong in *both* directions. Landed: the
+> `multiselect_filter` and `filter_panel_shell` macros, the `_jobs_facet_chips`
+> migration, and the `Supplemental` / `Supplement` docstring pointers. Rejected
+> on the merits: `modal_title_oob` (10 sites, but the payload is one line —
+> extracting it makes nine files *longer* and hides a raw htmx idiom that four
+> template comments already explain by name) and `sam/queries/_paging.py`
+> (see the correction under that bullet). The `__init_subclass__` and
+> `sam/xras/__init__.py` items were re-checked against their test gates and
+> stand as written. What replaced `_paging.py` was a *different* duplication
+> the census found and this list never mentioned: `_parse_pagination` /
+> `_parse_sort`, spelled three times at the route layer, now
+> `webapp.utils.htmx.read_page` / `read_sort`.
+
 - **`filter_panel_shell` / `multiselect_filter` / `modal_title_oob` Jinja macros.** Real,
   ~7 call sites repo-wide each — but pre-existing debt XRAS merely joined, and
   `xras_filters.html:20-24` already argues correctly that a seven-template refactor does
   not belong in a feature change. Its count of "five places" is low; it is seven.
+  > **Correction (2026-08-11).** The per-item counts here are wrong. The line
+  > reference is `xras_filters.html:15-19`, not `:20-24`. `filter_panel_shell`
+  > is **7 templates but only 5 absorbable** — and the NOTE's "five places" was
+  > therefore right, while the seven counted the two hand-rolled panels in
+  > `allocations/projects.html` and `admin/projects.html`, which use no htmx,
+  > invert the form/collapse nesting, and (in one case) have no collapse at all.
+  > `multiselect_filter` is **7 instances across 4 files**, not 7 files.
+  > `modal_title_oob` is **10 sites** and was rejected.
 - **Migrating `_jobs_facet_chips.html` onto the neutral `facet_row`.** The CSS half was
   migrated; the Jinja half stopped one step short.
+  > **Done (2026-08-11).** Not a rename: `facet_row` renders one label+values
+  > row and leaves the grid to the caller, so the jobs template kept its
+  > dimension list, its NULL-FK drop and its "no rows → no surface" rule and
+  > delegates only the chips. `facet_row` gained string-coerced active
+  > membership, because jobs' `exit_status` is an int while a selection off the
+  > query string is always a string. The six `.jobs-facets*` CSS aliases are
+  > gone, which is the proof it landed.
 - **`sam/queries/_paging.py`.** `xras_actions.py` is the *third* copy of a
   sort/whitelist/paginate block (`allocations.py`, `charges.py`) — and the best of the
   three: its `_in` closure replaces an `isinstance` block those two spell nine times
   between them. Back-porting is a separate ticket, not #424's debt.
+  > **Still deferred, and the framing above is backwards (2026-08-11).** The
+  > "nine times between them" count is exactly right (5 in `allocations.py`, 4
+  > in `charges.py`) — but the same shape appears **17 more times** in those two
+  > files outside the paging family, so the real figure is 26, and `_in` is not
+  > a drop-in: it implements neither the `"TOTAL"` sentinel nor the `str()`
+  > coercion those ladders carry. Separately, the *paging* block is only ~14
+  > genuinely identical lines needing an eight-parameter helper, and each of the
+  > three functions does something it could not absorb (joined sort columns in
+  > two; a correlated subquery plus a post-page annotation query in xras).
+  > And `xras_actions.py` is the **worst** back-port source, not the best: it is
+  > the only one whose row shape is a CLI JSON wire contract
+  > (`cli/xras/builders.py`), the only one with a PII-gated kwarg
+  > (`include_payload`), and the only one with **no offset/paging test at all**.
+  > If this is ever picked up, retitle it "unify the scalar-or-list filter
+  > predicates in `queries/allocations.py` and `queries/charges.py`" — that is
+  > where the duplication actually lives — and add the missing xras paging test
+  > first. Two adjacent gaps found while measuring: `tests/perf/baselines.json`
+  > pins nothing for `transactions_fragment`, `adjustments_fragment` or
+  > `xras_fragment`, so nothing guards the two round-trip-sensitive constructs
+  > in `get_recent_xras_actions`.
 - **Auto-registering handlers via `__init_subclass__`**, which would remove the five
   `handle_X` + `register` trailers. `handle_extension` alone has 17 test call sites, and
   it would change the double-registration raise `test_xras_dispatch.py:421-449` probes.
@@ -115,6 +165,8 @@ is legacy's.
   `xras_access.py`'s outbound `'Supplemental'` vs `xras_actions.py`'s inbound
   `'Supplement'`. Neither is wrong. Worth reciprocal docstring pointers eventually, in a
   codebase that already burned a sprint on a one-word field-name mismatch.
+  > **Done (2026-08-11).** Both sides now name the other and say why neither may
+  > be changed to match.
 
 ### Untouched by design
 

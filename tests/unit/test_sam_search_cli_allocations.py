@@ -2,7 +2,7 @@
 
 Phase 4f port: the legacy version at tests/integration/test_sam_search_cli.py
 ran the CLI as a real subprocess against the live database. We invoke the
-Click command directly via `CliRunner`, with `cli.cmds.search.Session`
+Click command directly via `CliRunner`, with `cli.core.context.Session`
 patched to hand out our SAVEPOINT'd test session — same pattern used by
 the already-ported `new_tests/unit/test_sam_search_cli.py`.
 
@@ -53,7 +53,7 @@ class TestAllocationQueries:
         SAVEPOINT'd transaction.
         """
         with patch('sam.session.create_sam_engine') as mock_create_engine, \
-             patch('cli.cmds.search.Session') as mock_session_cls:
+             patch('cli.core.context.Session') as mock_session_cls:
             mock_create_engine.return_value = (MagicMock(), None)
             mock_session_cls.return_value = session
             yield session

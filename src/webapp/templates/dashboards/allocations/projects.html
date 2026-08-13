@@ -1,4 +1,5 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
+{% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
 
 {% block title %}Allocations Dashboard{% endblock %}
 
@@ -130,32 +131,11 @@
             <input type="date" class="form-control" id="active_at"
                    name="active_at" value="{{ active_at }}" style="width: 160px;">
         </div>
-        <div>
-            <label for="facilities" class="form-label"><strong>Facilities</strong></label>
-            <select class="form-control" id="facilities" name="facilities"
-                    multiple size="{{ [allowed_facility_names|length, 4]|min if allowed_facility_names|length else 4 }}"
-                    style="width: 200px;">
-                {% for facility_name in allowed_facility_names %}
-                <option value="{{ facility_name }}"
-                    {% if facility_name in selected_facilities %}selected{% endif %}>
-                    {{ facility_name }}
-                </option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
+        {{ multiselect_filter('Facilities', 'facilities', allowed_facility_names,
+                              selected_facilities, width='200px', id='facilities') }}
 
-        <div>
-            <label for="resources" class="form-label"><strong>Resources</strong></label>
-            <select class="form-control" id="resources" name="resources"
-                    multiple size="4" style="width: 240px;">
-                {% for res in all_resources %}
-                <option value="{{ res }}"
-                    {% if res in selected_resources %}selected{% endif %}>{{ res }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
+        {{ multiselect_filter('Resources', 'resources', all_resources,
+                              selected_resources, width='240px', id='resources') }}
 
         <button type="submit" class="btn btn-outline-white align-self-end">Update</button>
     </form>

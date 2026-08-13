@@ -13,7 +13,7 @@ The two disciplines sit two screens apart in the webapp. A reader who has
 just met one will expect the other answer, which is why both docstrings say
 so.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 5.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 5.
 """
 
 from __future__ import annotations

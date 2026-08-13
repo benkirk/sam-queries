@@ -12,9 +12,9 @@ an observation to record. It is worked *through* — tick `☐ → ✅` in place
 what you saw under [`## Findings`](#findings). The value of this document is the
 record, not the recipe.
 
-**Companions:** [`XRAS_CUTOVER_RUNBOOK.md`](XRAS_CUTOVER_RUNBOOK.md) (what happens
-after this passes) · [`NOTIFICATION_FRAMEWORK.md`](NOTIFICATION_FRAMEWORK.md)
-(the mailer) · [`XRAS_REIMPLEMENTATION.md`](XRAS_REIMPLEMENTATION.md) (the contract)
+**Companions:** [`XRAS_CUTOVER_RUNBOOK.md`](../XRAS_CUTOVER_RUNBOOK.md) (what happens
+after this passes) · [`NOTIFICATION_FRAMEWORK.md`](../../../plans/implemented/NOTIFICATION_FRAMEWORK.md)
+(the mailer) · [`XRAS_REIMPLEMENTATION.md`](../XRAS_REIMPLEMENTATION.md) (the contract)
 
 ---
 
@@ -127,7 +127,7 @@ Projcodes render as `<facility.code><mnemonic><NNNN>`, so expect **`UHSS0001`,
 Append a delimited block to `../.env` so teardown is a single delete:
 
 ```bash
-# --- XRAS pre-deploy smoke (docs/plans/XRAS_PRE_DEPLOY_SMOKE.md) — remove after ---
+# --- XRAS pre-deploy smoke (docs/xras/incoming/implemented/XRAS_PRE_DEPLOY_SMOKE.md) — remove after ---
 NOTIFY_ENABLED=1
 NOTIFY_TRANSPORT=smtp
 NOTIFY_REDIRECT_TO=benkirk@ucar.edu

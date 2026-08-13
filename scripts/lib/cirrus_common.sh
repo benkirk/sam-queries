@@ -34,6 +34,14 @@ WEBAPP_NAME="samuel"
 WEBAPP_PORT=5050
 REDIS_NAME="samuel-redis"
 REDIS_PORT=6379
+# The scheduled-task dispatcher (helm tasks.name). Its Jobs and pods carry
+# `app: samuel-tasks` — NOT `app.kubernetes.io/component=tasks`, which matches
+# nothing and reads as "the dispatcher never fired". See TASKS_SELECTOR.
+TASKS_NAME="samuel-tasks"
+TASKS_SELECTOR="app=${TASKS_NAME}"
+# The dispatcher wakes hourly (helm tasks.schedule "7 * * * *"), so anything
+# past one interval plus slack means it has stopped being scheduled.
+TASKS_MAX_SILENCE_S=4200
 # INGRESS_HOST is the platform-primary name (helm webapp.tls.fqdn) and the CN of
 # the issued cert. INGRESS_HOSTS is every name the ingress answers for — primary
 # plus helm webapp.tls.extraHosts — all covered by the one multi-SAN TLS_SECRET.

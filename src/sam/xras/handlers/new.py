@@ -31,7 +31,7 @@ deliverable here.
 Verified against ``~/codes/sam`` at tag 2.0.3 (``AddProjectAssembler``,
 ``AddProjectActionCommandFactory``, ``ProjectActionCommandFactoryBase``). Ported
 against ``src/webapp/dashboards/admin/projects_routes.py``'s create flow rather than
-against the Java, per the plan. See ``docs/plans/XRAS_SPRINT_C.md`` § *New*.
+against the Java, per the plan. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *New*.
 """
 
 import logging

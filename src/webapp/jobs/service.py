@@ -42,6 +42,27 @@ JOBS_WINDOW_PILLS = ((30, '30d'), (60, '60d'), (90, '90d'), (365, '1 yr'))
 # break a card.
 JOBS_WINDOW_CHOICES = tuple(days for days, _ in JOBS_WINDOW_PILLS)
 
+# Age ladder for the explorer's job-age range control — the same shape as the
+# fs-scans ``ATIME_BUCKETS`` (cumulative upper bound in days, ``None`` closing
+# the last band), consumed by ``webapp.utils.age_bands``.
+#
+# Deliberately shorter and finer at the near end than the disk ladder: job
+# history is asked about in days and weeks far more often than in years, and
+# beyond ~2 years the question is almost always "everything older", not which
+# year. It is NOT the ``?days=`` pill set and shares no whitelist with it —
+# the pills set ``days``, whereas this control writes ``start``/``end``
+# directly, so it needs no entry in ``JOBS_WINDOW_CHOICES`` and cannot be
+# rejected by ``_parse_days``.
+JOBS_AGE_BANDS = (
+    ('< 1 Week', 7),
+    ('1-4 Weeks', 30),
+    ('1-3 Months', 90),
+    ('3-6 Months', 180),
+    ('6-12 Months', 365),
+    ('1-2 Years', 730),
+    ('2+ Years', None),
+)
+
 
 def default_jobs_window_start() -> str:
     """ISO date DEFAULT_JOBS_WINDOW_DAYS ago — the cards' default window."""

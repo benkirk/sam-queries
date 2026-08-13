@@ -16,10 +16,11 @@ import json
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
+from webapp.utils import age_bands
 from webapp.utils.htmx import (
     handle_htmx_form_post, htmx_modal_not_found, htmx_not_found, htmx_success,
-    htmx_success_message, modal_triggers, read_flag, read_layout, read_theme,
-    register_typeahead,
+    htmx_success_message, modal_triggers, read_flag, read_layout, read_page,
+    read_sort, read_theme, register_typeahead,
 )
 from webapp.api.xras.recheck import recheck_action
 from sam import fmt
@@ -288,6 +289,57 @@ def index():
     return redirect(url_for('allocations_dashboard.projects'))
 
 
+#: Age ladder behind the window control on the three audit-style panels
+#: (Transactions, Adjustments, XRAS action log). Cumulative upper bound in days,
+#: ``None`` closing the last band — the shape ``webapp.utils.age_bands`` consumes.
+#:
+#: Byte-identical to ``webapp.jobs.service.JOBS_AGE_BANDS`` on purpose, and
+#: deliberately NOT imported from it. Ladders are domain-owned here (cf. the
+#: fs-scans ``ATIME_BUCKETS`` / ``JOBS_AGE_BANDS`` split): importing
+#: ``webapp.jobs.service`` would couple three ungated allocations pages to a
+#: plugin-adjacent module. The vocabulary matches so a viewer reads one ladder
+#: across the app; the ownership does not.
+#:
+#: ⚠️ Band 1's upper bound (30) is the same 30 as the ``timedelta(days=30)``
+#: default in ``_parse_audit_filters`` / ``_parse_xras_filters`` and in the two
+#: page contexts below. That coupling is what makes the resting control land on
+#: a whole span instead of rendering "Custom range" on every first load. Change
+#: one and you must change all four — ``test_the_default_audit_window_is_a_whole_span``
+#: is the tripwire.
+AUDIT_AGE_BANDS = (
+    ('< 1 Week', 7),
+    ('1-4 Weeks', 30),
+    ('1-3 Months', 90),
+    ('3-6 Months', 180),
+    ('6-12 Months', 365),
+    ('1-2 Years', 730),
+    ('2+ Years', None),
+)
+
+
+def _window_control_context(anchor, start_str, end_str):
+    """Ladder + current span for an audit-style panel's window control.
+
+    The direct analogue of ``_age_band_ctx`` (``webapp/jobs/routes.py``), and it
+    shares that function's load-bearing property: the control writes
+    ``start_date``/``end_date`` **directly**, so it never interacts with the
+    ``days`` field or with the absent-vs-empty rule the two parsers below
+    implement. Nothing about the parsers changes because nothing about the
+    submitted parameters changes — the panel already sent this exact pair.
+
+    ``or None`` on both bounds is not cosmetic: :func:`age_bands.bands_for`
+    tests ``after is None``, not falsiness, so handing it a raw ``''`` would
+    render the "custom" state for what is actually the open-ended band.
+    """
+    return {
+        'age_bands': age_bands.band_map(AUDIT_AGE_BANDS, anchor,
+                                        'start_date', 'end_date'),
+        'age_band_span': age_bands.bands_for(AUDIT_AGE_BANDS, anchor,
+                                             start_str or None, end_str or None),
+        'layout': read_layout(),
+    }
+
+
 def _audit_page_context():
     """Shared template context for the Transactions / Adjustments pages.
 
@@ -310,11 +362,15 @@ def _audit_page_context():
     allowed_facility_names = _allowed_facility_names(
         current_user, Permission.VIEW_PROJECTS)
 
+    start_str = audit_start_date.strftime('%Y-%m-%d')
+    end_str = audit_end_date.strftime('%Y-%m-%d')
+
     return {
-        'audit_start_date': audit_start_date.strftime('%Y-%m-%d'),
-        'audit_end_date': audit_end_date.strftime('%Y-%m-%d'),
+        'audit_start_date': start_str,
+        'audit_end_date': end_str,
         'all_resources': all_resources,
         'allowed_facility_names': allowed_facility_names,
+        **_window_control_context(audit_end_date, start_str, end_str),
     }
 
 
@@ -801,25 +857,9 @@ def _parse_audit_filters(request_args, sort_whitelist):
         'end_date': end_date,
     }
 
-    sort_by = request_args.get('sort_by') or None
-    if sort_by and sort_by not in sort_whitelist:
-        sort_by = None
-    sort_dir = request_args.get('sort_dir', 'desc')
-    if sort_dir not in ('asc', 'desc'):
-        sort_dir = 'desc'
-
-    try:
-        page_n = max(1, int(request_args.get('page', 1)))
-    except (TypeError, ValueError):
-        page_n = 1
-    try:
-        per_page = int(request_args.get('per_page', 50))
-    except (TypeError, ValueError):
-        per_page = 50
-    per_page = max(10, min(per_page, 200))
-
-    return filters, {'sort_by': sort_by, 'sort_dir': sort_dir}, \
-           {'n': page_n, 'per_page': per_page}
+    return (filters,
+            read_sort(request_args, sort_whitelist),
+            read_page(request_args))
 
 
 @bp.route('/transactions_fragment')
@@ -1207,9 +1247,10 @@ def _parse_xras_filters(request_args):
 
     Deliberately a sibling of ``_parse_audit_filters`` rather than a
     generalisation of it. The sort/page halves are identical by convention (that
-    is what makes the shared ``sort_link`` / ``pagination`` macros work), but the
-    filter halves have nothing in common — projcode/resource/username/facility
-    versus status/action-type/request-number. Merging them would mean a parameter
+    is what makes the shared ``sort_link`` / ``pagination`` macros work) and now
+    come from the shared ``read_sort`` / ``read_page``; the filter halves have
+    nothing in common — projcode/resource/username/facility versus
+    status/action-type/request-number. Merging *those* would mean a parameter
     for every field either page has.
 
     Returns ``(filters, sort, page)`` with the same shapes ``_parse_audit_filters``
@@ -1261,25 +1302,9 @@ def _parse_xras_filters(request_args):
         'end_date': end_date,
     }
 
-    sort_by = request_args.get('sort_by') or None
-    if sort_by and sort_by not in XRAS_ACTION_SORT_COLUMNS:
-        sort_by = None
-    sort_dir = request_args.get('sort_dir', 'desc')
-    if sort_dir not in ('asc', 'desc'):
-        sort_dir = 'desc'
-
-    try:
-        page_n = max(1, int(request_args.get('page', 1)))
-    except (TypeError, ValueError):
-        page_n = 1
-    try:
-        per_page = int(request_args.get('per_page', 50))
-    except (TypeError, ValueError):
-        per_page = 50
-    per_page = max(10, min(per_page, 200))
-
-    return filters, {'sort_by': sort_by, 'sort_dir': sort_dir}, \
-           {'n': page_n, 'per_page': per_page}
+    return (filters,
+            read_sort(request_args, XRAS_ACTION_SORT_COLUMNS),
+            read_page(request_args))
 
 
 def _xras_action_types():
@@ -1305,10 +1330,13 @@ def xras():
     """XRAS action-log page: the operator surface for the ingest endpoint."""
     end_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     start_date = end_date - timedelta(days=30)
+    start_str = start_date.strftime('%Y-%m-%d')
+    end_str = end_date.strftime('%Y-%m-%d')
     return render_template(
         'dashboards/allocations/xras.html',
-        xras_start_date=start_date.strftime('%Y-%m-%d'),
-        xras_end_date=end_date.strftime('%Y-%m-%d'),
+        xras_start_date=start_str,
+        xras_end_date=end_str,
+        **_window_control_context(end_date, start_str, end_str),
         all_statuses=list(XRAS_ACTION_STATUSES),
         all_action_types=_xras_action_types(),
         # Site-specific, so it lives with the token family rather than in the

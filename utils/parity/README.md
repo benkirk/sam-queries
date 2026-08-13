@@ -41,7 +41,7 @@ One deliberate relaxation: the `masters[]` array of an
 `AccountingRequestResponse` is emitted by legacy in Java `HashMap` bucket order
 over the projcode keys — an artifact of its data structure, not of the data.
 The port sorts instead, so masters are compared **byte-exact individually and
-order-insensitively as a sequence**. See `docs/plans/XRAS_REIMPLEMENTATION.md`
+order-insensitively as a sequence**. See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md`
 section 7.
 
 The sample is bootstrapped from legacy's own output rather than hardcoded: the

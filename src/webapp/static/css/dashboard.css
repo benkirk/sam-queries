@@ -1407,22 +1407,17 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 
 /* ============================================================================
    FACET CHIPS — a live value-count strip whose chips double as filter
-   controls. Two callers: the jobs explorer, between its filter panel and its
-   tab strip (_jobs_facet_chips.html), and the XRAS action log
-   (fragments/facet_chips.html).
+   controls. Every caller goes through the `facet_row` macro in
+   fragments/facet_chips.html: the jobs explorer (between its filter panel and
+   its tab strip), the XRAS action log, and the notification delivery log.
 
    One grid row per dimension: the label column self-sizes to the widest
    label and the values wrap inside their own cell, so "Exit code" can
    never end up mid-line with its chips orphaned under "QoS". White
    surface with the bottom edge open, so the strip reads as the top of the
    card the .nav-tabs below continue.
-
-   `.facet-grid*` are the neutral names; the `.jobs-facets*` aliases are kept
-   so the jobs templates need no churn for a second caller. New callers should
-   use .facet-grid; jobs can migrate whenever it is touched anyway.
    ========================================================================= */
 
-.jobs-facets,
 .facet-grid {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
@@ -1435,7 +1430,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     border-bottom: 0;
 }
 
-.jobs-facet-label,
 .facet-grid-label {
     justify-self: end;
     white-space: nowrap;
@@ -1446,7 +1440,6 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
     color: var(--text-tertiary);
 }
 
-.jobs-facet-values,
 .facet-grid-values {
     display: flex;
     flex-wrap: wrap;
@@ -1541,20 +1534,254 @@ h6, .h6 { font-size: 0.875rem; line-height: 1.35;     font-weight: var(--font-we
 /* Phones: the label column costs more than it aligns — give each
    dimension its own line above its values. */
 @media (max-width: 575.98px) {
-    .jobs-facets,
     .facet-grid {
         grid-template-columns: minmax(0, 1fr);
         row-gap: 0.125rem;
     }
 
-    .jobs-facet-label,
     .facet-grid-label {
         justify-self: start;
     }
 
-    .jobs-facet-label:not(:first-child),
     .facet-grid-label:not(:first-child) {
         margin-top: 0.375rem;
+    }
+}
+
+/* ============================================================================
+   LADDER RANGE — a discrete two-thumb range over an ordinal ladder of named
+   bands (fragments/ladder_range.html; age_band_range.html is one caller).
+   Lives inside .filter-sidebar, so every colour here is measured against
+   --ncar-navy (#00357a), NOT a card surface.
+
+   ⚠️ Do NOT reach for the .btn-group preset treatment above: its inactive fill
+   is --ncar-blue (#0057c2), which is 1.76:1 against the navy panel — under the
+   3:1 WCAG floor for non-text UI. --surface-on-brand (white) is 11.7:1, so the
+   selected span is that and the unselected track is a wash of it.
+
+   Both --ncar-navy and --text-on-brand are theme-invariant (variables.css), so
+   unlike almost everything else in this file this block needs no dark variant.
+   ========================================================================= */
+
+.ladder-range {
+    min-width: 260px;
+}
+
+.ladder-range-readout {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: var(--font-weight-semi-bold);
+    color: var(--text-on-brand);
+    margin-bottom: 0.25rem;
+    min-height: 1.2em;   /* reserve the line so a change doesn't reflow the panel */
+}
+
+/* The track holds both inputs stacked. --thumb is the geometry contract shared
+   with .ladder-range-fill: a native range thumb is inset by half its width at each
+   end, so the fill has to use the same inset or it drifts off the thumbs. */
+.ladder-range-track {
+    --thumb: 18px;
+    position: relative;
+    height: var(--thumb);
+    margin: 0.125rem 0 0.25rem;
+}
+
+.ladder-range-track::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 4px;
+    transform: translateY(-50%);
+    border-radius: 2px;
+    background-color: rgba(var(--surface-on-brand-rgb), 0.28);
+    /* One gradient, one tick per stop — cheaper and less brittle than N nodes. */
+    background-image: repeating-linear-gradient(
+        to right,
+        rgba(var(--surface-on-brand-rgb), 0.45) 0 1px,
+        transparent 1px calc((100% - 1px) / (var(--n) - 1))
+    );
+}
+
+.ladder-range-fill {
+    position: absolute;
+    top: 50%;
+    height: 4px;
+    transform: translateY(-50%);
+    border-radius: 2px;
+    background-color: var(--surface-on-brand);
+    left: calc(var(--thumb) / 2 + (var(--lo) / (var(--n) - 1))
+               * (100% - var(--thumb)));
+    right: calc(var(--thumb) / 2 + (1 - var(--hi) / (var(--n) - 1))
+                * (100% - var(--thumb)));
+}
+
+/* pointer-events: none on the input, auto on the thumb — otherwise the upper
+   input's full-width box swallows every click and the lower thumb can never be
+   grabbed once they coincide. */
+/* Custom state: a hand-typed range the bands cannot express. The thumbs sit at
+   the extremes because they have nowhere honest to be, so the fill recedes to a
+   wash rather than reading as "the whole range is selected". */
+.ladder-range--custom .ladder-range-fill {
+    background-color: rgba(var(--surface-on-brand-rgb), 0.35);
+}
+
+.ladder-range--custom .ladder-range-readout {
+    font-style: italic;
+    color: rgba(var(--surface-on-brand-rgb), 0.8);
+}
+
+.ladder-range-thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    background: transparent;
+    appearance: none;
+    -webkit-appearance: none;
+    pointer-events: none;
+}
+
+.ladder-range-thumb::-webkit-slider-runnable-track {
+    background: transparent;
+    height: var(--thumb);
+}
+
+.ladder-range-thumb::-moz-range-track {
+    background: transparent;
+    height: var(--thumb);
+}
+
+.ladder-range-thumb::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    pointer-events: auto;
+    width: var(--thumb);
+    height: var(--thumb);
+    border-radius: 50%;
+    background-color: var(--surface-on-brand);
+    /* Navy ring keeps two adjacent thumbs legible as two. */
+    box-shadow: 0 0 0 2px var(--ncar-navy);
+    cursor: grab;
+}
+
+.ladder-range-thumb::-moz-range-thumb {
+    pointer-events: auto;
+    width: var(--thumb);
+    height: var(--thumb);
+    border: 0;
+    border-radius: 50%;
+    background-color: var(--surface-on-brand);
+    box-shadow: 0 0 0 2px var(--ncar-navy);
+    cursor: grab;
+}
+
+/* Focus has to read on a white thumb over navy, so it is a halo rather than an
+   outline — an outline-offset ring would sit on the navy and vanish. */
+.ladder-range-thumb:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 2px var(--ncar-navy), 0 0 0 6px rgba(var(--surface-on-brand-rgb), 0.5);
+}
+
+.ladder-range-thumb:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 2px var(--ncar-navy), 0 0 0 6px rgba(var(--surface-on-brand-rgb), 0.5);
+}
+
+.ladder-range-thumb:focus {
+    outline: none;   /* replaced by the halo above */
+}
+
+.ladder-range-ends {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: rgba(var(--surface-on-brand-rgb), 0.75);
+    margin-bottom: 0.25rem;
+}
+
+/* The end-labels are buttons that reveal the exact-entry panel, so they have
+   to look like the labels they replaced while still reading as actionable —
+   hence a full button reset plus a dotted underline. Dotted rather than solid:
+   solid on both ends of a slider axis reads as two links out of the control,
+   which is not what they do. */
+.ladder-range-end {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+}
+
+.ladder-range-end:hover {
+    color: var(--surface-on-brand);
+}
+
+/* Same reason as the thumbs: an outline ring on a translucent white label over
+   navy all but disappears, so focus is a filled chip instead. */
+.ladder-range-end:focus-visible {
+    outline: none;
+    border-radius: var(--radius-sm);
+    color: var(--ncar-navy);
+    background-color: var(--surface-on-brand);
+    text-decoration: none;
+    box-shadow: 0 0 0 2px var(--surface-on-brand);
+}
+
+.ladder-range-dash {
+    color: rgba(var(--surface-on-brand-rgb), 0.7);
+    /* Sits on the input line, not the label line, so the row aligns on the
+       controls rather than floating between the two rows. */
+    padding-bottom: 0.3rem;
+}
+
+/* Deliberately NOT .form-label: `.filter-sidebar .form-label` is a same-weight
+   selector defined later in this file and would win the tie, forcing full-white
+   on what should be a quieter sub-label. */
+.ladder-range-sublabel {
+    display: block;
+    margin-bottom: 0.125rem;
+    font-size: 0.7rem;
+    font-weight: var(--font-weight-semi-bold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(var(--surface-on-brand-rgb), 0.75);
+}
+
+.ladder-range-exact,
+.ladder-range-selects {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.375rem;
+    /* Separates the FROM/TO pair from the axis end-labels directly above it —
+       without it the two label rows read as one block. */
+    margin-top: 0.25rem;
+}
+
+.ladder-range-exact input[type="date"] {
+    width: 140px;
+}
+
+/* Phones: stack the pair. Two 140px inputs plus a separator is already tight at
+   390px, and the panel's own rule forces .form-control to 100% below sm — which
+   would squash them side by side. Stacked, each label sits directly above its
+   own field and the dash is redundant. */
+@media (max-width: 575.98px) {
+    .ladder-range-exact,
+    .ladder-range-selects {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+
+    .ladder-range-exact .ladder-range-dash {
+        display: none;
+    }
+
+    .ladder-range-exact input[type="date"] {
+        width: 100%;
     }
 }
 
@@ -2194,4 +2421,30 @@ tr.tree-node-current {
     background-color: var(--bs-danger-bg-subtle) !important;
     color: var(--bs-danger-text-emphasis) !important;
     border-color: var(--bs-danger-border-subtle);
+}
+
+/* Section disclosure inside a filter panel ("Size & runtime"). Styled as a
+   quiet heading rather than a button, because it groups controls rather than
+   performing an action — but it IS a button, for keyboard reach. Same navy
+   backdrop as .ladder-range-*, so the same role tokens apply. */
+.filter-section-toggle {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 0.8rem;
+    font-weight: var(--font-weight-semi-bold);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(var(--surface-on-brand-rgb), 0.85);
+    cursor: pointer;
+}
+
+.filter-section-toggle:hover {
+    color: var(--surface-on-brand);
+}
+
+.filter-section-toggle:focus-visible {
+    outline: none;
+    border-radius: var(--radius-sm);
+    box-shadow: 0 0 0 2px var(--surface-on-brand);
 }

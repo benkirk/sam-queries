@@ -287,6 +287,50 @@
 {% endmacro %}
 
 
+{# ─── multi-select filter control ──────────────────────────────────────── #}
+{#
+  The `<select multiple>` that filter panels use — NOT a validated form field,
+  and deliberately not a mode of `select_field`. This one is standalone (no
+  `mb-3` wrapper, no `field_errors` plumbing), keeps `.form-control` rather than
+  `.form-select` so the panel's arrow-free styling holds, and matches the
+  selection against a *list* of values rather than a scalar. Safe to import
+  without context.
+
+  `size` is min(len(values), max_size): a box taller than its own option list is
+  dead space. Pass `max_size=5` where the vocabulary is longer.
+
+  Renders nothing when `values` is empty — a dimension with no vocabulary is not
+  a control, and an empty <select> submits nothing anyway.
+
+  Args:
+    label    — visible label text (rendered <strong>)
+    name     — the form control's name
+    values   — the option vocabulary (list of strings)
+    selected — currently-selected values (list); membership is by equality
+    width    — inline width for the control, e.g. '160px'
+    max_size — cap on the visible row count
+    id       — explicit id, which also wires the label's `for=`. Omit it when
+               the name is already unique in the rendered page.
+#}
+{% macro multiselect_filter(label, name, values, selected=[],
+                            width='160px', max_size=4, id=None) %}
+{%- if values %}
+<div>
+    <label{% if id %} for="{{ id }}"{% endif %} class="form-label"><strong>{{ label }}</strong></label>
+    <select class="form-control"{% if id %} id="{{ id }}"{% endif %}
+            name="{{ name }}" multiple size="{{ [values|length, max_size]|min }}"
+            style="width:{{ width }};">
+        {% for value in values %}
+        <option value="{{ value }}"
+            {% if value in selected %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+    </select>
+    <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
+</div>
+{%- endif %}
+{% endmacro %}
+
+
 {# ─── checkbox ─────────────────────────────────────────────────────────── #}
 {#
   Bootstrap form-check pattern. `default` is the initial checked state (bool).

@@ -36,9 +36,23 @@
           permission=Permission.EDIT_PROJECT_MEMBERS,
           project=project) }}
 
-  Pass stop_propagation=True when the button sits inside a row that is
-  itself a Bootstrap collapse trigger, to prevent the click from toggling
-  the parent collapse.
+  ⚠️ stop_propagation=True does NOT work against a Bootstrap collapse
+  trigger, despite what this note used to claim. Bootstrap registers its
+  data-api handlers with `EventHandler.on(document, ...)`, which passes the
+  delegation flag as `addEventListener`'s `useCapture` argument, so they run
+  in the CAPTURE phase on `document` — before any listener on the button.
+  It emits `data-stop-propagation`, whose handler (static/js/actions.js) is
+  element-level and therefore always too late. Four cards shipped with the
+  flag and the bug it was supposed to prevent (issue #356).
+
+  The fix for that case is structural: put the toggle on the individual
+  cells and leave the actions cell out of it — see
+  dashboards/fragments/collapse.html, and the static guard in
+  tests/unit/test_collapse_trigger_rows.py that now enforces it.
+
+  The flag remains for genuine element-level dispatchers (a row wired with
+  `data-action` or an hx-* attribute, where bubbling really is the problem).
+  It has no callers today.
 #}
 
 

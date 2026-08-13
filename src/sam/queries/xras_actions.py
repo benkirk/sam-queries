@@ -65,6 +65,15 @@ XRAS_ACTION_STATUSES = ('received', 'processed', 'manual', 'failed', 'rechecked'
 #: ``actionType`` (no co-PI role has ever been sampled, and Transfer / Renewal /
 #: Advance still have zero samples), so an unrecognised type must still list and
 #: still filter. Callers union this with whatever ``DISTINCT action_type`` holds.
+#:
+#: ⚠️  This is the **inbound** vocabulary and spells ``'Supplement'``. The
+#: *outbound* one in ``queries/xras_access.py`` (``_SQL_ACTIONS``) spells the
+#: same concept ``'Supplemental'``, because that CASE maps our own
+#: ``allocation_transaction.transaction_type`` onto legacy's response bytes.
+#: Neither is wrong and neither may be "fixed" to match the other — the
+#: outbound spelling is pinned by the byte-clean parity gate. Noted in both
+#: places because this codebase has already burned a sprint on a one-word
+#: field-name mismatch.
 XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
                      'Transfer', 'Adjustment', 'Advance', 'Date Adjustment')
 
@@ -85,7 +94,7 @@ XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
 #: Extension ignores ``actionBeginDate`` entirely (``date_adjustment_uwas0141`` asks
 #: for one that differs from its allocation's), and rejects an end date earlier than
 #: the current one, which is the likeliest reason a *separate* action type exists at
-#: all. See ``docs/plans/XRAS_SPRINT_C.md`` § *What the corpus still does not cover*.
+#: all. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *What the corpus still does not cover*.
 
 #: Wire spellings that mean the same handler, ``alias -> canonical``.
 #:
@@ -95,7 +104,7 @@ XRAS_ACTION_TYPES = ('New', 'Renewal', 'Extension', 'Supplement',
 #: never match, so that handler has never once fired and every Adjustment falls
 #: through ``ProjectActionServiceSelector`` to the manual-email fallback. Nothing has
 #: shipped here yet, so SAM accepts **both** spellings rather than reproducing the
-#: mismatch (see ``docs/plans/XRAS_REIMPLEMENTATION.md`` § 9, legacy defect 4).
+#: mismatch (see ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` § 9, legacy defect 4).
 #:
 #: This is a **read-side** concern only. ``xras_action_log.action_type`` always
 #: records what actually arrived, verbatim — the audit trail's whole job.

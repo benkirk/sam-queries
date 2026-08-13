@@ -136,6 +136,62 @@ def read_active_only(args, default=False):
     return read_flag(args, 'active_only', default)
 
 
+#: Page-size bounds shared by every paged fragment. The clamp is what stops
+#: ``?per_page=99999`` from turning a fragment into a full-table dump.
+DEFAULT_PER_PAGE = 50
+MIN_PER_PAGE = 10
+MAX_PER_PAGE = 200
+
+
+def read_page(args, *, default=DEFAULT_PER_PAGE,
+              minimum=MIN_PER_PAGE, maximum=MAX_PER_PAGE):
+    """Read ``page`` + ``per_page`` off a request args mapping.
+
+    Both are defensive: a non-numeric value falls back to the default rather
+    than 400-ing, because these arrive from sort links and pagination controls
+    that a viewer can hand-edit, and a bad one should degrade to page 1 rather
+    than break the fragment.
+
+    Returns ``{'n': int >= 1, 'per_page': int clamped to [minimum, maximum]}``
+    — the shape the shared ``pagination`` Jinja macro reads, which is why the
+    key is ``n`` and not ``page``.
+    """
+    try:
+        page_n = max(1, int(args.get('page', 1)))
+    except (TypeError, ValueError):
+        page_n = 1
+    try:
+        per_page = int(args.get('per_page', default))
+    except (TypeError, ValueError):
+        per_page = default
+    return {'n': page_n, 'per_page': max(minimum, min(per_page, maximum))}
+
+
+def read_sort(args, whitelist, *, default_dir='desc'):
+    """Read ``sort_by`` + ``sort_dir`` off a request args mapping.
+
+    ``sort_by`` is whitelisted here and re-validated in the query layer — a raw
+    column name must never reach ``order_by``. An unknown key degrades to
+    ``None`` (the query's own default ordering) rather than raising, for the
+    same reason as :func:`read_page`: it is viewer-editable input.
+
+    Args:
+        args:      ``request.args`` (anything with .get).
+        whitelist: any container supporting ``in`` — the ``*_SORT_COLUMNS``
+                   dicts in ``sam.queries`` are used directly.
+
+    Returns ``{'sort_by': str|None, 'sort_dir': 'asc'|'desc'}``, the shape the
+    shared ``sort_link`` Jinja macro reads.
+    """
+    sort_by = args.get('sort_by') or None
+    if sort_by and sort_by not in whitelist:
+        sort_by = None
+    sort_dir = args.get('sort_dir', default_dir)
+    if sort_dir not in ('asc', 'desc'):
+        sort_dir = default_dir
+    return {'sort_by': sort_by, 'sort_dir': sort_dir}
+
+
 def htmx_success(template, triggers, *, toast=None, toast_variant='success', **ctx):
     """Render a success fragment with HX-Trigger response headers.
 

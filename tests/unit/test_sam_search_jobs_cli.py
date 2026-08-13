@@ -25,7 +25,7 @@ def runner():
 @pytest.fixture
 def mock_search_session(session):
     with patch('sam.session.create_sam_engine') as mock_eng, \
-         patch('cli.cmds.search.Session') as mock_cls:
+         patch('cli.core.context.Session') as mock_cls:
         mock_eng.return_value = (MagicMock(), None)
         mock_cls.return_value = session
         yield session

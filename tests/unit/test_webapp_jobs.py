@@ -2599,7 +2599,7 @@ def test_explore_page_renders_facet_chips_with_counts(
     # NULL-FK queue row renders no chip (nothing to filter by).
     assert 'data-value="None"' not in body
     # One grid row per dimension: every label opens its own line.
-    assert body.count('class="jobs-facet-label"') == 3
+    assert body.count('class="facet-grid-label"') == 3
     # Facets saw the same filter set as the panels.
     fkw = captured['last_jobs_facets_kwargs']
     assert fkw['queue'] == 'cpu'
@@ -2650,7 +2650,7 @@ def test_explore_chips_degrade_on_facets_error(
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'data-action="set-filter-submit"' not in body
-    assert 'class="jobs-facets"' not in body
+    assert 'class="facet-grid"' not in body
     assert 'id="jobs-explore-card"' in body
 
 
@@ -2671,7 +2671,7 @@ def test_explore_chips_omit_dimensions_with_nothing_to_offer(
         '?machine=derecho'
     ).get_data(as_text=True)
 
-    assert body.count('class="jobs-facet-label"') == 1
+    assert body.count('class="facet-grid-label"') == 1
     assert 'data-value="cpu"' in body
 
     _install_mock_plugin(
@@ -2683,7 +2683,7 @@ def test_explore_chips_omit_dimensions_with_nothing_to_offer(
         '?machine=derecho'
     ).get_data(as_text=True)
 
-    assert 'class="jobs-facets"' not in body
+    assert 'class="facet-grid"' not in body
 
 
 def test_explore_chips_project_scope_pins_account(
@@ -4561,3 +4561,171 @@ def test_charges_is_a_first_class_metric_everywhere():
     # ...and the remainder row has to be computable in every one of them.
     for metric in _METRICS:
         assert set(_JOBS_METRIC_KEYS[metric]) <= set(_USAGE_METRIC_KEYS), metric
+
+
+# ---------------------------------------------------------------------------
+# Job-age band control on the explorer filter panel
+# ---------------------------------------------------------------------------
+
+def _explore_body(app, auth_client, monkeypatch, projcode, query=''):
+    _install_mock_plugin(app, monkeypatch)
+    return auth_client.get(
+        f'/dashboards/user/jobs/{projcode}/explore?machine=derecho{query}'
+    ).get_data(as_text=True)
+
+
+def test_job_age_bands_render_on_the_explorer(
+        app, auth_client, active_project, monkeypatch):
+    """The after/before split was inherited from disk scans; the question is
+    the same one, so it gets the same control."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    assert 'ladder-range-bands' in body
+    assert 'Job age' in body
+    # Scoped by the control's own id namespace: the panel now carries seven
+    # ladders (age plus the six numeric ones), so a page-wide count of the
+    # shared action would pass on the wrong control's markup.
+    assert len(re.findall(r'id="[^"]*-age-lo"', body)) == 1
+    assert len(re.findall(r'id="[^"]*-age-hi"', body)) == 1
+
+
+def test_job_age_ladder_is_shorter_than_the_disk_one(app):
+    """Job history is asked about in days and weeks; beyond ~2 years the
+    question is 'everything older', not which year."""
+    from webapp.jobs import service
+
+    labels = [label for label, _ in service.JOBS_AGE_BANDS]
+    assert labels[0] == '< 1 Week'
+    assert labels[-1] == '2+ Years'
+    assert service.JOBS_AGE_BANDS[-1][1] is None      # open-ended
+    assert len(labels) < 10                           # ATIME_BUCKETS is 10
+
+
+def test_the_age_ladder_is_not_the_days_pill_whitelist(app):
+    """The control writes start/end directly and never sets ?days=, so it needs
+    no entry in JOBS_WINDOW_CHOICES and _parse_days can't reject it. Pinning
+    that keeps someone from 'aligning' the two and silently making 7d a
+    rejected pill value."""
+    from webapp.jobs import service
+
+    band_days = {upper for _label, upper in service.JOBS_AGE_BANDS if upper}
+    assert 7 in band_days
+    assert 7 not in service.JOBS_WINDOW_CHOICES
+
+
+def test_explorer_age_control_writes_start_and_end_only(app, auth_client, active_project, monkeypatch):
+    """`days` outranks an explicit range in _parse_job_filters, so the control
+    stays clear of it entirely — a panel submit carries no days at all."""
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    assert body.count('name="start"') == 1
+    assert body.count('name="end"') == 1
+    assert 'name="days"' not in body
+
+
+def test_explorer_default_window_lands_on_a_band_edge(app, auth_client, active_project, monkeypatch):
+    """The 90-day default is also a band edge ('1-3 Months'), so the control
+    opens showing a real span rather than its custom state."""
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    assert 'Custom range' not in body
+
+
+def test_numeric_dimensions_get_machine_shaped_ladders(
+        app, auth_client, active_project, monkeypatch):
+    """All six numeric filters become sliders, over the plugin's own histogram
+    ladders — so a band picked here is a band the matching chart draws."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    for dim in ('nodes', 'cpus', 'gpus', 'wait', 'duration', 'memory'):
+        assert len(re.findall(rf'id="[^"]*-{dim}-lo"', body)) == 1, dim
+        assert len(re.findall(rf'id="[^"]*-{dim}-hi"', body)) == 1, dim
+    # The bounds are still the panel's own display-unit fields; the sliders
+    # write into them rather than introducing a second spelling.
+    for field in ('min_nodes', 'max_nodes', 'min_wait_hours',
+                  'max_elapsed_hours', 'min_reqmem_gb'):
+        assert body.count(f'name="{field}"') == 1, field
+
+
+def test_the_size_section_is_collapsed_until_a_bound_is_set(
+        app, auth_client, active_project, monkeypatch):
+    """The disclosure is what makes six sliders affordable: the resting panel
+    is shorter than the six min/max pairs they replace."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    assert 'Size &amp; runtime' in body
+    section = re.search(r'id="[^"]*-size-runtime"\s+class="([^"]*)"', body)
+    assert section and 'd-none' in section.group(1)
+    toggle = re.search(r'<button[^>]*class="filter-section-toggle[^"]*"[^>]*>', body)
+    assert toggle and 'aria-expanded="false"' in toggle.group(0)
+
+
+def test_a_deep_linked_bound_opens_the_size_section(
+        app, auth_client, active_project, monkeypatch):
+    """A deep link or a bar drill must never hide the filter it just applied."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode,
+                         query='&min_nodes=4')
+    section = re.search(r'id="[^"]*-size-runtime"\s+class="([^"]*)"', body)
+    assert section and 'd-none' not in section.group(1)
+
+
+def test_the_nodes_ladder_is_right_sized_per_machine(app):
+    """Casper tops out around 128 nodes and derecho around 2488, so one static
+    ladder would be wrong for both. The plugin supplies each."""
+    from webapp.utils import ladders
+    casper = ladders.machine_ladder('casper', 'nodes')
+    derecho = ladders.machine_ladder('derecho', 'nodes')
+    if casper is None or derecho is None:
+        import pytest
+        pytest.skip('job_history histogram_buckets not available')
+    assert len(casper) < len(derecho)
+
+
+def test_a_wait_band_edge_survives_the_hours_round_trip(app):
+    """The sliders write DISPLAY units into fields the route converts back with
+    round(). The '5-15m' band's floor is 300 s, shown as 0.0833 h — and
+    int(0.0833 * 3600) is 299, which is why the conversion rounds. A bound one
+    second off would fail to match a band edge and render the custom state."""
+    from webapp.utils import ladders
+    from webapp.jobs.routes import _SECS_PER_HOUR
+    ladder = ladders.machine_ladder('derecho', 'wait')
+    if ladder is None:
+        import pytest
+        pytest.skip('job_history histogram_buckets not available')
+    for _label, lo, hi in ladder:
+        for native in (lo, hi):
+            if native is None:
+                continue
+            shown = ladders.to_display(native, _SECS_PER_HOUR)
+            assert round(shown * _SECS_PER_HOUR) == native, (native, shown)
+
+
+def test_a_bar_drill_now_shows_in_the_panel(
+        app, auth_client, active_project, monkeypatch):
+    """Regression: a wait/elapsed/memory histogram bar drill writes the
+    PLUGIN-native param (min_eligible_secs), which the query has always
+    honoured — but the panel's own box rendered empty, so the viewer saw a
+    filtered table with no visible filter and no way to clear it without going
+    back to the chart."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode,
+                         query='&min_eligible_secs=3600')
+    box = re.search(r'<input[^>]*name="min_wait_hours"[^>]*>', body)
+    assert box and 'value="1.0"' in box.group(0)
+
+
+def test_apply_and_rows_stay_outside_the_size_disclosure(
+        app, auth_client, active_project, monkeypatch):
+    """Regression: Rows and Apply shared a flex row with the numeric pairs, so
+    wrapping those in the disclosure swallowed the SUBMIT BUTTON — invisible
+    whenever the section was collapsed, which is its default. Every unit test
+    passed; only the rendered page showed it."""
+    import re
+    body = _explore_body(app, auth_client, monkeypatch, active_project.projcode)
+    section = re.search(
+        r'id="[^"]*-size-runtime"\s+class="[^"]*d-none[^"]*"(.*?)\n  </div>',
+        body, re.S)
+    assert section, 'size section not found (or no longer collapsed by default)'
+    assert 'type="submit"' not in section.group(1)
+    assert 'name="per_page"' not in section.group(1)
+    # ...and they are still on the page.
+    assert 'type="submit"' in body and 'name="per_page"' in body

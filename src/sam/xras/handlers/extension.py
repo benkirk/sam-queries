@@ -25,7 +25,7 @@ reading: an operator sees all of it at once.
 
 Verified against ``~/codes/sam`` at tag 2.0.3
 (``ExtendProjectAllocationActionCommandsFactory``, ``DefaultExtendAllocationCommand``,
-``Allocation.extend``). See ``docs/plans/XRAS_SPRINT_C.md`` § *Extension*.
+``Allocation.extend``). See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Extension*.
 """
 
 import logging

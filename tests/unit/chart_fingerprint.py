@@ -10,7 +10,7 @@ and would make every matplotlib bump a 16-file golden churn.
 So we fingerprint only what the application actually contracts on.
 
 Two extraction details are load-bearing, and both were got wrong in an early
-draft of the design (see docs/plans/CHART_ARCHITECTURE.md, Appendix C):
+draft of the design (see docs/plans/implemented/CHART_ARCHITECTURE.md, Appendix C):
 
 1. **Drill links are ``<a>`` elements only.** ``svg.fonttype`` defaults to
    ``'path'``, so matplotlib renders text as glyph outlines: a single chart

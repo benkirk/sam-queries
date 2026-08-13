@@ -18,7 +18,7 @@ scenario and that test fails; delete a handler branch and its scenario fails.
 ⚠️ **Synthetic payloads validate handler branches, never the wire contract.** They
 encode our reading of the protocol, so they cannot falsify it — real payloads did that
 in Sprint A, and only real payloads can. Nothing here is evidence the schema is right.
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Follow-on*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Follow-on*.
 """
 
 from datetime import datetime

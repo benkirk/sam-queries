@@ -48,7 +48,7 @@ which flushes. A lazily-evaluated version whose first read happened inside
 :meth:`execute` would read back the type the action had just installed. Four visible
 assignments beat one invisible ordering dependency.
 
-See ``docs/plans/XRAS_HANDLER_REFACTOR.md``.
+See ``docs/xras/incoming/implemented/XRAS_HANDLER_REFACTOR.md``.
 """
 
 import logging

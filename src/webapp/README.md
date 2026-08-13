@@ -249,7 +249,7 @@ Access: `http://localhost:5050/admin/` (Admin Dashboard)
 ### Notifications
 
 Email delivery, shared with the CLI via `sam.notify` (design and relay
-measurements: `docs/plans/NOTIFICATION_FRAMEWORK.md`).
+measurements: `docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`).
 
 - **XRAS activation handoff** — the pending-activation card's Notify button
   previews the message and its recipients, then sends. Two steps, because the

@@ -509,7 +509,7 @@ class AccountingAdminCommand(BaseCommand):
     ) -> int:
         """Import a per-user-per-project disk usage snapshot into ``disk_charge_summary``.
 
-        See ``docs/plans/DISK_CHARGING.md`` for the design. High-level flow:
+        See ``docs/plans/implemented/DISK_CHARGING.md`` for the design. High-level flow:
 
           1. Parse the per-user file via a registered DiskUsageReader.
           2. Validate snapshot date against the requested window AND the

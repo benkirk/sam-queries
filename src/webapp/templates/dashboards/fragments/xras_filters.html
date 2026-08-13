@@ -1,3 +1,6 @@
+{% from 'dashboards/fragments/form_fields.html' import multiselect_filter %}
+{% from 'dashboards/fragments/filter_panel.html' import filter_panel_shell %}
+{% from 'dashboards/fragments/age_band_range.html' import age_band_range %}
 {#
   Filter bar for the XRAS action log (Allocations > XRAS).
 
@@ -13,10 +16,11 @@
   as the "an entity needing more than the spec expresses stays bespoke" rule in
   dashboards/admin/crud.py.
 
-  NOTE the panel-chrome block below is now copy-pasted in five places
-  (audit_filters, institution_filters, jobs_filters, _disk_scans_dir_filters, here).
-  It is a fair candidate for a `filter_panel_shell` macro — but extracting it is a
-  five-template refactor and does not belong in a feature change.
+  The panel chrome now comes from `filter_panel_shell`
+  (dashboards/fragments/filter_panel.html), shared with audit_filters,
+  institution_filters, jobs_filters and _disk_scans_dir_filters. The two
+  hand-rolled panels in allocations/projects.html and admin/projects.html stay
+  bespoke — neither uses htmx, and one has no collapse at all.
 
   Parameters:
     form_id        - unique id for this form (e.g. "xras-filters")
@@ -24,7 +28,19 @@
     target_id      - id of the fragment container (innerHTML swap)
     start_date     - initial YYYY-MM-DD string
     end_date       - initial YYYY-MM-DD string
-    request_number - initial request-number / projcode filter
+    age_bands      - AUDIT_AGE_BANDS pre-resolved to dates, and
+    age_band_span  - the (lo, hi) span in force, both from
+                     _window_control_context(); see audit_filters.html for why
+                     neither is optional and why there is no fallback branch.
+    layout         - 'mobile' | 'tablet' | 'desktop', from read_layout()
+
+  ⚠️ This page carries a SECOND form with start_date/end_date: the hidden
+  #xras-activity-filters (allocations/xras.html), whose pair is emitted by
+  window_pills inside the pending-activity fragment and bound with `form=`.
+  The pair below is nested in THIS form and carries no `form=`, so the two
+  never share a form and form.elements['start_date'] stays a single node in
+  each. Adding a control here without REMOVING the pair it replaces is what
+  would break that — see test_the_xras_page_keeps_one_date_pair_per_form.
     all_statuses      / selected_statuses    - status vocabulary + selection
     all_action_types  / selected_action_types - action-type vocabulary + selection
     request_example   - a sample request number for the input's placeholder.
@@ -33,46 +49,23 @@
                         rather than being baked in here.
 #}
 {% macro xras_filters(form_id, fragment_url, target_id,
-                      start_date='', end_date='', request_number='',
+                      start_date='', end_date='',
+                      age_bands=None, age_band_span=None, layout='desktop',
+                      request_number='',
                       all_statuses=[], selected_statuses=[],
                       all_action_types=[], selected_action_types=[],
                       request_example='') %}
-<form id="{{ form_id }}"
-      hx-get="{{ fragment_url }}"
-      hx-target="#{{ target_id }}"
-      hx-swap="innerHTML"
-      hx-trigger="submit">
-    <div class="filter-sidebar-header">
-        <h2 class="filter-sidebar-title">
-            <button class="filter-sidebar-toggle" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#{{ form_id }}-fields"
-                    aria-expanded="true" aria-controls="{{ form_id }}-fields">
-                Filters <i class="fas fa-chevron-down filter-sidebar-chevron ms-1"></i>
-            </button>
-        </h2>
-        {# CSP-clean reset: form-reset-submit (static/js/actions.js) resets the
-           form and re-triggers its htmx submit — no inline onclick. #}
-        <a class="filter-sidebar-clear" style="cursor: pointer;"
-           data-action="form-reset-submit" data-form-id="{{ form_id }}">Clear filters</a>
-    </div>
-
-    {# Collapsed by default on phones (dashboard-init.js strips .show below
-       md). data-no-persist: the responsive default owns the initial state. #}
-    <div id="{{ form_id }}-fields" class="collapse show filter-fields-collapse" data-no-persist>
-    <div class="d-flex flex-wrap align-items-start gap-3">
+{% call filter_panel_shell(form_id, fragment_url, target_id) %}
+    {# align-items-end — see audit_filters.html. #}
+    <div class="d-flex flex-wrap align-items-end gap-3">
 
         <div>
-            <label class="form-label"><strong>From</strong></label>
-            <input type="date" class="form-control"
-                   name="start_date" value="{{ start_date }}"
-                   style="width:150px;">
-        </div>
-
-        <div>
-            <label class="form-label"><strong>To</strong></label>
-            <input type="date" class="form-control"
-                   name="end_date" value="{{ end_date }}"
-                   style="width:150px;">
+            {{ age_band_range(form_id, age_bands, 'start_date', 'end_date',
+                              after_value=start_date, before_value=end_date,
+                              span=age_band_span, label='Age',
+                              after_label='Actions received after',
+                              before_label='Actions received before',
+                              layout=layout) }}
         </div>
 
         <div>
@@ -83,38 +76,13 @@
                    style="width:160px;">
         </div>
 
-        {% if all_statuses %}
-        <div>
-            <label class="form-label"><strong>Status</strong></label>
-            <select class="form-control"
-                    name="status" multiple size="{{ [all_statuses|length, 5]|min }}"
-                    style="width:150px;">
-                {% for s in all_statuses %}
-                <option value="{{ s }}"
-                    {% if s in selected_statuses %}selected{% endif %}>{{ s }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
-        {% endif %}
+        {{ multiselect_filter('Status', 'status', all_statuses,
+                              selected_statuses, width='150px', max_size=5) }}
 
-        {% if all_action_types %}
-        <div>
-            <label class="form-label"><strong>Action type</strong></label>
-            <select class="form-control"
-                    name="action_type" multiple size="{{ [all_action_types|length, 5]|min }}"
-                    style="width:160px;">
-                {% for t in all_action_types %}
-                <option value="{{ t }}"
-                    {% if t in selected_action_types %}selected{% endif %}>{{ t }}</option>
-                {% endfor %}
-            </select>
-            <small class="form-text">Hold Ctrl/Cmd to select multiple</small>
-        </div>
-        {% endif %}
+        {{ multiselect_filter('Action type', 'action_type', all_action_types,
+                              selected_action_types, width='160px', max_size=5) }}
 
         <button type="submit" class="btn btn-outline-white align-self-end">Search</button>
     </div>
-    </div>
-</form>
+{% endcall %}
 {% endmacro %}

@@ -17,11 +17,10 @@ XRAS precedent where CLI and web share a query layer *so the two cannot
 drift*. ``sam/queries/notifications.py`` is still built as a shared layer —
 the door stays open — but nothing on the CLI consumes it yet.
 
-See ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 8.
+See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 8.
 """
 
 import logging
-from datetime import datetime, timedelta
 
 from flask import render_template, request, url_for
 from flask_login import login_required
@@ -35,6 +34,7 @@ from sam.queries.notifications import (
     summarize_notifications,
 )
 from webapp.extensions import db
+from webapp.utils.faceted_log import build_facet_strip, parse_window
 from webapp.utils.htmx import htmx_modal_not_found
 from webapp.utils.rbac import require_permission, Permission
 
@@ -57,18 +57,16 @@ def _parse_filters(args):
     Multi-valued dimensions come through ``getlist`` so a chip strip can
     express "status in (failed, suppressed)".
     """
-    days = args.get('days', type=int) or _DEFAULT_DAYS
-    days = max(1, min(days, 365))
-
+    since, page = parse_window(args, default_days=_DEFAULT_DAYS,
+                               per_page=_PER_PAGE)
     filters = {
-        'since': datetime.now() - timedelta(days=days),
+        'since': since,
         'statuses': [s for s in args.getlist('status') if s],
         'kinds': [k for k in args.getlist('kind') if k],
         'channels': [c for c in args.getlist('channel') if c],
         'search': (args.get('search', '') or '').strip() or None,
     }
-    page_n = max(1, args.get('page', type=int) or 1)
-    return filters, {'n': page_n, 'per_page': _PER_PAGE, 'days': days}
+    return filters, page
 
 
 @bp.route('/htmx/notifications', methods=['GET'])
@@ -109,25 +107,11 @@ def notifications_log():
     kind_counts = facet_notifications(db.session, 'kind', **filters)
     channel_counts = facet_notifications(db.session, 'channel', **filters)
 
-    # Every declared status renders, including at zero — an absent bucket
-    # reads as "not measured" rather than "none", and the strip is something
-    # an operator scans by position. A status outside the vocabulary would be
-    # a bad write; it appends rather than reshuffling.
-    status_facets = [{'value': s, 'count': status_counts.get(s, 0)}
-                     for s in NOTIFICATION_STATUSES]
-    status_facets += [{'value': s, 'count': n}
-                      for s, n in sorted(status_counts.items())
-                      if s not in NOTIFICATION_STATUSES]
-
-    kind_facets = [{'value': k, 'count': kind_counts.get(k, 0)}
-                   for k in sorted(NOTIFICATION_KINDS)]
-    kind_facets += [{'value': k, 'count': n}
-                    for k, n in sorted(kind_counts.items())
-                    if k not in NOTIFICATION_KINDS]
-
-    channel_facets = sorted(
-        ({'value': c, 'count': n} for c, n in channel_counts.items() if c),
-        key=lambda r: (-r['count'], r['value']))
+    # Zero-filled in vocabulary order, out-of-vocabulary appended. Channel has
+    # no declared vocabulary, so it sorts by count instead of by position.
+    status_facets = build_facet_strip(status_counts, NOTIFICATION_STATUSES)
+    kind_facets = build_facet_strip(kind_counts, sorted(NOTIFICATION_KINDS))
+    channel_facets = build_facet_strip(channel_counts)
 
     return render_template(
         'dashboards/admin/fragments/notifications_log.html',
@@ -138,7 +122,6 @@ def notifications_log():
         form_id=_FORM_ID,
         target_id=_FRAGMENT_TARGET,
         fragment_url=url_for('admin_dashboard.notifications_log'),
-        has_more=offset + len(rows) < total,
     )
 
 

@@ -7,7 +7,7 @@ Drive the Click CLIs end-to-end with `CliRunner`, asserting:
   - progress bars (UserAbandonedCommand etc.) don't corrupt stdout
 
 The `mock_db_session` pattern matches tests/unit/test_sam_search_cli.py:
-patch `cli.cmds.search.Session` (and `cli.cmds.admin.Session`) so the
+patch `cli.core.context.Session` (and `cli.core.context.Session`) so the
 CLI runs against the SAVEPOINT'd test session.
 """
 import json
@@ -31,7 +31,7 @@ def runner():
 @pytest.fixture
 def mock_search_session(session):
     with patch('sam.session.create_sam_engine') as mock_eng, \
-         patch('cli.cmds.search.Session') as mock_cls:
+         patch('cli.core.context.Session') as mock_cls:
         mock_eng.return_value = (MagicMock(), None)
         mock_cls.return_value = session
         yield session
@@ -40,7 +40,7 @@ def mock_search_session(session):
 @pytest.fixture
 def mock_admin_session(session):
     with patch('sam.session.create_sam_engine') as mock_eng, \
-         patch('cli.cmds.admin.Session') as mock_cls:
+         patch('cli.core.context.Session') as mock_cls:
         mock_eng.return_value = (MagicMock(), None)
         mock_cls.return_value = session
         yield session

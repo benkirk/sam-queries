@@ -1,7 +1,7 @@
 """``SmtpTransport`` — the one transport that actually reaches people.
 
 Relay facts this is built against, measured from a pod on nwc1 on 2026-08-09
-(``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 9):
+(``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 9):
 
 * ``ndir.ucar.edu:25`` advertises ``STARTTLS`` and **no ``AUTH``**, so
   ``login()`` is attempted only when both credentials are configured and is
@@ -109,7 +109,7 @@ class SmtpTransport(Transport):
         else. ``smtplib.send_message`` would strip a ``Bcc`` header for us,
         but this transport passes ``to_addrs`` explicitly, and under that
         call shape every header set is a header transmitted. See
-        ``docs/plans/NOTIFICATION_FRAMEWORK.md`` § 7.
+        ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 7.
         """
         if rendered.html:
             msg: MIMEMultipart | MIMEText = MIMEMultipart('alternative')

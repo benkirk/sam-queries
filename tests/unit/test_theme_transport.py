@@ -66,7 +66,7 @@ class TestReadTheme:
             assert read_theme() == 'dark'
 
     #: ``auto`` is in this list deliberately: it is the obvious future value
-    #: (§ *auto* in docs/plans/DARK_MODE.md defers it), and until it is really
+    #: (§ *auto* in docs/plans/implemented/DARK_MODE.md defers it), and until it is really
     #: implemented it must degrade to light rather than reach a cache key.
     JUNK = ['midnight', '', 'DARKMODE', '1', 'auto', 'dark mode',
             'light);--', 'dark dark']
@@ -128,7 +128,7 @@ class TestReadTheme:
 
 #: Every ``<html>`` tag the app owns. ``errors/429.html`` inherits from the
 #: dashboard base and ``admin/master.html`` is Flask-Admin's own Bootstrap 3
-#: shell (explicitly out of scope — see docs/plans/DARK_MODE.md).
+#: shell (explicitly out of scope — see docs/plans/implemented/DARK_MODE.md).
 OWNED_SHELLS = ('dashboards/base.html', 'auth/login.html')
 
 

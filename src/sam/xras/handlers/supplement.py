@@ -26,7 +26,7 @@ uses **today** plus a derived end date rather than the action's own dates.
 
 Verified against ``~/codes/sam`` at tag 2.0.3
 (``SupplementProjectAllocationActionCommandsFactory``, ``Allocation.supplement``).
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Supplement*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Supplement*.
 """
 
 import logging

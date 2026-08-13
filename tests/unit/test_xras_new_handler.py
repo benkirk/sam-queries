@@ -11,7 +11,7 @@ ARC identities, unmapped resource keys), and the deliverable is that each of tho
 arrives as a reviewable 422 rather than an opaque 500.
 :class:`TestTheFailurePaths` covers the ones the corpus actually hit.
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *New*.
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *New*.
 """
 
 import json

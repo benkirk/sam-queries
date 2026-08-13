@@ -11,7 +11,7 @@ The rest pin the individual traps: the CSL regex the plan document mangles, stra
 ``area_of_interest_id`` rather than an ``fos_aoi.fos_id``, and the contract collision
 where legacy raises ``NonUniqueResultException`` and 500s.
 
-See ``docs/plans/XRAS_SPRINT_C.md`` § *Allocation-type resolution* for the verified
+See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Allocation-type resolution* for the verified
 strategy table and § *The error vocabulary* for the strings.
 """
 

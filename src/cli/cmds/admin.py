@@ -9,7 +9,6 @@ import os
 import sys
 import click
 from datetime import date as _date, datetime
-from sqlalchemy.orm import Session
 
 from config import SAMConfig
 from cli.core.context import Context
@@ -23,6 +22,7 @@ from cli.project.commands import (
 from cli.accounting.commands import AccountingAdminCommand
 from cli.accounting.dates import _validate_accounting_dates, _resolve_accounting_dates
 from cli.contracts.commands import ContractsAuditCommand
+from cli.tasks.commands import TasksCommand
 from cli.xras.commands import XrasCommand
 
 # Default base URL for the running webapp (matches the systems-integration
@@ -51,14 +51,10 @@ def cli(ctx: Context, verbose: bool, output_format: str):
     ctx.verbose = verbose
     ctx.output_format = output_format
 
-    # Initialize database connection
-    try:
-        from sam.session import create_sam_engine
-        engine, _ = create_sam_engine()
-        ctx.session = Session(engine)
-    except Exception as e:
-        ctx.stderr_console.print(f"Error connecting to database: {e}", style="bold red")
-        sys.exit(1)
+    # NO database connection here. `Context.require_sam()` opens one on first
+    # use, so a subcommand that never queries SAM MySQL never needs it to be
+    # up. See SCHEDULED_TASKS.md § 3.2 — `tasks --run-due` prunes Postgres and
+    # must not die on a SAM outage.
 
 
 @cli.command()
@@ -755,6 +751,71 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         request_number=request_number,
         last=last,
         limit=limit,
+    ))
+
+
+@cli.command()
+@click.option('--list', 'list_tasks', is_flag=True,
+              help='List registered tasks and their latest run (default)')
+@click.option('--run-due', 'run_due', is_flag=True,
+              help='Dispatch every task whose slot is open (the CronJob entry point)')
+@click.option('--run', metavar='NAME',
+              help='Run one task now, ignoring dueness')
+@click.option('--history', is_flag=True, help='Show recent task runs')
+@click.option('--task', metavar='NAME', help='[history] Limit to one task')
+@click.option('--limit', type=int, default=20,
+              help='[history] Maximum rows (default: 20)')
+@click.option('--dry-run', is_flag=True,
+              help='Report what would run; writes NO ledger rows and executes nothing')
+@click.option('--force', is_flag=True,
+              help='With --run: claim a manual occurrence key. A forced run does '
+                   'NOT satisfy the scheduled slot — tonight\'s run still happens.')
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
+@pass_context
+def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
+          dry_run, force, verbose):
+    """Scheduled task dispatcher.
+
+    The ledger lives in system_status, so these commands do not need SAM MySQL.
+    """
+    if verbose:
+        ctx.verbose = True
+
+    modes = [bool(list_tasks), bool(run_due), bool(run), bool(history)]
+    if sum(modes) > 1:
+        ctx.console.print(
+            'Error: --list, --run-due, --run and --history are mutually exclusive',
+            style='bold red')
+        sys.exit(EXIT_ERROR)
+
+    if dry_run and not (run_due or run):
+        ctx.console.print('Error: --dry-run requires --run-due or --run',
+                          style='bold red')
+        sys.exit(EXIT_ERROR)
+
+    if force and not run:
+        ctx.console.print('Error: --force requires --run', style='bold red')
+        sys.exit(EXIT_ERROR)
+
+    if (task or limit != 20) and not history:
+        ctx.console.print('Error: --task and --limit require --history',
+                          style='bold red')
+        sys.exit(EXIT_ERROR)
+
+    # NOTE: no `json_unsupported_for_writes` guard here, unlike `xras --recheck`
+    # above, and that is deliberate — see src/cli/README.md § Exit Codes. The
+    # guard exists to stop someone accidentally writing while scripting a
+    # *report*; for --run-due the side effect IS the command, and JSON on stdout
+    # is exactly what a log-scraped CronJob should emit.
+    sys.exit(TasksCommand(ctx).execute(
+        list_tasks=list_tasks,
+        run_due=run_due,
+        run=run,
+        history=history,
+        task=task,
+        limit=limit,
+        dry_run=dry_run,
+        force=force,
     ))
 
 

@@ -48,7 +48,7 @@ Dates are compared **as strings**, never parsed. Java uses lexicographic
 ``yyyy-MM-dd``; Python's string comparison is identical over that alphabet. Parsing
 would introduce a second failure mode (an unparseable date) that legacy does not have.
 
-Verified against ``~/codes/sam`` at tag 2.0.3. See ``docs/plans/XRAS_SPRINT_C.md``
+Verified against ``~/codes/sam`` at tag 2.0.3. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``
 § *The roster*.
 """
 
