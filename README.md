@@ -568,6 +568,13 @@ sam-queries/
 │   │   ├── models/              # Status tracking models
 │   │   └── queries/             # Status query functions
 │   │
+│   ├── scheduling/              # Ledger-backed scheduled-task dispatcher
+│   │   ├── schedules.py         # Occurrence predicates (pure, clock-free)
+│   │   ├── registry.py          # The TASKS registry and @task decorator
+│   │   ├── ledger.py            # task_run claims, leases, heartbeats
+│   │   ├── runner.py            # run_due() — the whole scheduler-facing surface
+│   │   └── tasks/               # The registered tasks themselves
+│   │
 │   ├── querykit/                # Faceted-log query facade (see querykit/README.md)
 │   │   ├── README.md            # Why this is a peer package, and what belongs in it
 │   │   └── faceted.py           # LogSpec + count/page/facet, SQLAlchemy-only

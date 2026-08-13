@@ -788,14 +788,25 @@ already leans on CIRRUS's stdout retention for audit records, see
 `AUDIT_LOG_STDOUT`); and a failed Job object retained by
 `failedJobsHistoryLimit: 5`.
 
-**Tier 1 — planned in its own document: `SCHEDULED_TASKS_DASHBOARD.md`.** The
-"~60 lines" below turned out to be wrong: this is the *third* instance of a shape
-the codebase already has twice (XRAS actions, notifications), so it starts by
-extracting a faceted-log facade. That document also records two decisions that
-**supersede the text below** — the details page is `VIEW_SYSTEM_CONFIG` with only
-the traceback-bearing modal at `SYSTEM_ADMIN`, and the page reaches full parity
-with the Notifications one (facet chips, pagination, modal). The original
-sketch:
+**Tier 1 — BUILT** (PR #444, commits following P4). Planned in its own
+document, `SCHEDULED_TASKS_DASHBOARD.md`, whose § *As built* records the
+deviations. The "~60 lines" below turned out to be wrong: this is the *third*
+instance of a shape the codebase already has twice (XRAS actions,
+notifications), so it started by extracting a faceted-log facade —
+**`src/querykit/`**, a new top-level peer package.
+
+Two decisions there **supersede the text below** — the details page is
+`VIEW_SYSTEM_CONFIG` with only the traceback-bearing modal at `SYSTEM_ADMIN`,
+and the page reaches full parity with the Notifications one (facet chips,
+pagination, modal). What shipped:
+
+- `src/querykit/` — `LogSpec` + `count_rows` / `page_rows` / `facet_counts`,
+  SQLAlchemy-only, with an import-graph gate. Notifications migrated onto it.
+- `src/webapp/utils/faceted_log.py` — `parse_window` / `build_facet_strip`.
+- `src/system_status/queries/task_runs.py` — the card counts and facet rollups.
+- The card on Admin → Configuration, and `/admin/htmx/tasks{,/log,/<id>}`.
+
+The original sketch:
 
 A read-only "Scheduled tasks" card on
 the Admin → Configuration tab, copying the **Notifications card** exactly
@@ -1058,3 +1069,14 @@ as written.
 | **`make helm-test` globs `helm/tests/*.sh`** (§ 13 suggested the target; CI named one script) | Naming scripts individually is how the second render test gets written and then silently never runs. |
 | **A stdout `print` had to be removed first** (not in the plan at all) | `system_status.session` printed a redacted connection string at import, which corrupted every `--format json` envelope. The CronJob is log-scraped, so this was a hard blocker. |
 | **Per-table `RETENTION_DAYS` left empty** (§ 3.1 item 3 wanted numbers) | `csg-postgres` was not reachable. The mechanism is built and tested; the first production run's `deleted` breakdown is the measurement. |
+
+### Tier 1 — the admin card (§ 9)
+
+| Deviation | Why |
+|---|---|
+| **Details page is `VIEW_SYSTEM_CONFIG`; only the detail modal is `SYSTEM_ADMIN`** (§ 9 said all-`SYSTEM_ADMIN`) | § 9 copied the Notifications gating, but its stated reason — *"every row names a real person's email address"* — does not transfer. Task rows carry task names, states and pod names. Only `detail` (tracebacks, which can name hosts and paths) warrants the higher tier. `rate_limits_routes.py` is the same-tier precedent. |
+| **The facade lives in a new top-level `src/querykit/`**, not `sam/queries/faceted.py` | `sam/` and `system_status/` import nothing from each other; putting it in `sam/queries/` would create the reverse of the edge § 6.1 protects. And not under `webapp/` either: `src/cli/xras/builders.py` already imports `summarize_xras_actions`, the function the facade absorbs on the XRAS retrofit, so that would put `webapp` in `sam-admin xras`'s import graph. A peer creates zero edges. |
+| **The notifications log adopted the shared `pagination()` macro** (not in the plan) | It hand-rolled a Newer/Older pager while `pagination.html` already existed and XRAS used it. Declared as a visible change rather than smuggled in — and noticing it is why the tasks page was not a copy-paste of `notifications_log.html`, which would have triplicated the weaker pager. |
+| **No `tests/factories/scheduling.py`** (the dashboard plan § 8 wanted one) | `tests/factories/` targets the SAM bind only. Status rows use module-private `_make_*` helpers against `status_session` — and because that bind is a per-worker SQLite tempfile with per-test DELETE isolation, those tests may `commit()`, so they assert on rendered HTML rather than on a state dict. The SAVEPOINT constraint that shaped the notifications card tests does not apply here. |
+| **`badges.html`'s vocabulary gate now covers all three domains** | Only `XRAS_ACTION_STATUSES` was asserted against it; `NOTIFICATION_STATUSES` had no gate at all. Adding `TASK_STATES` without closing that gap would have left the same trap for the next domain. |
+| **Browser smoke is 2 scenarios, not 6** (dashboard plan § 9 listed six) | The `unavailable` degrade needs a table-less database and the e2e tier has no monkeypatch seam; the 403 boundary is cheaper at the unit tier. Card-renders and kill-switch-warning are the two that are genuinely about pixels. |

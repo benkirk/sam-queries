@@ -1,5 +1,9 @@
 # Scheduled tasks: admin card + run-history page — implementation plan
 
+**Status: BUILT**, 2026-08-13, as further commits on PR #444. See § *As built*
+at the foot for where the implementation departed from this plan; everything
+else was built as written.
+
 ## Context
 
 PR #444 shipped the dispatcher (`src/scheduling/`), the `task_run` ledger
@@ -463,3 +467,59 @@ sam-admin tasks --history
 The XRAS retrofit onto the facade; `/api/v1/health/tasks`; the `tasks_watchdog`
 task; and P5 (clearing the production kill switch). The first three are named in
 `SCHEDULED_TASKS.md` §9; the last is Ben's.
+
+---
+
+## As built
+
+Six commits, not five — the order changed and one was added.
+
+### The commit order swapped
+
+The plan had the card (3) before the page (4). Built the other way round: the
+tile's `Details »` is a plain `url_for('admin_dashboard.scheduled_tasks')`, so
+a card commit landing first would raise `BuildError` and 500 the whole
+Configuration tab. The dependency runs card → page, so the page ships first.
+
+A sixth commit registers the fragment's modal-shell dependency —
+`test_modal_shell_contract.py`'s ratchet fired on `scheduled_tasks_log.html`
+reaching for `auditDetailsModal`, exactly as designed. The contract holds: the
+fragment is only ever loaded by `scheduled_tasks.html`, which includes the
+shell itself.
+
+### Deviations from the plan text
+
+| Deviation | Why |
+|---|---|
+| **`summarize_task_runs` also returns `last_dispatch_age`** | `fmt_ago` takes a `timedelta`, not a `datetime`. Computing it in the query module keeps the subtraction against `utcnow_naive()`; a template differencing this naive-UTC column against the local clock would report an hourly dispatcher as ~7 hours stale. |
+| **`last_dispatch` is unwindowed**, like `count_stale_running` | Not called out in the plan. A windowed "when did the dispatcher last wake" reads as *never* once the answer falls off the edge — the same failure mode windowing `stale_running` would cause. |
+| **`observed_task_names` reads the table, not `scheduling.registry.TASKS`** | A task deleted from the registry still has history worth filtering to, and the registry is not what the rows say. |
+| **Runner column is `nowrap`** | Found by the browser smoke, not by any test. The Task column's `width:99%` squeezed Runner to its minimum and a pod name broke at all three hyphens, tripling every row's height. There is no `audit-table` CSS rule anywhere — the class is purely semantic — so this was default table behaviour, not a style regression. |
+| **The badge vocabulary gate was generalized** rather than duplicated | `test_xras_dashboard.py::TestStatusVocabularyIsRenderable` now parametrizes over `XRAS_ACTION_STATUSES`, `NOTIFICATION_STATUSES` and `TASK_STATES`. The notifications half was a pre-existing gap: `badges.html` is one flat namespace holding three domains and only XRAS was asserted against it. |
+
+### Corrections to the plan's own corrections
+
+- **Correction 8 was unnecessary.** The plan doubted the "6,534 passed"
+  baseline; it was essentially right. The suite now finishes at **6,629 passed
+  / 42 skipped / 1 xfailed**, and the ~95 new tests here account for the
+  difference. New baseline: **6,629**.
+- **`parse_window`'s `days` key** (correction 5) was real and load-bearing —
+  `notifications_log.html` reads `page.days` for its headline.
+- **The `pagination()` prerequisites** (correction 4) were both real: the macro
+  dereferences `sort['sort_by']` unconditionally, and it emits its own
+  "No matching rows." at zero, which would have double-rendered against the
+  in-table empty state. Both handled; verified in the browser.
+
+### The extraction gate held
+
+The three notifications test files passed **completely unedited** — 64 tests —
+which is the proof that migrating them onto `querykit` changed no behaviour.
+
+### Verified in a real browser
+
+Facet self-exclusion (selecting **Failed** leaves the other state chips live
+while Trigger correctly collapses to `manual 1` with the rest dimmed at zero),
+all five run-state badges distinct, `trigger_type` as a plain badge rather than
+the XRAS `manual` status badge, the shared pager reading "Showing 51–62 of 62",
+JSON detail pretty-printed, an unparseable traceback shown as-is, and the
+migrated notifications log still rendering with a single empty state.
