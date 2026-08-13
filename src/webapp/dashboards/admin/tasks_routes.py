@@ -28,6 +28,7 @@ import logging
 
 from flask import render_template, request, url_for
 from flask_login import login_required
+from sqlalchemy import select
 
 from system_status.models.task_run import TASK_STATES, TASK_TRIGGERS, TaskRun
 from system_status.queries.task_runs import (
@@ -57,6 +58,33 @@ _DEFAULT_DAYS = 30
 _PER_PAGE = 50
 
 
+def _ledger_missing():
+    """True if `task_run` is absent, after clearing the failed transaction.
+
+    ⚠️ Not hypothetical, and not only a test condition: `task_run` arrives with
+    Alembic `0006`, which **staging and production have not applied**. The
+    Configuration card already degrades for this (see `config_inspect`);
+    without the same treatment here, the card's own `Details »` link leads to a
+    500. CI found exactly that — its status database has no `task_run`, so the
+    card said "unavailable" while this page threw.
+
+    The rollback matters for the same reason it does in `config_inspect`: the
+    failure came from a *statement*, so any later `db.session` use in this
+    request would raise `PendingRollbackError` instead of its own error.
+    """
+    try:
+        db.session.execute(select(TaskRun.task_run_id).limit(1)).first()
+        return False
+    except Exception:
+        logger.info('task_run is not present on this database — '
+                    'rendering the scheduled-tasks page in its degraded state')
+        try:
+            db.session.rollback()
+        except Exception:                    # pragma: no cover - defensive
+            pass
+        return True
+
+
 def _parse_filters(args):
     """Read the query string into ``(filters, page)``.
 
@@ -82,6 +110,9 @@ def _parse_filters(args):
 @require_permission(Permission.VIEW_SYSTEM_CONFIG)
 def scheduled_tasks():
     """The run-history page shell."""
+    if _ledger_missing():
+        return render_template('dashboards/admin/scheduled_tasks.html',
+                               unavailable=True)
     return render_template(
         'dashboards/admin/scheduled_tasks.html',
         summary=summarize_task_runs(db.session),
@@ -101,6 +132,13 @@ def scheduled_tasks():
 @require_permission(Permission.VIEW_SYSTEM_CONFIG)
 def scheduled_tasks_log():
     """HTMX fragment: the filtered, paginated table plus its facet chips."""
+    if _ledger_missing():
+        # A 200 carrying the explanation, not a 4xx/5xx: htmx will not swap a
+        # non-2xx, so an error status leaves the spinner spinning for ever.
+        return render_template(
+            'dashboards/admin/fragments/scheduled_tasks_log.html',
+            unavailable=True)
+
     filters, page = _parse_filters(request.args)
     offset = (page['n'] - 1) * page['per_page']
 
@@ -139,6 +177,9 @@ def task_run_detail(task_run_id: int):
     lands, and a traceback names hosts, paths and sometimes connection
     strings.
     """
+    if _ledger_missing():
+        return htmx_modal_not_found('Task run')
+
     row = db.session.get(TaskRun, task_run_id)
     if row is None:
         return htmx_modal_not_found('Task run')

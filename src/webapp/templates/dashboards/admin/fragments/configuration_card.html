@@ -269,11 +269,20 @@
                     {# Ungated on purpose, unlike Notifications above: the run
                        history page is VIEW_SYSTEM_CONFIG, the same tier as this
                        card, so the link cannot 403. Only the detail modal sits
-                       higher. Same reasoning as Rate limiting below. #}
+                       higher. Same reasoning as Rate limiting below.
+
+                       Suppressed when the ledger is absent, though: the body
+                       below already explains why there is nothing to see, and
+                       offering a link to a page with no data to draw is the
+                       same discourtesy as offering one that 403s. The page
+                       degrades on its own too — this is the courtesy, that is
+                       the safety net. #}
+                    {% if not state.scheduled_tasks.unavailable %}
                     <a href="{{ url_for('admin_dashboard.scheduled_tasks') }}"
                        class="small text-decoration-none">
                         Details &raquo;
                     </a>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     {% if state.scheduled_tasks.unavailable %}

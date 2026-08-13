@@ -153,6 +153,54 @@ class TestTheLogFragment:
         assert auth_client.get(f'{LOG}?{query}').status_code == 200
 
 
+class TestTheLedgerIsMissing:
+    """`task_run` arrives with Alembic 0006, which staging and production have
+    NOT applied — so every one of these routes will be reached before its table
+    exists.
+
+    Found by CI, not by review: its status database has no `task_run`, so the
+    Configuration card degraded correctly while `/admin/htmx/tasks` threw a
+    500 — reached from the card's own `Details »` link.
+    """
+
+    @pytest.fixture
+    def no_ledger(self, monkeypatch):
+        import webapp.dashboards.admin.tasks_routes as routes
+        monkeypatch.setattr(routes, '_ledger_missing', lambda: True)
+
+    def test_the_page_degrades_rather_than_500s(self, auth_client, no_ledger):
+        resp = auth_client.get(PAGE)
+        assert resp.status_code == 200
+        assert b'unavailable' in resp.data.lower()
+
+    def test_the_log_fragment_degrades_with_a_200(self, auth_client,
+                                                  no_ledger):
+        """htmx will not swap a non-2xx, so an error status here would leave
+        the spinner spinning for ever."""
+        resp = auth_client.get(LOG)
+        assert resp.status_code == 200
+        assert b'unavailable' in resp.data.lower()
+
+    def test_the_detail_modal_degrades(self, auth_client, no_ledger):
+        resp = auth_client.get('/admin/htmx/tasks/1')
+        assert resp.status_code == 200
+        assert b'not found' in resp.data.lower()
+
+    def test_the_card_hides_its_details_link(self, auth_client, monkeypatch):
+        """Never offer a link to a page with nothing to draw — the same
+        courtesy the tile pays by hiding a link that would 403."""
+        import system_status.queries.task_runs as queries
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("Table 'task_run' doesn't exist")
+
+        monkeypatch.setattr(queries, 'summarize_task_runs', _boom)
+        html = auth_client.get(
+            '/admin/htmx/configuration').get_data(as_text=True)
+        assert 'admin_dashboard.scheduled_tasks' not in html
+        assert '/admin/htmx/tasks' not in html
+
+
 class TestTheDetailModal:
 
     def test_a_missing_row_returns_200_not_404(self, auth_client,

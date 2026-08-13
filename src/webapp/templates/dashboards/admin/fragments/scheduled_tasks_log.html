@@ -25,6 +25,13 @@
   ⚠️ Timestamps here are naive UTC (system_status convention), unlike the SAM
   tables elsewhere in this dashboard.
 #}
+{% if unavailable %}
+<div class="text-muted small p-3">
+    <i class="fas fa-circle-info me-1"></i>
+    Run history is unavailable — the <code>task_run</code> table is not present
+    on this database (it arrives with Alembic <code>0006</code>).
+</div>
+{% else %}
 <div class="d-flex flex-wrap align-items-baseline gap-2 mb-1 small">
     <span class="text-muted">Showing</span>
     <strong>{{ total | fmt_number }}</strong>
@@ -126,4 +133,5 @@
 {% if total %}
 {{ pagination(page, total, fragment_url, target_id, form_id,
               {'sort_by': None, 'sort_dir': 'desc'}) }}
+{% endif %}
 {% endif %}
