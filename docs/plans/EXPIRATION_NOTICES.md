@@ -7,7 +7,8 @@ next reader can verify rather than re-derive.
 | | |
 |---|---|
 | **Done** | The `open_sam` / `require_sam` split (see *Prerequisite, done*). Commits 1–10, plus a new commit 6a (`--occurrence`). Suite green at **6,856 passed, 42 skipped, 1 xfailed**; `helm/tests/test-cronjob-render.sh` OK. **Phase V run 2026-08-13** — 824 messages in 163 s, 0 failures, redirect verified across the whole population; see *Phase V results*. |
-| **Outstanding** | The **browser smoke** in commit 9 (needs Playwright — this session had Google MCP instead), and the **legacy-key bridge**, which the dev clone could not exercise because its `notification_log` was empty. |
+| **Also done** | **Browser smoke** 2026-08-13 — all six commit-9 assertions pass, contrast AAA in both themes; see *Browser smoke*. |
+| **Outstanding** | The **legacy-key bridge**, which the dev clone could not exercise because its `notification_log` was empty. Everything else is verified. |
 
 ## Deviations, as built
 
@@ -596,6 +597,52 @@ Two consequences worth keeping:
   message most likely to be stuck behind the batch it describes. An operator
   waiting on the summary as proof a run worked may wait a long time; the ledger
   and `sam-admin tasks --history` are the faster answer.
+
+### Browser smoke — run 2026-08-13 against webdev :5050
+
+All six assertions from commit 9 pass. Data was seeded by running the task at
+an occurrence covering the page's own 31-day window with
+`NOTIFY_TRANSPORT=null` — which writes ledger rows and sends nothing, exactly
+what a UI fixture wants — plus one hand-inserted `failed` row
+(`requested_by='playwright-smoke-fixture'`, delete it when done).
+
+| # | Assertion | Result |
+|---|---|---|
+| 1 | badge renders with age + recipient count | 100 of 102 cards; title reads `Last expiration notice 2026-08-13 — delivered to 3 recipient(s)` |
+| 2 | never-notified is an explicit state | 2 cards, `Not notified`, not a blank and not an `—` |
+| 3 | failure badge | `1 failed`, alongside the notified badge on the same card |
+| 4 | **absent on the user dashboard** | 5 cards, 19 badges, **0** notification badges, **0** envelope icons |
+| 5 | computed WCAG contrast, both themes | see below — all pass **AAA**, not just AA |
+| 6 | Notifications card + `Details »` | both render; facets reconcile |
+
+Contrast, composited against the real ancestor chain rather than read off the
+token values:
+
+| badge | light | dark |
+|---|---|---|
+| `Notified … ago` | 10.35 | 7.67 |
+| `Not notified` | 10.51 | 7.84 |
+| `N failed` | 10.22 | 7.15 |
+
+The admin surfaces reconcile with the ledger: `Redirected 1,732 + Sent 6 +
+Failed 1 = 1,739` = the `email` channel total = `expiration 1,733 +
+task_summary 6`. **`Suppressed` reads 0** — the pre-filter's whole purpose,
+visible on the card it was protecting. The Scheduled Tasks card lists
+`expiration_notices — weekly on Monday at 09:00 America/Denver`.
+
+⚠️ **A local-dev-only timezone trap, found here.** The badge rendered
+"Notified 6 hours ago" for rows written minutes earlier. Cause: `notified_age`
+is `datetime.now() - creation_time`, and the *writer* was the CLI on the host
+(MDT) while the *reader* was the webdev container, which has **no `TZ` set** in
+`compose.yaml` and therefore runs UTC. The gap is exactly the offset.
+
+Not a production bug — the webapp Deployment gets `TZ: "America/Denver"`
+(`values.yaml:231`) and the CronJob inherits it (`cronjob-tasks.yaml:104-105`),
+so writer and reader agree there. But it is a real trap for anyone smoke-testing
+locally, and it is worth knowing that the badge inherits SAM's naive-Mountain
+convention: its age is only meaningful when writer and reader share a zone.
+Setting `TZ` on the compose services would fix local dev, but it would shift
+*every* naive-datetime display there, so it is left as a separate decision.
 
 ### Commit 9's data path, against the real rows
 
