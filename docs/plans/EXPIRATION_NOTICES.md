@@ -572,12 +572,12 @@ SAM's side of all 829 messages completed cleanly: every one got a `250` from
 `ndir.ucar.edu` and a `sent`/`redirected` ledger row, `failed = 0`,
 `queued_stuck = 0`.
 
-**Onward delivery is a different story.** The first ~15 minutes' worth arrived
-promptly; the rest queued. Fifteen minutes after the run, the 824-run's own
-summary (handed off 16:30:36), the next-Monday notice and summary (16:33), the
-quiet-week summary (16:33) and a deliberate one-off probe (16:36) had all still
-not arrived — while the backlog continued to trickle in **out of `Date` order**,
-which is the tell that this is a queue draining rather than messages lost.
+**Onward delivery lags badly, then catches up.** The first ~15 minutes' worth
+arrived promptly; everything after 16:30:35 queued. The 824-run's own summary
+was handed off at 16:30:36 and did not appear for roughly **20 minutes** — and
+during that window the backlog trickled in **out of `Date` order**, which is the
+tell that a queue is draining rather than that messages were lost. It did
+arrive, intact and correct.
 
 The cutoff is temporal, not per-kind: the 16:26 summary rendered from the
 identical template arrived immediately. So this is the receiving side
@@ -617,11 +617,9 @@ run against the 828 rows Phase V produced:
   overlap cohort the bridge exists for does not exist here, so the bridge is
   covered only by its unit test. **Recorded as untested against real data**,
   per this section's own instruction not to record a pass.
-- **Final inbox reconciliation.** 829 messages were handed to the relay; the
-  tail was still draining when the session ended. What *was* confirmed in the
-  mailbox: correct `To:`, `X-SAM-Original-To` present and differing, the
-  redirect banner in both MIME parts, a UNIV and a WNA sample each carrying
-  matching text and HTML variants, and SPF/DKIM/DMARC all passing.
+- **A full message-by-message inbox count.** 829 were handed to the relay and
+  the tail was still draining at session end. Everything else reconciled: see
+  below.
 - **Deliverability to real PIs**, obviously — every message was redirected.
 
 ### ⚠️ Two defects in the recipe below, found by running it
@@ -653,6 +651,26 @@ FROM notification_log WHERE kind='expiration';
 ```
 
 Measured on the 2026-11-23 run: `1, 689, 0, 0`.
+
+### Three-way count reconciliation — passed
+
+The plan asked for messages-received == ledger == `TaskResult`. All three agree
+on the loaded run, and the summary email's per-project breakdown gives a fourth,
+independent cross-check:
+
+| Source | Sent | Projects | WNA messages |
+|---|---|---|---|
+| `TaskResult.detail` | 824 | 212 | — |
+| `notification_log` | 824 | 212 | 196 across 17 projects |
+| Summary email body | 824 | 212 | its 17 `WYOM` lines sum to **196** |
+
+The WNA figure is the satisfying one: the ledger's `template` column recorded
+`expiration-WNA.txt` exactly 196 times, the facility join says 17 WNA projects,
+and the summary — built from an entirely separate code path, the message list —
+lists 17 `WYOM` projects whose recipient counts sum to 196. Mailbox spot-checks
+confirmed correct `To:`, `X-SAM-Original-To` present and differing, the redirect
+banner in both MIME parts, matching text/HTML variants on a UNIV and a WNA
+sample, and SPF/DKIM/DMARC all passing.
 
 ### ⚠️ Two hard preconditions
 
