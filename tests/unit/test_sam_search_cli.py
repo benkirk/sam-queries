@@ -9,7 +9,7 @@ Ported from tests/unit/test_sam_search_cli.py. Transformations:
 - `test_user_search_exact_not_found` / `test_project_search_exact_not_found`
   keep their nonsense identifiers — those don't depend on snapshot data.
 
-The `mock_db_session` fixture patches `cli.cmds.search.Session` so the CLI
+The `mock_db_session` fixture patches `cli.core.context.Session` so the CLI
 uses our SAVEPOINT'd test session instead of opening its own connection.
 """
 from unittest.mock import MagicMock, patch
@@ -41,7 +41,7 @@ class TestSamSearchCli:
         (none here) would be rolled back at teardown.
         """
         with patch('sam.session.create_sam_engine') as mock_create_engine, \
-             patch('cli.cmds.search.Session') as mock_session_cls:
+             patch('cli.core.context.Session') as mock_session_cls:
             mock_create_engine.return_value = (MagicMock(), None)
             mock_session_cls.return_value = session
             yield session

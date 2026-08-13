@@ -9,7 +9,6 @@ import os
 import sys
 import click
 from datetime import date as _date, datetime
-from sqlalchemy.orm import Session
 
 from config import SAMConfig
 from cli.core.context import Context
@@ -51,14 +50,10 @@ def cli(ctx: Context, verbose: bool, output_format: str):
     ctx.verbose = verbose
     ctx.output_format = output_format
 
-    # Initialize database connection
-    try:
-        from sam.session import create_sam_engine
-        engine, _ = create_sam_engine()
-        ctx.session = Session(engine)
-    except Exception as e:
-        ctx.stderr_console.print(f"Error connecting to database: {e}", style="bold red")
-        sys.exit(1)
+    # NO database connection here. `Context.require_sam()` opens one on first
+    # use, so a subcommand that never queries SAM MySQL never needs it to be
+    # up. See SCHEDULED_TASKS.md § 3.2 — `tasks --run-due` prunes Postgres and
+    # must not die on a SAM outage.
 
 
 @cli.command()

@@ -11,8 +11,19 @@ class BaseCommand(ABC):
 
     def __init__(self, ctx: Context):
         self.ctx = ctx
-        self.session = ctx.session
         self.console = ctx.console
+
+    @property
+    def session(self):
+        """The SAM MySQL session, connected on first access.
+
+        A property rather than an attribute set in ``__init__`` so that
+        *constructing* a command does not open a connection. Commands that
+        never touch SAM MySQL — ``sam-admin tasks``, whose ledger lives in
+        `system_status` — therefore cost nothing, while every existing command
+        keeps the attribute name it already uses.
+        """
+        return self.ctx.require_sam()
 
     @abstractmethod
     def execute(self, **kwargs) -> int:

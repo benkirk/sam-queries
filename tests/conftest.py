@@ -80,7 +80,7 @@ def pytest_configure(config):
     # Test-only placeholder values for SAM_DB_*/STATUS_DB_*. The test
     # suite never reads these — sessions are routed through SAM_TEST_DB_URL
     # (mysql-test) via `create_app(config_overrides=…)`, and CLI tests
-    # patch `cli.cmds.search.Session`. They exist purely to satisfy the
+    # patch `cli.core.context.Session`. They exist purely to satisfy the
     # fail-fast `SAMConfig.validate()` calls in webapp.run.create_app and
     # the click CLI entry points, which would otherwise throw
     # `EnvironmentError` during test collection on hosts whose `.env`
