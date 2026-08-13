@@ -1,13 +1,58 @@
 # Expiration Notices — the scheduled-task consumer
 
-**Status: designed; one prerequisite built.** Approved 2026-08-13. Written to be
-picked up cold; every claim carries a `file:line` so the next reader can verify
-rather than re-derive.
+**Status: built; two verification passes outstanding.** Approved and implemented
+2026-08-13. Written to be picked up cold; every claim carries a `file:line` so the
+next reader can verify rather than re-derive.
 
 | | |
 |---|---|
-| **Done** | The `open_sam` / `require_sam` split (see *Prerequisite, done*) — the SAM connect no longer `sys.exit`s out of a task body. Full suite green at 6,687 passed. |
-| **Not started** | Commits 1–10 below, and Phase V. |
+| **Done** | The `open_sam` / `require_sam` split (see *Prerequisite, done*). Commits 1–10, plus a new commit 6a (`--occurrence`). Suite green at **6,856 passed, 42 skipped, 1 xfailed**; `helm/tests/test-cronjob-render.sh` OK. |
+| **Outstanding** | **Phase V** (needs a session with Google MCP) and the **browser smoke** in commit 9 (needs Playwright). Neither can run without those tools — see *Verification tooling*. |
+
+## Deviations, as built
+
+Found by reading the tree during implementation. Each changed what was written;
+they are recorded here rather than only in a commit message.
+
+1. **Bands are made half-open by construction.** `get_all_expiring_allocations`
+   filters `Allocation.end_date <= end_date` — *inclusive*. Passing
+   `start + hi_days` straight through would make adjacent bands overlap on their
+   shared boundary: invisible with one rung, a double-send to whoever lands on the
+   seam with three. `band_bounds()` in the task subtracts one microsecond, and
+   there are tests for both no-overlap **and** no-gap.
+2. **Commit 9 reuses `get_recent_notifications` instead of a new `GROUP BY`.**
+   `get_xras_activity` (`xras_activation.py:251-263`) already solved the same
+   problem — one indexed fetch bounded by a projcode `IN` list, bucketed in
+   Python. `get_recent_notifications` takes `projcodes=` *and* `kinds=` and orders
+   `creation_time DESC`, so `delivered[0]` is the newest.
+3. **The rollup returns an entry for every requested projcode**, not only the
+   notified ones. The consumer is a macro shared with the user dashboard and has
+   to tell "notified", "not notified" and "nobody asked" apart; making absence
+   mean only the last keeps a missing key from carrying two meanings.
+4. **The batch prefetch is gated on `len(messages) > 1`.** `Notifier.send()` is
+   literally `send_many([m])[0]`, so an unconditional prefetch would put a bulk
+   query on the path of every single-message send in the codebase — every XRAS
+   activation notice.
+5. **`--occurrence` shipped as a real flag** (commit 6a) rather than "temporarily
+   widen a constant", which the doc had left open. Honored only under `--force`,
+   where the ledger key is already `M`-prefixed and cannot claim a scheduled slot.
+6. **`_drop_already_notified` tolerates `ledger=None`.** Found by a test:
+   `Notifier(ledger=None)` is a documented configuration and the pre-filter
+   crashed on it. It now falls through, matching `_pre_transport_guard`.
+7. **`tests/factories/projects.py` gained `make_panel` / `make_allocation_type`**
+   and `make_project(facility_name=...)`. Facility scoping is load-bearing here
+   (§ 12 item 3) and was untestable: a factory project has `allocation_type_id`
+   NULL and is invisible to every facility-scoped query, which reads as a broken
+   query rather than missing fixture data.
+8. **`test_task_expiration_notices.py` pins its occurrence in 2033.** The
+   obfuscated snapshot holds ~22,000 real allocations ending up to 2030-12-31; a
+   2026 occurrence selects ~800 of them, drowning the fixtures and taking the
+   module from 2 seconds to 2 minutes.
+
+Confirmed *not* a deviation: `tests/unit/test_expiration_notices.py` passes
+**unmodified** across commit 4's extraction — its key assertion is
+`startswith`/`endswith`, so the rung label slots in transparently. That is the
+proof the move was pure.
 
 ## Context
 
@@ -104,7 +149,7 @@ cleanly, because `execute()` is not touched at all.
 
 - **`open_sam()`** — connects or raises `SamConnectionError`. Holds the caching.
 - **`require_sam()`** — a thin CLI wrapper that prints the red message and exits 1,
-  behaviourally identical to before for every subcommand.
+  behaviorally identical to before for every subcommand.
 
 `cli/tasks/commands.py` passes **`open_sam`**, so a SAM outage now fails the one task
 that wanted the session — recorded `failed` with the error in `detail` — and the
@@ -479,10 +524,19 @@ WHERE a.deleted = 0 AND a.end_date >= CURDATE()
 GROUP BY d ORDER BY projects DESC LIMIT 5;
 ```
 
-Then drive the task at an occurrence 33–40 days ahead of that date. `--run` uses the
-wall clock, so the practical options are to temporarily widen `LOOKAHEAD` for the test
-or to add a hidden `--occurrence` override — **decide which before starting**, and
-record in this doc which week was exercised and how many messages it produced.
+Then drive the task at an occurrence 33–40 days ahead of that date. **Settled and
+built: `--occurrence` is a real flag** (commit 6a), not a temporary constant edit:
+
+```bash
+sam-admin tasks --run expiration_notices --force --occurrence 2026-11-23T09:00
+```
+
+It is honored only alongside `--force`, where the ledger key is `M`-prefixed and
+so cannot satisfy or displace a real scheduled slot. Record below which week was
+exercised and how many messages it produced.
+
+> **Phase V results: not yet run.** Fill in the exercised week, the message count
+> and the wall-clock throughput here when it is.
 
 ### ⚠️ Two hard preconditions
 
@@ -731,15 +785,26 @@ Phase V. Both need MCP tools this session did not have — see *Verification too
   `Task.long_running` already exists and is unused (`registry.py:70`). Not built here;
   the drift test and a comment naming the reason are the interim.
 
-## Open questions for whoever picks this up
+## Open questions
 
 1. When is the ladder worth enabling? The weekly cadence already supports it — 7-day
    bands tile exactly — so it is a product decision, not an engineering one: do PIs
    want a 60/30/7 sequence, or is one notice at ~35 days the right amount of mail?
    Enabling it multiplies steady-state volume by roughly the number of rungs.
+   **Mechanically it is now a one-tuple edit** to `MILESTONES` in
+   `sam/queries/expiration_notices.py`, with no key migration and no forced
+   re-notify; `TestTheLadderTiles` exercises a synthetic three-rung configuration.
 2. Phase V's measured throughput decides whether `expected_runtime=20min` is right.
    Size it against a **loaded** week (~535 at peak), not a quiet one. Record the
-   number here once known.
-3. `sam/queries/expiration_notices.py` is the weakest naming call in this plan —
-   it builds rather than queries. `sam/notifications/expiration.py` is defensible.
-   It must not go inside `sam/notify/`.
+   number here once known. **Still open.**
+3. ~~`sam/queries/expiration_notices.py` is the weakest naming call in this plan.~~
+   **Settled**: it stays in `sam/queries/`, beside `expirations.py` whose exact
+   tuple it consumes and `notifications.py` which reads back what it caused. It is
+   deliberately **not** exported from `sam/queries/__init__.py`, which imports its
+   submodules eagerly — listing it would put `sam.notify.base` into the import
+   graph of every `from sam.queries import ...`.
+4. **When can the legacy-key bridge go?** After one full cycle, at which point
+   every live key carries a rung label. `legacy_dedup_key()` and the second half
+   of the key list in `_drop_already_notified` are the only things to delete; the
+   pre-filter itself is permanent. Phase V is where the bridge gets its only test
+   against genuine pre-refactor rows.
