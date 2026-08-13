@@ -13,7 +13,8 @@ from .models import (
     LoginNodeStatus,
     QueueStatus,
     UserProjQueueStatus,
-    SystemOutage, ResourceReservation
+    SystemOutage, ResourceReservation,
+    TaskRun,
 )
 from .cli import main
 
@@ -47,6 +48,9 @@ __all__ = [
     'UserProjQueueStatus',
     'SystemOutage',
     'ResourceReservation',
+
+    # Scheduled tasks
+    'TaskRun',
 
     # CLI
     'main',
