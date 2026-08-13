@@ -31,6 +31,7 @@ from sam.schemas.forms import (
 from sam.queries.dashboard import get_project_dashboard_data
 from sam.queries.expirations import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
 from sam.queries.lookups import find_project_by_code, get_user_group_access
+from sam.queries.notifications import get_expiration_notice_status
 from webapp.auth.models import AuthUser
 from sam.core.users import User
 from webapp.utils.rbac import (
@@ -401,6 +402,18 @@ def _build_expiration_project_data(expiring_results: List[Tuple]) -> List[Dict]:
             project_data = get_project_dashboard_data(db.session, project.projcode)
             if project_data:
                 projects_data.append(project_data)
+
+    # ONE bulk query for the whole page, outside the loop above — which is
+    # already N+1 on get_project_dashboard_data and does not need a second
+    # per-project round trip stapled to it.
+    #
+    # The key is set ONLY here, and for every project on the page including
+    # the never-notified ones. `render_project_card` is shared with the user
+    # dashboard, which never sets it, so the badge is absent there by
+    # construction rather than by a permission check that could be forgotten.
+    notices = get_expiration_notice_status(db.session, sorted(seen_projcodes))
+    for project_data in projects_data:
+        project_data['notification'] = notices[project_data['project'].projcode]
 
     return projects_data
 
