@@ -24,6 +24,20 @@ CONFIG_URL = '/admin/htmx/configuration'
 _KEY_SEQ = itertools.count(1)
 
 
+def _card(html, title='Scheduled tasks'):
+    """Just this tile's markup, bounded by the next card's header.
+
+    Deliberately NOT `html[html.index(title):][:3000]`: a fixed character
+    window silently absorbs whichever card happens to follow, so the tile
+    order on the Configuration tab becomes load-bearing for assertions that
+    have nothing to do with it. Every card opens with an `<h5><i class="fas`,
+    which is the boundary.
+    """
+    section = html[html.index(title):]
+    nxt = section.find('<h5><i class="fas')
+    return section if nxt == -1 else section[:nxt]
+
+
 def _make_task_run(session, *, task_name='cleanup_status_snapshots',
                    state='succeeded', trigger_type='schedule', age=None,
                    heartbeat_age=None, runner_id='samuel-tasks-0-aaaaa'):
@@ -86,17 +100,16 @@ class TestTheKillSwitchWarning:
     def test_a_disabled_task_is_called_out(self, auth_client, monkeypatch):
         monkeypatch.setenv('SAM_TASKS_DISABLED', 'cleanup_status_snapshots')
         html = auth_client.get(CONFIG_URL).get_data(as_text=True)
-        section = html[html.index('Scheduled tasks'):]
-        assert 'Disabled' in section[:3000], \
+        section = _card(html)
+        assert 'Disabled' in section, \
             'a kill-switched dispatcher must not look healthy'
-        assert 'alert-warning' in section[:3000]
+        assert 'alert-warning' in section
 
     def test_no_warning_when_nothing_is_disabled(self, auth_client,
                                                  monkeypatch):
         monkeypatch.delenv('SAM_TASKS_DISABLED', raising=False)
         html = auth_client.get(CONFIG_URL).get_data(as_text=True)
-        section = html[html.index('Scheduled tasks'):]
-        assert 'Disabled:' not in section[:3000]
+        assert 'Disabled:' not in _card(html)
 
     def test_the_switch_is_read_through_the_dispatchers_own_accessor(
             self, monkeypatch):
@@ -114,15 +127,13 @@ class TestTheStaleAlert:
         _make_task_run(status_session, state='running',
                        age=timedelta(hours=6), heartbeat_age=timedelta(hours=6))
         html = auth_client.get(CONFIG_URL).get_data(as_text=True)
-        section = html[html.index('Scheduled tasks'):]
-        assert 'stuck in' in section[:4000]
+        assert 'stuck in' in _card(html)
 
     def test_no_alert_when_everything_finished(self, auth_client,
                                                status_session):
         _make_task_run(status_session, state='succeeded')
         html = auth_client.get(CONFIG_URL).get_data(as_text=True)
-        section = html[html.index('Scheduled tasks'):]
-        assert 'stuck in' not in section[:4000]
+        assert 'stuck in' not in _card(html)
 
 
 class TestTheCounts:
