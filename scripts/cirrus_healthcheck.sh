@@ -823,6 +823,136 @@ fi
 explain "Events are short-lived (~1h). 'Warning' rows are worth scanning."
 
 # ============================================================================
+section "12. Scheduled tasks (CronJob)"
+# ============================================================================
+#
+# The one workload in this release the ledger cannot report on. `task_run`
+# records *occurrences*, not wake-ups: a daily task writes one row a day while
+# the dispatcher fires hourly, and the other 23 wakes find the slot already
+# settled and write nothing. So "is the dispatcher alive?" is answerable only
+# from the CronJob object and its Jobs — which is what this section reads.
+
+if ! "${KCTL_NS[@]}" get cronjob "$TASKS_NAME" >/dev/null 2>&1; then
+    warn "CronJob '$TASKS_NAME' not found — scheduled tasks may be disabled (helm tasks.enabled=false)"
+else
+    run "${KCTL_NS[@]}" get cronjob "$TASKS_NAME"
+    CJ_JSON=$("${KCTL_NS[@]}" get cronjob "$TASKS_NAME" -o json)
+
+    CJ_SUSPEND=$(echo "$CJ_JSON" | jq -r '.spec.suspend // false')
+    CJ_SCHED=$(echo   "$CJ_JSON" | jq -r '.spec.schedule')
+    CJ_TZ=$(echo      "$CJ_JSON" | jq -r '.spec.timeZone // "(node local)"')
+    CJ_LAST=$(echo    "$CJ_JSON" | jq -r '.status.lastScheduleTime // ""')
+
+    if [[ "$CJ_SUSPEND" == "true" ]]; then
+        fail "CronJob is SUSPENDED — nothing is being dispatched at all"
+    else
+        pass "CronJob active: schedule '$CJ_SCHED' (timeZone $CJ_TZ)"
+    fi
+
+    # --- Liveness: has it actually been scheduled recently? -----------------
+    if [[ -z "$CJ_LAST" ]]; then
+        warn "no lastScheduleTime yet — the CronJob has never fired"
+    else
+        AGE_S=$(seconds_since "$CJ_LAST" || echo "")
+        if [[ -z "$AGE_S" ]]; then
+            info "lastScheduleTime $CJ_LAST (could not compute age)"
+        elif [[ "$AGE_S" -gt "$TASKS_MAX_SILENCE_S" ]]; then
+            fail "last scheduled $((AGE_S/60)) min ago (>$((TASKS_MAX_SILENCE_S/60)) min) — the dispatcher has stopped waking"
+        else
+            pass "last scheduled $((AGE_S/60)) min ago ($CJ_LAST)"
+        fi
+    fi
+    explain "This — not the task_run row count — is the dispatcher's heartbeat."
+
+    # --- Recent Jobs --------------------------------------------------------
+    echo
+    echo "  Recent Jobs (selector $TASKS_SELECTOR):"
+    run "${KCTL_NS[@]}" get jobs -l "$TASKS_SELECTOR" \
+        --sort-by=.metadata.creationTimestamp \
+        -o custom-columns='NAME:.metadata.name,SUCCEEDED:.status.succeeded,FAILED:.status.failed,START:.status.startTime,END:.status.completionTime'
+
+    JOBS_JSON=$("${KCTL_NS[@]}" get jobs -l "$TASKS_SELECTOR" -o json 2>/dev/null || echo '{"items":[]}')
+    N_JOBS=$(echo   "$JOBS_JSON" | jq '[.items[]] | length')
+    N_FAILED=$(echo "$JOBS_JSON" | jq '[.items[] | select((.status.failed // 0) > 0)] | length')
+
+    if [[ "$N_JOBS" -eq 0 ]]; then
+        warn "no Jobs retained — either none has run, or history limits pruned them"
+    elif [[ "$N_FAILED" -gt 0 ]]; then
+        fail "$N_FAILED of $N_JOBS retained Job(s) failed — inspect with 'kubectl logs job/<name>'"
+    else
+        pass "$N_JOBS retained Job(s), none failed"
+    fi
+    explain "backoffLimit is 0, so a failed dispatch means a failed Job, retained by failedJobsHistoryLimit."
+
+    # --- The image invariant, verified LIVE ---------------------------------
+    #
+    # The CronJob renders .Values.webapp.container.image — the SAME key the
+    # Deployment uses — so CI's one sed pins both. helm/tests/ guards that at
+    # render time; this guards the DEPLOYED state, where a partial sync or a
+    # hand-edit could still split them. A unique sha- tag is also what makes
+    # imagePullPolicy: IfNotPresent safe.
+    CJ_IMG=$(echo "$CJ_JSON" | jq -r '.spec.jobTemplate.spec.template.spec.containers[0].image')
+    WEB_IMG=$("${KCTL_NS[@]}" get deploy "$WEBAPP_NAME" \
+              -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo "")
+    echo
+    info "CronJob image:  $CJ_IMG"
+    info "webapp image:   ${WEB_IMG:-<not found>}"
+    if [[ -n "$WEB_IMG" && "$CJ_IMG" == "$WEB_IMG" ]]; then
+        pass "dispatcher and webapp run the SAME image"
+    elif [[ -n "$WEB_IMG" ]]; then
+        fail "image drift — the dispatcher is running different code from the webapp"
+    fi
+    if [[ "$CJ_IMG" == *":main" || "$CJ_IMG" == *":latest" ]]; then
+        fail "image is a MOVING tag ($CJ_IMG) — with imagePullPolicy IfNotPresent a node serves its cached layer for ever"
+    else
+        pass "image is pinned, not a moving tag"
+    fi
+
+    # --- The kill switch, on BOTH workloads ---------------------------------
+    #
+    # SAM_TASKS_DISABLED is declared once (helm tasks.env) and consumed twice:
+    # the CronJob OBEYS it, the webapp's Admin -> Configuration card REPORTS it.
+    # They shipped out of sync once — the card rendered a kill-switched
+    # dispatcher as perfectly healthy — so compare the deployed values.
+    CJ_SW=$(echo "$CJ_JSON" | jq -r '
+        .spec.jobTemplate.spec.template.spec.containers[0].env[]?
+        | select(.name=="SAM_TASKS_DISABLED") | .value // ""' | head -1)
+    WEB_SW=$("${KCTL_NS[@]}" get deploy "$WEBAPP_NAME" -o json 2>/dev/null | jq -r '
+        .spec.template.spec.containers[0].env[]?
+        | select(.name=="SAM_TASKS_DISABLED") | .value // ""' | head -1)
+    echo
+    if [[ -n "$CJ_SW" ]]; then
+        warn "kill switch ACTIVE on the dispatcher: '$CJ_SW' — these tasks wake and do nothing"
+    else
+        info "kill switch not set — every registered task may run"
+    fi
+    if [[ "$CJ_SW" == "$WEB_SW" ]]; then
+        pass "webapp agrees (admin card will report it correctly)"
+    else
+        fail "MISMATCH — dispatcher='$CJ_SW' webapp='$WEB_SW'; the admin card will misreport the kill switch"
+    fi
+
+    # --- Last dispatch stdout ----------------------------------------------
+    #
+    # The CronJob is log-scraped: `sam-admin --format json tasks` must emit a
+    # clean envelope. A stray print to stdout broke this once already.
+    LAST_JOB=$(echo "$JOBS_JSON" | jq -r '[.items[]] | sort_by(.metadata.creationTimestamp) | last | .metadata.name // ""')
+    if [[ -n "$LAST_JOB" ]]; then
+        echo
+        echo "  Last dispatch stdout ($LAST_JOB):"
+        LOGS=$("${KCTL_NS[@]}" logs "job/$LAST_JOB" --tail=40 2>/dev/null || echo "")
+        echo "$LOGS" | sed 's/^/    /'
+        if [[ -z "$LOGS" ]]; then
+            warn "no logs retained for $LAST_JOB"
+        elif echo "$LOGS" | jq -e . >/dev/null 2>&1; then
+            pass "dispatch output parses as JSON"
+        else
+            fail "dispatch output is NOT valid JSON — something is printing to stdout ahead of the envelope"
+        fi
+    fi
+fi
+
+# ============================================================================
 section "Summary"
 # ============================================================================
 

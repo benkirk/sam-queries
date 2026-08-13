@@ -1028,11 +1028,19 @@ The `main` → CI → `cirrus` → ArgoCD path is the only route
    and write nothing. That is the dedup constraint working, not a broken
    dispatcher.
 
-   So hourly liveness comes from the **Job objects and their stdout**
-   (`successfulJobsHistoryLimit: 3`), not from row count:
+   So hourly liveness comes from the **CronJob object and its Jobs**, not from
+   row count. The scripted form is now
+   `scripts/cirrus_healthcheck.sh` § 12, which is the preferred route because
+   it also cross-checks the image pin and the kill switch across both
+   workloads. By hand:
    ```bash
-   kubectl get jobs -l app.kubernetes.io/component=tasks   # ~24/day
-   sam-admin tasks --history                                # ~1 skipped row/day
+   # ⚠️ The selector is `app=samuel-tasks` (helm tasks.name). An earlier draft
+   # of this document said `app.kubernetes.io/component=tasks`, which the chart
+   # never sets — it matches nothing and reads as "the dispatcher never fired",
+   # the exact false alarm this step exists to avoid.
+   kubectl -n sam-queries get cronjob samuel-tasks       # lastScheduleTime is the heartbeat
+   kubectl -n sam-queries get jobs -l app=samuel-tasks   # ~24/day
+   sam-admin tasks --history                             # ~1 skipped row/day
    ```
    The admin card's **"Last recorded run"** is deliberately named for the same
    reason: it is `max(claimed_at)`, so during this soak it legitimately reads
