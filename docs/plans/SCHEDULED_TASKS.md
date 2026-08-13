@@ -788,7 +788,16 @@ already leans on CIRRUS's stdout retention for audit records, see
 `AUDIT_LOG_STDOUT`); and a failed Job object retained by
 `failedJobsHistoryLimit: 5`.
 
-**Tier 1 — ~60 lines, later, and worth it.** A read-only "Scheduled tasks" card on
+**Tier 1 — planned in its own document: `SCHEDULED_TASKS_DASHBOARD.md`.** The
+"~60 lines" below turned out to be wrong: this is the *third* instance of a shape
+the codebase already has twice (XRAS actions, notifications), so it starts by
+extracting a faceted-log facade. That document also records two decisions that
+**supersede the text below** — the details page is `VIEW_SYSTEM_CONFIG` with only
+the traceback-bearing modal at `SYSTEM_ADMIN`, and the page reaches full parity
+with the Notifications one (facet chips, pagination, modal). The original
+sketch:
+
+A read-only "Scheduled tasks" card on
 the Admin → Configuration tab, copying the **Notifications card** exactly
 (`templates/dashboards/admin/fragments/configuration_card.html:266-341`): body
 gated on `VIEW_SYSTEM_CONFIG` showing **counts only**, with a `Details »` link
