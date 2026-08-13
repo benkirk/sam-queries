@@ -6,8 +6,8 @@ next reader can verify rather than re-derive.
 
 | | |
 |---|---|
-| **Done** | The `open_sam` / `require_sam` split (see *Prerequisite, done*). Commits 1–10, plus a new commit 6a (`--occurrence`). Suite green at **6,856 passed, 42 skipped, 1 xfailed**; `helm/tests/test-cronjob-render.sh` OK. |
-| **Outstanding** | **Phase V** (needs a session with Google MCP) and the **browser smoke** in commit 9 (needs Playwright). Neither can run without those tools — see *Verification tooling*. |
+| **Done** | The `open_sam` / `require_sam` split (see *Prerequisite, done*). Commits 1–10, plus a new commit 6a (`--occurrence`). Suite green at **6,856 passed, 42 skipped, 1 xfailed**; `helm/tests/test-cronjob-render.sh` OK. **Phase V run 2026-08-13** — 824 messages in 163 s, 0 failures, redirect verified across the whole population; see *Phase V results*. |
+| **Outstanding** | The **browser smoke** in commit 9 (needs Playwright — this session had Google MCP instead), and the **legacy-key bridge**, which the dev clone could not exercise because its `notification_log` was empty. |
 
 ## Deviations, as built
 
@@ -535,8 +535,124 @@ It is honored only alongside `--force`, where the ledger key is `M`-prefixed and
 so cannot satisfy or displace a real scheduled slot. Record below which week was
 exercised and how many messages it produced.
 
-> **Phase V results: not yet run.** Fill in the exercised week, the message count
-> and the wall-clock throughput here when it is.
+### Phase V results — run 2026-08-13, against the 3306 dev clone
+
+All runs redirected to one mailbox. Occurrences driven with `--occurrence`.
+
+| Occurrence | projects | selected | suppressed | sent | wall clock |
+|---|---|---|---|---|---|
+| 2027-10-04 (1-project probe) | 1 | 3 | 0 | 3 | 1.4 s |
+| **2026-11-23 (loaded)** | **212** | **824** | 0 | **824** | **163 s** |
+| 2026-11-30 (the week after) | 212 | 824 | **823** | **1** | 14.5 s |
+| 2027-11-01 (empty band) | 0 | 0 | 0 | 0 | 0.5 s |
+
+**Throughput: ~5.05 messages/second**, 824 messages in 163 s, 0 failures.
+
+**The volume model above understated the peak.** It predicted ~535 by reasoning
+about a 7-day *newly-entering* band; the shipped single rung spans the whole
+40-day runway, so a loaded run catches **two** month-end clusters (Nov 30 and
+Dec 31) — 824 messages, not 535. The cap at 2500 is still ~3× headroom, and
+`expected_runtime=20 min` is still right: actual worst case is ~3 minutes, and
+20 min is barely above the 16.7 min floor that keeps the lease above
+`activeDeadlineSeconds`. Nothing to change; the *reasoning* in that section
+needs the correction, not the numbers it drove.
+
+**The pre-filter, measured.** The 2026-11-30 run is the whole argument in one
+line: 824 selected, 823 dropped before the framework saw them, and
+`notification_log` went 827 → **828**. Without it that row count would have
+gone to 1,651 — and that is one week. It also made the run 11× faster.
+
+**"0 sent" is legibly two different things**, exactly as § Risks required:
+2026-11-30 reports `selected: 824, suppressed: 823`; 2027-11-01 reports
+`selected: 0`. Same headline, unmistakable in `detail`.
+
+### ⚠️ The relay defers hard after a burst — measured
+
+SAM's side of all 829 messages completed cleanly: every one got a `250` from
+`ndir.ucar.edu` and a `sent`/`redirected` ledger row, `failed = 0`,
+`queued_stuck = 0`.
+
+**Onward delivery is a different story.** The first ~15 minutes' worth arrived
+promptly; the rest queued. Fifteen minutes after the run, the 824-run's own
+summary (handed off 16:30:36), the next-Monday notice and summary (16:33), the
+quiet-week summary (16:33) and a deliberate one-off probe (16:36) had all still
+not arrived — while the backlog continued to trickle in **out of `Date` order**,
+which is the tell that this is a queue draining rather than messages lost.
+
+The cutoff is temporal, not per-kind: the 16:26 summary rendered from the
+identical template arrived immediately. So this is the receiving side
+rate-limiting a sender that just pushed 824 messages at **one** mailbox, with
+`ndir` queueing and retrying behind it.
+
+Two consequences worth keeping:
+
+- **It is largely an artifact of the redirect.** In production those 824
+  messages go to ~689 distinct addresses across many domains, so per-recipient
+  and per-sender-pair limits do not concentrate the way they do when everything
+  lands on one Gmail account. Do not size production expectations from this.
+- **But "the task succeeded" genuinely does not mean "the mail arrived."** The
+  ledger records handoff to the relay, which is the most it can honestly know.
+  The per-run summary inherits that limit — and, being sent *last*, it is the
+  message most likely to be stuck behind the batch it describes. An operator
+  waiting on the summary as proof a run worked may wait a long time; the ledger
+  and `sam-admin tasks --history` are the faster answer.
+
+### Commit 9's data path, against the real rows
+
+Not the browser smoke (that still needs Playwright), but the query behind it,
+run against the 828 rows Phase V produced:
+
+- `get_expiration_notice_status()` over **214 projcodes in 97 ms** — one bulk
+  query for a whole page, which is what commit 9 promised.
+- Every entry carried the right `delivered_count`; `fmt.ago` rendered
+  `'8 minutes'` from the returned timedelta.
+- A projcode with no notices returned the full never-notified shape, so the
+  template's three states are all reachable.
+- Admin card: `redirected 828, sent 5, failed 0, queued_stuck 0`.
+
+### What Phase V could NOT verify
+
+- **The legacy-key bridge.** `notification_log` in this clone was **empty** (0
+  rows) before these runs — Ben's pre-refactor manual sends are not in it. The
+  overlap cohort the bridge exists for does not exist here, so the bridge is
+  covered only by its unit test. **Recorded as untested against real data**,
+  per this section's own instruction not to record a pass.
+- **Final inbox reconciliation.** 829 messages were handed to the relay; the
+  tail was still draining when the session ended. What *was* confirmed in the
+  mailbox: correct `To:`, `X-SAM-Original-To` present and differing, the
+  redirect banner in both MIME parts, a UNIV and a WNA sample each carrying
+  matching text and HTML variants, and SPF/DKIM/DMARC all passing.
+- **Deliverability to real PIs**, obviously — every message was redirected.
+
+### ⚠️ Two defects in the recipe below, found by running it
+
+1. **V2 blocks V3.** `NOTIFY_TRANSPORT=null` still writes ledger rows, and with
+   `NOTIFY_REDIRECT_TO` set their status is **`redirected`** — a *suppressing*
+   status. So the null-transport rehearsal silently suppresses the real send it
+   is meant to precede, and V3 reports `audience: 0` for reasons that look like
+   a bug. Worse, the dedup key has no occurrence in it, so choosing a different
+   `--occurrence` does not help: the same project + end date mints the same key.
+   Either run V2 against a *different* cohort than V3, or delete its rows
+   (`DELETE FROM notification_log WHERE requested_by='task:expiration_notices'`)
+   before V3.
+2. **"No message may lack `X-SAM-Original-To`" is too broad.** The per-run
+   summary is addressed to the redirect target itself, so `resolve_recipient`
+   correctly no-ops and the header is absent. The assertion must be scoped to
+   `kind='expiration'`.
+
+Both are recipe bugs, not product bugs. The far stronger form of the safety
+check turned out to be **in the ledger, not the headers** — it covers the whole
+population rather than a sample:
+
+```sql
+SELECT COUNT(DISTINCT recipient)                    -- must be 1
+     , COUNT(DISTINCT intended_recipient)           -- how many real people were spared
+     , SUM(intended_recipient IS NULL)              -- must be 0: redirect not applied
+     , SUM(recipient = intended_recipient)          -- must be 0: escaped to its subject
+FROM notification_log WHERE kind='expiration';
+```
+
+Measured on the 2026-11-23 run: `1, 689, 0, 0`.
 
 ### ⚠️ Two hard preconditions
 
