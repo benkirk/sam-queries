@@ -94,31 +94,64 @@ reasoning is worth keeping because it inverts several of this plan's other decis
 **42%** of months and on **Friday 14%** — and a 600-recipient notice sent Friday
 morning is read Monday anyway, with any replies landing while the sender is away.
 
-**Weekly is strictly better on four axes**, measured rather than assumed:
+**Weekly is better on three axes:**
 
 | | first weekday of month | `Weekly(0, 9, 0)` |
 |---|---|---|
 | Day of week | Mon 42%, Fri 14% | always Monday |
 | Gap between runs | 28–33 days | 7 days |
-| Messages per run | ~600 burst | ~600 once, then **~105** |
 | A missed run | loses a whole month | self-healing — see below |
 
 - **Self-healing.** With a 40-day band and 7-day runs, one expiration is selected on
   **5–6 consecutive runs**. Any single skipped or failed week is recovered by the next
-  one, with dedup preventing a double-send. This is what retires the "monthly means one
-  shot" risk entirely, and it makes federal-holiday Mondays (~5–6 a year) a non-issue.
+  one, with dedup preventing a double-send. This retires the "monthly means one shot"
+  risk entirely, and makes federal-holiday Mondays (~5–6 a year) a non-issue.
 - **It deletes a commit.** `Weekly(weekday=0, hour, minute, tz)` already exists
   (`schedules.py:248-273`). No new predicate, no weekend-rollover rule, no DST test
   matrix, no argument about `_MAX_LOOKBACK_DAYS`.
-- **Steady-state volume drops ~6×.** The batching work in commits 1–3 is still right —
-  for the first run, and for the future 2000+ outage-subscription consumer — but it
-  stops being the load-bearing risk it was under a monthly burst.
+- **Each run is bounded to at most one month-end cluster** (see below). A monthly
+  cadence, whose newly-selected band is 28–35 days wide, can catch two.
 
-**The cost, and it is real:** roughly 85% of each week's selection has already been
-notified. The task therefore **must drop suppressed messages itself** rather than
-letting `Notifier` record them — see commit 6 step 3. Left to the framework, 48
-near-no-op weeks a year would each write ~500 `suppressed` rows: ~26,000 rows a year
-polluting `notification_log`, the new badge, and the admin Notifications card.
+### Volume does NOT smooth — end dates are spiky
+
+An earlier draft of this plan claimed weekly cadence would cut per-run volume ~6×, to
+~105. **That was wrong**, and it was wrong because it assumed expirations are spread
+evenly across the calendar. They are not. Measured against the obfuscated snapshot:
+
+- **97% of allocations end on the last day of a month** (21,524 of 22,204).
+- Months are themselves clustered: **September 6,575** (federal FY end), **December
+  3,535** (calendar year), and a July/August bulge of 1,950/1,875.
+
+Because a weekly run only sends to the cohort *newly* entering the 40-day window — a
+7-day band, `[run+33, run+40)` — and month-ends are ~30 days apart, **each run catches
+at most one cluster, and most runs catch none.** A full year of Mondays, UNIV+WNA,
+active projects:
+
+| | emails |
+|---|---|
+| Loaded runs | **12 a year**, one per month-end |
+| Peak | **535** (2026-11-23, catching the Dec 31 cluster) |
+| Typical loaded run | ~250 |
+| The other ~40 runs | 0–15 |
+
+Sanity check against reality: simulating Ben's actual early-August 2026 run at the
+CLI's 32-day window yields **471 recipients**, matching his recollection of 500–600.
+
+Three consequences, all load-bearing:
+
+1. **The batching work in commits 1–3 stays fully justified.** Peak per-run volume is
+   ~535 — essentially unchanged from today. Weekly moved the burst; it did not remove it.
+2. **`SAM_TASKS_EMAIL_MAX = 2500` is a sane guard** — ~4.7× the measured peak. Far
+   enough above normal operation never to fire, close enough to catch an
+   order-of-magnitude selection bug.
+3. **Phase V must be timed to hit a loaded week**, or it validates nothing. See there.
+
+**And the cost of the quiet weeks:** on a loaded run roughly 85% of the *selection* is
+already-notified, and on a quiet run essentially all of it is. The task therefore
+**must drop suppressed messages itself** rather than letting `Notifier` record them —
+see commit 6 step 3. Left to the framework, the ~40 quiet weeks a year would each
+write hundreds of `suppressed` rows — tens of thousands annually — polluting
+`notification_log`, the new badge, and the admin Notifications card.
 
 ### The ladder, shipped inert
 
@@ -368,6 +401,28 @@ expiration list already in it. This is the step that proves templates, audience,
 throughput, chunking and the summary email with real mail in a real inbox. Ben has a
 skip-mailbox filter set up for the volume.
 
+### ⚠️ Pick a loaded week, or this proves nothing
+
+Expirations cluster on month-ends, so ~40 of 52 Mondays send 0–15 emails. Running
+Phase V on one of those exercises the query and the ledger and **nothing else** — no
+chunking, no throughput, no realistic summary email.
+
+Before running, find a date whose `[run+33, run+40)` band contains a month-end cluster:
+
+```sql
+SELECT DATE(a.end_date) d, COUNT(DISTINCT p.project_id) projects
+FROM allocation a
+  JOIN account ac ON ac.account_id = a.account_id
+  JOIN project p  ON p.project_id = ac.project_id AND p.active = 1
+WHERE a.deleted = 0 AND a.end_date >= CURDATE()
+GROUP BY d ORDER BY projects DESC LIMIT 5;
+```
+
+Then drive the task at an occurrence 33–40 days ahead of that date. `--run` uses the
+wall clock, so the practical options are to temporarily widen `LOOKAHEAD` for the test
+or to add a hidden `--occurrence` override — **decide which before starting**, and
+record in this doc which week was exercised and how many messages it produced.
+
 ### ⚠️ Two hard preconditions
 
 1. **`NOTIFY_REDIRECT_TO` must be set.** The dev DB at **3306 holds real production
@@ -547,12 +602,19 @@ absent on the user dashboard.
   early, those recipients get one duplicate notice. Not harmful, but it will be
   noticed. Keep it until one full cycle has run.
 - **`partial` → exit 2 → a red Job on one bounced address.** A hard bounce somewhere
-  in ~600 first-run recipients is likely, and a CronJob that goes red trains people to
-  ignore it. Weekly makes this *more* frequent than monthly would have, which cuts both
-  ways: more chances to go red, but a red week is also cheap because the next run
-  self-heals. Ship strictly as the framework intends; if red becomes routine, add a
+  in a ~250–535 loaded run is likely, and a CronJob that goes red trains people to
+  ignore it. Because volume is spiky, this concentrates on the 12 loaded runs a year —
+  the quiet weeks will be reliably green, which makes a red one *more* informative, not
+  less. Ship strictly as the framework intends; if red becomes routine, add a
   failure-rate threshold in the task rather than weakening `TaskResult`. The summary
   email softens it — Ben learns of failures by mail regardless of Job color.
+- **A quiet week can mask a broken selection.** ~40 runs a year legitimately send
+  nothing, so "0 emails, succeeded" is the *normal* result and cannot be distinguished
+  from a query that silently stopped matching. The `detail` must therefore always carry
+  the window bounds and the pre-filter counts (selected / suppressed / sent), so a run
+  that selected 0 rows is visibly different from one that selected 300 and suppressed
+  them all. Worth a glance at the summary email's numbers after any change to the
+  window or facility scoping.
 - **Modifying a just-shipped framework.** `sam/notify/` has an import-graph gate and
   its own suite; commits 1–3 must be additive with defaults reproducing current
   behavior exactly.
@@ -568,8 +630,8 @@ absent on the user dashboard.
    want a 60/30/7 sequence, or is one notice at ~35 days the right amount of mail?
    Enabling it multiplies steady-state volume by roughly the number of rungs.
 2. Phase V's measured throughput decides whether `expected_runtime=20min` is right.
-   Note Phase V measures the **first-run burst** (~600), not steady state (~105), which
-   is the correct thing to size the lease against. Record the number here once known.
+   Size it against a **loaded** week (~535 at peak), not a quiet one. Record the
+   number here once known.
 3. `sam/queries/expiration_notices.py` is the weakest naming call in this plan —
    it builds rather than queries. `sam/notifications/expiration.py` is defensible.
    It must not go inside `sam/notify/`.
