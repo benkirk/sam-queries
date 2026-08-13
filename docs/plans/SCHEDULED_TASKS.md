@@ -1,7 +1,11 @@
 # Scheduled tasks: a ledger-backed dispatcher
 
-**Status: PROPOSED.** Drafted 2026-08-09, revised 2026-08-12. No code has been
-written.
+**Status: P0–P4 BUILT** (PR #444, 2026-08-12). Drafted 2026-08-09, revised
+2026-08-12. **P5** (clearing the production kill switch) and the § 12 stacked PR
+remain open; § 9's watchdog and admin card and § 10's daemon are still *later*.
+
+Where the build deviated from this document, the section says so — see § 3.1's
+*as settled* block, § 4.2 on `trigger_type`, and § 15.
 
 SAM has periodic work and no in-cluster place to run it. `helm/templates/` holds
 eight templates and no Job, CronJob, ConfigMap, or ServiceAccount. Everything
@@ -27,7 +31,8 @@ constraint.
 | **`hpc-writer` gained DDL on `sam`** (2026-08-10, no `DROP` — `docs/plans/implemented/DBA_PRIVILEGE_REQUEST.md`) | A new SAM table is no longer a DBA round-trip. This reopened "where does the ledger live"; § 4.1 still chooses `system_status`, for reasons now about *testing* rather than privileges. |
 | **The notification framework landed** (`src/sam/notify/`, `notification_log`) | Four of the old § 12's eight expiration-email preconditions are closed and a fifth is moot. Expiration notices become **the first consumer, shipped as a stacked PR** (§ 12). The proposed `notification_sent` table and its Alembic `0007` are deleted. |
 | **The old § 14.6 was wrong** | It claimed a `values.yaml`-only commit to `main` would not reach `cirrus`. It does — § 13. The two-commit kill-switch soak works as written. |
-| **The cleanup script is a draft, not a spec** (§ 3.1) | The first draft read as a *port* checklist. `scripts/cleanup_status_data.py` has three commits, no tests, no scheduler, and logic five months older than the span refactor it would now silently break. § 3.1 is rewritten as an agenda P0 must settle, with a recommendation per item. Retention still defaults to a year, which dissolves what the first draft called "the single most likely operational surprise in the whole plan". |
+| **The cleanup script is a draft, not a spec** (§ 3.1) | The first draft read as a *port* checklist. `scripts/cleanup_status_data.py` has three commits, no tests, no scheduler, and logic five months older than the span refactor it would now silently break. § 3.1 became an agenda, and the sprint settled all five items — including a **correction** to this plan's own span/CASCADE claim. Retention defaults to a year, which dissolves what the first draft called "the single most likely operational surprise in the whole plan". |
+| **CIRRUS runs k8s v1.35.6** (verified 2026-08-12) | § 14's one genuine open item — whether `.spec.timeZone` (k8s ≥1.25, GA 1.27) is supported — is closed. The field is still `{{- with }}`-gated, but as belt-and-braces rather than as a risk. |
 
 ---
 
@@ -35,12 +40,12 @@ constraint.
 
 | Phase | Ships | Touches k8s? |
 |---|---|---|
-| **P0** | Preconditions: settle the § 3.1 retention agenda and land it as `system_status/retention.py`; lazy SAM connect in `sam-admin` | no |
-| **P1** | `src/scheduling/schedules.py` — pure predicate vocabulary + unit tests | no |
-| **P2** | Alembic `0006_task_run`, `TaskRun` model, `ledger.py` | no |
-| **P3** | Registry, `run_due()`, `cleanup_status_snapshots`, `sam-admin tasks` | no |
-| **P4** | `helm/templates/cronjob-tasks.yaml` + render test, Docker Desktop validation | yes |
-| **P5** | Production enable: ship kill-switched, soak, remove the kill switch | yes |
+| **P0** ✅ | Preconditions: settled the § 3.1 retention agenda, landed `system_status/retention.py`; lazy SAM connect in `sam-admin` | no |
+| **P1** ✅ | `src/scheduling/schedules.py` — pure predicate vocabulary + unit tests | no |
+| **P2** ✅ | Alembic `0006_task_run`, `TaskRun` model, `ledger.py` | no |
+| **P3** ✅ | Registry, `run_due()`, `cleanup_status_snapshots`, `sam-admin tasks` | no |
+| **P4** ✅ | `helm/templates/cronjob-tasks.yaml` + render test | yes |
+| **P5** | Production enable: **the chart already ships kill-switched**, so this is the soak plus a one-line commit clearing `SAM_TASKS_DISABLED` | yes |
 | **stacked PR** | Expiration notices — the first real consumer (§ 12) | no |
 | *later* | Watchdog task, admin card (§ 9), daemon (§ 10) | no |
 
@@ -198,26 +203,64 @@ anyone has enumerated them — and then decide what the task should do.
 | `.count()` then `.delete()` per table; the entire body is `print()` | Two scans per table, and the script itself prints a warning for the case where the two disagree. A task needs a return value and a logger, so the I/O layer is a rewrite either way. |
 
 The CASCADE row is the reason this section exists. It is invisible unless someone
-is told to look, and the previous draft of this plan told them the opposite.
+is told to look, and the first draft of this plan told them the opposite.
 
-**The agenda P0 must settle.** Each carries this plan's recommendation, so the
-sprint can disagree deliberately rather than inherit by default:
+⚠️ **But see the correction below** — the hazard is real and the blast radius is
+much smaller than that row implies. Read both before acting on either.
 
-1. **Delete, or downsample?** *Recommend delete.* Rollups of old snapshots are a
-   legitimate feature and a different plan; coupling the dispatcher's first task
-   to one is scope creep.
-2. **Do outages and reservations belong in this task at all?** *Recommend no* —
-   snapshot tables only. Deleting a curated incident record on a snapshot horizon
-   is a decision nobody has made, and it does not have to be made now.
-3. **What horizon, per table?** *Recommend measuring first* — row counts and the
-   oldest `timestamp` per table on `csg-postgres` — then setting numbers. The
-   tables have wildly different row rates; one number for all of them is a
-   starting position, not an answer.
-4. **How are spans pruned?** *Recommend an explicit predicate on `last_seen`*,
-   not inherited CASCADE. Whatever is decided, write it into the task's docstring.
-5. **What is the contract?** A counts dict returned (not printed), `cutoff=` and
-   `session=` injected, `dry_run` deleting nothing, bounded `chunk_size` batches.
-   The task needs all of that regardless of how 1–4 land.
+#### The agenda, as settled (2026-08-12)
+
+All five were decided during the implementation sprint and are **built**.
+
+1. **Delete, or downsample?** → **Delete.** Rollups of old snapshots are a
+   legitimate feature and a different plan.
+2. **Do outages and reservations belong in this task?** → **No.** Snapshot tables
+   only. `system_outages` and `resource_reservations` are curated,
+   human-authored incident records; a scheduled job does not delete hand-written
+   history. `tests/unit/test_status_retention.py` asserts both survive a prune,
+   `end_time IS NULL` rows included.
+3. **What horizon, per table?** → **One global 365-day knob**;
+   `RETENTION_DAYS = {}` stays empty. `csg-postgres` was not reachable from the
+   sprint, and a guessed per-table number that looks authoritative is worse than
+   one obvious global. The first production run's `deleted` breakdown is the
+   measurement. (Local MySQL, ~277k rows, is a smoke target and not a sizing
+   sample: it holds **zero** `user_proj_queue_status` rows.)
+4. **How are spans pruned?** → **The CASCADE *semantic* is kept; the CASCADE
+   *mechanism* is not.** See the correction below.
+5. **What is the contract?** → Built as specified: `{table: rows}` returned,
+   `cutoff=`/`session=` injected, `dry_run`, bounded `chunk_size`, `logging`
+   rather than `print`.
+
+#### Correction: the span hazard is bounded by days, not years
+
+The CASCADE row above says "a span first seen 400 days ago and extended
+yesterday **dies with its parent**". True in principle. Its **probability is
+essentially zero**, and the first draft of this section did not say so.
+
+A span is not a job. It is a run of *unchanging counters* for one
+`(user, project_code, queue)` tuple, and `user_proj_queue_ingest.py:137-158`
+extends one only when the tuple was present at the **immediately preceding
+tick** with all ten counters identical — never across a gap of more than
+`MAX_SPAN_GAP` (20 minutes, `:38`). So a span's length is bounded by how long a
+user's queue footprint stays perfectly static, which walltime bounds to days. A
+365-day span would need ~115,000 consecutive identical ticks.
+
+At a 365-day horizon, therefore, the only spans a CASCADE prune could lose are
+ones straddling a cutoff that is itself a year old. Nothing recent is at risk.
+
+**The mechanism still had to go, for a different reason: it is untestable
+here.** Nothing in this repo sets `PRAGMA foreign_keys=ON`, so SQLite — the
+entire status test tier — does not enforce `ondelete='CASCADE'` at all, and a
+bulk `query.delete()` bypasses SQLAlchemy's ORM-level `cascade='all,
+delete-orphan'` too. Relying on CASCADE would mean the behaviour under test and
+the behaviour in production were different mechanisms.
+
+`timestamp` **is** the span's first_seen, so an explicit
+`DELETE ... WHERE timestamp < cutoff` reproduces the documented semantic
+exactly, portably — and additionally reaps spans whose parent FKs are both
+NULL, which CASCADE never could. `SNAPSHOT_TABLES` is hand-ordered
+children-before-parents so the result never depends on FK enforcement, and a
+test pins that ordering.
 
 **What is already decided, and stands.** The policy lives in exactly one place —
 a new `src/system_status/retention.py`, which is also where `cleanup_old_data()`
@@ -317,7 +360,7 @@ FK-free, carrying a generic `entity_type`/`entity_id` instead.
 | `task_name` | `String(64)` | no | registry key, e.g. `cleanup_status_snapshots` |
 | `occurrence_key` | `String(24)` | no | `20260810T081500Z`, or `M20260809T143002Z` for a forced run (§ 7) |
 | `state` | `String(16)` | no | `running` / `succeeded` / `partial` / `failed` / `skipped` |
-| `trigger` | `String(16)` | no | `schedule` / `catchup` / `manual` |
+| `trigger_type` | `String(16)` | no | `schedule` / `catchup` / `manual`. **Renamed from `trigger` during the build** — that is a reserved word in both MySQL and Postgres. SQLAlchemy quotes it, so the app worked, but `SELECT task_name, state, trigger FROM task_run` fails with a syntax error naming the wrong token, and hand-written SQL against this table is a first-class use case. The JSON wire format keeps `trigger`. |
 | `attempt` | `SmallInteger` | no | default 1; bumped only by a stale reclaim |
 | `claimed_at` | `DateTime` | no | naive UTC |
 | `heartbeat_at` | `DateTime` | no | naive UTC; the lease |
@@ -985,7 +1028,24 @@ is this fact in?"* is answered in § 4.1 with a reason that will still hold in a
 year, and *"the first production DELETE is unbounded"* is dissolved by the 365-day
 default in § 3.1. A third was simply wrong and is corrected in § 13 step 3.
 
-One genuine open item remains: **CronJob `.spec.timeZone` requires k8s ≥ 1.25
-(GA 1.27)** and the CIRRUS version has not been verified. The field is
-`{{- with }}`-gated so it can be dropped via `tasks.timeZone: ""`, but confirm
-before P4.
+The last open item is **closed**: `.spec.timeZone` requires k8s ≥ 1.25 (GA
+1.27), and CIRRUS/nwc1 runs **v1.35.6** (verified 2026-08-12). The field stays
+`{{- with }}`-gated so `tasks.timeZone: ""` can drop it, but as belt-and-braces.
+
+---
+
+## 15. Deviations, as built (P0–P4, PR #444)
+
+Where the implementation departed from this document. Everything else was built
+as written.
+
+| Deviation | Why |
+|---|---|
+| **`task_run.trigger` → `trigger_type`** (§ 4.2) | Reserved word in MySQL *and* Postgres. Found by running the plan's own "read the ledger at 09:00" workflow against a real database and getting a syntax error. Free now; a migration after prod. |
+| **Spans pruned by an explicit `timestamp < cutoff` DELETE, not CASCADE** (§ 3.1) | Same semantic, but CASCADE is unenforceable on SQLite (no `PRAGMA foreign_keys`) and bypassed by bulk `delete()`, so the tested mechanism and the production one would have differed. |
+| **`Hourly` takes no `tz`** (§ 2.2 said every constructor takes one) | It computes on the UTC clock. Every zone SAM uses is a whole-hour offset so the instants are identical, while a local-wall hourly schedule loses a slot each fall. It *refuses* a `tz` rather than ignoring one. |
+| **`run_due` checks the ledger before checking lateness** (§ 5's order) | A daily 02:15 task with a 6 h grace is "late" for eighteen hours a day. Checking lateness first declared a misfire — and re-walked the backfill — on every dispatch from 15:07 for a slot that had already succeeded that morning. Caught by a test. |
+| **`sam-admin tasks` is one command with mode flags**, not three command classes (§ 7) | Matches `xras`, the newest sibling, and `cmds/admin.py` has no nested groups. `src/cli/README.md` allows either. |
+| **`make helm-test` globs `helm/tests/*.sh`** (§ 13 suggested the target; CI named one script) | Naming scripts individually is how the second render test gets written and then silently never runs. |
+| **A stdout `print` had to be removed first** (not in the plan at all) | `system_status.session` printed a redacted connection string at import, which corrupted every `--format json` envelope. The CronJob is log-scraped, so this was a hard blocker. |
+| **Per-table `RETENTION_DAYS` left empty** (§ 3.1 item 3 wanted numbers) | `csg-postgres` was not reachable. The mechanism is built and tested; the first production run's `deleted` breakdown is the measurement. |
