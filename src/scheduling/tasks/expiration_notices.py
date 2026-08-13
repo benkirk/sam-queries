@@ -240,6 +240,8 @@ def expiration_notices(ctx) -> TaskResult:
 
     # 2. Guards, before any transport is touched.
     if not notifier.config.enabled:
+        # No summary either: there is no working mailer to send it with, and
+        # `preview`-ing one into the log would only look like it went.
         raise NotificationsDisabled(
             'NOTIFY_ENABLED is false; refusing to run a task whose only '
             'purpose is to send mail. Check the CronJob env — it does not '
@@ -247,16 +249,14 @@ def expiration_notices(ctx) -> TaskResult:
 
     cap = email_max()
     if len(messages) > cap:
-        raise EmailCapExceeded(
-            f'audience of {len(messages)} exceeds SAM_TASKS_EMAIL_MAX={cap}; '
-            f'nothing was sent',
-            audience=len(messages), cap=cap)
-
-    if not messages:
-        ctx.logger.info('nothing to notify (selected %d, suppressed %d)',
-                        selected_count, suppressed_count)
-        return TaskResult(detail={**detail, 'sent': 0, 'failed': 0},
-                          message=f'0 sent ({suppressed_count} already notified)')
+        reason = (f'audience of {len(messages)} exceeds '
+                  f'SAM_TASKS_EMAIL_MAX={cap}; nothing was sent')
+        # ⚠️ The summary goes out BEFORE the raise. Otherwise the one run Ben
+        # most needs to hear about is the only one that emails him nothing —
+        # he would learn of it as a red Job with no explanation attached.
+        _send_summary(notifier, ctx, detail=detail, messages=messages,
+                      failures=[], aborted=True, abort_reason=reason)
+        raise EmailCapExceeded(reason, audience=len(messages), cap=cap)
 
     # 3. Send.
     if ctx.dry_run:
@@ -264,13 +264,20 @@ def expiration_notices(ctx) -> TaskResult:
             notifier.preview(message)       # writes NO ledger row
         ctx.logger.info('dry run: %d message(s) rendered, none sent',
                         len(messages))
+        # No summary: a dry run must write no ledger rows at all, and a
+        # summary is a real message with a real row.
         return TaskResult(detail={**detail, 'sent': 0, 'failed': 0,
                                   'dry_run': True},
                           message=f'{len(messages)} previewed, none sent')
 
-    ctx.logger.info('sending %d message(s) to %d project(s)',
-                    len(messages), len(projcodes))
-    results = notifier.send_many(messages, chunk_size=SEND_CHUNK)
+    if messages:
+        ctx.logger.info('sending %d message(s) to %d project(s)',
+                        len(messages), len(projcodes))
+        results = notifier.send_many(messages, chunk_size=SEND_CHUNK)
+    else:
+        ctx.logger.info('nothing to notify (selected %d, suppressed %d)',
+                        selected_count, suppressed_count)
+        results = []
 
     failed = [r for r in results if not r.ok]
     sent = [r for r in results if r.status in ('sent', 'redirected')]
@@ -279,6 +286,12 @@ def expiration_notices(ctx) -> TaskResult:
         'failed': len(failed),
         'failed_recipients': [r.recipient for r in failed[:_MAX_REPORTED_FAILURES]],
     })
+
+    # Sent on the quiet weeks too. A summary that only arrived when there was
+    # mail would make "no summary" mean both "nothing was due" and "the task
+    # never ran", which is exactly the ambiguity it exists to remove.
+    _send_summary(notifier, ctx, detail=detail, messages=messages,
+                  failures=failed)
 
     return TaskResult(
         detail=detail,
@@ -289,6 +302,79 @@ def expiration_notices(ctx) -> TaskResult:
         # quiet weeks stay reliably green, which makes a red one MORE
         # informative rather than less.
         partial_failures=len(failed))
+
+
+def summary_recipient(env: Optional[dict] = None) -> str:
+    """Where the per-run summary goes, from ``$SAM_TASKS_SUMMARY_TO``.
+
+    Empty means "do not send one" — a legitimate configuration, and the
+    default, so a developer running the task locally does not mail anyone.
+    """
+    return ((env or os.environ).get('SAM_TASKS_SUMMARY_TO') or '').strip()
+
+
+def _send_summary(notifier, ctx, *, detail: dict, messages: List,
+                  failures: List, aborted: bool = False,
+                  abort_reason: Optional[str] = None) -> None:
+    """Mail one operator a report of this run. Never raises.
+
+    ⚠️ **A failure here must not fail the run.** By the time this is called
+    the real mail has already gone out, and turning "the summary bounced"
+    into a `failed` task would misreport several hundred successful
+    deliveries — and, on the next dispatch, invite a re-run of them.
+
+    The dedup key is the *occurrence*, so a reclaimed or manually re-run slot
+    does not send a second summary. `--force` still overrides, as everywhere.
+    """
+    from sam.notify import Message, Recipient
+
+    recipient = summary_recipient()
+    if not recipient:
+        ctx.logger.info('SAM_TASKS_SUMMARY_TO is unset; no run summary sent')
+        return
+
+    per_project: dict = {}
+    for message in messages:
+        if message.projcode:
+            per_project[message.projcode] = per_project.get(message.projcode, 0) + 1
+
+    if aborted:
+        headline = 'ABORTED — nothing sent'
+    elif detail.get('failed'):
+        headline = (f"{detail.get('sent', 0)} sent, "
+                    f"{detail['failed']} FAILED")
+    elif detail.get('sent'):
+        headline = f"{detail['sent']} sent to {len(per_project)} project(s)"
+    else:
+        headline = f"nothing due ({detail.get('suppressed', 0)} already notified)"
+
+    try:
+        notifier.send(Message(
+            kind='task_summary',
+            recipient=Recipient(recipient, name='SAM operator', role='admin'),
+            subject=f'[SAM] {ctx.task_name}: {headline}',
+            context={
+                'task_name': ctx.task_name,
+                'occurrence': ctx.occurrence.isoformat(),
+                'headline': headline,
+                'aborted': aborted,
+                'abort_reason': abort_reason,
+                'per_project': [{'projcode': code, 'count': count}
+                                for code, count in sorted(per_project.items())],
+                'failures': [{'recipient': r.recipient,
+                              'detail': r.detail or '(no detail)'}
+                             for r in failures],
+                **detail,
+            },
+            # Keyed on the occurrence, not the clock: a reclaimed run filling
+            # the same slot reports once.
+            dedup_key=f'task_summary:{ctx.task_name}:{ctx.occurrence_key}'
+                      f':{recipient}',
+            requested_by=f'task:{ctx.task_name}',
+        ))
+    except Exception:
+        ctx.logger.exception(
+            'run summary could not be sent; the run itself is unaffected')
 
 
 def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
@@ -315,7 +401,11 @@ def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
     """
     from sam.queries.expiration_notices import legacy_dedup_key
 
-    if not messages:
+    if not messages or ledger is None:
+        # `Notifier(ledger=None)` is a documented configuration ("record
+        # nothing"). It cannot answer the suppression question, so nothing is
+        # dropped — and `_pre_transport_guard` will not suppress either, which
+        # keeps the two layers agreeing about what no-ledger means.
         return messages, 0
 
     legacy = {}

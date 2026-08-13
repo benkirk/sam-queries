@@ -127,6 +127,23 @@ NOTIFICATION_KINDS: Mapping[str, NotificationKind] = _by_key(
         default_subscribed=True,
         facility_aware=False,
     ),
+    # The only kind addressed to an OPERATOR rather than a PI, and the only
+    # one about the system rather than about a project. It exists because a
+    # scheduled send is otherwise invisible: a red Kubernetes Job says
+    # something went wrong and nothing about what, and a green one says
+    # nothing at all — including on the ~40 weeks a year that legitimately
+    # send no mail, where "green and silent" is indistinguishable from a
+    # query that stopped matching.
+    NotificationKind(
+        key='task_summary',
+        label='Scheduled task run summary',
+        template_base='task_summary',
+        # Transactional in the same sense as the rest: the operator asked for
+        # this by scheduling the task.
+        default_subscribed=True,
+        # Not about a project, so it has no facility to vary on.
+        facility_aware=False,
+    ),
 )
 
 

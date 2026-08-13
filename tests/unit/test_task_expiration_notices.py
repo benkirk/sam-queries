@@ -30,7 +30,7 @@ from sam.notify import NotifyConfig, Notifier, NullTransport
 from sam.notify.ledger import NotificationLedger
 from sam.queries.expiration_notices import Milestone, legacy_dedup_key
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import Weekly
+from scheduling.schedules import Weekly, occurrence_key
 from scheduling.tasks import expiration_notices as mod
 
 pytestmark = pytest.mark.unit
@@ -91,7 +91,11 @@ def ctx(session):
         import logging
         return TaskContext(now=occurrence + lateness,
                            occurrence=occurrence,
-                           occurrence_key='K', task_name=NAME,
+                           # Derived, not a literal: the summary's dedup key
+                           # is built from it, so a constant would make two
+                           # different slots look like one re-run.
+                           occurrence_key=occurrence_key(occurrence),
+                           task_name=NAME,
                            dry_run=dry_run,
                            logger=logging.getLogger('test'),
                            _sam_session=session)
@@ -478,6 +482,23 @@ class TestTheLegacyKeyBridge:
         assert result.detail['suppressed'] == 1
         assert transport.delivered == []
 
+    def test_a_notifier_without_a_ledger_drops_nothing(self, session, ctx,
+                                                       monkeypatch):
+        """`Notifier(ledger=None)` is a documented configuration ("record
+        nothing"). It cannot answer the suppression question, so the
+        pre-filter must fall through rather than crash — and
+        `_pre_transport_guard` will not suppress either, so the two layers
+        agree about what no-ledger means."""
+        transport = NullTransport()
+        monkeypatch.setattr('sam.notify.Notifier', lambda **_: Notifier(
+            config=NotifyConfig(enabled=True), transport=transport,
+            ledger=None))
+        _expiring(session, days=35)
+
+        result = mod.expiration_notices(ctx())
+        assert result.detail['suppressed'] == 0
+        assert result.detail['sent'] == 1
+
     def test_an_unrelated_legacy_key_does_not_suppress(self, session, wire,
                                                        ctx, transport):
         project = _expiring(session, days=35)
@@ -510,6 +531,153 @@ class TestDryRun:
         _expiring(session, days=35)
         mod.expiration_notices(ctx(dry_run=True))
         assert mod.expiration_notices(ctx()).detail['sent'] == 1
+
+
+class TestTheRunSummary:
+    """One operator email per run, whatever the outcome.
+
+    A red Kubernetes Job says something went wrong and nothing about what; a
+    green one says nothing at all — including on the ~40 weeks a year that
+    legitimately send no mail, where "green and silent" is indistinguishable
+    from a query that stopped matching.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _to(self, monkeypatch):
+        monkeypatch.setenv('SAM_TASKS_SUMMARY_TO', 'ops@example.edu')
+
+    @staticmethod
+    def _summary(transport):
+        return [m for m, _ in transport.delivered if m.kind == 'task_summary']
+
+    def test_one_summary_per_run(self, session, wire, ctx, transport):
+        _expiring(session, days=35)
+        mod.expiration_notices(ctx())
+        assert len(self._summary(transport)) == 1
+
+    def test_it_reports_the_counts(self, session, wire, ctx, transport):
+        _expiring(session, days=35)
+        mod.expiration_notices(ctx())
+        summary, = self._summary(transport)
+        assert summary.context['sent'] == 1
+        assert summary.context['selected'] == 1
+        assert summary.context['suppressed'] == 0
+        assert summary.context['window_start'] == START.isoformat()
+
+    def test_a_quiet_week_still_gets_one(self, session, wire, ctx, transport):
+        """"No summary" must not mean both "nothing was due" and "the task
+        never ran" — that is the ambiguity it exists to remove."""
+        result = mod.expiration_notices(ctx())
+        assert result.detail['audience'] == 0
+        summary, = self._summary(transport)
+        assert 'nothing due' in summary.subject
+
+    def test_the_cap_trip_is_summarised_before_the_raise(self, monkeypatch,
+                                                         session, wire, ctx,
+                                                         transport):
+        """⚠️ Otherwise the one run Ben most needs to hear about is the only
+        one that emails him nothing — he learns of it as a red Job with no
+        explanation attached."""
+        monkeypatch.setenv('SAM_TASKS_EMAIL_MAX', '1')
+        _expiring(session, days=35)
+        _expiring(session, days=35, email='pi2@example.edu')
+
+        with pytest.raises(mod.EmailCapExceeded):
+            mod.expiration_notices(ctx())
+
+        summary, = self._summary(transport)
+        assert summary.context['aborted'] is True
+        assert 'exceeds SAM_TASKS_EMAIL_MAX' in summary.context['abort_reason']
+        assert 'ABORTED' in summary.subject
+        # ...and still nothing else went out.
+        assert len(transport.delivered) == 1
+
+    def test_failures_are_itemised(self, session, wire, ctx, ledger,
+                                   monkeypatch):
+        from sam.notify import TransportError
+
+        class BouncesTheNotice(NullTransport):
+            def deliver(self, message, rendered):
+                if message.kind == 'expiration':
+                    raise TransportError('550 mailbox unavailable')
+                return super().deliver(message, rendered)
+
+        bouncing = BouncesTheNotice()
+        monkeypatch.setattr('sam.notify.Notifier', lambda **_: Notifier(
+            config=NotifyConfig(enabled=True), transport=bouncing,
+            ledger=ledger))
+        _expiring(session, days=35)
+
+        result = mod.expiration_notices(ctx())
+
+        assert result.partial_failures == 1
+        summary, = [m for m, _ in bouncing.delivered
+                    if m.kind == 'task_summary']
+        assert summary.context['failures'][0]['recipient'] == 'pi@example.edu'
+        assert '550' in summary.context['failures'][0]['detail']
+        assert 'FAILED' in summary.subject
+
+    def test_per_project_recipient_counts_are_included(self, session, wire,
+                                                       ctx, transport):
+        _expiring(session, days=35, email='a@example.edu')
+        _expiring(session, days=35, email='b@example.edu')
+        mod.expiration_notices(ctx())
+        summary, = self._summary(transport)
+        assert len(summary.context['per_project']) == 2
+        assert all(row['count'] == 1 for row in summary.context['per_project'])
+
+    def test_it_is_keyed_on_the_occurrence_not_the_clock(self, session, wire,
+                                                        ctx, transport):
+        """A reclaimed run filling the same slot reports once."""
+        _expiring(session, days=35)
+        mod.expiration_notices(ctx())
+        mod.expiration_notices(ctx())
+        assert len(self._summary(transport)) == 1
+
+    def test_a_different_occurrence_gets_its_own_summary(self, session, wire,
+                                                         ctx, transport):
+        _expiring(session, days=35)
+        mod.expiration_notices(ctx())
+        mod.expiration_notices(ctx(OCC + timedelta(days=7)))
+        assert len(self._summary(transport)) == 2
+
+    def test_an_unset_recipient_sends_nothing(self, monkeypatch, session,
+                                              wire, ctx, transport):
+        """The default, so a developer running the task locally mails no one."""
+        monkeypatch.delenv('SAM_TASKS_SUMMARY_TO')
+        _expiring(session, days=35)
+        mod.expiration_notices(ctx())
+        assert self._summary(transport) == []
+
+    def test_a_dry_run_sends_no_summary(self, session, wire, ctx, transport):
+        """A dry run must write no ledger rows at all, and a summary is a real
+        message with a real row."""
+        _expiring(session, days=35)
+        mod.expiration_notices(ctx(dry_run=True))
+        assert self._summary(transport) == []
+
+    def test_a_broken_summary_does_not_fail_the_run(self, session, wire, ctx,
+                                                    ledger, monkeypatch,
+                                                    caplog):
+        """By this point the real mail has gone out. Turning "the summary
+        bounced" into a failed task would misreport several hundred
+        successful deliveries and invite a re-run of them."""
+        transport = NullTransport()
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=transport, ledger=ledger)
+        monkeypatch.setattr('sam.notify.Notifier', lambda **_: notifier)
+        _expiring(session, days=35)
+
+        def explode(message, **kwargs):
+            if message.kind == 'task_summary':
+                raise RuntimeError('renderer fell over')
+            return Notifier.send(notifier, message, **kwargs)
+        monkeypatch.setattr(notifier, 'send', explode)
+
+        result = mod.expiration_notices(ctx())
+
+        assert result.detail['sent'] == 1
+        assert 'run summary could not be sent' in caplog.text
 
 
 class TestItWritesNothingToStdout:

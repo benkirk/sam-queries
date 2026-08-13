@@ -1,0 +1,38 @@
+{{ task_name }} — {{ headline }}
+
+Occurrence:  {{ occurrence }}
+Window:      {{ window_start }} to {{ window_end }}
+Milestones:  {{ milestones | join(', ') }}
+{% if aborted %}
+*** THIS RUN SENT NOTHING ***
+
+{{ abort_reason }}
+{% endif %}
+Counts
+------
+  Selected            {{ selected }}   (allocations matching the window)
+  Already notified    {{ suppressed }}
+  Audience            {{ audience }}   (messages this run intended to send)
+  Sent                {{ sent }}
+  Failed              {{ failed }}
+  Projects            {{ projects }}
+{% if per_project %}
+Recipients by project
+---------------------
+{% for row in per_project %}  {{ '%-12s' | format(row.projcode) }}{{ row.count }}
+{% endfor %}
+{% endif %}
+{%- if failures %}
+Failures
+--------
+{% for f in failures %}  {{ f.recipient }}
+    {{ f.detail }}
+{% endfor %}
+{% else %}
+No delivery failures.
+{% endif %}
+--
+Automated summary from the NSF NCAR Systems Accounting Manager task
+dispatcher. It is sent once per run of {{ task_name }}, whatever the outcome
+— a quiet week reporting zero is the expected result roughly 40 weeks a year,
+and is only distinguishable from a broken query by the Selected count above.
