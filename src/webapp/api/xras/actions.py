@@ -104,7 +104,7 @@ _REQUEST_NUMBER_WIDTH = 30
 #: ``requestNumber`` — and an audit write that 500s is what ``_fit`` exists to prevent.
 _PROJCODE_RESULT_WIDTH = 30
 #: ``xras_action_log.processed_by`` is ``varchar(35)`` — ``users.username`` width. The
-#: slice lives here rather than at the four ``replay.py`` call sites that used to carry
+#: slice lives here rather than at the four ``recheck.py`` call sites that used to carry
 #: it: a width guard belongs next to the column it guards, or the fifth caller misses it.
 _PROCESSED_BY_WIDTH = 35
 #: ``service`` holds one of ``sam.xras.dispatch.SERVICES``; ``outcome_reason`` holds a
@@ -258,8 +258,8 @@ def _record(*, status, raw_payload, action_type=None, request_number=None,
     whatever transaction the handler runs in. Returns the id rather than the instance
     because the instance detaches when the session closes.
 
-    ``remote_actor`` / ``source_action_id`` / ``processed_by`` exist for the replay path
-    (``webapp/api/xras/replay.py``), which deliberately routes through *this* helper
+    ``remote_actor`` / ``source_action_id`` / ``processed_by`` exist for the re-check path
+    (``webapp/api/xras/recheck.py``), which deliberately routes through *this* helper
     rather than its own insert: ``tests/api/test_xras_access.py``'s ``action_log``
     fixture captures rows by monkeypatching this function, so a second insert helper
     would leak committed rows into the shared xdist database.
@@ -374,8 +374,8 @@ def _parse_action(raw_payload):
     guard them. On the 400 arms there is no identity at all, and a NULL
     ``action_type`` is meaningful there: it says "we could not parse the body".
 
-    This exists because there were two copies. ``replay.py`` carried the second, and
-    it had already drifted — it never passed ``action_id``, so every replayed row
+    This exists because there were two copies. ``recheck.py`` carried the second, and
+    it had already drifted — it never passed ``action_id``, so every re-checked row
     stored NULL in the column the runbook's triage section reaches for first ("three
     posts sharing one ``action_id`` are a duplicate, not three awards"). The copy
     predated the column and nothing pointed the two at each other. One spelling now,

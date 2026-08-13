@@ -403,7 +403,7 @@ webapp:
 # duplicate dispatch a no-op, so the cron string here is arbitrary and adding
 # a task is a code change, not a chart change.
 #
-# Design + rationale: docs/plans/SCHEDULED_TASKS.md § 8.
+# Design + rationale: docs/plans/implemented/SCHEDULED_TASKS.md § 8.
 tasks:
   enabled: true
   name: samuel-tasks

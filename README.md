@@ -586,6 +586,10 @@ sam-queries/
 │   │   ├── project/             # Project commands and display functions
 │   │   ├── allocations/         # Allocation commands and display functions
 │   │   ├── accounting/          # Accounting ingest commands and display functions
+│   │   ├── awards/              # Award-search commands (NSF / USAspending)
+│   │   ├── contracts/           # Contract commands and display functions
+│   │   ├── tasks/               # Scheduled-task commands (sam-admin tasks)
+│   │   ├── xras/                # XRAS action-log commands and display functions
 │   │   └── cmds/                # Entry points (search.py, admin.py)
 │   │
 │   ├── sam_search_cli.py        # Compatibility shim (re-exports from cli.cmds.search)

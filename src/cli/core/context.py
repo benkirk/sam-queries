@@ -64,7 +64,7 @@ class Context:
         For ``sam-admin tasks --run-due``, whose only registered task prunes
         Postgres, that converted a SAM outage into a `system_status` retention
         outage: exactly the coupling the scheduled-task framework exists to
-        remove (docs/plans/SCHEDULED_TASKS.md § 3.2).
+        remove (docs/plans/implemented/SCHEDULED_TASKS.md § 3.2).
 
         ``SAMConfig.validate()`` stays in the callbacks — it is cheap, needs no
         socket, and catching a misconfiguration early is still worth it.

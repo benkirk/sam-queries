@@ -1613,9 +1613,9 @@ def xras_pending_fragment():
 # legacy-compat inbound blueprint it is.
 #
 # ⚠️ Every one of these writes runs INSIDE management_transaction, which is the
-# OPPOSITE of what webapp/api/xras/replay.py does one screen away — see the
+# OPPOSITE of what webapp/api/xras/recheck.py does one screen away — see the
 # docstrings below for why, because the difference is deliberate and a reader
-# who has just read replay.py will expect the other answer.
+# who has just read recheck.py will expect the other answer.
 # ---------------------------------------------------------------------------
 
 

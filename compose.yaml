@@ -255,9 +255,9 @@ services:
   # To start it:   docker compose --profile test up -d mysql-test
   # To stop it:    docker compose --profile test down
   #
-  # new_tests/conftest.py enforces a hard allowlist that tests will ONLY
+  # tests/conftest.py enforces a hard allowlist that tests will ONLY
   # run against this container (host 127.0.0.1, port 3307). See
-  # docs/plans/REFACTOR_TESTING.md for the full isolation design.
+  # docs/TESTING.md for the full isolation design.
   mysql-test:
     container_name: samuel-mysql-test
     profiles: [test]

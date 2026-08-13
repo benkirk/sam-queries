@@ -14,7 +14,7 @@ of them, deliberately:
 
 Nothing in this package imports Click, Flask, or `kubernetes`.
 
-Design: ``docs/plans/SCHEDULED_TASKS.md``.
+Design: ``docs/plans/implemented/SCHEDULED_TASKS.md``.
 """
 
 from scheduling.schedules import (

@@ -92,7 +92,7 @@ sam-queries/
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
 │   ├── core/                # Context, base command classes, exit codes
 │   ├── user/ project/ allocations/ accounting/   # Command + display modules
-│   ├── notifications/                            # Expiration-notice display helpers
+│   ├── awards/ contracts/ tasks/ xras/           # Command + display modules
 │   └── cmds/                # Entry points (search.py, admin.py)
 ├── src/webapp/           # Flask web application (see src/webapp/README.md)
 │   ├── api/v1/              # REST blueprints (+ legacy-compat, see §API below)

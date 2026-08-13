@@ -311,7 +311,7 @@ Python declarations in `src/scheduling/tasks/`, not chart values — adding a ta
 is a code change. A `task_run` ledger in `system_status` makes a late or
 duplicate dispatch a no-op, so the CronJob's own cron string is arbitrary.
 
-Design and rationale: `docs/plans/SCHEDULED_TASKS.md`.
+Design and rationale: `docs/plans/implemented/SCHEDULED_TASKS.md`.
 
 ```bash
 # What exists, and when each task last ran. Reads the ledger; changes nothing.

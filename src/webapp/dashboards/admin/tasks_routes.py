@@ -20,7 +20,7 @@ for that tier — so the lower tier is never offered a control that 403s.
 **Read-only.** No "run now" button: the Configuration tab is a read surface
 and ``sam-admin tasks --run`` exists.
 
-See ``docs/plans/SCHEDULED_TASKS_DASHBOARD.md``.
+See ``docs/plans/implemented/SCHEDULED_TASKS_DASHBOARD.md``.
 """
 
 import json

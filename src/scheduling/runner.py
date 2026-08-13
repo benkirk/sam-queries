@@ -11,7 +11,7 @@ makes a simulated week testable in milliseconds, and it is not a testing
 convenience bolted on — a scheduler that reads the clock in three places is a
 scheduler whose behaviour you cannot reason about.
 
-See ``docs/plans/SCHEDULED_TASKS.md`` § 5 and § 6.4.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 5 and § 6.4.
 """
 
 from __future__ import annotations

@@ -28,7 +28,7 @@ The honest cost is two ledgers in two databases — this and
 ``notification_log``. Tolerable, because they want no foreign key between them
 anyway.
 
-See ``docs/plans/SCHEDULED_TASKS.md`` § 4.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 4.
 """
 
 from sqlalchemy import Column, DateTime, Index, Integer, SmallInteger, String, Text, UniqueConstraint

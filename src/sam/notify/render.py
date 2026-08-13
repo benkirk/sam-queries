@@ -1,7 +1,8 @@
 """``TemplateRenderer`` — a standalone Jinja2 environment for notifications.
 
-Two things differ from the predecessor at
-``src/cli/notifications/email.py:32-61``, both deliberate.
+Two things differ from the predecessor — the CLI-only mailer that lived at
+``src/cli/notifications/email.py``, removed when this framework landed — and
+both are deliberate.
 
 **The facility fallback is a constant, not a filesystem trick.** Today an
 unmatched facility falls back to ``expiration.txt``, which *is*

@@ -6,7 +6,7 @@
 not take effect must not survive. A ledger row is the inverse: **mail handed
 to a relay cannot be un-sent by a rollback**, so it must survive one. Every
 method here therefore opens its own short-lived session and commits, exactly
-as ``webapp/api/xras/replay.py`` does, and never enrols in whatever
+as ``webapp/api/xras/recheck.py`` does, and never enrols in whatever
 transaction the caller is inside.
 
 The two disciplines sit two screens apart in the webapp. A reader who has

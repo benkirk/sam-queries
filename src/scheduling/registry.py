@@ -8,7 +8,7 @@ guarantees drift. Discoverability is recovered the way
 side-effect imports in ``scheduling/tasks/__init__.py``, which is the one place
 to grep for "what tasks exist".
 
-See ``docs/plans/SCHEDULED_TASKS.md`` § 6.2 and § 6.3.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 6.2 and § 6.3.
 """
 
 from __future__ import annotations

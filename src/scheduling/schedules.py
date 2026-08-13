@@ -16,7 +16,7 @@ become expressible instead of dangerous.
 reads, no I/O. Same input, same output, always.
 ``tests/unit/test_task_ledger.py`` enforces the import boundary.
 
-See ``docs/plans/SCHEDULED_TASKS.md`` § 2.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 2.
 """
 
 from __future__ import annotations

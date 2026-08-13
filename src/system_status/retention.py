@@ -9,7 +9,7 @@ This module replaces the policy that used to live inline in
 ``scripts/cleanup_status_data.py``. That script was a hastily written, rarely
 run utility — three commits, no tests, and nothing in the tree ever scheduled
 it — so it was read as *evidence about the tables* rather than as a
-specification. ``docs/plans/SCHEDULED_TASKS.md`` § 3.1 records the five
+specification. ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 3.1 records the five
 decisions that produced what is here; the four that changed behaviour are:
 
 1. **The cutoff is naive UTC.** The script used ``datetime.now()``, which is

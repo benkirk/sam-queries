@@ -8,7 +8,7 @@
 # is why the cron string below is arbitrary and why adding a task is a code
 # change rather than a chart change.
 #
-# Design: docs/plans/SCHEDULED_TASKS.md § 8.
+# Design: docs/plans/implemented/SCHEDULED_TASKS.md § 8.
 apiVersion: batch/v1
 kind: CronJob
 metadata:

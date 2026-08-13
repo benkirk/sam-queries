@@ -7,8 +7,8 @@ tables live in ``sam.integration.xras``; the wire schema lives in
 
 Nothing here imports Flask. Handlers take a ``Session`` and return a result, so
 they are exercised by unit tests directly and reached from two callers that are
-not the same: the live route (``webapp/api/xras/actions.py``) and replay
-(``webapp/api/xras/replay.py``).
+not the same: the live route (``webapp/api/xras/actions.py``) and re-check
+(``webapp/api/xras/recheck.py``).
 
 This module re-exports the **error vocabulary only**, so that importing ``sam.xras``
 costs nothing but ``errors.py``. The submodules that touch the ORM — ``extractors``,
