@@ -421,9 +421,11 @@ def non_admin_client(client, session):
 def _truncate_status_tables(db):
     """Wipe all system_status tables in dependency order.
 
-    Mirrors the iteration pattern from scripts/cleanup_status_data.py but
-    uses SQLAlchemy's `sorted_tables` so the FK ordering is automatic.
-    `reversed(sorted_tables)` deletes children before parents.
+    Uses SQLAlchemy's `sorted_tables` so the FK ordering is automatic:
+    `reversed(sorted_tables)` deletes children before parents. Unlike
+    `system_status.retention`, which carries a hand-ordered list of the
+    *snapshot* tables only, this wipes everything on the bind — including the
+    lookup and curated tables retention deliberately leaves alone.
     """
     for tbl in reversed(db.metadatas["system_status"].sorted_tables):
         db.session.execute(tbl.delete())

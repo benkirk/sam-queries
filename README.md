@@ -535,7 +535,8 @@ sam-queries/
 │   ├── gen_api_key.py           # Generate API key + bcrypt hash for collector auth
 │   ├── setup_status_db.py       # Create system_status database tables
 │   ├── test_status_db.py        # Test system_status database connection
-│   ├── cleanup_status_data.py   # Clean up old status snapshots (7-day retention)
+│   ├── cleanup_status_data.py   # Hand-run prune of old status snapshots
+│   │                            #   (policy: src/system_status/retention.py)
 │   ├── ingest_mock_status.py    # Ingest mock status data for testing
 │   └── create_status_db.sql     # SQL script for database creation
 │
