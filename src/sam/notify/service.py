@@ -102,12 +102,17 @@ class Notifier:
 
     def send_many(self, messages: Iterable[Message], *,
                   force: bool = False,
+                  chunk_size: Optional[int] = None,
                   on_result: Optional[OnResult] = None) -> List[DeliveryResult]:
-        """Send a batch on **one** transport connection.
+        """Send a batch, opening one transport connection per chunk.
 
         Args:
             messages: what to send. Each is one person's copy.
             force: skip the suppression check. The operator's escape hatch.
+            chunk_size: reconnect every this many *delivered* messages.
+                ``None`` — the default — is one chunk covering the whole
+                batch, which is byte-for-byte what this method did before
+                chunking existed. Every existing caller gets that.
             on_result: called after each message with its
                 :class:`~sam.notify.base.DeliveryResult`. This is the seam
                 that keeps ``rich`` out of ``sam/`` while the CLI keeps its
@@ -118,6 +123,20 @@ class Notifier:
             delivery failure — a failed send is a ``failed`` result, because
             a route that 500s on a relay hiccup is worse than one that says
             "nothing was sent".
+
+        **Why chunk at all.** A 500-message expiration run holds one SMTP
+        connection for its whole duration, and `ndir.ucar.edu` is entitled to
+        drop it — after which every remaining message fails with no way back,
+        because the connection is only opened once. Chunking gives the run a
+        fresh connect every ``chunk_size`` messages, so a mid-run drop costs
+        at most one chunk.
+
+        The cost is paid by a relay that is *hard* down: the batch makes
+        ``ceil(N / chunk_size)`` connect attempts instead of one, each
+        bounded by ``mail_timeout``. At 2500/250 with the default 10 s that
+        is ~100 s before the run gives up — slower than failing once, and
+        deliberately so, since the case worth optimizing is the relay that
+        comes back.
         """
         messages = list(messages)
         for message in messages:
@@ -133,32 +152,48 @@ class Notifier:
         pending = [i for i, result in enumerate(results) if result is None]
 
         if pending:
-            transport = self.transport
-            opened = False
-            try:
-                try:
-                    transport.open()
-                    opened = True
-                except TransportError as exc:
-                    # The whole batch fails identically. Record each one, so
-                    # the ledger explains every recipient rather than the
-                    # first and a silence.
-                    for i in pending:
-                        results[i] = self._record(messages[i], status='failed',
-                                                  detail=str(exc))
-                    pending = []
-
-                for i in pending:
-                    results[i] = self._deliver_one(messages[i], transport)
-            finally:
-                if opened:
-                    transport.close()
+            size = len(pending) if not chunk_size or chunk_size < 1 else chunk_size
+            for start in range(0, len(pending), size):
+                self._send_chunk(pending[start:start + size], messages, results)
 
         final = [r for r in results if r is not None]
         if on_result:
             for result in final:
                 on_result(result)
         return final
+
+    def _send_chunk(self, indices: List[int], messages: List[Message],
+                    results: List[Optional[DeliveryResult]]) -> None:
+        """Deliver one chunk on its own connection, writing into ``results``.
+
+        ⚠️ ``open()``/``close()`` and their ``try/finally`` live **inside**
+        this method rather than around the chunk loop in :meth:`send_many`.
+        A ``finally`` wrapped around the loop would leave the previous
+        chunk's connection open while the next one connected — which is the
+        connection leak chunking was supposed to avoid, arrived at by way of
+        making the code look tidier.
+        """
+        transport = self.transport
+        opened = False
+        try:
+            try:
+                transport.open()
+                opened = True
+            except TransportError as exc:
+                # This CHUNK fails identically — not the batch. Record each
+                # one, so the ledger explains every recipient rather than the
+                # first and a silence. The next chunk still gets a fresh
+                # connect, which is the whole point of the split.
+                for i in indices:
+                    results[i] = self._record(messages[i], status='failed',
+                                              detail=str(exc))
+                return
+
+            for i in indices:
+                results[i] = self._deliver_one(messages[i], transport)
+        finally:
+            if opened:
+                transport.close()
 
     # ---------------------------------------------------------------- guards
     def _pre_transport_guard(self, message: Message, *,
