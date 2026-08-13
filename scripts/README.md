@@ -46,10 +46,13 @@ cluster. All use the same idioms: colored PASS/WARN/FAIL output, exit codes
 `-n/--namespace`, `-r/--release`, `--context`, `-v/--verbose`, `-h/--help`
 flags.
 
-- **`cirrus_healthcheck.sh`** — "is the cluster healthy?" 11-section probe of
+- **`cirrus_healthcheck.sh`** — "is the cluster healthy?" 12-section probe of
   the Helm release: pods, rollout safety, Redis, resource usage, ingress/TLS,
   edge security headers, ExternalSecrets, the in-pod health endpoint, recent
-  logs, and events.
+  logs, events, and the scheduled-task CronJob. That last section is the only
+  place the dispatcher's liveness is observable — `task_run` records
+  *occurrences*, not wake-ups, so a healthy hourly dispatcher writes one row a
+  day and the row count cannot distinguish that from a dead one.
 
 - **`cirrus_weblog_audit.sh`** — "who's hitting the public site, and is anything
   abusive getting through?" Harvests the webapp's stdout (and the Redis
