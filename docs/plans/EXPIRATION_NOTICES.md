@@ -618,8 +618,14 @@ run against the 828 rows Phase V produced:
   covered only by its unit test. **Recorded as untested against real data**,
   per this section's own instruction not to record a pass.
 - **A full message-by-message inbox count.** 829 were handed to the relay and
-  the tail was still draining at session end. Everything else reconciled: see
-  below.
+  the tail was still draining at session end — 3 of the 5 summaries had arrived
+  (the 3-sent, the 824-sent and the quiet-week), with the pre-filter run's
+  "1 sent" summary and a late probe still queued. Everything that arrived
+  reconciled; see below.
+
+  Both delivered summaries render the § Risks distinction in a real inbox, not
+  just in `TaskResult`: the loaded run reports `Selected 824`, the quiet week
+  reports `Selected 0`, under the same "0 sent"-shaped headline.
 - **Deliverability to real PIs**, obviously — every message was redirected.
 
 ### ⚠️ Two defects in the recipe below, found by running it
