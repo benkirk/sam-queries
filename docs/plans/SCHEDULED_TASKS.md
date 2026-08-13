@@ -27,7 +27,7 @@ constraint.
 | **`hpc-writer` gained DDL on `sam`** (2026-08-10, no `DROP` — `docs/plans/implemented/DBA_PRIVILEGE_REQUEST.md`) | A new SAM table is no longer a DBA round-trip. This reopened "where does the ledger live"; § 4.1 still chooses `system_status`, for reasons now about *testing* rather than privileges. |
 | **The notification framework landed** (`src/sam/notify/`, `notification_log`) | Four of the old § 12's eight expiration-email preconditions are closed and a fifth is moot. Expiration notices become **the first consumer, shipped as a stacked PR** (§ 12). The proposed `notification_sent` table and its Alembic `0007` are deleted. |
 | **The old § 14.6 was wrong** | It claimed a `values.yaml`-only commit to `main` would not reach `cirrus`. It does — § 13. The two-commit kill-switch soak works as written. |
-| **Retention defaults to a year, not a week** (§ 3.1) | This dissolves what the first draft called "the single most likely operational surprise in the whole plan". |
+| **The cleanup script is a draft, not a spec** (§ 3.1) | The first draft read as a *port* checklist. `scripts/cleanup_status_data.py` has three commits, no tests, no scheduler, and logic five months older than the span refactor it would now silently break. § 3.1 is rewritten as an agenda P0 must settle, with a recommendation per item. Retention still defaults to a year, which dissolves what the first draft called "the single most likely operational surprise in the whole plan". |
 
 ---
 
@@ -35,7 +35,7 @@ constraint.
 
 | Phase | Ships | Touches k8s? |
 |---|---|---|
-| **P0** | Preconditions: `system_status/retention.py` with one knob; lazy SAM connect in `sam-admin` | no |
+| **P0** | Preconditions: settle the § 3.1 retention agenda and land it as `system_status/retention.py`; lazy SAM connect in `sam-admin` | no |
 | **P1** | `src/scheduling/schedules.py` — pure predicate vocabulary + unit tests | no |
 | **P2** | Alembic `0006_task_run`, `TaskRun` model, `ledger.py` | no |
 | **P3** | Registry, `run_due()`, `cleanup_status_snapshots`, `sam-admin tasks` | no |
@@ -171,39 +171,64 @@ inactive" bug documented in `helm/values.yaml`.
 
 ## 3. Preconditions (P0)
 
-### 3.1 Retention: one knob, defaulting to a year
+### 3.1 Retention: reevaluate the policy, then port the script
 
-`scripts/cleanup_status_data.py:44` computes `cutoff_date = datetime.now() -
-timedelta(days=retention_days)` — **local** — and compares it against
-`model_class.timestamp`, which is naive **UTC**. On a Denver host the cutoff lands
-6–7 h early. That is the small bug. Two larger ones sit underneath it.
+⚠️ **`scripts/cleanup_status_data.py` is a draft, not a specification. Do not
+port its semantics faithfully.** It arrived in the first status-dashboard PR
+(`ca47464`, #42); its last functional change was `a46de78`, a **2025-11-30**
+directory reorg. Three commits, all structural. It has no tests, and nothing in
+the tree invokes it — NRIT asked outright whether it runs in production and could
+not find a scheduler (`docs/nrit-review-2026-05/03_status.md:63`, O1 / Q15 /
+`08_action_register.md:79` P1-17). It is a hastily written, rarely run utility that has very likely never
+executed against `csg-postgres` at all.
 
-**The 7-day default is wrong for the product.** The status dashboards support long
-lookback; a week of retained history under-serves the UI that reads it.
+That matters because P0 is the moment its behavior becomes **automatic and
+nightly**. Read the script as *evidence about the tables* — it is the only place
+anyone has enumerated them — and then decide what the task should do.
 
-**And the script prunes more than snapshots.** Beyond the seven snapshot tables it
-deletes **resolved `system_outages`** and **past `resource_reservations`** at the
-same cutoff — curated records, not samples — all in one transaction. And
-`user_proj_queue_status` rows vanish transitively through `ondelete='CASCADE'` FKs
-to `derecho_status` / `casper_status`, so real delete volume is well above the
-counts the script prints.
+**What it does today, and why each part is a question rather than a given:**
 
-So the first *automated* run against a never-pruned production database would have
-been a single multi-year `DELETE` against `csg-postgres` that also destroyed years
-of outage history. **The fix is a conservative default, not a careful rollout.**
-With a 365-day cutoff only data already older than a year is in scope, a year of
-outage history survives, and narrowing later is a one-line `values.yaml` change.
+| Behavior | Why it is not settled |
+|---|---|
+| Cutoff is `datetime.now()` (`:44`), **local**, compared against `timestamp`, which is naive **UTC** (`system_status/base.py:76`) | Straight bug: 6–7 h early on a Denver host. Fix regardless of everything below. |
+| 7-day retention | Wrong for the product — the status dashboards support long lookback, so a week under-serves the UI that reads it. |
+| Prunes the seven snapshot tables **and** resolved `system_outages` **and** past `resource_reservations`, in one transaction | Those two are curated, human-authored incident records, not samples. Whether they belong in a *snapshot*-retention task is a policy question nobody has answered. |
+| Outage predicate is `status == 'resolved' AND end_time < cutoff`, but `end_time` is **nullable** (`models/outages.py:57`) | A resolved outage nobody closed out leaks forever. Meanwhile `ResourceReservation.end_time` is **NOT NULL** (`models/outages.py:111`) and is pruned with no status check at all. Two curated tables, two inconsistent, unexamined predicates. |
+| `user_proj_queue_status` prunes transitively via `ondelete='CASCADE'` to `derecho_status` / `casper_status` | **The span refactor invalidated this.** Post-#248 the parent FK points at the snapshot at *first_seen* and is never rewritten (`models/user_proj_queues.py:28-31`), so a span first seen 400 days ago and extended yesterday **dies with its parent**. A faithful port silently deletes live data. The script predates that cutover (2026-05-10) by five months. |
+| `.count()` then `.delete()` per table; the entire body is `print()` | Two scans per table, and the script itself prints a warning for the case where the two disagree. A task needs a return value and a logger, so the I/O layer is a rewrite either way. |
 
-P0 does the timezone fix, the dependency injection, and the policy move together —
-they touch the same forty lines. `cleanup_old_data()` moves out of `scripts/` into
-a new `src/system_status/retention.py`, which is also where the knob lives:
+The CASCADE row is the reason this section exists. It is invisible unless someone
+is told to look, and the previous draft of this plan told them the opposite.
+
+**The agenda P0 must settle.** Each carries this plan's recommendation, so the
+sprint can disagree deliberately rather than inherit by default:
+
+1. **Delete, or downsample?** *Recommend delete.* Rollups of old snapshots are a
+   legitimate feature and a different plan; coupling the dispatcher's first task
+   to one is scope creep.
+2. **Do outages and reservations belong in this task at all?** *Recommend no* —
+   snapshot tables only. Deleting a curated incident record on a snapshot horizon
+   is a decision nobody has made, and it does not have to be made now.
+3. **What horizon, per table?** *Recommend measuring first* — row counts and the
+   oldest `timestamp` per table on `csg-postgres` — then setting numbers. The
+   tables have wildly different row rates; one number for all of them is a
+   starting position, not an answer.
+4. **How are spans pruned?** *Recommend an explicit predicate on `last_seen`*,
+   not inherited CASCADE. Whatever is decided, write it into the task's docstring.
+5. **What is the contract?** A counts dict returned (not printed), `cutoff=` and
+   `session=` injected, `dry_run` deleting nothing, bounded `chunk_size` batches.
+   The task needs all of that regardless of how 1–4 land.
+
+**What is already decided, and stands.** The policy lives in exactly one place —
+a new `src/system_status/retention.py`, which is also where `cleanup_old_data()`
+moves:
 
 ```python
 #: The one retention knob. Overridden by $STATUS_RETENTION_DAYS.
 DEFAULT_RETENTION_DAYS = 365
 
-#: Per-table overrides — empty today, on purpose. If the outage and reservation
-#: tables should outlive the snapshots, add rows HERE, not a second constant.
+#: Per-table overrides — empty until agenda item 3 is measured. Add rows HERE,
+#: not a second constant somewhere else.
 RETENTION_DAYS: dict[str, int] = {}
 
 def cleanup_old_data(retention_days=DEFAULT_RETENTION_DAYS, dry_run=False,
@@ -212,11 +237,23 @@ def cleanup_old_data(retention_days=DEFAULT_RETENTION_DAYS, dry_run=False,
         cutoff = utcnow_naive() - timedelta(days=retention_days)
 ```
 
-Every consumer reads the constant: the script's `argparse` default, the function
-signature, the task. `scripts/cleanup_status_data.py` **stays** — it is documented
-and running it by hand is legitimate — but owns no policy, and stops being
-something a task must import across a `sys.path` hack. `chunk_size` is cheap
-insurance now rather than a mitigation: bounded batches, no long lock.
+The 365-day default is deliberately conservative. A never-pruned production
+database would otherwise meet its first automated run as a single multi-year
+`DELETE` against `csg-postgres`; at a year, only data already older than a year is
+in scope, so the hazard never arises and narrowing later is a one-line
+`values.yaml` change reviewable on its own. `chunk_size` is hygiene rather than
+mitigation: bounded batches, no long lock.
+
+Every consumer reads the constant — the script's `argparse` default, the function
+signature, the task. `scripts/cleanup_status_data.py` **stays**, because running a
+prune by hand is legitimate, but becomes a thin wrapper owning no policy, and
+stops being something a task must import across a `sys.path` hack.
+
+**Three references go stale with it**, and a P0 change should sweep them:
+`README.md:538` advertises "7-day retention"; `scripts/README.md:174,216`
+documents the script; and `tests/conftest.py:424` says its per-test cleanup
+"mirrors the iteration pattern" of the script — so it duplicates the table list
+that agenda item 2 may change.
 
 For the record: `src/sam/` imports nothing from `system_status` today. Keep it
 that way (§ 6.1).
@@ -496,6 +533,10 @@ def cleanup_status_snapshots(ctx: TaskContext) -> TaskResult:
     pruned = prune_task_runs(ctx.status_session, older_than=ctx.occurrence - timedelta(days=180))
     return TaskResult(detail={'deleted': counts, 'task_run_pruned': pruned})
 ```
+
+⚠️ The `cleanup_old_data(...)` call above is a **sketch against P0's output**, not
+a settled API — § 3.1's agenda decides which tables it touches and how spans are
+pruned, and that may change the signature.
 
 Note `cutoff = ctx.occurrence - retention`, not `now - retention`. **A task
 computes from its occurrence, never from the wall clock.** That is what makes a
@@ -856,7 +897,7 @@ cycle before anything reaches a PI.
 | Portability guard | same file | A boundary test in the style of `tests/unit/test_chart_module_boundaries.py` (AST-walks imports, including inside functions): `ledger.py` contains none of `FOR UPDATE`, `SKIP LOCKED`, `GET_LOCK`, `pg_advisory`, `ON CONFLICT`, `INSERT IGNORE`, `ON DUPLICATE KEY`; `schedules.py` imports no SQLAlchemy and no config |
 | Migration | *free* | `tests/integration/test_alembic_migrations.py` already asserts `upgrade head` matches `StatusBase.metadata` and that `head → base → head` round-trips — and *fails* if model and migration disagree, which is the point |
 | Runner | `tests/unit/test_task_runner.py` | `run_due(now=…)` takes the clock as a parameter, so: throwaway tasks against a fake registry, a simulated week → exactly 7 `succeeded` for a daily task; a simulated 3-day outage → 1 `succeeded` + 2 `skipped`; `dry_run` writes zero rows; a raising task yields `failed` with a traceback in `detail` |
-| Retention | `tests/unit/test_status_retention.py` | `cleanup_old_data(cutoff=…)` is injectable: the cutoff is honored exactly, `dry_run` deletes nothing, chunking terminates, and the default is 365 in every consumer (script, signature, task) |
+| Retention | `tests/unit/test_status_retention.py` | `cleanup_old_data(cutoff=…)` is injectable: the cutoff is honored exactly, `dry_run` deletes nothing, chunking terminates, and the default is 365 in every consumer (script, signature, task). Then one test per § 3.1 decision, so the agenda leaves evidence: **a span with `timestamp` older than the cutoff but `last_seen` inside it survives** (item 4 — this is the test that would have caught the naive port), and whichever tables item 2 excludes are asserted untouched, outage `end_time IS NULL` rows included |
 | CLI | `tests/unit/test_cli_tasks.py` | CliRunner, per `test_sam_search_cli.py`. Exit codes per mode, `kind` in every JSON envelope, mutually-exclusive-flag rejections, `--run unknown` → 1 |
 | Chart | `helm/tests/test-cronjob-render.sh` | Modeled on `test-oidc-render.sh` — same `assert_contains` helpers, same two renders |
 
