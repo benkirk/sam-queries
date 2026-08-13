@@ -31,7 +31,10 @@
             <p class="text-muted mb-0">
                 Every dispatch of every task, from the <code>task_run</code>
                 ledger. The dispatcher wakes hourly; a task runs when its own
-                schedule says the slot is due.
+                schedule says the slot is due — so a <em>daily</em> task writes
+                one row a day, and the other 23 wake-ups find the slot already
+                settled and write nothing. Gaps here are normal; this is a
+                record of occurrences, not a heartbeat for the CronJob.
             </p>
         </div>
         <a class="btn btn-outline-secondary" href="{{ url_for('admin_dashboard.projects') }}">
@@ -75,7 +78,10 @@
                     <dt>Failed</dt>      <dd>{{ summary.failed | fmt_number }}</dd>
                     <dt>Skipped</dt>     <dd>{{ summary.skipped | fmt_number }}</dd>
                     <dt>Stuck running</dt><dd>{{ summary.stale_running | fmt_number }}</dd>
-                    <dt>Last dispatch</dt>
+                    {# max(claimed_at) — see the note on the Configuration
+                       tile. A dispatch that finds nothing due writes no row,
+                       so this is not a liveness check for the CronJob. #}
+                    <dt>Last recorded run</dt>
                     <dd>{{ (summary.last_dispatch_age | fmt_ago ~ ' ago') if summary.last_dispatch_age else 'never' }}</dd>
                 </dl>
             </div>

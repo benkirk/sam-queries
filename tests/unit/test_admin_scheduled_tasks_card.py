@@ -88,6 +88,20 @@ class TestTheTileRenders:
         monkeypatch.setattr(rbac, 'has_permission', _no_system_admin)
         assert b'/admin/htmx/tasks' in auth_client.get(CONFIG_URL).data
 
+    def test_the_age_line_does_not_claim_to_be_a_dispatch_clock(
+            self, auth_client, status_session):
+        """`max(claimed_at)` is the last *recorded* run, not the last wake-up.
+
+        A dispatch that finds nothing due writes no row, so a kill-switched
+        daily task records once a day while the CronJob fires hourly. Labelled
+        "Last dispatch" that reads as a dead scheduler during a perfectly
+        healthy soak — the inverse of the failure this card exists to prevent.
+        """
+        _make_task_run(status_session, age=timedelta(hours=18))
+        section = _card(auth_client.get(CONFIG_URL).get_data(as_text=True))
+        assert 'Last recorded run' in section
+        assert 'Last dispatch' not in section
+
     def test_the_registered_task_is_named(self, auth_client):
         """The registry is read for its import side effects; if that import
         stops happening the tile silently reports zero tasks."""

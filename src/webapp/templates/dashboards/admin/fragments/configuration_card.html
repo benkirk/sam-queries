@@ -310,7 +310,13 @@
 
                     <dl class="config-stats mb-3 small">
                         {{ stat('Registered', state.scheduled_tasks.tasks | length) }}
-                        {{ stat('Last dispatch', (state.scheduled_tasks.last_dispatch_age | fmt_ago ~ ' ago') if state.scheduled_tasks.last_dispatch_age else 'never') }}
+                        {# "Recorded run", not "dispatch": this is
+                           max(claimed_at), and a dispatch that finds nothing to
+                           do writes no row. A kill-switched daily task records
+                           once a day while the dispatcher wakes hourly, so
+                           "Last dispatch: 18 hours ago" would read as a dead
+                           scheduler during a perfectly healthy soak. #}
+                        {{ stat('Last recorded run', (state.scheduled_tasks.last_dispatch_age | fmt_ago ~ ' ago') if state.scheduled_tasks.last_dispatch_age else 'never') }}
                     </dl>
 
                     {% if state.scheduled_tasks.tasks %}

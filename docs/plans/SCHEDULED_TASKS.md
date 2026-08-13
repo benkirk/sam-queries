@@ -1010,14 +1010,33 @@ task still disabled. Then drop `SAM_TASKS_DISABLED`, re-run, and confirm a
 The `main` → CI → `cirrus` → ArgoCD path is the only route
 (`docs/CIRRUS_PUBLISHING.md`); there is no direct `helm upgrade` against CIRRUS.
 
+0. **Apply Alembic `0006_task_run` to the production `system_status` database.**
+   Nothing below can write a ledger row until it exists — and the admin card
+   and its run-history page both render their "unavailable" state until then,
+   by design rather than by accident.
 1. Merge P1–P4 to `main` with `values.yaml` carrying
    **`SAM_TASKS_DISABLED: "cleanup_status_snapshots"`**. For 24 h the dispatcher
    runs hourly, writes `skipped` rows, and deletes nothing. This proves
    credentials, DNS, image, securityContext, and Postgres reachability from a pod
    that is *not* the webapp — with zero blast radius. It is the entire reason the
    kill switch exists.
-2. Verify: `sam-admin tasks --history` shows 24 `skipped` rows with distinct
-   `runner_id`s.
+2. Verify. ⚠️ **Expect ONE `skipped` row per day, not 24** — an earlier draft of
+   this step said 24 and was wrong. `_skip` records against
+   `schedule.last_occurrence(now)`, and `cleanup_status_snapshots` is
+   `Daily(2, 15)`, so all 24 hourly wake-ups map to the **same** occurrence key.
+   The first one that day wins the INSERT; the other 23 get `already_claimed`
+   and write nothing. That is the dedup constraint working, not a broken
+   dispatcher.
+
+   So hourly liveness comes from the **Job objects and their stdout**
+   (`successfulJobsHistoryLimit: 3`), not from row count:
+   ```bash
+   kubectl get jobs -l app.kubernetes.io/component=tasks   # ~24/day
+   sam-admin tasks --history                                # ~1 skipped row/day
+   ```
+   The admin card's **"Last recorded run"** is deliberately named for the same
+   reason: it is `max(claimed_at)`, so during this soak it legitimately reads
+   ~18 h old while everything is healthy.
 3. Second commit: `SAM_TASKS_DISABLED: ""`. **This works as a separate commit.**
    An earlier draft worried a values-only change might not reach `cirrus` because
    `update-helm` is gated on `webapp_built == 'true'`. That is wrong: the
