@@ -14,7 +14,7 @@ roughly monthly, producing 500–600 individual emails. Nothing schedules it, wh
 `NOTIFICATION_FRAMEWORK.md:696-701` records as deliberate: *"a scheduled sender
 wants the ledger proven first."* It is proven.
 
-This work schedules that run on the **first weekday of each month**, makes the send
+This work schedules that run **every Monday morning**, makes the send
 path survive the volume (and the 2000+ a future outage-subscription consumer would
 bring), gives Ben a per-run summary email, and surfaces "when was this last
 notified" on the admin Project Expirations cards.
@@ -35,7 +35,7 @@ caution about that paragraph; the design below does not depend on it either way.
 
 | | |
 |---|---|
-| Schedule | First weekday of month, 09:00 `America/Denver` |
+| Schedule | **Every Monday**, 09:00 `America/Denver` — `Weekly(0, 9, 0)` |
 | Lookahead window | Fixed **40 days** (not the CLI's 32) |
 | Runaway guard | `SAM_TASKS_EMAIL_MAX`, default **2500**, fail *before* sending |
 | Batching | In `sam/notify/` (`Notifier`), so future kinds inherit it |
@@ -50,15 +50,16 @@ activation notice the webapp sends.
 
 ## Overrides of § 12
 
-1. **The milestone ladder ships as machinery with a single rung** (§ 12 item 1). A
-   monthly cadence cannot hit a 7- or 1-day rung — milestones presume a more frequent
-   dispatcher — so no ladder is *acted on* yet. But the rung label goes into the dedup
-   key from day one, because adding it later would change every key and force a
-   one-time re-notify of everyone. Today's single rung reproduces current behavior
-   exactly. See *The ladder, shipped inert* below.
-2. **40-day window, not 32.** Gaps between consecutive first-weekday runs are 28–33
-   days (worst case Wed the 1st → Mon the 3rd of a 31-day month; verified by
-   enumeration 2026–2035). A 32-day window silently drops ~1 day of expirations a year.
+1. **The milestone ladder ships as machinery with a single rung** (§ 12 item 1). No
+   ladder is *acted on* yet, but the rung label goes into the dedup key from day one,
+   because adding it later would change every key and force a one-time re-notify of
+   everyone. Today's single rung reproduces current behavior. See *The ladder, shipped
+   inert* below.
+2. **40-day window, not 32.** Under a weekly cadence the window is no longer a
+   *coverage* constraint — runs are 7 days apart, so any window over 7 days tiles. It
+   is a **lead-time** choice: 40 days gives every PI a consistent 33–40 days' notice,
+   where today's monthly 32-day window gives anywhere from 1 to 32 depending on where
+   in the month the run happens to land.
 3. **Cap 2500, not 250** (§ 12 item 2). 250 is below the observed volume — as
    specified the task would fail every month.
 4. **Extract the message builder; do NOT construct a `Context`** (§ 12 item 4). See
@@ -84,10 +85,48 @@ Extraction also satisfies § 12 item 4's actual *requirement* — that the
 `json_mode and notify` guard (`commands.py:125-133`) stay a CLI-flag check — more
 cleanly, because `execute()` is not touched at all.
 
+### Why weekly, and why Monday
+
+An earlier draft used a `FirstWeekdayOfMonth` predicate. It was dropped, and the
+reasoning is worth keeping because it inverts several of this plan's other decisions.
+
+**"First weekday" is not reliably Monday.** Over 2026–2045 it lands on Monday only
+**42%** of months and on **Friday 14%** — and a 600-recipient notice sent Friday
+morning is read Monday anyway, with any replies landing while the sender is away.
+
+**Weekly is strictly better on four axes**, measured rather than assumed:
+
+| | first weekday of month | `Weekly(0, 9, 0)` |
+|---|---|---|
+| Day of week | Mon 42%, Fri 14% | always Monday |
+| Gap between runs | 28–33 days | 7 days |
+| Messages per run | ~600 burst | ~600 once, then **~105** |
+| A missed run | loses a whole month | self-healing — see below |
+
+- **Self-healing.** With a 40-day band and 7-day runs, one expiration is selected on
+  **5–6 consecutive runs**. Any single skipped or failed week is recovered by the next
+  one, with dedup preventing a double-send. This is what retires the "monthly means one
+  shot" risk entirely, and it makes federal-holiday Mondays (~5–6 a year) a non-issue.
+- **It deletes a commit.** `Weekly(weekday=0, hour, minute, tz)` already exists
+  (`schedules.py:248-273`). No new predicate, no weekend-rollover rule, no DST test
+  matrix, no argument about `_MAX_LOOKBACK_DAYS`.
+- **Steady-state volume drops ~6×.** The batching work in commits 1–3 is still right —
+  for the first run, and for the future 2000+ outage-subscription consumer — but it
+  stops being the load-bearing risk it was under a monthly burst.
+
+**The cost, and it is real:** roughly 85% of each week's selection has already been
+notified. The task therefore **must drop suppressed messages itself** rather than
+letting `Notifier` record them — see commit 6 step 3. Left to the framework, 48
+near-no-op weeks a year would each write ~500 `suppressed` rows: ~26,000 rows a year
+polluting `notification_log`, the new badge, and the admin Notifications card.
+
 ### The ladder, shipped inert
 
 A rung is a **band** of days-before-expiry, not a point. Bands tile the runway, so
-each project-expiration falls in exactly one band per run:
+each project-expiration falls in exactly one band per run — and **bands must be at
+least as wide as the gap between runs**, or expirations fall between them. That is the
+same failure mode as the 32-day window this plan already fixes, which is why a weekly
+cadence is what makes a 7-day rung expressible at all.
 
 ```python
 @dataclass(frozen=True)
@@ -96,15 +135,16 @@ class Milestone:
     lo_days: int    # inclusive
     hi_days: int    # exclusive
 
-#: Today: one rung spanning the whole 40-day runway — behaviourally identical to
-#: the current manual run. A future daily/weekly dispatcher swaps in the ladder
-#: below and needs NO key migration, because `label` is already in the key.
+#: Today: one rung spanning the whole 40-day runway — one notice per expiration,
+#: at 33-40 days out. Enabling the ladder below needs NO key migration, because
+#: `label` is already in the key.
 MILESTONES = (Milestone('expiring', 0, 40),)
 
-# Future, for reference — do not enable on a monthly cadence:
-# MILESTONES = (Milestone('60d', 45, 75),
-#               Milestone('30d', 15, 45),
-#               Milestone('7d',   0, 15))
+# Future, for reference. Bands are 7 days wide because runs are 7 days apart;
+# re-tile them if the schedule ever changes.
+# MILESTONES = (Milestone('60d', 56, 63),
+#               Milestone('30d', 28, 35),
+#               Milestone('7d',   7, 14))
 ```
 
 The task iterates rungs, querying each band's window and tagging each message with
@@ -208,7 +248,7 @@ the comments; they encode measured decisions. Ordering stays deterministic.
 the rung label: `expiration:{projcode}:{latest_expiration_date}:{milestone.label}:{recipient}`.
 `Milestone` and `MILESTONES` live in this module too — the builder is the only thing
 that needs to know a rung exists. Expose `legacy_dedup_key(...)` here as well, so the
-migration bridge in commit 7 has one place to read the old format from.
+pre-filter in commit 6 has one place to read the old format from.
 
 Because this changes the key the **CLI** writes too, `--force` semantics and the
 CLI's own suppression shift to the new format on the same commit — which is correct,
@@ -227,47 +267,21 @@ does `now = datetime.now()` at `:337`. Without it a late dispatch renders "expir
 belongs there — beside `expirations.py` whose exact tuple it consumes, and
 `notifications.py`. The one place it must **not** go is inside `sam/notify/`.
 
-### 5. `scheduling: FirstWeekdayOfMonth`
-
-`src/scheduling/schedules.py`, after `MonthlyDay`. A `_LocalWallSchedule` subclass
-overriding exactly **two** hooks — `_candidates_on` and `describe` — plus a
-`__post_init__` validating hour/minute in `Daily`'s shape (`:235-239`). Everything
-else (backward day walk, DST fold/gap, UTC canonicalization, `next_occurrence`) is
-inherited from `:142-184`.
-
-Rule: the 1st, or Monday the 2nd/3rd when the 1st is Sun/Sat.
-
-`CronExpr` cannot express this — cron ORs day-of-month against day-of-week, so
-`'0 9 1-7 * 1-5'` fires on every weekday of the first week. § 2.2 explicitly cut this
-class (*"~15 lines to add when something needs it"*); something now needs it.
-
-Inherited `_MAX_LOOKBACK_DAYS = 40` (`:132`) covers the 33-day max gap — **no base
-change** — but add a test asserting `33 < _MAX_LOOKBACK_DAYS`, since that constant's
-comment currently justifies itself by `MonthlyDay` alone.
-
-DST: gap/fold are unreachable at 09:00, but the **offset shift is observable and is
-what to test** — Oct 1 2026 09:00 MDT = 15:00Z, Nov 2 2026 09:00 MST = 16:00Z. Assert
-stability of local wall time, never of the UTC hour.
-
-Not handled, deliberately: federal holidays (Jan 1 is a first weekday in 2026/2027).
-A holiday rule needs a calendar table with no other consumer. Note it in the
-docstring so a reader knows it was considered.
-
-### 6. `scheduling: let a failing task attach its own detail to the ledger row`
+### 5. `scheduling: let a failing task attach its own detail to the ledger row`
 
 Three lines in `runner._execute`'s except branch (`:206-210`): merge a
 `getattr(exc, 'task_detail', None)` dict into `detail`. No behavior change for
 `cleanup_status`, and it is what lets the cap report `{'audience': n, 'cap': c}` as
 structured data rather than a substring of `repr(exc)`.
 
-### 7. `scheduling: monthly expiration notices`
+### 6. `scheduling: weekly expiration notices`
 
 New `src/scheduling/tasks/expiration_notices.py` **plus registration in
 `scheduling/tasks/__init__.py`** — without the side-effect import the task simply
 never runs and nothing errors.
 
 ```python
-@task(name='expiration_notices', schedule=FirstWeekdayOfMonth(9, 0, tz='America/Denver'),
+@task(name='expiration_notices', schedule=Weekly(0, 9, 0, tz='America/Denver'),  # Mon 09:00
       needs=('sam', 'status'),
       expected_runtime=timedelta(minutes=20),   # lease sizing, see below
       misfire_grace=timedelta(hours=24),
@@ -293,9 +307,17 @@ Body, in order:
    requested_by='task:expiration_notices')`, then concatenate.
    `getpass.getuser()` in this pod is the runtime UID or a `KeyError` — either way a
    lie in a column the admin card renders as "who asked".
-   Then apply the **legacy-key bridge**: ask `already_sent_many` for both the new and
-   old key forms and drop any message suppressed under either. Removable after the
-   first scheduled cycle; say so in a comment naming the cycle.
+   Then **pre-filter**: ask `already_sent_many` for the new key form *and* the legacy
+   form, and drop every message suppressed under either.
+
+   This is **permanent, not a migration step** — it is what makes 48 near-no-op weeks
+   a year cheap. ~85% of each week's selection has already been notified; left to
+   `Notifier`, each of those would write a `suppressed` ledger row (~26,000 a year).
+   Dropping them here means zero rows and an `audience: 0` result on a quiet week. The
+   count still gets reported in `TaskResult.detail`, so nothing is lost but the noise.
+
+   The *legacy* half of the key list — the pre-rung-label format Ben's manual runs
+   wrote — is the only removable part, after one full cycle.
 4. **Cap, before any transport is touched.** Raise `EmailCapExceeded` carrying
    `task_detail={'audience': n, 'cap': c, 'aborted_before_sending': True}`. It must
    *raise* — `TaskResult` has no failed state. Do **not** use `partial_failures`,
@@ -318,15 +340,17 @@ ledger handle, so this task **cannot heartbeat**. The lease is
 reclaimable and every PI gets a second copy. Hence 20 min → 3600 s. Add a drift test
 that parses `activeDeadlineSeconds` out of `values.yaml` and asserts the inequality.
 
-`misfire_grace=24h` (not the 6 h default): on a monthly cadence a 6-hour outage would
-silently drop a whole month, and a late run is byte-identical because the window comes
-from `ctx.occurrence`.
+`misfire_grace=24h` (not the 6 h default): a late run is byte-identical because the
+window comes from `ctx.occurrence`, so there is no reason to refuse one. Under a weekly
+cadence a missed slot is not fatal either way — the 40-day band re-selects the same
+expirations next Monday — but 24 h absorbs an ordinary maintenance window without
+writing a `skipped` row that looks like a problem.
 
 Document the kill-recovery path in the module docstring: killed mid-send → row stays
 `running` → next hourly dispatch reclaims the stale lease → the re-run's
 `already_sent_many` suppresses everyone already `sent`, so only the remainder goes.
 
-### 8. `notify: per-run summary email`
+### 7. `notify: per-run summary email`
 
 A new non-facility-aware kind in `sam/notify/kinds.py` plus text/HTML templates in
 `sam/notify/templates/`. Recipient from an env var, set in Helm to
@@ -406,7 +430,7 @@ an `M`-prefixed manual occurrence key, so it cannot collide with a scheduled slo
 
 ## Build, continued
 
-### 9. `helm: notify config and the send cap for the tasks CronJob`
+### 8. `helm: notify config and the send cap for the tasks CronJob`
 
 **The highest-severity item in this plan.** `cronjob-tasks.yaml:95-121` renders only
 `.Values.tasks.env` plus a hand-listed set (`TZ`, `RUNNER_ID`, the two DB blocks). It
@@ -421,11 +445,14 @@ first production run mails nobody, silently.
 - Extend `helm/tests/test-cronjob-render.sh` to assert `NOTIFY_ENABLED` renders.
 - Leave `SAM_TASKS_DISABLED` naming only `cleanup_status_snapshots` (`:449`).
 
-Ship **enabled**. The risk is low regardless: the task is monthly, so the next natural
-fire is up to a month away, and `sam-admin tasks --run expiration_notices` is the
-manual trigger.
+Ship **enabled** — but note the weekly cadence removes the accidental grace period a
+monthly schedule would have given: the first natural fire is **within 7 days**, not up
+to a month. That is exactly why Phase V runs first and is not optional. If the deploy
+lands on a Monday morning, consider `SAM_TASKS_DISABLED` for a few hours rather than
+discovering a chart problem live. `sam-admin tasks --run expiration_notices` remains
+the manual trigger.
 
-### 10. `webapp: last-notified badge on Project Expirations`
+### 9. `webapp: last-notified badge on Project Expirations`
 
 - **Query** — new helper in `sam/queries/notifications.py` following
   `get_xras_activity()` (`xras_activation.py:251-316`): newest *delivered* expiration
@@ -449,7 +476,7 @@ prior year reads "Notified 400 days ago". The tooltip carries the absolute date 
 recipient count, making a stale one self-evident. Matching `dedup_key`'s embedded date
 against the card's currently-computed expiration is more precise and more fragile.
 
-### 11. Docs
+### 10. Docs
 
 Corrections to `SCHEDULED_TASKS.md` § 12 items 2 and 4 (both overridden); `CLAUDE.md`
 § Notifications — the task, the two new `Notifier` knobs, and the
@@ -464,7 +491,6 @@ source etc/config_env.sh
 docker compose --profile test up -d mysql-test
 export SAM_TEST_DB_URL='mysql+pymysql://root:root@127.0.0.1:3307/sam'
 
-pytest tests/unit/test_schedule_predicates.py -v       # predicate + DST matrix
 pytest tests/unit/test_notify_import_graph.py          # the eager-import gate
 pytest tests/unit/test_expiration_notices.py           # must pass UNTOUCHED after commit 4
 pytest tests/unit/test_notify_*.py tests/unit/test_task_*.py -v
@@ -472,21 +498,30 @@ pytest                                                 # full suite
 bash helm/tests/test-cronjob-render.sh
 ```
 
-New tests, by tier: predicate day-table across 2026–2028 covering every rollover shape
-(Aug 2026 Sat→3rd, Nov 2026 Sun→2nd, Jan 2028 Sat→3rd, Feb 2028 leap) and the DST
-offset shift; `already_sent`/`already_sent_many` **agreement matrix** over all six
-status/age cases as the anti-drift gate; chunked-transport open/close counts and a
+No new schedule predicate means **no new predicate tests** — `Weekly` is already
+covered by `tests/unit/test_schedule_predicates.py`, DST matrix included.
+
+New tests, by tier: `already_sent`/`already_sent_many` **agreement matrix** over all
+six status/age cases as the anti-drift gate; chunked-transport open/close counts and a
 transport failing `open()` only on the second chunk; task-tier window determinism
 (dispatch at `occ+5m` and `occ+20h` → identical window), cap trip, `NOTIFY_ENABLED`
 unset → `failed`, and capsys asserting the task writes nothing to stdout.
 
-Ladder-specific: the single configured rung selects the same set the current 32-day
-CLI window would over a fixed dataset (behavioural-equivalence gate); a synthetic
-three-rung `MILESTONES` produces **disjoint** audiences with distinct dedup keys and
-no project in two bands (the tiling invariant); and the legacy bridge suppresses a
-message whose old-format key is already `sent`.
+Cadence-specific — these are the ones the weekly decision makes load-bearing:
 
-In-cluster, after Phase V and commit 9, per § 13's recipe: `kubectl create job
+- **The quiet week.** Two consecutive Monday dispatches over an unchanged dataset:
+  the first sends N, the second sends **0** and writes **0** `notification_log` rows
+  of any status, reporting `audience: 0`. This is the regression gate on the
+  pre-filter; without it the second run writes ~N `suppressed` rows.
+- **Self-healing.** Skip a Monday (simulate a `skipped` misfire), dispatch the next:
+  every expiration the skipped run would have caught is still selected and sent.
+- **Tiling invariant.** A synthetic three-rung `MILESTONES` produces **disjoint**
+  audiences with distinct dedup keys and no project in two bands; and a deliberately
+  under-wide band (narrower than the 7-day run gap) is caught by an assertion at
+  registration rather than silently dropping notices.
+- **Legacy bridge.** A message whose old-format key is already `sent` is suppressed.
+
+In-cluster, after Phase V and commit 8, per § 13's recipe: `kubectl create job
 --from=cronjob/samuel-tasks`, check logs, confirm a `succeeded` row **and that
 `NOTIFY_ENABLED` actually reached the pod**. Badge: load `/admin/projects` →
 Expirations, confirm it renders for a project with `notification_log` rows and is
@@ -494,24 +529,30 @@ absent on the user dashboard.
 
 ## Risks
 
-- **The chart.** A missed `NOTIFY_*` makes month one a silent no-op that reports
-  success. Mitigated twice — the `config.enabled` check in the task (commit 7 step 5)
+- **The chart.** A missed `NOTIFY_*` makes the first run a silent no-op that reports
+  success. Mitigated twice — the `config.enabled` check in the task (commit 6 step 5)
   and the helm-test assertion — because it is invisible otherwise.
+- **The suppressed-row flood, if the pre-filter is ever removed.** Under a weekly
+  cadence the task's own drop step (commit 6 step 3) is what keeps 48 quiet weeks
+  quiet. Delete it as "redundant with `Notifier`'s own dedup" and `notification_log`
+  gains ~26,000 rows a year, which the last-notified badge and the admin Notifications
+  card both read. The comment there must say *why* it is not redundant.
 - **A PI still gets exactly one notice per expiration, for now.** One rung is
-  configured, so behavior matches today's manual run. The *machinery* for 60/30/7 is
-  in place and the key already carries the rung label, so enabling the ladder is a
-  one-tuple edit plus a more frequent schedule — no key migration, no forced
-  re-notify. Until that happens, anyone expecting staged reminders will not get them.
-- **The key format changes on commit 4**, for the CLI as well as the task. The
-  legacy-key bridge covers the overlap cohort; if it is omitted or removed too early,
-  the affected recipients get one duplicate notice. Not harmful, but it will be
-  noticed. Keep the bridge until one full scheduled cycle has run.
-- **`partial` → exit 2 → a red Job on one bounced address.** With ~600 recipients a
-  monthly hard bounce is likely, and a CronJob that goes red every month trains people
-  to ignore it. Ship strictly as the framework intends; if two consecutive months show
-  single-failure `partial`, add a failure-rate threshold in the task rather than
-  weakening `TaskResult`. The summary email softens this — Ben learns of failures by
-  mail regardless of Job color.
+  configured. The *machinery* for 60/30/7 is in place and the key already carries the
+  rung label, so enabling the ladder is a one-tuple edit — no key migration, no forced
+  re-notify, and the weekly cadence already supports 7-day bands. Until then, anyone
+  expecting staged reminders will not get them.
+- **The key format changes on commit 4**, for the CLI as well as the task. The legacy
+  half of the pre-filter covers the overlap cohort; if it is omitted or dropped too
+  early, those recipients get one duplicate notice. Not harmful, but it will be
+  noticed. Keep it until one full cycle has run.
+- **`partial` → exit 2 → a red Job on one bounced address.** A hard bounce somewhere
+  in ~600 first-run recipients is likely, and a CronJob that goes red trains people to
+  ignore it. Weekly makes this *more* frequent than monthly would have, which cuts both
+  ways: more chances to go red, but a red week is also cheap because the next run
+  self-heals. Ship strictly as the framework intends; if red becomes routine, add a
+  failure-rate threshold in the task rather than weakening `TaskResult`. The summary
+  email softens it — Ben learns of failures by mail regardless of Job color.
 - **Modifying a just-shipped framework.** `sam/notify/` has an import-graph gate and
   its own suite; commits 1–3 must be additive with defaults reproducing current
   behavior exactly.
@@ -522,12 +563,13 @@ absent on the user dashboard.
 
 ## Open questions for whoever picks this up
 
-1. When the ladder is enabled, what cadence? 60/30/7 needs at least weekly dispatch;
-   a 7-day rung needs daily. The bands in `MILESTONES` must be re-tiled to the run
-   interval — bands narrower than the gap between runs drop notices, which is the
-   same failure mode as the 32-day window this plan already fixes.
+1. When is the ladder worth enabling? The weekly cadence already supports it — 7-day
+   bands tile exactly — so it is a product decision, not an engineering one: do PIs
+   want a 60/30/7 sequence, or is one notice at ~35 days the right amount of mail?
+   Enabling it multiplies steady-state volume by roughly the number of rungs.
 2. Phase V's measured throughput decides whether `expected_runtime=20min` is right.
-   Record the number here once known.
+   Note Phase V measures the **first-run burst** (~600), not steady state (~105), which
+   is the correct thing to size the lease against. Record the number here once known.
 3. `sam/queries/expiration_notices.py` is the weakest naming call in this plan —
    it builds rather than queries. `sam/notifications/expiration.py` is defensible.
    It must not go inside `sam/notify/`.
