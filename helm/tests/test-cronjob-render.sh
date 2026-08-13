@@ -140,6 +140,28 @@ assert_contains "$prod_out" 'value: "cleanup_status_snapshots"' \
 assert_contains "$prod_out" 'value: "365"' \
   "STATUS_RETENTION_DAYS must be explicit in GitOps, not implied by a default"
 
+# --- BOTH pods must see the kill switch -------------------------------------
+#
+# The CronJob OBEYS the switch; the webapp's Admin → Configuration card
+# REPORTS it. They are two consumers of ONE declaration in tasks.env.
+#
+# ⚠️ Asserted per-manifest, and that is the whole point. The assertions above
+# run against the *full* render, so the CronJob alone satisfies them — which is
+# exactly how this shipped to production with the webapp not carrying the
+# variable at all. The card read its own environment, found nothing, and
+# rendered a kill-switched dispatcher as perfectly healthy: the precise failure
+# that card exists to prevent.
+#
+# When P5 clears the switch this pair fails too — delete it alongside the block
+# above, for the same reason.
+deploy_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" \
+             -f "$CHART_DIR/values.yaml" -s templates/deployment.yaml)
+
+assert_contains "$deploy_out" 'name: SAM_TASKS_DISABLED' \
+  "the webapp Deployment must carry the kill switch too, or the admin card lies"
+assert_contains "$deploy_out" 'value: "cleanup_status_snapshots"' \
+  "and it must carry the SAME value — one declaration, two consumers"
+
 # ---------------------------------------------------------------------------
 # Local dev render (values.yaml + values-local.yaml)
 # ---------------------------------------------------------------------------
