@@ -206,6 +206,15 @@ def _execute(ledger: TaskLedger, task: Task, run_id: int, now: datetime,
         duration = _monotonic_ms() - started
         detail = {'error': repr(exc),
                   'traceback': traceback.format_exc()[-_TB_MAX:]}
+        # A task may attach structured context to the exception it raises.
+        # `TaskResult` has no failed state — a task fails by raising — so
+        # without this the only place a failure can say anything is inside
+        # `repr(exc)`, and an operator ends up regex-ing a count out of a
+        # string. The expiration send's cap uses it to report
+        # {'audience': n, 'cap': c} as data.
+        extra = getattr(exc, 'task_detail', None)
+        if isinstance(extra, dict):
+            detail.update(extra)
         ledger.finish(run_id, state='failed', now=now,
                       duration_ms=duration, detail=detail)
         logger.exception('task %s failed at occurrence %s', task.name, key)

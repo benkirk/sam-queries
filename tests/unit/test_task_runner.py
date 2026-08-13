@@ -5,6 +5,7 @@ registry. That is the whole reason the runner takes the clock as an argument
 rather than reading it.
 """
 
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -171,6 +172,57 @@ class TestFailure:
 
         assert ran == ['b']
         assert out['counts'] == {'failed': 1, 'succeeded': 1}
+
+    def test_a_task_can_attach_structured_detail_to_its_failure(self, ledger,
+                                                                rows):
+        """`TaskResult` has no failed state — a task fails by raising — so
+        without this the only place a failure can say anything is inside
+        `repr(exc)`, and an operator ends up regex-ing a count out of a
+        string. The expiration send's cap reports its audience this way."""
+        class CapExceeded(RuntimeError):
+            task_detail = {'audience': 4200, 'cap': 2500,
+                           'aborted_before_sending': True}
+
+        def over_cap(ctx):
+            raise CapExceeded('audience 4200 exceeds cap 2500')
+
+        run_due(now=NOW, ledger=ledger,
+                registry=registry_of(make_task(fn=over_cap)))
+
+        detail = json.loads(rows()[0].detail)
+        assert detail['audience'] == 4200
+        assert detail['cap'] == 2500
+        assert detail['aborted_before_sending'] is True
+        # ...and the diagnostics it is added to are still there.
+        assert 'CapExceeded' in detail['error']
+        assert 'Traceback' in detail['traceback']
+
+    @pytest.mark.parametrize('junk', ['a string', 42, ['a', 'list'], None])
+    def test_a_non_dict_task_detail_is_ignored_not_crashed(self, ledger, rows,
+                                                           junk):
+        """The failure path is the last thing that should raise. A task that
+        attaches the wrong shape still gets an honest `failed` row."""
+        def boom(ctx):
+            exc = RuntimeError('nope')
+            exc.task_detail = junk
+            raise exc
+
+        run_due(now=NOW, ledger=ledger,
+                registry=registry_of(make_task(fn=boom)))
+
+        row, = rows()
+        assert row.state == 'failed'
+        assert set(json.loads(row.detail)) == {'error', 'traceback'}
+
+    def test_an_ordinary_failure_is_unchanged(self, ledger, rows):
+        """No behavior change for `cleanup_status` or anything else that does
+        not know this hook exists."""
+        def boom(ctx):
+            raise RuntimeError('nope')
+
+        run_due(now=NOW, ledger=ledger,
+                registry=registry_of(make_task(fn=boom)))
+        assert set(json.loads(rows()[0].detail)) == {'error', 'traceback'}
 
     @pytest.mark.parametrize('exc', [KeyboardInterrupt, SystemExit])
     def test_baseexception_propagates(self, ledger, rows, exc):
