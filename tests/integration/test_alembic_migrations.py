@@ -83,8 +83,10 @@ def _extract_target_schema() -> dict:
         [sys.executable, "-c", extractor],
         check=True, capture_output=True, text=True, cwd=REPO_ROOT,
     )
-    # `system_status.session` prints a redacted connection string on import;
-    # take the last non-empty stdout line, which is our JSON.
+    # Take the last non-empty stdout line rather than the whole buffer.
+    # `system_status.session` used to print a redacted connection string on
+    # import (it logs at DEBUG now), and any future import-time chatter would
+    # break a naive `json.loads(proc.stdout)` the same way. Cheap insurance.
     last = next(line for line in reversed(proc.stdout.splitlines()) if line.strip())
     return json.loads(last)
 

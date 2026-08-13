@@ -14,6 +14,7 @@ from .login_nodes import LoginNodeStatus
 from .filesystems import FilesystemStatus
 from .queues import QueueStatus
 from .user_proj_queues import UserProjQueueStatus
+from .task_run import TaskRun
 
 # Side-effect import: registers the before_flush listener that resolves
 # `_pending_*_name` strings staged by the snapshot models' property
@@ -48,4 +49,7 @@ __all__ = [
     # Support
     'SystemOutage',
     'ResourceReservation',
+
+    # Scheduled tasks
+    'TaskRun',
 ]

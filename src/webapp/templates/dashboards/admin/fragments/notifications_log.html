@@ -1,5 +1,6 @@
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/pagination.html' import pagination %}
 {#
   Notification delivery log — HTMX fragment.
 
@@ -12,7 +13,6 @@
     form_id         the filter form the chips write into
     target_id       this container's id, for pagination swaps
     fragment_url    this endpoint
-    has_more        whether another page exists
 
   ⚠️  SYSTEM_ADMIN territory: every row names a real person's address. The
   gate is on the route, not here.
@@ -106,26 +106,18 @@
     </table>
 </div>
 
-{% if page.n > 1 or has_more %}
-<div class="d-flex justify-content-between align-items-center mt-2 small">
-    <div class="text-muted">Page {{ page.n }}</div>
-    <div class="btn-group btn-group-sm">
-        <button class="btn btn-outline-secondary"
-                {% if page.n <= 1 %}disabled{% endif %}
-                hx-get="{{ fragment_url }}?page={{ page.n - 1 }}"
-                hx-include="#{{ form_id }}"
-                hx-target="#{{ target_id }}"
-                hx-swap="innerHTML">
-            <i class="fas fa-chevron-left"></i> Newer
-        </button>
-        <button class="btn btn-outline-secondary"
-                {% if not has_more %}disabled{% endif %}
-                hx-get="{{ fragment_url }}?page={{ page.n + 1 }}"
-                hx-include="#{{ form_id }}"
-                hx-target="#{{ target_id }}"
-                hx-swap="innerHTML">
-            Older <i class="fas fa-chevron-right"></i>
-        </button>
-    </div>
-</div>
+{#
+  The shared pager, replacing a hand-rolled Newer/Older pair that predated it.
+  Gains "Showing X–Y of Z" and windowed numbered links; XRAS and the
+  allocations tables already use this macro.
+
+  Gated on `total` because the macro renders its own "No matching rows." at
+  zero, and the table above already says so in-row.
+
+  `sort` is a stub: this page has no sortable columns, but the macro
+  dereferences sort['sort_by'] unconditionally.
+#}
+{% if total %}
+{{ pagination(page, total, fragment_url, target_id, form_id,
+              {'sort_by': None, 'sort_dir': 'desc'}) }}
 {% endif %}

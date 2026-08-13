@@ -1,0 +1,154 @@
+{{- if .Values.tasks.enabled }}
+# One CronJob for ALL scheduled tasks.
+#
+# Each task's own schedule lives in src/scheduling/tasks/ as a Python
+# declaration, NOT here. This object only decides how often the dispatcher
+# wakes up and asks "what slot am I in?" — the `task_run` ledger's UNIQUE
+# (task_name, occurrence_key) makes a late or duplicate dispatch a no-op, which
+# is why the cron string below is arbitrary and why adding a task is a code
+# change rather than a chart change.
+#
+# Design: docs/plans/SCHEDULED_TASKS.md § 8.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Values.tasks.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.tasks.name }}
+    group: {{ .Values.webapp.group }}
+spec:
+  schedule: {{ .Values.tasks.schedule | quote }}
+  {{- with .Values.tasks.timeZone }}
+  # Etc/UTC so the controller never sees a DST gap or fold. Task-level DST is
+  # handled in Python, where it is tested. Gated so a pre-1.25 cluster can drop
+  # it via tasks.timeZone: "" (nwc1 is on 1.35, so this is belt-and-braces).
+  timeZone: {{ . | quote }}
+  {{- end }}
+  suspend: {{ .Values.tasks.suspend }}
+  # Belt. The ledger is the suspenders and the one that actually holds:
+  # Forbid protects only within THIS CronJob object, not against a future
+  # always-on daemon running the same tasks.
+  concurrencyPolicy: {{ .Values.tasks.concurrencyPolicy }}
+  # Miss by more than this and skip; the next hour catches up for free. Never
+  # leave it unset on a CronJob that might be suspended — >100 missed schedules
+  # wedges the controller permanently.
+  startingDeadlineSeconds: {{ .Values.tasks.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.tasks.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.tasks.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      # The next hourly dispatch IS the retry, and the ledger decides whether
+      # re-running is even correct. An immediate retry just re-hits whatever
+      # broke five seconds ago.
+      backoffLimit: {{ .Values.tasks.backoffLimit }}
+      # Strictly under the dispatch interval, so a wedged run cannot coexist
+      # with its successor. A kill here leaves a stale `running` ledger row,
+      # which the lease reclaim recovers on the next dispatch.
+      activeDeadlineSeconds: {{ .Values.tasks.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            app: {{ .Values.tasks.name }}
+        spec:
+          # With backoffLimit: 0, OnFailure is a contradiction. Never also
+          # preserves the failed pod for `kubectl logs`.
+          restartPolicy: Never
+          # Same reasoning as the Deployment: the dispatcher never talks to the
+          # k8s API, so don't hand a code-exec foothold the SA token.
+          automountServiceAccountToken: false
+          {{- with .Values.webapp.securityContext }}
+          {{- with .pod }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          containers:
+          - name: tasks
+            {{- /*
+              ⚠️ .Values.webapp.container.image, NOT a tasks-specific key.
+              CI (build-images-cirrus-deploy.yaml, update-helm) sed-rewrites
+              the pinned image line in values.yaml; a second pinned key would
+              be a second source of truth for one image. sam-admin already
+              ships in this image, so only the command differs.
+
+              A Helm comment, not a YAML one, on purpose: a `#` comment
+              renders into the output, and this text would then be counted by
+              helm/tests/test-cronjob-render.sh's own image-reference guard.
+            */}}
+            image: {{ .Values.webapp.container.image }}
+            imagePullPolicy: IfNotPresent
+            {{- with .Values.webapp.securityContext }}
+            {{- with .container }}
+            securityContext:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            {{- end }}
+            command: ["sam-admin"]
+            args:
+              - "--format"
+              - "json"
+              - "tasks"
+              {{- range .Values.tasks.args }}
+              - {{ . | quote }}
+              {{- end }}
+            env:
+              {{- range $key, $value := .Values.tasks.env }}
+              - name: {{ $key }}
+                value: {{ $value | quote }}
+              {{- end }}
+              # Mountain, matching the webapp. Tempting to pin UTC since the
+              # first task is UTC-only — resist: the expiration task reads
+              # SAM's naive-Mountain dates, and a UTC pod reproduces the
+              # "freshly-granted access reads back as inactive" bug.
+              - name: TZ
+                value: {{ .Values.tasks.env.TZ | default .Values.webapp.env.TZ | quote }}
+              # Ties a ledger row to `kubectl logs`.
+              - name: RUNNER_ID
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.name
+              # The dispatcher reads SAM's config validator on startup even
+              # though its only task touches Postgres, so both DB blocks are
+              # supplied. Same namespace Secrets the Deployment consumes — no
+              # new ExternalSecret, no new OpenBao path.
+              - name: STATUS_DB_DRIVER
+                value: {{ .Values.webapp.env.STATUS_DB_DRIVER | quote }}
+              - name: STATUS_DB_SERVER
+                value: {{ .Values.webapp.env.STATUS_DB_SERVER | quote }}
+              - name: SAM_DB_SERVER
+                value: {{ .Values.webapp.env.SAM_DB_SERVER | quote }}
+              - name: SAM_DB_REQUIRE_SSL
+                value: {{ .Values.webapp.env.SAM_DB_REQUIRE_SSL | quote }}
+              {{- if .Values.webapp.dbCredentials.enabled }}
+              - name: STATUS_DB_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.webapp.name }}-db-credentials
+                    key: username
+              - name: STATUS_DB_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.webapp.name }}-db-credentials
+                    key: password
+              {{- end }}
+              {{- if .Values.webapp.samDbCredentials.enabled }}
+              - name: SAM_DB_USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.webapp.name }}-sam-db-credentials
+                    key: username
+              - name: SAM_DB_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.webapp.name }}-sam-db-credentials
+                    key: password
+              {{- end }}
+            resources:
+              requests:
+                memory: {{ .Values.tasks.resources.requests.memory }}
+                cpu: {{ .Values.tasks.resources.requests.cpu }}
+              limits:
+                memory: {{ .Values.tasks.resources.limits.memory }}
+                cpu: {{ .Values.tasks.resources.limits.cpu }}
+{{- end }}

@@ -7,7 +7,6 @@ A command-line tool for searching users and projects in the SAM database.
 
 import sys
 import click
-from sqlalchemy.orm import Session
 
 from config import SAMConfig
 from cli.core.context import Context
@@ -59,14 +58,8 @@ def cli(ctx: Context, verbose: bool, inactive_projects: bool, inactive_users: bo
     ctx.inactive_users = inactive_users
     ctx.output_format = output_format
 
-    # Initialize database connection
-    try:
-        from sam.session import create_sam_engine
-        engine, _ = create_sam_engine()
-        ctx.session = Session(engine)
-    except Exception as e:
-        ctx.stderr_console.print(f"Error connecting to database: {e}", style="bold red")
-        sys.exit(1)
+    # NO database connection here — `Context.require_sam()` opens one on first
+    # use. Kept in step with sam-admin; see SCHEDULED_TASKS.md § 3.2.
 
 
 @cli.result_callback()

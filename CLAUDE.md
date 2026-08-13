@@ -85,6 +85,10 @@ sam-queries/
 │   │   └── forms/           # HTMX/API form-validation schemas (per domain)
 │   └── caching/, session/, fmt.py, enums.py, geography.py, plugins.py
 ├── src/system_status/    # Separate status DB (own bind, Alembic-managed)
+├── src/scheduling/       # Ledger-backed task dispatcher (schedules, registry,
+│                         #   ledger, runner) — no Click/Flask/k8s imports
+├── src/querykit/         # Faceted-log query facade — SQLAlchemy only, imports
+│                         #   nothing from sam/ or system_status/ (see its README)
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
 │   ├── core/                # Context, base command classes, exit codes
 │   ├── user/ project/ allocations/ accounting/   # Command + display modules
@@ -213,7 +217,7 @@ from datetime import datetime
 now = datetime.now()  # NOT datetime.now(UTC)
 ```
 SAM/MySQL is naive-Mountain; `system_status` is naive-UTC (use
-`sam.fmt.utcnow_naive`). TIMESTAMP columns auto-update via
+`system_status.timeutil.utcnow_naive`). TIMESTAMP columns auto-update via
 `server_default=text('CURRENT_TIMESTAMP')` + `onupdate`.
 
 ### 2. Primary Keys

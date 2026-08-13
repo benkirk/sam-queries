@@ -1,0 +1,296 @@
+"""Click wiring for `sam-admin tasks` — modes, guards, envelopes, exit codes.
+
+Modelled on `test_admin_xras_cli.py`. The distinctive things asserted here are
+the two places this command deliberately departs from its siblings:
+
+* it must work with **no SAM MySQL connection at all**, because its ledger is
+  in `system_status` and a SAM outage must not stop status retention; and
+* `--format json --run-due` is **allowed** despite being side-effecting, unlike
+  `xras --recheck`. See `src/cli/README.md` § Exit Codes.
+"""
+
+import json
+from datetime import datetime, timedelta
+from unittest.mock import patch
+
+import pytest
+from click.testing import CliRunner
+from sqlalchemy.orm import Session
+
+from cli.cmds.admin import cli
+from scheduling.ledger import TaskLedger
+
+pytestmark = pytest.mark.unit
+
+NAME = 'cleanup_status_snapshots'
+
+
+@pytest.fixture
+def runner():
+    return CliRunner()
+
+
+@pytest.fixture
+def status_engine(app, status_session):
+    from webapp.extensions import db
+    return db.engines['system_status']
+
+
+@pytest.fixture
+def wired(status_engine):
+    """Point the command's status-session factory at the test SQLite bind.
+
+    Patched at `system_status.session.create_status_engine`, the single place
+    `TasksCommand` builds its engine. Nothing patches a SAM engine — these
+    tests would fail if the command tried to open one, which is the point.
+    """
+    with patch('system_status.session.create_status_engine') as mk:
+        mk.return_value = (status_engine, None)
+        yield status_engine
+
+
+@pytest.fixture
+def ledger(status_engine):
+    return TaskLedger(lambda: Session(status_engine))
+
+
+def _json(result):
+    return json.loads(result.output)
+
+
+# --------------------------------------------------------------------- list
+
+class TestListMode:
+
+    def test_default_mode_is_list(self, runner, wired):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks'])
+        assert result.exit_code == 0, result.output
+        assert _json(result)['kind'] == 'task_list'
+
+    def test_envelope_shape(self, runner, wired):
+        payload = _json(runner.invoke(cli, ['--format', 'json', 'tasks', '--list']))
+        assert set(payload) >= {'kind', 'now', 'count', 'disabled', 'tasks'}
+        assert payload['count'] == len(payload['tasks'])
+
+    def test_the_real_task_is_listed(self, runner, wired):
+        payload = _json(runner.invoke(cli, ['--format', 'json', 'tasks']))
+        names = [t['name'] for t in payload['tasks']]
+        assert NAME in names
+
+        entry = next(t for t in payload['tasks'] if t['name'] == NAME)
+        assert entry['schedule'] == 'daily at 02:15 America/Denver'
+        assert entry['needs'] == ['status']
+        assert entry['enabled'] is True
+        assert entry['last_run'] is None
+
+    def test_next_occurrence_is_reported_for_display(self, runner, wired):
+        payload = _json(runner.invoke(cli, ['--format', 'json', 'tasks']))
+        entry = next(t for t in payload['tasks'] if t['name'] == NAME)
+        assert entry['next_occurrence'] is not None
+
+    def test_the_kill_switch_shows_up(self, runner, wired, monkeypatch):
+        monkeypatch.setenv('SAM_TASKS_DISABLED', NAME)
+        payload = _json(runner.invoke(cli, ['--format', 'json', 'tasks']))
+        assert payload['disabled'] == [NAME]
+        entry = next(t for t in payload['tasks'] if t['name'] == NAME)
+        assert entry['enabled'] is False
+
+    def test_last_run_appears_once_there_is_one(self, runner, wired, ledger):
+        run_id = ledger.claim(NAME, '20260812T081500Z',
+                              now=datetime(2026, 8, 12, 9, 0))
+        ledger.finish(run_id, state='succeeded',
+                      now=datetime(2026, 8, 12, 9, 1), duration_ms=1234)
+
+        payload = _json(runner.invoke(cli, ['--format', 'json', 'tasks']))
+        entry = next(t for t in payload['tasks'] if t['name'] == NAME)
+        assert entry['last_run']['state'] == 'succeeded'
+        assert entry['last_run']['duration_ms'] == 1234
+
+    def test_rich_mode_renders(self, runner, wired):
+        result = runner.invoke(cli, ['tasks', '--list'])
+        assert result.exit_code == 0, result.output
+        assert 'Scheduled tasks' in result.output
+
+
+# ------------------------------------------------------------------ history
+
+class TestHistoryMode:
+
+    def test_empty_history_is_success_not_not_found(self, runner, wired):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--history'])
+        assert result.exit_code == 0, result.output
+        payload = _json(result)
+        assert payload['kind'] == 'task_history'
+        assert payload['runs'] == []
+
+    def test_lists_runs_newest_first(self, runner, wired, ledger):
+        for day in (10, 11, 12):
+            rid = ledger.claim(NAME, f'202608{day}T081500Z',
+                               now=datetime(2026, 8, day, 9, 0))
+            ledger.finish(rid, state='succeeded', now=datetime(2026, 8, day, 9, 1))
+
+        payload = _json(runner.invoke(
+            cli, ['--format', 'json', 'tasks', '--history']))
+        assert [r['occurrence'] for r in payload['runs']] == [
+            '20260812T081500Z', '20260811T081500Z', '20260810T081500Z']
+
+    def test_limit_is_honoured(self, runner, wired, ledger):
+        for day in (10, 11, 12):
+            ledger.claim(NAME, f'202608{day}T081500Z',
+                         now=datetime(2026, 8, day, 9, 0))
+        payload = _json(runner.invoke(
+            cli, ['--format', 'json', 'tasks', '--history', '--limit', '2']))
+        assert payload['count'] == 2
+
+    def test_unknown_task_is_exit_1(self, runner, wired):
+        result = runner.invoke(
+            cli, ['--format', 'json', 'tasks', '--history', '--task', 'nope'])
+        assert result.exit_code == 1
+        payload = _json(result)
+        assert payload['error'] == 'not_found'
+        assert payload['task'] == 'nope'
+
+
+# ----------------------------------------------------------------- dispatch
+
+class TestDispatch:
+
+    def test_dry_run_writes_no_rows(self, runner, wired, ledger):
+        result = runner.invoke(
+            cli, ['--format', 'json', 'tasks', '--run-due', '--dry-run'])
+        assert result.exit_code == 0, result.output
+        payload = _json(result)
+        assert payload['kind'] == 'task_dispatch'
+        assert payload['dry_run'] is True
+        assert ledger.history() == [], 'a dry run must claim nothing'
+
+    def test_run_one_task_by_name(self, runner, wired, ledger):
+        result = runner.invoke(
+            cli, ['--format', 'json', 'tasks', '--run', NAME])
+        assert result.exit_code == 0, result.output
+        payload = _json(result)
+        assert payload['results'][0]['outcome'] == 'succeeded'
+        assert len(ledger.history()) == 1
+
+    def test_force_uses_a_manual_key(self, runner, wired, ledger):
+        runner.invoke(cli, ['--format', 'json', 'tasks', '--run', NAME, '--force'])
+        # NB: ledger rows carry the column names; the builder is what renames
+        # them to `task`/`occurrence` for the wire.
+        run, = ledger.history()
+        assert run['occurrence_key'].startswith('M')
+        assert run['trigger'] == 'manual'
+
+    def test_unknown_task_is_exit_1(self, runner, wired):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run', 'nope'])
+        assert result.exit_code == 1
+        assert _json(result)['error'] == 'not_found'
+
+    def test_a_failing_task_exits_2(self, runner, wired):
+        """A nonzero exit is what marks the k8s Job Failed."""
+        # Patched where it is *used*: cleanup_status.py does
+        # `from system_status.retention import cleanup_old_data` at import, so
+        # patching the source module would rebind a name nobody reads.
+        with patch('scheduling.tasks.cleanup_status.cleanup_old_data',
+                   side_effect=RuntimeError('boom')):
+            result = runner.invoke(
+                cli, ['--format', 'json', 'tasks', '--run', NAME])
+        assert result.exit_code == 2, result.output
+        assert _json(result)['results'][0]['outcome'] == 'failed'
+
+    def test_rich_dispatch_renders(self, runner, wired):
+        result = runner.invoke(cli, ['tasks', '--run-due', '--dry-run'])
+        assert result.exit_code == 0, result.output
+
+
+# -------------------------------------------------------------------- guards
+
+class TestFlagGuards:
+
+    @pytest.mark.parametrize('flags', [
+        ['--list', '--run-due'],
+        ['--list', '--history'],
+        ['--run-due', '--history'],
+        ['--run-due', '--run', NAME],
+    ])
+    def test_modes_are_mutually_exclusive(self, runner, wired, flags):
+        result = runner.invoke(cli, ['tasks', *flags])
+        assert result.exit_code == 2
+        assert 'mutually exclusive' in result.output
+
+    def test_dry_run_requires_a_dispatch_mode(self, runner, wired):
+        result = runner.invoke(cli, ['tasks', '--dry-run'])
+        assert result.exit_code == 2
+        assert '--dry-run requires' in result.output
+
+    def test_force_requires_run(self, runner, wired):
+        result = runner.invoke(cli, ['tasks', '--run-due', '--force'])
+        assert result.exit_code == 2
+        assert '--force requires --run' in result.output
+
+    def test_task_filter_requires_history(self, runner, wired):
+        result = runner.invoke(cli, ['tasks', '--task', NAME])
+        assert result.exit_code == 2
+        assert 'require --history' in result.output
+
+
+# ------------------------------------------------- the two deliberate quirks
+
+class TestJsonWriteCarveOut:
+    """`--format json --run-due` is allowed, unlike `xras --recheck`.
+
+    The `json_unsupported_for_writes` rule exists to stop someone accidentally
+    writing while scripting a *report*. Here the side effect IS the command,
+    and JSON on stdout is exactly what a log-scraped CronJob should emit.
+    """
+
+    def test_json_plus_run_due_is_not_rejected(self, runner, wired):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run-due'])
+        assert result.exit_code == 0, result.output
+        assert 'json_unsupported_for_writes' not in result.output
+
+    def test_json_plus_run_is_not_rejected(self, runner, wired):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run', NAME])
+        assert result.exit_code == 0, result.output
+        assert 'json_unsupported_for_writes' not in result.output
+
+    def test_stdout_is_pure_json(self, runner, wired):
+        """The CronJob's output is log-scraped; one stray line breaks it."""
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run-due'])
+        json.loads(result.output)       # raises if anything else was printed
+
+
+class TestNoSamConnection:
+    """The § 3.2 payoff, asserted rather than assumed."""
+
+    def test_listing_never_opens_a_sam_session(self, runner, wired):
+        with patch('sam.session.create_sam_engine') as mk:
+            result = runner.invoke(cli, ['--format', 'json', 'tasks', '--list'])
+        assert result.exit_code == 0, result.output
+        mk.assert_not_called()
+
+    def test_dispatching_a_status_only_task_never_opens_a_sam_session(self, runner,
+                                                                      wired):
+        with patch('sam.session.create_sam_engine') as mk:
+            result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run-due'])
+        assert result.exit_code == 0, result.output
+        mk.assert_not_called(), (
+            'a SAM outage must not be able to stop system_status retention')
+
+
+# ---------------------------------------------------------------------- help
+
+class TestHelp:
+
+    def test_every_mode_flag_is_documented(self, runner):
+        out = runner.invoke(cli, ['tasks', '--help']).output
+        for flag in ('--list', '--run-due', '--run', '--history', '--task',
+                     '--limit', '--dry-run', '--force'):
+            assert flag in out, flag
+
+    def test_help_states_the_surprising_force_semantics(self, runner):
+        """A forced run does not satisfy the scheduled slot — say so."""
+        out = ' '.join(runner.invoke(cli, ['tasks', '--help']).output.split())
+        assert 'does NOT satisfy the scheduled slot' in out
+
+    def test_tasks_appears_in_the_admin_help(self, runner):
+        assert 'tasks' in runner.invoke(cli, ['--help']).output

@@ -535,7 +535,8 @@ sam-queries/
 │   ├── gen_api_key.py           # Generate API key + bcrypt hash for collector auth
 │   ├── setup_status_db.py       # Create system_status database tables
 │   ├── test_status_db.py        # Test system_status database connection
-│   ├── cleanup_status_data.py   # Clean up old status snapshots (7-day retention)
+│   ├── cleanup_status_data.py   # Hand-run prune of old status snapshots
+│   │                            #   (policy: src/system_status/retention.py)
 │   ├── ingest_mock_status.py    # Ingest mock status data for testing
 │   └── create_status_db.sql     # SQL script for database creation
 │
@@ -566,6 +567,17 @@ sam-queries/
 │   │   ├── session/             # Database session management
 │   │   ├── models/              # Status tracking models
 │   │   └── queries/             # Status query functions
+│   │
+│   ├── scheduling/              # Ledger-backed scheduled-task dispatcher
+│   │   ├── schedules.py         # Occurrence predicates (pure, clock-free)
+│   │   ├── registry.py          # The TASKS registry and @task decorator
+│   │   ├── ledger.py            # task_run claims, leases, heartbeats
+│   │   ├── runner.py            # run_due() — the whole scheduler-facing surface
+│   │   └── tasks/               # The registered tasks themselves
+│   │
+│   ├── querykit/                # Faceted-log query facade (see querykit/README.md)
+│   │   ├── README.md            # Why this is a peer package, and what belongs in it
+│   │   └── faceted.py           # LogSpec + count/page/facet, SQLAlchemy-only
 │   │
 │   ├── cli/                     # Modular CLI architecture
 │   │   ├── README.md            # CLI architecture documentation

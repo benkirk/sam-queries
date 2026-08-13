@@ -207,6 +207,11 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'createOrganizationFormContainer', 'createOrganizationModal'],
     'dashboards/admin/fragments/project_allocation_tree_htmx.html': [
         'editAllocationModal'],
+    # Only ever loaded by dashboards/admin/scheduled_tasks.html, which includes
+    # partials/audit_details_modal.html itself — same arrangement as the
+    # notification delivery log above, the page this one is modelled on.
+    'dashboards/admin/fragments/scheduled_tasks_log.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/project_directories_card.html': [
         'addProjectDirectoryFormContainer', 'addProjectDirectoryModal',
         'bulkDeactivateProjectDirectoriesFormContainer', 'bulkDeactivateProjectDirectoriesModal',

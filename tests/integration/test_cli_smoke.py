@@ -49,3 +49,30 @@ def test_sam_search_entry_point_installed():
     assert 'user' in result.stdout
     assert 'project' in result.stdout
     assert 'allocations' in result.stdout
+
+
+def test_sam_admin_entry_point_installed():
+    """`sam-admin --help` runs and lists its subcommands.
+
+    The sibling of the check above, and the only thing that would catch a
+    command class added under `src/cli/` but never wired into
+    `cmds/admin.py` — nothing else in the suite enumerates this group.
+
+    It also asserts the group callback opens no database: `--help` must work
+    with no SAM MySQL reachable, which is what the lazy-connect refactor
+    (`Context.require_sam`) bought.
+    """
+    result = subprocess.run(
+        ['sam-admin', '--help'],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, (
+        f'sam-admin --help failed (exit {result.returncode}):\n'
+        f'STDOUT: {result.stdout}\nSTDERR: {result.stderr}'
+    )
+    assert 'Usage:' in result.stdout
+    for subcommand in ('user', 'project', 'accounting', 'contracts', 'xras',
+                       'tasks'):
+        assert subcommand in result.stdout, f'{subcommand} is not registered'

@@ -58,3 +58,9 @@ webapp:
 
   oidcCredentials:
     enabled: false                        # Local k8s uses DISABLE_AUTH=1 stub; no OpenBao/OIDC dependency
+
+# Scheduled tasks: OFF on Docker Desktop. Nothing should silently DELETE local
+# data. Enable for a smoke test with:
+#   --set tasks.enabled=true --set tasks.schedule='*/5 * * * *'
+tasks:
+  enabled: false

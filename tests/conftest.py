@@ -80,7 +80,7 @@ def pytest_configure(config):
     # Test-only placeholder values for SAM_DB_*/STATUS_DB_*. The test
     # suite never reads these — sessions are routed through SAM_TEST_DB_URL
     # (mysql-test) via `create_app(config_overrides=…)`, and CLI tests
-    # patch `cli.cmds.search.Session`. They exist purely to satisfy the
+    # patch `cli.core.context.Session`. They exist purely to satisfy the
     # fail-fast `SAMConfig.validate()` calls in webapp.run.create_app and
     # the click CLI entry points, which would otherwise throw
     # `EnvironmentError` during test collection on hosts whose `.env`
@@ -421,9 +421,11 @@ def non_admin_client(client, session):
 def _truncate_status_tables(db):
     """Wipe all system_status tables in dependency order.
 
-    Mirrors the iteration pattern from scripts/cleanup_status_data.py but
-    uses SQLAlchemy's `sorted_tables` so the FK ordering is automatic.
-    `reversed(sorted_tables)` deletes children before parents.
+    Uses SQLAlchemy's `sorted_tables` so the FK ordering is automatic:
+    `reversed(sorted_tables)` deletes children before parents. Unlike
+    `system_status.retention`, which carries a hand-ordered list of the
+    *snapshot* tables only, this wipes everything on the bind — including the
+    lookup and curated tables retention deliberately leaves alone.
     """
     for tbl in reversed(db.metadatas["system_status"].sorted_tables):
         db.session.execute(tbl.delete())

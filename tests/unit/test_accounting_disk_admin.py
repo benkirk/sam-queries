@@ -114,7 +114,7 @@ class TestDiskAdminCli:
     @pytest.fixture
     def mock_db_session(self, session):
         with patch('sam.session.create_sam_engine') as mock_engine, \
-             patch('cli.cmds.admin.Session') as mock_session_cls:
+             patch('cli.core.context.Session') as mock_session_cls:
             mock_engine.return_value = (MagicMock(), None)
             mock_session_cls.return_value = session
             yield session

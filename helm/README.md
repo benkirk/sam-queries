@@ -27,9 +27,11 @@ helm/
 │   ├── deployment.yaml      # Webapp Deployment (gunicorn env plumbing)
 │   ├── service.yaml  ingress.yaml  pdb.yaml
 │   ├── external_secret.yaml # OpenBao-backed OIDC credentials (prod only)
+│   ├── cronjob-tasks.yaml   # Hourly scheduled-task dispatcher (values: tasks.*)
 │   └── redis-*.yaml         # Redis cache Deployment/Service/NetworkPolicy
 └── tests/
-    └── test-oidc-render.sh  # Template render assertions for the OIDC wiring
+    ├── test-oidc-render.sh     # Render assertions for the OIDC wiring
+    └── test-cronjob-render.sh  # Render assertions for the task CronJob
 ```
 
 ## Quick reference
@@ -39,8 +41,8 @@ helm/
 ./local-secrets.sh
 helm install samuel . -f values-local.yaml
 
-# Render-check the OIDC wiring without a cluster
-./tests/test-oidc-render.sh
+# Render-check every assertion script without a cluster
+make -C .. helm-test
 
 # Inspect what production would render
 helm template samuel . -f values.yaml | less

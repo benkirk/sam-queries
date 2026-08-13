@@ -75,7 +75,7 @@ def runner():
 def mock_db_session(session):
     """Bind the CLI group to the test's SAVEPOINT session."""
     with patch('sam.session.create_sam_engine') as mock_engine, \
-         patch('cli.cmds.search.Session') as mock_session_cls:
+         patch('cli.core.context.Session') as mock_session_cls:
         mock_engine.return_value = (MagicMock(), None)
         mock_session_cls.return_value = session
         yield session
