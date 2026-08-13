@@ -755,15 +755,15 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     audit_tail = tail_audit_log(audit_path, n=500)
 
     return {
-        'application':   application,
-        'server':        server,
-        'databases':     databases,
-        'auth':          auth,
-        'caching':       caching_block,
-        'notifications': notifications_block,
+        'gathered_at':     datetime.now(),
+        'application':     application,
+        'audit_logging':   audit_logging,
+        'audit_tail':      audit_tail,
+        'auth':            auth,
+        'caching':         caching_block,
+        'databases':       databases,
+        'notifications':   notifications_block,
+        'rate_limits':     rate_limits_block,
         'scheduled_tasks': scheduled_tasks_block,
-        'rate_limits':   rate_limits_block,
-        'audit_logging': audit_logging,
-        'audit_tail':    audit_tail,
-        'gathered_at':   datetime.now(),
+        'server':          server,
     }
