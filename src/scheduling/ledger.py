@@ -111,7 +111,7 @@ class TaskLedger:
         with self.session_factory() as session:
             row = TaskRun(
                 task_name=task_name, occurrence_key=occurrence_key,
-                state='running', trigger=trigger, attempt=1,
+                state='running', trigger_type=trigger, attempt=1,
                 claimed_at=now, heartbeat_at=now, runner_id=runner_id,
             )
             session.add(row)
@@ -230,7 +230,7 @@ class TaskLedger:
         with self.session_factory() as session:
             row = TaskRun(
                 task_name=task_name, occurrence_key=occurrence_key,
-                state='skipped', trigger=trigger, attempt=1,
+                state='skipped', trigger_type=trigger, attempt=1,
                 claimed_at=now, heartbeat_at=now, finished_at=now,
                 duration_ms=0, runner_id=runner_id, detail=_encode(detail),
             )
@@ -329,7 +329,7 @@ def _as_dict(row: Optional[TaskRun]) -> Optional[dict]:
         'task_name': row.task_name,
         'occurrence_key': row.occurrence_key,
         'state': row.state,
-        'trigger': row.trigger,
+        'trigger': row.trigger_type,
         'attempt': row.attempt,
         'claimed_at': row.claimed_at,
         'heartbeat_at': row.heartbeat_at,

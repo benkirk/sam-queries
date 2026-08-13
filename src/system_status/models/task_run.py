@@ -87,7 +87,14 @@ class TaskRun(StatusBase, SessionMixin):
     #: One of :data:`TASK_STATES`.
     state = Column(String(16), nullable=False)
     #: One of :data:`TASK_TRIGGERS`.
-    trigger = Column(String(16), nullable=False)
+    #:
+    #: Named ``trigger_type`` because ``trigger`` is a **reserved word in both
+    #: MySQL and Postgres**. SQLAlchemy would quote it, so the application
+    #: would work — but this table's whole purpose is to be read at 09:00 by
+    #: someone answering "did the cleanup run last night?", and
+    #: ``SELECT task_name, state, trigger FROM task_run`` fails with a syntax
+    #: error that names the wrong token.
+    trigger_type = Column(String(16), nullable=False)
 
     #: Bumped only by a stale reclaim, never by a normal run.
     attempt = Column(SmallInteger, nullable=False, default=1)

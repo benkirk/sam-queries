@@ -72,6 +72,11 @@ JSON payloads:
 - Combining `--format json` with side-effecting flags (`--notify`,
   `--deactivate`) is rejected with `{"error": "json_unsupported_for_writes"}`,
   exit 2
+- **One carve-out: `sam-admin tasks --run-due` / `--run`.** The rule exists to
+  stop someone accidentally writing while scripting a *report*; for the task
+  dispatcher the side effect **is** the command, and JSON on stdout is exactly
+  what a log-scraped CronJob should emit. The guard stays in force everywhere
+  else, including `--notify`, where the original hazard is real.
 
 Progress bars (`rich.progress.track`) are auto-disabled in JSON mode so
 stdout stays parseable.

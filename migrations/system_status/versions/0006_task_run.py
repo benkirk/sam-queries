@@ -42,7 +42,8 @@ def upgrade() -> None:
         sa.Column("task_name", sa.String(length=64), nullable=False),
         sa.Column("occurrence_key", sa.String(length=24), nullable=False),
         sa.Column("state", sa.String(length=16), nullable=False),
-        sa.Column("trigger", sa.String(length=16), nullable=False),
+        # `trigger` is reserved in both MySQL and Postgres; see the model.
+        sa.Column("trigger_type", sa.String(length=16), nullable=False),
         sa.Column("attempt", sa.SmallInteger(), nullable=False),
         sa.Column("claimed_at", sa.DateTime(), nullable=False),
         sa.Column("heartbeat_at", sa.DateTime(), nullable=False),
