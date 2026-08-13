@@ -1316,8 +1316,29 @@
     ]
   ],
   [
+    "admin_dashboard.scheduled_tasks",
+    "/admin/htmx/tasks",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.scheduled_tasks_log",
+    "/admin/htmx/tasks/log",
+    [
+      "GET"
+    ]
+  ],
+  [
     "admin_dashboard.stop_impersonating",
     "/admin/stop-impersonating",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "admin_dashboard.task_run_detail",
+    "/admin/htmx/tasks/<int:task_run_id>",
     [
       "GET"
     ]

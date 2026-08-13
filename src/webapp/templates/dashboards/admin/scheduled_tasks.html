@@ -1,0 +1,134 @@
+{% extends 'dashboards/base.html' %}
+{#
+  Scheduled-task run history — the page behind the Configuration tile's
+  "Details »".
+
+  ⚠️  VIEW_SYSTEM_CONFIG, the SAME tier as the tile that links here — unlike
+  the notifications log, which is a tier higher because its rows name real
+  people. Task rows name task names, states and pod names. Only the per-row
+  detail modal is SYSTEM_ADMIN, because `detail` can hold a traceback naming
+  hosts and paths; the button that opens it renders only for that tier.
+
+  Context:
+    summary       system_status.queries.task_runs.summarize_task_runs(...)
+    form_id       the filter form the facet chips write into
+    target_id     the swap target for the table fragment
+    fragment_url  GET .../tasks/log
+    all_task_names / all_states / all_triggers / default_days / window_hours
+#}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+{% endblock %}
+
+{% block title %}Scheduled tasks — SAM admin{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12 d-flex justify-content-between align-items-end">
+        <div>
+            <h2 class="mb-1"><i class="fas fa-clock"></i> Scheduled tasks</h2>
+            <p class="text-muted mb-0">
+                Every dispatch of every task, from the <code>task_run</code>
+                ledger. The dispatcher wakes hourly; a task runs when its own
+                schedule says the slot is due.
+            </p>
+        </div>
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin_dashboard.projects') }}">
+            <i class="fas fa-chevron-left"></i> Back to Admin
+        </a>
+    </div>
+</div>
+
+{% if summary.stale_running %}
+<div class="alert alert-warning">
+    <i class="fas fa-triangle-exclamation me-1"></i>
+    <strong>{{ summary.stale_running | fmt_number }}</strong> run(s) are stuck
+    in <code>running</code> past their lease — a runner claimed the slot and
+    died before writing an outcome. Those rows are now reclaimable: the next
+    dispatch that finds the slot due will take it and bump
+    <code>attempt</code>.
+</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-12 col-xl-4">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong>Last {{ summary.window_hours }}h</strong></div>
+            <div class="card-body small">
+                <dl class="config-stats mb-0">
+                    <dt>Succeeded</dt>   <dd>{{ summary.succeeded | fmt_number }}</dd>
+                    <dt>Partial</dt>     <dd>{{ summary.partial | fmt_number }}</dd>
+                    <dt>Failed</dt>      <dd>{{ summary.failed | fmt_number }}</dd>
+                    <dt>Skipped</dt>     <dd>{{ summary.skipped | fmt_number }}</dd>
+                    <dt>Stuck running</dt><dd>{{ summary.stale_running | fmt_number }}</dd>
+                    <dt>Last dispatch</dt>
+                    <dd>{{ (summary.last_dispatch_age | fmt_ago ~ ' ago') if summary.last_dispatch_age else 'never' }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-8">
+        <div class="card h-100">
+            <div class="card-header py-2"><strong>Filter</strong></div>
+            <div class="card-body">
+                {# Each dimension is a hidden multi-value control the facet
+                   chips write into; the visible controls are free text and
+                   the window. Same arrangement as the notification log. #}
+                <form id="{{ form_id }}"
+                      hx-get="{{ fragment_url }}"
+                      hx-target="#{{ target_id }}"
+                      hx-swap="innerHTML"
+                      hx-trigger="submit, change from:select"
+                      class="row g-2 align-items-end">
+                    <div class="col-12 col-md-5">
+                        <label class="form-label small mb-1" for="taskSearch">
+                            Task or runner
+                        </label>
+                        <input type="search" class="form-control form-control-sm"
+                               id="taskSearch" name="search"
+                               placeholder="cleanup_status_snapshots or samuel-tasks-…">
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small mb-1" for="taskDays">Window</label>
+                        <select class="form-select form-select-sm" id="taskDays" name="days">
+                            <option value="1">Last 24 hours</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="30" selected>Last 30 days</option>
+                            <option value="365">Last year</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-sm btn-primary">
+                            <i class="fas fa-filter"></i> Apply
+                        </button>
+                    </div>
+
+                    {# Written by the facet chips (data-action set-filter-submit). #}
+                    <select name="state" multiple hidden>
+                        {% for s in all_states %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+                    </select>
+                    <select name="trigger_type" multiple hidden>
+                        {% for t in all_triggers %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+                    </select>
+                    <select name="task_name" multiple hidden>
+                        {% for t in all_task_names %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+                    </select>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="{{ target_id }}"
+     hx-get="{{ fragment_url }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <div class="text-muted small p-3">
+        <i class="fas fa-circle-notch fa-spin"></i> Loading run history…
+    </div>
+</div>
+
+{% include 'dashboards/allocations/partials/audit_details_modal.html' %}
+{% endblock %}

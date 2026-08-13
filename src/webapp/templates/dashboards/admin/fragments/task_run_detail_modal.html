@@ -1,0 +1,87 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{#
+  One scheduled-task run, in full — the modal body behind the table's
+  magnifying glass.
+
+  ⚠️  SYSTEM_ADMIN, one tier above the table. `runner_id` is a pod name and
+  `detail` can hold a traceback naming hosts, paths and connection strings.
+  The gate is on the ROUTE, not here.
+
+  Context:
+    row     TaskRun
+    detail  the decoded+reindented `detail` JSON, or the raw string when it
+            would not parse (still evidence), or None
+#}
+<dl class="row mb-0 small">
+    <dt class="col-sm-3">Task</dt>
+    <dd class="col-sm-9"><code>{{ row.task_name }}</code></dd>
+
+    <dt class="col-sm-3">Occurrence</dt>
+    <dd class="col-sm-9">
+        <code class="user-select-all">{{ row.occurrence_key }}</code>
+        {% if row.occurrence_key.startswith('M') %}
+        <span class="text-muted">— forced run; the leading <code>M</code>
+        cannot collide with a scheduled slot</span>
+        {% endif %}
+    </dd>
+
+    <dt class="col-sm-3">State</dt>
+    <dd class="col-sm-9">{{ status_badge(row.state) }}</dd>
+
+    <dt class="col-sm-3">Trigger</dt>
+    <dd class="col-sm-9"><span class="badge bg-secondary">{{ row.trigger_type }}</span></dd>
+
+    <dt class="col-sm-3">Attempt</dt>
+    <dd class="col-sm-9">
+        {{ row.attempt }}
+        {% if row.attempt > 1 %}
+        <span class="text-muted">— reclaimed after a stale lease</span>
+        {% endif %}
+    </dd>
+
+    {# All three are naive UTC, like every timestamp on this bind. Labelled
+       rather than converted, because an operator correlating with
+       `kubectl logs` needs the same clock the pod wrote. #}
+    <dt class="col-sm-3">Claimed</dt>
+    <dd class="col-sm-9">{{ row.claimed_at | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }} UTC</dd>
+
+    <dt class="col-sm-3">Heartbeat</dt>
+    <dd class="col-sm-9">{{ row.heartbeat_at | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }} UTC</dd>
+
+    <dt class="col-sm-3">Finished</dt>
+    <dd class="col-sm-9">
+        {% if row.finished_at %}
+        {{ row.finished_at | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }} UTC
+        {% else %}
+        <span class="text-muted">— still running</span>
+        {% endif %}
+    </dd>
+
+    <dt class="col-sm-3">Duration</dt>
+    <dd class="col-sm-9">
+        {% if row.duration_ms is not none %}
+        {{ (row.duration_ms / 1000) | round(2) }}s
+        {% else %}<span class="text-muted">—</span>{% endif %}
+    </dd>
+
+    <dt class="col-sm-3">Runner</dt>
+    <dd class="col-sm-9">
+        {% if row.runner_id %}
+        <code class="user-select-all">{{ row.runner_id }}</code>
+        <div class="text-muted">The pod name — <code>kubectl logs</code> ties
+        this row back to its output.</div>
+        {% else %}<span class="text-muted">—</span>{% endif %}
+    </dd>
+</dl>
+
+<hr class="my-3">
+
+<h6 class="small text-muted">Detail</h6>
+{% if detail %}
+<pre class="small border rounded p-2 mb-0" style="max-height:24rem; overflow:auto;"><code>{{ detail }}</code></pre>
+{% else %}
+<p class="text-muted small mb-0">
+    Nothing recorded — a run that succeeded with nothing to report writes no
+    detail.
+</p>
+{% endif %}

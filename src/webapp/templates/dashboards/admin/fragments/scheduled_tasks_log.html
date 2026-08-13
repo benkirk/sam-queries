@@ -1,0 +1,125 @@
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/pagination.html' import pagination %}
+{#
+  Scheduled-task run history — HTMX fragment.
+
+  Context:
+    rows            list[TaskRun], newest first
+    total           the table's real filtered row count
+    page            {'n', 'per_page', 'days'}
+    filters         what the route parsed
+    *_facets        [{'value','count'}], SELF-EXCLUDING (see the route)
+    form_id         the filter form the chips write into
+    target_id       this container's id, for pagination swaps
+    fragment_url    this endpoint
+
+  VIEW_SYSTEM_CONFIG territory — no PII here. The Actions button is gated to
+  SYSTEM_ADMIN because the modal it opens shows `detail`, which can hold a
+  traceback naming hosts and paths.
+
+  The headline count is `total` — the table's real filtered row count, and
+  deliberately NOT any facet's total: with each facet unscoped in one
+  dimension, none of those is the number of rows on screen.
+
+  ⚠️ Timestamps here are naive UTC (system_status convention), unlike the SAM
+  tables elsewhere in this dashboard.
+#}
+<div class="d-flex flex-wrap align-items-baseline gap-2 mb-1 small">
+    <span class="text-muted">Showing</span>
+    <strong>{{ total | fmt_number }}</strong>
+    <span class="text-muted">
+        run{{ '' if total == 1 else 's' }} in the last {{ page.days }} day{{ '' if page.days == 1 else 's' }}
+    </span>
+</div>
+
+<div class="facet-grid mb-2">
+    {{ facet_row('State', state_facets, form_id, 'state',
+                 filters.states or [], badge=True) }}
+    {{ facet_row('Trigger', trigger_facets, form_id, 'trigger_type',
+                 filters.triggers or []) }}
+    {{ facet_row('Task', task_facets, form_id, 'task_name',
+                 filters.task_names or []) }}
+</div>
+
+<div id="scheduledTasksTable">
+    <table class="table table-sm table-striped table-hover mb-0 audit-table">
+        <thead class="table-subtle">
+            <tr>
+                <th style="white-space:nowrap;">Claimed (UTC)</th>
+                <th style="width:99%;">Task</th>
+                <th style="width:170px;">Occurrence</th>
+                <th style="width:120px;">State</th>
+                <th style="width:110px;">Trigger</th>
+                <th style="width:60px;" class="text-end">Try</th>
+                <th style="width:90px;" class="text-end">Took</th>
+                <th style="width:220px;">Runner</th>
+                <th class="text-end" style="white-space:nowrap;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                {# The column shows the date; the tooltip carries the time of
+                   day, which is what separates a run from its retry. #}
+                <td style="white-space:nowrap;"
+                    title="{{ r.claimed_at | fmt_date(fmt='%Y-%m-%d %H:%M:%S') }} UTC">
+                    {{ r.claimed_at | fmt_date }}
+                </td>
+                <td><code class="small">{{ r.task_name }}</code></td>
+                <td class="text-muted small">
+                    <code class="user-select-all">{{ r.occurrence_key }}</code>
+                </td>
+                <td>{{ status_badge(r.state) }}</td>
+                {# Plain badge, NOT status_badge: `manual` already exists in
+                   that vocabulary with an XRAS meaning ("parked for a human")
+                   and would silently mislabel a manually triggered run. #}
+                <td><span class="badge bg-secondary">{{ r.trigger_type }}</span></td>
+                <td class="text-end {{ 'text-warning fw-semibold' if r.attempt > 1 }}"
+                    {% if r.attempt > 1 %}title="Reclaimed after a stale lease"{% endif %}>
+                    {{ r.attempt }}
+                </td>
+                <td class="text-end text-muted small">
+                    {% if r.duration_ms is not none %}
+                    {{ (r.duration_ms / 1000) | round(1) }}s
+                    {% else %}—{% endif %}
+                </td>
+                <td class="text-muted small">
+                    {% if r.runner_id %}
+                    <code class="user-select-all small">{{ r.runner_id }}</code>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="text-end" style="white-space:nowrap;">
+                    {# Rendered only for the tier that can actually open it, so
+                       the lower tier is never offered a control that 403s. #}
+                    {% if has_permission(Permission.SYSTEM_ADMIN) %}
+                    <button class="btn btn-sm btn-outline-secondary"
+                            title="Run detail"
+                            hx-get="{{ url_for('admin_dashboard.task_run_detail', task_run_id=r.task_run_id) }}"
+                            hx-target="#auditDetailsModalBody"
+                            hx-swap="innerHTML"
+                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                        <i class="fas fa-magnifying-glass"></i>
+                    </button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" class="text-muted text-center py-4">
+                    No task runs match these filters.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# Gated on `total` because the macro renders its own "No matching rows." at
+   zero, and the table above already says so in-row. `sort` is a stub: this
+   page has no sortable columns, but the macro dereferences sort['sort_by']
+   unconditionally. #}
+{% if total %}
+{{ pagination(page, total, fragment_url, target_id, form_id,
+              {'sort_by': None, 'sort_dir': 'desc'}) }}
+{% endif %}
