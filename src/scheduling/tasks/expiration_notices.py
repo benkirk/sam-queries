@@ -1,0 +1,350 @@
+"""``expiration_notices`` — email upcoming allocation expirations, weekly.
+
+Monday 09:00 America/Denver. The first real consumer of both `sam/notify/`
+and this package, and the first task at all that declares ``needs=('sam',)``.
+
+⚠️ **A task computes from ``ctx.occurrence``, never from the wall clock.**
+Here that is doubly load-bearing, because `ctx.occurrence` is naive **UTC**
+while ``Allocation.end_date`` is naive **Mountain**: comparing them raw is a
+6-7 hour skew, and a run dispatched 20 hours late would select a different
+cohort than a punctual one. Both are fixed by converting to the schedule's
+zone and truncating to local midnight — see :func:`window_start`.
+
+**Why weekly, not monthly.** Runs 7 days apart with a 40-day band mean each
+expiration is selected on 5-6 consecutive runs, so a skipped or failed week
+is recovered by the next one and dedup prevents the double-send. A monthly
+cadence gets one shot per expiration.
+
+**Volume is spiky, not smooth.** 97% of allocations end on a month's last
+day, and month-ends are ~30 days apart, so a weekly run's newly-entering
+cohort — the 7-day band ``[run+33, run+40)`` — catches at most one cluster.
+Measured against the snapshot: ~12 loaded runs a year peaking at ~535
+messages, and ~40 runs sending 0-15. That shape is why the pre-filter in
+:func:`_drop_already_notified` is permanent rather than an optimization.
+
+**Kill recovery.** Killed mid-send (an `activeDeadlineSeconds` timeout, say)
+leaves the ledger row `running`; the next hourly dispatch reclaims the stale
+lease and re-runs; the re-run's `already_sent_many` suppresses everyone
+already `sent`, so only the remainder goes. Nothing is sent twice and nothing
+is lost — which is only true because the lease outlives the pod deadline. See
+`expected_runtime` below.
+
+Design: ``docs/plans/EXPIRATION_NOTICES.md``.
+"""
+
+from __future__ import annotations
+
+import os
+from datetime import datetime, timedelta
+from typing import List, Optional, Tuple
+from zoneinfo import ZoneInfo
+
+from scheduling.registry import TaskResult, task
+from scheduling.schedules import Weekly, to_local_naive
+
+#: Monday 09:00 Mountain. Monday because a 500-recipient notice sent on a
+#: Friday is read on Monday anyway, with any replies landing while the sender
+#: is away — and because "first weekday of the month" lands on a Monday only
+#: 42% of months and on a Friday 14%.
+SCHEDULE = Weekly(0, 9, 0, tz='America/Denver')
+
+#: The facilities this notice covers. **Explicit, never inherited** from the
+#: Click default on `--facilities` (`cli/cmds/admin.py`): a CLI default is a
+#: presentation choice someone may reasonably change, and the task must not
+#: silently change audience when they do.
+FACILITIES: Tuple[str, ...] = ('UNIV', 'WNA')
+
+#: Reconnect the transport this often mid-send. See `Notifier.send_many`.
+SEND_CHUNK = 250
+
+#: Runaway guard, overridable via ``$SAM_TASKS_EMAIL_MAX``.
+#:
+#: ~4.7x the measured peak (535): far enough above normal operation never to
+#: fire, close enough to catch an order-of-magnitude selection bug — a
+#: milestone band that accidentally spans the whole table, say. § 12 proposed
+#: 250, which is *below* observed volume and would fail every loaded run.
+DEFAULT_EMAIL_MAX = 2500
+
+#: How many failed recipients go into the ledger row. `detail` is TEXT and the
+#: runner truncates at 60 kB; the summary email carries the full list.
+_MAX_REPORTED_FAILURES = 50
+
+
+class EmailCapExceeded(RuntimeError):
+    """The audience exceeded ``SAM_TASKS_EMAIL_MAX``. Nothing was sent.
+
+    Raised rather than returned, because :class:`~scheduling.registry.TaskResult`
+    has no failed state. In particular NOT reported via ``partial_failures``,
+    which means "some sent" — here the count is zero, and an operator reading
+    `partial` would go looking for the ones that got through.
+
+    ``task_detail`` is merged into the ledger row by ``runner._execute``, so
+    the audience and the cap are structured data rather than a substring of
+    ``repr(exc)``.
+    """
+
+    def __init__(self, message: str, *, audience: int, cap: int) -> None:
+        super().__init__(message)
+        self.task_detail = {'audience': audience, 'cap': cap,
+                            'aborted_before_sending': True}
+
+
+class NotificationsDisabled(RuntimeError):
+    """``NOTIFY_ENABLED`` is false in a context that exists to send mail.
+
+    Without this the task would sail through: every message would be recorded
+    `suppressed`, the run would report `succeeded`, the Job would go green,
+    and nobody would learn that a chart change had stopped the mail. The
+    CronJob does not inherit `webapp.env`, so this is a live failure mode and
+    not a hypothetical one.
+    """
+
+
+def email_max(env: Optional[dict] = None) -> int:
+    """The send cap, from ``$SAM_TASKS_EMAIL_MAX`` or the default.
+
+    Read per run rather than at import, so a `values.yaml` change takes effect
+    on the next dispatch rather than the next pod restart — the
+    ``cleanup_status.retention_days`` pattern.
+    """
+    raw = (env or os.environ).get('SAM_TASKS_EMAIL_MAX')
+    if raw is None or not str(raw).strip():
+        return DEFAULT_EMAIL_MAX
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_EMAIL_MAX
+    # Zero or negative would abort every run, including the ones that should
+    # send nothing — indistinguishable from a broken query. Refuse rather than
+    # obey, as `retention_days` does.
+    return value if value > 0 else DEFAULT_EMAIL_MAX
+
+
+def window_start(occurrence: datetime, *, tz: Optional[str] = None) -> datetime:
+    """The local midnight the run's bands are measured from.
+
+    Two conversions, each fixing a distinct bug:
+
+    1. **UTC to local.** `ctx.occurrence` is naive UTC; `Allocation.end_date`
+       is naive Mountain. Comparing them raw shifts every band by 6-7 hours.
+    2. **Truncate to midnight.** Without it, a punctual 09:00 dispatch and one
+       reclaimed at 05:00 the next morning compute different bands and select
+       different cohorts for the same slot — which would make a re-run after a
+       crash send to people the first attempt had already decided against.
+    """
+    local = to_local_naive(occurrence, ZoneInfo(tz or SCHEDULE.tz))
+    return local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def band_bounds(start: datetime, milestone) -> Tuple[datetime, datetime]:
+    """``[start + lo_days, start + hi_days)`` as query-ready bounds.
+
+    ⚠️ **The half-open upper bound is built here, not assumed.**
+    ``get_all_expiring_allocations`` filters ``end_date <= end_date`` —
+    *inclusive* — so passing ``start + hi_days`` directly would make adjacent
+    bands overlap on their shared boundary. With today's single rung that is
+    invisible; with a three-rung ladder it double-sends to whoever lands on
+    the seam. Subtracting a microsecond is what keeps the tiling honest.
+    """
+    lower = start + timedelta(days=milestone.lo_days)
+    upper = (start + timedelta(days=milestone.hi_days)
+             - timedelta(microseconds=1))
+    return lower, upper
+
+
+@task(name='expiration_notices',
+      schedule=SCHEDULE,
+      needs=('sam', 'status'),
+      # Drives the LEASE, not a timeout — and the lease
+      # (max(3x, 900s) = 3600s) must exceed the CronJob's
+      # activeDeadlineSeconds (3000s), or a still-running send becomes
+      # reclaimable and every PI gets a second copy. There is a drift test
+      # asserting that inequality against helm/values.yaml, because the two
+      # numbers live in different repositories of truth and nothing else
+      # connects them. TaskContext exposes no ledger handle, so this task
+      # cannot heartbeat; `Task.long_running` is the honest fix and is unbuilt.
+      expected_runtime=timedelta(minutes=20),
+      # 24h, not the 6h default. A late run is byte-identical because the
+      # window comes from ctx.occurrence, so there is no reason to refuse one
+      # — and 24h absorbs an ordinary maintenance window without writing a
+      # `skipped` row that looks like a problem.
+      misfire_grace=timedelta(hours=24),
+      description='Email upcoming allocation-expiration notices')
+def expiration_notices(ctx) -> TaskResult:
+    """Notify PIs and project members whose allocations expire soon."""
+    # Deferred: `scheduling/` is imported by the CLI's --list path, which must
+    # not pay for jinja2 and the ORM to print a table.
+    from sam.notify import Notifier
+    from sam.notify.ledger import NotificationLedger
+    from sam.queries.expiration_notices import (
+        MILESTONES, build_expiration_messages,
+    )
+    from sam.queries.expirations import get_all_expiring_allocations
+
+    start = window_start(ctx.occurrence)
+    session = ctx.sam_session
+
+    # 1. Select and build, one rung at a time. With today's single rung this
+    #    is one query over [start, start+40); the loop is what makes adding
+    #    rungs a one-tuple edit in sam.queries.expiration_notices.
+    messages = []
+    projcodes = set()
+    for milestone in MILESTONES:
+        lower, upper = band_bounds(start, milestone)
+        selected = get_all_expiring_allocations(
+            session,
+            start_date=lower,
+            end_date=upper,
+            facility_names=list(FACILITIES),
+            # The notice says "expires in N days"; measured from the slot, so
+            # a late dispatch renders the same number a punctual one would.
+            now=start,
+        )
+        ctx.logger.info('rung %s: %s to %s selected %d allocation(s)',
+                        milestone.label, lower.date(), upper.date(),
+                        len(selected))
+        projcodes.update(p.projcode for p, _a, _r, _d in selected)
+        messages.extend(build_expiration_messages(
+            selected,
+            # NOT getpass.getuser(): in this pod that is the runtime UID or a
+            # KeyError, either way a lie in the column the admin card renders
+            # as "who asked".
+            requested_by='task:expiration_notices',
+            milestone=milestone,
+        ))
+
+    notifier = Notifier(ledger=NotificationLedger(
+        # The ledger's OWN sessions, off the engine rather than
+        # `ctx.sam_session`: mail handed to a relay cannot be un-sent by the
+        # rollback `close_sessions` performs when a task fails.
+        lambda: _new_sam_session(session)))
+
+    selected_count = len(messages)
+    messages, suppressed_count = _drop_already_notified(notifier.ledger,
+                                                        messages, ctx.logger)
+
+    detail = {
+        'window_start': start.isoformat(),
+        'window_end': (start + timedelta(
+            days=max(m.hi_days for m in MILESTONES))).isoformat(),
+        'milestones': [m.label for m in MILESTONES],
+        'projects': len(projcodes),
+        # Always present, all three. A run that selected 0 must be visibly
+        # different from one that selected 300 and suppressed them all —
+        # otherwise ~40 legitimately-quiet weeks a year are indistinguishable
+        # from a query that silently stopped matching.
+        'selected': selected_count,
+        'suppressed': suppressed_count,
+        'audience': len(messages),
+    }
+
+    # 2. Guards, before any transport is touched.
+    if not notifier.config.enabled:
+        raise NotificationsDisabled(
+            'NOTIFY_ENABLED is false; refusing to run a task whose only '
+            'purpose is to send mail. Check the CronJob env — it does not '
+            'inherit webapp.env.')
+
+    cap = email_max()
+    if len(messages) > cap:
+        raise EmailCapExceeded(
+            f'audience of {len(messages)} exceeds SAM_TASKS_EMAIL_MAX={cap}; '
+            f'nothing was sent',
+            audience=len(messages), cap=cap)
+
+    if not messages:
+        ctx.logger.info('nothing to notify (selected %d, suppressed %d)',
+                        selected_count, suppressed_count)
+        return TaskResult(detail={**detail, 'sent': 0, 'failed': 0},
+                          message=f'0 sent ({suppressed_count} already notified)')
+
+    # 3. Send.
+    if ctx.dry_run:
+        for message in messages:
+            notifier.preview(message)       # writes NO ledger row
+        ctx.logger.info('dry run: %d message(s) rendered, none sent',
+                        len(messages))
+        return TaskResult(detail={**detail, 'sent': 0, 'failed': 0,
+                                  'dry_run': True},
+                          message=f'{len(messages)} previewed, none sent')
+
+    ctx.logger.info('sending %d message(s) to %d project(s)',
+                    len(messages), len(projcodes))
+    results = notifier.send_many(messages, chunk_size=SEND_CHUNK)
+
+    failed = [r for r in results if not r.ok]
+    sent = [r for r in results if r.status in ('sent', 'redirected')]
+    detail.update({
+        'sent': len(sent),
+        'failed': len(failed),
+        'failed_recipients': [r.recipient for r in failed[:_MAX_REPORTED_FAILURES]],
+    })
+
+    return TaskResult(
+        detail=detail,
+        message=f'{len(sent)} sent, {len(failed)} failed, '
+                f'{suppressed_count} already notified',
+        # `partial` -> exit 2 -> a red Job. Deliberate: a hard bounce in a
+        # 500-message run is worth seeing, and because volume is spiky the
+        # quiet weeks stay reliably green, which makes a red one MORE
+        # informative rather than less.
+        partial_failures=len(failed))
+
+
+def _drop_already_notified(ledger, messages: List, logger) -> Tuple[List, int]:
+    """Remove messages a previous run already delivered. Returns (kept, dropped).
+
+    ⚠️ **This is permanent, and NOT redundant with ``Notifier``'s own dedup.**
+    The framework would also suppress these — but it would suppress them by
+    *recording a ``suppressed`` row for each one*. On a loaded week ~85% of
+    the selection is already-notified and on a quiet week essentially all of
+    it is, so leaving it to the framework writes on the order of **26,000
+    rows a year** into `notification_log` — the same table the admin
+    Notifications card, its facet chips, and the last-notified badge all read.
+
+    Dropping them here means a quiet week writes zero rows and reports
+    ``audience: 0``. Nothing is lost: the count is still in
+    ``TaskResult.detail``.
+
+    The **legacy** half of the key list is the only removable part. Every
+    manual CLI run before the rung label existed wrote
+    ``expiration:{projcode}:{date}:{recipient}``; without checking that form
+    too, the first scheduled run re-notifies the overlap cohort. After one
+    full cycle every live key is in the new format and
+    :func:`~sam.queries.expiration_notices.legacy_dedup_key` can go.
+    """
+    from sam.queries.expiration_notices import legacy_dedup_key
+
+    if not messages:
+        return messages, 0
+
+    legacy = {}
+    for message in messages:
+        # `expiration:{projcode}:{date}:{label}:{recipient}` -> drop the label.
+        parts = (message.dedup_key or '').split(':')
+        if len(parts) == 5:
+            legacy[message.dedup_key] = legacy_dedup_key(parts[1], parts[2],
+                                                         parts[4])
+
+    keys = [m.dedup_key for m in messages if m.dedup_key]
+    suppressed = ledger.already_sent_many(keys + list(legacy.values()))
+
+    kept = [m for m in messages
+            if not (m.dedup_key in suppressed
+                    or legacy.get(m.dedup_key) in suppressed)]
+    dropped = len(messages) - len(kept)
+    if dropped:
+        logger.info('%d of %d message(s) already notified; not re-recording',
+                    dropped, len(messages))
+    return kept, dropped
+
+
+def _new_sam_session(existing):
+    """A fresh SAM session on the same engine as the task's own.
+
+    The ledger must commit independently of the task's transaction, so it
+    cannot share `ctx.sam_session`. Deriving the engine from that session
+    rather than calling `create_sam_engine()` again keeps one pool.
+    """
+    from sqlalchemy.orm import Session
+    return Session(existing.get_bind())

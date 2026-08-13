@@ -9,6 +9,7 @@ Import this package (not the modules individually) before reading
 ``scheduling.registry.TASKS``; ``cli.tasks`` and any future daemon both do.
 """
 
-from scheduling.tasks import cleanup_status  # noqa: F401
+from scheduling.tasks import cleanup_status       # noqa: F401
+from scheduling.tasks import expiration_notices   # noqa: F401
 
-__all__ = ['cleanup_status']
+__all__ = ['cleanup_status', 'expiration_notices']

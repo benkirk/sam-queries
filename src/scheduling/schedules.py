@@ -106,8 +106,15 @@ def _to_utc_naive(local_naive: datetime, tz: ZoneInfo) -> datetime:
     return utc
 
 
-def _to_local_naive(utc_naive: datetime, tz: ZoneInfo) -> datetime:
-    """Naive UTC to naive local wall time."""
+def to_local_naive(utc_naive: datetime, tz: ZoneInfo) -> datetime:
+    """Naive UTC to naive local wall time.
+
+    **Public because a task body needs it.** ``ctx.occurrence`` is naive UTC
+    while SAM's dates are naive Mountain, so any task selecting rows by date
+    has to cross that boundary — and the alternative to exporting this is each
+    one re-deriving zoneinfo arithmetic, which is exactly how a 6-7 hour skew
+    gets written twice and noticed once.
+    """
     return (utc_naive.replace(tzinfo=timezone.utc)
             .astimezone(tz).replace(tzinfo=None))
 
@@ -142,7 +149,7 @@ class _LocalWallSchedule:
     def last_occurrence(self, now_utc: datetime) -> Optional[datetime]:
         zone = self._zone
         now_utc = now_utc.replace(microsecond=0)
-        local_now = _to_local_naive(now_utc, zone)
+        local_now = to_local_naive(now_utc, zone)
 
         # Walk back day by day in *local* terms and take the newest candidate
         # whose UTC instant is <= now. Days are searched rather than computed
@@ -169,7 +176,7 @@ class _LocalWallSchedule:
         """
         zone = self._zone
         after_utc = after_utc.replace(microsecond=0)
-        local_after = _to_local_naive(after_utc, zone)
+        local_after = to_local_naive(after_utc, zone)
 
         for fwd in range(self._MAX_LOOKBACK_DAYS + 1):
             day = (local_after + timedelta(days=fwd)).date()
@@ -379,7 +386,7 @@ class CronExpr:
         probe = now_utc.replace(second=0, microsecond=0)
         steps = int(self.horizon.total_seconds() // 60)
         for _ in range(steps + 1):
-            if self._matches(_to_local_naive(probe, zone)):
+            if self._matches(to_local_naive(probe, zone)):
                 return probe
             probe -= timedelta(minutes=1)
         raise ValueError(
@@ -393,7 +400,7 @@ class CronExpr:
         probe = after_utc.replace(second=0, microsecond=0) + timedelta(minutes=1)
         steps = int(self.horizon.total_seconds() // 60)
         for _ in range(steps + 1):
-            if self._matches(_to_local_naive(probe, zone)):
+            if self._matches(to_local_naive(probe, zone)):
                 return probe
             probe += timedelta(minutes=1)
         return None

@@ -25,6 +25,7 @@ from scheduling.schedules import (
     Schedule,
     Weekly,
     occurrence_key,
+    to_local_naive,
 )
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     'Schedule',
     'Weekly',
     'occurrence_key',
+    'to_local_naive',
 ]

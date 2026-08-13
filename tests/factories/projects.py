@@ -16,7 +16,9 @@ from typing import Optional
 
 from sam.accounting.accounts import Account
 from sam.accounting.adjustments import ChargeAdjustment, ChargeAdjustmentType
-from sam.accounting.allocations import Allocation, AllocationTransaction
+from sam.accounting.allocations import (
+    Allocation, AllocationTransaction, AllocationType,
+)
 from sam.core.organizations import ProjectOrganization
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest, AreaOfInterestGroup
@@ -24,7 +26,7 @@ from sam.projects.contracts import (
     Contract, ContractSource, NSFProgram, ProjectContract,
 )
 from sam.projects.projects import Project
-from sam.resources.facilities import Facility
+from sam.resources.facilities import Facility, Panel
 from sam.resources.resources import Resource
 
 from ._seq import next_seq
@@ -56,6 +58,65 @@ def make_facility(
         description=description,
         code=None,
         fair_share_percentage=fair_share_percentage,
+    )
+
+
+def make_panel(
+    session,
+    *,
+    facility: Optional[Facility] = None,
+    facility_name: Optional[str] = None,
+    panel_name: Optional[str] = None,
+) -> Panel:
+    """Build and flush a Panel, auto-building its Facility.
+
+    `facility_name` is the ergonomic form: pass `'UNIV'` or `'WNA'` and the
+    existing snapshot row is reused if present, because those two names are
+    real production facilities that facility-scoped code filters on by name.
+    Creating a second `Facility` called `UNIV` would make `.in_(['UNIV'])`
+    ambiguous and the test's meaning with it.
+    """
+    if facility is None:
+        if facility_name is not None:
+            facility = (session.query(Facility)
+                        .filter_by(facility_name=facility_name).first())
+        if facility is None:
+            facility = make_facility(session, facility_name=facility_name)
+    if panel_name is None:
+        panel_name = next_seq("PNL")
+
+    return Panel.create(
+        session,
+        panel_name=panel_name,
+        description=f"Test panel {panel_name}",
+        facility_id=facility.facility_id,
+    )
+
+
+def make_allocation_type(
+    session,
+    *,
+    panel: Optional[Panel] = None,
+    facility_name: Optional[str] = None,
+    allocation_type: Optional[str] = None,
+) -> AllocationType:
+    """Build and flush an AllocationType, auto-building its Panel and Facility.
+
+    This is the chain a facility filter walks:
+    ``Project -> AllocationType -> Panel -> Facility``. A project built by
+    `make_project` has `allocation_type_id` NULL, so it is invisible to every
+    facility-scoped query until one of these is attached — which is easy to
+    mistake for "the query is broken".
+    """
+    if panel is None:
+        panel = make_panel(session, facility_name=facility_name)
+    if allocation_type is None:
+        allocation_type = next_seq("AT")[:20]
+
+    return AllocationType.create(
+        session,
+        allocation_type=allocation_type,
+        panel_id=panel.panel_id,
     )
 
 
@@ -97,6 +158,8 @@ def make_project(
     aoi: Optional[AreaOfInterest] = None,
     parent: Optional[Project] = None,
     active: bool = True,
+    allocation_type: Optional[AllocationType] = None,
+    facility_name: Optional[str] = None,
 ) -> Project:
     """Build and flush a fresh Project row, auto-building a lead user and AOI.
 
@@ -106,11 +169,20 @@ def make_project(
 
     For a child project, pass `parent=` an existing Project — the mixin
     handles re-shifting siblings automatically.
+
+    `allocation_type` / `facility_name` are how a project becomes visible to
+    facility-scoped queries, which walk
+    `Project -> AllocationType -> Panel -> Facility`. Both default to None, so
+    a plain `make_project()` has `allocation_type_id` NULL and is invisible to
+    every such query — pass `facility_name='UNIV'` when that matters.
     """
     if lead is None:
         lead = make_user(session)
     if aoi is None:
         aoi = make_aoi(session)
+    if allocation_type is None and facility_name is not None:
+        allocation_type = make_allocation_type(session,
+                                               facility_name=facility_name)
     if projcode is None:
         projcode = next_seq("PRJ")
     if title is None:
@@ -123,6 +195,8 @@ def make_project(
         area_of_interest_id=aoi.area_of_interest_id,
         parent_id=parent.project_id if parent is not None else None,
         active=active,
+        allocation_type_id=(allocation_type.allocation_type_id
+                            if allocation_type is not None else None),
     )
     session.add(project)
     session.flush()
