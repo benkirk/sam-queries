@@ -267,6 +267,104 @@ class TestAChunkFailsAlone:
         assert transport.close_count == 0       # never opened, never closed
 
 
+class TestBatchSuppressionIsPrefetched:
+    """One `IN (...)` for the batch instead of one `LIMIT 1` per message.
+
+    On a loaded expiration week ~85% of the selection is already-notified and
+    on a quiet week essentially all of it is, so the per-message form spends
+    hundreds of round trips learning that almost nothing needs sending.
+    """
+
+    def test_a_batch_asks_the_ledger_once(self, renderer):
+        ledger = _StubLedger({'K1', 'K2'})
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=NullTransport(), renderer=renderer,
+                            ledger=ledger)
+        notifier.send_many([_message(f'u{i}@x.edu', dedup_key=f'K{i}')
+                            for i in range(4)])
+        assert ledger.batch_calls == 1
+        assert ledger.single_calls == 0
+
+    def test_the_prefetched_answer_is_what_gets_applied(self, renderer):
+        transport = NullTransport()
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=transport, renderer=renderer,
+                            ledger=_StubLedger({'K1', 'K2'}))
+        results = notifier.send_many([_message(f'u{i}@x.edu',
+                                               dedup_key=f'K{i}')
+                                      for i in range(4)])
+        assert [r.status for r in results] == \
+            ['sent', 'suppressed', 'suppressed', 'sent']
+        assert len(transport.delivered) == 2
+
+    def test_send_of_one_never_pays_for_a_bulk_query(self, renderer):
+        """`send()` is `send_many` of one, so an unconditional prefetch would
+        put a bulk query on the path of every XRAS activation notice to
+        answer what one LIMIT 1 already answers."""
+        ledger = _StubLedger({'K0'})
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=NullTransport(), renderer=renderer,
+                            ledger=ledger)
+        result = notifier.send(_message(dedup_key='K0'))
+        assert result.status == 'suppressed'
+        assert (ledger.batch_calls, ledger.single_calls) == (0, 1)
+
+    def test_force_skips_the_prefetch_entirely(self, renderer):
+        ledger = _StubLedger({'K0', 'K1'})
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=NullTransport(), renderer=renderer,
+                            ledger=ledger)
+        results = notifier.send_many(
+            [_message(f'u{i}@x.edu', dedup_key=f'K{i}') for i in range(2)],
+            force=True)
+        assert [r.status for r in results] == ['sent', 'sent']
+        assert (ledger.batch_calls, ledger.single_calls) == (0, 0)
+
+    def test_a_batch_with_no_keys_at_all_asks_nothing(self, renderer):
+        ledger = _StubLedger(set())
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=NullTransport(), renderer=renderer,
+                            ledger=ledger)
+        notifier.send_many([_message('a@x.edu'), _message('b@x.edu')])
+        assert (ledger.batch_calls, ledger.single_calls) == (0, 0)
+
+    def test_no_ledger_is_still_a_legitimate_configuration(self, renderer):
+        transport = NullTransport()
+        Notifier(config=NotifyConfig(enabled=True), transport=transport,
+                 renderer=renderer).send_many(
+            [_message(f'u{i}@x.edu', dedup_key=f'K{i}') for i in range(3)])
+        assert len(transport.delivered) == 3
+
+    def test_disabled_still_wins_over_the_prefetch(self, renderer):
+        """NOTIFY_ENABLED is checked first and unconditionally, so a
+        misconfigured mailer cannot be talked into sending by a cache miss."""
+        transport = NullTransport()
+        results = Notifier(config=NotifyConfig(enabled=False),
+                           transport=transport, renderer=renderer,
+                           ledger=_StubLedger(set())).send_many(
+            [_message(f'u{i}@x.edu', dedup_key=f'K{i}') for i in range(2)])
+        assert [r.status for r in results] == ['suppressed'] * 2
+        assert transport.open_count == 0
+
+    def test_two_messages_sharing_a_key_in_one_batch_both_go(self, renderer):
+        """NOT a bug, and pinned here so nobody "fixes" it.
+
+        The guard phase evaluates every message before any delivery, so an
+        intra-batch duplicate has nothing to be suppressed by yet — that was
+        true of the per-message form too, and the prefetch changes nothing.
+        Deduplicating here would be wrong anyway: two Messages sharing a key
+        means two recipients the caller meant to reach, and the caller is the
+        only layer that knows whether that is intentional."""
+        transport = NullTransport()
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=transport, renderer=renderer,
+                            ledger=_StubLedger(set()))
+        results = notifier.send_many([_message('a@x.edu', dedup_key='SAME'),
+                                      _message('b@x.edu', dedup_key='SAME')])
+        assert [r.status for r in results] == ['sent', 'sent']
+        assert len(transport.delivered) == 2
+
+
 class _StubLedger:
     """Answers the suppression question from a set, records nothing."""
 

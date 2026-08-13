@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Set
 
 from sam.notify.base import (
     DeliveryResult, Message, Recipient, RenderedMessage, Transport,
@@ -145,8 +145,10 @@ class Notifier:
         # Guards that need no transport are resolved first, so a batch that
         # is entirely suppressed never opens a connection. `None` here means
         # "not decided yet — this one goes to the transport".
+        suppressed_keys = self._prefetch_suppressed(messages, force=force)
         results: List[Optional[DeliveryResult]] = [
-            self._pre_transport_guard(message, force=force)
+            self._pre_transport_guard(message, force=force,
+                                      suppressed_keys=suppressed_keys)
             for message in messages
         ]
         pending = [i for i, result in enumerate(results) if result is None]
@@ -196,9 +198,39 @@ class Notifier:
                 transport.close()
 
     # ---------------------------------------------------------------- guards
-    def _pre_transport_guard(self, message: Message, *,
-                             force: bool) -> Optional[DeliveryResult]:
-        """Return a terminal result, or ``None`` to proceed to the transport."""
+    def _prefetch_suppressed(self, messages: List[Message], *,
+                             force: bool) -> Optional[Set[str]]:
+        """Which of this batch's keys are already suppressed — in one query.
+
+        Returns ``None`` for "no prefetch was done", which is not the same as
+        an empty set: the guard falls back to its per-message query on
+        ``None`` and trusts the set when given one.
+
+        **Only for a real batch.** :meth:`send` is ``send_many`` of one, so an
+        unconditional prefetch here would put a bulk query on the path of
+        every single-message send in the codebase — every XRAS activation
+        notice — to answer a question one `LIMIT 1` already answers. Two or
+        more is where the round trips start to matter.
+        """
+        if force or self.ledger is None or len(messages) < 2:
+            return None
+        keys = [m.dedup_key for m in messages if m.dedup_key]
+        if not keys:
+            return None
+        return self.ledger.already_sent_many(keys)
+
+    def _pre_transport_guard(self, message: Message, *, force: bool,
+                             suppressed_keys: Optional[Set[str]] = None,
+                             ) -> Optional[DeliveryResult]:
+        """Return a terminal result, or ``None`` to proceed to the transport.
+
+        Args:
+            suppressed_keys: the batch's already-answered suppression set from
+                :meth:`_prefetch_suppressed`, or ``None`` to ask the ledger
+                about this one message. Keyword-only and defaulted, so the
+                single-message contract every other caller relies on is
+                unchanged.
+        """
         if not self.config.enabled:
             logger.info('notify: disabled; suppressing kind=%s to=%s',
                         message.kind, message.recipient.address)
@@ -207,7 +239,9 @@ class Notifier:
                 detail='notifications are disabled (NOTIFY_ENABLED)')
 
         if not force and message.dedup_key and self.ledger is not None:
-            if self.ledger.already_sent(message.dedup_key):
+            if (message.dedup_key in suppressed_keys
+                    if suppressed_keys is not None
+                    else self.ledger.already_sent(message.dedup_key)):
                 logger.info('notify: suppressed by dedup_key=%s',
                             message.dedup_key)
                 return self._record(
