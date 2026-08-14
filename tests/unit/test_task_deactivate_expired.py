@@ -87,6 +87,35 @@ def scoped_selection(session, monkeypatch):
     return resource
 
 
+class _RecordingSession:
+    """Lends the test session to the runner and records how it was closed out.
+
+    `close_sessions` commits or rolls back and then **closes**, which on the
+    suite's SAVEPOINT-isolated session would detach every instance the test
+    still holds. Swallowing those three calls keeps the test readable while
+    recording the one thing worth asserting: which way the runner went. Same
+    trick, and same reason, as `cleanup_status._NonClosingSession`.
+    """
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.committed = False
+        self.rolled_back = False
+
+    def commit(self):
+        self.committed = True
+        self._inner.flush()
+
+    def rollback(self):
+        self.rolled_back = True
+
+    def close(self):
+        pass
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
 def _expired(session, resource, *, days_expired, projcode=None):
     project = make_project(session, active=True, facility_name='UNIV',
                            projcode=projcode)
@@ -283,6 +312,58 @@ class TestTheMisfirePolicy:
 
         assert out['counts'] == {'already_claimed': 1}
         assert len(self.ran) == 1
+
+
+# ------------------------------------------------------------------- dry run
+
+class TestDryRun:
+    """`--dry-run` deactivates and rolls back, which is honest coverage here.
+
+    This task has no `ctx.dry_run` branch and needs none: everything it does is
+    transactional, unlike `expiration_notices`, whose mail a rollback cannot
+    recall. So the preview is the real thing, undone.
+    """
+
+    def test_it_reports_what_it_would_deactivate_and_then_rolls_back(
+            self, session, ledger, scoped_selection):
+        """Asserts the *contract*, not the row state.
+
+        The runner calls `close_sessions(commit=False)`, which both rolls back
+        AND closes — so reading the ORM instance afterwards raises
+        `DetachedInstanceError`, and a genuine rollback would unwind the
+        factory rows along with the deactivation (the suite isolates with
+        SAVEPOINT). Recording the call is what this layer can honestly check;
+        that a rollback undoes an UPDATE is SQLAlchemy's job, not this task's.
+        """
+        import scheduling.tasks                   # noqa: F401
+        _expired(session, scoped_selection, days_expired=400,
+                 projcode='ZZDRY001')
+        recorder = _RecordingSession(session)
+
+        out = run_due(now=OCC + timedelta(minutes=7), ledger=ledger,
+                      registry={NAME: TASKS[NAME]}, dry_run=True,
+                      sam_session_factory=lambda: recorder)
+
+        result = out['results'][0]
+        assert result['outcome'] == 'would_claim'
+        assert result['would_be'] == 'succeeded'
+        assert result['dry_run'] is True
+        assert 'ZZDRY001' in result['detail']['projcodes']
+
+        assert recorder.rolled_back, 'a dry run must roll the task session back'
+        assert not recorder.committed, 'and must never commit it'
+
+    def test_a_dry_run_writes_no_ledger_row(self, session, ledger,
+                                            scoped_selection, status_session):
+        """No claim, so the real monthly slot stays free."""
+        import scheduling.tasks                   # noqa: F401
+        from system_status.models import TaskRun
+
+        run_due(now=OCC + timedelta(minutes=7), ledger=ledger,
+                registry={NAME: TASKS[NAME]}, dry_run=True,
+                sam_session_factory=lambda: _RecordingSession(session))
+
+        assert status_session.query(TaskRun).filter_by(task_name=NAME).all() == []
 
 
 # ------------------------------------------------------------------ the real query

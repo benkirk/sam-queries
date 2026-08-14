@@ -118,15 +118,14 @@ def deactivate_expired_projects(ctx) -> TaskResult:
                     DEACTIVATION_MIN_DAYS_EXPIRED)
 
     # No commit and no `management_transaction`: the runner owns the
-    # transaction and commits via `close_sessions(commit=True)`.
+    # transaction, committing via `close_sessions(commit=True)` and rolling
+    # back under `ctx.dry_run`.
     #
-    # ⚠️ Do NOT add a `ctx.dry_run` branch here expecting `--dry-run` to reach
-    # it. `run_due` short-circuits at the CLAIM (runner.py:164) and never calls
-    # `_execute` under dry_run, so `ctx.dry_run` is always False inside a task
-    # body. `--dry-run` answers "would this slot be claimed?", not "what would
-    # this task do?". To preview the *content*, read the set instead — the admin
-    # Expired tab and `sam-search project --recent-expirations` share this
-    # task's window and facility scope by construction.
+    # That rollback is also why this task needs no `ctx.dry_run` branch of its
+    # own. Everything it does is transactional — unlike `expiration_notices`,
+    # whose mail a rollback cannot recall — so `--dry-run` deactivates the
+    # projects, reports `deactivated: 6`, and undoes it. The count is honest
+    # and is the point.
     outcome = deactivate_projects(session, projects, when=slot)
 
     detail = {
