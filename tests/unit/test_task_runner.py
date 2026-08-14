@@ -405,15 +405,59 @@ class TestDryRun:
     def test_writes_no_ledger_rows_at_all(self, ledger, rows):
         """A dry run that claimed the slot would prevent the real run — the
         worst possible failure mode for a safety flag."""
-        calls = []
-        task = make_task(fn=lambda ctx: calls.append(1) or TaskResult())
+        task = make_task()
 
         out = run_due(now=NOW, ledger=ledger, registry=registry_of(task),
                       dry_run=True)
 
         assert rows() == []
-        assert calls == [], 'dry run must not execute the body either'
         assert out['counts'] == {'would_claim': 1}
+
+    def test_the_body_runs_so_the_preview_is_real(self, ledger):
+        """⚠️ This assertion is INVERTED from what it used to be.
+
+        It previously read ``assert calls == [], 'dry run must not execute the
+        body either'`` — which made `ctx.dry_run` a constant False, since
+        `_execute` was then only reachable on the not-dry path. Four separate
+        pieces of machinery existed to serve a flag nothing could set:
+        `TaskContext.dry_run` itself, `close_sessions`' `not self.dry_run`
+        rollback guard, `cleanup_status`' `dry_run=ctx.dry_run` (whose callee
+        counts instead of deleting), and `expiration_notices`' preview branch.
+        The claim half of that old test is the part with a real argument behind
+        it, and it is kept above; not executing the body was the implementation
+        being asserted back at itself.
+        """
+        seen = []
+        task = make_task(fn=lambda ctx: seen.append(ctx.dry_run) or TaskResult())
+
+        out = run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                      dry_run=True)
+
+        assert seen == [True], 'the body must run, and must know it is a dry run'
+        assert out['results'][0]['would_be'] == 'succeeded'
+        assert out['results'][0]['dry_run'] is True
+
+    def test_the_detail_the_run_produced_is_reported(self, ledger):
+        """The whole point of the flag: what WOULD this task do?"""
+        task = make_task(fn=lambda ctx: TaskResult(detail={'deleted': 7}))
+
+        out = run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                      dry_run=True)
+
+        assert out['results'][0]['detail']['deleted'] == 7
+
+    def test_a_raising_task_still_reports_failed(self, ledger, rows):
+        """A dry run that blew up is a real finding, and the CLI keys its exit
+        code off this outcome. Still no ledger row."""
+        def boom(ctx):
+            raise RuntimeError('nope')
+
+        out = run_due(now=NOW, ledger=ledger, registry=registry_of(
+            make_task(fn=boom)), dry_run=True)
+
+        assert out['counts'] == {'failed': 1}
+        assert out['results'][0]['dry_run'] is True
+        assert rows() == []
 
     def test_reports_already_claimed_without_writing(self, ledger, rows):
         task = make_task()
@@ -427,11 +471,16 @@ class TestDryRun:
         assert len(rows()) == before
 
     def test_a_dry_run_does_not_block_the_real_run(self, ledger):
+        """The invariant the claim half protects: previewing a slot must leave
+        it free. Both bodies run — the first previews, the second commits."""
         calls = []
-        task = make_task(fn=lambda ctx: calls.append(1) or TaskResult())
+        task = make_task(fn=lambda ctx: calls.append(ctx.dry_run) or TaskResult())
+
         run_due(now=NOW, ledger=ledger, registry=registry_of(task), dry_run=True)
-        run_due(now=NOW, ledger=ledger, registry=registry_of(task))
-        assert len(calls) == 1, 'the real run must still happen'
+        out = run_due(now=NOW, ledger=ledger, registry=registry_of(task))
+
+        assert calls == [True, False], 'the real run must still happen'
+        assert out['counts'] == {'succeeded': 1}
 
 
 # ------------------------------------------------------------- only / force

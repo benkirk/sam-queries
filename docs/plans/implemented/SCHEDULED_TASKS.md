@@ -658,6 +658,28 @@ prevent the real run — the worst possible failure mode for a safety flag. It
 prints what it *would* claim; the JSON envelope reports `"would_claim": [...]`.
 The notify framework made the same call for `preview()`, for the same reason.
 
+> **Amended (PR #447 follow-up).** As first built, `run_due` returned at the
+> claim under `--dry-run` and never called `_execute`, so **`ctx.dry_run` was a
+> constant `False`** and `--dry-run` answered only "is this slot free?" — never
+> "what would this task do?". Four pieces of machinery existed for a flag
+> nothing could set: `TaskContext.dry_run`, `close_sessions`' `not self.dry_run`
+> rollback guard, `cleanup_status`' `dry_run=ctx.dry_run` (whose callee counts
+> instead of deleting), and `expiration_notices`' preview branch. It survived
+> because one test asserted the outcome without exercising the path
+> (`test_dry_run_deletes_nothing` passed because the body never ran) and another
+> exercised the path without going through the runner (building a
+> `TaskContext(dry_run=True)` by hand).
+>
+> A dry run now **executes the body and rolls it back**: no ledger row, no
+> claim, `close_sessions` rolls back, and the outcome is `would_claim` carrying
+> `would_be` plus the detail the run produced. A raise still reports `failed`,
+> because a dry run that blew up is a real finding and the exit code should say
+> so. The no-claim half of the original argument is unchanged and still tested.
+>
+> ⚠️ The new obligation is on task authors: **a task whose side effects are not
+> transactional must branch on `ctx.dry_run`** — a rollback undoes rows, not
+> mail. See the note on `TaskContext.dry_run`.
+
 **`--force` writes a manual key**: `"M" + now.strftime('%Y%m%dT%H%M%SZ')`,
 `trigger='manual'`. The leading `M` cannot collide with a scheduled key, so a
 forced run never satisfies a scheduled slot — and that must be documented at the

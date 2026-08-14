@@ -122,6 +122,19 @@ class TaskContext:
 
     occurrence_key: str
     task_name: str
+
+    #: True when the run is a preview. The body still executes and still reads
+    #: the database — `close_sessions` rolls back instead of committing, and no
+    #: ledger row is written.
+    #:
+    #: ⚠️ **A task whose side effects are not transactional MUST branch on
+    #: this.** A rollback undoes rows; it does not unsend mail, un-POST a
+    #: webhook, or un-delete an object in S3. `expiration_notices` is the worked
+    #: example — it previews each message instead of handing it to a transport.
+    #: A task that only touches the database (`cleanup_status`,
+    #: `deactivate_expired_projects`) needs no branch at all: the rollback is
+    #: complete coverage, and reporting what it *would* have changed is the
+    #: whole point.
     dry_run: bool = False
     logger: logging.Logger = field(default_factory=lambda: logger)
 
