@@ -37,13 +37,28 @@ def status_engine(app, status_session):
 
 
 @pytest.fixture
-def wired(status_engine):
+def wired(status_engine, monkeypatch):
     """Point the command's status-session factory at the test SQLite bind.
 
     Patched at `system_status.session.create_status_engine`, the single place
     `TasksCommand` builds its engine. Nothing patches a SAM engine — these
     tests would fail if the command tried to open one, which is the point.
+
+    Which is why every task declaring ``needs=('sam', ...)`` is switched off
+    here. `--run-due` dispatches the whole registry, so any SAM-needing task
+    that happens to be due would try to open the connection this file exists to
+    prove is unnecessary. That used to be nobody: the two SAM tasks are monthly
+    and weekly with graces well short of their periods, so both misfire on
+    almost every run and record `skipped` without executing. `xras_notices` is
+    hourly, and is due for most of the day.
+
+    Derived from `needs` rather than named, so registering another SAM task
+    does not silently turn this file red — and so what is asserted stays "the
+    status task runs without SAM", not "these three names do not".
     """
+    from scheduling.registry import TASKS
+    monkeypatch.setenv('SAM_TASKS_DISABLED', ','.join(
+        sorted(name for name, t in TASKS.items() if 'sam' in t.needs)))
     with patch('system_status.session.create_status_engine') as mk:
         mk.return_value = (status_engine, None)
         yield status_engine
