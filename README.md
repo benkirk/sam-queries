@@ -573,7 +573,8 @@ sam-queries/
 │   │   ├── registry.py          # The TASKS registry and @task decorator
 │   │   ├── ledger.py            # task_run claims, leases, heartbeats
 │   │   ├── runner.py            # run_due() — the whole scheduler-facing surface
-│   │   └── tasks/               # cleanup_status, expiration_notices
+│   │   └── tasks/               # cleanup_status, deactivate_expired,
+│   │                            #   expiration_notices
 │   │
 │   ├── querykit/                # Faceted-log query facade (see querykit/README.md)
 │   │   ├── README.md            # Why this is a peer package, and what belongs in it

@@ -422,3 +422,44 @@ class TestPortabilityBoundary:
                 assert banned not in imported, (
                     f'{module.relative_to(PKG)} imports {banned}; '
                     f'src/scheduling must stay presentation-free')
+
+    @pytest.mark.parametrize('package', ['sam.manage', 'sam.queries.expirations'])
+    def test_what_the_tasks_import_stays_presentation_free_too(self, package):
+        """The AST gate above is **per-file and not transitive**.
+
+        It parses each module under `src/scheduling/` for its own import
+        statements, so it would not notice `sam.manage` — which
+        `deactivate_expired` calls — growing a `rich` dependency next quarter.
+        This closes that half by importing for real, in a subprocess so a module
+        another test already imported cannot mask the result.
+
+        ⚠️ **`FLASK_ACTIVE` is stripped, and that is the point.** With it set,
+        `sam` binds to the Flask-SQLAlchemy declarative base at import time and
+        legitimately pulls flask, click and webapp — measured. `pytest_configure`
+        sets it for the whole suite (`system_status.base.StatusBase` resolves at
+        import), so an inherited environment would make this assert the opposite
+        of what it means to. Unset is the CronJob's actual environment, and the
+        only one in which the question "can a task import this?" has an answer.
+        """
+        import os
+        import subprocess
+        import sys
+
+        # Snapshot BEFORE the import: what matters is what importing the package
+        # ADDS, not what the interpreter already had.
+        probe = (
+            f'import importlib, sys;'
+            f'before = {{m.split(".")[0] for m in sys.modules}};'
+            f'importlib.import_module({package!r});'
+            f'added = {{m.split(".")[0] for m in sys.modules}} - before;'
+            f'bad = added & {{"click", "flask", "rich", "kubernetes", "webapp", "cli"}};'
+            f'print(",".join(sorted(bad)))'
+        )
+        env = {k: v for k, v in os.environ.items() if k != 'FLASK_ACTIVE'}
+        out = subprocess.run([sys.executable, '-c', probe], env=env,
+                             capture_output=True, text=True, check=True)
+
+        assert out.stdout.strip() == '', (
+            f'importing {package} pulled in {out.stdout.strip()}; '
+            f'a scheduling task imports it, and src/scheduling must stay '
+            f'presentation-free')
