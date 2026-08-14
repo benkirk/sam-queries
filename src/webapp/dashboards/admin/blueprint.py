@@ -12,6 +12,7 @@ Domain-specific routes are split into sub-modules imported at the bottom:
 """
 
 from flask import Blueprint, render_template, request, flash, redirect, url_for, session, Response, abort
+from markupsafe import escape
 from webapp.utils.htmx import (htmx_success, htmx_success_message, htmx_not_found,
                                read_active_only, register_typeahead)
 from flask_login import login_required, current_user, login_user
@@ -28,8 +29,14 @@ from sam.schemas.forms import (
     CreateWallclockExemptionForm,
     EditWallclockExemptionForm,
 )
+from sam.manage import deactivate_projects, management_transaction
 from sam.queries.dashboard import get_project_dashboard_data
-from sam.queries.expirations import get_projects_by_allocation_end_date, get_projects_with_expired_allocations
+from sam.queries.expirations import (
+    DEACTIVATION_MIN_DAYS_EXPIRED,
+    get_projects_by_allocation_end_date,
+    get_projects_with_expired_allocations,
+    unique_projects,
+)
 from sam.queries.lookups import find_project_by_code, get_user_group_access
 from sam.queries.notifications import get_expiration_notice_status
 from webapp.auth.models import AuthUser
@@ -456,6 +463,24 @@ def _get_abandoned_users_data(expired_results: List[Tuple]) -> List[Dict]:
     return sorted(abandoned_users, key=lambda u: u['username'])
 
 
+def _expiration_facility_default(view_type):
+    """The facility default for an Expirations view, before RBAC scoping.
+
+    The Expired and Abandoned views default to **every** facility, matching the
+    monthly `deactivate_expired_projects` task: deactivation is housekeeping with
+    no outbound message, so there is no reason to exempt internal projects, and a
+    tab that previewed a narrower set than the button sweeps would be a lie.
+
+    Upcoming keeps UNIV+WNA. It is the notification-adjacent view, and
+    `expiration_notices` mails exactly those two facilities.
+
+    `apply_facility_scope` still intersects whatever this returns with a
+    facility-scoped manager's grants, so this only moves the unscoped-admin
+    default.
+    """
+    return None if view_type in ('expired', 'abandoned') else ['UNIV', 'WNA']
+
+
 @bp.route('/expirations')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -476,7 +501,7 @@ def expirations_fragment():
     facilities = apply_facility_scope(
         request.args.getlist('facilities'),
         Permission.VIEW_PROJECTS,
-        default=['UNIV', 'WNA'],
+        default=_expiration_facility_default(view_type),
     )
     resource = request.args.get('resource', None)
     if resource == '':
@@ -498,8 +523,8 @@ def expirations_fragment():
     elif view_type == 'expired' or view_type == 'abandoned':
         results = get_projects_with_expired_allocations(
             db.session,
-            min_days_expired=90,
-            max_days_expired=365,
+            min_days_expired=DEACTIVATION_MIN_DAYS_EXPIRED,
+            max_days_expired=None,
             facility_names=facilities,
             resource_name=resource
         )
@@ -540,34 +565,47 @@ def deactivate_expired():
     Bulk-deactivate every project currently shown on the Expired (90+ days)
     tab, respecting the same facility/resource filters. Re-runs the query
     server-side so the action operates on exactly the set the user saw.
+
+    Shares its window, its dedupe and its write with the monthly
+    `deactivate_expired_projects` task — see `sam.manage.deactivate_projects`.
     """
     facilities = apply_facility_scope(
         request.form.getlist('facilities'),
         Permission.EDIT_PROJECTS,
-        default=['UNIV', 'WNA'],
+        default=_expiration_facility_default('expired'),
     )
     resource = request.form.get('resource') or None
 
     results = get_projects_with_expired_allocations(
         db.session,
-        min_days_expired=90,
-        max_days_expired=365,
+        min_days_expired=DEACTIVATION_MIN_DAYS_EXPIRED,
+        max_days_expired=None,
         facility_names=facilities,
         resource_name=resource,
     )
-    # Query returns (project, allocation, ...) tuples; a project can have
-    # multiple expired allocations — deduplicate by project_id.
-    unique_projects = {p.project_id: p for (p, _a, _r, _d) in results}.values()
-    for project in unique_projects:
-        project.update(active=False)
-    db.session.commit()
+
+    try:
+        with management_transaction(db.session):
+            outcome = deactivate_projects(db.session, unique_projects(results))
+    except Exception as exc:                                    # noqa: BLE001
+        # management_transaction rolls back and re-raises. This response is
+        # swapped into a DOM target, so an unhandled 500 would leave the
+        # operator staring at an empty card list with no explanation.
+        logger.exception('deactivate_expired failed')
+        return (f'<div class="alert alert-danger">'
+                f'Deactivation failed: {escape(str(exc))}</div>'), 500
+
+    logger.info('deactivated %d expired project(s): %s',
+                outcome.count, ', '.join(outcome.projcodes))
 
     # Re-query so the now-inactive projects fall out (include_inactive_projects
     # defaults to False), then re-render the Expired fragment + OOB count badge.
+    # Deliberately OUTSIDE the transaction: the commit has already landed, and a
+    # template error here must not roll back a completed deactivation.
     refreshed = get_projects_with_expired_allocations(
         db.session,
-        min_days_expired=90,
-        max_days_expired=365,
+        min_days_expired=DEACTIVATION_MIN_DAYS_EXPIRED,
+        max_days_expired=None,
         facility_names=facilities,
         resource_name=resource,
     )
@@ -604,7 +642,7 @@ def expirations_export():
     facilities = apply_facility_scope(
         request.args.getlist('facilities'),
         Permission.VIEW_PROJECTS,
-        default=['UNIV', 'WNA'],
+        default=_expiration_facility_default(export_type),
     )
     resource = request.args.get('resource', None)
     if resource == '':
@@ -618,8 +656,8 @@ def expirations_export():
         # Export abandoned users
         expired_results = get_projects_with_expired_allocations(
             db.session,
-            min_days_expired=90,
-            max_days_expired=365,
+            min_days_expired=DEACTIVATION_MIN_DAYS_EXPIRED,
+            max_days_expired=None,
             facility_names=facilities,
             resource_name=resource
         )
@@ -655,8 +693,8 @@ def expirations_export():
             # Expired exports
             results = get_projects_with_expired_allocations(
                 db.session,
-                min_days_expired=90,
-                max_days_expired=365,
+                min_days_expired=DEACTIVATION_MIN_DAYS_EXPIRED,
+                max_days_expired=None,
                 facility_names=facilities,
                 resource_name=resource
             )
@@ -1051,7 +1089,6 @@ def htmx_deactivate_exemption(exemption_id):
     Fires reloadUserCard + reloadResourcesCard so both views refresh.
     """
     from sam.operational import WallclockExemption
-    from sam.manage import management_transaction
 
     exemption = db.session.get(WallclockExemption, exemption_id)
     if not exemption:

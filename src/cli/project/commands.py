@@ -26,11 +26,13 @@ from cli.project.display import (
     notification_progress,
 )
 from sam import Project
+from sam.manage import deactivate_projects, management_transaction
 from sam.queries.expiration_notices import MILESTONES, build_expiration_messages
 from sam.queries.expirations import (
     get_projects_by_allocation_end_date,
     get_projects_with_expired_allocations,
-    get_all_expiring_allocations
+    get_all_expiring_allocations,
+    unique_projects,
 )
 from sam.queries.tree_audit import audit_allocation_trees, audit_allocation_dates
 from rich.progress import track
@@ -219,18 +221,21 @@ class ProjectExpirationCommand(BaseProjectCommand):
     def _deactivate_projects(self, expiring: list, force: bool = False) -> int:
         """Soft-deactivate recently expired projects.
 
+        The window is this command's own (floor 0, ceiling from ``--since``) —
+        deliberately not the admin button's ``DEACTIVATION_MIN_DAYS_EXPIRED``,
+        because here a human has just read the list. The *write* is shared:
+        `sam.manage.deactivate_projects`, one stamp for the batch.
+
         Args:
             expiring: List of tuples (project, allocation, resource_name, days_expired)
             force: If True, skip confirmation prompt
 
         Returns:
-            EXIT_SUCCESS if all projects deactivated, EXIT_ERROR if any failed
+            EXIT_SUCCESS, or EXIT_ERROR via the caller's exception handling
         """
-        # Deduplicate: one entry per project (query may return multiple allocations per project)
-        projects = {}
-        for proj, alloc, res_name, days_expired in expiring:
-            if proj.projcode not in projects:
-                projects[proj.projcode] = proj
+        # The query returns one row per allocation; the prompt must quote the
+        # number of PROJECTS, and it must be the same list we then mutate.
+        projects = unique_projects(expiring)
 
         if not projects:
             self.console.print("[yellow]No active projects to deactivate.[/]")
@@ -247,40 +252,21 @@ class ProjectExpirationCommand(BaseProjectCommand):
                 self.console.print("[yellow]Deactivation cancelled.[/]")
                 return EXIT_SUCCESS
 
-        # Soft-deactivate each project
-        now = datetime.now()
-        deactivated = []
-        failed = []
-        for projcode, project in projects.items():
-            try:
-                project.active = False
-                project.inactivate_time = now
-                deactivated.append(projcode)
-            except Exception as e:
-                self.console.print(f"[bold red]Error staging {projcode}: {e}[/]")
-                failed.append(projcode)
+        # Raises on failure; execute()'s handler reports it and returns
+        # EXIT_ERROR. There is deliberately no per-project try/except and no
+        # `failed` list: setting two attributes on a loaded instance can only
+        # fail on a typo'd column, which fails on the first project and every
+        # one after — so the list could only ever be empty or complete, while
+        # the thing that CAN fail (the flush) is all-or-nothing anyway.
+        with management_transaction(self.session):
+            outcome = deactivate_projects(self.session, projects)
 
-        # Commit all changes
-        try:
-            self.session.commit()
-        except Exception as e:
-            self.session.rollback()
-            self.console.print(f"[bold red]Database error: {e}[/]")
-            return EXIT_ERROR
+        self.console.print(
+            f"\n✅ Deactivated {outcome.count} project(s): {', '.join(outcome.projcodes)}",
+            style="bold green"
+        )
 
-        # Report results
-        if deactivated:
-            self.console.print(
-                f"\n✅ Deactivated {len(deactivated)} project(s): {', '.join(deactivated)}",
-                style="bold green"
-            )
-        if failed:
-            self.console.print(
-                f"❌ Failed to stage {len(failed)} project(s): {', '.join(failed)}",
-                style="bold red"
-            )
-
-        return EXIT_ERROR if failed else EXIT_SUCCESS
+        return EXIT_SUCCESS
 
     def _notifier(self):
         """Build a :class:`sam.notify.Notifier` wired to a ledger.
