@@ -96,9 +96,20 @@ def projects():
     allowed_facility_names = _allowed_facility_names(
         current_user, Permission.VIEW_PROJECTS, active_only=False)
 
-    # The two default selections carry over from the hardcoded template
-    # (UNIV and WNA). Keep them only if they survive the allowed set.
-    default_selected = [f for f in ('UNIV', 'WNA') if f in allowed_facility_names]
+    # Deliberately EMPTY, where this used to preselect UNIV+WNA.
+    #
+    # One multi-select is shared by all three Expirations tabs, so a
+    # preselection cannot express per-tab scope — it submits the same two
+    # facilities whatever tab you are on, which silently overrode the per-view
+    # defaults in `_expiration_facility_default` and made the Expired tab
+    # preview a narrower set than the monthly task actually sweeps.
+    #
+    # Empty means "no explicit choice", so each view falls through to its own
+    # default: Upcoming stays UNIV+WNA (the notification audience), Expired and
+    # Abandoned cover every facility. A user selection still overrules both and
+    # still drives all three tabs. `_expirations_summary` is what keeps that
+    # legible — it names the effective scope in every pane.
+    default_selected = []
 
     # Optional re-hydration: when arriving from a back-link like
     # /admin/projects?projcode=SCSG0001, auto-render the project card via
@@ -481,6 +492,50 @@ def _expiration_facility_default(view_type):
     return None if view_type in ('expired', 'abandoned') else ['UNIV', 'WNA']
 
 
+def _expirations_summary(view_type, facilities, resource, time_range=None,
+                         *, explicit_facilities=False):
+    """One sentence naming exactly what a pane is showing.
+
+    The three tabs share one filter control but not one default — Upcoming is
+    scoped to the notification audience, Expired and Abandoned sweep every
+    facility — and an empty control cannot show two different things at once.
+    This is what makes the difference visible instead of surprising, so it
+    renders in every pane including the empty ones: "found nothing" is exactly
+    when the reader most needs to know what was searched.
+
+    Rebuilt on every fragment swap, so it tracks the filter rather than
+    describing the page's initial state.
+    """
+    if not facilities:
+        scope = 'all facilities'
+    elif len(facilities) == 1:
+        scope = facilities[0]
+    else:
+        scope = ', '.join(facilities[:-1]) + ' and ' + facilities[-1]
+
+    # Only call it a default when the user really has not chosen — otherwise the
+    # note would contradict the selection sitting right above it.
+    if not explicit_facilities:
+        scope += ' (this tab&rsquo;s default)'
+
+    on_resource = f' with a {resource} allocation' if resource else ''
+
+    if view_type == 'upcoming':
+        days = UPCOMING_PRESETS.get(time_range, 31)
+        return (f'Showing projects in {scope}{on_resource} whose latest-ending '
+                f'allocation expires within the next {days} days.')
+
+    if view_type == 'abandoned':
+        return (f'Showing users whose every active project is expired — '
+                f'projects in {scope}{on_resource} whose latest-ending '
+                f'allocation ended more than {DEACTIVATION_MIN_DAYS_EXPIRED} '
+                f'days ago. Same set as the Expired tab.')
+
+    return (f'Showing projects in {scope}{on_resource} whose latest-ending '
+            f'allocation ended more than {DEACTIVATION_MIN_DAYS_EXPIRED} days '
+            f'ago — the set the monthly deactivation task sweeps.')
+
+
 @bp.route('/expirations')
 @login_required
 @require_permission_any_facility(Permission.VIEW_PROJECTS)
@@ -508,6 +563,10 @@ def expirations_fragment():
         resource = None
     time_range = request.args.get('time_range', '31days')
 
+    summary = _expirations_summary(
+        view_type, facilities, resource, time_range,
+        explicit_facilities=bool(request.args.getlist('facilities')))
+
     if view_type == 'upcoming':
         days = UPCOMING_PRESETS.get(time_range, 31)
         results = get_projects_by_allocation_end_date(
@@ -534,7 +593,8 @@ def expirations_fragment():
 
             html = render_template(
                 'dashboards/admin/fragments/abandoned_users_table.html',
-                abandoned_users=abandoned_users
+                abandoned_users=abandoned_users,
+                summary=summary
             )
             badge = f'<span id="abandoned-count" hx-swap-oob="true" class="badge bg-primary">{len(abandoned_users)}</span>'
             return html + badge
@@ -551,7 +611,8 @@ def expirations_fragment():
         view_type=view_type,
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
-        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD
+        usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
+        summary=summary
     )
     badge = f'<span id="{view_type}-count" hx-swap-oob="true" class="badge bg-primary">{len(projects_data)}</span>'
     return html + badge
@@ -617,6 +678,9 @@ def deactivate_expired():
         user=current_user,
         usage_warning_threshold=USAGE_WARNING_THRESHOLD,
         usage_critical_threshold=USAGE_CRITICAL_THRESHOLD,
+        summary=_expirations_summary(
+            'expired', facilities, resource,
+            explicit_facilities=bool(request.form.getlist('facilities'))),
     )
     badge = f'<span id="expired-count" hx-swap-oob="true" class="badge bg-primary">{len(projects_data)}</span>'
     return html + badge

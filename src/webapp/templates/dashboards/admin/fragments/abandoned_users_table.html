@@ -1,3 +1,10 @@
+{# Outside the if/else on purpose — see expirations_cards.html. #}
+{% if summary %}
+<p class="text-muted small mb-3 expirations-summary">
+    <i class="fas fa-filter"></i> {{ summary|safe }}
+</p>
+{% endif %}
+
 {% if abandoned_users %}
 <div class="table-responsive">
     <table class="table table-striped table-hover">

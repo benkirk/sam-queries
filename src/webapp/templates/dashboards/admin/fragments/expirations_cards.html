@@ -1,5 +1,13 @@
 {% from 'dashboards/user/partials/project_card.html' import render_project_card with context %}
 
+{# Outside the if/else on purpose: "nothing found" is exactly when the reader
+   most needs to know what was searched. #}
+{% if summary %}
+<p class="text-muted small mb-3 expirations-summary">
+    <i class="fas fa-filter"></i> {{ summary|safe }}
+</p>
+{% endif %}
+
 {% if projects_data %}
     {% if view_type == 'expired' and has_permission_any_facility(Permission.EDIT_PROJECTS) %}
     <div class="mb-3 text-end">
