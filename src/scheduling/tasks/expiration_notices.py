@@ -41,6 +41,12 @@ from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
 from scheduling.schedules import Weekly, to_local_naive
+# Re-exported: these were defined here until a second notice task needed them,
+# and callers (including this module's tests) still import them from here.
+from scheduling.tasks.mail_guards import (   # noqa: F401
+    EmailCapExceeded,
+    NotificationsDisabled,
+)
 
 #: Monday 09:00 Mountain. Monday because a 500-recipient notice sent on a
 #: Friday is read on Monday anyway, with any replies landing while the sender
@@ -68,36 +74,6 @@ DEFAULT_EMAIL_MAX = 2500
 #: How many failed recipients go into the ledger row. `detail` is TEXT and the
 #: runner truncates at 60 kB; the summary email carries the full list.
 _MAX_REPORTED_FAILURES = 50
-
-
-class EmailCapExceeded(RuntimeError):
-    """The audience exceeded ``SAM_TASKS_EMAIL_MAX``. Nothing was sent.
-
-    Raised rather than returned, because :class:`~scheduling.registry.TaskResult`
-    has no failed state. In particular NOT reported via ``partial_failures``,
-    which means "some sent" — here the count is zero, and an operator reading
-    `partial` would go looking for the ones that got through.
-
-    ``task_detail`` is merged into the ledger row by ``runner._execute``, so
-    the audience and the cap are structured data rather than a substring of
-    ``repr(exc)``.
-    """
-
-    def __init__(self, message: str, *, audience: int, cap: int) -> None:
-        super().__init__(message)
-        self.task_detail = {'audience': audience, 'cap': cap,
-                            'aborted_before_sending': True}
-
-
-class NotificationsDisabled(RuntimeError):
-    """``NOTIFY_ENABLED`` is false in a context that exists to send mail.
-
-    Without this the task would sail through: every message would be recorded
-    `suppressed`, the run would report `succeeded`, the Job would go green,
-    and nobody would learn that a chart change had stopped the mail. The
-    CronJob does not inherit `webapp.env`, so this is a live failure mode and
-    not a hypothetical one.
-    """
 
 
 def email_max(env: Optional[dict] = None) -> int:
