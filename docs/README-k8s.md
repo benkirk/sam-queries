@@ -247,7 +247,7 @@ Scheduled tasks, by environment:
 |---|---|---|
 | Local Docker Compose (`webdev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
-| CIRRUS k8s (this chart) | `true`, kill-switched | `SAM_TASKS_DISABLED=cleanup_status_snapshots` until the soak completes |
+| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable: only `cleanup_status_snapshots` runs. `SAM_TASKS_DISABLED=deactivate_expired_projects,expiration_notices` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
 and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
@@ -325,20 +325,57 @@ kubectl logs -n <namespace> job/tasks-manual-1
 
 ⚠️ **The kill switch.** `tasks.env.SAM_TASKS_DISABLED` is a comma-separated list
 of task names to skip, flippable in `values.yaml` with no code deploy. It ships
-**non-empty** (`cleanup_status_snapshots`) so that merging the chart deploys a
-dispatcher which runs hourly, writes `skipped` rows and deletes nothing — the
-24 h soak that proves credentials, DNS, image and Postgres reachability from a
-pod that is not the webapp, with zero blast radius. Clearing it is a separate,
-reviewable one-line commit.
+**non-empty** because tasks are enabled in stages: each one stays named here
+until it has been reviewed on its own, so the dispatcher wakes hourly and the
+untried task writes a `skipped` row instead of running. Today only
+`cleanup_status_snapshots` is live; `deactivate_expired_projects` and
+`expiration_notices` are switched off. Enabling one is a separate, reviewable
+one-line commit.
+
+⚠️ **It is an enumeration, and it is fail-OPEN.** `disabled_tasks()` in
+`src/scheduling/runner.py` is a case-sensitive exact match against registry
+keys. There is **no wildcard** — `all`, `*` and `none` are just names that
+match nothing — and an unknown name is never validated or warned about, so a
+typo silently disables nothing. A task added to `src/scheduling/tasks/`
+therefore **dispatches on the next hourly wake** unless its name is added here
+in the same change.
+
+`deactivate_expired_projects` and `expiration_notices` are exactly that case:
+both were registered without this list being touched, so the image promotion
+that carries them into production would have started both immediately. The
+list is a chart-side decision and the registry is a code-side one, and nothing
+couples them — so adding a task means editing both, in the same change.
+
+Two behaviors worth knowing before flipping it:
+
+- **A skip settles the slot.** A disabled task writes a terminal `skipped` row
+  (`detail={'reason': 'disabled'}`), so re-enabling one mid-slot does not
+  backfill — the first real run is the *next* occurrence of its schedule.
+- **It outranks the CLI.** The switch is checked ahead of dueness and ahead of
+  `only`/`force`, so `sam-admin tasks --run <name> --force` cannot override it.
+  Remove the name from `values.yaml` instead.
+
+The value is declared **once** and consumed twice: the CronJob obeys it, and
+the webapp Deployment carries it so Admin → Configuration reports it. Keep them
+in sync — `helm/tests/test-cronjob-render.sh` asserts per-manifest agreement,
+and `scripts/cirrus_healthcheck.sh` compares the two deployed values.
 
 `tasks.enabled: false` in `values-local.yaml`: on Docker Desktop nothing should
-silently DELETE local data. To smoke-test it there:
+silently DELETE local data. To smoke-test it there, disable **every** task —
+what is being proved is that the dispatcher wakes and writes ledger rows, and
+that needs no task to actually do anything:
 
 ```bash
 helm upgrade --install samuel ./helm -f helm/values.yaml -f helm/values-local.yaml \
   -n samuel-dev --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
-  --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots'
+  --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots\,deactivate_expired_projects\,expiration_notices'
 ```
+
+⚠️ `--set` **replaces** the list rather than adding to it, and the commas need
+escaping. Naming only one task here leaves the other two live against your
+local databases — including `expiration_notices`, whose audience is external
+PIs. (`NOTIFY_ENABLED` is fail-closed and unset locally, so nothing would
+actually send, but do not rely on that as the only guard.)
 
 ### Destroy
 
