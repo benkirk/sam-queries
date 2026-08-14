@@ -10,6 +10,7 @@ Import this package (not the modules individually) before reading
 """
 
 from scheduling.tasks import cleanup_status       # noqa: F401
+from scheduling.tasks import deactivate_expired   # noqa: F401
 from scheduling.tasks import expiration_notices   # noqa: F401
 
-__all__ = ['cleanup_status', 'expiration_notices']
+__all__ = ['cleanup_status', 'deactivate_expired', 'expiration_notices']

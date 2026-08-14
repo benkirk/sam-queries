@@ -87,7 +87,8 @@ sam-queries/
 ├── src/system_status/    # Separate status DB (own bind, Alembic-managed)
 ├── src/scheduling/       # Ledger-backed task dispatcher (schedules, registry,
 │   └── tasks/            #   ledger, runner) — no Click/Flask/rich/k8s imports
-│                         #   tasks/: cleanup_status, expiration_notices
+│                         #   tasks/: cleanup_status, deactivate_expired,
+│                         #           expiration_notices
 ├── src/querykit/         # Faceted-log query facade — SQLAlchemy only, imports
 │                         #   nothing from sam/ or system_status/ (see its README)
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
