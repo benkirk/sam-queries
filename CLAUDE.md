@@ -88,7 +88,7 @@ sam-queries/
 ├── src/scheduling/       # Ledger-backed task dispatcher (schedules, registry,
 │   └── tasks/            #   ledger, runner) — no Click/Flask/rich/k8s imports
 │                         #   tasks/: cleanup_status, deactivate_expired,
-│                         #           expiration_notices
+│                         #           expiration_notices, xras_notices
 ├── src/querykit/         # Faceted-log query facade — SQLAlchemy only, imports
 │                         #   nothing from sam/ or system_status/ (see its README)
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
@@ -617,6 +617,31 @@ first task with `needs=('sam',)`.
 | **Summary mail** | one per run to `SAM_TASKS_SUMMARY_TO`, including on quiet weeks and on the cap trip (before the raise). Never fails the run. |
 | **Replay** | `sam-admin tasks --run expiration_notices --force --occurrence 2026-11-23T09:00`. Honored only under `--force`, where the key is `M`-prefixed and cannot claim a real slot. |
 
+### The `xras_notices` task
+
+`src/scheduling/tasks/xras_notices.py`, hourly 08:00–17:00 Mon–Fri Mountain
+(`BusinessHourly`). Mails the XRAS handoff notices nobody clicked. **Ships
+named in `SAM_TASKS_DISABLED`** pending a soak.
+
+| | |
+|---|---|
+| **Policy** | `AUTO_NOTICES` — `update`, `extend`, `supplement`, `adjust`, each with a `timedelta` delay (1 day). **Fail-closed**: a service not in that tuple is never auto-sent. `add` is out because a New is *two* writes (`active=True` **and** the notice, in that order); `transfer` has no kind at all. |
+| ⚠️ **Key on `service`, never `action_type`** | a card row badged **New** *can* auto-send: `dispatch.select_service` routes a New whose projcode already exists to `update`. `action_type` is also nullable, aliased (`Adjust`/`Adjustment`), unconstrained, and includes `'Date Adjustment'`, which no service handles. |
+| **Threshold** | from `ctx.occurrence` via `to_local_naive`, **not** truncated to midnight (unlike `expiration_notices`): this is a rolling threshold, not a band. `received_time` is naive-Mountain from the app clock. |
+| **Window** | `[slot − LOOKBACK, slot]`, 14 days. The lower bound is a blast-radius bound — without it the first run after the switch clears mails every never-notified action in the table. The **upper** bound is determinism: a run reclaimed an hour late must select *its* slot's cohort. |
+| **Guards** | `NOTIFY_ENABLED` false raises; audience past `SAM_TASKS_XRAS_MAX` (50, **not** the shared 2500) raises. Both before any transport. |
+| **No summary mail** | deliberately, unlike `expiration_notices`: 50 wakes a week, most sending nothing. The ledger row and the admin card are the record. |
+| **Writes** | one `XrasActivationEvent(event_type='notified', created_by='task:xras_notices')` per action that actually reached somebody — send first, record second, so the timeline never claims a handoff that did not leave. |
+| **Why it cannot double-mail** | button and task both call `build_xras_messages`, so both mint `{kind}:{projcode}:{action_id}:{address}`. The ledger suppresses whichever is second. No locking needed around the card. |
+| **Misfire** | the plain 6 h default. A missed slot costs nothing — the window is rolling, so the next slot subsumes it. |
+
+⚠️ **`SAM_TASKS_DISABLED` is fail-OPEN.** Registering a task in
+`src/scheduling/tasks/` puts it into production **live** on the next hourly
+wake unless its name is added to `helm/values.yaml` in the *same change*. The
+registry is code-side, the list is chart-side, and nothing couples them but the
+reviewer — so `test_task_xras_notices.py` greps `values.yaml` for the name.
+`docs/README-k8s.md` enumerates the set in three places.
+
 ⚠️ **`NOTIFY_*`/`MAIL_*` must reach the CronJob explicitly.**
 `helm/templates/cronjob-tasks.yaml` renders `.Values.tasks.env` plus a
 hand-listed set and does **not** inherit `.Values.webapp.env`. A missing
@@ -638,9 +663,12 @@ and asserts the inequality.
 exports `NotificationLog`, so eager imports there put jinja2 and the
 transports into every ORM consumer's import graph.
 `tests/unit/test_notify_import_graph.py` is the gate.
-❌ **DON'T** export `sam/queries/expiration_notices.py` from
-`sam/queries/__init__.py` — that file imports its submodules eagerly, so
-listing it would put `sam.notify.base` into every `from sam.queries import ...`.
+❌ **DON'T** export `sam/queries/expiration_notices.py` **or
+`sam/queries/xras_notices.py`** from `sam/queries/__init__.py` — that file
+imports its submodules eagerly, so listing either would put `sam.notify.base`
+into every `from sam.queries import ...`. The trap is that the near-identically
+named `xras_activation.py` **is** exported, safely, because it imports no
+`sam.notify`.
 ❌ **DON'T** import Click, Flask, `rich` or `kubernetes` anywhere under
 `src/scheduling/` — a task writes to `ctx.logger`, never to stdout, because the
 CronJob's stdout is a JSON envelope. `test_task_ledger.py` AST-walks the

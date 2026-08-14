@@ -1,5 +1,11 @@
 # Automatic XRAS notices — implementation plan
 
+**Status: built, shipped switched off.** Five commits on
+`xras_auto_notices_plan`. Suite green at **7,033 passed, 42 skipped,
+1 xfailed**; `helm/tests/test-cronjob-render.sh` OK. The only thing left is
+the follow-up commit that clears `xras_notices` out of `SAM_TASKS_DISABLED`
+after a soak — see *As built* for what the build did differently.
+
 ## Context
 
 The Allocations → XRAS tab's "Pending Activations & Recent Notifications" card
@@ -315,6 +321,71 @@ the branch lands.
     Harmless at modal scale; leave it.
 
 ---
+
+## As built
+
+Found by writing the code; each changed what the plan said.
+
+1. **`test_xras_dashboard.py` did NOT pass unedited.** The plan predicted it
+   would. Its `TestSignedIncrements` class reached past the routes into
+   `blueprint._action_increments` directly — the one white-box test in the
+   file — so it moved to `test_xras_notices_builder.py` with the helper it
+   exercises. The tests got *shorter* in the move: they no longer need
+   `app.app_context()`. `test_xras_notify.py` (the routes) did pass unedited,
+   which is the proof that mattered.
+
+2. **`test_admin_tasks_cli.py`'s `wired` fixture now switches off every task
+   declaring `needs=('sam', ...)`.** That file's premise is that dispatch works
+   with **no** SAM connection, and `--run-due` dispatches the whole registry.
+   It held only because the two SAM tasks are monthly and weekly with graces
+   well short of their periods, so both misfire and record `skipped` without
+   executing. An hourly SAM task is due for most of the day, and four tests
+   went red. Derived from `needs` rather than named, so the next SAM task does
+   not repeat this.
+
+   Worth noticing on its own: this is the first task frequently enough due that
+   `--run-due` really exercises the SAM path.
+
+3. **`_xras_messages` stayed in the blueprint** as a documented two-line
+   binding (`db.session`, `current_user.username`) rather than being deleted.
+   Both routes call it; inlining would have repeated the two things the task
+   cannot supply at each site.
+
+4. **`select()` is a module-level pure function** over `get_xras_activity`
+   rows, not an inline comprehension. The whole policy — including the
+   `New`-badge rule — is then testable with plain dicts and no database, which
+   is what let the policy tests read as a table of the rule.
+
+5. **`notify_after()` refuses zero and negative**, falling back to the declared
+   delays. Zero would mean "mail the instant an action lands", which removes
+   the point of the window and is far more likely a typo than an intent.
+   `xras_email_max()` refuses them for the reason `retention_days` does.
+
+6. **A registration test greps `helm/values.yaml`** for the task name, since
+   `SAM_TASKS_DISABLED` is fail-open and nothing but the reviewer couples the
+   registry to the chart. It says in its own docstring to delete it in the
+   commit that clears the switch.
+
+7. **`docs/README-k8s.md` enumerates the disabled set in three places**, not
+   the two the plan expected — the environment table, the kill-switch prose,
+   and the `--set` example for a local smoke.
+
+8. **`BusinessHourly.describe()` handles a non-contiguous weekday set**
+   (`Mon,Wed,Fri`) as well as a range. The string is what
+   `sam-admin tasks --list` and the admin Configuration card print, and it has
+   to stay legible for a window nobody anticipated.
+
+9. **`detail` as built** carries `window_start` / `window_end`,
+   `delays_hours`, `actions`, `by_service`, `selected` / `suppressed` /
+   `audience`, `sent` / `failed` / `failed_recipients`, `actions_notified`,
+   and `oldest_sent_age_hours`.
+
+10. **Pre-existing, not introduced:** importing `scheduling.tasks` pulls
+    `rich`, via `cleanup_status.py`'s top-level
+    `from system_status.retention import ...`. The per-file AST gate is
+    satisfied (no module under `src/scheduling/` imports it directly) and the
+    transitive gate does not cover `system_status`. `xras_notices.py` itself
+    imports nothing outside `scheduling` at module scope. Left alone.
 
 ## Verification
 
