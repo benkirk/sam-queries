@@ -45,14 +45,21 @@ DEACTIVATION_MIN_DAYS_EXPIRED = 90
 def unique_projects(
     results: List[Tuple['Project', Any, Any, Any]]
 ) -> List['Project']:
-    """Deduplicate an expirations query result down to distinct projects.
+    """Collapse an expirations query result down to distinct projects.
 
-    The expiration queries return one row per *(project, allocation)*, so a
-    project with three expired allocations appears three times. Every caller
-    that acts on projects rather than allocations needs this — and `sam-admin`
-    needs the resulting count *before* it prompts, separately from any mutation,
-    which is why this is its own name rather than a step hidden inside a write
-    function.
+    ⚠️ **A guard, not a repair.** `get_projects_by_allocation_end_date` and
+    `get_projects_with_expired_allocations` pin one allocation per project
+    (`_get_latest_allocation_subquery` ends in `LIMIT 1`), so today they emit no
+    duplicates at all — verified against a production snapshot at three windows,
+    132/95/6 rows, zero dupes. The pre-existing "a project can have multiple
+    expired allocations" comment in the admin route was simply wrong.
+
+    It stays because the *shape* is one row per `(project, allocation)`, and the
+    sibling `get_all_expiring_allocations` genuinely returns every allocation —
+    so a caller swapping queries would start double-counting silently. It also
+    gives `sam-admin` a project count it can quote in a prompt *before* mutating,
+    separately from the write, which is why this is its own name rather than a
+    step hidden inside one.
 
     First-seen order is preserved, so a result sorted most-expired-first stays
     that way.

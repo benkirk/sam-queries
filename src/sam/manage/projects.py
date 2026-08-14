@@ -70,9 +70,11 @@ def deactivate_projects(
             preference to ``Project.session``, which is
             ``Session.object_session(obj)`` and therefore ``None`` for a
             detached instance.
-        projects: Already-selected, already-deduplicated projects. Pass them
-            through :func:`sam.queries.expirations.unique_projects` first — the
-            expiration queries return one row per allocation.
+        projects: Already-selected, already-deduplicated projects. Pass an
+            expirations result through
+            :func:`sam.queries.expirations.unique_projects` first — its shape is
+            one row per (project, allocation), and duplicates here would stamp a
+            project twice and inflate the reported count.
         when: The ``inactivate_time`` stamp, shared across the batch. Defaults to
             a single ``datetime.now()`` taken once here, never per project.
             **A scheduled task must pass this explicitly**, derived from

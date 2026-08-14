@@ -105,9 +105,11 @@ def deactivate_expired_projects(ctx) -> TaskResult:
         facility_names=list(FACILITIES) if FACILITIES else None,
         now=slot,
     )
-    # One row per allocation; collapse before counting, or `selected` in the
-    # ledger row reports allocations while `deactivated` reports projects and
-    # the two look like a bug.
+    # The result's shape is one row per (project, allocation). Today this query
+    # pins one allocation per project so the collapse is a no-op — but count
+    # PROJECTS explicitly anyway, or a later swap to `get_all_expiring_allocations`
+    # would make `selected` report allocations while `deactivated` reports
+    # projects, and the two would look like a bug rather than a units mismatch.
     projects = unique_projects(selected)
 
     ctx.logger.info('as of %s: %d allocation row(s) -> %d project(s) '
