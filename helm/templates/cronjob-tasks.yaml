@@ -8,7 +8,7 @@
 # is why the cron string below is arbitrary and why adding a task is a code
 # change rather than a chart change.
 #
-# Design: docs/plans/SCHEDULED_TASKS.md § 8.
+# Design: docs/plans/implemented/SCHEDULED_TASKS.md § 8.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -108,6 +108,50 @@ spec:
                 valueFrom:
                   fieldRef:
                     fieldPath: metadata.name
+              # ── Notifications ────────────────────────────────────────
+              #
+              # ⚠️ These are CROSS-REFERENCED from webapp.env, not inherited.
+              # This container renders `.Values.tasks.env` plus the names
+              # listed here and NOTHING else, so a NOTIFY_*/MAIL_* key that
+              # exists only on the Deployment never reaches the CronJob.
+              #
+              # Before this block, `expiration_notices` would have run in
+              # production with NOTIFY_ENABLED unset — fail-closed, so it
+              # would have recorded every message `suppressed`, reported
+              # `succeeded`, exited 0, and mailed nobody. Silently. The task
+              # now refuses to run mail-disabled (it raises
+              # NotificationsDisabled) and test-cronjob-render.sh asserts
+              # NOTIFY_ENABLED renders into THIS manifest specifically — two
+              # guards, because the failure is invisible otherwise.
+              #
+              # Cross-referenced rather than duplicated so the relay facts
+              # measured in NOTIFICATION_FRAMEWORK.md § 9 have one home and
+              # the webapp and the CronJob cannot drift apart on them.
+              - name: NOTIFY_ENABLED
+                value: {{ .Values.webapp.env.NOTIFY_ENABLED | quote }}
+              - name: NOTIFY_TRANSPORT
+                value: {{ .Values.webapp.env.NOTIFY_TRANSPORT | quote }}
+              - name: MAIL_SERVER
+                value: {{ .Values.webapp.env.MAIL_SERVER | quote }}
+              - name: MAIL_PORT
+                value: {{ .Values.webapp.env.MAIL_PORT | quote }}
+              - name: MAIL_USE_TLS
+                value: {{ .Values.webapp.env.MAIL_USE_TLS | quote }}
+              - name: MAIL_TIMEOUT
+                value: {{ .Values.webapp.env.MAIL_TIMEOUT | quote }}
+              - name: MAIL_DEFAULT_FROM
+                value: {{ .Values.webapp.env.MAIL_DEFAULT_FROM | quote }}
+              {{- with .Values.webapp.env.NOTIFY_REDIRECT_TO }}
+              # Only rendered when set. It is the staging safety valve, and a
+              # bare "" here would read as deliberately-empty rather than
+              # absent.
+              - name: NOTIFY_REDIRECT_TO
+                value: {{ . | quote }}
+              {{- end }}
+              {{- with .Values.webapp.env.NOTIFY_BCC }}
+              - name: NOTIFY_BCC
+                value: {{ . | quote }}
+              {{- end }}
               # The dispatcher reads SAM's config validator on startup even
               # though its only task touches Postgres, so both DB blocks are
               # supplied. Same namespace Secrets the Deployment consumes — no

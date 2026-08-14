@@ -30,7 +30,7 @@ would poison it. The ledger and the task's own work are deliberately separate
 transactions, so a task that rolls back its data changes still leaves an honest
 record that it ran and failed.
 
-See ``docs/plans/SCHEDULED_TASKS.md`` § 4.4 and § 4.5.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 4.4 and § 4.5.
 """
 
 from __future__ import annotations

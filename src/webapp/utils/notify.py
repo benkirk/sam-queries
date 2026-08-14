@@ -7,7 +7,7 @@ the whole session back on exception — correct for a *decision*, wrong for a
 *delivery*. Mail handed to a relay cannot be un-sent by a rollback, so the
 ledger must not enrol in the request's transaction. It therefore gets a
 factory that opens fresh sessions on ``db.engine``, the same discipline
-``webapp/api/xras/replay.py`` uses for its audit row.
+``webapp/api/xras/recheck.py`` uses for its audit row.
 
 See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 5 and § 7.
 """

@@ -9,10 +9,15 @@ Two scenarios, both chosen because they are about what the operator actually
    Only a browser proves the tile is really there after the swap.
 
 2. **The kill-switch warning.** The single most important pixel here.
-   Production ships with ``SAM_TASKS_DISABLED: "cleanup_status_snapshots"``
-   (``helm/values.yaml``), so the first thing this card shows in production is
-   a dispatcher waking hourly and deliberately doing nothing. If the card does
-   not say so loudly it looks like a healthy system.
+   Production ships ``SAM_TASKS_DISABLED`` non-empty (``helm/values.yaml``,
+   currently the two tasks awaiting review), so the card always has a
+   dispatcher waking hourly and deliberately doing nothing to report. If it
+   does not say so loudly the system looks healthy.
+
+   The assertions below deliberately do **not** name a task: which tasks are
+   switched off is a chart decision that changes without this file, and a
+   pinned name turns that ordinary edit into a red e2e run. What is asserted
+   is the shape — a warning, and an explanation of what disabled *means*.
 
 Everything else about this feature is cheaper and less fragile at the unit
 tier: the ``unavailable`` degrade needs a table-less database (there is no
@@ -20,9 +25,10 @@ monkeypatch here — this tier drives a live stack over HTTP), and the 403
 boundary is covered by ``tests/unit/test_admin_scheduled_tasks_page.py``'s
 ``config_only_client``.
 
-To exercise scenario 2 locally the stack has to actually carry the switch::
+To exercise scenario 2 locally the stack has to actually carry the switch.
+``compose.yaml`` passes the host variable through (empty by default), so::
 
-    SAM_TASKS_DISABLED=cleanup_status_snapshots docker compose up webdev --watch
+    SAM_TASKS_DISABLED=expiration_notices docker compose up webdev --watch
     make e2e SAM_E2E_BASE_URL=http://localhost:5050
 
 Without it that test skips rather than passing vacuously.
@@ -115,15 +121,19 @@ class TestTheKillSwitchWarning:
         if 'Disabled:' not in card.inner_text():
             pytest.skip(
                 'this stack has no SAM_TASKS_DISABLED set, so there is no '
-                'warning to assert. Re-run with '
-                'SAM_TASKS_DISABLED=cleanup_status_snapshots on the webapp.')
+                'warning to assert. Re-run with e.g. '
+                'SAM_TASKS_DISABLED=expiration_notices on the webapp.')
 
         assert card.locator('.alert-warning').count() >= 1, \
             'a disabled task is named but not rendered as a warning — ' \
             'production ships kill-switched and this is the pixel that ' \
             'stops it reading as healthy'
         text = card.inner_text()
-        assert 'cleanup_status_snapshots' in text
+        # Shape, not identity: assert the warning actually NAMES something,
+        # rather than pinning whichever tasks the chart switches off today.
+        named = text.split('Disabled:', 1)[1].lstrip()
+        assert named[:1].isalpha(), \
+            f'the warning says "Disabled:" but names no task — got {named[:60]!r}'
         assert 'do nothing' in text, \
             'the warning must say what being disabled MEANS, not just name ' \
             'the task'

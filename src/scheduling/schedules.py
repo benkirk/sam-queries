@@ -16,14 +16,14 @@ become expressible instead of dangerous.
 reads, no I/O. Same input, same output, always.
 ``tests/unit/test_task_ledger.py`` enforces the import boundary.
 
-See ``docs/plans/SCHEDULED_TASKS.md`` § 2.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 2.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, Tuple, runtime_checkable
 from zoneinfo import ZoneInfo
 
 #: Every schedule is declared in this zone unless it says otherwise. Human
@@ -106,8 +106,15 @@ def _to_utc_naive(local_naive: datetime, tz: ZoneInfo) -> datetime:
     return utc
 
 
-def _to_local_naive(utc_naive: datetime, tz: ZoneInfo) -> datetime:
-    """Naive UTC to naive local wall time."""
+def to_local_naive(utc_naive: datetime, tz: ZoneInfo) -> datetime:
+    """Naive UTC to naive local wall time.
+
+    **Public because a task body needs it.** ``ctx.occurrence`` is naive UTC
+    while SAM's dates are naive Mountain, so any task selecting rows by date
+    has to cross that boundary — and the alternative to exporting this is each
+    one re-deriving zoneinfo arithmetic, which is exactly how a 6-7 hour skew
+    gets written twice and noticed once.
+    """
     return (utc_naive.replace(tzinfo=timezone.utc)
             .astimezone(tz).replace(tzinfo=None))
 
@@ -142,7 +149,7 @@ class _LocalWallSchedule:
     def last_occurrence(self, now_utc: datetime) -> Optional[datetime]:
         zone = self._zone
         now_utc = now_utc.replace(microsecond=0)
-        local_now = _to_local_naive(now_utc, zone)
+        local_now = to_local_naive(now_utc, zone)
 
         # Walk back day by day in *local* terms and take the newest candidate
         # whose UTC instant is <= now. Days are searched rather than computed
@@ -169,7 +176,7 @@ class _LocalWallSchedule:
         """
         zone = self._zone
         after_utc = after_utc.replace(microsecond=0)
-        local_after = _to_local_naive(after_utc, zone)
+        local_after = to_local_naive(after_utc, zone)
 
         for fwd in range(self._MAX_LOOKBACK_DAYS + 1):
             day = (local_after + timedelta(days=fwd)).date()
@@ -223,6 +230,81 @@ class Hourly:
 
     def describe(self) -> str:
         return f'hourly at :{self.minute:02d} UTC'
+
+
+@dataclass(frozen=True)
+class BusinessHourly(_LocalWallSchedule):
+    """Every hour at ``:minute``, 08:00-17:00 inclusive, Mon-Fri, in :attr:`tz`.
+
+    Ten slots a day, fifty a week. The point of it is a schedule that can make
+    a sub-24h threshold real without ever mailing anybody at 03:00 — `Hourly`
+    gives the first and not the second, `Daily` the second and not the first.
+    Removing the overnight-mail problem *structurally* beats bolting a
+    quiet-hours check onto every task that reaches a human.
+
+    ``end_hour`` is **inclusive**: the default window fires at 17:00.
+
+    ⚠️ **The DST immunity is a property of the WINDOW, not of this class.**
+    :class:`Hourly`'s docstring explains that it computes in UTC precisely
+    because a local-wall hourly schedule "loses one slot each fall (the
+    repeated hour folds onto one instant) and risks merging one each spring".
+    This *is* that schedule. It escapes only because US transitions happen at
+    02:00 local, and 08:00-17:00 never contains 02:00 — so no candidate this
+    class names is ever ambiguous or nonexistent, and the fold/gap rules in
+    :func:`_to_utc_naive` never engage.
+
+    Narrow ``start_hour`` below 03:00 and they do. A window of 01:00-05:00
+    loses its 01:00 slot on the fall-back day, exactly as `Hourly` warns; there
+    is a test pinning both halves of that, because the difference between "safe"
+    and "safe at these settings" is the whole of what a future editor needs.
+    """
+
+    minute: int = 0
+    start_hour: int = 8
+    end_hour: int = 17                          # INCLUSIVE — 17:00 fires
+    weekdays: Tuple[int, ...] = (0, 1, 2, 3, 4)
+
+    def __post_init__(self):
+        if not 0 <= self.minute <= 59:
+            raise ValueError(f'minute must be 0..59, got {self.minute}')
+        for name in ('start_hour', 'end_hour'):
+            value = getattr(self, name)
+            if not 0 <= value <= 23:
+                raise ValueError(f'{name} must be 0..23, got {value}')
+        if self.start_hour > self.end_hour:
+            raise ValueError(
+                f'start_hour must be <= end_hour (end_hour is INCLUSIVE), got '
+                f'{self.start_hour}..{self.end_hour}')
+        if not self.weekdays:
+            raise ValueError(
+                'weekdays must name at least one day; an empty tuple is a '
+                'schedule that never fires, which the runner reports as '
+                '"nothing due" forever rather than as a misconfiguration')
+        bad = sorted({d for d in self.weekdays if not 0 <= d <= 6})
+        if bad:
+            raise ValueError(
+                f'weekdays must be 0..6 (Mon..Sun), got {bad}')
+
+    def _candidates_on(self, local_date) -> list[tuple[int, int]]:
+        if local_date.weekday() not in self.weekdays:
+            return []
+        return [(hour, self.minute)
+                for hour in range(self.start_hour, self.end_hour + 1)]
+
+    def describe(self) -> str:
+        names = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
+        # A contiguous run reads as a range; anything else lists. This string is
+        # what `sam-admin tasks --list` and the admin Configuration card print,
+        # so it has to stay legible for a window nobody anticipated.
+        ordered = sorted(set(self.weekdays))
+        if len(ordered) == 1:
+            days = names[ordered[0]]
+        elif ordered == list(range(ordered[0], ordered[-1] + 1)):
+            days = f'{names[ordered[0]]}-{names[ordered[-1]]}'
+        else:
+            days = ','.join(names[d] for d in ordered)
+        return (f'hourly {self.start_hour:02d}:{self.minute:02d}-'
+                f'{self.end_hour:02d}:{self.minute:02d} {days} {self.tz}')
 
 
 @dataclass(frozen=True)
@@ -379,7 +461,7 @@ class CronExpr:
         probe = now_utc.replace(second=0, microsecond=0)
         steps = int(self.horizon.total_seconds() // 60)
         for _ in range(steps + 1):
-            if self._matches(_to_local_naive(probe, zone)):
+            if self._matches(to_local_naive(probe, zone)):
                 return probe
             probe -= timedelta(minutes=1)
         raise ValueError(
@@ -393,7 +475,7 @@ class CronExpr:
         probe = after_utc.replace(second=0, microsecond=0) + timedelta(minutes=1)
         steps = int(self.horizon.total_seconds() // 60)
         for _ in range(steps + 1):
-            if self._matches(_to_local_naive(probe, zone)):
+            if self._matches(to_local_naive(probe, zone)):
                 return probe
             probe += timedelta(minutes=1)
         return None

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
-from typing import Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Set
 
 from sam.notify.base import (
     DeliveryResult, Message, Recipient, RenderedMessage, Transport,
@@ -102,12 +102,17 @@ class Notifier:
 
     def send_many(self, messages: Iterable[Message], *,
                   force: bool = False,
+                  chunk_size: Optional[int] = None,
                   on_result: Optional[OnResult] = None) -> List[DeliveryResult]:
-        """Send a batch on **one** transport connection.
+        """Send a batch, opening one transport connection per chunk.
 
         Args:
             messages: what to send. Each is one person's copy.
             force: skip the suppression check. The operator's escape hatch.
+            chunk_size: reconnect every this many *delivered* messages.
+                ``None`` — the default — is one chunk covering the whole
+                batch, which is byte-for-byte what this method did before
+                chunking existed. Every existing caller gets that.
             on_result: called after each message with its
                 :class:`~sam.notify.base.DeliveryResult`. This is the seam
                 that keeps ``rich`` out of ``sam/`` while the CLI keeps its
@@ -118,6 +123,20 @@ class Notifier:
             delivery failure — a failed send is a ``failed`` result, because
             a route that 500s on a relay hiccup is worse than one that says
             "nothing was sent".
+
+        **Why chunk at all.** A 500-message expiration run holds one SMTP
+        connection for its whole duration, and `ndir.ucar.edu` is entitled to
+        drop it — after which every remaining message fails with no way back,
+        because the connection is only opened once. Chunking gives the run a
+        fresh connect every ``chunk_size`` messages, so a mid-run drop costs
+        at most one chunk.
+
+        The cost is paid by a relay that is *hard* down: the batch makes
+        ``ceil(N / chunk_size)`` connect attempts instead of one, each
+        bounded by ``mail_timeout``. At 2500/250 with the default 10 s that
+        is ~100 s before the run gives up — slower than failing once, and
+        deliberately so, since the case worth optimizing is the relay that
+        comes back.
         """
         messages = list(messages)
         for message in messages:
@@ -126,33 +145,18 @@ class Notifier:
         # Guards that need no transport are resolved first, so a batch that
         # is entirely suppressed never opens a connection. `None` here means
         # "not decided yet — this one goes to the transport".
+        suppressed_keys = self._prefetch_suppressed(messages, force=force)
         results: List[Optional[DeliveryResult]] = [
-            self._pre_transport_guard(message, force=force)
+            self._pre_transport_guard(message, force=force,
+                                      suppressed_keys=suppressed_keys)
             for message in messages
         ]
         pending = [i for i, result in enumerate(results) if result is None]
 
         if pending:
-            transport = self.transport
-            opened = False
-            try:
-                try:
-                    transport.open()
-                    opened = True
-                except TransportError as exc:
-                    # The whole batch fails identically. Record each one, so
-                    # the ledger explains every recipient rather than the
-                    # first and a silence.
-                    for i in pending:
-                        results[i] = self._record(messages[i], status='failed',
-                                                  detail=str(exc))
-                    pending = []
-
-                for i in pending:
-                    results[i] = self._deliver_one(messages[i], transport)
-            finally:
-                if opened:
-                    transport.close()
+            size = len(pending) if not chunk_size or chunk_size < 1 else chunk_size
+            for start in range(0, len(pending), size):
+                self._send_chunk(pending[start:start + size], messages, results)
 
         final = [r for r in results if r is not None]
         if on_result:
@@ -160,10 +164,73 @@ class Notifier:
                 on_result(result)
         return final
 
+    def _send_chunk(self, indices: List[int], messages: List[Message],
+                    results: List[Optional[DeliveryResult]]) -> None:
+        """Deliver one chunk on its own connection, writing into ``results``.
+
+        ⚠️ ``open()``/``close()`` and their ``try/finally`` live **inside**
+        this method rather than around the chunk loop in :meth:`send_many`.
+        A ``finally`` wrapped around the loop would leave the previous
+        chunk's connection open while the next one connected — which is the
+        connection leak chunking was supposed to avoid, arrived at by way of
+        making the code look tidier.
+        """
+        transport = self.transport
+        opened = False
+        try:
+            try:
+                transport.open()
+                opened = True
+            except TransportError as exc:
+                # This CHUNK fails identically — not the batch. Record each
+                # one, so the ledger explains every recipient rather than the
+                # first and a silence. The next chunk still gets a fresh
+                # connect, which is the whole point of the split.
+                for i in indices:
+                    results[i] = self._record(messages[i], status='failed',
+                                              detail=str(exc))
+                return
+
+            for i in indices:
+                results[i] = self._deliver_one(messages[i], transport)
+        finally:
+            if opened:
+                transport.close()
+
     # ---------------------------------------------------------------- guards
-    def _pre_transport_guard(self, message: Message, *,
-                             force: bool) -> Optional[DeliveryResult]:
-        """Return a terminal result, or ``None`` to proceed to the transport."""
+    def _prefetch_suppressed(self, messages: List[Message], *,
+                             force: bool) -> Optional[Set[str]]:
+        """Which of this batch's keys are already suppressed — in one query.
+
+        Returns ``None`` for "no prefetch was done", which is not the same as
+        an empty set: the guard falls back to its per-message query on
+        ``None`` and trusts the set when given one.
+
+        **Only for a real batch.** :meth:`send` is ``send_many`` of one, so an
+        unconditional prefetch here would put a bulk query on the path of
+        every single-message send in the codebase — every XRAS activation
+        notice — to answer a question one `LIMIT 1` already answers. Two or
+        more is where the round trips start to matter.
+        """
+        if force or self.ledger is None or len(messages) < 2:
+            return None
+        keys = [m.dedup_key for m in messages if m.dedup_key]
+        if not keys:
+            return None
+        return self.ledger.already_sent_many(keys)
+
+    def _pre_transport_guard(self, message: Message, *, force: bool,
+                             suppressed_keys: Optional[Set[str]] = None,
+                             ) -> Optional[DeliveryResult]:
+        """Return a terminal result, or ``None`` to proceed to the transport.
+
+        Args:
+            suppressed_keys: the batch's already-answered suppression set from
+                :meth:`_prefetch_suppressed`, or ``None`` to ask the ledger
+                about this one message. Keyword-only and defaulted, so the
+                single-message contract every other caller relies on is
+                unchanged.
+        """
         if not self.config.enabled:
             logger.info('notify: disabled; suppressing kind=%s to=%s',
                         message.kind, message.recipient.address)
@@ -172,7 +239,9 @@ class Notifier:
                 detail='notifications are disabled (NOTIFY_ENABLED)')
 
         if not force and message.dedup_key and self.ledger is not None:
-            if self.ledger.already_sent(message.dedup_key):
+            if (message.dedup_key in suppressed_keys
+                    if suppressed_keys is not None
+                    else self.ledger.already_sent(message.dedup_key)):
                 logger.info('notify: suppressed by dedup_key=%s',
                             message.dedup_key)
                 return self._record(

@@ -28,6 +28,10 @@ from .summaries import (
     upsert_disk_charge_summary,
     upsert_archive_charge_summary,
 )
+from .projects import (
+    DeactivationResult,
+    deactivate_projects,
+)
 
 
 __all__ = [
@@ -47,6 +51,8 @@ __all__ = [
     'upsert_comp_charge_summary',
     'upsert_disk_charge_summary',
     'upsert_archive_charge_summary',
+    'DeactivationResult',
+    'deactivate_projects',
 ]
 
 

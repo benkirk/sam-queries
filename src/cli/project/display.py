@@ -533,7 +533,7 @@ def notification_progress(ctx: Context, total: int,
 
     This is the seam that keeps the CLI's presentation out of ``sam.notify``.
     The predecessor drove a ``rich.progress.Progress`` from *inside* the send
-    loop (``cli/notifications/email.py:188-219``), against a console it had
+    loop (the since-removed ``cli/notifications/email.py``), against a console it had
     duck-typed off the CLI ``Context`` — which is a large part of why the
     mailer could not be lifted as-is.
     """

@@ -258,3 +258,182 @@ class TestReadFailsOpen:
 
         ledger = NotificationLedger(broken_factory, config=NotifyConfig())
         assert ledger.already_sent('K') is False
+
+
+# ── already_sent_many ────────────────────────────────────────────────────────
+#
+# The batch form exists for the scheduled expiration send, where a typical
+# week's selection is ~85% already-notified and asking one key at a time is
+# several hundred round trips to learn that almost nothing needs sending.
+
+#: (status, age, does it suppress). Every case `already_sent`'s docstring
+#: reasons about, in one place, so the matrix below cannot go stale silently.
+SUPPRESSION_CASES = [
+    ('sent',       None,                    True),
+    ('redirected', None,                    True),
+    ('failed',     None,                    False),
+    ('suppressed', None,                    False),
+    ('queued',     None,                    True),    # fresh: in flight
+    ('queued',     timedelta(hours=1),      False),   # stale: never learned
+]
+
+
+class TestTheSingleAndBatchFormsAgree:
+    """THE anti-drift gate on commit 1.
+
+    `already_sent` keeps its own `.limit(1)` fast path rather than delegating
+    to `already_sent_many`, so the two really are separate statements. What
+    stops them diverging is the shared `_suppression_conditions` — and this
+    matrix, which would fail the moment one path learned a rule the other did
+    not. A divergence here mails a PI a second copy and leaves no trace of why.
+    """
+
+    @pytest.mark.parametrize('status,age,suppresses', SUPPRESSION_CASES)
+    def test_every_status_and_age_case_matches(self, ledger, session,
+                                               status, age, suppresses):
+        key = f'AGREE:{status}:{age}'
+        make_notification_log(session, status=status, dedup_key=key, age=age)
+        assert ledger.already_sent(key) is suppresses
+        assert (key in ledger.already_sent_many([key])) is suppresses
+
+    def test_a_mixed_batch_partitions_exactly_as_the_single_form_does(
+            self, ledger, session):
+        """The same six cases in ONE call, which is how the task uses it."""
+        keys = []
+        for status, age, _ in SUPPRESSION_CASES:
+            key = f'MIXED:{status}:{age}'
+            make_notification_log(session, status=status, dedup_key=key,
+                                  age=age)
+            keys.append(key)
+
+        found = ledger.already_sent_many(keys)
+        assert found == {k for k in keys if ledger.already_sent(k)}
+
+    def test_an_unknown_key_suppresses_in_neither(self, ledger):
+        assert ledger.already_sent('NEVER-SEEN') is False
+        assert ledger.already_sent_many(['NEVER-SEEN']) == set()
+
+    def test_the_since_window_bounds_both_the_same_way(self, ledger, session):
+        make_notification_log(session, status='sent', dedup_key='OLD3',
+                              age=timedelta(days=400))
+        recent = datetime.now() - timedelta(days=30)
+        assert ledger.already_sent('OLD3', since=recent) is False
+        assert ledger.already_sent_many(['OLD3'], since=recent) == set()
+        assert ledger.already_sent_many(['OLD3']) == {'OLD3'}
+
+    def test_the_horizon_is_computed_once_for_the_whole_batch(self, ledger,
+                                                              session):
+        """Per-chunk horizons would let an identical `queued` row suppress in
+        one chunk and not the next, purely on where it landed in the list."""
+        for i in range(6):
+            make_notification_log(session, status='queued',
+                                  dedup_key=f'HZ{i}')
+        keys = [f'HZ{i}' for i in range(6)]
+        assert ledger.already_sent_many(keys, chunk_size=2) == set(keys)
+
+
+class TestAlreadySentManyInputHandling:
+
+    def test_an_empty_batch_never_opens_a_session(self):
+        """A caller may hold no database at all; building one to answer
+        'nothing' would make an empty batch cost more than a small one."""
+        def exploding_factory():
+            raise AssertionError('session_factory must not be called')
+
+        ledger = NotificationLedger(exploding_factory, config=NotifyConfig())
+        assert ledger.already_sent_many([]) == set()
+        assert ledger.already_sent_many([None, '', None]) == set()
+
+    def test_falsy_keys_are_dropped_not_queried(self, ledger, session):
+        """Mirrors `already_sent`: an absent key never suppresses."""
+        make_notification_log(session, status='sent', dedup_key='REAL')
+        assert ledger.already_sent_many(['REAL', '', None]) == {'REAL'}
+
+    def test_duplicates_collapse(self, ledger, session):
+        make_notification_log(session, status='sent', dedup_key='DUP')
+        assert ledger.already_sent_many(['DUP', 'DUP', 'DUP']) == {'DUP'}
+
+    def test_a_generator_is_accepted(self, ledger, session):
+        make_notification_log(session, status='sent', dedup_key='GEN')
+        assert ledger.already_sent_many(k for k in ['GEN']) == {'GEN'}
+
+    def test_only_the_suppressed_subset_comes_back(self, ledger, session):
+        make_notification_log(session, status='sent', dedup_key='S1')
+        make_notification_log(session, status='failed', dedup_key='S2')
+        assert ledger.already_sent_many(['S1', 'S2', 'S3']) == {'S1'}
+
+
+class TestAlreadySentManyChunking:
+    """Chunking is a statement-length workaround, so it must be invisible."""
+
+    @pytest.mark.parametrize('chunk_size', [1, 2, 3, 500, None, 0, -1])
+    def test_the_answer_is_the_same_at_every_chunk_size(self, ledger, session,
+                                                        chunk_size):
+        for i in range(5):
+            make_notification_log(session, status='sent', dedup_key=f'C{i}')
+        keys = [f'C{i}' for i in range(5)] + ['C-absent']
+        assert ledger.already_sent_many(keys, chunk_size=chunk_size) == \
+            {f'C{i}' for i in range(5)}
+
+    def test_one_session_serves_every_chunk(self, session):
+        """A session per chunk would make a driver artifact into a second
+        operation — and hold N connections where the class docstring promises
+        one short-lived one."""
+        opened = []
+
+        @contextmanager
+        def counting_factory():
+            opened.append(1)
+            real_commit = session.commit
+            session.commit = session.flush
+            try:
+                yield session
+            finally:
+                session.commit = real_commit
+
+        ledger = NotificationLedger(counting_factory, config=NotifyConfig())
+        for i in range(6):
+            make_notification_log(session, status='sent', dedup_key=f'O{i}')
+        ledger.already_sent_many([f'O{i}' for i in range(6)], chunk_size=2)
+        assert len(opened) == 1
+
+
+class TestAlreadySentManyFailsOpenPerChunk:
+
+    def test_a_broken_batch_query_does_not_block_sending(self, caplog):
+        """Same asymmetry as `already_sent`."""
+        def broken_factory():
+            raise RuntimeError('read replica down')
+
+        ledger = NotificationLedger(broken_factory, config=NotifyConfig())
+        assert ledger.already_sent_many(['K1', 'K2']) == set()
+
+    def test_a_failure_mid_batch_keeps_what_already_completed(self, session):
+        """Discarding the partial result would re-send to recipients we had
+        just proved were already done — the expensive half of failing open."""
+        class FailsOnTheSecondStatement:
+            def __init__(self, inner):
+                self._inner = inner
+                self.calls = 0
+
+            def execute(self, *args, **kwargs):
+                self.calls += 1
+                if self.calls > 1:
+                    raise RuntimeError('connection lost mid-batch')
+                return self._inner.execute(*args, **kwargs)
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+        @contextmanager
+        def flaky_factory():
+            yield FailsOnTheSecondStatement(session)
+
+        ledger = NotificationLedger(flaky_factory, config=NotifyConfig())
+        for i in range(4):
+            make_notification_log(session, status='sent', dedup_key=f'F{i}')
+
+        # chunk_size=2 → chunk one succeeds, chunk two raises.
+        found = ledger.already_sent_many([f'F{i}' for i in range(4)],
+                                         chunk_size=2)
+        assert found == {'F0', 'F1'}

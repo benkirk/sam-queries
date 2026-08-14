@@ -85,6 +85,13 @@ services:
       - "JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}"
       - "JUPYTERHUB_CACHE_TTL=${JUPYTERHUB_CACHE_TTL:-300}"
       - "GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver}"
+      # Empty by default, which is also the code default: nothing disabled.
+      # Present only so the kill-switch warning on Admin → Configuration can be
+      # exercised locally the way e2e/test_scheduled_tasks_card.py documents.
+      # Without this line a shell-exported value never reaches the container,
+      # and that test skips instead of running. Nothing here DISPATCHES tasks —
+      # compose runs no CronJob — so this only drives what the card reports.
+      - "SAM_TASKS_DISABLED=${SAM_TASKS_DISABLED:-}"
 
     healthcheck:
       # Probe the app's own readiness endpoint, which pings every configured
@@ -166,6 +173,13 @@ services:
       - "JUPYTERHUB_API_TOKEN=${JUPYTERHUB_API_TOKEN:-}"
       - "JUPYTERHUB_CACHE_TTL=${JUPYTERHUB_CACHE_TTL:-300}"
       - "GOOGLE_CALENDAR_EMBED_URL=${GOOGLE_CALENDAR_EMBED_URL:-https://calendar.google.com/calendar/embed?src=ucar.edu_o09r1n89tid1b8jkrvurc8qio4%40group.calendar.google.com&ctz=America%2FDenver}"
+      # Empty by default, which is also the code default: nothing disabled.
+      # Present only so the kill-switch warning on Admin → Configuration can be
+      # exercised locally the way e2e/test_scheduled_tasks_card.py documents.
+      # Without this line a shell-exported value never reaches the container,
+      # and that test skips instead of running. Nothing here DISPATCHES tasks —
+      # compose runs no CronJob — so this only drives what the card reports.
+      - "SAM_TASKS_DISABLED=${SAM_TASKS_DISABLED:-}"
 
     # Important: watch the current directory, re-syncing as needed based on source changes
     develop:
@@ -255,9 +269,9 @@ services:
   # To start it:   docker compose --profile test up -d mysql-test
   # To stop it:    docker compose --profile test down
   #
-  # new_tests/conftest.py enforces a hard allowlist that tests will ONLY
+  # tests/conftest.py enforces a hard allowlist that tests will ONLY
   # run against this container (host 127.0.0.1, port 3307). See
-  # docs/plans/REFACTOR_TESTING.md for the full isolation design.
+  # docs/TESTING.md for the full isolation design.
   mysql-test:
     container_name: samuel-mysql-test
     profiles: [test]

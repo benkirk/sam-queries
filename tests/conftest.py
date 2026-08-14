@@ -461,7 +461,7 @@ def status_session(app):
 def api_key_client(client, session, app):
     """Test client authenticated via HTTP Basic Auth API key.
 
-    Mirrors the legacy `api_key_client` from tests/api/conftest.py — wraps
+    Mirrors the `api_key_client` from the since-removed tests/api/conftest.py — wraps
     the Flask test client to inject `Authorization: Basic <collector:test-api-key>`
     on every request. Used by `test_status_endpoints.py` for POST routes
     decorated with `@api_key_required`.
@@ -518,7 +518,7 @@ def api_key_client(client, session, app):
 
 # ---- Representative fixtures ----------------------------------------------
 #
-# Layer 1 of the two-layer test data strategy (see docs/plans/REFACTOR_TESTING.md).
+# Layer 1 of the two-layer test data strategy (see docs/TESTING.md).
 #
 # These fixtures pick ANY row from the snapshot that matches a structural
 # shape — "any active project with allocations", "any HPC resource", "any

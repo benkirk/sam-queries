@@ -28,6 +28,69 @@ CARD_STATUSES = ('sent', 'redirected', 'failed', 'suppressed')
 #: How far back the card's headline counts look.
 DEFAULT_WINDOW_HOURS = 24
 
+#: Statuses that mean a person received the message. `redirected` counts —
+#: it reached *a* mailbox, which is what a staging run is for — and matches
+#: `_DELIVERED_STATUSES` in ``sam.queries.xras_activation``, deliberately:
+#: two "was this delivered" answers that disagreed would put a green badge on
+#: one card and a grey one on another for the same row.
+DELIVERED_STATUSES = ('sent', 'redirected')
+
+
+def get_expiration_notice_status(
+        session: Session,
+        projcodes: Sequence[str]) -> Dict[str, Dict[str, Any]]:
+    """When each project was last told its allocation is expiring.
+
+    One indexed fetch for every expiration notice about these projects,
+    bucketed in Python — the shape
+    :func:`sam.queries.xras_activation.get_xras_activity` already uses, and
+    for the same reason: ``limit=None`` is safe *because* the projcode ``IN``
+    list bounds the result, and `notification_log_projcode` is
+    ``(projcode, creation_time)`` so the equality form can use it.
+
+    Args:
+        projcodes: the projects on the page. Empty returns ``{}`` without a
+            query.
+
+    Returns:
+        An entry for **every** requested projcode, including those never
+        notified (``notified: False``). That is deliberate: the consumer is a
+        template macro shared with the user dashboard, and it must be able to
+        tell "notified", "not notified" and "nobody asked" apart. Making
+        absence mean only the third leaves the first two to ``notified``,
+        rather than overloading a missing key with two meanings.
+
+        ``notified_age`` is a **timedelta**, because ``fmt.ago`` takes an
+        elapsed delta — and keeping ``datetime.now()`` out of Jinja is what
+        makes the whole thing testable.
+    """
+    if not projcodes:
+        return {}
+
+    by_projcode: Dict[str, List[NotificationLog]] = {}
+    for row in get_recent_notifications(session, projcodes=list(projcodes),
+                                        kinds=['expiration'], limit=None):
+        by_projcode.setdefault(row.projcode, []).append(row)
+
+    # ONE `now` for the whole page, so two cards rendered from the same
+    # request cannot report ages a second apart.
+    now = datetime.now()
+    result: Dict[str, Dict[str, Any]] = {}
+    for projcode in projcodes:
+        rows = by_projcode.get(projcode, [])
+        # `SPEC.order_columns` is creation_time DESC, so the first delivered
+        # row is the newest one.
+        delivered = [r for r in rows if r.status in DELIVERED_STATUSES]
+        newest = delivered[0] if delivered else None
+        result[projcode] = {
+            'notified': bool(delivered),
+            'notified_time': newest.creation_time if newest else None,
+            'notified_age': (now - newest.creation_time) if newest else None,
+            'delivered_count': len(delivered),
+            'failed_count': sum(1 for r in rows if r.status == 'failed'),
+        }
+    return result
+
 
 def summarize_notifications(session: Session, *,
                             since: Optional[datetime] = None,

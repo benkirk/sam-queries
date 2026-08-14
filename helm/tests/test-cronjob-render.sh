@@ -129,16 +129,67 @@ assert_contains "$prod_out" 'value: "America/Denver"' \
 
 # --- Ships kill-switched ----------------------------------------------------
 #
-# This is a deliberate, temporary state: the P5 rollout is 24h of `skipped`
-# rows proving creds/DNS/image with zero blast radius, and only THEN a second
-# commit clearing the switch. If you are here because this assertion failed
-# after that second commit, delete it.
+# A deliberate, ongoing state: the chart enables tasks in stages, so the switch
+# is expected to stay non-empty for as long as any registered task is awaiting
+# review.
+#
+# ⚠️ Read the expected value OUT of values.yaml rather than pinning a literal.
+# The literal version had to be edited in lockstep with every change to the
+# list, in two places — and the comment here used to instruct the next reader
+# to DELETE these assertions instead, which would have dropped the
+# one-declaration-two-consumers guarantee below. Derive it, and neither
+# happens.
+switch=$(grep -E '^[[:space:]]+SAM_TASKS_DISABLED:' "$CHART_DIR/values.yaml" \
+         | sed 's/.*: *//' | tr -d '"')
+[[ -n "$switch" ]] || {
+  echo "FATAL: could not read SAM_TASKS_DISABLED out of values.yaml" >&2
+  exit 1
+}
+
 assert_contains "$prod_out" 'name: SAM_TASKS_DISABLED' \
   "the kill switch must be present in the rendered env"
-assert_contains "$prod_out" 'value: "cleanup_status_snapshots"' \
-  "P4 ships with the destructive task disabled; P5 clears it separately"
+assert_contains "$prod_out" "value: \"${switch}\"" \
+  "the CronJob must carry the kill-switch value declared in values.yaml"
 assert_contains "$prod_out" 'value: "365"' \
   "STATUS_RETENTION_DAYS must be explicit in GitOps, not implied by a default"
+
+# --- Notifications must reach the CronJob, not just the Deployment ----------
+#
+# ⚠️ Asserted PER-MANIFEST, and that is load-bearing. `cronjob-tasks.yaml`
+# renders `.Values.tasks.env` plus a hand-listed set and NOTHING else — it does
+# not inherit `webapp.env`, where NOTIFY_* and MAIL_* live. So a whole-render
+# grep passes on the Deployment's copy alone and proves nothing about the pod
+# that actually sends the mail.
+#
+# The failure this catches is silent by construction: NotifyConfig is
+# fail-closed, so a CronJob without NOTIFY_ENABLED records every message
+# `suppressed`, reports `succeeded` and exits 0. Green Job, no mail, no
+# indication. `expiration_notices` also refuses to run mail-disabled at
+# runtime; this is the other half of that pair.
+cron_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" \
+           -f "$CHART_DIR/values.yaml" -s templates/cronjob-tasks.yaml)
+
+assert_contains "$cron_out" 'name: NOTIFY_ENABLED' \
+  "the CronJob must carry NOTIFY_ENABLED, or expiration_notices mails nobody, silently"
+assert_contains "$cron_out" 'name: NOTIFY_TRANSPORT' \
+  "and the transport, or it falls back to the smtp default by accident"
+assert_contains "$cron_out" 'name: MAIL_SERVER' \
+  "and the relay"
+assert_contains "$cron_out" 'name: MAIL_DEFAULT_FROM' \
+  "and the envelope sender, which must SPF-pass as sam-admin@ucar.edu"
+assert_contains "$cron_out" 'name: SAM_TASKS_EMAIL_MAX' \
+  "and the runaway guard"
+assert_contains "$cron_out" 'name: SAM_TASKS_SUMMARY_TO' \
+  "and the per-run summary recipient"
+assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_MAX' \
+  "and xras_notices' own runaway guard — it does NOT share SAM_TASKS_EMAIL_MAX, \
+because 2500 is ~50x that task's realistic volume"
+
+# The values must MATCH the Deployment's — cross-referenced, not duplicated.
+notify_enabled=$(grep -E '^\s+NOTIFY_ENABLED:' "$CHART_DIR/values.yaml" \
+                 | awk '{print $2}' | tr -d '"')
+assert_contains "$cron_out" "value: \"${notify_enabled}\"" \
+  "the CronJob's NOTIFY_ENABLED must be webapp.env's, not a second literal"
 
 # --- BOTH pods must see the kill switch -------------------------------------
 #
@@ -152,14 +203,20 @@ assert_contains "$prod_out" 'value: "365"' \
 # rendered a kill-switched dispatcher as perfectly healthy: the precise failure
 # that card exists to prevent.
 #
-# When P5 clears the switch this pair fails too — delete it alongside the block
-# above, for the same reason.
+# Value derived from values.yaml, same as the CronJob assertion above: what is
+# being proved is that the two manifests AGREE, not what the list happens to
+# say today.
+#
+# One caveat if the list is ever emptied: deployment.yaml guards the key with
+# `{{- with .SAM_TASKS_DISABLED }}`, and an empty string is falsy, so the
+# webapp renders no variable at all. That is correct behavior — the card then
+# reports nothing disabled — but this pair would need to become conditional.
 deploy_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" \
              -f "$CHART_DIR/values.yaml" -s templates/deployment.yaml)
 
 assert_contains "$deploy_out" 'name: SAM_TASKS_DISABLED' \
   "the webapp Deployment must carry the kill switch too, or the admin card lies"
-assert_contains "$deploy_out" 'value: "cleanup_status_snapshots"' \
+assert_contains "$deploy_out" "value: \"${switch}\"" \
   "and it must carry the SAME value — one declaration, two consumers"
 
 # ---------------------------------------------------------------------------

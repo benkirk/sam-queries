@@ -2,10 +2,12 @@
 
 Two things here matter more than "the tile renders":
 
-1. **The kill-switch warning.** Production ships with
-   `SAM_TASKS_DISABLED: "cleanup_status_snapshots"`, so the first thing this
-   card shows in production is a dispatcher waking hourly and deliberately
-   doing nothing. If the card does not say so loudly it looks healthy.
+1. **The kill-switch warning.** Production ships `SAM_TASKS_DISABLED`
+   non-empty — tasks are enabled in stages, so the switch names whichever are
+   still awaiting review — and the first thing this card shows is a dispatcher
+   waking hourly and deliberately doing part of nothing. If the card does not
+   say so loudly it looks healthy. The tests below set the variable themselves
+   rather than pinning whichever names the chart carries today.
 2. **The degrade.** `task_run` does not exist until Alembic 0006 is applied,
    and it is not applied on staging or production yet — so this card *will*
    render before its table exists.

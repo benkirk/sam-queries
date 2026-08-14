@@ -152,6 +152,243 @@ class TestBatchLifecycle:
         assert transport.close_count == 1
 
 
+class TestChunkedBatches:
+    """`chunk_size` reconnects mid-run, so one dropped connection costs one
+    chunk rather than every message after it.
+
+    The default — `chunk_size=None` — must stay byte-for-byte what the method
+    did before chunking existed; `test_one_open_per_batch_not_per_message`
+    above is the gate on that and is deliberately not parametrized here.
+    """
+
+    def test_the_default_is_still_exactly_one_connection(self, renderer):
+        transport = NullTransport()
+        _notifier(renderer, transport).send_many(
+            [_message(f'u{i}@x.edu') for i in range(5)], chunk_size=None)
+        assert (transport.open_count, transport.close_count) == (1, 1)
+
+    @pytest.mark.parametrize('chunk_size,opens', [(1, 5), (2, 3), (5, 1),
+                                                  (99, 1)])
+    def test_one_connection_per_chunk(self, renderer, chunk_size, opens):
+        transport = NullTransport()
+        _notifier(renderer, transport).send_many(
+            [_message(f'u{i}@x.edu') for i in range(5)], chunk_size=chunk_size)
+        assert transport.open_count == opens
+        assert transport.close_count == opens
+        assert len(transport.delivered) == 5
+
+    @pytest.mark.parametrize('chunk_size', [None, 0, -1, 1, 2, 5, 99])
+    def test_the_delivered_set_is_the_same_at_every_chunk_size(self, renderer,
+                                                               chunk_size):
+        """Chunking is a connection-management concern and must not be
+        observable in what gets sent, or in what order."""
+        transport = NullTransport()
+        addresses = [f'u{i}@x.edu' for i in range(5)]
+        results = _notifier(renderer, transport).send_many(
+            [_message(a) for a in addresses], chunk_size=chunk_size)
+        assert [r.recipient for r in results] == addresses
+        assert [m.recipient.address for m, _ in transport.delivered] == addresses
+
+    def test_chunks_are_counted_over_pending_not_input(self, renderer):
+        """Suppressed messages never reach a chunk, so a batch that is mostly
+        already-notified must not spend a connection per suppressed run of
+        `chunk_size`. This is the quiet-week shape: 100 selected, 98 skipped."""
+        transport = NullTransport()
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=transport,
+                            renderer=renderer,
+                            ledger=_StubLedger({'SKIP'}))
+        messages = ([_message(f'skip{i}@x.edu', dedup_key='SKIP')
+                     for i in range(8)]
+                    + [_message('real@x.edu')])
+        notifier.send_many(messages, chunk_size=2)
+        assert transport.open_count == 1
+        assert len(transport.delivered) == 1
+
+    def test_on_result_still_fires_once_per_message_across_chunks(self, renderer):
+        seen = []
+        _notifier(renderer).send_many(
+            [_message(f'u{i}@x.edu') for i in range(5)],
+            chunk_size=2, on_result=seen.append)
+        assert len(seen) == 5
+
+
+class TestAChunkFailsAlone:
+
+    def test_a_relay_that_recovers_only_loses_its_own_chunk(self, renderer):
+        """THE reason chunking exists. Un-chunked, `open()` is called once, so
+        a relay that drops the connection takes every remaining message with
+        it. Chunked, the next chunk reconnects and gets through."""
+        class DownOnTheSecondConnect(NullTransport):
+            attempts = 0
+
+            def open(self):
+                self.attempts += 1
+                if self.attempts == 2:
+                    raise TransportError('connection reset')
+                return super().open()
+
+        transport = DownOnTheSecondConnect()
+        results = _notifier(renderer, transport).send_many(
+            [_message(f'u{i}@x.edu') for i in range(6)], chunk_size=2)
+
+        statuses = [r.status for r in results]
+        assert statuses[0:2] == ['sent', 'sent']        # chunk 1
+        assert statuses[2:4] == ['failed', 'failed']    # chunk 2 — the drop
+        assert statuses[4:6] == ['sent', 'sent']        # chunk 3 — recovered
+        assert all('connection reset' in r.detail for r in results[2:4])
+
+    def test_every_recipient_in_a_failed_chunk_is_recorded(self, renderer):
+        """The ledger must explain every recipient, not the first and a
+        silence — the same rule the un-chunked path already followed."""
+        class Unreachable(NullTransport):
+            def open(self):
+                raise TransportError('connection refused')
+
+        results = _notifier(renderer, Unreachable()).send_many(
+            [_message(f'u{i}@x.edu') for i in range(5)], chunk_size=2)
+        assert [r.status for r in results] == ['failed'] * 5
+        assert all('connection refused' in r.detail for r in results)
+
+    def test_a_hard_down_relay_costs_one_connect_attempt_per_chunk(self, renderer):
+        """The documented price of chunking. Stated as a test so nobody
+        discovers it as a timeout in production instead."""
+        class Unreachable(NullTransport):
+            attempts = 0
+
+            def open(self):
+                self.attempts += 1
+                raise TransportError('connection refused')
+
+        transport = Unreachable()
+        _notifier(renderer, transport).send_many(
+            [_message(f'u{i}@x.edu') for i in range(6)], chunk_size=2)
+        assert transport.attempts == 3          # ceil(6 / 2), not 1
+        assert transport.close_count == 0       # never opened, never closed
+
+
+class TestBatchSuppressionIsPrefetched:
+    """One `IN (...)` for the batch instead of one `LIMIT 1` per message.
+
+    On a loaded expiration week ~85% of the selection is already-notified and
+    on a quiet week essentially all of it is, so the per-message form spends
+    hundreds of round trips learning that almost nothing needs sending.
+    """
+
+    def test_a_batch_asks_the_ledger_once(self, renderer):
+        ledger = _StubLedger({'K1', 'K2'})
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=NullTransport(), renderer=renderer,
+                            ledger=ledger)
+        notifier.send_many([_message(f'u{i}@x.edu', dedup_key=f'K{i}')
+                            for i in range(4)])
+        assert ledger.batch_calls == 1
+        assert ledger.single_calls == 0
+
+    def test_the_prefetched_answer_is_what_gets_applied(self, renderer):
+        transport = NullTransport()
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=transport, renderer=renderer,
+                            ledger=_StubLedger({'K1', 'K2'}))
+        results = notifier.send_many([_message(f'u{i}@x.edu',
+                                               dedup_key=f'K{i}')
+                                      for i in range(4)])
+        assert [r.status for r in results] == \
+            ['sent', 'suppressed', 'suppressed', 'sent']
+        assert len(transport.delivered) == 2
+
+    def test_send_of_one_never_pays_for_a_bulk_query(self, renderer):
+        """`send()` is `send_many` of one, so an unconditional prefetch would
+        put a bulk query on the path of every XRAS activation notice to
+        answer what one LIMIT 1 already answers."""
+        ledger = _StubLedger({'K0'})
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=NullTransport(), renderer=renderer,
+                            ledger=ledger)
+        result = notifier.send(_message(dedup_key='K0'))
+        assert result.status == 'suppressed'
+        assert (ledger.batch_calls, ledger.single_calls) == (0, 1)
+
+    def test_force_skips_the_prefetch_entirely(self, renderer):
+        ledger = _StubLedger({'K0', 'K1'})
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=NullTransport(), renderer=renderer,
+                            ledger=ledger)
+        results = notifier.send_many(
+            [_message(f'u{i}@x.edu', dedup_key=f'K{i}') for i in range(2)],
+            force=True)
+        assert [r.status for r in results] == ['sent', 'sent']
+        assert (ledger.batch_calls, ledger.single_calls) == (0, 0)
+
+    def test_a_batch_with_no_keys_at_all_asks_nothing(self, renderer):
+        ledger = _StubLedger(set())
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=NullTransport(), renderer=renderer,
+                            ledger=ledger)
+        notifier.send_many([_message('a@x.edu'), _message('b@x.edu')])
+        assert (ledger.batch_calls, ledger.single_calls) == (0, 0)
+
+    def test_no_ledger_is_still_a_legitimate_configuration(self, renderer):
+        transport = NullTransport()
+        Notifier(config=NotifyConfig(enabled=True), transport=transport,
+                 renderer=renderer).send_many(
+            [_message(f'u{i}@x.edu', dedup_key=f'K{i}') for i in range(3)])
+        assert len(transport.delivered) == 3
+
+    def test_disabled_still_wins_over_the_prefetch(self, renderer):
+        """NOTIFY_ENABLED is checked first and unconditionally, so a
+        misconfigured mailer cannot be talked into sending by a cache miss."""
+        transport = NullTransport()
+        results = Notifier(config=NotifyConfig(enabled=False),
+                           transport=transport, renderer=renderer,
+                           ledger=_StubLedger(set())).send_many(
+            [_message(f'u{i}@x.edu', dedup_key=f'K{i}') for i in range(2)])
+        assert [r.status for r in results] == ['suppressed'] * 2
+        assert transport.open_count == 0
+
+    def test_two_messages_sharing_a_key_in_one_batch_both_go(self, renderer):
+        """NOT a bug, and pinned here so nobody "fixes" it.
+
+        The guard phase evaluates every message before any delivery, so an
+        intra-batch duplicate has nothing to be suppressed by yet — that was
+        true of the per-message form too, and the prefetch changes nothing.
+        Deduplicating here would be wrong anyway: two Messages sharing a key
+        means two recipients the caller meant to reach, and the caller is the
+        only layer that knows whether that is intentional."""
+        transport = NullTransport()
+        notifier = Notifier(config=NotifyConfig(enabled=True),
+                            transport=transport, renderer=renderer,
+                            ledger=_StubLedger(set()))
+        results = notifier.send_many([_message('a@x.edu', dedup_key='SAME'),
+                                      _message('b@x.edu', dedup_key='SAME')])
+        assert [r.status for r in results] == ['sent', 'sent']
+        assert len(transport.delivered) == 2
+
+
+class _StubLedger:
+    """Answers the suppression question from a set, records nothing."""
+
+    def __init__(self, suppressed):
+        self._suppressed = set(suppressed)
+        self.batch_calls = 0
+        self.single_calls = 0
+
+    def already_sent(self, dedup_key, *, since=None):
+        self.single_calls += 1
+        return dedup_key in self._suppressed
+
+    def already_sent_many(self, dedup_keys, *, since=None, chunk_size=None):
+        self.batch_calls += 1
+        return {k for k in dedup_keys if k in self._suppressed}
+
+    def record(self, message, *, status, transport, detail=None,
+               rendered=None):
+        return 0
+
+    def resolve(self, log_id, *, status, detail=None):
+        pass
+
+
 class TestFailureIsNeverAnException:
 
     def test_transport_error_becomes_a_failed_result(self, renderer):

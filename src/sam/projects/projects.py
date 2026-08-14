@@ -377,10 +377,7 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         unrelated edit, while the stamping half would never fire from the web at
         all.
 
-        The stamping half lives in ``sam-admin project --deactivate``
-        (``cli/project/commands.py``), which assigns directly and shares one batch
-        timestamp across a run. A matching ``Project.deactivate()`` to unify them
-        is a reasonable follow-up and is deliberately not part of this change.
+        See :meth:`deactivate` for the other half.
 
         Returns:
             self (for chaining).
@@ -388,6 +385,38 @@ class Project(Base, TimestampMixin, ActiveFlagMixin, SessionMixin, NestedSetMixi
         self.active = True
         self.inactivate_time = None
         self.session.flush()
+        return self
+
+    def deactivate(self, when: Optional[datetime] = None, *,
+                   flush: bool = True) -> 'Project':
+        """Mark this project inactive and stamp ``inactivate_time``.
+
+        The mirror of :meth:`reactivate`, and separate from
+        ``update(active=False)`` for the same reason given there: ``update()`` is
+        driven by a partial-load marshmallow dict and must not acquire a side
+        effect on the stamp column.
+
+        ``when`` lets a batch share one timestamp — and lets a scheduled task
+        stamp the instant its occurrence names rather than whenever the pod
+        happened to wake up.
+
+        ``flush=False`` is for :func:`sam.manage.deactivate_projects`, which
+        flushes the whole batch once so SQLAlchemy can group the UPDATEs and a
+        mid-batch failure emits nothing. Keyword-only, so no call site can pass
+        it positionally by accident; single-project callers take the default and
+        stay symmetric with ``reactivate()``.
+
+        Args:
+            when: The ``inactivate_time`` stamp. Defaults to ``datetime.now()``.
+            flush: Whether to flush. Pass False only when the caller flushes.
+
+        Returns:
+            self (for chaining).
+        """
+        self.active = False
+        self.inactivate_time = when or datetime.now()
+        if flush:
+            self.session.flush()
         return self
 
     # # Active account users (filtered join)

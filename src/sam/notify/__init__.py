@@ -71,6 +71,7 @@ _LAZY_EXPORTS = {
     'NOTIFICATION_KINDS':         'sam.notify.kinds',
     'NotificationKind':           'sam.notify.kinds',
     'get_kind':                   'sam.notify.kinds',
+    'DEDUP_CHUNK':                'sam.notify.ledger',
     'LedgerError':                'sam.notify.ledger',
     'NotificationLedger':         'sam.notify.ledger',
     'SUPPRESSING_STATUSES':       'sam.notify.ledger',
@@ -110,6 +111,7 @@ def __dir__():
 __all__ = [
     'Channel',
     'ConsoleTransport',
+    'DEDUP_CHUNK',
     'DEFAULT_FACILITY_TEMPLATE',
     'DeliveryResult',
     'LedgerError',

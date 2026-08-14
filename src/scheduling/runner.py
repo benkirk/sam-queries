@@ -11,7 +11,7 @@ makes a simulated week testable in milliseconds, and it is not a testing
 convenience bolted on — a scheduler that reads the clock in three places is a
 scheduler whose behaviour you cannot reason about.
 
-See ``docs/plans/SCHEDULED_TASKS.md`` § 5 and § 6.4.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 5 and § 6.4.
 """
 
 from __future__ import annotations
@@ -54,6 +54,7 @@ def run_due(*, now: datetime,
             registry: Optional[Dict[str, Task]] = None,
             only: Optional[str] = None,
             force: bool = False,
+            occurrence: Optional[datetime] = None,
             dry_run: bool = False,
             runner_id: Optional[str] = None,
             sam_session_factory: Optional[Callable] = None,
@@ -68,7 +69,14 @@ def run_due(*, now: datetime,
         only: run just this task, ignoring dueness. Its slot is still the real
             scheduled one unless ``force``.
         force: with ``only``, claim a **manual** occurrence key. See below.
-        dry_run: compute everything, write no ledger rows at all.
+        occurrence: replay this slot instead of "now". **Requires ``force``**,
+            and is ignored without it — see below.
+        dry_run: run the task for real and undo it — no ledger rows are
+            written, and the task's session is rolled back rather than
+            committed, so `ctx.dry_run` reaches the body and a task can skip
+            work that a rollback cannot undo (mail, an external POST). The
+            outcome is `would_claim` carrying `would_be` and the detail the run
+            produced; a raise still reports `failed`.
         runner_id: the pod name, recorded so a row ties back to `kubectl logs`.
 
     Returns:
@@ -102,7 +110,17 @@ def run_due(*, now: datetime,
 
         # 2. Which slot are we filling?
         if force:
-            occ = now.replace(microsecond=0)
+            # `occurrence` is honored ONLY here, and that is the whole safety
+            # argument: a forced run already claims an `M`-prefixed key, which
+            # by construction cannot collide with a scheduled slot. So a
+            # replay at an arbitrary instant can neither satisfy nor displace
+            # a real occurrence — it writes its own row and leaves the
+            # schedule's history alone.
+            #
+            # A task computes everything from `ctx.occurrence`, so this is how
+            # you ask "what would the Monday five weeks out have sent?"
+            # without waiting five weeks or editing a constant.
+            occ = (occurrence or now).replace(microsecond=0)
             key = 'M' + occurrence_key(occ)
             trigger = 'manual'
         else:
@@ -148,28 +166,37 @@ def run_due(*, now: datetime,
                 continue
 
         # 5. Claim, with one stale reclaim attempt per dispatch.
+        #
+        # A dry run claims nothing — it writes no ledger row at all — but it
+        # DOES run the task, with `ctx.dry_run` set and its session rolled back
+        # at the end. Returning here instead (the original shape) made
+        # `ctx.dry_run` unreachable: `_execute` was only ever called on the
+        # not-dry path, so the flag was a constant False and every task-side
+        # `if ctx.dry_run` branch was dead. Both existing tasks had written one,
+        # and `close_sessions`' own `not self.dry_run` guard was dead too —
+        # the design was finished at both ends and only this line kept it from
+        # engaging. `--dry-run` now answers "what would this task do?", which
+        # is what it has always looked like it answered.
         if dry_run:
-            existing = ledger.get(name, key)
-            results.append({
-                'task': name,
-                'occurrence': occ.isoformat(),
-                'outcome': 'would_claim' if existing is None else 'already_claimed',
-            })
-            continue
-
-        run_id = ledger.claim(name, key, now=now, trigger=trigger,
-                              runner_id=runner_id)
-        if run_id is None:
-            run_id = ledger.reclaim_stale(
-                name, key, now=now,
-                lease=lease_for(task.expected_runtime), runner_id=runner_id)
-        if run_id is None:
-            # The normal case for every dispatch after the first in a slot.
-            # Deliberately not a warning: at hourly dispatch this is 23/24 of
-            # all log lines for a daily task.
-            results.append({'task': name, 'occurrence': occ.isoformat(),
-                            'outcome': 'already_claimed'})
-            continue
+            if ledger.get(name, key) is not None:
+                results.append({'task': name, 'occurrence': occ.isoformat(),
+                                'outcome': 'already_claimed'})
+                continue
+            run_id = None                       # nothing to finish; see _execute
+        else:
+            run_id = ledger.claim(name, key, now=now, trigger=trigger,
+                                  runner_id=runner_id)
+            if run_id is None:
+                run_id = ledger.reclaim_stale(
+                    name, key, now=now,
+                    lease=lease_for(task.expected_runtime), runner_id=runner_id)
+            if run_id is None:
+                # The normal case for every dispatch after the first in a slot.
+                # Deliberately not a warning: at hourly dispatch this is 23/24
+                # of all log lines for a daily task.
+                results.append({'task': name, 'occurrence': occ.isoformat(),
+                                'outcome': 'already_claimed'})
+                continue
 
         # 6. Run it.
         results.append(_execute(ledger, task, run_id, now, occ, key, dry_run,
@@ -182,10 +209,23 @@ def run_due(*, now: datetime,
     return {'now': now.isoformat(), 'results': results, 'counts': counts}
 
 
-def _execute(ledger: TaskLedger, task: Task, run_id: int, now: datetime,
-             occ: datetime, key: str, dry_run: bool,
+def _execute(ledger: TaskLedger, task: Task, run_id: Optional[int],
+             now: datetime, occ: datetime, key: str, dry_run: bool,
              sam_factory, status_factory) -> dict:
-    """Run one task body, timed, and close out its ledger row."""
+    """Run one task body, timed, and close out its ledger row.
+
+    Under ``dry_run`` there is no row to close: ``run_id`` is None, both
+    ``ledger.finish`` calls are skipped, and ``ctx.close_sessions`` rolls back
+    instead of committing (its own ``not self.dry_run`` guard). The task runs
+    for real against the database and is then undone, which is the only way to
+    answer "what would this do?" without a second implementation of every task.
+
+    A success reports ``would_claim`` rather than ``succeeded``, because nothing
+    was committed and nothing was claimed — the state the run *would* have
+    recorded is carried alongside as ``would_be``. A **failure** reports
+    ``failed`` regardless: a dry run that raised is a real finding, and the
+    CLI's exit code should say so.
+    """
     ctx = TaskContext(
         now=now, occurrence=occ, occurrence_key=key, task_name=task.name,
         dry_run=dry_run,
@@ -206,11 +246,24 @@ def _execute(ledger: TaskLedger, task: Task, run_id: int, now: datetime,
         duration = _monotonic_ms() - started
         detail = {'error': repr(exc),
                   'traceback': traceback.format_exc()[-_TB_MAX:]}
-        ledger.finish(run_id, state='failed', now=now,
-                      duration_ms=duration, detail=detail)
+        # A task may attach structured context to the exception it raises.
+        # `TaskResult` has no failed state — a task fails by raising — so
+        # without this the only place a failure can say anything is inside
+        # `repr(exc)`, and an operator ends up regex-ing a count out of a
+        # string. The expiration send's cap uses it to report
+        # {'audience': n, 'cap': c} as data.
+        extra = getattr(exc, 'task_detail', None)
+        if isinstance(extra, dict):
+            detail.update(extra)
+        if not dry_run:
+            ledger.finish(run_id, state='failed', now=now,
+                          duration_ms=duration, detail=detail)
         logger.exception('task %s failed at occurrence %s', task.name, key)
-        return {'task': task.name, 'occurrence': occ.isoformat(),
-                'outcome': 'failed', 'error': repr(exc)}
+        failure = {'task': task.name, 'occurrence': occ.isoformat(),
+                   'outcome': 'failed', 'error': repr(exc)}
+        if dry_run:
+            failure['dry_run'] = True
+        return failure
 
     ctx.close_sessions(commit=True)
     duration = _monotonic_ms() - started
@@ -226,6 +279,13 @@ def _execute(ledger: TaskLedger, task: Task, run_id: int, now: datetime,
         detail['message'] = result.message
     if result.partial_failures:
         detail['partial_failures'] = result.partial_failures
+
+    if dry_run:
+        logger.info('task %s would be %s at occurrence %s (dry run, %dms)',
+                    task.name, state, key, duration)
+        return {'task': task.name, 'occurrence': occ.isoformat(),
+                'outcome': 'would_claim', 'would_be': state, 'dry_run': True,
+                'duration_ms': duration, 'detail': detail}
 
     ledger.finish(run_id, state=state, now=now, duration_ms=duration,
                   detail=detail or None)

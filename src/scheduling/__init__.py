@@ -14,10 +14,11 @@ of them, deliberately:
 
 Nothing in this package imports Click, Flask, or `kubernetes`.
 
-Design: ``docs/plans/SCHEDULED_TASKS.md``.
+Design: ``docs/plans/implemented/SCHEDULED_TASKS.md``.
 """
 
 from scheduling.schedules import (
+    BusinessHourly,
     CronExpr,
     Daily,
     Hourly,
@@ -25,9 +26,11 @@ from scheduling.schedules import (
     Schedule,
     Weekly,
     occurrence_key,
+    to_local_naive,
 )
 
 __all__ = [
+    'BusinessHourly',
     'CronExpr',
     'Daily',
     'Hourly',
@@ -35,4 +38,5 @@ __all__ = [
     'Schedule',
     'Weekly',
     'occurrence_key',
+    'to_local_naive',
 ]

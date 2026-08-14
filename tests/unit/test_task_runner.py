@@ -5,6 +5,7 @@ registry. That is the whole reason the runner takes the clock as an argument
 rather than reading it.
 """
 
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -171,6 +172,57 @@ class TestFailure:
 
         assert ran == ['b']
         assert out['counts'] == {'failed': 1, 'succeeded': 1}
+
+    def test_a_task_can_attach_structured_detail_to_its_failure(self, ledger,
+                                                                rows):
+        """`TaskResult` has no failed state — a task fails by raising — so
+        without this the only place a failure can say anything is inside
+        `repr(exc)`, and an operator ends up regex-ing a count out of a
+        string. The expiration send's cap reports its audience this way."""
+        class CapExceeded(RuntimeError):
+            task_detail = {'audience': 4200, 'cap': 2500,
+                           'aborted_before_sending': True}
+
+        def over_cap(ctx):
+            raise CapExceeded('audience 4200 exceeds cap 2500')
+
+        run_due(now=NOW, ledger=ledger,
+                registry=registry_of(make_task(fn=over_cap)))
+
+        detail = json.loads(rows()[0].detail)
+        assert detail['audience'] == 4200
+        assert detail['cap'] == 2500
+        assert detail['aborted_before_sending'] is True
+        # ...and the diagnostics it is added to are still there.
+        assert 'CapExceeded' in detail['error']
+        assert 'Traceback' in detail['traceback']
+
+    @pytest.mark.parametrize('junk', ['a string', 42, ['a', 'list'], None])
+    def test_a_non_dict_task_detail_is_ignored_not_crashed(self, ledger, rows,
+                                                           junk):
+        """The failure path is the last thing that should raise. A task that
+        attaches the wrong shape still gets an honest `failed` row."""
+        def boom(ctx):
+            exc = RuntimeError('nope')
+            exc.task_detail = junk
+            raise exc
+
+        run_due(now=NOW, ledger=ledger,
+                registry=registry_of(make_task(fn=boom)))
+
+        row, = rows()
+        assert row.state == 'failed'
+        assert set(json.loads(row.detail)) == {'error', 'traceback'}
+
+    def test_an_ordinary_failure_is_unchanged(self, ledger, rows):
+        """No behavior change for `cleanup_status` or anything else that does
+        not know this hook exists."""
+        def boom(ctx):
+            raise RuntimeError('nope')
+
+        run_due(now=NOW, ledger=ledger,
+                registry=registry_of(make_task(fn=boom)))
+        assert set(json.loads(rows()[0].detail)) == {'error', 'traceback'}
 
     @pytest.mark.parametrize('exc', [KeyboardInterrupt, SystemExit])
     def test_baseexception_propagates(self, ledger, rows, exc):
@@ -353,15 +405,59 @@ class TestDryRun:
     def test_writes_no_ledger_rows_at_all(self, ledger, rows):
         """A dry run that claimed the slot would prevent the real run — the
         worst possible failure mode for a safety flag."""
-        calls = []
-        task = make_task(fn=lambda ctx: calls.append(1) or TaskResult())
+        task = make_task()
 
         out = run_due(now=NOW, ledger=ledger, registry=registry_of(task),
                       dry_run=True)
 
         assert rows() == []
-        assert calls == [], 'dry run must not execute the body either'
         assert out['counts'] == {'would_claim': 1}
+
+    def test_the_body_runs_so_the_preview_is_real(self, ledger):
+        """⚠️ This assertion is INVERTED from what it used to be.
+
+        It previously read ``assert calls == [], 'dry run must not execute the
+        body either'`` — which made `ctx.dry_run` a constant False, since
+        `_execute` was then only reachable on the not-dry path. Four separate
+        pieces of machinery existed to serve a flag nothing could set:
+        `TaskContext.dry_run` itself, `close_sessions`' `not self.dry_run`
+        rollback guard, `cleanup_status`' `dry_run=ctx.dry_run` (whose callee
+        counts instead of deleting), and `expiration_notices`' preview branch.
+        The claim half of that old test is the part with a real argument behind
+        it, and it is kept above; not executing the body was the implementation
+        being asserted back at itself.
+        """
+        seen = []
+        task = make_task(fn=lambda ctx: seen.append(ctx.dry_run) or TaskResult())
+
+        out = run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                      dry_run=True)
+
+        assert seen == [True], 'the body must run, and must know it is a dry run'
+        assert out['results'][0]['would_be'] == 'succeeded'
+        assert out['results'][0]['dry_run'] is True
+
+    def test_the_detail_the_run_produced_is_reported(self, ledger):
+        """The whole point of the flag: what WOULD this task do?"""
+        task = make_task(fn=lambda ctx: TaskResult(detail={'deleted': 7}))
+
+        out = run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                      dry_run=True)
+
+        assert out['results'][0]['detail']['deleted'] == 7
+
+    def test_a_raising_task_still_reports_failed(self, ledger, rows):
+        """A dry run that blew up is a real finding, and the CLI keys its exit
+        code off this outcome. Still no ledger row."""
+        def boom(ctx):
+            raise RuntimeError('nope')
+
+        out = run_due(now=NOW, ledger=ledger, registry=registry_of(
+            make_task(fn=boom)), dry_run=True)
+
+        assert out['counts'] == {'failed': 1}
+        assert out['results'][0]['dry_run'] is True
+        assert rows() == []
 
     def test_reports_already_claimed_without_writing(self, ledger, rows):
         task = make_task()
@@ -375,11 +471,16 @@ class TestDryRun:
         assert len(rows()) == before
 
     def test_a_dry_run_does_not_block_the_real_run(self, ledger):
+        """The invariant the claim half protects: previewing a slot must leave
+        it free. Both bodies run — the first previews, the second commits."""
         calls = []
-        task = make_task(fn=lambda ctx: calls.append(1) or TaskResult())
+        task = make_task(fn=lambda ctx: calls.append(ctx.dry_run) or TaskResult())
+
         run_due(now=NOW, ledger=ledger, registry=registry_of(task), dry_run=True)
-        run_due(now=NOW, ledger=ledger, registry=registry_of(task))
-        assert len(calls) == 1, 'the real run must still happen'
+        out = run_due(now=NOW, ledger=ledger, registry=registry_of(task))
+
+        assert calls == [True, False], 'the real run must still happen'
+        assert out['counts'] == {'succeeded': 1}
 
 
 # ------------------------------------------------------------- only / force
@@ -417,6 +518,60 @@ class TestOnlyAndForce:
         assert row.occurrence_key.startswith('M')
         assert row.trigger_type == 'manual'
         assert row.occurrence_key != occurrence_key(datetime(2026, 8, 12, 8, 15))
+
+    def test_an_explicit_occurrence_is_what_the_task_receives(self, ledger):
+        """The replay affordance. A task computes everything from
+        `ctx.occurrence`, so handing it a future slot asks "what would that
+        run have done?" without waiting for it or editing a constant."""
+        seen = []
+        task = make_task(fn=lambda ctx: seen.append(ctx.occurrence) or TaskResult())
+        replay = datetime(2026, 11, 23, 9, 0)
+
+        run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                only='t', force=True, occurrence=replay)
+
+        assert seen == [replay]
+
+    def test_an_explicit_occurrence_still_writes_a_manual_key(self, ledger, rows):
+        """THE safety argument for honoring it only under --force: the key is
+        `M`-prefixed by construction, so a replay can neither satisfy nor
+        displace a real scheduled slot."""
+        replay = datetime(2026, 11, 23, 9, 0)
+        run_due(now=NOW, ledger=ledger, registry=registry_of(make_task()),
+                only='t', force=True, occurrence=replay)
+
+        row, = rows()
+        assert row.occurrence_key == 'M' + occurrence_key(replay)
+        assert row.trigger_type == 'manual'
+
+    def test_a_replay_does_not_settle_the_slot_it_replays(self, ledger):
+        """Replaying next month's Monday must not stop next month's Monday."""
+        calls = []
+        slot = datetime(2026, 8, 12, 8, 15)
+        task = make_task(fn=lambda ctx: calls.append(ctx.occurrence) or TaskResult())
+
+        run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                only='t', force=True, occurrence=slot)
+        run_due(now=NOW, ledger=ledger, registry=registry_of(task))
+
+        assert calls == [slot, slot], 'the scheduled run must still happen'
+
+    def test_an_occurrence_without_force_is_ignored(self, ledger):
+        """The CLI rejects the combination outright; the runner falls back to
+        the real slot rather than quietly honoring it, so the two layers
+        cannot disagree about what a scheduled key means."""
+        seen = []
+        task = make_task(fn=lambda ctx: seen.append(ctx.occurrence) or TaskResult())
+        run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                occurrence=datetime(2026, 11, 23, 9, 0))
+        assert seen == [datetime(2026, 8, 12, 8, 15)]
+
+    def test_microseconds_are_truncated_as_they_are_for_now(self, ledger, rows):
+        run_due(now=NOW, ledger=ledger, registry=registry_of(make_task()),
+                only='t', force=True,
+                occurrence=datetime(2026, 11, 23, 9, 0, 30, 123456))
+        assert rows()[0].occurrence_key == \
+            'M' + occurrence_key(datetime(2026, 11, 23, 9, 0, 30))
 
     def test_a_forced_run_does_not_satisfy_the_scheduled_slot(self, ledger, rows):
         """Documented at the flag: a forced 10:00 run does not stop tonight's."""
@@ -506,3 +661,58 @@ class TestTaskContext:
         with pytest.raises(ValueError, match='unknown needs'):
             Task(name='x', schedule=Daily(1), fn=lambda ctx: None,
                  needs=('sam', 'postgres'))
+
+
+class TestASessionFactoryThatFails:
+    """A session factory that cannot connect must fail ONE task, not the run.
+
+    `cli/tasks/commands.py` supplies `Context.open_sam` here. Its sibling
+    `Context.require_sam` calls ``sys.exit(1)``, and `_execute` catches
+    `Exception` rather than `BaseException` on purpose — so handing the runner
+    the exiting variant would let a SAM outage terminate the dispatcher mid-loop
+    instead of failing the task that wanted the session. These tests are what
+    stop that wiring from regressing.
+    """
+
+    def test_a_failing_sam_connect_fails_only_that_task(self, ledger, rows):
+        def boom():
+            raise RuntimeError('Error connecting to database: refused')
+
+        ran = []
+        first = make_task(name='needs_sam', needs=('sam', 'status'),
+                          fn=lambda ctx: ctx.sam_session)
+        second = make_task(name='runs_after', needs=('status',),
+                           fn=lambda ctx: ran.append('yes') or TaskResult())
+
+        out = run_due(now=NOW, ledger=ledger,
+                      registry=registry_of(first, second),
+                      sam_session_factory=boom,
+                      status_session_factory=lambda: None)
+
+        by_task = {r['task']: r for r in out['results']}
+        assert by_task['needs_sam']['outcome'] == 'failed'
+        assert ran == ['yes'], 'a later task must still run'
+        assert by_task['runs_after']['outcome'] == 'succeeded'
+
+        failed = rows(task_name='needs_sam')[0]
+        assert failed.state == 'failed'
+        assert 'refused' in failed.detail
+
+    def test_a_systemexit_from_the_factory_is_not_swallowed(self, ledger):
+        """The bug this guards against, stated as an executable claim.
+
+        `_execute` must NOT catch SystemExit — that is what keeps an
+        `activeDeadlineSeconds` kill recorded as `running`-and-reclaimable. The
+        consequence is that an *exiting* session factory takes the dispatcher
+        with it, which is precisely why `open_sam` exists.
+        """
+        def exits():
+            raise SystemExit(1)
+
+        task = make_task(name='exiting', needs=('sam', 'status'),
+                         fn=lambda ctx: ctx.sam_session)
+
+        with pytest.raises(SystemExit):
+            run_due(now=NOW, ledger=ledger, registry=registry_of(task),
+                    sam_session_factory=exits,
+                    status_session_factory=lambda: None)

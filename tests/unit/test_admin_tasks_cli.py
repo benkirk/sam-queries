@@ -37,13 +37,28 @@ def status_engine(app, status_session):
 
 
 @pytest.fixture
-def wired(status_engine):
+def wired(status_engine, monkeypatch):
     """Point the command's status-session factory at the test SQLite bind.
 
     Patched at `system_status.session.create_status_engine`, the single place
     `TasksCommand` builds its engine. Nothing patches a SAM engine — these
     tests would fail if the command tried to open one, which is the point.
+
+    Which is why every task declaring ``needs=('sam', ...)`` is switched off
+    here. `--run-due` dispatches the whole registry, so any SAM-needing task
+    that happens to be due would try to open the connection this file exists to
+    prove is unnecessary. That used to be nobody: the two SAM tasks are monthly
+    and weekly with graces well short of their periods, so both misfire on
+    almost every run and record `skipped` without executing. `xras_notices` is
+    hourly, and is due for most of the day.
+
+    Derived from `needs` rather than named, so registering another SAM task
+    does not silently turn this file red — and so what is asserted stays "the
+    status task runs without SAM", not "these three names do not".
     """
+    from scheduling.registry import TASKS
+    monkeypatch.setenv('SAM_TASKS_DISABLED', ','.join(
+        sorted(name for name, t in TASKS.items() if 'sam' in t.needs)))
     with patch('system_status.session.create_status_engine') as mk:
         mk.return_value = (status_engine, None)
         yield status_engine
@@ -231,6 +246,76 @@ class TestFlagGuards:
         result = runner.invoke(cli, ['tasks', '--task', NAME])
         assert result.exit_code == 2
         assert 'require --history' in result.output
+
+    @pytest.mark.parametrize('flags', [
+        ['--occurrence', '2026-11-23T09:00'],
+        ['--run-due', '--occurrence', '2026-11-23T09:00'],
+        ['--run', NAME, '--occurrence', '2026-11-23T09:00'],   # no --force
+    ])
+    def test_occurrence_requires_run_and_force(self, runner, wired, flags):
+        """Without --force the key is a real scheduled occurrence, so a replay
+        would claim the slot it was only meant to rehearse."""
+        result = runner.invoke(cli, ['tasks', *flags])
+        assert result.exit_code == 2
+        assert '--occurrence requires --run and --force' in result.output
+
+
+class TestOccurrenceReplay:
+    """`--run <task> --force --occurrence <iso>` — rehearse a future slot.
+
+    A task computes everything from `ctx.occurrence`, so this is how you ask
+    "what would the Monday five weeks out have sent?" without waiting five
+    weeks or temporarily editing a window constant. Phase V of the expiration
+    rollout is the reason it exists.
+    """
+
+    def test_the_task_runs_at_the_given_occurrence(self, runner, wired, ledger):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks',
+                                     '--run', NAME, '--force',
+                                     '--occurrence', '2026-11-23T09:00'])
+        assert result.exit_code == 0
+        run, = _json(result)['results']
+        assert run['occurrence'] == '2026-11-23T09:00:00'
+
+    def test_the_ledger_row_carries_a_manual_key(self, runner, wired, ledger):
+        runner.invoke(cli, ['--format', 'json', 'tasks', '--run', NAME,
+                            '--force', '--occurrence', '2026-11-23T09:00'])
+        row = ledger.history(limit=1)[0]
+        assert row['occurrence_key'] == 'M20261123T090000Z'
+        assert row['trigger'] == 'manual'
+
+    @pytest.mark.parametrize('raw,expected', [
+        ('2026-11-23T09:00',        '2026-11-23T09:00:00'),
+        ('2026-11-23 09:00:00',     '2026-11-23T09:00:00'),
+        ('2026-11-23T09:00:00Z',    '2026-11-23T09:00:00'),
+        # An offset is converted and dropped: occurrence keys are naive UTC,
+        # so keeping the wall time would key the row wrong AND select the
+        # wrong window.
+        ('2026-11-23T02:00:00-07:00', '2026-11-23T09:00:00'),
+    ])
+    def test_iso_forms_land_on_naive_utc(self, runner, wired, raw, expected):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run',
+                                     NAME, '--force', '--occurrence', raw])
+        assert result.exit_code == 0
+        assert _json(result)['results'][0]['occurrence'] == expected
+
+    def test_an_unparseable_occurrence_is_an_error_not_a_silent_now(
+            self, runner, wired, ledger):
+        """Falling back to the wall clock would run the task against a window
+        the operator did not ask for and report success."""
+        before = len(ledger.history(limit=50))
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run',
+                                     NAME, '--force',
+                                     '--occurrence', 'next monday'])
+        assert result.exit_code == 2
+        assert _json(result)['error'] == 'bad_occurrence'
+        assert len(ledger.history(limit=50)) == before, 'nothing ran'
+
+    def test_the_rich_path_explains_the_expected_format(self, runner, wired):
+        result = runner.invoke(cli, ['tasks', '--run', NAME, '--force',
+                                     '--occurrence', 'next monday'])
+        assert result.exit_code == 2
+        assert 'ISO-8601' in result.output
 
 
 # ------------------------------------------------- the two deliberate quirks
