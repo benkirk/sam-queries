@@ -455,12 +455,28 @@ tasks:
     # would otherwise mean both "nothing was due" and "the task never ran".
     # Unset it to turn the summary off; the notices themselves are unaffected.
     SAM_TASKS_SUMMARY_TO: "benkirk@ucar.edu"
-    # ⚠️ Comma-separated task names to skip, WITHOUT a code deploy.
+    # ⚠️ Comma-separated task names to skip, WITHOUT a code deploy. This is a
+    # staged-enable control: exactly one task is live, and the rest are named
+    # here until each has been reviewed on its own.
     #
-    # Ships non-empty on purpose. The rollout is: merge with the destructive
-    # task named here, let the dispatcher run hourly for 24 h writing `skipped`
-    # rows and deleting nothing — proving credentials, DNS, image,
-    # securityContext and Postgres reachability from a pod that is not the
-    # webapp, with zero blast radius — then clear this in a SECOND commit.
-    # That soak is the entire reason the kill switch exists.
-    SAM_TASKS_DISABLED: "cleanup_status_snapshots"
+    # Live:     cleanup_status_snapshots     (daily 02:15 MT, status DB only)
+    # Disabled: deactivate_expired_projects  (writes inactivate_time in SAM)
+    #           expiration_notices           (mails external PIs)
+    #
+    # ⚠️ There is NO wildcard. `disabled_tasks()` in src/scheduling/runner.py
+    # is a case-sensitive exact match against registry keys — `all`, `*` and
+    # `none` are just names that match nothing, and an unknown name is not
+    # validated or warned about. So this list is an ENUMERATION, and it is
+    # fail-OPEN: a task added to src/scheduling/tasks/ dispatches on the next
+    # hourly wake unless its name is added here in the same change.
+    #
+    # Both disabled tasks above are exactly that case. They were registered
+    # without this list being touched, so the image promotion carrying them
+    # would have put both into production live — no soak, no separate review.
+    # Naming them here is what makes that promotion a non-event.
+    #
+    # A disabled task still writes a terminal `skipped` row that SETTLES its
+    # slot, so re-enabling one mid-slot does not backfill — the first real run
+    # is the next occurrence. The switch is also checked ahead of `only`/
+    # `force`, so `sam-admin tasks --run X --force` cannot override it.
+    SAM_TASKS_DISABLED: "deactivate_expired_projects,expiration_notices"

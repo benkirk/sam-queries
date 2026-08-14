@@ -129,14 +129,27 @@ assert_contains "$prod_out" 'value: "America/Denver"' \
 
 # --- Ships kill-switched ----------------------------------------------------
 #
-# This is a deliberate, temporary state: the P5 rollout is 24h of `skipped`
-# rows proving creds/DNS/image with zero blast radius, and only THEN a second
-# commit clearing the switch. If you are here because this assertion failed
-# after that second commit, delete it.
+# A deliberate, ongoing state: the chart enables tasks in stages, so the switch
+# is expected to stay non-empty for as long as any registered task is awaiting
+# review.
+#
+# ⚠️ Read the expected value OUT of values.yaml rather than pinning a literal.
+# The literal version had to be edited in lockstep with every change to the
+# list, in two places — and the comment here used to instruct the next reader
+# to DELETE these assertions instead, which would have dropped the
+# one-declaration-two-consumers guarantee below. Derive it, and neither
+# happens.
+switch=$(grep -E '^[[:space:]]+SAM_TASKS_DISABLED:' "$CHART_DIR/values.yaml" \
+         | sed 's/.*: *//' | tr -d '"')
+[[ -n "$switch" ]] || {
+  echo "FATAL: could not read SAM_TASKS_DISABLED out of values.yaml" >&2
+  exit 1
+}
+
 assert_contains "$prod_out" 'name: SAM_TASKS_DISABLED' \
   "the kill switch must be present in the rendered env"
-assert_contains "$prod_out" 'value: "cleanup_status_snapshots"' \
-  "P4 ships with the destructive task disabled; P5 clears it separately"
+assert_contains "$prod_out" "value: \"${switch}\"" \
+  "the CronJob must carry the kill-switch value declared in values.yaml"
 assert_contains "$prod_out" 'value: "365"' \
   "STATUS_RETENTION_DAYS must be explicit in GitOps, not implied by a default"
 
@@ -187,14 +200,20 @@ assert_contains "$cron_out" "value: \"${notify_enabled}\"" \
 # rendered a kill-switched dispatcher as perfectly healthy: the precise failure
 # that card exists to prevent.
 #
-# When P5 clears the switch this pair fails too — delete it alongside the block
-# above, for the same reason.
+# Value derived from values.yaml, same as the CronJob assertion above: what is
+# being proved is that the two manifests AGREE, not what the list happens to
+# say today.
+#
+# One caveat if the list is ever emptied: deployment.yaml guards the key with
+# `{{- with .SAM_TASKS_DISABLED }}`, and an empty string is falsy, so the
+# webapp renders no variable at all. That is correct behavior — the card then
+# reports nothing disabled — but this pair would need to become conditional.
 deploy_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" \
              -f "$CHART_DIR/values.yaml" -s templates/deployment.yaml)
 
 assert_contains "$deploy_out" 'name: SAM_TASKS_DISABLED' \
   "the webapp Deployment must carry the kill switch too, or the admin card lies"
-assert_contains "$deploy_out" 'value: "cleanup_status_snapshots"' \
+assert_contains "$deploy_out" "value: \"${switch}\"" \
   "and it must carry the SAME value — one declaration, two consumers"
 
 # ---------------------------------------------------------------------------
