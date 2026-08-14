@@ -9,10 +9,11 @@ Functions:
     get_projects_by_allocation_end_date: Find projects by allocation end date range
     get_projects_expiring_soon: Convenience wrapper for upcoming expirations
     get_projects_with_expired_allocations: Find recently expired projects
+    unique_projects: Collapse a (project, allocation, ...) result to distinct projects
 """
 
 from datetime import datetime, timedelta
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, or_, func, select
 from sqlalchemy.orm import Session
@@ -24,9 +25,57 @@ from sam.resources.resources import Resource
 from sam.resources.facilities import Facility, Panel
 
 
+#: The grace period before an expired project is eligible for deactivation,
+#: shared by the admin "Deactivate Expired" button and the monthly
+#: `deactivate_expired_projects` task so the two cannot drift. There is
+#: deliberately **no upper bound** to pair with it: a ceiling exempts exactly
+#: the projects that have been dead longest, which is backwards.
+#:
+#: `sam-admin project --recent-expirations --deactivate` does NOT use this — its
+#: floor is 0 and its ceiling comes from `--since`, because that path has a human
+#: reading the list and confirming.
+DEACTIVATION_MIN_DAYS_EXPIRED = 90
+
+
 # ============================================================================
 # Project Expiration Queries
 # ============================================================================
+
+
+def unique_projects(
+    results: List[Tuple['Project', Any, Any, Any]]
+) -> List['Project']:
+    """Collapse an expirations query result down to distinct projects.
+
+    ⚠️ **A guard, not a repair.** `get_projects_by_allocation_end_date` and
+    `get_projects_with_expired_allocations` pin one allocation per project
+    (`_get_latest_allocation_subquery` ends in `LIMIT 1`), so today they emit no
+    duplicates at all — verified against a production snapshot at three windows,
+    132/95/6 rows, zero dupes. The pre-existing "a project can have multiple
+    expired allocations" comment in the admin route was simply wrong.
+
+    It stays because the *shape* is one row per `(project, allocation)`, and the
+    sibling `get_all_expiring_allocations` genuinely returns every allocation —
+    so a caller swapping queries would start double-counting silently. It also
+    gives `sam-admin` a project count it can quote in a prompt *before* mutating,
+    separately from the write, which is why this is its own name rather than a
+    step hidden inside one.
+
+    First-seen order is preserved, so a result sorted most-expired-first stays
+    that way.
+
+    Args:
+        results: Tuples whose first element is a Project, as returned by
+            `get_projects_with_expired_allocations` / `..._by_allocation_end_date`.
+
+    Returns:
+        Distinct projects, keyed on project_id, in first-seen order.
+    """
+    seen: Dict[int, 'Project'] = {}
+    for row in results:
+        project = row[0]
+        seen.setdefault(project.project_id, project)
+    return list(seen.values())
 
 def _get_latest_allocation_subquery(resource_name: Optional[str] = None):
     """
@@ -87,7 +136,8 @@ def get_projects_by_allocation_end_date(
     facility_names: Optional[List[str]] = None,
     resource_name: Optional[str] = None,
     include_inactive_projects: bool = False,
-    include_null_end_dates: bool = False
+    include_null_end_dates: bool = False,
+    now: Optional[datetime] = None
 ) -> List[Tuple['Project', 'Allocation', str, Optional[int]]]:
     """
     Find projects whose most recent allocation's end_date falls within a date range.
@@ -136,6 +186,13 @@ def get_projects_by_allocation_end_date(
         resource_name: Optional resource name to filter (e.g., 'Derecho', 'GLADE')
         include_inactive_projects: If True, include projects marked inactive
         include_null_end_dates: If True, include allocations with NULL end_dates
+        now: Reference instant for the relative-date forms and for the returned
+            day counts. Defaults to the wall clock. A **scheduled task must pass
+            this explicitly**, derived from its occurrence, or a run dispatched
+            late selects a different cohort than a punctual one would — and
+            `--occurrence` replay answers "what does today select?" rather than
+            "what will that slot select?". Ignored when start_date/end_date are
+            given. Mirrors `get_all_expiring_allocations`, which already has it.
 
     Returns:
         List of (Project, Allocation, resource_name, days_from_now) tuples,
@@ -143,7 +200,7 @@ def get_projects_by_allocation_end_date(
         dates, negative for past dates, None for NULL end_dates.
     """
 
-    now = datetime.now()
+    now = now or datetime.now()
 
     # Determine date range
     if start_date is None and end_date is None:
@@ -261,7 +318,8 @@ def get_projects_with_expired_allocations(
     max_days_expired: Optional[int] = None,
     facility_names: Optional[List[str]] = None,
     resource_name: Optional[str] = None,
-    include_inactive_projects: bool = False
+    include_inactive_projects: bool = False,
+    now: Optional[datetime] = None
 ) -> List[Tuple['Project', 'Allocation', str, int]]:
     """
     Get projects with allocations that expired within a specified date range.
@@ -273,6 +331,8 @@ def get_projects_with_expired_allocations(
         facility_names: Optional list of facility names to filter
         resource_name: Optional resource name to filter
         include_inactive_projects: If True, include projects already marked inactive
+        now: Reference instant for "days expired". Defaults to the wall clock;
+            see `get_projects_by_allocation_end_date`.
 
     Returns:
         List of (Project, Allocation, resource_name, days_since_expiration) tuples,
@@ -284,7 +344,8 @@ def get_projects_with_expired_allocations(
         days_from_now=-min_days_expired,
         facility_names=facility_names,
         resource_name=resource_name,
-        include_inactive_projects=include_inactive_projects
+        include_inactive_projects=include_inactive_projects,
+        now=now
     )
 
     # Convert to positive days_since_expiration and reverse sort
@@ -300,7 +361,8 @@ def get_all_expiring_allocations(
     end_date: Optional[datetime] = None,
     facility_names: Optional[List[str]] = None,
     resource_name: Optional[str] = None,
-    include_inactive_projects: bool = False
+    include_inactive_projects: bool = False,
+    now: Optional[datetime] = None
 ) -> List[Tuple['Project', 'Allocation', str, Optional[int]]]:
     """
     Find ALL allocations (not just latest per project) with end_dates in a date range.
@@ -317,6 +379,11 @@ def get_all_expiring_allocations(
         facility_names: Optional list of facility names to filter
         resource_name: Optional resource name to filter
         include_inactive_projects: If True, include projects marked inactive
+        now: the instant `days_from_now` is measured against. Defaults to the
+            wall clock, which is right for a CLI run. A **scheduled** caller
+            must pass its occurrence instead: the notice body says "expires in
+            N days", and a dispatch that ran 20 hours late would otherwise
+            render 37 where a punctual one rendered 38, for the same run.
 
     Returns:
         List of (Project, Allocation, resource_name, days_from_now) tuples,
@@ -334,7 +401,7 @@ def get_all_expiring_allocations(
         # This will return multiple allocations per project if they all expire
         # in the date range (e.g., Derecho, Casper, and Derecho GPU)
     """
-    now = datetime.now()
+    now = now if now is not None else datetime.now()
 
     # Main query - no subquery filter, returns ALL allocations in range
     query = (

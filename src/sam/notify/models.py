@@ -46,7 +46,7 @@ class NotificationLog(Base, SessionMixin):
     did not take effect must not survive. A ledger row is the inverse: **mail
     handed to a relay cannot be un-sent by a rollback**, so it must survive
     one. :class:`~sam.notify.ledger.NotificationLedger` therefore commits on
-    its own short-lived session, mirroring ``webapp/api/xras/replay.py``. The
+    its own short-lived session, mirroring ``webapp/api/xras/recheck.py``. The
     two disciplines sit two screens apart; a reader who has just met one will
     expect the other answer.
 

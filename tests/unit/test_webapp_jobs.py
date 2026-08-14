@@ -2379,7 +2379,7 @@ def test_explore_page_ships_the_entity_modal_shells(
     assert body.count('id="userDetailsModal"') == 1
     assert body.count('id="projectDetailsModal"') == 1
     # The project shell pulls this in for the per-allocation pencils
-    # inside it — see tests/unit/test_modal_shell_pairing.py.
+    # inside it — see tests/unit/test_modal_shell_contract.py.
     assert body.count('id="editAllocationModal"') == 1
 
 

@@ -140,6 +140,41 @@ assert_contains "$prod_out" 'value: "cleanup_status_snapshots"' \
 assert_contains "$prod_out" 'value: "365"' \
   "STATUS_RETENTION_DAYS must be explicit in GitOps, not implied by a default"
 
+# --- Notifications must reach the CronJob, not just the Deployment ----------
+#
+# ⚠️ Asserted PER-MANIFEST, and that is load-bearing. `cronjob-tasks.yaml`
+# renders `.Values.tasks.env` plus a hand-listed set and NOTHING else — it does
+# not inherit `webapp.env`, where NOTIFY_* and MAIL_* live. So a whole-render
+# grep passes on the Deployment's copy alone and proves nothing about the pod
+# that actually sends the mail.
+#
+# The failure this catches is silent by construction: NotifyConfig is
+# fail-closed, so a CronJob without NOTIFY_ENABLED records every message
+# `suppressed`, reports `succeeded` and exits 0. Green Job, no mail, no
+# indication. `expiration_notices` also refuses to run mail-disabled at
+# runtime; this is the other half of that pair.
+cron_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" \
+           -f "$CHART_DIR/values.yaml" -s templates/cronjob-tasks.yaml)
+
+assert_contains "$cron_out" 'name: NOTIFY_ENABLED' \
+  "the CronJob must carry NOTIFY_ENABLED, or expiration_notices mails nobody, silently"
+assert_contains "$cron_out" 'name: NOTIFY_TRANSPORT' \
+  "and the transport, or it falls back to the smtp default by accident"
+assert_contains "$cron_out" 'name: MAIL_SERVER' \
+  "and the relay"
+assert_contains "$cron_out" 'name: MAIL_DEFAULT_FROM' \
+  "and the envelope sender, which must SPF-pass as sam-admin@ucar.edu"
+assert_contains "$cron_out" 'name: SAM_TASKS_EMAIL_MAX' \
+  "and the runaway guard"
+assert_contains "$cron_out" 'name: SAM_TASKS_SUMMARY_TO' \
+  "and the per-run summary recipient"
+
+# The values must MATCH the Deployment's — cross-referenced, not duplicated.
+notify_enabled=$(grep -E '^\s+NOTIFY_ENABLED:' "$CHART_DIR/values.yaml" \
+                 | awk '{print $2}' | tr -d '"')
+assert_contains "$cron_out" "value: \"${notify_enabled}\"" \
+  "the CronJob's NOTIFY_ENABLED must be webapp.env's, not a second literal"
+
 # --- BOTH pods must see the kill switch -------------------------------------
 #
 # The CronJob OBEYS the switch; the webapp's Admin → Configuration card

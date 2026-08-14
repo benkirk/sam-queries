@@ -770,10 +770,15 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
 @click.option('--force', is_flag=True,
               help='With --run: claim a manual occurrence key. A forced run does '
                    'NOT satisfy the scheduled slot — tonight\'s run still happens.')
+@click.option('--occurrence', metavar='ISO8601',
+              help='With --run --force: replay this slot instead of now, e.g. '
+                   '2026-11-23T09:00 (naive UTC). A task computes everything '
+                   'from its occurrence, so this asks "what would that run '
+                   'have done?" without waiting for it.')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
 def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
-          dry_run, force, verbose):
+          dry_run, force, occurrence, verbose):
     """Scheduled task dispatcher.
 
     The ledger lives in system_status, so these commands do not need SAM MySQL.
@@ -797,6 +802,15 @@ def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
         ctx.console.print('Error: --force requires --run', style='bold red')
         sys.exit(EXIT_ERROR)
 
+    # --occurrence is honored only on the forced path, where the ledger key is
+    # already `M`-prefixed and so cannot collide with — or satisfy — a real
+    # scheduled slot. Accepting it without --force would let a replay claim a
+    # scheduled occurrence and suppress the run that slot was for.
+    if occurrence and not (run and force):
+        ctx.console.print('Error: --occurrence requires --run and --force',
+                          style='bold red')
+        sys.exit(EXIT_ERROR)
+
     if (task or limit != 20) and not history:
         ctx.console.print('Error: --task and --limit require --history',
                           style='bold red')
@@ -816,6 +830,7 @@ def tasks(ctx: Context, list_tasks, run_due, run, history, task, limit,
         limit=limit,
         dry_run=dry_run,
         force=force,
+        occurrence=occurrence,
     ))
 
 

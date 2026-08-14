@@ -573,7 +573,8 @@ sam-queries/
 │   │   ├── registry.py          # The TASKS registry and @task decorator
 │   │   ├── ledger.py            # task_run claims, leases, heartbeats
 │   │   ├── runner.py            # run_due() — the whole scheduler-facing surface
-│   │   └── tasks/               # The registered tasks themselves
+│   │   └── tasks/               # cleanup_status, deactivate_expired,
+│   │                            #   expiration_notices
 │   │
 │   ├── querykit/                # Faceted-log query facade (see querykit/README.md)
 │   │   ├── README.md            # Why this is a peer package, and what belongs in it
@@ -586,6 +587,10 @@ sam-queries/
 │   │   ├── project/             # Project commands and display functions
 │   │   ├── allocations/         # Allocation commands and display functions
 │   │   ├── accounting/          # Accounting ingest commands and display functions
+│   │   ├── awards/              # Award-search commands (NSF / USAspending)
+│   │   ├── contracts/           # Contract commands and display functions
+│   │   ├── tasks/               # Scheduled-task commands (sam-admin tasks)
+│   │   ├── xras/                # XRAS action-log commands and display functions
 │   │   └── cmds/                # Entry points (search.py, admin.py)
 │   │
 │   ├── sam_search_cli.py        # Compatibility shim (re-exports from cli.cmds.search)

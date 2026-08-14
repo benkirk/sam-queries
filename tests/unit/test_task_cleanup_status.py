@@ -153,14 +153,40 @@ class TestThroughTheRunner:
         assert detail['retention_days'] == DEFAULT_RETENTION_DAYS
         assert 'user_proj_queue_status' in detail['deleted']
 
-    def test_dry_run_deletes_nothing(self, ledger, registry, status_session):
-        _derecho(status_session, OCC - timedelta(days=400))
+    def test_dry_run_deletes_nothing_but_says_what_it_would(self, ledger,
+                                                            registry,
+                                                            status_session):
+        """This used to assert only the first half — and passed for the wrong
+        reason, because the runner never executed the body under `--dry-run`.
+        It would have gone on passing with the task's entire `ctx.dry_run`
+        handling deleted. The `would_be` / `deleted` assertions are what make it
+        able to fail.
+        """
+        _derecho(status_session, OCC - timedelta(days=400))     # doomed
+        _derecho(status_session, OCC - timedelta(days=10))      # survives
         status_session.commit()
 
-        run_due(now=NOW, ledger=ledger, registry=registry, dry_run=True,
-                status_session_factory=lambda: status_session)
+        out = run_due(now=NOW, ledger=ledger, registry=registry, dry_run=True,
+                      status_session_factory=lambda: status_session)
 
-        assert status_session.query(DerechoStatus).count() == 1
+        assert status_session.query(DerechoStatus).count() == 2, \
+            'a dry run must not delete'
+        result = out['results'][0]
+        assert result['outcome'] == 'would_claim'
+        assert result['would_be'] == 'succeeded'
+        assert result['detail']['deleted']['derecho_status'] == 1, \
+            'and must report the row it WOULD have deleted'
+
+    def test_a_dry_run_does_not_prune_the_ledger_either(self, ledger, registry,
+                                                        status_session):
+        """The task guards its own `ledger.prune` on `ctx.dry_run` — a guard
+        that was unreachable, so nothing proved it worked."""
+        status_session.commit()
+
+        out = run_due(now=NOW, ledger=ledger, registry=registry, dry_run=True,
+                      status_session_factory=lambda: status_session)
+
+        assert out['results'][0]['detail']['task_run_pruned'] == 0
 
     def test_a_second_dispatch_in_the_slot_does_not_prune_twice(self, ledger,
                                                                 registry,

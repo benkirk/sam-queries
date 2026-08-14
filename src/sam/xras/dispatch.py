@@ -230,7 +230,7 @@ def dispatch_action(session, action, *,
     ``status='rechecked'`` — *"this would succeed if posted now"*. Nothing is written
     on that path, and a payload that would still be rejected raises exactly as it
     would live, carrying the same error list. Used by the re-check surface
-    (``webapp/api/xras/replay.py``) to answer "did our data fix take?" without
+    (``webapp/api/xras/recheck.py``) to answer "did our data fix take?" without
     involving XRAS. The three parking arms below are unaffected: if nothing would
     run, that is the honest answer to a re-check too.
 

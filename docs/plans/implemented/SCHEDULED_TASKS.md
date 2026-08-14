@@ -658,6 +658,28 @@ prevent the real run — the worst possible failure mode for a safety flag. It
 prints what it *would* claim; the JSON envelope reports `"would_claim": [...]`.
 The notify framework made the same call for `preview()`, for the same reason.
 
+> **Amended (PR #447 follow-up).** As first built, `run_due` returned at the
+> claim under `--dry-run` and never called `_execute`, so **`ctx.dry_run` was a
+> constant `False`** and `--dry-run` answered only "is this slot free?" — never
+> "what would this task do?". Four pieces of machinery existed for a flag
+> nothing could set: `TaskContext.dry_run`, `close_sessions`' `not self.dry_run`
+> rollback guard, `cleanup_status`' `dry_run=ctx.dry_run` (whose callee counts
+> instead of deleting), and `expiration_notices`' preview branch. It survived
+> because one test asserted the outcome without exercising the path
+> (`test_dry_run_deletes_nothing` passed because the body never ran) and another
+> exercised the path without going through the runner (building a
+> `TaskContext(dry_run=True)` by hand).
+>
+> A dry run now **executes the body and rolls it back**: no ledger row, no
+> claim, `close_sessions` rolls back, and the outcome is `would_claim` carrying
+> `would_be` plus the detail the run produced. A raise still reports `failed`,
+> because a dry run that blew up is a real finding and the exit code should say
+> so. The no-claim half of the original argument is unchanged and still tested.
+>
+> ⚠️ The new obligation is on task authors: **a task whose side effects are not
+> transactional must branch on `ctx.dry_run`** — a rollback undoes rows, not
+> mail. See the note on `TaskContext.dry_run`.
+
 **`--force` writes a manual key**: `"M" + now.strftime('%Y%m%dT%H%M%SZ')`,
 `trigger='manual'`. The leading `M` cannot collide with a scheduled key, so a
 forced run never satisfies a scheduled slot — and that must be documented at the
@@ -920,6 +942,16 @@ ever lands and that stops being true, the shape is a generated `dedup_claim`
 column — `NULL` unless status is `sent`/`redirected`, UNIQUE on that, since MySQL
 has no partial indexes — not a unique index on `dedup_key` itself.
 
+> **Built, and this section is superseded where they disagree.** The
+> expiration task shipped as `src/scheduling/tasks/expiration_notices.py`;
+> the design that governs it is `docs/plans/EXPIRATION_NOTICES.md`, which
+> overrides this section in five places. The two corrections that matter
+> most are marked inline in items 2 and 4 below. Also superseded: the
+> "rolling 32-day window" premise above — the schedule is **weekly**
+> (`Weekly(0, 9, 0)`) over a fixed 40-day lookahead, and the dedup key gained
+> a milestone label, so it is now
+> `expiration:{projcode}:{end_date}:{label}:{recipient}`.
+
 **What the stacked PR still owes:**
 
 1. **Milestones instead of a rolling window** — optional, but better.
@@ -934,6 +966,16 @@ has no partial indexes — not a unique index on `dedup_key` itself.
    fails *before* sending anything, with the count in `detail`. Nothing like this
    exists today, and it guards the failure mode where a milestone bug turns "the
    30-day cohort" into "every allocation ever".
+
+   ⚠️ **Corrected as built: the default is 2500, not 250.** 250 is *below*
+   observed volume — a loaded run peaks at ~535 measured (2026-11-23, catching
+   the Dec 31 cluster) and Ben's real early-August 2026 run produced 471 — so
+   the cap as specified would have failed every month while sending nothing.
+   2500 is ~4.7× the peak: far enough above normal operation never to fire,
+   close enough to catch an order-of-magnitude selection bug, which is the
+   failure this item is actually about. The rest of the item stands, including
+   `task_detail` carrying `{audience, cap}` into the ledger row as structured
+   data.
 3. **Explicit facility scoping.** `default=['UNIV', 'WNA']` is a Click default on
    `--facilities` (`src/cli/cmds/admin.py:106`). The task must pass its facilities
    explicitly rather than inherit a CLI default someone might reasonably change.
@@ -943,6 +985,19 @@ has no partial indexes — not a unique index on `dedup_key` itself.
    (`output_format='rich'`), so the guard must stay a CLI-flag check and must not
    migrate down into the command class, where it would block the task. § 7's
    carve-out is about the *dispatcher's* own output, not about `--notify`.
+
+   ⚠️ **Corrected as built: the task constructs no `Context` at all.** The
+   message builder was extracted to `sam/queries/expiration_notices.py` and both
+   the CLI and the task call it; `execute()` is not touched, which satisfies
+   this item's *requirement* more cleanly than the approach it proposes.
+
+   A fresh `Context` binds `console = Console()` on **stdout**, and the CronJob
+   runs `sam-admin --format json tasks --run-due`, whose stdout is a JSON
+   envelope operators pipe to `jq` — `notification_progress` and the two
+   `display_*` calls would interleave rich tables and ANSI into it. The task
+   also needs to own its window, its `requested_by` and its facility scoping,
+   all of which `execute()` decides for it. There is a capsys test asserting the
+   task writes nothing to stdout.
 
 **Rollout, when it comes:** `NOTIFY_ENABLED` is fail-closed and
 `NOTIFY_REDIRECT_TO` exists, so the safe first cycle is a redirected run — real

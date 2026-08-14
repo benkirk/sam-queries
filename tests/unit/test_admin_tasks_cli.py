@@ -232,6 +232,76 @@ class TestFlagGuards:
         assert result.exit_code == 2
         assert 'require --history' in result.output
 
+    @pytest.mark.parametrize('flags', [
+        ['--occurrence', '2026-11-23T09:00'],
+        ['--run-due', '--occurrence', '2026-11-23T09:00'],
+        ['--run', NAME, '--occurrence', '2026-11-23T09:00'],   # no --force
+    ])
+    def test_occurrence_requires_run_and_force(self, runner, wired, flags):
+        """Without --force the key is a real scheduled occurrence, so a replay
+        would claim the slot it was only meant to rehearse."""
+        result = runner.invoke(cli, ['tasks', *flags])
+        assert result.exit_code == 2
+        assert '--occurrence requires --run and --force' in result.output
+
+
+class TestOccurrenceReplay:
+    """`--run <task> --force --occurrence <iso>` — rehearse a future slot.
+
+    A task computes everything from `ctx.occurrence`, so this is how you ask
+    "what would the Monday five weeks out have sent?" without waiting five
+    weeks or temporarily editing a window constant. Phase V of the expiration
+    rollout is the reason it exists.
+    """
+
+    def test_the_task_runs_at_the_given_occurrence(self, runner, wired, ledger):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks',
+                                     '--run', NAME, '--force',
+                                     '--occurrence', '2026-11-23T09:00'])
+        assert result.exit_code == 0
+        run, = _json(result)['results']
+        assert run['occurrence'] == '2026-11-23T09:00:00'
+
+    def test_the_ledger_row_carries_a_manual_key(self, runner, wired, ledger):
+        runner.invoke(cli, ['--format', 'json', 'tasks', '--run', NAME,
+                            '--force', '--occurrence', '2026-11-23T09:00'])
+        row = ledger.history(limit=1)[0]
+        assert row['occurrence_key'] == 'M20261123T090000Z'
+        assert row['trigger'] == 'manual'
+
+    @pytest.mark.parametrize('raw,expected', [
+        ('2026-11-23T09:00',        '2026-11-23T09:00:00'),
+        ('2026-11-23 09:00:00',     '2026-11-23T09:00:00'),
+        ('2026-11-23T09:00:00Z',    '2026-11-23T09:00:00'),
+        # An offset is converted and dropped: occurrence keys are naive UTC,
+        # so keeping the wall time would key the row wrong AND select the
+        # wrong window.
+        ('2026-11-23T02:00:00-07:00', '2026-11-23T09:00:00'),
+    ])
+    def test_iso_forms_land_on_naive_utc(self, runner, wired, raw, expected):
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run',
+                                     NAME, '--force', '--occurrence', raw])
+        assert result.exit_code == 0
+        assert _json(result)['results'][0]['occurrence'] == expected
+
+    def test_an_unparseable_occurrence_is_an_error_not_a_silent_now(
+            self, runner, wired, ledger):
+        """Falling back to the wall clock would run the task against a window
+        the operator did not ask for and report success."""
+        before = len(ledger.history(limit=50))
+        result = runner.invoke(cli, ['--format', 'json', 'tasks', '--run',
+                                     NAME, '--force',
+                                     '--occurrence', 'next monday'])
+        assert result.exit_code == 2
+        assert _json(result)['error'] == 'bad_occurrence'
+        assert len(ledger.history(limit=50)) == before, 'nothing ran'
+
+    def test_the_rich_path_explains_the_expected_format(self, runner, wired):
+        result = runner.invoke(cli, ['tasks', '--run', NAME, '--force',
+                                     '--occurrence', 'next monday'])
+        assert result.exit_code == 2
+        assert 'ISO-8601' in result.output
+
 
 # ------------------------------------------------- the two deliberate quirks
 

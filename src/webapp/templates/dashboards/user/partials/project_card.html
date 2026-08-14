@@ -384,6 +384,44 @@
                             <i class="fas fa-exclamation-triangle"></i> {{ max_usage | round(0) | int }}% used
                         </span>
                     {% endif %}
+                    {# Expiration-notice state. Gated on the KEY, not on its
+                       contents: this macro is shared with the user dashboard,
+                       which never sets `notification`, and a PI has no
+                       business seeing our mail log. Only
+                       `_build_expiration_project_data` sets it — and it sets
+                       it for every project on the page, including the
+                       never-notified ones, so `notified` carries that
+                       distinction rather than a missing key carrying two.
+
+                       Accepted imprecision: this is the newest expiration
+                       notice for the project regardless of WHICH expiration
+                       it referred to, so a project notified about a prior
+                       year reads "Notified 400d ago". The tooltip carries the
+                       absolute date, which makes a stale one self-evident;
+                       matching the dedup_key's embedded date against the
+                       card's computed expiration is more precise and more
+                       fragile. #}
+                    {% if project_data.notification is defined %}
+                        {% set notice = project_data.notification %}
+                        {% if notice.notified %}
+                            <span class="badge bg-success-subtle text-success-emphasis"
+                                  title="Last expiration notice {{ notice.notified_time | fmt_date }} — delivered to {{ notice.delivered_count }} recipient(s)">
+                                <i class="fas fa-envelope"></i>
+                                Notified {{ notice.notified_age | fmt_ago }} ago
+                            </span>
+                        {% else %}
+                            <span class="badge bg-secondary-subtle text-secondary-emphasis"
+                                  title="No expiration notice has been delivered for this project">
+                                <i class="fas fa-envelope-open"></i> Not notified
+                            </span>
+                        {% endif %}
+                        {% if notice.failed_count %}
+                            <span class="badge bg-danger-subtle text-danger-emphasis"
+                                  title="{{ notice.failed_count }} expiration notice(s) failed to deliver">
+                                {{ notice.failed_count }} failed
+                            </span>
+                        {% endif %}
+                    {% endif %}
                     <i class="fas fa-chevron-down accordion-chevron ms-3" aria-hidden="true"></i>
                 </div>
             </div>

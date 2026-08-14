@@ -403,7 +403,7 @@ webapp:
 # duplicate dispatch a no-op, so the cron string here is arbitrary and adding
 # a task is a code change, not a chart change.
 #
-# Design + rationale: docs/plans/SCHEDULED_TASKS.md § 8.
+# Design + rationale: docs/plans/implemented/SCHEDULED_TASKS.md § 8.
 tasks:
   enabled: true
   name: samuel-tasks
@@ -438,6 +438,23 @@ tasks:
     # cutoff also means the first production run is not a multi-year DELETE.
     # The default lives in src/system_status/retention.py; this overrides it.
     STATUS_RETENTION_DAYS: "365"
+    # ── expiration_notices ────────────────────────────────────────────
+    # Runaway guard: the task fails BEFORE sending anything if its audience
+    # exceeds this. ~4.7x the measured peak of 535 (2026-11-23, catching the
+    # Dec 31 cluster) — far enough above normal operation never to fire,
+    # close enough to catch an order-of-magnitude selection bug. The default
+    # lives in src/scheduling/tasks/expiration_notices.py; this pins it
+    # visibly, because the number is a policy decision rather than a
+    # code one.
+    #
+    # ⚠️ NOT 250, which SCHEDULED_TASKS.md § 12 proposed. That is *below*
+    # observed volume and would have failed every loaded run.
+    SAM_TASKS_EMAIL_MAX: "2500"
+    # One summary email per run, whatever the outcome — including the ~40
+    # weeks a year that legitimately send nothing, because "no summary"
+    # would otherwise mean both "nothing was due" and "the task never ran".
+    # Unset it to turn the summary off; the notices themselves are unaffected.
+    SAM_TASKS_SUMMARY_TO: "benkirk@ucar.edu"
     # ⚠️ Comma-separated task names to skip, WITHOUT a code deploy.
     #
     # Ships non-empty on purpose. The rollout is: merge with the destructive

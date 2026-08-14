@@ -6,7 +6,7 @@
 not take effect must not survive. A ledger row is the inverse: **mail handed
 to a relay cannot be un-sent by a rollback**, so it must survive one. Every
 method here therefore opens its own short-lived session and commits, exactly
-as ``webapp/api/xras/replay.py`` does, and never enrols in whatever
+as ``webapp/api/xras/recheck.py`` does, and never enrols in whatever
 transaction the caller is inside.
 
 The two disciplines sit two screens apart in the webapp. A reader who has
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Callable, Optional
+from typing import Callable, Iterable, List, Optional, Set
 
 from sqlalchemy import and_, func, or_, select
 
@@ -42,6 +42,15 @@ logger = logging.getLogger(__name__)
 #: suppression suppressed, the first skip would make every later attempt skip
 #: for ever, on a key that had never actually been delivered.
 SUPPRESSING_STATUSES = ('sent', 'redirected')
+
+#: How many keys go into one ``IN (...)`` when checking a batch's suppression.
+#:
+#: A driver-side limit, not a semantic one: MySQL's ``max_allowed_packet``
+#: bounds how long a statement may be, and a 2500-recipient expiration run at
+#: ~70 bytes a key would build one. Chunking is therefore invisible to the
+#: caller — :meth:`NotificationLedger.already_sent_many` answers the same
+#: question whatever this is set to.
+DEDUP_CHUNK = 500
 
 
 class LedgerError(NotifyError):
@@ -175,18 +184,9 @@ class NotificationLedger:
         if not dedup_key:
             return False
 
-        horizon = datetime.now() - timedelta(
-            seconds=self.config.queued_stale_seconds)
-
-        conditions = [NotificationLog.dedup_key == dedup_key]
-        if since is not None:
-            conditions.append(NotificationLog.creation_time >= since)
-
-        conditions.append(or_(
-            NotificationLog.status.in_(SUPPRESSING_STATUSES),
-            and_(NotificationLog.status == 'queued',
-                 NotificationLog.creation_time > horizon),
-        ))
+        conditions = self._suppression_conditions(
+            NotificationLog.dedup_key == dedup_key,
+            horizon=self._horizon(), since=since)
 
         try:
             with self.session_factory() as session:
@@ -205,6 +205,102 @@ class NotificationLedger:
                            'not suppressing', exc)
             return False
 
+    def already_sent_many(self, dedup_keys: Iterable[str], *,
+                          since: Optional[datetime] = None,
+                          chunk_size: int = DEDUP_CHUNK) -> Set[str]:
+        """Which of these keys are suppressed? One query per chunk, not per key.
+
+        The batch form of :meth:`already_sent`, and it shares that method's
+        predicate via :meth:`_suppression_conditions` so the two cannot drift
+        — an agreement matrix over every status/age case is the gate on that.
+
+        This exists for the scheduled expiration send, where the *typical*
+        week's selection is ~85% already-notified: asking one key at a time
+        would be several hundred round trips to learn that almost nothing
+        needs sending.
+
+        Args:
+            dedup_keys: keys to check. Falsy entries are dropped (an absent
+                key never suppresses, exactly as in :meth:`already_sent`) and
+                duplicates collapse, order-preserving.
+            since: an optional lower bound on ``creation_time``. See
+                :meth:`already_sent` for why ``None`` is the right default.
+            chunk_size: keys per statement. A driver artifact — see
+                :data:`DEDUP_CHUNK`.
+
+        Returns:
+            The subset of ``dedup_keys`` that a send should skip. A key absent
+            from the result has never been delivered, or its only ``queued``
+            row has aged past the staleness horizon.
+        """
+        keys: List[str] = list(dict.fromkeys(k for k in dedup_keys if k))
+        if not keys:
+            # No statement, and no session either: the caller may hold no
+            # database at all, and building one to answer "nothing" would make
+            # an empty batch cost more than a small one.
+            return set()
+
+        if chunk_size is None or chunk_size < 1:
+            chunk_size = DEDUP_CHUNK
+
+        # ONE horizon for the whole call. Computing it per chunk would let a
+        # long batch's later chunks apply a later cutoff, so an identical
+        # `queued` row could suppress in one chunk and not the next.
+        horizon = self._horizon()
+
+        # ONE session for the whole call, with the chunk loop inside it.
+        # Chunking is a statement-length workaround, not a second operation,
+        # and a session per chunk would make it one.
+        found: Set[str] = set()
+        try:
+            with self.session_factory() as session:
+                for start in range(0, len(keys), chunk_size):
+                    conditions = self._suppression_conditions(
+                        NotificationLog.dedup_key.in_(keys[start:start + chunk_size]),
+                        horizon=horizon, since=since)
+                    found.update(session.execute(
+                        select(NotificationLog.dedup_key)
+                        .where(*conditions)
+                        .distinct()
+                    ).scalars().all())
+        except Exception as exc:
+            # Fail OPEN, and **per chunk**: return what completed rather than
+            # discarding it. Same reasoning as `already_sent` — a ledger that
+            # cannot be read must not become a mailer that cannot send — but
+            # here dropping the partial result would also mean re-sending to
+            # recipients we had already proved were done.
+            logger.warning('notify: batch suppression query failed after %d '
+                           'of %d keys (%s); not suppressing the remainder',
+                           len(found), len(keys), exc)
+        return found
+
+    def _horizon(self) -> datetime:
+        """The instant before which a ``queued`` row stops suppressing."""
+        return datetime.now() - timedelta(
+            seconds=self.config.queued_stale_seconds)
+
+    @staticmethod
+    def _suppression_conditions(key_term, *, horizon: datetime,
+                                since: Optional[datetime] = None) -> list:
+        """The WHERE terms shared by :meth:`already_sent` and its batch form.
+
+        ``key_term`` is the only difference between them — ``dedup_key == k``
+        for one, ``dedup_key IN (...)`` for many. Everything that decides
+        *whether a row suppresses* lives here, once, because the single and
+        batch paths answering differently is the failure mode that would send
+        a PI a second copy and leave no trace of why.
+        """
+        conditions = [key_term]
+        if since is not None:
+            conditions.append(NotificationLog.creation_time >= since)
+
+        conditions.append(or_(
+            NotificationLog.status.in_(SUPPRESSING_STATUSES),
+            and_(NotificationLog.status == 'queued',
+                 NotificationLog.creation_time > horizon),
+        ))
+        return conditions
+
     def stuck_queued(self, *, since: Optional[datetime] = None) -> int:
         """How many rows are ``queued`` past the staleness horizon.
 
@@ -213,8 +309,7 @@ class NotificationLedger:
         admin card and the rule that lets a retry through are one mechanism,
         not two that can disagree.
         """
-        horizon = datetime.now() - timedelta(
-            seconds=self.config.queued_stale_seconds)
+        horizon = self._horizon()
         conditions = [NotificationLog.status == 'queued',
                       NotificationLog.creation_time <= horizon]
         if since is not None:

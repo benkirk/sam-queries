@@ -305,3 +305,62 @@ class TestProjectReactivate:
 
         assert project.is_active
         assert project.inactivate_time == stamp
+
+
+class TestProjectDeactivate:
+    """``deactivate()`` is the other half of ``reactivate()`` — the stamping
+    half, which used to live open-coded in ``sam-admin project --deactivate``
+    while the admin button dropped the stamp entirely."""
+
+    def test_deactivate_clears_active_and_stamps(self, session):
+        project = make_project(session, active=True)
+
+        result = project.deactivate()
+
+        assert result is project              # chainable
+        assert not project.is_active
+        assert project.inactivate_time is not None
+
+    def test_an_explicit_when_is_used_verbatim(self, session):
+        """How a batch shares one stamp, and how a task stamps its occurrence
+        rather than whenever the pod happened to wake up."""
+        project = make_project(session, active=True)
+        stamp = datetime(2026, 9, 3, 4, 30)
+
+        project.deactivate(when=stamp)
+
+        assert project.inactivate_time == stamp
+
+    def test_round_trips_with_reactivate(self, session):
+        project = make_project(session, active=True)
+
+        project.deactivate(when=datetime(2026, 9, 3, 4, 30))
+        project.reactivate()
+
+        assert project.is_active
+        assert project.inactivate_time is None
+
+    def test_update_active_false_still_leaves_the_stamp_alone(self, session):
+        """The mirror of ``test_update_active_true_leaves_the_stamp_alone``.
+
+        ``update()`` must stay dumb about the stamp column in BOTH directions —
+        stamping from ``update(active=False)`` would fire on any admin save that
+        happens to include an unchecked box.
+        """
+        project = make_project(session, active=True)
+
+        project.update(active=False)
+
+        assert not project.is_active
+        assert project.inactivate_time is None
+
+    def test_flush_false_defers_the_write(self, session):
+        """The knob `deactivate_projects` uses to flush a batch once."""
+        project = make_project(session, active=True)
+        session.flush()
+
+        project.deactivate(when=datetime(2026, 9, 3, 4, 30), flush=False)
+
+        assert project in session.dirty       # staged, not yet flushed
+        session.flush()
+        assert not session.dirty

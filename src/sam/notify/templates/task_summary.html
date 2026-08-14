@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h3 {
+            color: #0275d8;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        .headline {
+            background-color: #f5f5f5;
+            border-left: 4px solid #5cb85c;
+            padding: 10px 15px;
+            margin: 15px 0;
+        }
+        /* An aborted run is the one message that must not read like the
+           other 51 a year. Same shape, unmistakably different color. */
+        .headline.aborted {
+            background-color: #f8e6e6;
+            border-left-color: #d9534f;
+        }
+        table.counts,
+        table.rows {
+            border-collapse: collapse;
+            margin: 15px 0;
+            width: 100%;
+        }
+        table.counts th,
+        table.counts td,
+        table.rows th,
+        table.rows td {
+            border-bottom: 1px solid #ddd;
+            padding: 6px 10px;
+            text-align: left;
+        }
+        table.counts th,
+        table.rows th {
+            background-color: #f5f5f5;
+        }
+        td.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .failed {
+            color: #a94442;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .footer a {
+            color: inherit;
+        }
+        .footer p {
+            margin: 0 0 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="headline{% if aborted %} aborted{% endif %}">
+        <strong>{{ task_name }}</strong> — {{ headline }}
+        {% if aborted %}
+        <p><strong>This run sent nothing.</strong> {{ abort_reason }}</p>
+        {% endif %}
+    </div>
+
+    <table class="counts">
+        <tr><th>Occurrence</th><td>{{ occurrence }}</td></tr>
+        <tr><th>Window</th><td>{{ window_start }} to {{ window_end }}</td></tr>
+        <tr><th>Milestones</th><td>{{ milestones | join(', ') }}</td></tr>
+    </table>
+
+    <h3>Counts</h3>
+    <table class="counts">
+        <tr><th>Selected</th><td class="num">{{ selected }}</td>
+            <td>allocations matching the window</td></tr>
+        <tr><th>Already notified</th><td class="num">{{ suppressed }}</td><td></td></tr>
+        <tr><th>Audience</th><td class="num">{{ audience }}</td>
+            <td>messages this run intended to send</td></tr>
+        <tr><th>Sent</th><td class="num">{{ sent }}</td><td></td></tr>
+        <tr><th>Failed</th>
+            <td class="num{% if failed %} failed{% endif %}">{{ failed }}</td><td></td></tr>
+        <tr><th>Projects</th><td class="num">{{ projects }}</td><td></td></tr>
+    </table>
+
+    {% if per_project %}
+    <h3>Recipients by project</h3>
+    <table class="rows">
+        <tr><th>Project</th><th>Recipients</th></tr>
+        {% for row in per_project %}
+        <tr><td>{{ row.projcode }}</td><td class="num">{{ row.count }}</td></tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    {% if failures %}
+    <h3 class="failed">Failures</h3>
+    <table class="rows">
+        <tr><th>Recipient</th><th>Detail</th></tr>
+        {% for f in failures %}
+        <tr><td>{{ f.recipient }}</td><td>{{ f.detail }}</td></tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p>No delivery failures.</p>
+    {% endif %}
+
+    <div class="footer">
+        <p>Automated summary from the NSF NCAR Systems Accounting Manager task
+            dispatcher. It is sent once per run of {{ task_name }}, whatever the
+            outcome — a quiet week reporting zero is the expected result roughly
+            40 weeks a year, and is only distinguishable from a broken query by
+            the Selected count above.</p>
+        <p>Questions: <a href="mailto:help@ucar.edu">help@ucar.edu</a>.</p>
+    </div>
+</body>
+</html>

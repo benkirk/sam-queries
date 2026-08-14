@@ -26,8 +26,8 @@ class TransportError(NotifyError):
     Raised — never returned — so the ledger owns status and a transport's
     only job is "did it go". The predecessor's ``(bool, error_str)`` tuple is
     what made every caller re-invent status handling
-    (``cli/notifications/email.py:208,217`` mutates an ``'error'`` key into the
-    caller's own dicts to work around it).
+    (the since-removed ``cli/notifications/email.py`` mutated an ``'error'``
+    key into the caller's own dicts to work around it).
     """
 
 

@@ -8,7 +8,7 @@ one cannot disagree. This file owns no defaults: `--retention-days` falls back t
 `retention.DEFAULT_RETENTION_DAYS`.
 
 Nothing here is scheduled. Routine pruning is the dispatcher's job
-(`sam-admin tasks`, docs/plans/SCHEDULED_TASKS.md); this script exists because
+(`sam-admin tasks`, docs/plans/implemented/SCHEDULED_TASKS.md); this script exists because
 running a prune by hand — against a specific cutoff, or with --dry-run to see
 what a window would take — is legitimate and occasionally necessary.
 

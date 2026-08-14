@@ -10,7 +10,7 @@ copy.
 The retention policy itself is not here — it lives in
 ``system_status.retention`` and is shared with the hand-run
 ``scripts/cleanup_status_data.py``, so a manual prune and the nightly one
-cannot disagree. See ``docs/plans/SCHEDULED_TASKS.md`` § 3.1 and § 6.2.
+cannot disagree. See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 3.1 and § 6.2.
 """
 
 from __future__ import annotations

@@ -237,7 +237,7 @@ class XrasActivationEvent(Base, SessionMixin):
 
     What it *does* copy from ``XrasActionLog``: the rule that an operator action
     is recorded as a **new row, never an edit of an existing one** (see
-    ``webapp/api/xras/replay.py`` §2), and ``created_by`` at ``varchar(35)``,
+    ``webapp/api/xras/recheck.py`` §2), and ``created_by`` at ``varchar(35)``,
     ``users.username`` width, meaning "the human who clicked".
 
     ``xras_action_log_id`` is **provenance only** — which action prompted this.

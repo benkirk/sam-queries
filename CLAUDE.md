@@ -86,13 +86,15 @@ sam-queries/
 │   └── caching/, session/, fmt.py, enums.py, geography.py, plugins.py
 ├── src/system_status/    # Separate status DB (own bind, Alembic-managed)
 ├── src/scheduling/       # Ledger-backed task dispatcher (schedules, registry,
-│                         #   ledger, runner) — no Click/Flask/k8s imports
+│   └── tasks/            #   ledger, runner) — no Click/Flask/rich/k8s imports
+│                         #   tasks/: cleanup_status, deactivate_expired,
+│                         #           expiration_notices
 ├── src/querykit/         # Faceted-log query facade — SQLAlchemy only, imports
 │                         #   nothing from sam/ or system_status/ (see its README)
 ├── src/cli/              # sam-search / sam-admin (see src/cli/README.md)
 │   ├── core/                # Context, base command classes, exit codes
 │   ├── user/ project/ allocations/ accounting/   # Command + display modules
-│   ├── notifications/                            # Expiration-notice display helpers
+│   ├── awards/ contracts/ tasks/ xras/           # Command + display modules
 │   └── cmds/                # Entry points (search.py, admin.py)
 ├── src/webapp/           # Flask web application (see src/webapp/README.md)
 │   ├── api/v1/              # REST blueprints (+ legacy-compat, see §API below)
@@ -561,9 +563,11 @@ display code. (Migration history: `docs/plans/implemented/FORMAT_DISPLAY.md`.)
 
 ## Notifications — `sam.notify`
 
-One mailer, two consumers: `sam-admin project --upcoming-expirations --notify`
-and the webapp's XRAS activation Notify button. Design and measurements:
-`docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`.
+One mailer, three consumers: `sam-admin project --upcoming-expirations
+--notify`, the webapp's XRAS activation Notify button, and the weekly
+`expiration_notices` scheduled task (below). Design and measurements:
+`docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`,
+`docs/plans/EXPIRATION_NOTICES.md`.
 
 ```python
 from sam.notify import Message, Notifier, Recipient
@@ -590,10 +594,57 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
 
+**Batch knobs** (both default to today's behaviour; `send()`-of-one pays for
+neither):
+
+| | |
+|---|---|
+| `send_many(chunk_size=N)` | one transport connection per N *delivered* messages. `None` = one chunk for the whole batch, byte-identical to before. A 500-message run otherwise holds one SMTP connection throughout, and a relay that drops it takes every remaining message with it. Price of a hard-down relay: `ceil(N/chunk)` connect attempts. |
+| `ledger.already_sent_many(keys)` | the batch suppression check, one `IN (...)` per chunk. Shares `_suppression_conditions` with `already_sent` so the two cannot drift — `TestTheSingleAndBatchFormsAgree` is the gate. |
+
+### The `expiration_notices` task
+
+`src/scheduling/tasks/expiration_notices.py`, Monday 09:00 Mountain. The
+first task with `needs=('sam',)`.
+
+| | |
+|---|---|
+| **Window** | from `ctx.occurrence`, converted to the schedule's zone and truncated to **local midnight** — `ctx.occurrence` is naive UTC, `Allocation.end_date` is naive Mountain. |
+| **Bands** | `Milestone(label, lo_days, hi_days)` in `sam/queries/expiration_notices.py`, one rung today. The label is **in the dedup key** so enabling 60/30/7 needs no key migration. `band_bounds()` builds the half-open upper edge by hand, because `get_all_expiring_allocations` filters `end_date <=`. |
+| **The pre-filter is permanent** | the task drops already-notified messages itself. Left to `Notifier` the ~40 quiet weeks a year would each write hundreds of `suppressed` rows — ~26,000/yr into the table the admin card and the badge read. Deleting it as "redundant" is the regression; the comment says why it isn't. |
+| **Guards** | raises if `NOTIFY_ENABLED` is false (else a chart mistake reports `succeeded` and mails nobody) and if the audience exceeds `SAM_TASKS_EMAIL_MAX` (2500). Both fire before any transport. |
+| **`detail` always carries** window bounds + selected/suppressed/audience — "0 sent, succeeded" is the *normal* weekly result and must be distinguishable from a query that stopped matching. |
+| **Summary mail** | one per run to `SAM_TASKS_SUMMARY_TO`, including on quiet weeks and on the cap trip (before the raise). Never fails the run. |
+| **Replay** | `sam-admin tasks --run expiration_notices --force --occurrence 2026-11-23T09:00`. Honored only under `--force`, where the key is `M`-prefixed and cannot claim a real slot. |
+
+⚠️ **`NOTIFY_*`/`MAIL_*` must reach the CronJob explicitly.**
+`helm/templates/cronjob-tasks.yaml` renders `.Values.tasks.env` plus a
+hand-listed set and does **not** inherit `.Values.webapp.env`. A missing
+`NOTIFY_ENABLED` there is fail-closed: every message recorded `suppressed`,
+`succeeded` reported, exit 0, green Job, no mail, no indication. Guarded twice
+— the task's own `config.enabled` check and a **per-manifest**
+(`-s templates/cronjob-tasks.yaml`) assertion in
+`helm/tests/test-cronjob-render.sh`. A whole-render grep passes on the
+Deployment's copy and proves nothing.
+
+⚠️ **`expected_runtime` is a lease knob, not a timeout.** The lease is
+`max(3×expected_runtime, 900s)` and **must exceed** the CronJob's
+`activeDeadlineSeconds`, or a killed send is reclaimed while it is still
+sending and every PI gets a second copy. The task cannot heartbeat
+(`TaskContext` exposes no ledger handle). A drift test parses `values.yaml`
+and asserts the inequality.
+
 ❌ **DON'T** add eager imports to `sam/notify/__init__.py` — `sam/__init__.py`
 exports `NotificationLog`, so eager imports there put jinja2 and the
 transports into every ORM consumer's import graph.
 `tests/unit/test_notify_import_graph.py` is the gate.
+❌ **DON'T** export `sam/queries/expiration_notices.py` from
+`sam/queries/__init__.py` — that file imports its submodules eagerly, so
+listing it would put `sam.notify.base` into every `from sam.queries import ...`.
+❌ **DON'T** import Click, Flask, `rich` or `kubernetes` anywhere under
+`src/scheduling/` — a task writes to `ctx.logger`, never to stdout, because the
+CronJob's stdout is a JSON envelope. `test_task_ledger.py` AST-walks the
+package.
 
 ---
 
