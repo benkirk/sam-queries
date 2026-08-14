@@ -181,6 +181,9 @@ assert_contains "$cron_out" 'name: SAM_TASKS_EMAIL_MAX' \
   "and the runaway guard"
 assert_contains "$cron_out" 'name: SAM_TASKS_SUMMARY_TO' \
   "and the per-run summary recipient"
+assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_MAX' \
+  "and xras_notices' own runaway guard — it does NOT share SAM_TASKS_EMAIL_MAX, \
+because 2500 is ~50x that task's realistic volume"
 
 # The values must MATCH the Deployment's — cross-referenced, not duplicated.
 notify_enabled=$(grep -E '^\s+NOTIFY_ENABLED:' "$CHART_DIR/values.yaml" \

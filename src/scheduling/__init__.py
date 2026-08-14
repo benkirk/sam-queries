@@ -18,6 +18,7 @@ Design: ``docs/plans/implemented/SCHEDULED_TASKS.md``.
 """
 
 from scheduling.schedules import (
+    BusinessHourly,
     CronExpr,
     Daily,
     Hourly,
@@ -29,6 +30,7 @@ from scheduling.schedules import (
 )
 
 __all__ = [
+    'BusinessHourly',
     'CronExpr',
     'Daily',
     'Hourly',

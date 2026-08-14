@@ -16,6 +16,7 @@ import pytest
 
 from scheduling.schedules import (
     KEY_FORMAT,
+    BusinessHourly,
     CronExpr,
     Daily,
     Hourly,
@@ -78,6 +79,8 @@ def assert_daily_ish(slots, *, label: str):
 ALL_SCHEDULES = [
     Hourly(0),
     Hourly(7),
+    BusinessHourly(),
+    BusinessHourly(30, 9, 16),
     Daily(2, 15),
     Daily(23, 59),
     Weekly(0, 3, 0),
@@ -201,6 +204,24 @@ class TestValidation:
         with pytest.raises(ValueError):
             Hourly(minute)
 
+    @pytest.mark.parametrize('kwargs', [
+        {'minute': 60}, {'minute': -1},
+        {'start_hour': 24}, {'end_hour': -1},
+        # end_hour is INCLUSIVE, so start > end is the empty window.
+        {'start_hour': 17, 'end_hour': 8},
+        {'weekdays': ()},
+        {'weekdays': (0, 7)},
+    ])
+    def test_business_hourly_rejects_a_bad_window(self, kwargs):
+        with pytest.raises(ValueError):
+            BusinessHourly(**kwargs)
+
+    def test_business_hourly_allows_a_single_hour_window(self):
+        """start == end is one slot a day, not an error — the boundary the
+        `start_hour > end_hour` check has to get right."""
+        assert BusinessHourly(0, 9, 9)._candidates_on(
+            datetime(2026, 8, 12).date()) == [(9, 0)]
+
 
 # --------------------------------------------------------------- semantics
 
@@ -256,6 +277,123 @@ class TestHourly:
                       hours=3 * 24, step_minutes=10)
         assert_evenly_spaced(slots, expected=timedelta(hours=1),
                              label='hourly across fall-back')
+
+
+class TestBusinessHourly:
+    """2026-08-12 is a Wednesday; 08:00-17:00 MDT is 14:00-23:00 UTC."""
+
+    def test_ten_slots_on_a_weekday(self):
+        slots = sweep(BusinessHourly(), datetime(2026, 8, 12, 14, 0),
+                      hours=9, step_minutes=30)
+        assert len(slots) == 10, f'expected 08:00..17:00 inclusive, got {slots}'
+        assert_evenly_spaced(slots, expected=timedelta(hours=1),
+                             label='one business day')
+
+    def test_the_end_hour_is_inclusive(self):
+        """17:00 fires. An exclusive `range` here would silently drop it, and
+        nothing else in the suite would notice."""
+        occ = BusinessHourly().last_occurrence(datetime(2026, 8, 12, 23, 30))
+        assert occ == datetime(2026, 8, 12, 23, 0)      # 17:00 MDT
+
+    def test_before_the_first_slot_returns_yesterdays_last(self):
+        # 13:00 UTC is 07:00 MDT Wednesday — before 08:00, so Tuesday 17:00.
+        occ = BusinessHourly().last_occurrence(datetime(2026, 8, 12, 13, 0))
+        assert occ == datetime(2026, 8, 11, 23, 0)
+
+    def test_after_the_last_slot_returns_todays_last(self):
+        # 06:00 UTC Thursday is 00:00 MDT — still Wednesday's 17:00 locally.
+        occ = BusinessHourly().last_occurrence(datetime(2026, 8, 13, 6, 0))
+        assert occ == datetime(2026, 8, 12, 23, 0)
+
+    @pytest.mark.parametrize('when', [
+        datetime(2026, 8, 15, 20, 0),       # Saturday 14:00 MDT
+        datetime(2026, 8, 16, 20, 0),       # Sunday 14:00 MDT
+        datetime(2026, 8, 17, 13, 0),       # Monday 07:00 MDT, before 08:00
+    ])
+    def test_the_weekend_holds_fridays_last_slot(self, when):
+        """The whole weekend answers "Friday 17:00", which is what makes a
+        Friday-afternoon arrival send on Monday morning rather than Saturday."""
+        occ = BusinessHourly().last_occurrence(when)
+        assert occ == datetime(2026, 8, 14, 23, 0)      # Fri 17:00 MDT
+
+    def test_monday_opens_at_the_first_slot(self):
+        occ = BusinessHourly().last_occurrence(datetime(2026, 8, 17, 14, 0))
+        assert occ == datetime(2026, 8, 17, 14, 0)      # Mon 08:00 MDT
+
+    def test_next_occurrence_from_friday_evening_is_monday_morning(self):
+        nxt = BusinessHourly().next_occurrence(datetime(2026, 8, 14, 23, 30))
+        assert nxt == datetime(2026, 8, 17, 14, 0)
+
+    def test_describe(self):
+        assert BusinessHourly().describe() == (
+            'hourly 08:00-17:00 Mon-Fri America/Denver')
+
+    def test_describe_lists_a_non_contiguous_window(self):
+        assert BusinessHourly(30, 9, 10, weekdays=(0, 2, 4)).describe() == (
+            'hourly 09:30-10:30 Mon,Wed,Fri America/Denver')
+
+
+class TestBusinessHourlyAndDst:
+    """The immunity is a property of the WINDOW, not of the class.
+
+    Both halves are asserted on the *same* transition dates, with the *same*
+    class, differing only in `start_hour`/`end_hour`. US transitions are always
+    on a Sunday, so these use ``weekdays=(6,)`` to put the window on the
+    transition day at all — with the default Mon-Fri the question cannot even
+    be posed, which is itself worth knowing.
+    """
+
+    #: 2026-11-01 (fall back) and 2027-03-14 (spring forward) are both Sundays.
+    FALL_BACK = datetime(2026, 11, 1)
+    SPRING_FORWARD = datetime(2027, 3, 14)
+
+    def _slots_on(self, sched, day, *, from_utc, hours):
+        return sweep(sched, from_utc, hours=hours, step_minutes=15)
+
+    def test_the_business_window_is_untouched_by_the_fall_back(self):
+        """08:00-17:00 MST on 2026-11-01 is 15:00-00:00 UTC: ten clean slots."""
+        slots = self._slots_on(BusinessHourly(weekdays=(6,)), self.FALL_BACK,
+                               from_utc=datetime(2026, 11, 1, 15, 0), hours=9)
+        assert len(slots) == 10
+        assert_evenly_spaced(slots, expected=timedelta(hours=1),
+                             label='fall-back day, business window')
+
+    def test_the_business_window_is_untouched_by_the_spring_forward(self):
+        """08:00-17:00 MDT on 2027-03-14 is 14:00-23:00 UTC."""
+        slots = self._slots_on(BusinessHourly(weekdays=(6,)),
+                               self.SPRING_FORWARD,
+                               from_utc=datetime(2027, 3, 14, 14, 0), hours=9)
+        assert len(slots) == 10
+        assert_evenly_spaced(slots, expected=timedelta(hours=1),
+                             label='spring-forward day, business window')
+
+    def test_an_overnight_window_LOSES_a_slot_at_the_fall_back(self):
+        """The inverse case, and the reason the docstring warns about it.
+
+        01:00-05:00 names five candidates. Local 01:00 happens twice and
+        `fold=0` resolves both to the earlier instant, so the repeated hour
+        yields ONE slot and the 01:00 -> 02:00 step is two hours of UTC.
+        """
+        slots = self._slots_on(BusinessHourly(0, 1, 5, weekdays=(6,)),
+                               self.FALL_BACK,
+                               from_utc=datetime(2026, 11, 1, 7, 0), hours=5)
+        assert len(slots) == 5
+        gaps = [b - a for a, b in zip(slots, slots[1:])]
+        assert gaps.count(timedelta(hours=2)) == 1, (
+            f'expected exactly one folded slot on the fall-back day, got '
+            f'{gaps} from {slots}')
+
+    def test_an_overnight_window_MERGES_two_slots_at_the_spring_forward(self):
+        """The other half of `Hourly`'s warning.
+
+        Local 02:00 does not exist and shifts forward to 03:00, which is
+        already a candidate — so five candidates name four distinct instants.
+        """
+        sched = BusinessHourly(0, 1, 5, weekdays=(6,))
+        slots = self._slots_on(sched, self.SPRING_FORWARD,
+                               from_utc=datetime(2027, 3, 14, 8, 0), hours=5)
+        assert len(slots) == 4, (
+            f'expected the 02:00 candidate to merge onto 03:00, got {slots}')
 
 
 class TestWeekly:

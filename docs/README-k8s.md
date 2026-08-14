@@ -247,7 +247,7 @@ Scheduled tasks, by environment:
 |---|---|---|
 | Local Docker Compose (`webdev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
-| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable: only `cleanup_status_snapshots` runs. `SAM_TASKS_DISABLED=deactivate_expired_projects,expiration_notices` |
+| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable: only `cleanup_status_snapshots` runs. `SAM_TASKS_DISABLED=deactivate_expired_projects,expiration_notices,xras_notices` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
 and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
@@ -328,9 +328,9 @@ of task names to skip, flippable in `values.yaml` with no code deploy. It ships
 **non-empty** because tasks are enabled in stages: each one stays named here
 until it has been reviewed on its own, so the dispatcher wakes hourly and the
 untried task writes a `skipped` row instead of running. Today only
-`cleanup_status_snapshots` is live; `deactivate_expired_projects` and
-`expiration_notices` are switched off. Enabling one is a separate, reviewable
-one-line commit.
+`cleanup_status_snapshots` is live; `deactivate_expired_projects`,
+`expiration_notices` and `xras_notices` are switched off. Enabling one is a
+separate, reviewable one-line commit.
 
 ⚠️ **It is an enumeration, and it is fail-OPEN.** `disabled_tasks()` in
 `src/scheduling/runner.py` is a case-sensitive exact match against registry
@@ -340,11 +340,11 @@ typo silently disables nothing. A task added to `src/scheduling/tasks/`
 therefore **dispatches on the next hourly wake** unless its name is added here
 in the same change.
 
-`deactivate_expired_projects` and `expiration_notices` are exactly that case:
-both were registered without this list being touched, so the image promotion
-that carries them into production would have started both immediately. The
-list is a chart-side decision and the registry is a code-side one, and nothing
-couples them — so adding a task means editing both, in the same change.
+Every task named above is exactly that case: each was registered in code, and
+without this list being touched the image promotion that carries it into
+production would have started it immediately. The list is a chart-side decision
+and the registry is a code-side one, and nothing couples them — so adding a
+task means editing both, in the same change.
 
 Two behaviors worth knowing before flipping it:
 
@@ -368,14 +368,14 @@ that needs no task to actually do anything:
 ```bash
 helm upgrade --install samuel ./helm -f helm/values.yaml -f helm/values-local.yaml \
   -n samuel-dev --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
-  --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots\,deactivate_expired_projects\,expiration_notices'
+  --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots\,deactivate_expired_projects\,expiration_notices\,xras_notices'
 ```
 
 ⚠️ `--set` **replaces** the list rather than adding to it, and the commas need
-escaping. Naming only one task here leaves the other two live against your
-local databases — including `expiration_notices`, whose audience is external
-PIs. (`NOTIFY_ENABLED` is fail-closed and unset locally, so nothing would
-actually send, but do not rely on that as the only guard.)
+escaping. Naming only some of them leaves the rest live against your local
+databases — including `expiration_notices` and `xras_notices`, whose audience
+is external PIs. (`NOTIFY_ENABLED` is fail-closed and unset locally, so nothing
+would actually send, but do not rely on that as the only guard.)
 
 ### Destroy
 

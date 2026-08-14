@@ -423,7 +423,9 @@ class TestPortabilityBoundary:
                     f'{module.relative_to(PKG)} imports {banned}; '
                     f'src/scheduling must stay presentation-free')
 
-    @pytest.mark.parametrize('package', ['sam.manage', 'sam.queries.expirations'])
+    @pytest.mark.parametrize('package', ['sam.manage', 'sam.queries.expirations',
+                                         'sam.queries.xras_activation',
+                                         'sam.queries.xras_notices'])
     def test_what_the_tasks_import_stays_presentation_free_too(self, package):
         """The AST gate above is **per-file and not transitive**.
 
