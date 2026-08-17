@@ -412,7 +412,7 @@ Resources/Organizations/Facilities cards).
 ### 11. Static Assets & Cache Headers
 
 **Always reference an asset with `url_for('static', filename=...)`** — never a
-literal `/static/...` path. `webapp/utils/static_cache.py` appends
+literal `/static/...` path. `webapp/utils/static_assets.py` appends
 `?v=<content hash>` to every `url_for` static URL, and that parameter is what
 buys the asset a one-year cache.
 
@@ -446,7 +446,7 @@ no `url_for` can reach: relative `url()` targets inside a stylesheet
   until they expire. Covered by the existing post-deploy step,
   `sam-admin cache --refresh`. The asset is never unreachable — `v` is a cache
   key, not a lookup key.
-- Gates in `tests/unit/test_static_cache.py`: a real rendered page must emit
+- Gates in `tests/unit/test_static_assets.py`: a real rendered page must emit
   **only** versioned static URLs, no template may hardcode `/static/`, and no
   template may append `?`/`#` after `url_for('static')` (that one is a
   correctness bug — the URL already carries a query string).

@@ -1,4 +1,4 @@
-"""Static-asset cache headers and cache-busting URLs (webapp.utils.static_cache).
+"""Static-asset cache headers and cache-busting URLs (webapp.utils.static_assets).
 
 Flask's default is ``Cache-Control: no-cache`` on every static file, which made
 87.5% of one production pod's requests be /static revalidations answering 304
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from flask import url_for
 
-from webapp.utils.static_cache import (
+from webapp.utils.static_assets import (
     IMMUTABLE_MAX_AGE,
     UNVERSIONED_MAX_AGE,
     asset_version,

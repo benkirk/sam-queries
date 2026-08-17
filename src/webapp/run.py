@@ -310,8 +310,8 @@ def create_app(*, config_overrides: dict | None = None):
     # /static cache busting (?v=<content hash>) + long cache headers. Flask's
     # default is `no-cache`, which made 87.5% of this pod's requests be static
     # revalidations answering 304 — see the module docstring for the numbers.
-    from webapp.utils.static_cache import init_static_cache
-    init_static_cache(app)
+    from webapp.utils.static_assets import init_static_assets
+    init_static_assets(app)
 
     # Initialize OIDC (Authlib) when configured
     if app.config.get('AUTH_PROVIDER') == 'oidc':

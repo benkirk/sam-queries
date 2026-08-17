@@ -35,7 +35,7 @@ path prefixes:
   =========== ==============================================
 
 Every reference in the templates goes through ``url_for`` (38 of them, and zero
-hardcoded ``/static/`` paths — ``test_static_cache.py`` keeps it that way), so
+hardcoded ``/static/`` paths — ``test_static_assets.py`` keeps it that way), so
 the first branch covers all of the measured traffic. The second exists for the
 assets no ``url_for`` can reach: relative ``url()`` targets inside a stylesheet,
 i.e. FontAwesome's ``../webfonts/fa-solid-900.woff2`` and the one ``../img/``
@@ -55,6 +55,35 @@ holding that URL keeps using its old copy. Bounded by the HTML cache TTL, and
 already covered by the documented post-deploy step,
 ``sam-admin cache --refresh``. The asset itself is never unreachable: ``v`` is a
 cache key, not a lookup key, so any value serves the current file.
+
+Why none of this lives in ``webapp.caching``
+--------------------------------------------
+That facade calls itself "the single entry point for every cache layer in the
+webapp", and this module holds two things that look like they belong to it.
+Neither does, for *different* reasons — and the distinction is the point:
+
+* **The response header is not a cache this app owns.** Nothing is stored
+  here, there is no entry to count, and ``caching.clear()`` could not reach it
+  — a browser cache cannot be purged from the server. The dependency runs the
+  other way, and is real: the remedy for cached HTML holding a stale ``?v=`` is
+  ``caching.clear('flask')``, i.e. ``sam-admin cache --refresh``. This file is
+  an ``after_request`` header shaper, which is why it sits beside
+  ``security_headers.py`` rather than under ``caching/``.
+
+* **The digest memo in** :func:`init_static_assets` **is** a server-side store,
+  and it is outside the facade deliberately rather than by oversight.
+  ``BucketedTTLCache`` is shaped for derived data whose inputs change: a TTL, a
+  category, a row on the admin card, a working ``clear()``. This memo wants the
+  inverse of all four. File bytes cannot change inside a running container
+  image, so its correct TTL is infinite; a ``clear()`` could only force
+  pointless re-hashing of identical files; its size is bounded by the number of
+  static files rather than by traffic or key cardinality, so there is no
+  eviction question; and it has no failure mode an operator would act on.
+
+Read the second bullet as a narrow exception with stated reasons, **not** as
+precedent. Anything that memoises data which can change while the process runs
+belongs in ``webapp.caching`` — that is the whole reason the facade exists, and
+this is currently the only bespoke memo in the webapp outside it.
 """
 
 import hashlib
@@ -106,11 +135,16 @@ def asset_version(static_folder, filename):
     return hashlib.blake2b(data, digest_size=_DIGEST_SIZE).hexdigest()
 
 
-def init_static_cache(app):
+def init_static_assets(app):
     """Wire cache-busting URLs + long cache headers onto ``app``."""
     # Memoised per process, not per request: the digest of a file inside a
     # container image cannot change while that image runs. Populated lazily so
     # startup does not pay for assets a deployment never serves.
+    #
+    # Deliberately NOT a webapp.caching bucket, and the module docstring says
+    # why in full: infinite correct TTL, a clear() that could only do harm, size
+    # bounded by file count. Do not copy this exemption for a memo whose data
+    # can change while the process runs.
     versions = {}
 
     def _version(filename):
