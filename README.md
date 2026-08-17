@@ -605,7 +605,8 @@ sam-queries/
 │       │   ├── status/          # System status dashboard
 │       │   └── allocations/     # Allocations overview dashboard
 │       ├── api/                 # REST API v1 endpoints
-│       ├── utils/               # RBAC, htmx helpers, form-handler classes
+│       ├── utils/               # RBAC, htmx helpers, form-handler classes,
+│       │                        #   security + static-asset response headers
 │       └── templates/           # Jinja2 templates (vendored Bootstrap 5.3.3)
 │
 ├── helm/                        # Kubernetes chart (see helm/README.md)

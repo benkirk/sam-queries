@@ -35,7 +35,7 @@ jobs:
         run: terraform fmt -check -recursive infrastructure/staging/
 
       - name: TruffleHog scan
-        uses: trufflesecurity/trufflehog@v3.96.0
+        uses: trufflesecurity/trufflehog@v3.97.0
         with:
           # --exclude-detectors=lob: the Lob (postal mail API) detector matches
           # `test_` followed by 35 word characters, so ANY Python test method
