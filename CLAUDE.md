@@ -409,6 +409,48 @@ Template side: emit `value="1"` and wire both directions via the
 card switch, use `hx-trigger="change"` + `hx-include="this"` (see the
 Resources/Organizations/Facilities cards).
 
+### 11. Static Assets & Cache Headers
+
+**Always reference an asset with `url_for('static', filename=...)`** — never a
+literal `/static/...` path. `webapp/utils/static_cache.py` appends
+`?v=<content hash>` to every `url_for` static URL, and that parameter is what
+buys the asset a one-year cache.
+
+Flask's default is `Cache-Control: no-cache`, which makes a browser revalidate
+every asset on every page load. Measured on nwc1 2026-08-17 (one pod, 4h37m):
+**87.5% of requests were `/static`, and 96% of those answered 304** — body-less
+round trips whose only purpose was to say "unchanged". Vendored Bootstrap was
+revalidated ~145 times in 4½ hours. Those 304s were also the dominant consumer
+of `max_requests` in `gunicorn_config.py`, whose point is to bound *application*
+heap growth.
+
+**ONE rule sets the header** — is `?v=` present:
+
+| request | `Cache-Control` |
+|---|---|
+| carries `?v=` | `public, max-age=31536000, immutable` |
+| no `?v=` | `public, max-age=3600` |
+
+No path table, no vendor special case. The conservative branch is deliberately
+the **default**, so an asset referenced some novel way degrades to a short TTL
+rather than pinning a stale copy for a year — getting the rule wrong costs
+efficiency, never correctness. The short branch is load-bearing for the assets
+no `url_for` can reach: relative `url()` targets inside a stylesheet
+(FontAwesome's `../webfonts/*`, the one `../img/` in the app's own CSS).
+
+- **Content hash, not mtime.** A container rebuild restamps every mtime, so an
+  mtime tag would invalidate every asset on every deploy — safe, but it would
+  discard exactly the cache this exists to create.
+- ⚠️ **Rendered HTML is itself cached** (`user_aware_cache_key`), so after a
+  deploy that changes an asset, cached fragments keep emitting the old `?v=`
+  until they expire. Covered by the existing post-deploy step,
+  `sam-admin cache --refresh`. The asset is never unreachable — `v` is a cache
+  key, not a lookup key.
+- Gates in `tests/unit/test_static_cache.py`: a real rendered page must emit
+  **only** versioned static URLs, no template may hardcode `/static/`, and no
+  template may append `?`/`#` after `url_for('static')` (that one is a
+  correctness bug — the URL already carries a query string).
+
 ---
 
 ## Flask-Admin (`src/webapp/admin/`)
@@ -939,6 +981,9 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 ❌ **DON'T** add standalone `update_*(session, id, ...)` functions to `sam/manage/` — methods on the model (§7)
 ❌ **DON'T** write a local `_user_can_access_project` in a route file — use `webapp.api.access_control` decorators (§8)
 ❌ **DON'T** hand-roll form POST bodies: no inline `strptime`/`float()`/`int()` ladders, no manual empty-string dropping (`_strip_empty_strings` does it), no bespoke try/except-ValidationError flows when `handle_htmx_form_post` / `CrudSpec` / `HtmxFormHandler` fits (§9)
+❌ **DON'T** hardcode a `/static/...` path in a template — use
+`url_for('static', filename=...)` so the asset gets its `?v=` cache tag (§11);
+and never append `?`/`#` to a `url_for('static')` result, which already carries one
 ❌ **DON'T** touch the legacy-compat API blueprints beyond additive changes
 ❌ **DON'T** hardcode integer PKs from lookup tables in app constants — pair rules with names, resolve IDs at runtime
 
