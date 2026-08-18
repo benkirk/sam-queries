@@ -489,4 +489,4 @@ tasks:
     # slot, so re-enabling one mid-slot does not backfill — the first real run
     # is the next occurrence. The switch is also checked ahead of `only`/
     # `force`, so `sam-admin tasks --run X --force` cannot override it.
-    SAM_TASKS_DISABLED: "deactivate_expired_projects,expiration_notices,xras_notices"
+    SAM_TASKS_DISABLED: "expiration_notices,xras_notices"
