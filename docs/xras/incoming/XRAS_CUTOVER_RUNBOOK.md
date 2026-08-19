@@ -28,7 +28,7 @@ no code is left.** The design, the measurements and the reasoning live in
 | 1b | The whole legacy surface is mapped — all eight endpoints, not the seven XRAS calls today | `pytest tests/api/test_xras_roles.py tests/api/test_xras_unmapped.py -q` |
 | 2 | ✅ **Done 2026-08-10.** The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
 | 2b | ✅ **Done 2026-08-10.** ⚠️ The DDL applied is the **current** `zz-90`/`zz-91`/`zz-92` — **exactly 7** columns must come back utf8mb4: `raw_payload`, `error_messages`, `comment`, `notified_to`, `recipient_name`, `subject`, `error` | `SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='sam' AND TABLE_NAME IN ('xras_action_log','xras_activation_event','notification_log') AND CHARACTER_SET_NAME='utf8mb4'` |
-| 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml:291` — and confirm it in the running pod's env before anything else |
+| 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml:316` — and confirm it in the running pod's env before anything else |
 | 4 | The replay-and-diff oracle passes | `pytest tests/unit/test_xras_oracle.py -q` |
 | 5 | A notification path exists for `active = 0` projects | Sprint B's pending-activation card on the Allocations dashboard |
 
@@ -213,12 +213,26 @@ thread. Verbatim, because each clause retires something:
   (timestamp 1771966790970)","result":null}` — against ACCESS's own accounting service,
   which explains *why* an action failed. Our accumulated 422 list is exactly that fix.
 
-⚠️ **One thing this opens.** The response body is shown to a human, and a **parked**
-action currently answers `message: 'OK'` — byte-identical to a success. So an admin who
-posts a `Date Adjustment` (or a Transfer, or anything disabled by the triage lever) is
-told it worked. Legacy does the same, so this is not a regression and not a cutover
-blocker, but Steve has explicitly invited an informative body. Cheap to fix and outside
-the parity gate, which covers the six **GET** endpoints only. **Decide before cutover.**
+✅ **The one thing this opened is now closed — 2026-08-19.** The response body is shown
+to a human, and a **parked** action answered `message: 'OK'` — byte-identical to a
+success. So an admin who posted a `Date Adjustment` (or a Transfer, or anything disabled
+by the triage lever) was told it worked. Legacy does the same, so it was never a
+regression or a blocker; but `Date Adjustment` parks and is 4 of the 41 corpus payloads,
+which makes the silent-success arm the *common* one, and Steve explicitly invited an
+informative body.
+
+**Decided: the `manual` arm now answers a distinct message; `processed` still answers
+`'OK'`.** Two constraints shaped it:
+
+- **The status stays 200.** Steve: *"Any status other than 200/OK is considered an
+  error."* A parked action is not an error, so 202 — the tidy REST answer — would have
+  been read as a failure.
+- **The body is a module constant, not `DispatchResult.reason`.** Three of the four
+  parking causes name internal machinery (`XRAS_ACTIONS_ENABLED`, an unregistered
+  handler) that an ACCESS admin can neither act on nor should see. That detail stays in
+  `xras_action_log.outcome_reason`, which is what our own operator surfaces read.
+
+Outside the parity gate, which covers the six **GET** endpoints only.
 
 ⚠️ **Also raised, and not yet triaged.** Steve reports anomalies in the *GET*
 `/v1/requests/*` responses: NCAR does not return `xrasActionId` or `xrasActionResourceId`,
@@ -253,16 +267,38 @@ it later would not either.
 Coordinated with ACCESS. Two things happen, and the order matters:
 
 1. **XRAS repoints** its base URL to `sam.hpc.ucar.edu`.
-2. **`XRAS_ACTIONS_CAPTURE_ONLY` flips to `"0"`** in `helm/values.yaml:291`, and deploy.
+2. **`XRAS_ACTIONS_CAPTURE_ONLY` flips to `"0"`** in `helm/values.yaml:316`, and deploy.
 
 Flipping *before* the repoint is harmless (nothing is arriving). Flipping *after* means
-every post in the gap is captured as `received` and must be replayed by hand — recoverable,
-but work. Flipping **early on a stack XRAS is already posting to** is the double-apply, and
-is the thing this interlock exists to prevent.
+every post in the gap is captured as `received`. Flipping **early on a stack XRAS is
+already posting to** is the double-apply, and is the thing this interlock exists to
+prevent.
+
+✅ **Done 2026-08-19: step 2 landed first, deliberately, ahead of the repoint.** The
+runbook originally read as if the two steps were simultaneous. They are not symmetric,
+and the asymmetry is worth stating because it is the opposite of the intuition that a
+safety interlock should come off last:
+
+> A post that arrives while `CAPTURE_ONLY` is `"1"` is stranded. **`--recheck` cannot
+> apply it** — `dispatch_action(..., validate_only=True)` returns before
+> `management_transaction` opens, structurally — so the only recovery is asking the XRAS
+> admin to push the button again, per action. Meanwhile flipping early costs nothing at
+> all: XRAS is still posting to `sam.ucar.edu`, so the dispatching arm sees no traffic
+> until the repoint.
+
+So the gap has a real price in one direction and none in the other. Verify the log holds
+no `received` rows before flipping — if it does, XRAS has already repointed and those
+posts need to be re-sent.
+
+⚠️ Order the *checks* accordingly: `sam-admin xras --summary` first, flip second.
 
 ---
 
 ## Triage week
+
+➡️ **The full version is [`XRAS_TRIAGE_PLAYBOOK.md`](XRAS_TRIAGE_PLAYBOOK.md)** — how to
+classify a row, the 422 catalog with the data fix for each, and what the levers cost.
+What follows is the short form.
 
 The watch surface, in the order you will reach for it:
 
@@ -294,7 +330,7 @@ The watch surface, in the order you will reach for it:
 **Park one action type by config, without a revert:**
 
 ```yaml
-XRAS_ACTIONS_ENABLED: "Extension,Supplement"   # helm/values.yaml:295
+XRAS_ACTIONS_ENABLED: "Extension,Supplement"   # helm/values.yaml:320
 ```
 
 Narrow it to whatever should keep running. The excluded types take the audited `manual`

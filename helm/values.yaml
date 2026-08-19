@@ -521,8 +521,8 @@ tasks:
     # here until each has been reviewed on its own.
     #
     # Live:     cleanup_status_snapshots     (daily 02:15 MT, status DB only)
-    # Disabled: deactivate_expired_projects  (writes inactivate_time in SAM)
-    #           expiration_notices           (mails external PIs)
+    #           deactivate_expired_projects  (writes inactivate_time in SAM)
+    # Disabled: expiration_notices           (mails external PIs)
     #           xras_notices                 (mails external PIs)
     #
     # `xras_sweep` was enabled once its output became a queue rather than a
