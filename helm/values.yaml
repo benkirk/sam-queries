@@ -309,11 +309,27 @@ webapp:
     FS_SCAN_PG_DB: "campaign"
     FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:destor"
     # XRAS action ingestion. CAPTURE_ONLY is the safety interlock: while it is "1" the
-    # endpoint authenticates, parses and audits every post but dispatches nothing,
-    # because legacy SAM at sam.ucar.edu is still the system of record. It flips to "0"
-    # only at cutover, in step with XRAS repointing its base URL to sam.hpc.ucar.edu —
-    # dispatching before then would double-apply actions legacy has already applied.
-    XRAS_ACTIONS_CAPTURE_ONLY: "1"
+    # endpoint authenticates, parses and audits every post but dispatches nothing.
+    #
+    # ✅ RELEASED 2026-08-19, deliberately AHEAD of XRAS repointing its base URL to
+    # sam.hpc.ucar.edu. The two directions are not symmetric:
+    #
+    #   - flipping early costs nothing — XRAS still posts to sam.ucar.edu, so the
+    #     dispatching arm sees no traffic at all until the repoint;
+    #   - flipping late strands every post in the gap as status='received', and
+    #     `sam-admin xras --recheck` CANNOT apply one (validate_only returns before
+    #     management_transaction opens). Recovery is asking the XRAS admin to push the
+    #     button again, per action.
+    #
+    # ⚠️ What this must NOT do is flip early on a stack XRAS is ALREADY posting to —
+    # that double-applies actions legacy has already applied, against live allocations,
+    # with no undo. The precondition is therefore checked, not assumed: no
+    # status='received' rows in xras_action_log before this lands.
+    #
+    # Setting it back to "1" stops all dispatch, at the cost above. To park one
+    # misbehaving action type instead, narrow XRAS_ACTIONS_ENABLED below.
+    # Triage: docs/xras/incoming/XRAS_TRIAGE_PLAYBOOK.md
+    XRAS_ACTIONS_CAPTURE_ONLY: "0"
     # Per-type triage lever, checked only once CAPTURE_ONLY is off. "all" | "none" |
     # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
     # manual without a revert; an unknown token leaves that type disabled.
