@@ -27,7 +27,7 @@ Order of operations, and the part that is not negotiable
              ├─ capture-only    → row stays 'received'                      → 200
              ├─ success         → 'processed' + projcode_result             → 200
              ├─ validation errs → 'failed' + error_messages                 → 422
-             └─ no serviceable  → 'manual'                                  → 200
+             └─ no serviceable  → 'manual'                                  → 200 †
 
 Legacy's only record of an action is an email and its only replay mechanism is pasting
 JSON into a form, so a row written *only on success* would be a success log rather than
@@ -51,14 +51,16 @@ wanted: *"the response body is saved and made available in xras_admin for the ad
 see, so it's nice to include something informative"*, quoting legacy's opaque
 ``Unhandled SAM exception ... (timestamp ...)`` as the thing to fix.
 
-⚠️ **A parked action is NOT distinguished on the wire.** ``processed`` and ``manual``
-both return ``xras_response(message='OK')``, byte-identical, so an admin who posts an
-action SAM quietly deferred to a human is told it worked. That is what legacy does too,
-so it is not a regression — and it is now the *common* case rather than a hypothetical,
-because ``Date Adjustment`` parks and is 4 of the 41 corpus payloads. The four outcomes
-are distinguished in ``xras_action_log`` (``status`` / ``service`` /
-``outcome_reason``), not in the response. Whether to change that is an open decision:
-``docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`` § gate 4.
+† **A parked action is distinguished on the wire** — this is the one place the POST
+contract deliberately leaves legacy behind. Legacy answered a bare ``'OK'`` for an action
+it had silently deferred to a human, byte-identical to a success, so the admin who pushed
+the button was told it worked. That stopped being hypothetical once ``Date Adjustment``
+was discovered: it parks, and it is 4 of the 41 corpus payloads. ACCESS asked for exactly
+this on 2026-08-11 — *"the response body is saved and made available in xras_admin for the
+admin to see, so it's nice to include something informative"* — so ``manual`` now answers
+:data:`_MANUAL_MESSAGE` while ``processed`` keeps ``'OK'``. The **status stays 200**:
+ACCESS treats any other status as an error, and a parked action is not one. Decision
+recorded at ``docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`` § gate 4.
 """
 
 import json
@@ -124,6 +126,18 @@ _TEXT_WIDTH = 65_535
 
 #: Room reserved for the truncation marker itself, which must always fit.
 _TRUNCATION_MARGIN = 512
+
+#: The wire message a **parked** action gets, in place of the ``'OK'`` a success gets.
+#:
+#: ⚠️ Deliberately **not** ``DispatchResult.reason``. Three of the four park causes name
+#: internal machinery — ``XRAS_ACTIONS_ENABLED``, an unregistered handler — that an ACCESS
+#: admin can neither act on nor should see. The internal reason keeps going to
+#: ``xras_action_log.outcome_reason``, which is what the operator surfaces read; this
+#: string is the half that crosses the wire, and it is a contract.
+_MANUAL_MESSAGE = (
+    'Received and recorded. SAM does not apply this action automatically; '
+    'NSF NCAR staff will apply it by hand. Nothing was changed by this request.'
+)
 
 
 def _truncate_bytes(text, width):
@@ -520,7 +534,7 @@ def _dispatch(log_id, action):
     current_app.logger.warning(
         'XRAS action parked for a human: id=%s service=%s projcode=%s reason=%s',
         log_id, result.service, result.projcode, result.reason)
-    return xras_response(message='OK')
+    return xras_response(message=_MANUAL_MESSAGE)
 
 
 @bp.route('/actions', methods=['POST'])
