@@ -176,19 +176,45 @@ bootstrap after `terraform apply`, so an existing instance never picks them up. 
 that DB is given the DDL, the XRAS tab and Admin → Notifications 500 there. CIRRUS/k8s
 is the deployment target; ECS-staging is a check-the-render environment.
 
-### 3 · Parity against the deployed host
+### 3 · Parity against the deployed host · ✅ **PASSED 2026-08-19 — 13/13 byte-identical**
 
 ```bash
-python utils/parity/check_legacy_apis.py --api xras   # against sam.hpc.ucar.edu
+python utils/parity/check_legacy_apis.py --api xras \
+       --new-base-url https://sam.hpc.ucar.edu --xras-user benkirk --timeout 120
 ```
 
-Uses our own `samuel` credential. This is the **GET-side** cutover verification and it is
-independent of gate 4.
+Uses the `ROLE_XRAS` credential (`SAM_XRAS_USER` / `SAM_XRAS_PASS`, already in `.env`).
+This is the **GET-side** cutover verification and it is independent of gate 4.
 
-- **Done when** the run is byte-clean across all six endpoints.
+```
+== xras == 13/13 checks passed (65.2s)
+  ✓ people roster: 3,844,518 B identical      ✓ dates/requests single: 120 B identical
+  ✓ people/{username}: 170 B identical        ✓ dates/requests multi:  306 B identical
+  ✓ people/{username} 404: 58 B identical     ✓ requests/request/{SCSG0001,SCSG0002,UCIS0004}
+  ✓ requests/user/benkirk: 6 masters          ✓ requests/role/{pi,co_pi,allocation_manager}
+```
+
+⚠️ **Three flags are load-bearing, and the bare command is a weaker run than it looks.**
+
+- **`--new-base-url`** — the script's default is `samuel.k8s.ucar.edu`. Same app, but the
+  cutover host is the one to prove.
+- **`--xras-user`** — without it the script *samples* the roster for a user with requests,
+  and on a real run **all eight sampled users had none**. It warns and carries on, and the
+  result is `8/8 passed` with `requests/request/*` exercised only against an unknown
+  number and `dates/requests` **not probed at all**. A green 8/8 and a green 13/13 look
+  identical at a glance. Read the check list, not the count.
+- **`--timeout 120`** — legacy answers `requests/request/SCSG0001` in ~6.8 s (the new
+  stack: ~0.67 s) and dropped the connection outright on one run:
+  `RemoteDisconnected('Remote end closed connection without response')`. That is legacy
+  being slow, not a parity failure — both hosts return the same 30,296 bytes. Retry
+  before investigating.
+
+- **Done when** the run is byte-clean across all six endpoints — i.e. **13** checks, with
+  `dates/requests` and a populated `requests/request/{n}` among them.
 - ⚠️ Re-run it if anything changes `xras_resource_repository_key_resource`.
   `resourceRepositoryKey` is *omitted* when a resource is unmapped, so **adding a mapping
-  row changes GET response bytes** and invalidates a previous clean run.
+  row changes GET response bytes** and invalidates a previous clean run. That is the most
+  likely triage-week fix, so expect to re-run this during the week.
 
 ### 4 · The 400/422 contract · ✅ **ANSWERED 2026-08-11**
 
