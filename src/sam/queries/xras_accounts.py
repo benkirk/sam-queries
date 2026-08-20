@@ -57,14 +57,37 @@ from sqlalchemy.orm import Session
 
 from sam.core.users import User
 from sam.integration.xras import XrasActionLog
+from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
 logger = logging.getLogger(__name__)
 
-#: Statuses whose roster is worth pre-flighting. ``processed`` is excluded
-#: because it already succeeded, and ``rechecked``/``unmapped`` are not an
-#: action's own outcome. This bounds the *validate* work, not the
-#: classification — see the module docstring on regime-proofing.
-WORKLIST_STATUSES: Tuple[str, ...] = ('received', 'failed', 'manual')
+#: ⚠️ **Every status, deliberately — do not narrow this to the "interesting"
+#: ones.** An earlier version read only ``received``/``failed``/``manual`` on
+#: the reasoning that a ``processed`` action had already succeeded, so its
+#: roster must have resolved.
+#:
+#: That reasoning is wrong, and the local smoke measured it: seeding 41 real
+#: payloads under live dispatch left 28 ``processed``, and excluding them hid
+#: **5 usernames SAM cannot use — four inactive, one absent entirely, most of
+#: them Allocation Managers.** An action processes fine while naming such a
+#: person, because ``resolve_roster`` reports a missing or inactive *member*
+#: as a warning rather than an error; the handler simply skips assigning them.
+#: The account is still needed, and the operator still has to create it.
+#:
+#: Worse, the narrow list made the worklist **regime-dependent** — the exact
+#: property § 1 of the design says it must not have. The same corpus produced
+#: 9 rows under capture-only (all ``received``) and 4 under live dispatch.
+#: Classification keys off the ``users`` table alone; this must not
+#: reintroduce a status dependency behind it.
+WORKLIST_STATUSES: Tuple[str, ...] = XRAS_ACTION_STATUSES
+
+#: Which actions are worth running the dispatch pre-flight over. **This** is
+#: the bounded-work knob the status list used to be conflated with: validating
+#: a ``processed`` action re-runs a handler's whole assembly to learn something
+#: already known, and ``rechecked``/``unmapped`` are not an action's own
+#: outcome. Narrowing this costs provenance on those rows, never a
+#: classification.
+VALIDATE_STATUSES: Tuple[str, ...] = ('received', 'failed', 'manual')
 
 #: ARC placeholder identities, e.g. ``placeholder34-user-00034``. XRAS mints one
 #: for every unreconciled person, and it resolves fully through
@@ -197,8 +220,8 @@ def records_from_action_log(session: Session, *,
     Parses through ``XrasActionSchema`` (``sam.schemas.forms``), the same path
     the webapp's ``_parse_action`` takes, with no webapp import.
 
-    With *validate* on, each action additionally goes through
-    ``dispatch_action(..., validate_only=True)``. That path structurally cannot
+    With *validate* on, each action **in :data:`VALIDATE_STATUSES`**
+    additionally goes through ``dispatch_action(..., validate_only=True)``. That path structurally cannot
     write — ``management_transaction`` only opens in ``handlers/base.py``, past
     the seam — and its verdict is recorded as **provenance**, never as the
     classifier: it also catches non-account failures (an unresolvable mnemonic,
@@ -239,7 +262,7 @@ def records_from_action_log(session: Session, *,
             continue
 
         would_succeed, messages = None, ()
-        if validate:
+        if validate and row.status in VALIDATE_STATUSES:
             would_succeed, messages = _validate(session, action,
                                                 row.xras_action_log_id)
 
@@ -370,7 +393,22 @@ def classify_accounts(session: Session,
         return []
 
     # One query for the whole batch, never per username.
-    existing = {u.username: u for u in
+    #
+    # ⚠️ **Keyed case-INSENSITIVELY, and this is not cosmetic.**
+    # ``users.username`` is ``utf8mb3_general_ci`` with a UNIQUE index, so
+    # MySQL considers ``Jsmith`` and ``jsmith`` the same account and the
+    # ``IN`` above matches either spelling. A case-sensitive Python dict
+    # underneath that then MISSES the row it was just handed, and the
+    # username is reported ``absent`` — telling an operator to create an
+    # account that already exists and is active.
+    #
+    # The local smoke hit exactly this: XRAS sent ``Jsmith``, SAM holds
+    # ``jsmith`` active, and the card said "Create". No in-tree fixture could
+    # have caught it — the anonymizer emits lowercase ``user_<hex>`` for
+    # every username, so every scrubbed roster is already case-matched.
+    # ``roster.normalize_username`` deliberately does not fold case either
+    # (it reproduces Java), so the wire spelling reaches here untouched.
+    existing = {u.username.casefold(): u for u in
                 session.query(User).filter(User.username.in_(sorted(wanted))).all()}
 
     rows: Dict[str, Dict[str, Any]] = {}
@@ -378,15 +416,21 @@ def classify_accounts(session: Session,
         for username in record.usernames:
             if not username:
                 continue
-            user = existing.get(username)
+            key = username.casefold()
+            user = existing.get(key)
             if user is not None and user.is_active:
                 continue                    # nothing to do — the common case
             classification = (CLASSIFICATION_ABSENT if user is None
                               else CLASSIFICATION_INACTIVE)
 
-            row = rows.get(username)
+            # Grouped on the same case-insensitive key, so two spellings of
+            # one account are one row of work rather than two.
+            row = rows.get(key)
             if row is None:
-                row = rows[username] = {
+                row = rows[key] = {
+                    # The wire spelling, kept as XRAS sent it — for an absent
+                    # account it is the only spelling there is, and for a
+                    # present one the mismatch is itself worth seeing.
                     'username': username,
                     'classification': classification,
                     'remedy': REMEDIES[classification],
@@ -480,6 +524,21 @@ def enrich_worklist(rows: Sequence[Dict[str, Any]], *,
     to counts and usernames instead of returning 500. *max_lookups* bounds a
     cold-cache render.
 
+    ⚠️ **``isReconciled`` is NOT a closure signal**, despite what the design
+    document originally claimed. The local smoke measured **9 of 9** worklist
+    rows reconciled in XRAS while every one still had no usable SAM account —
+    reconciliation is XRAS linking a placeholder to a real identity (often by
+    merging it), which says nothing about whether SAM has a row.
+
+    What it *is* worth showing: whether XRAS knows who the person really is. A
+    **reconciled** placeholder is the easy case — there is a real detail sheet
+    behind it to create the account from. An **unreconciled** one is the hard
+    case, because XRAS cannot say who they are either.
+
+    The real closure signal needs no polling: classification is a current-state
+    check, so a row leaves this list the moment its ``users`` row exists and is
+    active. That is what closes an item, and it is already free.
+
     Returns a report dict; *rows* are mutated in place, which is what the
     caller wants to render.
     """
@@ -490,7 +549,7 @@ def enrich_worklist(rows: Sequence[Dict[str, Any]], *,
         # the cache layer into every consumer's graph, including the task's.
         from sam.integration.xras_api.people import get_person as person_lookup
 
-    report = {'looked_up': 0, 'found': 0, 'closed': 0, 'unavailable': False,
+    report = {'looked_up': 0, 'found': 0, 'reconciled': 0, 'unavailable': False,
               'budget_exhausted': False, 'error': None}
 
     for row in rows:
@@ -514,9 +573,7 @@ def enrich_worklist(rows: Sequence[Dict[str, Any]], *,
         if 'isReconciled' in person:
             row['is_reconciled'] = bool(person['isReconciled'])
             if row['is_reconciled']:
-                # XRAS considers them reconciled while SAM still has no usable
-                # account — worth surfacing, and it is how an item closes.
-                report['closed'] += 1
+                report['reconciled'] += 1
     return report
 
 

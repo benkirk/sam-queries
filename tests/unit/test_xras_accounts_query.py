@@ -205,6 +205,13 @@ class TestGrouping:
 class TestFeedA:
     """Rosters out of ``xras_action_log.raw_payload``."""
 
+    #: ⚠️ Assertions here must be scoped to the rows the test itself created.
+    #: `tests/unit/test_xras_accounts_card.py` COMMITS an `xras_action_log`
+    #: row (its route reads through Flask-SQLAlchemy's own connection and only
+    #: sees committed rows), and xdist workers share one database — so a bare
+    #: `records_from_action_log(...) == []` is a race against that fixture,
+    #: not an assertion about this test's data.
+
     def _log_row(self, session, payload_name, **kwargs):
         from sam.integration.xras import XrasActionLog
         row = XrasActionLog(
@@ -232,18 +239,22 @@ class TestFeedA:
         assert entry['actions'][0]['source'] == 'action_log'
 
     def test_statuses_bound_which_rows_are_read(self, session):
-        self._log_row(session, PLACEHOLDER_FIXTURE, status='processed')
-        assert records_from_action_log(
-            session, statuses=('received',), validate=False) == []
+        row = self._log_row(session, PLACEHOLDER_FIXTURE, status='processed')
+        ids = {r.ref.action_log_id for r in records_from_action_log(
+            session, statuses=('received',), validate=False)}
+        assert row.xras_action_log_id not in ids
 
     def test_an_unparseable_payload_is_skipped_not_fatal(self, session):
         from sam.integration.xras import XrasActionLog
-        session.add(XrasActionLog(received_time=datetime(2026, 8, 1),
-                                  remote_actor='XRAS', raw_payload='{not json',
-                                  status='failed'))
+        row = XrasActionLog(received_time=datetime(2026, 8, 1),
+                            remote_actor='XRAS', raw_payload='{not json',
+                            status='failed')
+        session.add(row)
         session.flush()
         # It is already visible on the action-log card as its own failure.
-        assert records_from_action_log(session, validate=False) == []
+        ids = {r.ref.action_log_id
+               for r in records_from_action_log(session, validate=False)}
+        assert row.xras_action_log_id not in ids
 
     def test_the_window_bounds_the_read(self, session):
         self._log_row(session, PLACEHOLDER_FIXTURE,
@@ -341,7 +352,7 @@ class TestFeedB:
 class TestEnrichment:
     """Injected, so the query layer stays offline-capable."""
 
-    def test_it_attaches_person_detail_and_the_closure_signal(self, session):
+    def test_it_attaches_person_detail_and_identity_state(self, session):
         rows = classify_accounts(session, [_record('ghost-user-1')])
         report = enrich_worklist(rows, person_lookup=lambda u: {
             'firstName': 'Ada', 'lastName': 'Invented',
@@ -349,7 +360,24 @@ class TestEnrichment:
             'isReconciled': True})
         assert rows[0]['person']['residenceCountry'] == 'Canada'
         assert rows[0]['is_reconciled'] is True
-        assert report['found'] == 1 and report['closed'] == 1
+        assert report['found'] == 1 and report['reconciled'] == 1
+
+    def test_reconciled_is_not_a_closure(self, session):
+        """⚠️ The design document called `isReconciled` the closure signal.
+        It is not: the local smoke measured **9 of 9** worklist rows reconciled
+        in XRAS while every one still needed a SAM account created or
+        reactivated. Reconciliation is XRAS linking a placeholder to a real
+        identity; it says nothing about whether SAM has a row.
+
+        The row must therefore SURVIVE enrichment — the thing that closes it is
+        the `users` row appearing, which classification checks every render."""
+        rows = classify_accounts(session, [_record('ghost-user-1')])
+        report = enrich_worklist(
+            rows, person_lookup=lambda u: {'isReconciled': True})
+        assert report['reconciled'] == 1
+        assert rows[0]['classification'] == 'absent', \
+            'a reconciled identity is still an absent SAM account'
+        assert 'closed' not in report
 
     def test_an_outage_degrades_rather_than_raising(self, session):
         """The card must render counts and usernames, not a 500."""
@@ -414,3 +442,138 @@ class TestImportGraph:
         head = source.split('def ', 1)[0]
         assert 'xras_api' not in head, \
             'the API client must be imported lazily, inside enrich_worklist'
+
+
+class TestItIsRegimeProof:
+    """§ 1's requirement, and the one the first implementation broke.
+
+    Actions in the log are `received` under capture-only and
+    `processed`/`failed`/`manual` under live dispatch. The worklist must mean
+    the same thing on both sides of that flip — classification already keys
+    off the `users` table alone, but a narrow status pre-filter reintroduced
+    the dependency behind it.
+
+    Measured on the local smoke: 41 real payloads gave **9 rows as `received`
+    and 4 once 28 of them had dispatched**, hiding four inactive users and one
+    absent Allocation Manager.
+    """
+
+    def test_every_status_is_read(self):
+        """A processed action still names people SAM may not be able to use:
+        `resolve_roster` reports a missing or inactive *member* as a warning,
+        not an error, so the handler skips assigning them and succeeds."""
+        from sam.queries.xras_actions import XRAS_ACTION_STATUSES
+
+        from sam.queries.xras_accounts import WORKLIST_STATUSES
+
+        assert set(WORKLIST_STATUSES) == set(XRAS_ACTION_STATUSES), (
+            'narrowing WORKLIST_STATUSES makes the worklist regime-dependent')
+
+    def test_a_processed_action_still_yields_its_roster(self, session):
+        """The concrete case the smoke found."""
+        import json
+        from datetime import datetime as dt
+
+        from sam.integration.xras import XrasActionLog
+
+        payload = json.loads((FIXTURES / PLACEHOLDER_FIXTURE).read_text())
+        session.add(XrasActionLog(received_time=dt(2026, 8, 1),
+                                  remote_actor='XRAS',
+                                  raw_payload=json.dumps(payload),
+                                  status='processed'))
+        session.flush()
+        records = records_from_action_log(session, validate=False)
+        assert records, 'a processed action was skipped'
+        rows = classify_accounts(session, records)
+        assert PLACEHOLDER_USERNAME in {r['username'] for r in rows}
+
+    def test_the_same_roster_classifies_alike_in_every_regime(self, session):
+        """Flip only the status; the answer must not move."""
+        import json
+        from datetime import datetime as dt
+
+        from sam.integration.xras import XrasActionLog
+
+        payload = json.loads((FIXTURES / PLACEHOLDER_FIXTURE).read_text())
+        answers = set()
+        for status in ('received', 'processed', 'failed', 'manual',
+                       'rechecked', 'unmapped'):
+            row = XrasActionLog(received_time=dt(2026, 8, 1),
+                                remote_actor='XRAS',
+                                raw_payload=json.dumps(payload), status=status)
+            session.add(row)
+            session.flush()
+            rows = classify_accounts(
+                session, records_from_action_log(session, validate=False))
+            answers.add(next(r['classification'] for r in rows
+                             if r['username'] == PLACEHOLDER_USERNAME))
+            session.delete(row)
+            session.flush()
+        assert answers == {'absent'}
+
+    def test_the_preflight_is_what_stays_bounded(self, session):
+        """Validation is the expensive part, and skipping it on a processed
+        action costs provenance — never a classification."""
+        import json
+        from datetime import datetime as dt
+
+        from sam.integration.xras import XrasActionLog
+        from sam.queries.xras_accounts import VALIDATE_STATUSES
+
+        assert 'processed' not in VALIDATE_STATUSES
+
+        payload = json.loads((FIXTURES / PLACEHOLDER_FIXTURE).read_text())
+        row = XrasActionLog(received_time=dt(2026, 8, 1), remote_actor='XRAS',
+                            raw_payload=json.dumps(payload), status='processed')
+        session.add(row)
+        session.flush()
+        records = records_from_action_log(session, validate=True)
+        mine = next(r for r in records
+                    if r.ref.action_log_id == row.xras_action_log_id)
+        assert mine.ref.would_succeed is None            # not run...
+        rows = classify_accounts(session, [mine])        # ...and still classified
+        assert PLACEHOLDER_USERNAME in {r['username'] for r in rows}
+
+
+class TestUsernameCaseFolding:
+    """⚠️ Found by the local smoke against real data; unreachable from fixtures.
+
+    `users.username` is `utf8mb3_general_ci` with a UNIQUE index, so MySQL
+    treats `Jsmith` and `jsmith` as one account and the batch `IN` matches
+    either spelling. A case-sensitive dict on top of that misses the row it was
+    just handed and reports `absent` — telling an operator to create an account
+    that already exists and is active.
+
+    No in-tree fixture can reach this: the anonymizer rewrites every username
+    to lowercase `user_<hex>`, so every scrubbed roster is already
+    case-matched. `roster.normalize_username` does not fold case either (it
+    reproduces Java), so the wire spelling arrives untouched.
+    """
+
+    def test_a_case_mismatched_active_user_is_not_reported(self, session):
+        """The exact false positive: XRAS sent `Jsmith`, SAM holds `jsmith`."""
+        user = make_user(session, username='casefoldcheck', active=True)
+        rows = classify_accounts(
+            session, [_record(user.username.upper())])
+        assert rows == [], (
+            'a case-mismatched ACTIVE account was reported as needing creation')
+
+    def test_a_case_mismatched_inactive_user_is_inactive_not_absent(self, session):
+        """The remedy differs: reactivate, not create."""
+        user = make_user(session, username='casefoldinactive', active=False)
+        rows = classify_accounts(session, [_record(user.username.upper())])
+        assert [r['classification'] for r in rows] == ['inactive']
+
+    def test_two_spellings_are_one_row_of_work(self, session):
+        """One account, one operator task — not two."""
+        rows = classify_accounts(session, [
+            _record('GhostCaseUser'), _record('ghostcaseuser')])
+        assert len(rows) == 1
+        # Both actions are attached to the single row.
+        assert len(rows[0]['actions']) == 2
+
+    def test_the_wire_spelling_is_preserved_for_display(self, session):
+        """For an absent account it is the only spelling there is, and for a
+        present one the mismatch is itself worth seeing."""
+        rows = classify_accounts(session, [_record('GhostCaseUser')])
+        assert rows[0]['username'] == 'GhostCaseUser'
