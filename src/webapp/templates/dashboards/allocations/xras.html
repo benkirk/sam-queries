@@ -46,6 +46,26 @@
      hx-include="#xras-activity-filters"
      hx-swap="innerHTML"></div>
 
+{# Account-creation worklist. Same out-here-not-in-there rule as the form
+   above, and for the same two reasons — see the comment on
+   #xras-activity-filters. #}
+<form id="xras-accounts-filters" class="d-none"
+      hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
+      hx-target="#alloc-xras-accounts"
+      hx-swap="innerHTML"
+      hx-trigger="submit"
+      hx-include="#xras-accounts-filters">
+    <input type="hidden" name="days" value="">
+    <select name="classification" multiple hidden></select>
+    <select name="role" multiple hidden></select>
+</form>
+
+<div id="alloc-xras-accounts"
+     hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
+     hx-trigger="load, refreshXrasTab from:body"
+     hx-include="#xras-accounts-filters"
+     hx-swap="innerHTML"></div>
+
 <div class="filter-sidebar mb-3">
     {{ xras_filters(
         form_id='xras-filters',

@@ -61,6 +61,13 @@ from sam.queries.xras_activation import (
 # submodules eagerly, and this one imports `sam.notify`. See the module
 # docstring; `tests/unit/test_notify_import_graph.py` is the gate.
 from sam.queries.xras_notices import build_xras_messages, load_xras_action
+from sam.queries.xras_accounts import (
+    CLASSIFICATION_ABSENT,
+    CLASSIFICATION_INACTIVE,
+    enrich_worklist,
+    get_account_worklist,
+    worklist_counts,
+)
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
 from sam.schemas.forms import CreateChargeAdjustmentForm, XrasActivationEventForm
@@ -1598,6 +1605,145 @@ def xras_pending_fragment():
         form_id=_XRAS_ACTIVITY_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_pending_fragment'),
         target_id=_XRAS_ACTIVITY_TARGET,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Account-creation worklist — read-only.
+#
+# Who must exist in SAM before an XRAS handoff can succeed. Unreconciled ARC
+# placeholder identities are 55% of production XRAS failures, and account
+# creation is manual, so this card is the operator's queue for the largest
+# single cause of failure.
+#
+# Read-only in this PR by design. Operator notes and dismissal need storage
+# that `XrasActivationEvent` cannot provide — its `project_id` is NOT NULL and
+# project-scoped, while this worklist is username-keyed and for a New request
+# the project does not exist yet. That table (`xras_account_event`) is the
+# immediate follow-up; shipping the buttons before it would be dead UI.
+# ---------------------------------------------------------------------------
+
+#: Display labels for the classification facet. The slug is what round-trips
+#: through the form; an operator should never see it.
+_ACCOUNT_CLASSIFICATION_LABELS = {
+    CLASSIFICATION_ABSENT: 'Create account',
+    CLASSIFICATION_INACTIVE: 'Reactivate account',
+}
+
+_ACCOUNTS_FORM_ID = 'xras-accounts-filters'
+_ACCOUNTS_TARGET = 'alloc-xras-accounts'
+
+#: Bounds a cold-cache render. Each miss is one round trip to XRAS inside an
+#: htmx request, so this is a latency bound, not a correctness one — the rows
+#: past it still render, just without person detail.
+_ACCOUNTS_ENRICH_BUDGET = 25
+
+
+def _filter_accounts(rows, *, classifications=None, roles=None):
+    """Facet filters: ANDed across dimensions, ORed within one."""
+    out = rows
+    if classifications:
+        out = [r for r in out if r['classification'] in classifications]
+    if roles:
+        out = [r for r in out if any(role in roles for role in r['roles'])]
+    return out
+
+
+def _account_facets(rows, dimension, *, classifications=None, roles=None):
+    """Self-excluding counts for one dimension.
+
+    A dimension's rollup omits its own filter — scope it by itself and every
+    unselected value reads 0 the moment one is picked, which turns the chips
+    from switchers into a dead end. Same rule as :func:`_activity_facets`.
+    """
+    if dimension == 'classification':
+        scoped = _filter_accounts(rows, roles=roles)
+        return {key: sum(1 for r in scoped if r['classification'] == key)
+                for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)}
+
+    if dimension == 'role':
+        scoped = _filter_accounts(rows, classifications=classifications)
+        counts = {}
+        for row in scoped:
+            for role in row['roles']:
+                counts[role] = counts.get(role, 0) + 1
+        return dict(sorted(counts.items()))
+
+    raise ValueError(f'unknown account facet dimension {dimension!r}')
+
+
+@bp.route('/xras_accounts_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_accounts_fragment():
+    """HTMX fragment: accounts that must be created or reactivated for XRAS.
+
+    Two states here are **designed, not broken**, and both are what a reviewer
+    will see first:
+
+    - **Unconfigured.** With `XRAS_OUTGOING_ENABLED` off — the shipped state,
+      and what staging shows — the worklist still renders in full from the
+      inbound action log. Only the person detail and the `isReconciled`
+      closure signal are unavailable, and a muted note says so.
+    - **Empty.** Production has zero rows until ACCESS is repointed at SAM and
+      `xras_action_log` starts filling. An empty card is a true report.
+
+    PII is gated **here**, not in the template. Person detail — name, email,
+    organization, academic status, residence country — is assembled only for a
+    viewer holding MANAGE_XRAS, so a VIEW_XRAS response never carries it and a
+    view-source cannot leak what the page chose not to draw. Same rule as the
+    raw-payload panel and the notification recipients above.
+
+    `is_reconciled` is deliberately on the VIEW_XRAS side of that line: it is a
+    boolean about account state, not a personal detail, and it is the signal
+    that tells an operator an item is about to close itself.
+    """
+    may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
+    window = _parse_activity_window(request.args)
+    selected_classes = [c for c in request.args.getlist('classification') if c]
+    selected_roles = [r for r in request.args.getlist('role') if r]
+
+    rows = get_account_worklist(db.session,
+                                since=window['since'], until=window['until'])
+
+    # Enrichment is best-effort and never fatal: an outage or an unconfigured
+    # deployment leaves `person` None and flags the batch, so the card degrades
+    # to counts and usernames rather than returning 500.
+    enrichment = enrich_worklist(rows, max_lookups=_ACCOUNTS_ENRICH_BUDGET)
+
+    if not may_manage:
+        # Drop the PII before it can reach a template, a log line, or a
+        # response body. `is_reconciled` survives — see the docstring.
+        for row in rows:
+            row['person'] = None
+
+    class_facets = _account_facets(rows, 'classification', roles=selected_roles)
+    role_facets = _account_facets(rows, 'role', classifications=selected_classes)
+
+    rows = _filter_accounts(rows, classifications=selected_classes,
+                            roles=selected_roles)
+
+    return render_template(
+        'dashboards/allocations/partials/xras_accounts_card.html',
+        rows=rows,
+        counts=worklist_counts(rows),
+        may_manage=may_manage,
+        enrichment=enrichment,
+        window=window,
+        window_pill_choices=_ACTIVITY_WINDOW_PILLS,
+        # Both classifications render even at zero: an absent chip reads as
+        # "not measured", a different claim from "none".
+        classification_values=[
+            {'value': key,
+             'label': _ACCOUNT_CLASSIFICATION_LABELS.get(key, key),
+             'count': class_facets.get(key, 0)}
+            for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)],
+        role_values=[{'value': k, 'count': v} for k, v in role_facets.items()],
+        selected_classifications=selected_classes,
+        selected_roles=selected_roles,
+        form_id=_ACCOUNTS_FORM_ID,
+        fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
+        target_id=_ACCOUNTS_TARGET,
     )
 
 

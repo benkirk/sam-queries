@@ -1484,6 +1484,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_accounts_fragment",
+    "/allocations/xras_accounts_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_action_details",
     "/allocations/xras_action_details/<int:action_id>",
     [
