@@ -571,6 +571,40 @@ class TestCriticalSchemas:
         )
         assert 'PRI' in db_cols['resource_repository_key']['key']
 
+    def test_xras_opportunity_allocation_type_schema(self, session):
+        """The second XRAS mapping table, guarded like the first.
+
+        Three columns, and the FK is the point: mapping to ``allocation_type_id``
+        rather than to the ``(panel, allocation_type)`` string pair is what resolves
+        the ``Small``/``Education`` panel ambiguity by construction. A "simplification"
+        back to the name pair would reintroduce exactly the collision this exists to
+        remove, and would still pass a column-count check — so the FK is asserted too.
+        """
+        table_name = 'xras_opportunity_allocation_type'
+        db_cols = get_db_columns(session, table_name)
+        expected = {'opportunity_id', 'allocation_type_id', 'opportunity_name'}
+        actual = set(db_cols.keys())
+        assert actual == expected, (
+            f"XrasOpportunityAllocationType schema mismatch!\n"
+            f"  Expected: {expected}\n"
+            f"  Actual:   {actual}"
+        )
+        assert 'PRI' in db_cols['opportunity_id']['key']
+        assert not db_cols['allocation_type_id']['nullable'], (
+            'allocation_type_id must be NOT NULL — a mapping row that points nowhere '
+            'is a row the ingest lookup silently falls through on')
+
+        fks = session.execute(text("""
+            SELECT REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+              FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = :t
+               AND COLUMN_NAME = 'allocation_type_id'
+               AND REFERENCED_TABLE_NAME IS NOT NULL
+        """), {'t': table_name}).all()
+        assert [tuple(r) for r in fks] == [('allocation_type', 'allocation_type_id')], (
+            'the FK to allocation_type is the whole design — see the model docstring')
+
 
 # ============================================================================
 # Index alignment — prevents PR #209-style drift (DiskActivity unique index)
