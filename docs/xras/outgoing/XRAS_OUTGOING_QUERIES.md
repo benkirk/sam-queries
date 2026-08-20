@@ -1,7 +1,8 @@
 # XRAS "outgoing" queries — an account-creation worklist
 
-**Status:** research and live probing complete, design settled, **not implemented**.
-**Branch:** `probing_xras`. **Probed:** 2026-08-19 against production
+**Status:** **implemented as built**, 2026-08-20, on `probing_xras`. The design
+below stands as written except where § 0 records a deviation.
+**Probed:** 2026-08-19 against production
 `https://api.xras.org` (two rounds: the original survey, then a follow-up after
 the full API documentation was located), cross-checked against the XRAS-admin
 web app.
@@ -17,6 +18,79 @@ than re-litigates.
 > (they push actions, they pull our GETs). This document is the opposite
 > direction: **SAM calling out to XRAS**. There is no such code in the repo
 > today — `api.xras.org` is zero hits outside this document.
+
+---
+
+## 0. As built — deviations and findings
+
+Seven commits. Everything in §§ 7-8.1 shipped; §§ 7.6 (the notes table) and
+8.2 stay deferred as planned. What follows is only what the implementation
+learned that this document did not already say.
+
+### The plan was wrong about one fixture
+
+§ 10 named `new_ncar4214_ok.json` as the pre-flight case whose
+`placeholder34-user-00034` should classify **absent**. It does not, and
+should not: that role carries `endDate: 2026-07-28` against an action
+beginning `2026-07-30`, so the roster's date window correctly excludes it —
+the role is over and the handoff does not need the account.
+`new_ncar4227_failed.json` carries an in-window placeholder and is the test
+case instead. A second test pins the exclusion itself, so the window rule
+cannot silently loosen.
+
+### Tier-III measured, against the unscrubbed corpus + the dev database
+
+41/41 payloads parsed, 72 distinct real usernames, **9 worklist rows: 4
+absent, 5 inactive**. Two numbers matter:
+
+- An existence-only predicate would have found 4 of 9. The `inactive` class
+  is the majority of real work, not an edge case.
+- **All 5 usernames carrying `isAccountToBeCreated: true` were existing,
+  *active* SAM accounts** — the flag was 100% stale in this corpus. Using it
+  as the predicate would have produced 5 false positives and found none of
+  the 9 real cases. § 5's trap, confirmed on production data.
+
+Nothing derived from that run is committed; it is recorded here as counts
+only.
+
+### The live probe confirmed the API shape
+
+`scripts/xras/probe_outgoing.py` against production: 13 resources, all
+carrying `resourceRepositoryKey`, reconciling **13/13** against
+`xras_resource_repository_key_resource` with zero unmapped and zero dangling
+(§ 6). `reports/requests` paginates cleanly — 3 pages of 10, 30 distinct
+rows, zero overlap. Role entries are `{person, roles[]}` with the inner
+`role` key, person inline carrying `isReconciled` and `residenceCountry`.
+Across 64 sampled role entries the only values were `PI`, `Allocation
+Manager` and `User` — **no co-PI**, as § 3.4 predicted from
+`/v1/types/roles`.
+
+Of 43 role-people in 25 Approved requests, **7 were `isReconciled: false`**.
+The worklist has real content waiting.
+
+### Three small deviations from § 7
+
+1. **`iter_request_pages()` was added underneath `iter_requests()`.** The
+   sweep must distinguish "the data ran out" from "I hit `max_pages`", and a
+   generator flattened to individual requests cannot report that. A silent
+   cap would read as full coverage in the ledger detail.
+2. **The roster is the union of `roster_usernames` and both
+   `role_candidates` lists**, not the roster alone. `role_candidates` applies
+   a looser begin-date rule (legacy defect 3), so a PI can resolve while
+   absent from the roster — and a missing PI still fails the handoff.
+3. **Config follows `sam/notify/config.py`**, i.e. `XrasApiConfig` with
+   `from_environment()` reading Flask-config-then-environment, rather than the
+   `from_env(env=None)` sketched in § 7.1. Same behaviour, the repo's idiom,
+   and it brings a secret-free `summary()` along for the configuration card.
+
+### Still open
+
+The `productionEndDate` question (§ 13.1) is now sharper: the probe shows
+**NSF NCAR Derecho and Derecho-GPU both carrying `productionEndDate:
+2026-05-12`**, three months in the past, alongside Cheyenne (2023-12-31) and
+Yellowstone (2017-12-31) which are genuinely retired. Nothing in SAM reads
+that field, so nothing breaks either way — but it is worth asking XRAS
+whether it is stale data or a telegraphed retirement.
 
 ---
 
@@ -846,7 +920,23 @@ XRAS_OUTGOING_ENABLED=1 XRAS_API_KEY=… python scripts/xras/probe_outgoing.py
 
 ---
 
-## 14. Reference — related documents
+## 14. Deferred register — what this PR did NOT build
+
+Each was a deliberate decision, with the reason recorded so it can be revisited
+on evidence rather than re-litigated from scratch.
+
+| Deferred | Why, and what would change it |
+|---|---|
+| **`xras_account_event`** (§ 7.6) — operator notes and dismissal | Needs a table, and `XrasActivationEvent` cannot carry it: `project_id` is NOT NULL and project-scoped, while this worklist is username-keyed and a New request has no project yet. Shipping the buttons first would be dead UI. **Immediate follow-up PR.** |
+| **`opportunityId` → allocation type** (§ 8.2) | Assess after the first triage week under live dispatch. The 11-strategy ladder works; only 5 strategies are exercised by 41 payloads, so the case for replacing it is real but unmeasured. |
+| **Enabling `xras_sweep`** | Ships named in `SAM_TASKS_DISABLED`. Enable after the card has been reviewed against real post-cutover data — the task's value is proportional to how full `xras_action_log` is, and it is empty until ACCESS repoints. |
+| **`XRAS_OUTGOING_ENABLED: "1"`** | Ships `"0"`. Flipping it turns on person enrichment in the card and the two-sided half of `--validate-mapping`. Independent of the sweep's own switch. |
+| **Key rotation** | The key lived in cleartext in a home directory and on `crlogin` hosts before OpenBao. Worth requesting from XRAS now that `csg/xras-api-key` is authoritative; retire the cleartext copies either way. |
+| **`search/people` against placeholders** (§ 13.4) | Untested, nice-to-know. Placeholders arrive with usernames on both feeds, so nothing depends on it. |
+
+---
+
+## 15. Reference — related documents
 
 | Document | Why it matters here |
 |---|---|

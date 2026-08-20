@@ -9,12 +9,23 @@ the **site-side server** it talks to: XRAS **pushes** allocation decisions in
 Java/Tomcat server (deployed build 2.0.3), as a drop-in replacement: same URLs,
 same auth headers, same response bytes.
 
+`outgoing/` is the **opposite direction**: SAM calling out to the XRAS
+Allocations API at `https://api.xras.org/v1/…`. Read-only and GET-only — the
+same credential can create requests, modify roles and merge one person into
+another, so the client has no verb method but an internal `_get`.
+
 ## Live docs — `incoming/`
 
 | Doc | What it is |
 |---|---|
 | [`XRAS_REIMPLEMENTATION.md`](incoming/XRAS_REIMPLEMENTATION.md) | The reference: wire contract, production data, deliberate divergences, phase status |
 | [`XRAS_CUTOVER_RUNBOOK.md`](incoming/XRAS_CUTOVER_RUNBOOK.md) | The day-of sequence. Operational only — no code left. Cutover is **abrupt**: XRAS holds one base URL, so all seven endpoints and all six handlers move at once |
+
+## SAM → XRAS — `outgoing/`
+
+| Doc | What it is |
+|---|---|
+| [`XRAS_OUTGOING_QUERIES.md`](outgoing/XRAS_OUTGOING_QUERIES.md) | The account-creation worklist: the readable API surface, every closed path, and the two-feed design. Implemented 2026-08-20; § 0 records what the build learned |
 
 ## Shipped — `incoming/implemented/`
 

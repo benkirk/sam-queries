@@ -155,21 +155,36 @@ def test_mobile_swaps_the_thumbs_for_selects(auth_client, url, form_id):
         'mobile hid the date inputs behind a trigger it does not render')
 
 
+#: The hidden window-carrying forms on /allocations/xras. Each owns its own
+#: `days` field and its own fragment; the pairs are emitted by `window_pills`
+#: INSIDE those fragments and bound back with `form=`.
+XRAS_WINDOW_FORMS = ('xras-activity-filters', 'xras-accounts-filters')
+
+
 def test_the_xras_page_keeps_one_date_pair_per_form(auth_client):
     """The one page where the RadioNodeList trap can actually bite.
 
-    ``/allocations/xras`` carries two forms that both care about dates: the
-    panel (`#xras-filters`, whose pair is the ladder's, nested) and the hidden
-    `#xras-activity-filters`, whose pair is emitted by `window_pills` inside
-    the pending-activity fragment and bound with `form=`. They are fetched
-    separately and owned separately, so each form sees exactly one node — but
-    that is a property of the markup, not a guarantee, so assert it.
+    ``/allocations/xras`` carries three forms that care about dates: the panel
+    (`#xras-filters`, whose pair is the ladder's, nested) and the two hidden
+    window forms above, whose pairs are emitted by `window_pills` inside their
+    fragments and bound with `form=`. Fragments are fetched and owned
+    separately, so each form sees exactly one node — but that is a property of
+    the markup, not a guarantee, so assert it.
+
+    ⚠️ Counted **per form**, not per page. Counting per page happened to work
+    while there was one hidden form and silently became wrong when a second
+    was added — the trap is `form.elements[name]` returning a RadioNodeList,
+    which is scoped to one form and says nothing about the document.
     """
     page = _body(auth_client, '/allocations/xras')
     assert page.count('name="start_date"') == 1
-    assert 'form="xras-activity-filters"' not in page, (
-        'the activity form\'s date pair leaked onto the page shell')
-    assert page.count('name="days"') == 1, 'the activity window field is gone'
+    for form_id in XRAS_WINDOW_FORMS:
+        assert f'form="{form_id}"' not in page, (
+            f'{form_id}\'s date pair leaked onto the page shell')
+        block = re.search(rf'<form id="{form_id}".*?</form>', page, re.S)
+        assert block, f'{form_id} is gone from the page shell'
+        assert block.group(0).count('name="days"') == 1, (
+            f'{form_id} must carry exactly one window field')
 
     fragment = auth_client.get(
         '/allocations/xras_pending_fragment').data.decode()

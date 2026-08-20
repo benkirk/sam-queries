@@ -91,6 +91,7 @@ class TestForeignPrefixCrossCheck:
             assert sorted(a.name for a in ttl_adapters) == [
                 'allocation_usage', 'awards', 'awards_search',
                 'fs_scans', 'fs_scans_filtered', 'jobs', 'jobs_recent',
+                'xras_people', 'xras_resources',
             ]
             # …and every one of their keyspaces must be in the skip list.
             skipped = _foreign_prefixes()
