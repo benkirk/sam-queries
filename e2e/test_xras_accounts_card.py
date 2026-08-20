@@ -93,14 +93,22 @@ def test_the_three_tabs_share_one_window_control(page):
 
 
 def test_the_request_is_a_column_and_a_chip(page):
-    """The handle an operator working one project's activation navigates by."""
+    """The handle an operator working one project's activation navigates by.
+
+    ⚠️ Guarded on rows, like every other content assertion here. An empty card
+    renders no `<table>` at all, so `thead.inner_text()` does not fail fast —
+    it waits out the full 30s timeout and reds the build for a *correct* card.
+    That is exactly what it did on the CI stack, whose action log is empty.
+    """
     card = _load(page)
+    if _rows(card).count() == 0:
+        pytest.skip('worklist is empty on this stack; no table to inspect')
+
     # `.first`: each expansion row carries its own per-action table, so a bare
     # `thead` locator is a strict-mode violation the moment a row renders.
     header = card.locator('thead').first.inner_text().lower()
     assert 'request' in header
-    if _rows(card).count():
-        assert card.locator('.facet-grid-label', has_text='Request').count() == 1
+    assert card.locator('.facet-grid-label', has_text='Request').count() == 1
 
 
 def test_the_row_icons_are_gone(page):
