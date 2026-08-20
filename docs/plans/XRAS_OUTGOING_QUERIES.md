@@ -1,28 +1,31 @@
 # XRAS "outgoing" queries — an account-creation worklist
 
-**Status:** research complete, design drafted, **not implemented**.
+**Status:** research and live probing complete, design settled, **not implemented**.
 **Branch:** `probing_xras`. **Probed:** 2026-08-19 against production
-`https://api.xras.org`, cross-checked against the XRAS-admin web app.
+`https://api.xras.org` (two rounds: the original survey, then a follow-up after
+the full API documentation was located), cross-checked against the XRAS-admin
+web app.
 
 This is a handoff document. It is written so an implementation session that has
-never seen the original conversation can start cold. It records what the XRAS
-API *can* and *cannot* do — including every dead end, with the command that
-closed it, so nobody spends a second session re-probing a path that is already
-known to fail.
+never seen the original conversations can start cold. It records what the XRAS
+API *can* and *cannot* do — including every dead end, with enough detail that
+nobody re-probes a path that is already closed — and the design decisions
+already made with the operator, so the implementation session builds rather
+than re-litigates.
 
 > **Direction of travel.** Everything in `docs/xras/incoming/` is XRAS → SAM
 > (they push actions, they pull our GETs). This document is the opposite
 > direction: **SAM calling out to XRAS**. There is no such code in the repo
-> today — `api.xras.org` is zero hits.
+> today — `api.xras.org` is zero hits outside this document.
 
 ---
 
 ## 1. Why
 
-**Goal: a dashboard listing the user accounts that must be created (or
-reactivated) in SAM before an XRAS handoff can succeed** — who, why, with notes.
-Account creation is a manual process. This complements the XRAS action-log card
-rather than replacing it.
+**Goal: a dashboard card listing the user accounts that must be created (or
+reactivated) in SAM before an XRAS handoff can succeed** — who, why, with
+detail. Account creation is a manual process. This complements the XRAS
+action-log card rather than replacing it.
 
 This targets the largest known failure mode. `src/sam/xras/handlers/new.py:24-27`
 records the measured causes of the legacy 70% failure rate:
@@ -36,10 +39,31 @@ records the measured causes of the legacy 70% failure rate:
 worklist addresses, by the repo's own measurements, the single biggest cause of
 XRAS handoff failure.
 
-**Timing context.** PR #457 lands the capture-only receive path; ACCESS is
-repointed at SAM shortly after, at which point `xras_action_log` begins filling
-(it is at 0 rows until then). Capture-only is an *advantage* here: it means
-every action can be pre-flighted **before** it is ever processed.
+**Timing context.** PR #457 landed the capture-only receive path; the next step
+disables capture-only (live dispatch) and ACCESS is repointed at SAM, at which
+point `xras_action_log` begins filling (it is at 0 rows until then).
+**Consequence for this design:** actions in the log may be `received` (under
+capture-only) *or* `processed` / `failed` / `manual` (under live dispatch), so
+the worklist derivation must be regime-proof — it classifies against the
+*current* state of `users`, never against the action's `status`.
+
+### 1.1 Scope decisions, already settled with the operator
+
+These were decided on 2026-08-19; the implementation session should not reopen
+them without new information:
+
+1. **Step 0 — the API key moves into OpenBao first** (§ 11). It currently sits
+   in cleartext in the operator's home directory and on `crlogin` hosts.
+2. **Read-only card first — no new table in this PR.** The worklist derives
+   entirely from existing data; the operator-notes/dismissal table
+   (`xras_account_event`, § 7.6) is an immediate follow-up PR.
+3. **Cheap win (a) only** — the two-sided `--validate-mapping` (§ 8.1) rides
+   along. Cheap win (b), the `opportunityId` → allocation-type map (§ 8.2), is
+   **deferred**: assess after the first triage week under live dispatch.
+4. **The `xras_sweep` scheduled task ships in this PR, switched off** — its
+   name added to `SAM_TASKS_DISABLED` in the same change (the fail-open trap;
+   see the `xras_notices` precedent).
+5. One PR vs `staging`, as an ordered commit series (§ 12).
 
 ---
 
@@ -50,50 +74,114 @@ Two different services are easy to confuse.
 | | |
 |---|---|
 | **XRAS Rules Service** — `xras-rules-service-demo.xsede.org/apidoc/` | A separate, mostly-POST engine (notifications, validate, required_documents, clone rules). Paths are `/api/v1/...`. **Our key does not open it.** Not useful here. |
-| **XRAS Allocations API** — `https://api.xras.org/v1/...` | ✅ **This is the one.** Live docs: `api.xras.org/api/overview`, `api.xras.org/api/request_headers`, `api.xras.org/api/data_models` (that last renders empty). `api.xras.org/apidoc` 404s. |
+| **XRAS Allocations API** — `https://api.xras.org/v1/...` | ✅ **This is the one.** |
 
 The two share endpoint *names* (`opportunities`, `requests`), which is exactly
 why they get confused. Note the path prefix differs: `/api/v1/` for the rules
 service, `/v1/` for the allocations API. `api.xras.org/api/v1/...` 404s.
 
-### Authentication
+### 2.1 The documentation — and where it hides
+
+`https://api.xras.org/` is a two-iframe page. The left frame's **"API"** link
+targets `https://api.xras.org/apidoc` — **which 404s when fetched directly**,
+and that decoy is why the first survey concluded no endpoint documentation
+existed. The real page is
+**`https://api.xras.org/apidoc.html`** ("ALLOCATIONS API 1.0"), with static
+per-endpoint detail pages under `https://api.xras.org/apidoc/1.0/...`. Those
+pages carry parameter tables and example responses and are fetchable with plain
+curl. Also useful: `api.xras.org/api/overview` and
+`api.xras.org/api/request_headers`.
+
+### 2.2 Authentication
 
 ```
-XA-API-KEY:             <key>          # see § 10 — not in this repo
+XA-API-KEY:             <key>          # see § 11 — never in this repo
 XA-ALLOCATIONS-PROCESS: NCAR
 XA-CONTEXT:             submit | report        ✅ 200
                         review | admin         ❌ 401 (key not provisioned)
-XA-USER:                <username>     # scopes every per-user response
-XA-PERMISSIONS:         <optional>     # accepted; changes nothing (see § 4)
+XA-USER:                <username>     # required header; scopes /v1/requests only
 ```
 
 Omitting `XA-CONTEXT` gives `400 {"message":"XA-CONTEXT header missing"}`.
-The documented context vocabulary is `submit`, `report`, `review`, `admin`;
-our key holds the first two. `submit` and `report` expose an **identical**
-surface — `report` unlocks nothing extra.
+
+⚠️ **`submit` and `report` are NOT the same surface.** The first survey
+concluded they were identical, but that held only for the endpoints it knew
+about. The **Reports family (§ 3.2) answers only under `XA-CONTEXT: report`**
+— the same paths 401 under `submit`. Everything else this project reads
+(`/v1/people`, `/v1/resources`, `/v1/requests`, `/v1/types/*`,
+`/v1/search/people`) works under `report` as well. **Design consequence: the
+client hardcodes `XA-CONTEXT: report`** — one context, read-only semantics, no
+knob.
+
+`XA-USER` is a required header on every call, but outside `/v1/requests` it
+scopes nothing — the reports endpoints return process-wide data regardless of
+its value. The existing operator scripts use `arcguest`; the client takes it
+from `XRAS_API_USER` (default `arcguest`). Per-user impersonation is **not
+needed anywhere in this design** (the enumeration made it obsolete, § 3.2).
 
 Server is Rails behind Apache/Passenger. A Rails HTML 404 page means "no such
 route"; a JSON `{"message":..., "result":null}` means the route exists and the
-request was refused or found nothing. That distinction is useful when probing.
+request was refused or found nothing. Every JSON response wraps its payload in
+that `{message, result}` envelope — the client unwraps it centrally.
 
 ---
 
-## 3. The readable surface — seven endpoints
+## 3. The readable surface
+
+### 3.1 Per-user and global endpoints (work under `submit` and `report`)
 
 | Endpoint | Scope | Returns |
 |---|---|---|
-| `GET /v1/people/:username` | **global directory** | firstName, middleName, lastName, email, phone, organization, academicStatus, **residenceCountry**, **isReconciled**, orcid, hasOrcidToken |
+| `GET /v1/people/:username` | global directory | firstName, middleName, lastName, email, phone, organization, academicStatus, **residenceCountry**, **isReconciled**, orcid, hasOrcidToken |
+| `GET /v1/search/people?q=...` | global directory | the same person shape, matched on name/username fragments |
 | `GET /v1/requests` | **`XA-USER`-scoped** | every request that user is PI / CoPI / Allocation Manager on, in full |
 | `GET /v1/requests/:requestId` | `XA-USER`-scoped | one request; **401** if the user has no role on it |
-| `GET /v1/opportunities` | global | currently-open opportunities, full detail |
-| `GET /v1/opportunities/:id` | global | one opportunity — **including historic/Terminating ones** |
-| `GET /v1/opportunities/list/:id,:id,...` | global | batch form of the above |
+| `GET /v1/opportunities` · `/:id` · `/list/:ids` | global | open opportunities; the id forms also resolve **historic/Terminating** ones |
 | `GET /v1/resources` · `/v1/resources/:id` | global | 13 resources, **including `resourceRepositoryKey`** |
 | `GET /v1/panels` · `/v1/panels/:id` | global | 5 panels **with member rosters** |
+| `GET /v1/types/roles`, `/v1/types/actions`, `/v1/types/request_status`, ... `/v1/types/all` | global | the process's own vocabularies (§ 3.4) |
+| `GET /v1/permissions/:username` | global | XRAS permission grants for a person |
 
 **Unknown username** gives a clean `404 {"message":"username=X not found"}`.
 
-### `/v1/requests` payload shape
+### 3.2 The Reports family — `XA-CONTEXT: report` only ⭐
+
+This is the finding that reshapes the whole design. The first survey probed
+`/v1/reports` bare (404, § 4.7) and closed the path; the real routes live
+*under* it and were located via `apidoc.html`. All verified 200 with our
+existing key under `report` context, 401 under `submit`:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /v1/reports/requests` ⭐ | **Every request in the NCAR process, unscoped.** Paginated: `?limit=N&prevMinRequestId=M` (descending `requestId`; strictly-less-than, so pass the smallest id seen to get the next page). Filters: `?status=` (one of `Submitted, Approved, Rejected, Incomplete, Under Review`) or `?active=true|false` (Approved with end date in future/past — mutually exclusive with `status`). Optional `fosTypeId`, `piOrganizationId`. |
+| `GET /v1/reports/request_numbers/:requestNumber` ⭐ | **Look up by request number — i.e. by projcode.** Same response as `/v1/requests/:requestId` minus the `rules` object. Optional `?status=active|inactive`. |
+| `GET /v1/reports/allocations` | All allocations (`?status=active` → ~7.9 MB for NCAR today): actionId, actionType, begin/end dates, requestNumber, PI name/institution/**username**, opportunity, per-action `resources[]` and `requestedResources[]`. |
+| `GET /v1/reports/username/:username` | Roles and panels for one person: requests grouped by role name. |
+| `GET /v1/reports/opportunity_requests/:opportunityId` | Requests for one opportunity. |
+| `GET /v1/reports/requests/:requestId` | One request via the reports path. |
+| `GET /v1/reports/fos/:fosId` | Requests by field of science. |
+
+**The `reports/requests` rows are complete**: verified top-level keys include
+`roles[]` — each with the **full person object inline** (all `/v1/people`
+fields, including `isReconciled` and `residenceCountry`) — plus full
+`actions[]` (resources with Requested/Recommended/Approved amounts, dates,
+states, documents), `fos`, `grants`, `conflicts`, `publications`.
+
+Three consequences, each load-bearing:
+
+1. **Enumeration exists today, on our key.** No per-identity polling, no
+   roster crawling, no impersonation, and no "please provision an admin
+   credential" ask — the original Phase-2 request to XRAS is moot.
+2. **Dropped-push detection is nearly free**: diff the Approved set's
+   `requestNumber` against `project.projcode` (§ 6) wholesale.
+3. **The worklist's hardest population — a brand-new PI on a solo New request,
+   connected to nobody SAM knows — is reachable *before* the push**, with
+   their person detail already inline.
+
+### 3.3 `/v1/requests` payload shape
+
+(One request from `reports/requests` / `reports/request_numbers` is this same
+shape minus `rules`.)
 
 ```
 rules:
@@ -119,126 +207,129 @@ fos[{fosTypeId, fosNum, isPrimary}], grants[],
 conflicts[{conflictId, conflictType, conflictPerson}], publications[]
 ```
 
-### Vocabularies observed in live NCAR data
+### 3.4 Vocabularies — verified against the live process
 
-| Field | Values seen |
+| Field | Values |
 |---|---|
-| `requestStatus` | Approved, Rejected, Incomplete |
+| `requestStatus` | Submitted, Approved, Rejected, Incomplete, Under Review (the filter's full enum; Approved/Rejected/Incomplete observed) |
 | `requestType` | New, Renewal |
 | `actionType` | New, Renewal, Supplement, Extension, Transfer, Adjustment, Date Adjustment |
 | `actionStatus` | Approved, Declined, Incomplete |
 | action `states[]` | "Conflicts Verified", "Reviewers Assigned" |
-| resource `type` | **Requested / Recommended / Approved** — the full award trail |
+| resource `type` | Requested / Recommended / Approved — the full award trail |
 | `allocationDateType` | Requested, Approved |
-| **`roleTypeId`** | **13 = PI, 14 = Allocation Manager, 19 = User** |
+
+**The co-PI question is settled.** `GET /v1/types/roles` for the NCAR process
+returns **exactly three role types**:
+
+```json
+[{"roleTypeId": 13, "roleType": "PI",                 "displayRoleType": "Project Lead"},
+ {"roleTypeId": 14, "roleType": "Allocation Manager", "displayRoleType": "Project Admin"},
+ {"roleTypeId": 19, "roleType": "User",               "displayRoleType": "User"}]
+```
+
+**There is no co-PI role type in the NCAR process, so one can never appear on
+the wire.** This closes the open risk carried in
+`docs/xras/incoming/XRAS_REIMPLEMENTATION.md` and explains why zero co-PIs
+exist across 101 role entries in 41 captured fixtures and all live sampling.
+(The generic XRAS product vocabulary — visible in the apidoc example — does
+define `CoPI` with roleTypeId 1; those generic ids are per-process, which is
+why NCAR's are 13/14/19.) The hedging comments at
+`src/sam/schemas/forms/xras.py:204-208`, the `!=` role match at
+`src/sam/xras/roster.py:233`, and the stress scenarios' `Co-PI`/`CoPi`
+variants can all be annotated with this answer (comment-only changes).
 
 ⚠️ A request still being drafted has `requestNumber: null` and
-`requestStatus: "Incomplete"` — in-flight work is visible before it has a number.
-
-### Role types — and the CoPI question
-
-`docs/xras/incoming/XRAS_REIMPLEMENTATION.md` carries "co-PI roleType still
-unknown" as an open risk, and `src/sam/schemas/forms/xras.py:204-208` explains
-the field is not enum-validated because no co-PI has ever appeared in a sampled
-payload. Stress scenarios hedge across `Co-PI` / `CoPi` / `Co-Investigator`.
-
-Two findings:
-
-- **The outgoing API carries a numeric `roleTypeId` (13/14/19); the inbound wire
-  carries none at all** — only a `roleType` *string*, matched with a plain `!=`
-  at `src/sam/xras/roster.py:233`. `grep -rn roleTypeId src tests` returns
-  nothing.
-- **Still zero co-PIs** — none across 101 role entries in the 41 captured
-  fixtures, and none in any live request sampled. Consistent with NCAR's process
-  using PI / Allocation Manager / User only, which is exactly the roster SAM
-  models.
-
-Note the two vocabularies must not be conflated: inbound uses `PI` /
-`Allocation Manager` (spaced), while SAM's own outbound GET side uses `Pi` /
-`CoPi` / `AllocationManager` (`src/webapp/api/xras/requests.py:33-37`), where the
-`CoPi` branch is structurally always empty (`src/sam/queries/xras_access.py:260-276`).
+`requestStatus: "Incomplete"` — in-flight work is visible before it has a
+number. Also note: inbound-wire role strings are `PI` / `Allocation Manager`
+(spaced), while SAM's own outbound GET side uses `Pi` / `CoPi` /
+`AllocationManager` (`src/webapp/api/xras/requests.py:33-37`), where the
+`CoPi` branch is structurally always empty — now provably so.
 
 ---
 
-## 4. Negative results — closed paths, do not re-probe
+## 4. Closed paths — do not re-probe
 
-Every row below was tested. The point of this section is to stop a future
-session rediscovering them.
+Every row was tested. Entries marked **[submit-only]** were originally tested
+under `XA-CONTEXT: submit` before the Reports family was known; their
+conclusions were re-checked under `report` where it mattered.
 
-### 4.1 There is no enumeration
+### 4.1 `review` / `admin` contexts are refused at the auth layer
 
-No endpoint lists requests, people, or actions across the process. `/v1/requests`
-is always and only `XA-USER`-scoped.
+`401` with `X-Runtime: 0.003` — rejected before any lookup. A property of
+**the API key**, not of the header or the user. (Not needed: everything this
+design requires works under `report`.)
 
 ### 4.2 `XA-PERMISSIONS` does nothing
 
-Tested against a real Approved request the impersonated user had no role on, in
-all four contexts, with each of: `Administrator`, `XRAS - Admin read permission`,
-`XRAS - Review impersonator`, `Resource Provider User`,
-`Allocations Process Manager`, and a comma-joined pair. **All 401.**
-(The permission strings are real — they are listed on a person's admin page.)
+Tested against a real Approved request the impersonated user had no role on,
+in all four contexts, with each of: `Administrator`, `XRAS - Admin read
+permission`, `XRAS - Review impersonator`, `Resource Provider User`,
+`Allocations Process Manager`, and a comma-joined pair. **All 401.** The
+permission strings are real (`GET /v1/permissions/:username` lists them); the
+header is inert.
 
-### 4.3 `review` / `admin` contexts are refused at the auth layer
-
-`401` with `X-Runtime: 0.003` — rejected before any lookup. This is a property
-of **the API key**, not of the header or the user.
-
-### 4.4 Probing by project code / request number does not work
-
-This is the most tempting idea and it fails for three independent reasons:
+### 4.3 `/v1/requests` is strictly role-scoped; its path key is `requestId`
 
 | Probe | Result |
 |---|---|
-| `GET /v1/requests/<requestNumber>` **as its own PI** | **401** — `requestNumber` is not a valid path key at all. The numeric `GET /v1/requests/<requestId>` for the same request returns 200. |
-| `GET /v1/requests/<requestNumber>` as a non-member | 401 |
-| `?requestNumber=...`, `?opportunityId=...`, `?all=true` | **silently ignored** — the unfiltered list is returned |
+| `GET /v1/requests/<requestNumber>` (as its own PI or anyone) | **401** — `requestNumber` is not a valid key on *this* route. Use `GET /v1/reports/request_numbers/<n>` instead (§ 3.2). |
+| `?requestNumber=...`, `?opportunityId=...`, `?all=true` on `/v1/requests` | silently ignored — the `XA-USER`-scoped list is returned |
 | `/v1/requests/number/<n>`, `/v1/requests/request/<n>` | 404 |
+| Impersonating genuine XRAS administrators via `XA-USER` | only *their own* role-scoped requests; a foreign Approved request still 401s |
 
-Scanning the **numeric** `requestId` space is equally futile: ids are dense and
-guessable, but reading one still requires a role, so a scan yields only 401s.
+Scanning the numeric `requestId` space through `/v1/requests/:id` yields only
+401s without a role. All of this is now academic — the reports family answers
+every one of these questions properly.
 
-### 4.5 Admin identities gain no breadth
-
-Impersonating genuine XRAS administrators (members of the admin panel) returns
-only *their own* role-scoped requests — counts of 1, 2 and 6 for the three
-tested. Adding `XA-PERMISSIONS: Administrator` changes nothing, and a foreign
-Approved request still 401s for them.
-
-**This is an important design input:** the admin web app's queue view
-demonstrably does **not** come through this API. See § 8 for how that reshapes
-the ask.
-
-### 4.6 Unreconciled people cannot be addressed by id or email
+### 4.4 People endpoints that do not exist
 
 `GET /v1/people/<personId>`, `/v1/people/<email>`, `/v1/people/unreconciled`
-and `/v1/people` all 404. `/v1/people/:username` is username-keyed, full stop.
+and bare `/v1/people` all 404. `/v1/people/:username` is username-keyed —
+**but `/v1/search/people?q=` exists** (§ 3.1) and matches on names, so people
+are findable without knowing a username. Whether search matches *placeholder*
+identities' display names is **untested** — a nice-to-know, not load-bearing
+(placeholders arrive with usernames via both feeds).
 
-**But see § 5 — this does not mean unreconciled people are unreachable.**
+### 4.5 Routes that do not exist (Rails 404) **[submit-only]**
 
-### 4.7 Endpoints that do not exist
+`/v1/actions`, `/v1/allocations`, `/v1/awards`, `/v1/reviews`, `/v1/grants`,
+`/v1/organizations`, `/v1/allocation_types`, `/v1/fields_of_science`,
+`/v1/publications`, `/v1/users`, `/v1/roles` (as a GET), `/v1/requests/:id/actions`,
+`/v1/people/:u/requests`, `/v2/*`. (`/v1/reports` *bare* also 404s — the
+family lives one segment deeper, § 3.2. Several of these have proper
+equivalents there: `/v1/reports/allocations`, `/v1/types/fos`, etc.)
 
-`/v1/actions`, `/v1/allocations`, `/v1/awards`, `/v1/reviews`, `/v1/reports`,
-`/v1/grants`, `/v1/organizations`, `/v1/allocation_types`,
-`/v1/fields_of_science`, `/v1/publications`, `/v1/users`, `/v1/roles`,
-`/v1/requests/:id/actions`, `/v1/people/:u/requests`, `/v2/*` — all 404.
+### 4.6 `/v1/projects` is another service entirely
 
-Curiosity note: `/v1/projects` returns a **Tomcat** 404 rather than the Rails
-one, so some other service is routed at that path. It is not ours and did not
-respond usefully to anything tried.
+Returns a **Tomcat** 404 (everything else here is Rails) under both contexts
+and with a valid `XA-USER`. It is documented in the generic apidoc (an
+ACCESS-style per-user project/resource state view) but is not routed for our
+process. Confirmed dead for NCAR; do not re-probe.
+
+### 4.7 The write surface — why GET-only must be structural
+
+The documented API is far more write-capable than the first survey knew, and
+**our submit-context key holds at least some of it** (it is the credential the
+ARC submission UI uses). Documented POSTs/PUTs/DELETEs include: create/delete
+requests, submit/withdraw actions, add/remove roles and users
+(`/v1/roles/<requestNumber>/Users`), **merge one person into another**
+(`/v1/people/:u/merge/:new`), update resources, set ORCID data. None of that
+may ever be reachable from SAM code. The client therefore has **no generic
+verb method at all** — its only transport primitive is an internal `_get`
+(§ 7.1), and a test pins that no post/put/patch/delete callable exists.
 
 ---
 
-## 5. The finding that makes the worklist possible
+## 5. The placeholder finding
 
 The XRAS-admin "Recent submissions" queue shows Approved requests whose Project
-Lead is badged **"Unreconciled user"** — a researcher with no site account. That
-is precisely the population the worklist is for, and at first it looked
-unreachable (§ 4.6).
+Lead is badged **"Unreconciled user"** — a researcher with no site account.
+That is precisely the population the worklist is for.
 
-**It is reachable.** Every unreconciled person still has an **ARC placeholder
-username** of the shape `<name>-user-<token>`. The admin UI shows it only on the
-person's own page, not on the request summary — which is what made it look
-absent. That username resolves fully:
+**Every unreconciled person has an ARC placeholder username** of the shape
+`<name>-user-<token>` (the admin UI shows it only on the person's own page,
+not on the request summary). That username resolves fully:
 
 ```
 GET /v1/people/<name>-user-<token>
@@ -247,20 +338,20 @@ GET /v1/people/<name>-user-<token>
   "organization": "...", "isReconciled": false, "orcid": null }
 ```
 
-Three consequences, each load-bearing:
+Three consequences:
 
 1. **It is the account-creation detail sheet.** Name, email, organization,
    academic status, and **`residenceCountry`** — the last of which the inbound
    payload does **not** carry and account creation needs.
-2. **`isReconciled` is the closure signal.** Re-poll the same username; when it
-   flips, the item closes itself with nobody updating SAM by hand.
-3. **Impersonating the placeholder reads the request in full** — so approved
-   amounts and dates can be verified even for a handoff SAM never received.
+2. **`isReconciled` is the closure signal.** Re-poll the same username; when
+   it flips, the worklist item closes itself with nobody updating SAM by hand.
+3. The placeholder username is **already on the inbound wire**: fixture
+   `tests/fixtures/xras/actions/new_ncar4214_ok.json` carries a role with
+   `"username": "placeholder34-user-00034"` and `"isAccountToBeCreated": true`.
 
-And the placeholder username is **already on the inbound wire**: fixture
-`tests/fixtures/xras/actions/new_ncar4214_ok.json` carries a role with
-`"username": "placeholder34-user-00034"` and `"isAccountToBeCreated": true`.
-The push names these people; the API describes them.
+And via the reports family (§ 3.2), the same person object — placeholder
+username, `isReconciled: false`, and all — arrives **inline in every request's
+roster**, so the enumeration feed needs no separate person fetch at all.
 
 ### Two traps
 
@@ -283,390 +374,489 @@ a quarter of the real cases.
 Reconciled live against the local SAM DB: **13/13 exact, zero unmapped, zero
 dangling.** The API also exposes `productionBeginDate` / `productionEndDate`
 per resource — and at probe time the two current flagship compute resources
-carried a `productionEndDate` roughly three months in the past, which nothing in
-SAM would notice. Whether that is XRAS staleness or a telegraphed retirement is
-an open question worth asking.
+carried a `productionEndDate` roughly three months in the past, which nothing
+in SAM would notice. Whether that is XRAS staleness or a telegraphed
+retirement is an open question worth asking (§ 13).
 
-**`requestNumber` == `project.projcode`.** Verified both directions: an Approved
-request's number exists as a SAM project; a **Rejected** request's number
-(`NCAR3116`, which is the SAM author's own test request) does **not**, because no
-project is ever created for a rejected request. This is exactly the existence
-test `dispatch.select_service()` uses to tell a "New that is really an update"
-from a genuine New.
+**`requestNumber` == `project.projcode`.** Verified both directions: an
+Approved request's number exists as a SAM project; a **Rejected** request's
+number (`NCAR3116`, the SAM author's own test request) does **not**, because
+no project is ever created for a rejected request. This is exactly the
+existence test `dispatch.select_service()` uses to tell a "New that is really
+an update" from a genuine New — and it is what makes wholesale dropped-push
+detection a set difference.
 
 ---
 
-## 7. Phase 1 — buildable now, no new key
+## 7. The design
 
-### 7.1 The central question, answered
+### 7.0 Shape of the whole
 
-> *Can we see Approved requests before XRAS pushes them?*
+Two feeds produce normalized roster records; one classifier turns them into
+the worklist; one card renders it; one scheduled task runs the enumeration.
 
-**Yes — for any identity SAM already knows.** The ceiling is **discovery**, not
-**reading**. `XA-USER` may be set to any username we know, so any request that
-user has a role on is fully readable.
-
-Verified end-to-end: the admin queue showed an Approved Extension on an existing
-SAM project. Polling that project's known lead through `/v1/requests` returned
-the same action — its `actionId`, `entryDate`, approved end date and full roster
-— with no push and no admin key. All six extension-type Approved rows in the
-sampled queue mapped to SAM projects with known leads.
-
-### 7.2 The three populations
-
-Checking the Approved queue's project leads against SAM:
-
-| Class | Visible in Phase 1? | Remedy |
-|---|---|---|
-| **Known + active** in SAM | ✅ by polling | usually none — may just need adding to a project |
-| **Known but `active = 0`** | ✅ by polling | **reactivate** |
-| **Absent entirely** — ARC placeholder identity | ❌ push-only until Phase 2 | **create** |
-
-Roughly a quarter of the Approved queue is Extensions/Transfers on existing
-projects (fully visible today). The rest are New requests spread across all
-three classes. **The third class is the residual gap — and it is the
-55%-of-failures population.** Phase 1 catches it *at push time, before
-processing*; Phase 2 (§ 8) would catch it *before the push*.
-
-### 7.3 Feed A — pre-flight over captured actions
-
-**Reuse what exists; build nothing.**
-`dispatch_action(session, action, validate_only=True)`
-(`src/sam/xras/dispatch.py:222-263`) runs the handler's assemble-and-check half
-and returns **before `management_transaction` opens**.
-`src/webapp/api/xras/recheck.py:195-202` already drives it.
-
-Because production runs **capture-only**, running this across captured actions
-pre-flights every action *before* it is ever processed — literally "detect users
-that need creating before the task can succeed".
-
-It yields exactly five error strings from `src/sam/xras/errors.py`, and those
-five **are** the worklist, with the remedy already distinguished:
-
-| `errors.py` | Meaning | Remedy |
-|---|---|---|
-| `pi_not_in_database` :143 | PI has no `users` row | create |
-| `pi_not_active` :149 | PI row inactive | reactivate |
-| `manager_not_in_database` :154 | Allocation Manager absent | create |
-| `manager_not_active` :160 | Allocation Manager inactive | reactivate |
-| `username_missing` :185 / `username_inactive` :190 | roster member | create / reactivate |
-
-### 7.4 Feed B — known-identity polling, with a roster crawl
-
-A scheduled sweep calling `GET /v1/requests` per known identity, recording
-Approved and in-flight actions. Two things it buys beyond Feed A:
-
-- **Pre-push visibility** for extensions/transfers on existing projects and for
-  New requests from people SAM already knows.
-- **Discovery of unknown people through known ones.** A known PI's roster names
-  their collaborators, *including placeholder usernames SAM has never seen*.
-
-**Roster crawl.** Every newly-seen username is itself pollable, so the sweep
-should be transitive: poll seeds → harvest usernames from their rosters → poll
-the new ones → repeat to a fixed point, bounded by a depth cap and a per-run
-budget. This widens coverage well past the seed set with no enumeration.
-
-Its limit, stated plainly: the crawl reaches people who **share a request with
-someone we know**. A wholly-new PI submitting a solo New request connects to
-nothing SAM knows, so no crawl reaches them. Push-only until Phase 2.
-
-**Measured cost.** `GET /v1/requests` ≈ **0.84 s, ~22 KB** per identity
-(3 consecutive runs: 0.844 / 0.826 / 0.837 s).
-
-| Seed tier | Count (local snapshot) | Serial | ~8-way |
-|---|---:|---:|---:|
-| Active project leads + admins | 1,518 | ~21 min | ~3 min |
-| All active, unlocked users | 6,310 | ~88 min | ~11 min |
-| All non-deleted users | 28,344 | ~6.6 h | ~50 min |
-
-Nightly over the first tier is the right default. Hit rate is low — of five real
-project leads sampled, **three returned zero requests** — so a full sweep is
-mostly empty and the crawl matters more than the seed breadth.
-
-### 7.5 Enrichment and closure
-
-For each worklist username, `GET /v1/people/:username` supplies the detail
-sheet. Re-poll to close on `isReconciled`. Cache **hours, not days** — this is a
-closure signal and must not go stale.
-
-### 7.6 New code
-
-`src/sam/integration/xras_api/` — follow `src/sam/integration/awards/` exactly.
-It is the closest template in the repo and already a sibling of
-`src/sam/integration/xras.py`.
-
-- **`client.py`** — one persistent `requests.Session`; explicit `timeout=` on
-  every call; `2 ** attempt` backoff; **404 → return `None`**; other 4xx →
-  raise immediately (a client error is deterministic, never retried); 5xx →
-  warn + retry; exhausted → raise `XrasSourceUnavailable`. Preserve the
-  three-outcome model (**found / not-found / unreachable**) all the way to CLI
-  exit codes, as `AwardSourceUnavailable` does.
-- **GET-only allowlist, enforced structurally.** The API exposes POSTs
-  (`/v1/resources/update`, the notification endpoints, `new_request_number`)
-  that must never be reachable from SAM. Do not rely on convention.
-- **`cache.py`** — `BucketedTTLCache`, registered by adding the module to
-  `_BUCKETED_CACHE_MODULES` in `src/webapp/caching/__init__.py:48-53`. That one
-  line gives `sam-admin cache --refresh --category`, the Admin Configuration
-  card row, `stats()` and `clear()` for free. Cache successes *and* definite
-  negatives; never cache an `XrasSourceUnavailable`.
-- **Config** via `os.getenv` — `XRAS_API_KEY`, `XRAS_API_BASE`,
-  `XRAS_ALLOCATIONS_PROCESS` — declared in `.env.example` and
-  `helm/values.yaml`, **fail-closed** when unset. No Click / Flask / rich /
-  kubernetes imports anywhere under `src/sam/` or `src/scheduling/`.
-
-`src/sam/queries/xras_accounts.py` — the worklist query: group pre-flight
-failures by username, classify (absent / inactive / placeholder-shaped), join
-the most recent `xras_action_log` row for provenance.
-
-⚠️ **Do not export the new query module from `sam/queries/__init__.py`** if it
-imports `sam.notify` — that file imports its submodules eagerly. See the
-existing trap documented for `expiration_notices` / `xras_notices`.
-
-**The sweep is a scheduled task** under `src/scheduling/tasks/`.
-⚠️ `SAM_TASKS_DISABLED` is **fail-open**: registering a task puts it live on the
-next hourly wake unless its name is added to `helm/values.yaml` **in the same
-change**. Ship it switched off, as `xras_notices` was, and add the
-`values.yaml` grep assertion the existing task tests use.
-
-### 7.7 Schema — one new table, not zero
-
-**The worklist itself needs no storage.** It derives entirely from
-`xras_action_log.raw_payload` (roles and usernames), `users` (existence and
-activity), the pre-flight (the reason), and `/v1/people` (the detail, cached).
-This follows `XrasActivationEvent`'s own rule: *state is DERIVED, never stored*.
-
-**Operator notes and dismissals do need storage, and `XrasActivationEvent`
-cannot carry them.** Its key is
-
-```python
-project_id = Column(Integer, ForeignKey('project.project_id'), nullable=False)
+```
+Feed A  xras_action_log.raw_payload  ──┐
+        (inbound pushes, at push time) │   normalized          classify vs
+                                       ├── RosterRecord ──►  users table ──► worklist rows
+Feed B  GET /v1/reports/requests       │   (feed-neutral)    absent/inactive   │
+        (enumeration, ahead of push)  ──┘                                      ▼
+                                                              card (Feed A now; Feed B
+        GET /v1/people/:username ── enrichment + isReconciled closure          via task detail,
+                                    (Feed A only; Feed B carries it inline)    table later)
 ```
 
-— project-scoped and NOT NULL. The account worklist is **username-keyed**, and
-for a New request *the project does not exist yet*. That is the entire case.
-So reuse the **pattern**, not the table.
+The feed-agnostic seam — a `RosterRecord` dataclass that both feeds construct
+— is the one decision that keeps every downstream piece (classifier,
+enrichment, card, CLI, eventual notes table) single-sourced.
 
-Proposed `xras_account_event`, mirroring the existing table deliberately:
-append-only (a new row, never an edit of an existing one); `username`
-`varchar(35)` (`users.username` width) in place of `project_id`; `event_type`
-from a small tuple; `comment`; `created_by` `varchar(35)` ("the human who
-clicked"); `xras_action_log_id` as **provenance only**. Derive current state by
-timestamp comparison against the latest action naming that username — exactly as
-the activation card does. That gets re-open-on-new-information and anti-spam for
-free, and avoids a `done` boolean that would be wrong the moment the same person
-appears on a second request.
+### 7.1 The client — `src/sam/integration/xras_api/`
 
-⚠️ **Adding a table is no longer a DBA round-trip.**
-`docs/plans/implemented/DBA_PRIVILEGE_REQUEST.md` records
-`GRANT CREATE, ALTER, INDEX, REFERENCES ON sam.* TO 'hpc-writer'@'%'` granted
-**2026-08-10**, with the applied sequence and verification queries in
-`docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` § 2 as precedent. There is
-deliberately **no `DROP`** — so get the DDL right the first time. SAM has no
-migrations (Alembic covers only `system_status`): the table is created by hand
-and the ORM model written to match.
+Follow `src/sam/integration/awards/` (the repo's outbound-client template —
+same transport semantics, cache idiom, and test patterns), minus its
+multi-provider registry (there is exactly one XRAS API; a registry would be
+ceremony). Modules: `base.py` (exceptions), `config.py`, `client.py`,
+`people.py` (cached wrappers), `cache.py`.
 
-**Faster option:** ship the card **read-only** first — the worklist derives with
-*zero* schema change — and land the notes table as an immediate follow-up. That
-takes DDL off the critical path without changing any query or classifier work.
+```python
+class XrasApiClient:
+    def __init__(self, *, api_key, base_url, allocations_process,
+                 api_user='arcguest', timeout=10, max_retries=3): ...
+    @classmethod
+    def from_env(cls, env=None): ...      # raises XrasApiNotConfigured
 
-### 7.8 The dashboard
+    def get_person(self, username) -> Optional[dict]
+    def get_resources(self) -> Optional[list]
+    def get_request_by_number(self, request_number) -> Optional[list]
+    def iter_requests(self, *, status='Approved', page_size=50,
+                      max_pages=None) -> Iterator[dict]
+    def search_people(self, q) -> Optional[list]
+```
 
-A card beside the existing XRAS surfaces in
-`src/webapp/dashboards/allocations/blueprint.py` (which already serves `/xras`,
-`/xras_fragment`, `/xras_pending_fragment`), with templates under
-`src/webapp/templates/dashboards/allocations/`.
+- **Transport semantics copied from `AwardHttpClient` verbatim**: one
+  persistent `requests.Session`; explicit `timeout=` (10 s — this can run
+  inside an htmx round-trip); 404 → `None`; other 4xx → raise immediately (a
+  client error is deterministic, never retried); 5xx → warn + `2**attempt`
+  backoff; non-JSON or exhausted retries → `XrasSourceUnavailable`. The
+  three-outcome model (**found / not-found / unreachable**) is preserved all
+  the way to CLI exit codes, as `AwardSourceUnavailable` does.
+- `XrasApiNotConfigured(XrasSourceUnavailable)` — an unconfigured client
+  degrades identically to an unreachable one at every call site.
+- **GET-only, structural** (§ 4.7): `_get` is the only transport primitive.
+- Headers: `XA-API-KEY` / `XA-ALLOCATIONS-PROCESS` / `XA-CONTEXT: report`
+  (hardcoded, § 2.2) / `XA-USER` (static, from config). Every call logged at
+  INFO. The `{message, result}` envelope unwrapped centrally.
+- **Config** via `os.getenv`, read per call, never at import: `XRAS_API_KEY`,
+  `XRAS_API_BASE`, `XRAS_ALLOCATIONS_PROCESS`, `XRAS_API_USER`, and the master
+  lever **`XRAS_OUTGOING_ENABLED` (default off, fail-closed)** in the style of
+  `XRAS_ACTIONS_CAPTURE_ONLY`. Two layers: `xras_api_configured()` is the
+  cheap predicate callers branch on; `from_env()` raising is the backstop.
+- **`cache.py`** — `BucketedTTLCache('xras_api', 'xras_api', ...)` with
+  buckets `xras_people` (TTL 4 h — `isReconciled` is a closure signal and must
+  not go stale) and `xras_resources` (TTL 1 d — a 13-row catalog). Registered
+  by adding the module to `_BUCKETED_CACHE_MODULES`
+  (`src/webapp/caching/__init__.py:48-53`) — that one line buys
+  `sam-admin cache --refresh --category`, the Admin card row, `stats()` and
+  `clear()`. Plus the hand-maintained `click.Choice` at
+  `src/cli/cmds/admin.py:590-591`. Cache successes *and* definite negatives;
+  never cache an `XrasSourceUnavailable` (the raise propagates before the
+  store). Bucket names are global Redis prefixes — keep the `xras_` prefix.
+- No Click / Flask / rich / kubernetes imports anywhere under `src/sam/` or
+  `src/scheduling/` (AST-gated by existing tests).
 
-Columns: username · why (the five classes of § 7.3) · person detail from
-`/v1/people` · which request / projcode and action needs them · XRAS
-`isReconciled` · notes.
+### 7.2 The worklist query — `src/sam/queries/xras_accounts.py`
 
-Follow the house rules in `CLAUDE.md`: **§9** for the form schema
-(`sam.schemas.forms`) and the smallest handler tier that fits, **§8** for the
-access decorator on any project-scoped route, **§10** for any active-only
-toggle (`read_active_only`), and `sam.fmt` filters for all formatting.
+**Not exported from `sam/queries/__init__.py`** (that file imports its
+submodules eagerly; the unexported precedent is `expiration_notices` /
+`xras_notices`).
 
-### 7.9 Two cheap wins worth folding in
+```python
+WORKLIST_STATUSES = ('received', 'failed', 'manual')
+PLACEHOLDER_USERNAME_RE = re.compile(r'^\S+-user-\S+$')
 
-**(a) Make `--validate-mapping` two-sided.** `audit_resource_mapping`
-(`src/sam/queries/xras_actions.py:652`, body at :678-713) reads two local tables and nothing
-else; its own docstring concedes it has no list of the keys XRAS will actually
-send. So the failure that genuinely breaks an award — XRAS sends a
-`resourceRepositoryKey` SAM has no row for — is **invisible** to the command and
-surfaces only at runtime as `No resource found in SAM corresponding to key %s`
-(`src/sam/xras/errors.py:201`, raised from `src/sam/xras/handlers/_fields.py:148`).
-`GET /v1/resources` **is** that missing list. One global GET closes the gap.
+@dataclass(frozen=True)
+class ActionRef:            # provenance — feed-neutral
+    action_log_id: Optional[int]      # None for a Feed-B record
+    request_number, action_type, status, received_time
+    would_succeed: Optional[bool]     # validate_only verdict; None = not run
+    reject_messages: Tuple[str, ...]  # verbatim, display-only — NEVER parsed
 
-**(b) `opportunityId` → allocation type.** SAM derives allocation type with a
-~676-line, 11-strategy chain (`src/sam/xras/extractors.py`). Exactly one arm is
-a keyed lookup; the rest are string matching on operator-authored free text
-(a regex on `requestTitle` for `CSL`, case-sensitive `contains` of
-`'no NSF award'` / `'unsponsored'`, literal `startswith` prefixes). Only 5 of
-the 11 strategies are exercised by all 41 production payloads.
+@dataclass(frozen=True)
+class RosterRecord:         # one action's roster, already normalized
+    ref: ActionRef
+    usernames: Tuple[str, ...]
+    roles_by_username: Mapping[str, Tuple[str, ...]]   # 'PI'/'Allocation Manager'/'User'
+    account_flag: Mapping[str, bool]                   # isAccountToBeCreated — hint only
+    person_by_username: Mapping[str, dict]             # inline person detail (Feed B)
 
-Meanwhile **`opportunityId` is already on the inbound wire in 41/41 fixtures**
-(declared at `src/sam/schemas/forms/xras.py:381`) and
-`grep -rn opportunityId src tests --include=*.py` returns **one** hit — that
-declaration. Nothing reads it.
+def records_from_action_log(session, *, statuses=WORKLIST_STATUSES,
+                            since=None, until=None) -> List[RosterRecord]   # Feed A
+def records_from_report_requests(payloads) -> List[RosterRecord]            # Feed B
+def classify_accounts(session, records) -> List[dict]                       # the core
+def get_account_worklist(session, *, statuses=..., since=None, until=None)  # A ∘ classify
+def enrich_worklist(rows, *, person_lookup=None, max_lookups=25) -> dict
+```
 
-The outgoing API closes the loop because `/v1/opportunities/:id` and
-`/list/:ids` **resolve historic and `Terminating` opportunities**, not just
-currently-open ones — verified for every opportunityId in the fixture corpus.
-That defeats the objection that would otherwise sink a static table: the `Large`
-window mints a **new opportunityId every semester**, so a hardcoded map rots
-twice a year, but an unknown id can simply be fetched and cached.
+- **Feed A** parses `raw_payload` with `json.loads` +
+  `XrasActionSchema().load()` (`sam.schemas.forms` — the same path the webapp's
+  `_parse_action` takes, with no webapp import), then extracts the roster with
+  the structured helpers in `src/sam/xras/roster.py` (`roster_usernames`,
+  `role_candidates`, `normalize_username`) — **never by parsing the
+  byte-pinned error strings in `errors.py`**, which are a wire contract, not
+  an interface. For actions in `WORKLIST_STATUSES` it additionally runs
+  `dispatch_action(session, action, validate_only=True)`
+  (`src/sam/xras/dispatch.py`; the validate path structurally cannot write —
+  `management_transaction` only opens in `handlers/base.py` after the seam),
+  catching `XrasActionRejected` to fill `would_succeed` / `reject_messages`.
+  The verdict is *provenance*, not the classifier — it also catches non-account
+  failures (mnemonic, resource key), which the card shows as "action would
+  fail for other reasons".
+- **Feed B** maps the outgoing wire shape — `roles[].person.username` +
+  `roles[].roles[].role` — and carries the inline person dict, so Feed-B rows
+  never need a `/v1/people` call.
+- **Classification is a current-state check** against `users`: no row →
+  `absent` (remedy: create); row failing `User.is_active` → `inactive`
+  (remedy: reactivate); active rows are dropped. It never keys off the
+  action's `status` — regime-proof across the capture-only → live-dispatch
+  transition (§ 1). The placeholder flag comes from the username shape.
+- **Row shape** (username-keyed, grouped across all actions naming the
+  username): `username, classification, placeholder, roles (PI→AM→User
+  union), is_account_to_be_created (hint only), actions (newest first),
+  latest_action_log_id, first_seen, last_seen`, and — post-enrichment —
+  `person` (PII subset) + `is_reconciled`. `latest_action_log_id` is
+  deliberately the future notes-table FK target (§ 7.6).
+- **Enrichment is separate and injected** (`person_lookup` defaults to the
+  cached `xras_api.people.get_person`): the query layer stays fully
+  offline-capable; one `XrasSourceUnavailable` marks the batch
+  `unavailable=True` and leaves `person=None` rather than raising, so the card
+  degrades to counts/usernames instead of 500ing. `max_lookups` bounds a
+  cold-cache render.
 
-Design constraints for this one:
+### 7.3 The dashboard card — read-only this PR
 
-- **Key the map on `opportunityId`, not on the wire `allocationType` string.**
-  XRAS's vocabulary (`Small`, `Large`, `Educational`, `Exploratory`,
-  `Data Analysis`, `NCAR External Projects`) is a *different* vocabulary from
-  SAM's `allocation_type` table, and it does not disambiguate — two different
-  opportunities both report `Small`, while `Exploratory` must land on SAM's
-  `Small (No NSF award)`.
-- **Keep the existing two-column `(panel, allocation_type)` join**
-  (`extractors.py:346-350`): `allocation_type.allocation_type` is not unique
-  (`Small` exists under two panels, `Education` under two more).
-- **Leave the 11-strategy ladder as the fallback** for an unresolvable id.
+A fragment beside the existing XRAS surfaces in
+`src/webapp/dashboards/allocations/blueprint.py` (which already serves
+`/xras`, `/xras_fragment`, `/xras_pending_fragment`), template under
+`templates/dashboards/allocations/partials/`.
+
+- One route `/xras_accounts_fragment`: `@login_required` +
+  `@require_permission(Permission.VIEW_XRAS)`, embedded in `xras.html` with a
+  lazy `hx-get`.
+- **PII is gated route-level**, following `xras_pending_fragment`
+  (`blueprint.py:1539-1551`) and the Notifications precedent (counts at one
+  level, rows naming people higher): person columns (name, email,
+  organization, academicStatus, residenceCountry) are assembled **only** when
+  the viewer holds `MANAGE_XRAS`; a `VIEW_XRAS` response carries username,
+  classification, placeholder badge, roles, naming actions, the
+  `is_reconciled` boolean, and counts — never the person dict.
+- **The unconfigured state is first-class** (it is what staging shows): the
+  Feed-A worklist renders fully without the API; a muted note marks person
+  detail and reconciliation as unavailable. The **empty state is designed,
+  not broken** — production is 0 rows until ACCESS repoints.
+- Columns: username · why (absent/inactive + placeholder badge) · roles ·
+  which request/projcode and action needs them · `isReconciled` · person
+  detail (permission-gated). Classification facet chips with self-exclusion
+  (the house pattern). `sam.fmt` filters for all formatting. Route-map parity
+  snapshot regenerated in the same commit as the route.
+- No dead UI: notes and dismissal ship with the table (§ 7.6), not before.
+
+### 7.4 The `xras_sweep` scheduled task — enumerate-and-diff, shipped disabled
+
+`src/scheduling/tasks/xras_sweep.py`, `Daily(hour=3, minute=30,
+tz='America/Denver')`, `needs=('sam',)`, `expected_runtime=timedelta(minutes=20)`
+(lease `3 × 20 min = 3600 s` > the CronJob's `activeDeadlineSeconds: 3000` —
+the drift test pattern from `test_task_xras_notices.py` applies). Template:
+`src/scheduling/tasks/xras_notices.py` — deferred `sam.*` imports, pure env
+readers, `to_local_naive(ctx.occurrence, ...)`.
+
+Per run (persists nothing but `TaskResult.detail` — there is no table yet):
+
+1. `xras_api_configured()` false → a visible **skip** detail, not a raise
+   (the ledger row is the record; this is the shipped state).
+2. **Enumerate**: `iter_requests(status='Approved', page_size=200,
+   max_pages=...)` — page cap from `SAM_TASKS_XRAS_SWEEP_MAX_PAGES` (default
+   25 → 5,000 requests; junk/zero refused, per the `xras_email_max` idiom),
+   with a client-side recency filter on action dates to bound work.
+3. **Dropped/pending-push detection**: diff `requestNumber` against
+   `project.projcode` → `pending_push` count + capped list in detail.
+4. **Classify**: `records_from_report_requests` → `classify_accounts` →
+   absent/inactive/placeholder counts + capped username lists in detail.
+5. **Warm the closure signal**: fresh `/v1/people` fetch for each current
+   Feed-A worklist username → `closures` count (and a warm cache for the
+   card's morning renders).
+
+`detail` always carries: pages, requests_seen, pending_push, worklist counts,
+placeholders, people_refreshed, closures, budget_exhausted,
+unavailable_errors — "0 findings, succeeded" must be distinguishable from "did
+not look".
+
+**What was deliberately dropped from an earlier draft of this design**: the
+per-identity `/v1/requests` polling sweep (measured at 0.84 s × 1,518 seed
+identities nightly) and its transitive roster crawl. The reports enumeration
+(§ 3.2) reaches strictly more people — including wholly-new solo PIs the crawl
+could never connect to — in a handful of paginated calls. Do not resurrect the
+crawl.
+
+⚠️ **Ship-disabled mechanics** (fail-open trap): the task's name goes into
+`SAM_TASKS_DISABLED` in `helm/values.yaml` **in the same commit** that
+registers it, plus the values.yaml-grep test (`test_it_ships_switched_off`
+pattern), the `docs/README-k8s.md` mentions (3 places), and the module added
+to `tests/unit/test_task_ledger.py`'s subprocess import matrix.
+
+### 7.5 CLI — `sam-admin xras` grows three things
+
+Extending the existing mode-dispatch in `src/cli/xras/commands.py`
+(builders/display split per the awards pattern; exit codes 0/1/2/130):
+
+- `--accounts [--enrich]` — the worklist as a table / JSON envelope
+  (`kind: xras_accounts`). `--enrich` requires configuration (else exit 2).
+  An empty worklist exits 0 — a successful report, not a miss.
+- `--person USERNAME` — direct `/v1/people` probe: found → 0, 404 → 1,
+  unavailable/unconfigured → 2 (`kind: xras_person`).
+- `--validate-mapping` becomes two-sided automatically (§ 8.1).
+
+### 7.6 Schema — none now, one table next
+
+**The worklist itself needs no storage.** It derives from
+`xras_action_log.raw_payload`, `users`, the pre-flight verdict, and
+`/v1/people` (cached). This follows `XrasActivationEvent`'s own rule: *state
+is DERIVED, never stored*.
+
+**Operator notes and dismissals do need storage, and `XrasActivationEvent`
+cannot carry them** — its `project_id` is NOT NULL and project-scoped, while
+the account worklist is **username-keyed** and for a New request *the project
+does not exist yet*. The follow-up PR adds `xras_account_event`, mirroring the
+existing table deliberately: append-only; `username varchar(35)` in place of
+`project_id`; `event_type` from a small tuple; `comment`; `created_by
+varchar(35)`; `xras_action_log_id` as provenance only. Derive current state by
+timestamp comparison against the latest action naming that username — **copy
+the current action-keyed supersedes idiom in
+`src/sam/queries/xras_activation.py` (`_activation_state`, the `supersedes`
+comparison), not the older project-keyed rule quoted in the
+`XrasActivationEvent` docstring** (the card was re-keyed since that was
+written).
+
+DDL context: `docs/plans/implemented/DBA_PRIVILEGE_REQUEST.md` records the
+2026-08-10 `CREATE/ALTER/INDEX/REFERENCES` grant; the applied-DDL precedent is
+`docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` § 2. There is deliberately no
+`DROP` — get the DDL right the first time. SAM has no migrations (Alembic
+covers only `system_status`): table by hand, ORM to match.
 
 ---
 
-## 8. Phase 2 — if a broader credential is granted
+## 8. The cheap win riding along (and the one deferred)
 
-**Frame the ask as a capability, not a flag.** The obvious request — "provision
-our key for `XA-CONTEXT: admin`" — is probably *insufficient on its own*,
-because genuine XRAS administrators get no extra breadth through this API
-(§ 4.5). The admin web app's queue view comes from somewhere else.
+### 8.1 Two-sided `--validate-mapping` — in this PR
 
-Better: **"a credential that lets SAM enumerate NCAR's Approved requests — the
-same set the Recent Submissions queue shows."** Let XRAS choose the mechanism
-(an admin-context key, a reporting role, a service identity, or a webhook).
+`audit_resource_mapping` (`src/sam/queries/xras_actions.py:652`, body
+:678-713) reads two local tables and nothing else; its own docstring concedes
+it has no list of the keys XRAS will actually send. So the failure that
+genuinely breaks an award — XRAS sends a `resourceRepositoryKey` SAM has no
+row for — is invisible to the command and surfaces only at runtime as
+`No resource found in SAM corresponding to key %s` (`errors.py:201`, raised
+from `handlers/_fields.py:148`). `GET /v1/resources` is that missing list.
 
-What it would add, in value order:
+Design: `audit_resource_mapping(session, *, xras_keys=None)` — an optional
+injected iterable, so the function keeps zero network knowledge; new report
+keys `xras_only_keys` and `live_checked`. The CLI auto-detects: it fetches the
+live list iff `xras_api_configured()`, and degrades to the one-sided report
+(byte-compatible with today) when unconfigured or unavailable. Exit 1 when
+`dangling_keys` **or** `xras_only_keys` is non-empty. Self-verifying: must
+report 13/13 against today's catalog (§ 6).
 
-1. **Mirror the whole Approved queue.** The worklist stops depending on the push
-   *or* on SAM already knowing the person — closing the third population
-   (brand-new placeholder identities) **ahead of** the push rather than at it.
-2. **Dropped-push detection.** Today a push that never arrives is invisible
-   until somebody notices a missing project. With enumeration, XRAS's Approved
-   set diffs against `projcode` wholesale (§ 6).
-3. **An unreconciled-people report** — the admin app has one; there is no API
-   equivalent.
-4. **Review / panel state** — `states[]` exposes "Conflicts Verified" and
-   "Reviewers Assigned" per action, but the review queue itself is admin-only.
+### 8.2 `opportunityId` → allocation type — DEFERRED
 
-**Phase 1 is not throwaway.** Phase 2 changes only the **feed**. The classifier,
-the five error classes, the person enrichment, the closure signal, the notes
-table and the card are all unchanged. **Design the worklist query to accept a
-set of `(action, roster)` records from either source** — that one decision is
-what makes Phase 2 additive.
+Assess **after the first triage week under live dispatch**. The case is
+recorded so it isn't lost: SAM derives allocation type with an 11-strategy
+free-text ladder (`src/sam/xras/extractors.py`) of which only 5 strategies are
+exercised by all 41 production payloads; `opportunityId` is on the inbound
+wire in 41/41 fixtures and read by nothing; `/v1/opportunities/:id` resolves
+historic and Terminating opportunities, so an unknown id can be fetched and
+cached rather than hardcoded. Constraints when built: key on `opportunityId`
+(never the wire `allocationType` string — different vocabulary from SAM's, and
+non-unique); keep the two-column `(panel, allocation_type)` join; keep the
+ladder as fallback. Note the strategy chain is pure/sessionless by design — an
+id lookup needing cache or DB belongs in `resolve_allocation_type` or a
+session-taking pre-step, not inside a strategy.
 
 ---
 
-## 9. Verification
+## 9. What no longer needs asking
 
-- **Unit tests with recorded fixtures; no live calls in CI.** Mirror
-  `tests/unit/test_award_*` and the `AwardSourceUnavailable` three-outcome model.
-- **Pre-flight correctness**: the worklist must reproduce the five `errors.py`
-  strings against `tests/fixtures/xras/actions/`, with the
-  `placeholder34-user-00034` entry classified *absent* and a known-inactive
-  username classified *inactive*.
-- **Predicate regression**: a case where `isAccountToBeCreated` is true but the
-  SAM user exists and is active must **not** appear on the worklist. This is the
-  live counterexample of § 5 and the whole reason that flag is not the predicate.
-- **§ 7.9(a) self-verifies**: it must report 13/13 against today's catalog.
-- **Live opt-in probe script** under `scripts/xras/`, gated on `XRAS_API_KEY`
-  being set, that **skips** rather than fails when absent — mirroring
-  `utils/parity/`'s `_resolve_xras_credentials()` behaviour.
-- **Route-map parity**: regen with `ROUTE_MAP_REGEN=1` and commit the snapshot
-  diff in the same change as the new dashboard routes.
-- **Helm**: assert the new task's name appears in `SAM_TASKS_DISABLED`
-  **per-manifest** (`-s templates/cronjob-tasks.yaml`) — a whole-render grep
+An earlier draft of this document had a "Phase 2" that asked XRAS for an
+enumeration credential. **That ask is moot** — `XA-CONTEXT: report` on the
+existing key already enumerates the process (§ 3.2). Of the four things Phase
+2 was for: mirroring the Approved queue ✅ (`reports/requests`), dropped-push
+detection ✅ (§ 7.4), an unreconciled-people view ✅ (inline in every roster,
+plus `search/people`), review/panel state — `states[]` is visible per action;
+the review queue itself remains admin-only and remains not-needed.
+
+The only remaining external conversations with XRAS are operational, § 13.
+
+---
+
+## 10. Verification
+
+- **Unit tests with canned fixtures; no live calls in CI.** Mirror
+  `tests/unit/test_award_providers.py`: payloads as module dict constants with
+  invented identities, transport tests via a mocked `session.request` +
+  no-op sleep, the three-outcome model, an "outage is never memoised" case,
+  and the cache-reset autouse fixture (`reset_for_tests()` +
+  `delenv CACHE_REDIS_URL`).
+- **Pre-flight correctness**: the worklist reproduces the expected
+  classifications against `tests/fixtures/xras/actions/` — the
+  `placeholder34-user-00034` entry classified **absent** (and
+  placeholder-flagged), a factory-made inactive user classified **inactive**.
+- **Predicate regression**: `isAccountToBeCreated: true` on an existing,
+  active SAM user must **not** appear on the worklist (the § 5 trap).
+- **Feed-agnostic proof**: a canned `reports/requests` payload through
+  `records_from_report_requests` reaches the same classifier and classifies
+  identically.
+- **Two-sided mapping audit** self-verifies 13/13 with injected keys; a
+  synthetic extra key is reported and flips the exit code.
+- **Task tests**: the `values.yaml` ships-switched-off grep, the
+  lease-vs-`activeDeadlineSeconds` drift test, registration, page-cap reader
+  matrix, skip-when-unconfigured, enumerate+diff+classify with a stub client.
+- **Route-map parity**: `ROUTE_MAP_REGEN=1`, snapshot committed in the same
+  commit as the new route.
+- **Helm**: per-manifest assertions (`-s templates/cronjob-tasks.yaml`) for
+  the new `tasks.env` keys and the secret injection — a whole-render grep
   passes on the Deployment's copy and proves nothing.
+- **Live opt-in probe script** `scripts/xras/probe_outgoing.py`, gated on
+  `XRAS_API_KEY` — **skips** (exit 0 + message) when absent, mirroring
+  `utils/parity/`'s `_resolve_xras_credentials()` behavior.
 - **End-to-end**: `docker compose up webdev --watch`, seed via
   `scripts/xras/seed_dev_actions.py`, confirm the card lists a seeded
-  placeholder identity and that adding a note writes an event row.
+  placeholder identity as *absent*, and that the person columns appear only
+  for a `MANAGE_XRAS` viewer.
 
 ### The Tier-III test bed — `~/xras_payloads_raw/`
 
 **Only unscrubbed payloads can validate the core predicate, and this is
 structural.** The anonymizer rewrites every username to `user_<hex>` (or
-`placeholder<NN>-user-<NNNNN>`), so for the in-tree fixtures "no `users` row" is
-trivially true for **all** of them and proves nothing. Distinguishing a
+`placeholder<NN>-user-<NNNNN>`), so for the in-tree fixtures "no `users` row"
+is trivially true for **all** of them and proves nothing. Distinguishing a
 genuinely-unknown user from an artifact of scrubbing requires real usernames
 posted against the cloned development database.
 
-That corpus already exists outside the tree, deliberately uncommitted:
-**41 payloads** (8 top-level plus 33 under `incoming_2026-08-11/`), spanning
-`New` ×13, `Extension` ×7, `Supplement` ×7, `Date Adjustment` ×4,
-`Adjustment` ×2 — and it carries the cases that matter: **6 role entries with
-`isAccountToBeCreated=true` and ~4 distinct ARC placeholder identities**.
-Locally, `xras_action_log` and `xras_activation_event` both exist at 0 rows, so
-the path is ready.
+That corpus exists outside the tree, deliberately uncommitted: **41 payloads**
+(8 top-level plus 33 under `incoming_2026-08-11/`), spanning `New` ×13,
+`Extension` ×7, `Supplement` ×7, `Date Adjustment` ×4, `Adjustment` ×2 — with
+6 role entries carrying `isAccountToBeCreated=true` and ~4 distinct ARC
+placeholder identities.
 
 Procedure: POST a payload naming an unknown user to the local
 `/api/xras/v1/actions` (`scripts/xras/seed_dev_actions.py` does the posting,
-reading `SAM_XRAS_USER` / `SAM_XRAS_PASS`), then confirm the pre-flight
-classifies that username **absent** rather than **inactive**, that `/v1/people`
-enriches it, and that an operator note writes an event row.
+reading `SAM_XRAS_USER` / `SAM_XRAS_PASS`), then confirm the worklist
+classifies that username **absent** rather than **inactive**, and that
+`/v1/people` enriches it.
 
-⚠️ **These payloads are unscrubbed and name real people.** They stay outside the
-tree. Nothing derived from them — usernames, emails, or counts tied to
-identities — may enter a commit, a test fixture, or a docstring. Any regression
-test that must *persist* is built from the scrubbed corpus; the raw run is a
-one-time manual verification recorded only as pass/fail.
+⚠️ **These payloads are unscrubbed and name real people.** They stay outside
+the tree. Nothing derived from them — usernames, emails, or counts tied to
+identities — may enter a commit, a test fixture, or a docstring. Any
+regression test that must *persist* is built from the scrubbed corpus; the raw
+run is a one-time manual verification recorded only as pass/fail.
 
 ---
 
-## 10. Safety and secrets
+## 11. Safety and secrets
 
-- **Read-only, GET-only**, enforced in the client (§ 7.6), not by convention.
-- **`XA-USER` impersonation is how per-user reads work.** Every polled username
-  must originate in SAM or in a received payload, must be logged, and the whole
-  feature sits behind a fail-closed flag in the style of the existing
-  `XRAS_ACTIONS_CAPTURE_ONLY` / `XRAS_ACTIONS_ENABLED` levers.
-- **The API key must not enter this repo.** It currently sits in cleartext in a
-  shell script in the operator's home directory. Move it to the `SAM_keys`
-  credential store and a k8s secret. Note it is a *submit*-context key — the same
-  credential that can `POST /v1/resources/update`, which is precisely why the
-  client's GET-only allowlist matters.
-- **Do not confuse it with `SAM_XRAS_USER` / `SAM_XRAS_PASS`**, which are
-  credentials for calling *SAM* (`.env.example:107-108`) and are a production
-  **write** credential in the inbound direction.
+- **Read-only, GET-only**, enforced structurally in the client (§ 4.7, § 7.1)
+  — not by convention. The same key can create requests, merge people, and
+  modify roles.
+- **Step 0 — the key moves into OpenBao before anything deploys.** Follow the
+  `jupyterhubCredentials` token pattern exactly: store at `csg/xras-api-key`,
+  property `token`, readable by the `csg-ro` SecretStore; chart side is a
+  `webapp.xrasApiCredentials` block (same fields as `jupyterhubCredentials`,
+  `helm/values.yaml:378-383`) rendering an ExternalSecret and injecting
+  `XRAS_API_KEY` via `secretKeyRef` into **both** `deployment.yaml` and
+  `cronjob-tasks.yaml` (they share no env anchor — this is the same
+  cross-referencing trap `NOTIFY_*` hit). After cutover, retire the cleartext
+  copies in the operator's home directory and on `crlogin`; a key **rotation**
+  request to XRAS is worth raising, since the key has lived in cleartext.
+- **The key never enters this repo** — not in `.env` files with values, not in
+  fixtures, not in test constants, not in probe output pasted into docs.
+- **Fail-closed lever**: `XRAS_OUTGOING_ENABLED` defaults off everywhere;
+  `helm/values.yaml` pins it `"0"` visibly in both env maps. With the lever
+  off, the card renders its unconfigured state, the sweep records a skip, and
+  the CLI degrades — nothing raises for lack of a key.
+- **Do not confuse `XRAS_API_KEY` with `SAM_XRAS_USER` / `SAM_XRAS_PASS`** —
+  the latter are credentials for calling *SAM* (`.env.example:107-108`), a
+  production **write** credential in the inbound direction.
 - **The worklist names real people, emails, organizations and
-  `residenceCountry`.** Gate the card on an existing permission — follow the
-  Notifications pattern, where counts are visible at one level and rows naming
-  real addresses require `SYSTEM_ADMIN`.
+  `residenceCountry`.** PII is gated route-level on `MANAGE_XRAS` (§ 7.3);
+  a `VIEW_XRAS` response never carries it.
 - **The local dev database may hold unobfuscated production data.** Nothing
   derived from a local query goes into a commit.
 
 ---
 
-## 11. Open questions for the implementation session
+## 12. Implementation plan — one PR vs `staging`
 
-1. **Will XRAS grant an enumeration credential?** (§ 8.) Ask early — it does not
-   block Phase 1 but it determines how much of Phase 2 is worth designing now.
-2. **Are the two flagship compute resources really production-ended?** The API
-   reports a `productionEndDate` months in the past for both (§ 6). Confirm with
-   XRAS whether that is stale data or a telegraphed retirement.
-3. **What seed tier and crawl depth?** § 7.4 gives measured costs; the right
-   default is probably nightly over leads+admins with a shallow crawl, but that
-   should be tuned once real hit rates are known post-cutover.
-4. **Does the co-PI role type ever appear?** Still zero across all fixtures and
-   all live sampling. The outgoing API is the one place that could settle the
-   spelling definitively, since it carries a numeric `roleTypeId`.
-5. **Read-only card first, or wait for the notes table?** (§ 7.7.)
+**Step 0 (operator, pre-deploy prerequisite):** key into OpenBao per § 11.
+The PR does not block on it, but the chart's `xrasApiCredentials.enabled: true`
+must not reach the cirrus deploy before the secret exists.
+
+Commit series, each self-testing:
+
+| # | Commit | Contents |
+|---|---|---|
+| 1 | `sam/integration/xras_api: GET-only client for the XRAS Allocations API` | § 7.1 package + tests + `probe_outgoing.py`; `_BUCKETED_CACHE_MODULES` + cache-category `click.Choice` registrations |
+| 2 | `sam/queries/xras_accounts: derive the account-creation worklist` | § 7.2 query module + both feed builders + classifier + enrichment, tests incl. the predicate regression |
+| 3 | `allocations dashboard: account-creation worklist card (read-only)` | § 7.3 route + template + PII gating tests + route-map snapshot regen |
+| 4 | `sam-admin xras: accounts worklist, person lookup, two-sided --validate-mapping` | § 7.5 CLI modes + § 8.1 audit change + tests |
+| 5 | `scheduling: xras_sweep enumerate-and-diff nightly (ships disabled)` | § 7.4 task + registration + `SAM_TASKS_DISABLED` + README-k8s + tests (same commit — fail-open trap) |
+| 6 | `env/helm: XRAS outgoing API configuration, fail-closed, key via ExternalSecret` | `.env.example` block (JUPYTERHUB_* style); values.yaml env in both maps; `xrasApiCredentials` + ExternalSecret + secretKeyRef in both manifests; per-manifest render assertions |
+| 7 | `docs: file XRAS outgoing under docs/xras/outgoing/` | `git mv` this document to `docs/xras/outgoing/`, status → implemented-as-built; co-PI annotation comments (`sam/schemas/forms/xras.py`, `sam/xras/roster.py`, `XRAS_REIMPLEMENTATION.md` open-risks); `docs/xras/README.md` index; deferred register (notes table, § 8.2, sweep enablement, key rotation) |
+
+PR notes: `--base staging`; the card renders legitimately **empty in
+production until ACCESS repoints** — say so in the description; no skip-ci
+tokens anywhere in title/body/commits.
+
+Verification commands (the operator runs pytest):
+
+```
+pytest tests/unit/test_xras_api_client.py tests/unit/test_xras_accounts_query.py \
+       tests/unit/test_xras_accounts_card.py tests/unit/test_task_xras_sweep.py
+pytest tests/unit/test_task_ledger.py tests/unit/test_admin_tasks_cli.py
+ROUTE_MAP_REGEN=1 pytest tests/unit/test_route_map_parity.py
+pytest tests/unit
+bash helm/tests/test-cronjob-render.sh
+helm template samuel helm -f helm/values.yaml -s templates/cronjob-tasks.yaml | grep XRAS
+helm template samuel helm -f helm/values.yaml -s templates/deployment.yaml   | grep XRAS
+helm template samuel helm -f helm/values.yaml -s templates/external_secret.yaml
+XRAS_OUTGOING_ENABLED=1 XRAS_API_KEY=… python scripts/xras/probe_outgoing.py
+```
 
 ---
 
-## 12. Reference — related documents
+## 13. Open questions
+
+1. **Are the two flagship compute resources really production-ended?** The API
+   reports a `productionEndDate` months in the past for both (§ 6). Confirm
+   with XRAS whether that is stale data or a telegraphed retirement.
+2. **Key rotation** (§ 11) — worth requesting once OpenBao holds it.
+3. **Sweep tuning** — page cap and recency window are defaults to revisit with
+   real post-cutover volumes; the enumeration is cheap enough that this is a
+   dial, not a design question.
+4. **Does `search/people` match placeholder identities?** Untested,
+   nice-to-know only (§ 4.4).
+5. ~~Co-PI role type~~ — settled (§ 3.4). ~~Enumeration credential~~ — moot
+   (§ 9). ~~Read-only card vs notes table~~ — decided (§ 1.1).
+
+---
+
+## 14. Reference — related documents
 
 | Document | Why it matters here |
 |---|---|
-| `docs/xras/README.md` | Index; explains the `incoming/` vs `incoming/implemented/` lifecycle convention this document's eventual sibling would follow |
-| `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` | The inbound wire contract, action semantics, the allocation-type extractor's design, and the open-risks list (incl. the co-PI question) |
-| `docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` | § 2 has the applied DDL sequence and verification queries — the precedent for § 7.7 |
-| `docs/plans/implemented/DBA_PRIVILEGE_REQUEST.md` | Records the 2026-08-10 DDL grant that makes a new table cheap |
-| `docs/xras/incoming/implemented/XRAS_SPRINT_B.md` | The operator surface, activation worklist and `sam-admin xras` — the closest existing analogue to the proposed card |
-| `src/sam/integration/awards/` | The outbound-client template to copy: client + cache + registry + base, with a CLI wrapper |
-| `src/webapp/api/xras/actions.py` | The inbound handler; `_record`/`_finish` and the audit-row width guards |
-| `src/sam/xras/dispatch.py` | `select_service()` and the `validate_only` seam Phase 1 is built on |
+| `docs/xras/README.md` | Index; the `incoming/` lifecycle convention this document's `outgoing/` destination mirrors |
+| `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` | The inbound wire contract, action semantics, the allocation-type extractor, and the open-risks list (co-PI now answerable) |
+| `docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` | § 2 has the applied DDL sequence — the precedent for the follow-up table (§ 7.6) |
+| `docs/plans/implemented/DBA_PRIVILEGE_REQUEST.md` | The 2026-08-10 DDL grant that makes the follow-up table cheap |
+| `docs/xras/incoming/implemented/XRAS_SPRINT_B.md` | The operator surface and activation worklist — the closest existing analogue to the proposed card |
+| `src/sam/integration/awards/` | The outbound-client template: client + cache, transport semantics, test patterns |
+| `src/sam/xras/dispatch.py` | `select_service()` and the `validate_only` seam Feed A is built on |
+| `src/sam/xras/roster.py` | The structured roster helpers the classifier uses instead of parsing error strings |
+| `src/sam/queries/xras_activation.py` | The action-keyed derived-state idiom the follow-up notes table will copy |
+| `src/scheduling/tasks/xras_notices.py` | The shipped-disabled task recipe `xras_sweep` follows |
