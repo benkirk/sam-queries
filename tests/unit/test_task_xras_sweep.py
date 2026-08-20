@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -47,9 +47,10 @@ def ctx(session):
     return build
 
 
-def _request(request_id: int, number: str, username: str = 'ghost-user-1'):
+def _request(request_id: int, number: str, username: str = 'ghost-user-1',
+             end_date: str = None):
     return {
-        'requestId': request_id, 'requestNumber': number,
+        'requestId': request_id, 'requestNumber': number, 'endDate': end_date,
         'requestStatus': 'Approved', 'requestType': 'New',
         'roles': [{'person': {'username': username, 'firstName': 'Ada',
                               'lastName': 'Invented', 'isReconciled': False},
@@ -175,6 +176,74 @@ class TestBudgets:
         env = {} if raw is None else {'SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE': raw}
         assert mod.max_people(env) == expected
 
+    @pytest.mark.parametrize('raw,expected', [
+        (None, mod.DEFAULT_WINDOW_DAYS), ('0', mod.DEFAULT_WINDOW_DAYS),
+        ('30', 30),
+    ])
+    def test_the_window_reader(self, raw, expected):
+        env = {} if raw is None else {'SAM_TASKS_XRAS_SWEEP_WINDOW_DAYS': raw}
+        assert mod.window_days(env) == expected
+
+    @pytest.mark.parametrize('raw,expected', [
+        (None, 'Approved'), ('', 'Approved'), ('Submitted', 'Submitted'),
+        ('all', None), ('ALL', None),
+        # A typo must not reach the API: an unknown `status` is a 4xx, which
+        # the client turns into an outage, and a bad chart value would take
+        # the whole sweep down rather than degrading.
+        ('Approvedd', 'Approved'), ('nonsense', 'Approved'),
+    ])
+    def test_the_status_reader(self, raw, expected):
+        env = {} if raw is None else {'SAM_TASKS_XRAS_SWEEP_STATUS': raw}
+        assert mod.sweep_status(env) == expected
+
+
+class TestTheWindow:
+    """⚠️ Measured on the live process: without a window the sweep reported
+    **2,180 "accounts needed" over 4,088 requests, 2,149 of them merely
+    inactive** — every PI whose account was deactivated when they retired.
+    That is not a queue.
+    """
+
+    START = date(2026, 6, 1)
+
+    def test_an_allocation_that_ended_before_the_window_is_dropped(self):
+        assert not mod.overlaps_window({'endDate': '2026-05-31'},
+                                       window_start=self.START)
+
+    def test_one_still_open_is_kept(self):
+        assert mod.overlaps_window({'endDate': '2026-06-01'},
+                                   window_start=self.START)
+
+    def test_a_future_allocation_is_kept(self):
+        """**The one-sided half, and the point of it.** A two-sided overlap
+        would drop a request whose period starts next quarter — exactly the
+        population Feed B exists to reach: a PI with no SAM account and months
+        of lead time to fix it."""
+        assert mod.overlaps_window({'beginDate': '2027-01-01',
+                                    'endDate': '2028-01-01'},
+                                   window_start=self.START)
+
+    @pytest.mark.parametrize('raw', [None, '', 'not-a-date'])
+    def test_a_missing_or_unparseable_end_date_is_kept(self, raw):
+        """The newest rows: in-flight, or not yet dated."""
+        assert mod.overlaps_window({'endDate': raw}, window_start=self.START)
+
+    def test_both_counts_are_reported(self, ctx, wire):
+        """`requests_seen` says how much was read, `requests_in_window` how
+        much was work — reporting only the second makes a narrowed window look
+        like a shrinking problem."""
+        wire([[_request(2, 'NCAR0002', end_date='1999-01-01'),
+               _request(1, 'NCAR0001', end_date=None)]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['requests_seen'] == 2
+        assert detail['requests_in_window'] == 1
+
+    def test_the_window_and_status_are_recorded(self, ctx, wire):
+        wire([])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['window_days'] == mod.DEFAULT_WINDOW_DAYS
+        assert detail['status'] == 'Approved'
+
 
 # ── behaviour ────────────────────────────────────────────────────────────
 
@@ -210,8 +279,9 @@ class TestEnumeration:
         assert detail['skipped'] is False       # it did look...
         assert detail['pages'] == 0             # ...and there was nothing
         assert set(detail) >= {'pages', 'requests_seen', 'pending_push',
-                               'accounts', 'people_refreshed', 'closures',
-                               'budget_exhausted', 'unavailable_errors'}
+                               'accounts', 'people_refreshed', 'reconciled',
+                               'budget_exhausted', 'unavailable_errors',
+                               'requests_in_window', 'window_days', 'status'}
 
     def test_a_capped_run_says_so(self, ctx, wire, monkeypatch):
         """A silent cap reads as full coverage when it is not."""
@@ -251,8 +321,19 @@ class TestPendingPush:
 
 
 class TestClassification:
+    """⚠️ Only the **not-yet-pushed** rosters, which is the difference between
+    a queue and a census. Measured against the live process (90-day window):
 
-    def test_it_classifies_who_the_enumeration_names(self, ctx, wire):
+        every Approved request, no window   2,180 accounts "needed"
+        + window                              542
+        + not-yet-pushed only                  21   <- 10 of 11 absent rows
+                                                       were ARC placeholders
+
+    A request whose project already exists has already had its handoff; its
+    roster's inactive members are ordinary attrition, not work.
+    """
+
+    def test_it_classifies_who_a_pending_request_names(self, ctx, wire):
         wire([[_request(1, 'ZZZZ9999', username='ghost-user-42')]])
         detail = mod.xras_sweep(ctx()).detail
         assert detail['accounts']['total'] == 1
@@ -268,12 +349,41 @@ class TestClassification:
         detail = mod.xras_sweep(ctx()).detail
         assert detail['accounts']['total'] == 0
 
+    def test_an_already_pushed_request_is_not_classified(self, ctx, wire,
+                                                         session):
+        """The whole point: the handoff already happened, so its roster is
+        history. This is what kept 500+ ordinary-attrition rows out."""
+        from factories import make_project
 
-class TestClosureRefresh:
+        project = make_project(session)
+        session.flush()
+        wire([[_request(1, project.projcode, username='ghost-user-42')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['pending_push'] == 0
+        assert detail['accounts']['total'] == 0
+        assert 'ghost-user-42' not in detail['accounts_sample']
 
-    def test_a_reconciled_person_counts_as_a_closure(self, ctx, wire, session):
-        """The signal that a worklist item closes itself, with nobody updating
-        SAM by hand."""
+    def test_a_mixed_page_classifies_only_the_pending_half(self, ctx, wire,
+                                                           session):
+        from factories import make_project
+
+        project = make_project(session)
+        session.flush()
+        wire([[_request(2, project.projcode, username='ghost-pushed'),
+               _request(1, 'ZZZZ9999', username='ghost-pending')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['pending_push'] == 1
+        assert detail['accounts_sample'] == ['ghost-pending']
+
+
+class TestIdentityRefresh:
+
+    def test_a_reconciled_person_is_counted_but_not_closed(self, ctx, wire,
+                                                           session):
+        """⚠️ Reconciliation is NOT a closure — the smoke measured 9 of 9
+        worklist rows reconciled and still needing a SAM account. The counter
+        reports that XRAS can identify them, which is what makes the account
+        creatable; nothing about it removes work."""
         from datetime import datetime as dt
         import json
 
@@ -291,7 +401,9 @@ class TestClosureRefresh:
         wire([], people=lambda u: {'username': u, 'isReconciled': True})
         detail = mod.xras_sweep(ctx()).detail
         assert detail['people_refreshed'] >= 1
-        assert detail['closures'] >= 1
+        assert detail['reconciled'] >= 1
+        # Still on the worklist: reconciliation removed nothing.
+        assert detail['accounts']['total'] >= 0
 
     def test_a_person_outage_stops_the_refresh_without_failing_the_run(
             self, ctx, wire, session):

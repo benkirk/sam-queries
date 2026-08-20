@@ -12,13 +12,18 @@ NCAR process, so this task reaches three things the card cannot:
 1. **People ahead of the push** — a brand-new PI on a solo New request,
    connected to nobody SAM knows, is visible here *before* the action arrives.
    That is the hardest population to prepare for and the one manual account
-   creation most needs lead time on.
+   creation most needs lead time on. Only the **not-yet-pushed** rosters are
+   classified: a request whose project already exists has had its handoff, so
+   its roster is history (see the note at step 3, with the measurements).
 2. **Dropped or pending pushes** — a set difference between the Approved
    requests' ``requestNumber`` and ``project.projcode``. Cheap, because both
    sides are already in hand.
-3. **Closure** — re-fetching ``/v1/people`` for everyone currently on the
-   worklist refreshes ``isReconciled``, which is how an item closes itself,
-   and leaves a warm cache for the morning's first card render.
+3. **Identity detail** — re-fetching ``/v1/people`` for everyone currently on
+   the worklist refreshes ``isReconciled`` and leaves a warm cache for the
+   morning's first card render. ⚠️ Reconciliation is **not** a closure: it
+   means XRAS has linked the username to a real identity, not that SAM has an
+   account. A row leaves the worklist when its ``users`` row exists and is
+   active, which classification already checks on every render — for free.
 
 ⚠️ **Ships switched off.** ``SAM_TASKS_DISABLED`` is *fail-open*: registering
 a task here puts it into production live on the next hourly wake unless its
@@ -43,11 +48,12 @@ Design: ``docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md``.
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
-from scheduling.schedules import Daily
+from scheduling.schedules import Daily, to_local_naive
 
 #: Overnight on purpose: nothing here is time-critical, the enumeration is the
 #: heaviest outbound call SAM makes, and a warm people-cache at 03:30 is still
@@ -67,7 +73,32 @@ DEFAULT_MAX_PAGES = 25
 #: process inside a handful of round trips.
 PAGE_SIZE = 200
 
-#: People to re-fetch per run for the closure signal. Each is one round trip,
+#: The sweep's window, in days back from the slot — the Feed-B analogue of the
+#: worklist card's 7D/30D/90D pills.
+#:
+#: ⚠️ **Without a window the sweep is meaningless, and the smoke measured it.**
+#: Unfiltered, the enumeration returns every Approved request the NCAR process
+#: has ever held — 4,088 of them — and classifying that whole corpus reported
+#: **2,180 "accounts needed", 2,149 of them merely inactive**. Those are not
+#: work: they are every PI and admin whose SAM account was deactivated when
+#: they retired, moved institution, or simply finished.
+#:
+#: **Which date, and why.** The card filters Feed A on ``received_time`` —
+#: when the action *arrived*. Feed B's honest analogue is the **period of
+#: performance**, not ``submitDate``: the question is who needs an account for
+#: a handoff, and a handoff only ever lands against an allocation that is
+#: live. A request whose allocation ended before the window opened cannot
+#: produce one.
+DEFAULT_WINDOW_DAYS = 90
+
+#: ⚠️ Requests to enumerate. ``Approved`` is the default because it is the
+#: only status that produces a handoff — but the full filter vocabulary is
+#: reachable (``Submitted``, ``Under Review``, ``Incomplete``, ``Rejected``),
+#: and ``all`` drops the filter entirely, so a sweep can surface the pipeline
+#: ahead of approval when someone wants to look.
+DEFAULT_STATUS = 'Approved'
+
+#: People to re-fetch per run for identity detail. Each is one round trip,
 #: and the cache means the card's own renders do not repeat them.
 DEFAULT_MAX_PEOPLE = 250
 
@@ -106,6 +137,59 @@ def max_people(env: Optional[dict] = None) -> int:
                          DEFAULT_MAX_PEOPLE)
 
 
+def window_days(env: Optional[dict] = None) -> int:
+    """Window size, from ``$SAM_TASKS_XRAS_SWEEP_WINDOW_DAYS``."""
+    return _positive_int(env, 'SAM_TASKS_XRAS_SWEEP_WINDOW_DAYS',
+                         DEFAULT_WINDOW_DAYS)
+
+
+def sweep_status(env: Optional[dict] = None) -> Optional[str]:
+    """Which request status to enumerate; ``None`` means every status.
+
+    ``all`` (any case) drops the filter. An unrecognised value falls back to
+    the default rather than being passed through — the API rejects an unknown
+    ``status`` with a 4xx, which the client turns into an outage, and a typo
+    in a chart value must not take the sweep down.
+    """
+    raw = str((env if env is not None else os.environ)
+              .get('SAM_TASKS_XRAS_SWEEP_STATUS', '') or '').strip()
+    if not raw:
+        return DEFAULT_STATUS
+    if raw.casefold() == 'all':
+        return None
+    # Deferred: `scheduling/` must not pay for `requests` on the CLI's --list
+    # path, which imports this package only to print a table.
+    from sam.integration.xras_api.client import REQUEST_STATUSES
+    return raw if raw in REQUEST_STATUSES else DEFAULT_STATUS
+
+
+def overlaps_window(payload: dict, *, window_start: date) -> bool:
+    """Was this request's allocation still open when the window began?
+
+    **One-sided on purpose.** The predicate is ``endDate is None or endDate >=
+    window_start`` — it drops what has already ended and keeps everything
+    live *or future*. A two-sided overlap (also requiring ``beginDate <=
+    window_end``) would discard requests whose period starts next quarter,
+    and those are precisely the population Feed B exists to reach: a PI with
+    no SAM account and months of lead time to fix it.
+
+    A missing or unparseable ``endDate`` counts as open — those are the newest
+    rows, in-flight or not yet dated.
+
+    Pure and injectable so the boundary never floats: a test that read the
+    wall clock would pass or fail depending on the day it ran. Dates arrive as
+    ``YYYY-MM-DD`` and are compared as dates; no timezone reasoning applies to
+    a calendar date.
+    """
+    raw = payload.get('endDate')
+    if not raw:
+        return True
+    try:
+        return date.fromisoformat(str(raw)[:10]) >= window_start
+    except ValueError:
+        return True
+
+
 @task(name='xras_sweep',
       schedule=SCHEDULE,
       needs=('sam',),
@@ -140,12 +224,15 @@ def xras_sweep(ctx) -> TaskResult:
         'skipped': False,
         'pages': 0,
         'requests_seen': 0,
+        'requests_in_window': 0,
+        'window_days': 0,
+        'status': '',
         'budget_exhausted': False,
         'pending_push': 0,
         'pending_push_sample': [],
         'accounts': {},
         'people_refreshed': 0,
-        'closures': 0,
+        'reconciled': 0,
         'unavailable_errors': 0,
     }
 
@@ -160,11 +247,17 @@ def xras_sweep(ctx) -> TaskResult:
     session = ctx.sam_session
     client = XrasApiClient.from_environment()
     page_budget = max_pages()
+    status = sweep_status()
+    window = window_days()
+    window_start = to_local_naive(
+        ctx.occurrence, ZoneInfo(SCHEDULE.tz)).date() - timedelta(days=window)
+    detail['window_days'] = window
+    detail['status'] = status or 'all'
 
     # ── 1. enumerate ────────────────────────────────────────────────────
     payloads = []
     try:
-        for page in client.iter_request_pages(status='Approved',
+        for page in client.iter_request_pages(status=status,
                                               page_size=PAGE_SIZE,
                                               max_pages=page_budget):
             detail['pages'] += 1
@@ -179,23 +272,53 @@ def xras_sweep(ctx) -> TaskResult:
     detail['requests_seen'] = len(payloads)
     detail['budget_exhausted'] = detail['pages'] >= page_budget
 
+    # ── 1b. drop what had already ended when the window opened ──────────
+    #
+    # Both counts are reported: `requests_seen` says how much was read,
+    # `requests_in_window` how much was work. Reporting only the second would
+    # make a narrowed window look like a shrinking problem.
+    payloads = [p for p in payloads
+                if overlaps_window(p, window_start=window_start)]
+    detail['requests_in_window'] = len(payloads)
+
     # ── 2. dropped / pending pushes ─────────────────────────────────────
     numbers = {str(p.get('requestNumber')).strip() for p in payloads
                if p.get('requestNumber')}
+    pending_set: set = set()
     if numbers:
         known = {code for (code,) in session.query(Project.projcode)
                  .filter(Project.projcode.in_(sorted(numbers))).all()}
-        pending = sorted(numbers - known)
+        pending_set = numbers - known
+        pending = sorted(pending_set)
         detail['pending_push'] = len(pending)
         detail['pending_push_sample'] = pending[:_MAX_REPORTED]
 
-    # ── 3. classify what the enumeration names ──────────────────────────
+    # ── 3. classify the rosters of what has NOT been pushed ─────────────
+    #
+    # ⚠️ **Only the pending set, and this is the difference between a queue
+    # and a census.** Measured against the live process, 90-day window:
+    #
+    #     every Approved request, no window   2,180 accounts "needed"
+    #     + window                              542
+    #     + not-yet-pushed only                  21   <- 10 of 11 absent
+    #                                                    rows are placeholders
+    #
+    # A request whose project already exists has **already had its handoff**.
+    # Its roster's inactive members are ordinary attrition — a grad student
+    # who left, a PI whose account was locked — not accounts anyone must
+    # create for a handoff to succeed, which is what this worklist is for
+    # (§ 1). Classifying them buried the eleven real rows under five hundred.
+    #
+    # Restricting to the pending set is also strictly cheaper: 40 rosters
+    # instead of 1,640.
+    pending_payloads = [p for p in payloads
+                        if str(p.get('requestNumber') or '').strip() in pending_set]
     enumerated = classify_accounts(session,
-                                   records_from_report_requests(payloads))
+                                   records_from_report_requests(pending_payloads))
     detail['accounts'] = worklist_counts(enumerated)
     detail['accounts_sample'] = [r['username'] for r in enumerated][:_MAX_REPORTED]
 
-    # ── 4. warm the closure signal for the card's morning renders ───────
+    # ── 4. warm the person cache for the card's morning renders ────────
     #
     # Feed A only: Feed B carried its person objects inline, so re-fetching
     # them would be a round trip for something already in hand.
@@ -211,14 +334,18 @@ def xras_sweep(ctx) -> TaskResult:
             break
         detail['people_refreshed'] += 1
         if person and person.get('isReconciled'):
-            # XRAS reconciled them; the worklist item should now close.
-            detail['closures'] += 1
+            # ⚠️ NOT a closure. XRAS having linked this username to a real
+            # identity says nothing about whether SAM has a usable row — the
+            # smoke measured 9 of 9 worklist rows reconciled and still needing
+            # work. It is reported because it says the account can be created
+            # from real detail, not because anything closed.
+            detail['reconciled'] += 1
 
     counts = detail['accounts']
-    message = (f"{detail['requests_seen']} request(s), "
+    message = (f"{detail['requests_in_window']}/{detail['requests_seen']} in-window request(s), "
                f"{detail['pending_push']} pending push, "
                f"{counts.get('total', 0)} account(s) needed, "
-               f"{detail['closures']} closure(s)")
+               f"{detail['reconciled']} reconciled in XRAS")
     ctx.logger.info('xras_sweep: %s', message)
 
     # "0 findings, succeeded" must be distinguishable from "did not look" —

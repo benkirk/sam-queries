@@ -207,6 +207,10 @@ assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_SWEEP_MAX_PAGES' \
   "and the sweep's page budget"
 assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE' \
   "and its person-refresh budget"
+assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_SWEEP_WINDOW_DAYS' \
+  "and the window WITHOUT which the sweep reports a census, not a queue"
+assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_SWEEP_STATUS' \
+  "and the request-status filter"
 
 # Fail-closed, and pinned: the sweep ships switched off at BOTH levers — its
 # name in SAM_TASKS_DISABLED, and XRAS_OUTGOING_ENABLED "0". Derived from
