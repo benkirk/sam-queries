@@ -23,6 +23,23 @@ spec:
         - podSelector:
             matchLabels:
               app: {{ .Values.webapp.name }}
+        {{- if .Values.tasks.enabled }}
+        # The scheduled-task pods carry a DIFFERENT label, so the webapp
+        # selector above does not cover them and they were silently denied.
+        # xras_sweep PUBLISHES its worklist into DB 0 for the dashboard to
+        # read, and the cache layer falls back to a per-worker in-process
+        # adapter when Redis is unreachable — so the denial cost nothing
+        # visible: the sweep wrote into a cache that died with its pod and the
+        # tab stayed empty. Found on the first production run, by the log line
+        # "set but Redis is unreachable (Timeout connecting to server)".
+        #
+        # Not a privilege escalation: these pods run the same image as the
+        # webapp and already hold SAM database WRITE credentials, so they are
+        # strictly more trusted than the peer already admitted above.
+        - podSelector:
+            matchLabels:
+              app: {{ .Values.tasks.name }}
+        {{- end }}
       ports:
         - protocol: TCP
           port: {{ .Values.cache.port }}

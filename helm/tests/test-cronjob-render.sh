@@ -198,6 +198,20 @@ because 2500 is ~50x that task's realistic volume"
 assert_contains "$cron_out" 'name: CACHE_REDIS_URL' \
   "the sweep cannot hand its worklist to the dashboard without the shared Redis"
 
+# ...and reaching it needs more than the URL. Redis is default-deny except from
+# the webapp's label; the task pods carry `app: samuel-tasks`, so without their
+# own ingress peer they are silently denied and the sweep falls back to a
+# per-worker cache that dies with the pod. Both halves, or neither works.
+# ⚠️ Comments are STRIPPED before asserting. helm renders YAML comments into
+# its output, and the first version of this check matched the explanatory
+# comment it had just added to the template rather than the selector — passing
+# with the peer deleted. Same class as grepping the whole render and hitting
+# the Deployment's copy.
+netpol_out=$(helm template "$RELEASE_NAME" "$CHART_DIR" -f "$CHART_DIR/values.yaml" \
+             -s templates/redis-networkpolicy.yaml | grep -v '^[[:space:]]*#')
+assert_contains "$netpol_out" "app: samuel-tasks" \
+  "the task pods need their own Redis ingress peer, not just the webapp's"
+
 assert_contains "$cron_out" 'name: XRAS_OUTGOING_ENABLED' \
   "the sweep's master lever must reach the CronJob, not just the Deployment"
 assert_contains "$cron_out" 'name: XRAS_API_BASE' \
