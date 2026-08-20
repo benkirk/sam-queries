@@ -31,7 +31,7 @@ green() { printf '\033[32m%s\033[0m\n' "$*"; }
 
 assert_contains() {
   local haystack="$1" needle="$2" msg="$3"
-  if ! printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if ! grep -qF -- "$needle" <<<"$haystack"; then
     red "FAIL: $msg"
     red "  expected to find: $needle"
     return 1
@@ -40,7 +40,7 @@ assert_contains() {
 
 assert_not_contains() {
   local haystack="$1" needle="$2" msg="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if grep -qF -- "$needle" <<<"$haystack"; then
     red "FAIL: $msg"
     red "  unexpectedly found: $needle"
     return 1
@@ -245,7 +245,7 @@ assert_contains "$cron_out" "value: \"${outgoing}\"" \
 # is off, and the Feed-B dashboard tab renders only what the task publishes —
 # so a chart with the task enabled and the lever off yields a permanently
 # empty tab and a ledger full of `skipped`, with nothing failing to say so.
-if ! printf '%s' "$switch" | grep -q 'xras_sweep'; then
+if ! grep -q 'xras_sweep' <<<"$switch"; then
   if [[ "$outgoing" != "1" ]]; then
     red "FAIL: xras_sweep is enabled but XRAS_OUTGOING_ENABLED is \"${outgoing}\""
     red "  The task would skip every run and the Feed-B tab would never fill."
