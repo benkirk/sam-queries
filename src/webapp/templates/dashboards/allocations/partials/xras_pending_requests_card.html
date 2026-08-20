@@ -1,4 +1,6 @@
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {#
   Feed B — XRAS requests SAM has no project for yet, and the accounts they
   will need when they arrive.
@@ -37,14 +39,14 @@
            invert the priority it exists to surface. The filter stays (one
            window across three tabs), but it can never hide silently. #}
         {% set swept_total = snapshot.counts.total | default(counts.total) %}
-        <span class="badge bg-info text-dark">
+        <span class="badge bg-body-secondary text-body-secondary border fw-normal">
             {% if counts.total != swept_total %}
             {{ counts.total | fmt_number }} of {{ swept_total | fmt_number }}
             {% else %}{{ counts.total | fmt_number }}{% endif %}
             account(s) needed
         </span>
         {% if counts.total != swept_total %}
-        <span class="badge bg-warning text-dark"
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
               title="Older requests are hidden by the window above. On this tab an older unpushed request is usually the more urgent one — widen the window to see them.">
             {{ (swept_total - counts.total) | fmt_number }} outside the window
         </span>
@@ -106,24 +108,30 @@
             </thead>
             <tbody>
                 {% for row in rows %}
-                <tr>
+                {% set body_id = 'xras-pending-' ~ loop.index %}
+                {# Toggle on the <tr>, which is only safe because the row
+                   carries no buttons — see fragments/collapse.html. Same
+                   expansion as the Accounts Needed tab: an operator working a
+                   row here needs the same detail to create the account, and
+                   the two tabs answer the same question. #}
+                <tr class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                     <td class="font-monospace text-nowrap">
                         {{ row.username }}
                         {% if row.placeholder %}
-                        <span class="badge bg-light text-secondary border ms-1"
+                        <span class="badge bg-body-secondary text-body-secondary border ms-1 fw-normal"
                               title="ARC placeholder username — XRAS mints one for a researcher with no site account">placeholder</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if row.classification == 'absent' %}
-                        <span class="badge bg-danger">Create</span>
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Create</span>
                         {% else %}
-                        <span class="badge bg-warning text-dark">Reactivate</span>
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Reactivate</span>
                         {% endif %}
                     </td>
                     <td>
                         {% for role in row.roles %}
-                        <span class="badge bg-light text-dark border">{{ role }}</span>
+                        <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ role }}</span>
                         {% endfor %}
                     </td>
                     <td class="font-monospace small">
@@ -146,12 +154,36 @@
                         {% if row.is_reconciled is none %}
                         <span class="text-muted">—</span>
                         {% elif row.is_reconciled %}
-                        <span class="badge bg-info text-dark"
+                        <span class="badge bg-body-secondary text-body-secondary border fw-normal"
                               title="XRAS has linked this username to a real identity, so the detail here is usable for account creation. It does NOT mean the account exists.">identified</span>
                         {% else %}
-                        <span class="badge bg-warning text-dark"
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
                               title="XRAS has not reconciled this identity either — there is no confirmed person behind the username yet">unidentified</span>
                         {% endif %}
+                    </td>
+                </tr>
+
+                <tr class="collapse" id="{{ body_id }}">
+                    <td colspan="{{ 6 if may_manage else 5 }}" class="bg-body-tertiary">
+                        {% if may_manage %}{{ person_detail(row.person) }}{% endif %}
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr class="small text-muted">
+                                    <th>Request</th><th>Type</th>
+                                    <th>Status</th><th>Submitted</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for action in row.actions %}
+                                <tr class="small">
+                                    <td class="font-monospace">{{ action.request_number or '—' }}</td>
+                                    <td>{{ action.action_type or '—' }}</td>
+                                    <td>{{ action.status or '—' }}</td>
+                                    <td>{{ action.submit_date or '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </td>
                 </tr>
                 {% endfor %}

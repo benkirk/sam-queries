@@ -1,0 +1,45 @@
+{#
+  What XRAS knows about one person, rendered whole.
+
+  Shared by BOTH XRAS worklist tabs — "Accounts Needed" (Feed A) and "Pending
+  Requests" (Feed B) — because the two answer the same operator question and
+  had already started to diverge: Feed B rendered name and organization only,
+  so an operator who found a row there still had to go elsewhere for the email
+  and country they needed to actually create the account.
+
+  ⚠️ EVERY declared field, not a chosen subset. The fields are
+  `sam.queries.xras_accounts.PERSON_FIELDS`, which is also the filter both
+  feeds pass their person dicts through — so what an operator sees here is
+  exactly what SAM holds, with nothing quietly withheld. Add a field there and
+  it appears here; there is no second list to keep in step.
+
+  ⚠️ This is PII (name, email, phone, organization, academic status, residence
+  country). The ROUTES strip `person` to None for a viewer without
+  MANAGE_XRAS, so a VIEW_XRAS response never carries these bytes at all. The
+  `{% if person %}` here is a second gate over an already-empty value, not the
+  only one.
+#}
+{% macro person_detail(person) %}
+{% if person %}
+{% set full_name = [person.firstName, person.middleName, person.lastName]
+                   | select | join(' ') %}
+<dl class="row g-2 small mb-2">
+    {% for label, value in [
+        ('Name', full_name),
+        ('Email', person.email),
+        ('Phone', person.phone),
+        ('Organization', person.organization),
+        ('Academic status', person.academicStatus),
+        ('Residence country', person.residenceCountry),
+        ('ORCID', person.orcid)] %}
+    <div class="col-md-4 mb-0">
+        <dt class="text-muted fw-normal d-inline">{{ label }}:</dt>
+        {# A declared field with no value renders as an em dash rather than
+           vanishing: "XRAS has no phone for them" and "we did not ask" look
+           identical if the row simply disappears. #}
+        <dd class="d-inline ms-1 mb-0">{{ value if value else '—' }}</dd>
+    </div>
+    {% endfor %}
+</dl>
+{% endif %}
+{% endmacro %}

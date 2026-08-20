@@ -106,6 +106,12 @@ USER_ROLE = 'User'
 #: Ranked for display: the strongest role a username holds leads the row.
 _ROLE_ORDER = (PI_ROLE, ALLOCATION_MANAGER_ROLE, USER_ROLE)
 
+#: PII. Assembled only for a viewer holding ``MANAGE_XRAS`` — see the card.
+PERSON_FIELDS = ('firstName', 'middleName', 'lastName', 'email', 'phone',
+                 'organization', 'academicStatus', 'residenceCountry',
+                 'isReconciled', 'orcid')
+
+
 CLASSIFICATION_ABSENT = 'absent'
 CLASSIFICATION_INACTIVE = 'inactive'
 
@@ -469,7 +475,14 @@ def classify_accounts(session: Session,
 
             person = record.person_by_username.get(username)
             if person and row['person'] is None:
-                row['person'] = person
+                # Filtered to PERSON_FIELDS, exactly as `enrich_worklist` does
+                # for Feed A. Two reasons beyond consistency: a raw XRAS person
+                # carries fields we never declared (`hasOrcidToken`, a
+                # duplicate `username`), and a Feed-B row is PERSISTED — the
+                # sweep publishes it into the cache — so whatever lands here
+                # outlives the request that made it.
+                row['person'] = {k: person.get(k) for k in PERSON_FIELDS
+                                 if k in person}
                 if 'isReconciled' in person:
                     row['is_reconciled'] = bool(person['isReconciled'])
 
@@ -518,12 +531,6 @@ def get_account_worklist(session: Session, *,
 
 
 # ── enrichment ──────────────────────────────────────────────────────────
-
-#: PII. Assembled only for a viewer holding ``MANAGE_XRAS`` — see the card.
-PERSON_FIELDS = ('firstName', 'middleName', 'lastName', 'email', 'phone',
-                 'organization', 'academicStatus', 'residenceCountry',
-                 'isReconciled', 'orcid')
-
 
 def enrich_worklist(rows: Sequence[Dict[str, Any]], *,
                     person_lookup: Optional[Callable[[str], Optional[dict]]] = None,

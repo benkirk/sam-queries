@@ -314,3 +314,103 @@ class TestTheWindowNeverHidesSilently:
         self._publish(rows_total=3, shown_total=3)
         body = auth_client.get(f'{self.URL}?days=30').get_data(as_text=True)
         assert 'outside the window' not in body
+
+
+class TestBothTabsShowTheSameDetail:
+    """⚠️ Feed B had already diverged: it rendered name and organization only,
+    so an operator who found a row there still had to go elsewhere for the
+    email and country needed to actually create the account.
+
+    Both tabs now render `fragments/xras_person_detail.html`, whose field list
+    IS `PERSON_FIELDS` — the same filter both feeds pass their person dicts
+    through. There is no second list to keep in step.
+    """
+
+    PENDING_URL = '/allocations/xras_pending_requests_fragment'
+
+    @staticmethod
+    def _person():
+        return {'firstName': 'Ada', 'middleName': 'Q', 'lastName': 'Invented',
+                'email': 'ada@example.invalid', 'phone': '555-0100',
+                'organization': 'Example University',
+                'academicStatus': 'Graduate Student',
+                'residenceCountry': 'Kiribati', 'orcid': '0000-0001',
+                'isReconciled': False}
+
+    def test_every_declared_field_reaches_the_accounts_tab(
+            self, auth_client, monkeypatch, committed_worklist_action):
+        monkeypatch.setattr('sam.integration.xras_api.people.get_person',
+                            lambda u: self._person())
+        body = auth_client.get(URL).get_data(as_text=True)
+        for value in ('ada@example.invalid', '555-0100', 'Kiribati',
+                      'Graduate Student', 'Example University', '0000-0001'):
+            assert value in body, f'{value} is missing from the accounts tab'
+
+    def test_every_declared_field_reaches_the_pending_tab(self, auth_client,
+                                                          monkeypatch):
+        from datetime import datetime
+
+        from sam.integration.xras_api.cache import store_pending_worklist
+
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        store_pending_worklist({
+            'generated_at': datetime(2026, 8, 20), 'window_days': 90,
+            'status': 'Approved', 'requests_seen': 1, 'requests_in_window': 1,
+            'budget_exhausted': False, 'pending_push': 1,
+            'pending_push_sample': [],
+            'counts': {'total': 1, 'absent': 1, 'inactive': 0,
+                       'placeholder': 0, 'reconciled': 0},
+            'rows': [{'username': 'ghost-user-1', 'classification': 'absent',
+                      'remedy': 'create', 'placeholder': False,
+                      'roles': ('PI',), 'is_account_to_be_created': False,
+                      'is_reconciled': False, 'person': self._person(),
+                      'sources': ['reports'],
+                      'actions': [{'action_log_id': None,
+                                   'request_number': 'NCAR0001',
+                                   'action_type': 'New', 'status': 'Approved',
+                                   'received_time': None,
+                                   'submit_date': '2026-08-19',
+                                   'source': 'reports', 'would_succeed': None,
+                                   'reject_messages': []}]}],
+        })
+        body = auth_client.get(self.PENDING_URL).get_data(as_text=True)
+        for value in ('ada@example.invalid', '555-0100', 'Kiribati',
+                      'Graduate Student', 'Example University', '0000-0001'):
+            assert value in body, f'{value} is missing from the pending tab'
+        # ...and the row expands to reach it.
+        assert 'data-bs-toggle="collapse"' in body
+
+    def test_the_pending_tab_still_withholds_pii_from_view_only(
+            self, view_only_client, monkeypatch):
+        """The macro is a second gate; the route is the real one."""
+        from datetime import datetime
+
+        from sam.integration.xras_api.cache import store_pending_worklist
+
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        store_pending_worklist({
+            'generated_at': datetime(2026, 8, 20), 'window_days': 90,
+            'status': 'Approved', 'requests_seen': 1, 'requests_in_window': 1,
+            'budget_exhausted': False, 'pending_push': 1,
+            'pending_push_sample': [],
+            'counts': {'total': 1, 'absent': 1, 'inactive': 0,
+                       'placeholder': 0, 'reconciled': 0},
+            'rows': [{'username': 'ghost-user-1', 'classification': 'absent',
+                      'remedy': 'create', 'placeholder': False,
+                      'roles': ('PI',), 'is_account_to_be_created': False,
+                      'is_reconciled': False, 'person': self._person(),
+                      'sources': ['reports'],
+                      'actions': [{'action_log_id': None,
+                                   'request_number': 'NCAR0001',
+                                   'action_type': 'New', 'status': 'Approved',
+                                   'received_time': None,
+                                   'submit_date': '2026-08-19',
+                                   'source': 'reports', 'would_succeed': None,
+                                   'reject_messages': []}]}],
+        })
+        body = view_only_client.get(self.PENDING_URL).get_data(as_text=True)
+        for value in ('ada@example.invalid', 'Kiribati', '555-0100'):
+            assert value not in body
+        assert 'ghost-user-1' in body
