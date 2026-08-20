@@ -184,12 +184,16 @@ class TestPiiGating:
         # ...while the row itself is still there to work from.
         assert 'placeholder38-user-00038' in body
 
-    def test_reconciliation_state_is_not_pii(self, view_only_client, monkeypatch,
-                                             committed_worklist_action):
-        """It is account state and the signal an item is about to close."""
-        self._stub_person(monkeypatch)
+    def test_identity_state_is_not_pii(self, view_only_client, monkeypatch,
+                                       committed_worklist_action):
+        """XRAS-side identity state is account context, not a personal detail,
+        so it survives the VIEW_XRAS gate that strips the person dict.
+
+        (It is emphatically *not* a closure signal — see
+        `TestTheHeaderDoesNotConflateTwoFacts` and `enrich_worklist`.)"""
+        self._stub_person(monkeypatch)     # isReconciled: False
         body = view_only_client.get(URL).get_data(as_text=True)
-        assert 'unreconciled' in body
+        assert 'unidentified' in body
 
 
 class TestFacets:
@@ -232,3 +236,21 @@ class TestFacets:
     def test_a_classification_filter_reaches_the_route(self, auth_client):
         assert auth_client.get(f'{URL}?classification=absent').status_code == 200
         assert auth_client.get(f'{URL}?role=PI').status_code == 200
+
+
+class TestTheHeaderDoesNotConflateTwoFacts:
+    """⚠️ Caught by the local smoke, and only visible in a browser.
+
+    A *placeholder* is a username shape (`<name>-user-<token>`) XRAS mints for
+    someone with no site account. *Reconciliation* is whether XRAS has since
+    linked that username to a confirmed identity. They are independent: all
+    three placeholders on the local corpus were reconciled, so a header badge
+    reading "3 unreconciled" contradicted every row's own "identified".
+    """
+
+    def test_the_badge_counts_placeholders_by_that_name(self, auth_client,
+                                                        committed_worklist_action):
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'placeholder' in body
+        assert 'unreconciled' not in body.split('<tbody>')[0], (
+            'the header badge must not call a placeholder count "unreconciled"')

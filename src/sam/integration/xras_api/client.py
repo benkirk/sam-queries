@@ -168,9 +168,14 @@ class XrasApiClient:
 
         Carries what account creation needs and the inbound payload does not:
         ``residenceCountry``, ``academicStatus``, ``organization``, and
-        ``isReconciled`` — the last of which is the worklist's closure signal.
-        Unreconciled researchers resolve here under their ARC placeholder
-        username (``<name>-user-<token>``).
+        ``isReconciled``. Researchers resolve here under their ARC placeholder
+        username (``<name>-user-<token>``) whether or not they are reconciled.
+
+        ⚠️ ``isReconciled`` says XRAS has linked this username to a real
+        identity — **not** that SAM has an account. Measured 9 of 9 on the
+        local smoke: every worklist row was reconciled and every one still
+        needed an account created or reactivated. See
+        :func:`sam.queries.xras_accounts.enrich_worklist`.
         """
         return _as_dict(self._get(f'/v1/people/{quote(str(username), safe="")}'))
 

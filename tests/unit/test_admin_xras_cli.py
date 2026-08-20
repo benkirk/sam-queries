@@ -417,11 +417,19 @@ class TestWorklistRendering:
                                          placeholder=False))
         assert 'reactivate' in out
 
-    def test_reconciliation_renders_in_all_three_states(self):
-        assert 'unreconciled' in self._render(self._payload(is_reconciled=False))
-        assert 'reconciled' in self._render(self._payload(is_reconciled=True))
+    def test_identity_state_renders_in_all_three_states(self):
+        """XRAS-side identity, not progress — and deliberately not worded as
+        "reconciled"/"unreconciled" next to a placeholder count, which is a
+        different fact entirely (see the card's header-badge test)."""
+        assert 'unidentified' in self._render(self._payload(is_reconciled=False))
+        assert 'identified' in self._render(self._payload(is_reconciled=True))
         # None means "XRAS was not asked" — distinct from a definite answer.
         self._render(self._payload(is_reconciled=None))
+
+    def test_the_summary_line_calls_placeholders_placeholders(self):
+        out = self._render(self._payload())
+        assert 'placeholder identities' in out
+        assert 'unreconciled ARC' not in out
 
     def test_an_outage_is_reported_under_the_table(self):
         payload = self._payload()

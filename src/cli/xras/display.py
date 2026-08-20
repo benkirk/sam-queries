@@ -253,7 +253,7 @@ def display_account_worklist(ctx, payload) -> None:
     table.add_column('Needs')
     table.add_column('Role', style='dim')
     table.add_column('Requests', style='dim')
-    table.add_column('XRAS')
+    table.add_column('XRAS identity')
 
     for row in payload['accounts']:
         needs = ('[red]create[/red]' if row['classification'] == 'absent'
@@ -261,15 +261,23 @@ def display_account_worklist(ctx, payload) -> None:
         if row['placeholder']:
             needs += ' [dim](placeholder)[/dim]'
         numbers = [a['request_number'] for a in row['actions'] if a['request_number']]
-        reconciled = ({None: BLANK, True: '[green]reconciled[/green]',
-                       False: 'unreconciled'}[row['is_reconciled']])
+        # XRAS-side identity state, NOT progress: 9 of 9 rows measured on
+        # the local smoke were reconciled and still needed a SAM account.
+        # `unidentified` is the harder case — no detail sheet to create from.
+        reconciled = {None: BLANK,
+                      True: 'identified',
+                      False: '[yellow]unidentified[/yellow]'}[row['is_reconciled']]
         table.add_row(row['username'], needs, ', '.join(row['roles']),
                       truncate(', '.join(dict.fromkeys(numbers)), 40), reconciled)
 
     ctx.console.print(table)
     ctx.console.print(
+        # "placeholder", NOT "unreconciled" — a placeholder is a username
+        # SHAPE, reconciliation is whether XRAS has linked it to a confirmed
+        # identity. The smoke found all three placeholders reconciled, so
+        # conflating them made this line contradict the table above it.
         f"[dim]{counts['absent']} to create, {counts['inactive']} to reactivate, "
-        f"{counts['placeholder']} unreconciled ARC identities.[/dim]")
+        f"{counts['placeholder']} ARC placeholder identities.[/dim]")
 
     enrichment = payload.get('enrichment')
     if enrichment and enrichment['unavailable']:
@@ -282,7 +290,7 @@ def display_account_worklist(ctx, payload) -> None:
             f"{enrichment['looked_up']} row(s).[/dim]")
     elif not payload['enriched']:
         ctx.console.print(
-            '[dim]Pass --enrich for names, emails and reconciliation state.[/dim]')
+            '[dim]Pass --enrich for names, emails and XRAS identity state.[/dim]')
 
 
 def display_person(ctx, payload) -> None:
@@ -309,11 +317,9 @@ def display_person(ctx, payload) -> None:
             value = person.get(key)
         table.add_row(label, text(value))
     reconciled = person.get('isReconciled')
-    table.add_row('Reconciled',
-                  '[green]yes[/green]' if reconciled else '[yellow]no[/yellow]')
+    table.add_row('Reconciled', 'yes' if reconciled else '[yellow]no[/yellow]')
     ctx.console.print(table)
     if not reconciled:
         ctx.console.print(
-            '[dim]An unreconciled identity has no site account. This record is '
-            "the account-creation detail sheet; the flag flipping is what "
-            'closes the worklist item.[/dim]')
+            '[dim]XRAS has not linked this username to a confirmed identity, so '
+            'the detail above may be self-reported and incomplete.[/dim]')

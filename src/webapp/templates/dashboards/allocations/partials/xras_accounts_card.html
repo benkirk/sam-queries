@@ -39,9 +39,16 @@
         <strong>Accounts Needed for XRAS Handoffs</strong>
         <span class="badge bg-secondary">{{ counts.total | fmt_number }}</span>
         {% if counts.placeholder %}
+        {# ⚠️ "placeholder", NOT "unreconciled". These are two different facts
+           and the smoke caught the badge conflating them: all three
+           placeholders on the local corpus were reconciled in XRAS, so a
+           badge reading "3 unreconciled" contradicted every row's own
+           "identified". A placeholder is a USERNAME SHAPE that XRAS mints for
+           someone with no site account; reconciliation is whether XRAS has
+           since linked it to a confirmed identity. #}
         <span class="badge bg-warning text-dark"
-              title="ARC placeholder identities — researchers with no site account">
-            {{ counts.placeholder | fmt_number }} unreconciled
+              title="ARC placeholder usernames (&lt;name&gt;-user-&lt;token&gt;) — XRAS mints one for a researcher with no site account">
+            {{ counts.placeholder | fmt_number }} placeholder
         </span>
         {% endif %}
         <div class="ms-auto">
@@ -90,7 +97,7 @@
                     {% else %}
                     <th style="width:99%; min-width:10rem;">Requests</th>
                     {% endif %}
-                    <th style="width:110px; white-space:nowrap;">XRAS</th>
+                    <th style="width:120px; white-space:nowrap;">XRAS identity</th>
                     <th style="width:130px; white-space:nowrap;">Last seen</th>
                 </tr>
             </thead>
@@ -152,14 +159,23 @@
                     {% endif %}
 
                     <td class="text-nowrap">
+                        {# ⚠️ This is XRAS-side IDENTITY state, not progress on
+                           the row. Measured 9 of 9 on the local smoke: every
+                           worklist row was reconciled in XRAS and every one
+                           still needed a SAM account. So neither value is
+                           "done" — a row leaves this list when its users row
+                           exists and is active, which is checked every render.
+                           `unreconciled` is the HARDER case: XRAS cannot say
+                           who they are either, so there is no detail sheet to
+                           create the account from. #}
                         {% if row.is_reconciled is none %}
                         <span class="text-muted" title="XRAS was not asked">—</span>
                         {% elif row.is_reconciled %}
-                        <span class="badge bg-success"
-                              title="XRAS considers this identity reconciled — this item should close">reconciled</span>
+                        <span class="badge bg-info text-dark"
+                              title="XRAS has linked this username to a real identity, so the person detail here is usable for account creation. It does NOT mean the account exists.">identified</span>
                         {% else %}
-                        <span class="badge bg-secondary"
-                              title="XRAS has not reconciled this identity">unreconciled</span>
+                        <span class="badge bg-warning text-dark"
+                              title="XRAS has not reconciled this identity either — there is no confirmed person behind the username yet">unidentified</span>
                         {% endif %}
                     </td>
 
