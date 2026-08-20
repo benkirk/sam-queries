@@ -404,6 +404,64 @@ doing. They are separable on purpose.
 
 ---
 
+## 8.5 Follow-ups — raised by the operator, not yet built
+
+Two, in order. Both were scoped against the shipped code on 2026-08-20.
+
+### 8.5.1 Nothing alerts on the unmapped count
+
+`xras_sweep` reports `opportunities_unmapped` in `TaskResult.detail`, rendered
+in Admin → Scheduled Tasks → run detail. Nothing reads it. `partial_failures`
+is fed only by `unavailable_errors`, so an unmapped opportunity leaves the run
+**green** — correctly, since it is not a fault — but also invisible unless
+somebody goes looking. The sweep sends no summary mail by design (50 wakes a
+week, most sending nothing).
+
+Small: the number already exists. The question is only which surface earns it —
+the admin card's badge, or the sweep's message.
+
+### 8.5.2 Auto-populate the map — and why the obvious version is wrong
+
+**The operator creates ~4 new opportunities a year** — NSC ×2 and University
+Large ×2 — and each currently needs a hand-written INSERT (runbook § 2c).
+Automating that is worth doing, but two naive forms are actively harmful:
+
+| Approach | Why not |
+|---|---|
+| Auto-seed with **what the ladder inferred** | Adds no fidelity and *freezes* the ladder's answer. On the WNA case it would persist the wrong panel, converting a silent-but-fixable divergence into a permanent one. |
+| Match XRAS's `allocationType` **string** to SAM's | The vocabularies differ: `Large`→`CHAP`, `Educational`→`Classroom`, `Exploratory`→`Small (No NSF award)`, `Data Analysis`→`Data`. Four of five miss — and the one name that *does* match, `Small`, is precisely the ambiguous two-panel row this table exists to disambiguate. Worst of both. |
+
+**The version that works keys one level up.** `/v1/opportunities` returns
+`allocationTypeInfo.allocationTypeId` and `panels: [{panelId, isPrimary}]`, both
+numeric and stable. So:
+
+1. A **small hand-maintained table**: `(XRAS allocationTypeId, XRAS primary
+   panelId) → allocation_type_id`. On the order of five or six rows against
+   XRAS's five panels, and it changes only when NCAR invents a genuinely new
+   allocation product — not when an existing one is reissued for a new term.
+2. `xras_sweep` derives the opportunity rows itself: unmapped id → resolve via
+   `GET /v1/opportunities/list/:ids` → look up the stable pair → INSERT.
+
+The four-a-year opportunities reuse existing XRAS allocation types, so they land
+with no SQL. And because the panel comes from **XRAS's own declaration** rather
+than from our inference, this *resolves* the WNA case instead of merely flagging
+it — which the opportunity-level table cannot do on its own.
+
+⚠️ **This contradicts § 9's "do not let the sweep write the table", and that rule
+conflates two things.** The inviolable half is *the ingest path must never call
+out* — untouched: ingestion still reads only the local table. The sweep writing
+is out-of-band and asynchronous; if it is down the map simply stops growing and
+the ladder covers it, exactly as today. No new runtime dependency, which is the
+property § 2 was actually protecting.
+
+The genuine new risk is different: an auto-written row **overrides the ladder
+for every subsequent action**, and a wrong one is silent and permanent. Pair it
+with all four of — write only on an exact hit in the stable table, never
+overwrite an existing row, a provenance column so auto rows are distinguishable
+and revertible, and every write reported in `detail`.
+
+---
+
 ## 9. Do not
 
 - ❌ Call the XRAS API from the ingest path. That is the circularity this design
@@ -417,7 +475,10 @@ doing. They are separable on purpose.
   reads it for the lab mnemonic route.
 - ❌ Delete or rewrite the ladder. It is the fallback, and it is what an empty
   table falls through to.
-- ❌ Let the sweep write the table.
+- ❌ Let the sweep write the table — **as shipped**. § 8.5.2 revisits this
+  deliberately, and narrows it: the rule that must never bend is that the
+  *ingest path* does not call out. A sweep that writes rows derived from
+  XRAS's own declaration adds no runtime dependency to ingestion.
 
 ## 10. Reference
 
