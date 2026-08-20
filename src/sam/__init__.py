@@ -183,6 +183,8 @@ from .summaries.archive_summaries import (
 from .integration.xras import (
     XrasResourceRepositoryKeyResource,
     XrasOpportunityAllocationType,
+    SOURCE_MANUAL,
+    SOURCE_SWEEP,
     XrasActionLog,
     XrasActivationEvent,
     XRAS_ACTIVATION_EVENT_TYPES,
@@ -268,6 +270,7 @@ __all__ = [
     'ArchiveChargeSummary', 'ArchiveChargeSummaryStatus',
     # Integration
     'XrasResourceRepositoryKeyResource', 'XrasOpportunityAllocationType',
+    'SOURCE_MANUAL', 'SOURCE_SWEEP',
     'XrasActionLog',
     'XrasActivationEvent', 'XRAS_ACTIVATION_EVENT_TYPES',
     'XrasUserView', 'XrasRoleView', 'XrasActionView',

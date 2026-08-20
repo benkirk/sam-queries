@@ -38,6 +38,16 @@ class XrasResourceRepositoryKeyResource(Base):
         return f"<XrasResourceRepositoryKeyResource(key={self.resource_repository_key}, resource_id={self.resource_id})>"
 
 
+#: Who wrote a row in ``xras_opportunity_allocation_type``.
+#:
+#: ``manual`` is a human's decision and is never overwritten; ``task:xras_sweep``
+#: was derived automatically, and is the set to review or revert if the
+#: derivation ever proves wrong. Spelled like ``XrasActivationEvent``'s
+#: ``created_by='task:xras_notices'`` so the two read the same in a query.
+SOURCE_MANUAL = 'manual'
+SOURCE_SWEEP = 'task:xras_sweep'
+
+
 #----------------------------------------------------------------------------
 class XrasOpportunityAllocationType(Base):
     """Maps an XRAS ``opportunityId`` to the SAM allocation type it means.
@@ -90,9 +100,30 @@ class XrasOpportunityAllocationType(Base):
                                 ForeignKey('allocation_type.allocation_type_id'),
                                 nullable=False)
     opportunity_name = Column(String(120))
+    source = Column(String(32), nullable=False, server_default=text("'manual'"))
 
     allocation_type = relationship('AllocationType',
                                    back_populates='xras_opportunities')
+
+    @classmethod
+    def create(cls, session, *, opportunity_id, allocation_type_id,
+               opportunity_name=None, source=SOURCE_MANUAL):
+        """Add one mapping row.
+
+        ⚠️ **Callers must check the row does not already exist.** This does not
+        upsert, deliberately: a ``manual`` row is a human's answer to a question
+        the API cannot settle — the two documented cases are in
+        ``sam.xras.opportunity_types`` — and the sweep must never overwrite one.
+        Insert-if-absent keeps that property without needing to inspect
+        ``source`` at all.
+        """
+        row = cls(opportunity_id=opportunity_id,
+                  allocation_type_id=allocation_type_id,
+                  opportunity_name=opportunity_name,
+                  source=source)
+        session.add(row)
+        session.flush()
+        return row
 
     def __str__(self):
         return (f"XRAS opportunity {self.opportunity_id} -> "

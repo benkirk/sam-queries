@@ -582,7 +582,8 @@ class TestCriticalSchemas:
         """
         table_name = 'xras_opportunity_allocation_type'
         db_cols = get_db_columns(session, table_name)
-        expected = {'opportunity_id', 'allocation_type_id', 'opportunity_name'}
+        expected = {'opportunity_id', 'allocation_type_id', 'opportunity_name',
+                    'source'}
         actual = set(db_cols.keys())
         assert actual == expected, (
             f"XrasOpportunityAllocationType schema mismatch!\n"
@@ -604,6 +605,13 @@ class TestCriticalSchemas:
         """), {'t': table_name}).all()
         assert [tuple(r) for r in fks] == [('allocation_type', 'allocation_type_id')], (
             'the FK to allocation_type is the whole design — see the model docstring')
+
+        # Provenance: `xras_sweep` writes rows automatically, and `source` is the
+        # only way to tell those from a human's decision — which matters because
+        # the two documented exceptions (530900, 531461) are decisions the XRAS
+        # API cannot settle. NOT NULL with a DEFAULT so the pre-existing rows
+        # became 'manual', which is what they are.
+        assert not db_cols['source']['nullable']
 
 
 # ============================================================================
