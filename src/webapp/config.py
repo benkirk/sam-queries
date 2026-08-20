@@ -146,6 +146,20 @@ class SAMWebappConfig(SAMConfig):
     AWARD_SEARCH_CACHE_TTL  = int(os.getenv('AWARD_SEARCH_CACHE_TTL', 86400))    # 1 day
     AWARD_SEARCH_CACHE_SIZE = int(os.getenv('AWARD_SEARCH_CACHE_SIZE', 256))     # max entries
 
+    # Outbound XRAS Allocations API cache (sam.integration.xras_api). People
+    # sit at 4 hours because `isReconciled` is the account-creation worklist's
+    # closure signal and must not go stale; the 13-row resource catalog changes
+    # about once a year.
+    XRAS_PEOPLE_CACHE_TTL     = int(os.getenv('XRAS_PEOPLE_CACHE_TTL', 14400))   # 4 hours
+    XRAS_PEOPLE_CACHE_SIZE    = int(os.getenv('XRAS_PEOPLE_CACHE_SIZE', 512))    # max entries
+    XRAS_RESOURCES_CACHE_TTL  = int(os.getenv('XRAS_RESOURCES_CACHE_TTL', 86400))  # 1 day
+    XRAS_RESOURCES_CACHE_SIZE = int(os.getenv('XRAS_RESOURCES_CACHE_SIZE', 8))     # max entries
+    # The Feed-B mailbox: xras_sweep publishes, the dashboard tab reads. TTL
+    # spans the overnight gap between business-hours sweeps (17:00 -> 08:00),
+    # or the tab would be blank every morning until the first run.
+    XRAS_PENDING_CACHE_TTL    = int(os.getenv('XRAS_PENDING_CACHE_TTL', 86400))   # 1 day
+    XRAS_PENDING_CACHE_SIZE   = int(os.getenv('XRAS_PENDING_CACHE_SIZE', 4))      # max entries
+
     # hpc-usage-queries plugin (per-job rows on resource-usage detail pages).
     # The plugin owns its own database — typically a per-machine PostgreSQL
     # database (derecho_jobs, casper_jobs) on the shared `csg-postgres` cluster.

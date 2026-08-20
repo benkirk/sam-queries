@@ -203,9 +203,23 @@ class XrasActionRoleSchema(_XrasBase):
     ``roleType`` observed values are ``'PI'``, ``'Allocation Manager'`` and ``'User'``
     — **space separated, not camel case**. These are *not* the ``Pi`` / ``CoPi`` /
     ``AllocationManager`` keys that ``GET /v1/requests/role/{role}/{username}`` maps;
-    the two vocabularies are distinct and must not be conflated. No co-PI has appeared
-    in a sampled payload yet, so its exact spelling is still unknown — which is why
-    this field is not validated against an enum.
+    the two vocabularies are distinct and must not be conflated.
+
+    ✅ **The co-PI question is settled** (2026-08-19, superseding the hedge that
+    stood here). ``GET /v1/types/roles`` on the live NCAR process returns exactly
+    three role types — 13 ``PI``, 14 ``Allocation Manager``, 19 ``User`` — so
+    **no co-PI can ever appear on this wire**, and its "unknown spelling" was
+    never going to be observed. The generic XRAS product does define ``CoPI`` at
+    ``roleTypeId`` 1, but those ids are per-process, which is why NCAR's are
+    13/14/19. Confirmed on live data: zero co-PIs across 64 sampled role
+    entries, and across 101 role entries in 41 captured fixtures. See
+    ``docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md`` § 3.4.
+
+    The field is still **not validated against an enum**, but now for a
+    different and better reason: an unrecognised value must still parse and
+    still land in the audit row, because a silently-rejected body is far worse
+    than an unhandled role. (It also means ``CoPi``'s structurally-empty branch
+    in ``webapp/api/xras/requests.py`` is provably empty, not merely unobserved.)
 
     The same ``username`` can appear under two roles in one payload (observed: a PI
     who is also a ``User``, with distinct ``requestPeopleRoleId``), so consumers that

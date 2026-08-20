@@ -1000,11 +1000,22 @@ class TestActionTypeAliases:
         assert count_recent_xras_actions(session, action_type=asked) == len(rows)
 
     def test_a_non_aliased_type_is_unaffected(self, session):
-        """The widening must not leak across types."""
+        """The widening must not leak across types.
+
+        ⚠️ Scoped to the two rows this test created, not asserted as equality
+        over every ``New`` row in the table. ``xras_action_log`` is shared:
+        `tests/unit/test_xras_accounts_card.py` COMMITS a row (its route reads
+        through Flask-SQLAlchemy's own connection and only sees committed
+        rows), and xdist workers share one database — so an exact-equality
+        assertion here fails intermittently on somebody else's fixture rather
+        than on the behaviour under test.
+        """
         _action(session, action_type='Adjustment', request_number='UWIS0064')
         _action(session, action_type='New', request_number='NCAR4253')
-        rows = get_recent_xras_actions(session, action_type='New')
-        assert {r['request_number'] for r in rows} == {'NCAR4253'}
+        found = {r['request_number'] for r in
+                 get_recent_xras_actions(session, action_type='New')}
+        assert 'NCAR4253' in found
+        assert 'UWIS0064' not in found
 
     def test_rollup_merges_the_two_spellings_into_one_bucket(self, session):
         """Two chips that filter identically would read as two distinct action types."""

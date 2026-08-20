@@ -604,7 +604,11 @@ class TestActivityCardGating:
         resp = auth_client.get('/allocations/xras')
         assert resp.status_code == 200
         assert b'xras-activity-filters' in resp.data
-        assert b'hx-include="#xras-activity-filters"' in resp.data
+        # The pane now includes TWO forms: the shared window control and its
+        # own facet state. The window moved to the page shell so that only one
+        # start_date/end_date pair exists across the three tabs.
+        assert b'hx-include="#xras-window-filters, #xras-activity-filters"' \
+            in resp.data
 
 
 class TestStatusVocabularyIsRenderable:

@@ -129,7 +129,9 @@ Three sequencing points that are easy to get wrong:
   eight-payload corpus supported and revealed an `actionType` — `Date Adjustment` — that no
   document listed. What remains unsampled is now *measured* rather than merely absent: no co-PI
   role in 41 payloads across ~35 projects, and `Transfer` / `Renewal` / `Advance` still at zero.
-  Production capture is the only remaining way to get those.
+  Production capture is the only remaining way to get those — **except for the co-PI, which is
+  now closed outright** (2026-08-19): `GET /v1/types/roles` on the live process returns exactly
+  three role types, so the absence was never a sampling gap. See the § 3.6 note below.
 - **SMTP can genuinely be deferred.** XRAS projects arrive `active = 0` and the success email is
   the human activation trigger — but **legacy keeps sending those emails until `POST /actions`
   cuts over**, which is cutover step 4, after Sprint C. No notification gap opens before then.
@@ -1335,9 +1337,19 @@ three-module domain pattern in `src/cli/README.md:137-168`.
      this path — legacy reads it only on the GET side — so this is a trap, not a blocker.
 
    **The bulk forward happened (2026-08-11)** and closed less than hoped — which is itself the
-   result. At 41 payloads: **still no co-PI role**, so its spelling remains unknown, but the
-   vocabulary is now measured as exactly `PI` / `Allocation Manager` / `User` across ~35 projects,
-   which says this site does not send one. `Transfer` / `Renewal` / `Advance` still have zero
+   result. At 41 payloads: **still no co-PI role**, and the vocabulary is measured as exactly
+   `PI` / `Allocation Manager` / `User` across ~35 projects.
+
+   ✅ **RESOLVED 2026-08-19 — and not by sampling.** Asking the XRAS Allocations API directly,
+   `GET /v1/types/roles` returns the NCAR process's *declared* role types: exactly three, `13 PI`
+   / `14 Allocation Manager` / `19 User`. So **a co-PI cannot appear on this wire at all**, its
+   "unknown spelling" was never observable, and no amount of production capture would have closed
+   it. The generic XRAS product defines `CoPI` at `roleTypeId` 1; those ids are per-process, which
+   is why NCAR's are 13/14/19. Live sampling agrees: zero co-PIs across 64 role entries in 25
+   Approved requests. Consequences — the `CoPi` branch at `webapp/api/xras/requests.py:33-37` is
+   **provably** empty rather than merely unobserved, and the `Co-PI`/`CoPi` stress scenarios test
+   an input that cannot occur (harmless, and worth keeping as a robustness check).
+   See `docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md` § 3.4 for the probe. `Transfer` / `Renewal` / `Advance` still have zero
    samples as `actionType` (three payloads carry `requestType: 'Renewal'`, a different field that
    dispatches nothing). Only production capture can close these now.
 

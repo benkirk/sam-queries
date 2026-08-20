@@ -425,7 +425,12 @@ class TestPortabilityBoundary:
 
     @pytest.mark.parametrize('package', ['sam.manage', 'sam.queries.expirations',
                                          'sam.queries.xras_activation',
-                                         'sam.queries.xras_notices'])
+                                         'sam.queries.xras_notices',
+                                         # xras_sweep's query module. It must
+                                         # not drag the API client in at module
+                                         # scope — hence the deferred import in
+                                         # `enrich_worklist`.
+                                         'sam.queries.xras_accounts'])
     def test_what_the_tasks_import_stays_presentation_free_too(self, package):
         """The AST gate above is **per-file and not transitive**.
 

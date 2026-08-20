@@ -212,3 +212,114 @@ def display_mapping_report(ctx, payload) -> None:
         ctx.console.print(
             f"[bold red]Dangling keys with no resource row:[/bold red] "
             f"{', '.join(str(k) for k in payload['dangling_keys'])}")
+
+    # ── the XRAS half ───────────────────────────────────────────────────
+    if not payload.get('live_checked'):
+        ctx.console.print(
+            '[dim]Local half only — the XRAS API was not configured or not '
+            'reachable, so keys XRAS sends that SAM cannot resolve are NOT '
+            'checked. Set XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY for the '
+            'two-sided report.[/dim]')
+        return
+
+    ctx.console.print(
+        f"[bold]{payload['live_key_count']}[/bold] key(s) offered by XRAS")
+    if payload['xras_only_keys']:
+        ctx.console.print(
+            f"[bold red]XRAS sends keys SAM cannot resolve:[/bold red] "
+            f"{', '.join(str(k) for k in payload['xras_only_keys'])}")
+        ctx.console.print(
+            '[dim]This is the failure that breaks an award: the action fails '
+            'at runtime with "No resource found in SAM corresponding to key %s". '
+            'Add the mapping row before cutover.[/dim]')
+    else:
+        ctx.console.print(
+            '[green]Every key XRAS offers resolves to a SAM resource.[/green]')
+
+
+def display_account_worklist(ctx, payload) -> None:
+    """Render the account-creation worklist, absent before inactive."""
+    counts = payload['counts']
+    ctx.console.rule('[bold]XRAS accounts needed')
+
+    if not payload['accounts']:
+        ctx.console.print(
+            '[green]No accounts are waiting on creation or reactivation.[/green]')
+        return
+
+    table = Table(title=f"{counts['total']} account(s) blocking XRAS handoffs",
+                  title_style='bold')
+    table.add_column('Username', style='cyan')
+    table.add_column('Needs')
+    table.add_column('Role', style='dim')
+    table.add_column('Requests', style='dim')
+    table.add_column('XRAS identity')
+
+    for row in payload['accounts']:
+        needs = ('[red]create[/red]' if row['classification'] == 'absent'
+                 else '[yellow]reactivate[/yellow]')
+        if row['placeholder']:
+            needs += ' [dim](placeholder)[/dim]'
+        numbers = [a['request_number'] for a in row['actions'] if a['request_number']]
+        # XRAS-side identity state, NOT progress: 9 of 9 rows measured on
+        # the local smoke were reconciled and still needed a SAM account.
+        # `unidentified` is the harder case — no detail sheet to create from.
+        reconciled = {None: BLANK,
+                      True: 'identified',
+                      False: '[yellow]unidentified[/yellow]'}[row['is_reconciled']]
+        table.add_row(row['username'], needs, ', '.join(row['roles']),
+                      truncate(', '.join(dict.fromkeys(numbers)), 40), reconciled)
+
+    ctx.console.print(table)
+    ctx.console.print(
+        # "placeholder", NOT "unreconciled" — a placeholder is a username
+        # SHAPE, reconciliation is whether XRAS has linked it to a confirmed
+        # identity. The smoke found all three placeholders reconciled, so
+        # conflating them made this line contradict the table above it.
+        f"[dim]{counts['absent']} to create, {counts['inactive']} to reactivate, "
+        f"{counts['placeholder']} ARC placeholder identities.[/dim]")
+
+    enrichment = payload.get('enrichment')
+    if enrichment and enrichment['unavailable']:
+        ctx.console.print(
+            '[yellow]Person detail unavailable — the XRAS API could not be '
+            'reached. The worklist itself is complete.[/yellow]')
+    elif enrichment and enrichment['budget_exhausted']:
+        ctx.console.print(
+            f"[dim]Person detail fetched for the first "
+            f"{enrichment['looked_up']} row(s).[/dim]")
+    elif not payload['enriched']:
+        ctx.console.print(
+            '[dim]Pass --enrich for names, emails and XRAS identity state.[/dim]')
+
+
+def display_person(ctx, payload) -> None:
+    """Render one XRAS person record."""
+    ctx.console.rule(f"[bold]XRAS person: {payload['username']}")
+    if not payload['found']:
+        ctx.console.print(
+            f"[yellow]XRAS has no user {payload['username']}.[/yellow]")
+        return
+
+    person = payload['person']
+    table = Table(show_header=False)
+    table.add_column('Field', style='dim')
+    table.add_column('Value')
+    for label, key in (('Name', None), ('Email', 'email'),
+                       ('Phone', 'phone'), ('Organization', 'organization'),
+                       ('Academic status', 'academicStatus'),
+                       ('Residence country', 'residenceCountry'),
+                       ('ORCID', 'orcid')):
+        if key is None:
+            value = ' '.join(str(person.get(k) or '') for k in
+                             ('firstName', 'middleName', 'lastName')).strip()
+        else:
+            value = person.get(key)
+        table.add_row(label, text(value))
+    reconciled = person.get('isReconciled')
+    table.add_row('Reconciled', 'yes' if reconciled else '[yellow]no[/yellow]')
+    ctx.console.print(table)
+    if not reconciled:
+        ctx.console.print(
+            '[dim]XRAS has not linked this username to a confirmed identity, so '
+            'the detail above may be self-reported and incomplete.[/dim]')

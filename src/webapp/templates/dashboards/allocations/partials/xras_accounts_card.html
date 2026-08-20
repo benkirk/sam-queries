@@ -1,0 +1,240 @@
+{% from 'dashboards/fragments/badges.html' import status_badge %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
+{#
+  XRAS account-creation worklist — who must exist in SAM before a handoff works.
+
+  Context:
+    rows            classify_accounts(...) rows, already filtered
+    counts          worklist_counts(rows)
+    may_manage      bool — MANAGE_XRAS
+    enrichment      {'looked_up','found','closed','unavailable','budget_exhausted','error'}
+    window          {'days','since','until','start_date','end_date','custom'}
+    window_pill_choices  ((days, label), ...)
+    classification_values  [{'value','label','count'}]  self-excluding
+    role_values            [{'value','count'}]          self-excluding
+    selected_classifications, selected_roles  [str]
+    form_id, fragment_url, target_id
+
+  ── ONE ROW PER USERNAME, NOT PER ACTION ─────────────────────────────────
+  The unit of work is an account, and one person can be named by several
+  actions. Keying on the action would put the same operator task on the list
+  three times and give it three places to be marked done.
+
+  ── PERSON DETAIL IS ROUTE-GATED ─────────────────────────────────────────
+  `row.person` is None for a VIEW_XRAS viewer because the ROUTE dropped it,
+  not because this template declined to draw it. The `may_manage` checks here
+  are a second gate over an already-empty value. `is_reconciled` is on the
+  VIEW_XRAS side deliberately: it is account state, not a personal detail.
+
+  ── WHERE THE COLLAPSE TOGGLE GOES ───────────────────────────────────────
+  On the cells, never the <tr> — Bootstrap's collapse data-api runs in the
+  capture phase, so a row-level toggle fires before any nested control and
+  data-stop-propagation cannot save it. Same fix as xras_activity_card.html.
+#}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center flex-wrap gap-2">
+        <strong>Accounts Needed for XRAS Handoffs</strong>
+        <span class="badge bg-secondary">{{ counts.total | fmt_number }}</span>
+        {% if counts.placeholder %}
+        {# ⚠️ "placeholder", NOT "unreconciled". These are two different facts
+           and the smoke caught the badge conflating them: all three
+           placeholders on the local corpus were reconciled in XRAS, so a
+           badge reading "3 unreconciled" contradicted every row's own
+           "identified". A placeholder is a USERNAME SHAPE that XRAS mints for
+           someone with no site account; reconciliation is whether XRAS has
+           since linked it to a confirmed identity. #}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              title="ARC placeholder usernames (&lt;name&gt;-user-&lt;token&gt;) — XRAS mints one for a researcher with no site account">
+            {{ counts.placeholder | fmt_number }} placeholder
+        </span>
+        {% endif %}
+    </div>
+
+    <div class="card-body border-bottom py-2">
+        <div class="facet-grid">
+            {{ facet_row('Needs', classification_values, form_id,
+                         'classification', active=selected_classifications) }}
+            {{ facet_row('Role', role_values, form_id, 'role',
+                         active=selected_roles) }}
+            {# The operator working one project's activation filters to it
+               here; the same value is a column below so it is visible before
+               it is selectable. #}
+            {{ facet_row('Request', request_values, form_id, 'request_number',
+                         active=selected_requests) }}
+        </div>
+        {% if enrichment.unavailable %}
+        {# The designed unconfigured/degraded state. The worklist above is
+           complete — only XRAS-sourced detail is missing. #}
+        <div class="small text-muted mt-2">
+            <i class="fas fa-circle-info"></i>
+            Person detail and reconciliation status are unavailable
+            (the XRAS API is not configured or could not be reached).
+            The worklist itself is derived from the action log and is complete.
+        </div>
+        {% elif enrichment.budget_exhausted %}
+        <div class="small text-muted mt-2">
+            <i class="fas fa-circle-info"></i>
+            Person detail shown for the first {{ enrichment.looked_up | fmt_number }}
+            rows; narrow the filters to look up the rest.
+        </div>
+        {% endif %}
+    </div>
+
+    {% if rows %}
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle">
+            <thead class="table-subtle">
+                <tr>
+                    <th style="width:220px; white-space:nowrap;">Username</th>
+                    <th style="width:170px; white-space:nowrap;">Needs</th>
+                    <th style="width:170px;">Role</th>
+                    <th style="width:180px;">Request</th>
+                    {% if may_manage %}
+                    <th style="width:99%; min-width:12rem;">Person</th>
+                    {% endif %}
+                    <th style="width:120px; white-space:nowrap;">XRAS identity</th>
+                    <th style="width:130px; white-space:nowrap;">Last seen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                {% set body_id = 'xras-acct-' ~ loop.index %}
+                {# No buttons on this row, so the toggle can live on the <tr> —
+                   see dashboards/fragments/collapse.html for when it cannot. #}
+                <tr class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                    <td class="font-monospace text-nowrap">
+                        {{ row.username }}
+                        {% if row.placeholder %}
+                        {# Text, not an icon: the placeholder shape is already
+                           legible in the username itself, and a glyph beside it
+                           was noise repeating what the string says. #}
+                        <span class="badge bg-body-secondary text-body-secondary border ms-1 fw-normal"
+                              title="ARC placeholder username — XRAS mints one for a researcher with no site account">placeholder</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if row.classification == 'absent' %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Create</span>
+                        {% else %}
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Reactivate</span>
+                        {% endif %}
+
+                    </td>
+
+                    <td>
+                        {% for role in row.roles %}
+                        <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ role }}</span>
+                        {% endfor %}
+                    </td>
+
+                    {# Which XRAS request needs this account. Its own column
+                       at every permission level: it is the handle an operator
+                       working a project's activation actually navigates by. #}
+                    <td class="font-monospace small">
+                        {% set numbers = row.actions | map(attribute='request_number')
+                                         | reject('none') | unique | list %}
+                        {% for number in numbers[:2] %}
+                        {{ number }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                        {% if not numbers %}<span class="text-muted">—</span>{% endif %}
+                        {% if numbers | length > 2 %}
+                        <span class="text-muted">+{{ numbers | length - 2 }}</span>
+                        {% endif %}
+                    </td>
+
+                    {% if may_manage %}
+                    <td class="text-truncate" style="max-width:0;">
+                        {% if row.person %}
+                        {{ row.person.firstName }} {{ row.person.lastName }}
+                        {% if row.person.organization %}
+                        <span class="text-muted">· {{ row.person.organization }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    {% endif %}
+
+                    <td class="text-nowrap">
+                        {# ⚠️ This is XRAS-side IDENTITY state, not progress on
+                           the row. Measured 9 of 9 on the local smoke: every
+                           worklist row was reconciled in XRAS and every one
+                           still needed a SAM account. So neither value is
+                           "done" — a row leaves this list when its users row
+                           exists and is active, which is checked every render.
+                           `unreconciled` is the HARDER case: XRAS cannot say
+                           who they are either, so there is no detail sheet to
+                           create the account from. #}
+                        {% if row.is_reconciled is none %}
+                        <span class="text-muted" title="XRAS was not asked">—</span>
+                        {% elif row.is_reconciled %}
+                        <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+                              title="XRAS has linked this username to a real identity, so the person detail here is usable for account creation. It does NOT mean the account exists.">identified</span>
+                        {% else %}
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                              title="XRAS has not reconciled this identity either — there is no confirmed person behind the username yet">unidentified</span>
+                        {% endif %}
+                    </td>
+
+                    <td class="text-nowrap small text-muted">
+                        {{ row.last_seen | fmt_date }}
+                    </td>
+                </tr>
+
+                <tr class="collapse" id="{{ body_id }}">
+                    <td colspan="7" class="bg-body-tertiary">
+                        {% if may_manage %}{{ person_detail(row.person) }}{% endif %}
+
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr class="small text-muted">
+                                    <th>Request</th><th>Action</th><th>Status</th>
+                                    <th>Received</th><th>Pre-flight</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for action in row.actions %}
+                                <tr class="small">
+                                    <td class="font-monospace">{{ action.request_number or '—' }}</td>
+                                    <td>{{ action.action_type or '—' }}</td>
+                                    <td>{% if action.status %}{{ status_badge(action.status, tooltip=False) }}{% endif %}</td>
+                                    <td>{{ action.received_time | fmt_date }}</td>
+                                    <td>
+                                        {% if action.would_succeed is none %}
+                                        <span class="text-muted">not checked</span>
+                                        {% elif action.would_succeed %}
+                                        <span class="text-success">would succeed</span>
+                                        {% else %}
+                                        {# The pre-flight also catches mnemonic and
+                                           resource-key failures, which are not account
+                                           problems — say "would fail", not "needs an
+                                           account", or the card implies this worklist
+                                           would fix them. #}
+                                        <span class="text-danger"
+                                              title="{{ action.reject_messages | join(' · ') }}">
+                                            would fail ({{ action.reject_messages | length }})
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    {# A designed state, not a failure: production is legitimately zero rows
+       until ACCESS is repointed and the action log starts filling. #}
+    <div class="card-body text-center text-muted py-4">
+        No accounts are waiting on creation or reactivation
+        {%- if selected_classifications or selected_roles %} for these filters{% endif %}.
+    </div>
+    {% endif %}
+</div>

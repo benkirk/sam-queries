@@ -11,7 +11,7 @@ from flask import (
     current_app,
 )
 from flask_login import login_required, current_user
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
@@ -61,6 +61,13 @@ from sam.queries.xras_activation import (
 # submodules eagerly, and this one imports `sam.notify`. See the module
 # docstring; `tests/unit/test_notify_import_graph.py` is the gate.
 from sam.queries.xras_notices import build_xras_messages, load_xras_action
+from sam.queries.xras_accounts import (
+    CLASSIFICATION_ABSENT,
+    CLASSIFICATION_INACTIVE,
+    enrich_worklist,
+    get_account_worklist,
+    worklist_counts,
+)
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
 from sam.queries.lookups import find_project_by_code
 from sam.schemas.forms import CreateChargeAdjustmentForm, XrasActivationEventForm
@@ -1333,6 +1340,11 @@ def xras():
         'dashboards/allocations/xras.html',
         xras_start_date=start_str,
         xras_end_date=end_str,
+        # The worklist tabs share ONE window control, rendered in the shell so
+        # only one start_date/end_date pair exists (see the template).
+        window=_parse_activity_window(request.args),
+        window_pill_choices=_ACTIVITY_WINDOW_PILLS,
+        form_id='xras-window-filters',
         **_window_control_context(end_date, start_str, end_str),
         all_statuses=list(XRAS_ACTION_STATUSES),
         all_action_types=_xras_action_types(),
@@ -1598,6 +1610,314 @@ def xras_pending_fragment():
         form_id=_XRAS_ACTIVITY_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_pending_fragment'),
         target_id=_XRAS_ACTIVITY_TARGET,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Account-creation worklist — read-only.
+#
+# Who must exist in SAM before an XRAS handoff can succeed. Unreconciled ARC
+# placeholder identities are 55% of production XRAS failures, and account
+# creation is manual, so this card is the operator's queue for the largest
+# single cause of failure.
+#
+# Read-only in this PR by design. Operator notes and dismissal need storage
+# that `XrasActivationEvent` cannot provide — its `project_id` is NOT NULL and
+# project-scoped, while this worklist is username-keyed and for a New request
+# the project does not exist yet. That table (`xras_account_event`) is the
+# immediate follow-up; shipping the buttons before it would be dead UI.
+# ---------------------------------------------------------------------------
+
+#: Display labels for the classification facet. The slug is what round-trips
+#: through the form; an operator should never see it.
+_ACCOUNT_CLASSIFICATION_LABELS = {
+    CLASSIFICATION_ABSENT: 'Create account',
+    CLASSIFICATION_INACTIVE: 'Reactivate account',
+}
+
+_ACCOUNTS_FORM_ID = 'xras-accounts-filters'
+_ACCOUNTS_TARGET = 'alloc-xras-accounts'
+
+#: Bounds a cold-cache render. Each miss is one round trip to XRAS inside an
+#: htmx request, so this is a latency bound, not a correctness one — the rows
+#: past it still render, just without person detail.
+_ACCOUNTS_ENRICH_BUDGET = 25
+
+
+def _filter_accounts(rows, *, classifications=None, roles=None):
+    """Facet filters: ANDed across dimensions, ORed within one."""
+    out = rows
+    if classifications:
+        out = [r for r in out if r['classification'] in classifications]
+    if roles:
+        out = [r for r in out if any(role in roles for role in r['roles'])]
+    return out
+
+
+_PENDING_FORM_ID = 'xras-pending-filters'
+
+#: Requests to offer as chips. A worklist spanning dozens of projects would
+#: otherwise render a chip wall; the cap is on the CHIPS, not the rows, and
+#: the rows all stay visible whether or not their request earned one.
+_MAX_REQUEST_CHIPS = 12
+
+
+def _submitted_since(row, since):
+    """Did any request naming this person appear in XRAS within the window?
+
+    The Feed-B analogue of Feed A's ``received_time`` filter — the same
+    question ("when did this show up?") asked of a feed that has no arrival of
+    its own, which is what lets one control span both tabs.
+
+    A row with no usable submit date is kept: that is missing information, not
+    evidence of age, and dropping it would silently shrink the queue.
+    """
+    if since is None:
+        return True
+    start = since.date() if hasattr(since, 'date') else since
+    dates = [a.get('submit_date') for a in row.get('actions') or []]
+    if not any(dates):
+        return True
+    for raw in dates:
+        if not raw:
+            return True
+        try:
+            if date.fromisoformat(str(raw)[:10]) >= start:
+                return True
+        except ValueError:
+            return True
+    return False
+
+
+def _request_facets(rows, *, classifications=None):
+    """Counts per XRAS request number, most-affected first.
+
+    Self-excluding on its own dimension, like every other facet here. Rows
+    naming no request number contribute nothing: a NULL cannot round-trip
+    through the form, so it must not become a chip.
+    """
+    scoped = _filter_accounts(rows, classifications=classifications)
+    counts = {}
+    for row in scoped:
+        for number in {a['request_number'] for a in row['actions'] if a['request_number']}:
+            counts[number] = counts.get(number, 0) + 1
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [{'value': k, 'count': v} for k, v in ordered[:_MAX_REQUEST_CHIPS]]
+
+
+def _account_facets(rows, dimension, *, classifications=None, roles=None):
+    """Self-excluding counts for one dimension.
+
+    A dimension's rollup omits its own filter — scope it by itself and every
+    unselected value reads 0 the moment one is picked, which turns the chips
+    from switchers into a dead end. Same rule as :func:`_activity_facets`.
+    """
+    if dimension == 'classification':
+        scoped = _filter_accounts(rows, roles=roles)
+        return {key: sum(1 for r in scoped if r['classification'] == key)
+                for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)}
+
+    if dimension == 'role':
+        scoped = _filter_accounts(rows, classifications=classifications)
+        counts = {}
+        for row in scoped:
+            for role in row['roles']:
+                counts[role] = counts.get(role, 0) + 1
+        return dict(sorted(counts.items()))
+
+    raise ValueError(f'unknown account facet dimension {dimension!r}')
+
+
+@bp.route('/xras_accounts_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_accounts_fragment():
+    """HTMX fragment: accounts that must be created or reactivated for XRAS.
+
+    Two states here are **designed, not broken**, and both are what a reviewer
+    will see first:
+
+    - **Unconfigured.** With `XRAS_OUTGOING_ENABLED` off — the shipped state,
+      and what staging shows — the worklist still renders in full from the
+      inbound action log. Only the person detail and the `isReconciled`
+      closure signal are unavailable, and a muted note says so.
+    - **Empty.** Production has zero rows until ACCESS is repointed at SAM and
+      `xras_action_log` starts filling. An empty card is a true report.
+
+    PII is gated **here**, not in the template. Person detail — name, email,
+    organization, academic status, residence country — is assembled only for a
+    viewer holding MANAGE_XRAS, so a VIEW_XRAS response never carries it and a
+    view-source cannot leak what the page chose not to draw. Same rule as the
+    raw-payload panel and the notification recipients above.
+
+    `is_reconciled` is deliberately on the VIEW_XRAS side of that line: it is a
+    boolean about account state, not a personal detail, and it is the signal
+    that tells an operator an item is about to close itself.
+    """
+    may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
+    window = _parse_activity_window(request.args)
+    selected_classes = [c for c in request.args.getlist('classification') if c]
+    selected_roles = [r for r in request.args.getlist('role') if r]
+
+    rows = get_account_worklist(db.session,
+                                since=window['since'], until=window['until'])
+
+    # Enrichment is best-effort and never fatal: an outage or an unconfigured
+    # deployment leaves `person` None and flags the batch, so the card degrades
+    # to counts and usernames rather than returning 500.
+    enrichment = enrich_worklist(rows, max_lookups=_ACCOUNTS_ENRICH_BUDGET)
+
+    if not may_manage:
+        # Drop the PII before it can reach a template, a log line, or a
+        # response body. `is_reconciled` survives — see the docstring.
+        for row in rows:
+            row['person'] = None
+
+    selected_requests = [r for r in request.args.getlist('request_number') if r]
+
+    class_facets = _account_facets(rows, 'classification', roles=selected_roles)
+    role_facets = _account_facets(rows, 'role', classifications=selected_classes)
+    request_facets = _request_facets(rows, classifications=selected_classes)
+
+    rows = _filter_accounts(rows, classifications=selected_classes,
+                            roles=selected_roles)
+    if selected_requests:
+        # The operator working one project's activation wants only its rows.
+        rows = [r for r in rows
+                if {a['request_number'] for a in r['actions']} & set(selected_requests)]
+
+    return render_template(
+        'dashboards/allocations/partials/xras_accounts_card.html',
+        rows=rows,
+        counts=worklist_counts(rows),
+        may_manage=may_manage,
+        enrichment=enrichment,
+        window=window,
+        window_pill_choices=_ACTIVITY_WINDOW_PILLS,
+        # Both classifications render even at zero: an absent chip reads as
+        # "not measured", a different claim from "none".
+        classification_values=[
+            {'value': key,
+             'label': _ACCOUNT_CLASSIFICATION_LABELS.get(key, key),
+             'count': class_facets.get(key, 0)}
+            for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)],
+        role_values=[{'value': k, 'count': v} for k, v in role_facets.items()],
+        request_values=request_facets,
+        selected_classifications=selected_classes,
+        selected_roles=selected_roles,
+        selected_requests=selected_requests,
+        form_id=_ACCOUNTS_FORM_ID,
+        fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
+        target_id=_ACCOUNTS_TARGET,
+    )
+
+
+_PENDING_TARGET = 'alloc-xras-pending-requests'
+_WINDOW_TARGET = 'alloc-xras-window'
+
+
+@bp.route('/xras_window_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_window_fragment():
+    """HTMX fragment: just the shared window pills.
+
+    ⚠️ **The control has to re-render itself, and this is why the route
+    exists.** `window_pills` marks the active pill server-side from the
+    window it is handed. While the pills lived inside each worklist fragment
+    that came free — a submit re-rendered the fragment and the pill state
+    came with it. Sharing one control across three tabs moved it into the page
+    shell, outside every swap target, so it kept whatever state the page load
+    gave it: clicking 7D re-filtered the data and left the pill looking
+    unchanged, which reads as a dead control.
+
+    So the pills are their own swap target, listening for the same submit the
+    panes do.
+    """
+    window = _parse_activity_window(request.args)
+    return render_template(
+        'dashboards/allocations/partials/xras_window_control.html',
+        window=window, window_pill_choices=_ACTIVITY_WINDOW_PILLS,
+        form_id='xras-window-filters')
+
+
+@bp.route('/xras_pending_requests_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_pending_requests_fragment():
+    """HTMX fragment: Feed B — XRAS requests SAM has no project for yet.
+
+    **Read from a cache the `xras_sweep` task publishes, never computed
+    here.** The enumeration behind this is 21 pages and 60-90 seconds against
+    `api.xras.org`; no htmx round-trip can afford it, which is why the sweep
+    is a producer and this is a consumer. The tab is therefore exactly as
+    fresh as the last successful sweep, and it says so.
+
+    Three distinct empty states, and conflating them would mislead:
+
+    - **unconfigured** — `XRAS_OUTGOING_ENABLED` is off, so no sweep can run.
+    - **no snapshot** — configured, but no sweep has published yet (the task
+      may be disabled, or this is the first hour after a deploy).
+    - **published and empty** — a real sweep found nothing pending, which is
+      the healthy steady state.
+
+    Same PII rule as the accounts tab: person detail only for MANAGE_XRAS,
+    stripped in the route so a VIEW_XRAS response never carries it.
+    """
+    from sam.integration.xras_api import xras_api_configured
+    from sam.integration.xras_api.cache import load_pending_worklist
+
+    may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
+    configured = xras_api_configured()
+    snapshot = load_pending_worklist() if configured else None
+
+    rows = list(snapshot.get('rows') or []) if snapshot else []
+    window = _parse_activity_window(request.args)
+    selected_requests = [r for r in request.args.getlist('request_number') if r]
+    selected_classes = [c for c in request.args.getlist('classification') if c]
+
+    # ⚠️ A shared control that silently does nothing on one tab is worse than
+    # no control, so the pills mean the same thing here as on the other two:
+    # "what showed up in the last N days". For Feed B that is `submitDate`.
+    #
+    # Filtering on the period of performance was tried first and is wrong: a
+    # pending request's allocation almost always ends a year out, so a
+    # one-sided window keeps every row at every width and the pill looks dead
+    # — the exact complaint this is fixing. The period of performance stays
+    # where it belongs, bounding what the SWEEP collects; the header reports
+    # that width so the two are never confused.
+    rows = [r for r in rows if _submitted_since(r, window['since'])]
+
+    if not may_manage:
+        rows = [{**r, 'person': None} for r in rows]
+
+    class_facets = _account_facets(rows, 'classification')
+    request_facets = _request_facets(rows, classifications=selected_classes)
+
+    rows = _filter_accounts(rows, classifications=selected_classes)
+    if selected_requests:
+        rows = [r for r in rows
+                if {a['request_number'] for a in r['actions']} & set(selected_requests)]
+
+    return render_template(
+        'dashboards/allocations/partials/xras_pending_requests_card.html',
+        rows=rows,
+        snapshot=snapshot,
+        configured=configured,
+        may_manage=may_manage,
+        counts=worklist_counts(rows),
+        classification_values=[
+            {'value': key,
+             'label': _ACCOUNT_CLASSIFICATION_LABELS.get(key, key),
+             'count': class_facets.get(key, 0)}
+            for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)],
+        request_values=request_facets,
+        selected_classifications=selected_classes,
+        selected_requests=selected_requests,
+        form_id=_PENDING_FORM_ID,
+        fragment_url=url_for(
+            'allocations_dashboard.xras_pending_requests_fragment'),
+        target_id=_PENDING_TARGET,
     )
 
 
