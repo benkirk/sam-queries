@@ -1,70 +1,123 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
 {% from 'dashboards/fragments/xras_filters.html' import xras_filters %}
+{% from 'dashboards/fragments/window_pills.html' import window_pills %}
 
 {% block title %}XRAS Action Log - SAM{% endblock %}
 
 {% block alloc_content %}
 
-{# Pending activation sits ABOVE the log: it is the actionable thing, the log is
-   the reference. Loads independently of the table so a slow log query never
-   delays the one card an operator might need to act on. #}
+{# ── The operator worklists, tabbed ───────────────────────────────────────
+   Three panes over the same time window, above the action log: the log is
+   the reference, these are the actionable things.
 
-{# ⚠️  The filter form MUST live out here, OUTSIDE #alloc-xras-pending, for two
-   reasons and the second is the one that bites:
+   ⚠️ THE WINDOW CONTROL IS RENDERED ONCE, HERE, and shared by all three.
+   `window_pills` emits the start_date/end_date pair bound to its form with
+   `form=`, so rendering it inside each fragment would put three same-named
+   pairs in one form — and `form.elements['start_date']` then returns a
+   RadioNodeList that `set-filter-submit` cannot assign to. The control would
+   render, respond to clicks, and filter nothing.
 
-   1. The card fragment renders a table OR an empty state. Controls living
-      inside it vanish with the table, so an over-narrow filter would hide the
-      very control needed to widen it — an unrecoverable dead end.
-   2. The container below re-fetches a BARE hx-get on refreshXrasTab, which
-      would drop every filter param on each write. hx-include on the container
-      is what makes the window and the chips survive a refresh.
+   ⚠️ THE FILTER FORMS LIVE OUT HERE, outside the panes, for two reasons and
+   the second is the one that bites:
+     1. A pane renders a table OR an empty state. Controls living inside it
+        vanish with the table, so an over-narrow filter would hide the very
+        control needed to widen it — an unrecoverable dead end.
+     2. Each container re-fetches a BARE hx-get on refreshXrasTab, which would
+        drop every filter param on each write. `hx-include` is what makes the
+        window and the chips survive a refresh.
 
-   The form holds no visible controls of its own: the window pills and the
-   facet chips are rendered INSIDE the fragment and write into these fields by
-   id (data-action="set-filter-submit"). That split is deliberate — the chips
-   have to re-render with their counts, the state they write must not. #}
-<form id="xras-activity-filters" class="d-none"
-      hx-get="{{ url_for('allocations_dashboard.xras_pending_fragment') }}"
-      hx-target="#alloc-xras-pending"
-      hx-swap="innerHTML"
-      hx-trigger="submit"
-      hx-include="#xras-activity-filters">
-    {# `days` only. start_date/end_date are rendered by the window_pills macro
-       inside the fragment and bound here with `form=` — putting them in both
-       places would make form.elements['start_date'] a RadioNodeList, which
-       set-filter-submit cannot assign to. #}
+   How the shared window reaches three panes with no JavaScript: the pills'
+   `set-filter-submit` action ends in `htmx.trigger(form, 'submit')`, which
+   dispatches a BUBBLING synthetic event — so each pane listens for
+   `submit from:#xras-window-filters` and re-fetches itself. The shared form
+   deliberately carries no hx-* attributes of its own: the event is synthetic,
+   so there is no native navigation to suppress, and nothing needs a no-op
+   endpoint to post at.
+
+   Each pane listens for TWO submits — the shared window's and its OWN facet
+   form's. Both are needed and neither is redundant: the window moves all
+   three panes, a chip moves only its own. Wiring just the window is the easy
+   mistake, and it makes every chip on every tab silently inert. #}
+
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    {# role="tablist" + an id is all nav-view-persistence.js needs to remember
+       the operator's pane across reloads under "tab:xrasWorklistTabs". No
+       data-tab-url-param: these panes are not deep-linked, and the two
+       channels cannot coexist. #}
+    <ul class="nav nav-tabs border-0" role="tablist" id="xrasWorklistTabs">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" data-bs-toggle="tab"
+                    data-bs-target="#xras-pane-activity" type="button"
+                    role="tab">Pending Activations &amp; Notifications</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab"
+                    data-bs-target="#xras-pane-accounts" type="button"
+                    role="tab">Accounts Needed</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" data-bs-toggle="tab"
+                    data-bs-target="#xras-pane-pending" type="button"
+                    role="tab">Pending Requests</button>
+        </li>
+    </ul>
+    <div>
+        {{ window_pills('xras-window-filters', window_pill_choices,
+                        window.days, custom=window.custom,
+                        start_date=window.start_date,
+                        end_date=window.end_date) }}
+    </div>
+</div>
+
+{# The shared window. `days` only — start_date/end_date are emitted by the
+   pills above and bound here with `form=`. #}
+<form id="xras-window-filters" class="d-none">
     <input type="hidden" name="days" value="">
-    {# Multi-select so the route's args.getlist() can grow to multi-value
-       chips later; set-filter-submit writes one at a time today. #}
+</form>
+
+{# Per-pane facet state. Multi-select so args.getlist() can grow to multi-value
+   chips later; set-filter-submit writes one at a time today. #}
+<form id="xras-activity-filters" class="d-none">
     <select name="tag" multiple hidden></select>
     <select name="activity_type" multiple hidden></select>
 </form>
-
-<div id="alloc-xras-pending"
-     hx-get="{{ url_for('allocations_dashboard.xras_pending_fragment') }}"
-     hx-trigger="load, refreshXrasTab from:body"
-     hx-include="#xras-activity-filters"
-     hx-swap="innerHTML"></div>
-
-{# Account-creation worklist. Same out-here-not-in-there rule as the form
-   above, and for the same two reasons — see the comment on
-   #xras-activity-filters. #}
-<form id="xras-accounts-filters" class="d-none"
-      hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
-      hx-target="#alloc-xras-accounts"
-      hx-swap="innerHTML"
-      hx-trigger="submit"
-      hx-include="#xras-accounts-filters">
-    <input type="hidden" name="days" value="">
+<form id="xras-accounts-filters" class="d-none">
     <select name="classification" multiple hidden></select>
     <select name="role" multiple hidden></select>
+    <select name="request_number" multiple hidden></select>
+</form>
+<form id="xras-pending-filters" class="d-none">
+    <select name="classification" multiple hidden></select>
+    <select name="request_number" multiple hidden></select>
 </form>
 
-<div id="alloc-xras-accounts"
-     hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
-     hx-trigger="load, refreshXrasTab from:body"
-     hx-include="#xras-accounts-filters"
-     hx-swap="innerHTML"></div>
+<div class="tab-content mb-3">
+    <div class="tab-pane fade show active" id="xras-pane-activity" role="tabpanel">
+        <div id="alloc-xras-pending"
+             hx-get="{{ url_for('allocations_dashboard.xras_pending_fragment') }}"
+             hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-activity-filters"
+             hx-include="#xras-window-filters, #xras-activity-filters"
+             hx-swap="innerHTML"></div>
+    </div>
+
+    <div class="tab-pane fade" id="xras-pane-accounts" role="tabpanel">
+        <div id="alloc-xras-accounts"
+             hx-get="{{ url_for('allocations_dashboard.xras_accounts_fragment') }}"
+             hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-accounts-filters"
+             hx-include="#xras-window-filters, #xras-accounts-filters"
+             hx-swap="innerHTML"></div>
+    </div>
+
+    {# Feed B. Gated on the outgoing API and on a sweep having published; the
+       fragment owns all three of those empty states. #}
+    <div class="tab-pane fade" id="xras-pane-pending" role="tabpanel">
+        <div id="alloc-xras-pending-requests"
+             hx-get="{{ url_for('allocations_dashboard.xras_pending_requests_fragment') }}"
+             hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-pending-filters"
+             hx-include="#xras-window-filters, #xras-pending-filters"
+             hx-swap="innerHTML"></div>
+    </div>
+</div>
 
 <div class="filter-sidebar mb-3">
     {{ xras_filters(

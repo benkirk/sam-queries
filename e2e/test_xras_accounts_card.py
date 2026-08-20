@@ -21,15 +21,26 @@ from __future__ import annotations
 import pytest
 
 CARD = '#alloc-xras-accounts'
-FRAGMENT_READY = f'{CARD} .card'
+PENDING_CARD = '#alloc-xras-pending-requests'
+
+#: Panes, and the tab button that reveals each.
+PANES = {CARD: '#xras-pane-accounts', PENDING_CARD: '#xras-pane-pending'}
 
 
-def _load(page):
-    """Open the XRAS page and wait for the lazily-fetched accounts fragment."""
+def _load(page, card=CARD):
+    """Open the XRAS page, wait for the fragment, and reveal its tab.
+
+    ⚠️ `state='attached'`, not the default visible: every worklist pane but
+    the first is inside an inactive `.tab-pane`, so its card resolves while
+    hidden. Waiting for visibility here would time out on a card that had
+    already loaded perfectly well.
+    """
     response = page.goto('/allocations/xras')
     assert response is not None and response.status == 200
-    page.wait_for_selector(FRAGMENT_READY, timeout=30_000)
-    return page.locator(CARD)
+    page.wait_for_selector(f'{card} .card', state='attached', timeout=30_000)
+    page.click(f'button[data-bs-target="{PANES[card]}"]')
+    page.wait_for_timeout(400)
+    return page.locator(card)
 
 
 def _rows(card):
@@ -60,10 +71,59 @@ def test_the_filter_form_is_outside_the_fragment(page):
     """Controls inside the fragment would vanish with the empty state, and
     the container refetches a bare hx-get on refreshXrasTab."""
     _load(page)
-    form = page.locator('#xras-accounts-filters')
-    assert form.count() == 1
-    # It must NOT be a descendant of the swap target.
-    assert page.locator(f'{CARD} #xras-accounts-filters').count() == 0
+    for form_id in ('#xras-accounts-filters', '#xras-window-filters'):
+        assert page.locator(form_id).count() == 1
+        # It must NOT be a descendant of the swap target.
+        assert page.locator(f'{CARD} {form_id}').count() == 0
+
+
+def test_the_three_tabs_share_one_window_control(page):
+    """One control, one date pair, three panes. Rendering the pills per tab
+    would put three same-named pairs in one form and `form.elements[name]`
+    would become a RadioNodeList that set-filter-submit cannot assign to."""
+    _load(page)
+    assert page.locator('#xrasWorklistTabs button[role="tab"]').count() == 3
+    assert page.locator('#xras-window-filters input[name="days"]').count() == 1
+    assert page.locator('input[name="start_date"][form="xras-window-filters"]'
+                        ).count() == 1
+    # Each pane listens for the shared form's submit, so one control moves all.
+    for pane_target in ('#alloc-xras-pending', CARD, PENDING_CARD):
+        trigger = page.locator(pane_target).get_attribute('hx-trigger')
+        assert 'submit from:#xras-window-filters' in trigger
+
+
+def test_the_request_is_a_column_and_a_chip(page):
+    """The handle an operator working one project's activation navigates by."""
+    card = _load(page)
+    # `.first`: each expansion row carries its own per-action table, so a bare
+    # `thead` locator is a strict-mode violation the moment a row renders.
+    header = card.locator('thead').first.inner_text().lower()
+    assert 'request' in header
+    if _rows(card).count():
+        assert card.locator('.facet-grid-label', has_text='Request').count() == 1
+
+
+def test_the_row_icons_are_gone(page):
+    """Per-row glyphs repeated what the text already said. The two remaining
+    `fa-circle-info` marks sit on muted notices, not on rows."""
+    card = _load(page)
+    assert card.locator('tbody i.fas').count() == 0
+
+
+def test_the_pending_requests_tab_states_are_distinct(page):
+    """Feed B has three empty states and conflating them would mislead:
+    unconfigured, no snapshot published, and published-but-empty."""
+    card = _load(page, PENDING_CARD)
+    body = card.inner_text().lower()
+    rows = card.locator(
+        '> .card > .table-responsive > table > tbody > tr').count()
+    if rows:
+        # A published snapshot must say when it was swept — the tab is only
+        # ever as fresh as the last sweep and must not imply live data.
+        assert 'swept' in body
+    else:
+        assert ('not configured' in body or 'no sweep has published' in body
+                or 'has a sam project' in body)
 
 
 def test_the_header_count_matches_the_rows_drawn(page):

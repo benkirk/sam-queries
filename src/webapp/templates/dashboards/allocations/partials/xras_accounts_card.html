@@ -1,7 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
-{% from 'dashboards/fragments/window_pills.html' import window_pills %}
 {#
   XRAS account-creation worklist — who must exist in SAM before a handoff works.
 
@@ -35,7 +34,6 @@
 #}
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center flex-wrap gap-2">
-        <i class="fas fa-user-plus text-secondary"></i>
         <strong>Accounts Needed for XRAS Handoffs</strong>
         <span class="badge bg-secondary">{{ counts.total | fmt_number }}</span>
         {% if counts.placeholder %}
@@ -51,12 +49,6 @@
             {{ counts.placeholder | fmt_number }} placeholder
         </span>
         {% endif %}
-        <div class="ms-auto">
-            {{ window_pills(form_id, window_pill_choices, window.days,
-                            custom=window.custom,
-                            start_date=window.start_date,
-                            end_date=window.end_date) }}
-        </div>
     </div>
 
     <div class="card-body border-bottom py-2">
@@ -65,6 +57,11 @@
                          'classification', active=selected_classifications) }}
             {{ facet_row('Role', role_values, form_id, 'role',
                          active=selected_roles) }}
+            {# The operator working one project's activation filters to it
+               here; the same value is a column below so it is visible before
+               it is selectable. #}
+            {{ facet_row('Request', request_values, form_id, 'request_number',
+                         active=selected_requests) }}
         </div>
         {% if enrichment.unavailable %}
         {# The designed unconfigured/degraded state. The worklist above is
@@ -91,11 +88,10 @@
                 <tr>
                     <th style="width:220px; white-space:nowrap;">Username</th>
                     <th style="width:170px; white-space:nowrap;">Needs</th>
-                    <th style="width:200px;">Role</th>
+                    <th style="width:170px;">Role</th>
+                    <th style="width:180px;">Request</th>
                     {% if may_manage %}
-                    <th style="width:99%; min-width:14rem;">Person</th>
-                    {% else %}
-                    <th style="width:99%; min-width:10rem;">Requests</th>
+                    <th style="width:99%; min-width:12rem;">Person</th>
                     {% endif %}
                     <th style="width:120px; white-space:nowrap;">XRAS identity</th>
                     <th style="width:130px; white-space:nowrap;">Last seen</th>
@@ -110,8 +106,11 @@
                     <td class="font-monospace text-nowrap">
                         {{ row.username }}
                         {% if row.placeholder %}
-                        <i class="fas fa-user-clock text-warning ms-1"
-                           title="ARC placeholder identity — this researcher has no site account"></i>
+                        {# Text, not an icon: the placeholder shape is already
+                           legible in the username itself, and a glyph beside it
+                           was noise repeating what the string says. #}
+                        <span class="badge bg-light text-secondary border ms-1"
+                              title="ARC placeholder username — XRAS mints one for a researcher with no site account">placeholder</span>
                         {% endif %}
                     </td>
 
@@ -121,19 +120,28 @@
                         {% else %}
                         <span class="badge bg-warning text-dark">Reactivate</span>
                         {% endif %}
-                        {% if row.is_account_to_be_created %}
-                        {# A hint, never the predicate: XRAS sets this when the
-                           role is created and never clears it, so it is true on
-                           people who have had working accounts for years. #}
-                        <i class="fas fa-flag text-muted ms-1"
-                           title="XRAS flagged isAccountToBeCreated (a stale hint, not a predicate)"></i>
-                        {% endif %}
+
                     </td>
 
                     <td>
                         {% for role in row.roles %}
                         <span class="badge bg-light text-dark border">{{ role }}</span>
                         {% endfor %}
+                    </td>
+
+                    {# Which XRAS request needs this account. Its own column
+                       at every permission level: it is the handle an operator
+                       working a project's activation actually navigates by. #}
+                    <td class="font-monospace small">
+                        {% set numbers = row.actions | map(attribute='request_number')
+                                         | reject('none') | unique | list %}
+                        {% for number in numbers[:2] %}
+                        {{ number }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                        {% if not numbers %}<span class="text-muted">—</span>{% endif %}
+                        {% if numbers | length > 2 %}
+                        <span class="text-muted">+{{ numbers | length - 2 }}</span>
+                        {% endif %}
                     </td>
 
                     {% if may_manage %}
@@ -145,15 +153,6 @@
                         {% endif %}
                         {% else %}
                         <span class="text-muted">—</span>
-                        {% endif %}
-                    </td>
-                    {% else %}
-                    <td class="text-truncate" style="max-width:0;">
-                        {% for action in row.actions[:3] %}
-                        <span class="font-monospace small">{{ action.request_number or '—' }}</span>{% if not loop.last %}, {% endif %}
-                        {% endfor %}
-                        {% if row.actions | length > 3 %}
-                        <span class="text-muted">+{{ row.actions | length - 3 }}</span>
                         {% endif %}
                     </td>
                     {% endif %}
@@ -185,7 +184,7 @@
                 </tr>
 
                 <tr class="collapse" id="{{ body_id }}">
-                    <td colspan="6" class="bg-body-tertiary">
+                    <td colspan="7" class="bg-body-tertiary">
                         {% if may_manage and row.person %}
                         <div class="row g-2 small mb-2">
                             {% for label, value in [
@@ -248,7 +247,6 @@
     {# A designed state, not a failure: production is legitimately zero rows
        until ACCESS is repointed and the action log starts filling. #}
     <div class="card-body text-center text-muted py-4">
-        <i class="fas fa-circle-check fa-2x mb-2 d-block text-success opacity-50"></i>
         No accounts are waiting on creation or reactivation
         {%- if selected_classifications or selected_roles %} for these filters{% endif %}.
     </div>

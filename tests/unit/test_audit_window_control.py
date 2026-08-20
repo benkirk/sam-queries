@@ -29,6 +29,35 @@ def _body(auth_client, url, query=''):
     return response.data.decode()
 
 
+def _owned_by_form(body, field):
+    """``{owning form id (or None): count}`` for one field name.
+
+    ⚠️ Counted **per owning form**, not per page. The RadioNodeList trap this
+    guards is scoped to a single form — ``form.elements[name]`` returning a
+    list instead of a control — and says nothing about the document. The XRAS
+    page carries two legitimately independent date pairs since its worklist
+    tabs started sharing one window control, so a page-level count stopped
+    being a valid proxy for the thing that matters.
+
+    An input binds to a form either by nesting (no ``form=`` attribute, owner
+    reported as ``None``) or explicitly via ``form="id"``, which is how
+    ``window_pills`` emits its pair so it can live outside the form.
+    """
+    owners = {}
+    for tag in re.finditer(rf'<input[^>]*name="{field}"[^>]*>', body, re.S):
+        match = re.search(r'form="([^"]+)"', tag.group(0))
+        owner = match.group(1) if match else None
+        owners[owner] = owners.get(owner, 0) + 1
+    return owners
+
+
+def _extra_owners(url):
+    """Forms beyond the panel's own that legitimately carry a date pair."""
+    # Only the XRAS page: its three worklist tabs share one window control,
+    # rendered once in the shell and bound with `form=`.
+    return {'xras-window-filters': 1} if url.endswith('/xras') else {}
+
+
 def _bands(body):
     """The ladder as the browser receives it — a JSON data block, never code."""
     block = re.search(
@@ -65,8 +94,10 @@ def test_audit_panels_render_exactly_one_named_date_pair(auth_client, url,
     fields. Jinja will not raise for it; this will.
     """
     body = _body(auth_client, url)
-    assert body.count('name="start_date"') == 1
-    assert body.count('name="end_date"') == 1
+    expected = {None: 1} | _extra_owners(url)
+    for field in ('start_date', 'end_date'):
+        assert _owned_by_form(body, field) == expected, (
+            f'{field} must appear exactly once per owning form')
     assert 'type="range"' in body
     assert 'name="age' not in body
 
@@ -155,10 +186,11 @@ def test_mobile_swaps_the_thumbs_for_selects(auth_client, url, form_id):
         'mobile hid the date inputs behind a trigger it does not render')
 
 
-#: The hidden window-carrying forms on /allocations/xras. Each owns its own
-#: `days` field and its own fragment; the pairs are emitted by `window_pills`
-#: INSIDE those fragments and bound back with `form=`.
-XRAS_WINDOW_FORMS = ('xras-activity-filters', 'xras-accounts-filters')
+#: The per-tab facet forms on /allocations/xras. Each owns its own chip state
+#: and its own fragment; NONE of them carries date state, because the three
+#: worklist tabs share one window control rendered in the page shell.
+XRAS_FACET_FORMS = ('xras-activity-filters', 'xras-accounts-filters',
+                    'xras-pending-filters')
 
 
 def test_the_xras_page_keeps_one_date_pair_per_form(auth_client):
@@ -177,21 +209,44 @@ def test_the_xras_page_keeps_one_date_pair_per_form(auth_client):
     which is scoped to one form and says nothing about the document.
     """
     page = _body(auth_client, '/allocations/xras')
-    assert page.count('name="start_date"') == 1
-    for form_id in XRAS_WINDOW_FORMS:
-        assert f'form="{form_id}"' not in page, (
-            f'{form_id}\'s date pair leaked onto the page shell')
-        block = re.search(rf'<form id="{form_id}".*?</form>', page, re.S)
-        assert block, f'{form_id} is gone from the page shell'
-        assert block.group(0).count('name="days"') == 1, (
-            f'{form_id} must carry exactly one window field')
 
-    fragment = auth_client.get(
-        '/allocations/xras_pending_fragment').data.decode()
-    assert fragment.count('name="start_date"') == 1
-    assert fragment.count('form="xras-activity-filters"') >= 1, (
-        'the pills\' dates are no longer bound to the activity form')
-    # And the two controls address different reveal targets, so clicking one
-    # cannot flip the other's aria-expanded (actions.js mirrors by selector).
-    assert 'xras-activity-filters-custom' in fragment
+    # One shared window control across all three worklist tabs: exactly one
+    # pair, bound to the shared form, plus the sidebar ladder's own nested one.
+    assert _owned_by_form(page, 'start_date') == {None: 1,
+                                                 'xras-window-filters': 1}
+
+    # ...and exactly one `days` field, in the shared form. Rendering it per
+    # tab is what would resurrect the RadioNodeList trap.
+    block = re.search(r'<form id="xras-window-filters".*?</form>', page, re.S)
+    assert block, 'the shared window form is gone from the page shell'
+    assert block.group(0).count('name="days"') == 1
+    assert page.count('name="days"') == 1
+
+    # Each tab's own facet form must carry no date state at all.
+    for form_id in XRAS_FACET_FORMS:
+        facet = re.search(rf'<form id="{form_id}".*?</form>', page, re.S)
+        assert facet, f'{form_id} is gone from the page shell'
+        for field in ('days', 'start_date', 'end_date'):
+            assert f'name="{field}"' not in facet.group(0), (
+                f'{form_id} must not duplicate the shared window field {field}')
+
+    # The pills' dates are bound to the SHARED form, in the shell — that is
+    # what lets three tabs read one window without three same-named pairs.
+    assert page.count('form="xras-window-filters"') >= 1, (
+        "the pills' dates are no longer bound to the shared window form")
+
+    # ...and no fragment emits a date pair of its own any more. A fragment
+    # that started rendering `window_pills` again would put a second pair in
+    # the shared form the moment its tab loaded.
+    for endpoint in ('xras_pending_fragment', 'xras_accounts_fragment',
+                     'xras_pending_requests_fragment'):
+        fragment = auth_client.get(f'/allocations/{endpoint}').data.decode()
+        assert 'name="start_date"' not in fragment, (
+            f'{endpoint} renders its own date pair; the window is shared now')
+        assert 'name="days"' not in fragment
+
+    # The two remaining controls address different reveal targets, so clicking
+    # one cannot flip the other's aria-expanded (actions.js mirrors by
+    # selector).
+    assert 'xras-window-filters-custom' in page
     assert 'xras-filters-age-exact' in page

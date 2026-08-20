@@ -1340,6 +1340,10 @@ def xras():
         'dashboards/allocations/xras.html',
         xras_start_date=start_str,
         xras_end_date=end_str,
+        # The worklist tabs share ONE window control, rendered in the shell so
+        # only one start_date/end_date pair exists (see the template).
+        window=_parse_activity_window(request.args),
+        window_pill_choices=_ACTIVITY_WINDOW_PILLS,
         **_window_control_context(end_date, start_str, end_str),
         all_statuses=list(XRAS_ACTION_STATUSES),
         all_action_types=_xras_action_types(),
@@ -1649,6 +1653,30 @@ def _filter_accounts(rows, *, classifications=None, roles=None):
     return out
 
 
+_PENDING_FORM_ID = 'xras-pending-filters'
+
+#: Requests to offer as chips. A worklist spanning dozens of projects would
+#: otherwise render a chip wall; the cap is on the CHIPS, not the rows, and
+#: the rows all stay visible whether or not their request earned one.
+_MAX_REQUEST_CHIPS = 12
+
+
+def _request_facets(rows, *, classifications=None):
+    """Counts per XRAS request number, most-affected first.
+
+    Self-excluding on its own dimension, like every other facet here. Rows
+    naming no request number contribute nothing: a NULL cannot round-trip
+    through the form, so it must not become a chip.
+    """
+    scoped = _filter_accounts(rows, classifications=classifications)
+    counts = {}
+    for row in scoped:
+        for number in {a['request_number'] for a in row['actions'] if a['request_number']}:
+            counts[number] = counts.get(number, 0) + 1
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [{'value': k, 'count': v} for k, v in ordered[:_MAX_REQUEST_CHIPS]]
+
+
 def _account_facets(rows, dimension, *, classifications=None, roles=None):
     """Self-excluding counts for one dimension.
 
@@ -1717,11 +1745,18 @@ def xras_accounts_fragment():
         for row in rows:
             row['person'] = None
 
+    selected_requests = [r for r in request.args.getlist('request_number') if r]
+
     class_facets = _account_facets(rows, 'classification', roles=selected_roles)
     role_facets = _account_facets(rows, 'role', classifications=selected_classes)
+    request_facets = _request_facets(rows, classifications=selected_classes)
 
     rows = _filter_accounts(rows, classifications=selected_classes,
                             roles=selected_roles)
+    if selected_requests:
+        # The operator working one project's activation wants only its rows.
+        rows = [r for r in rows
+                if {a['request_number'] for a in r['actions']} & set(selected_requests)]
 
     return render_template(
         'dashboards/allocations/partials/xras_accounts_card.html',
@@ -1739,11 +1774,83 @@ def xras_accounts_fragment():
              'count': class_facets.get(key, 0)}
             for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)],
         role_values=[{'value': k, 'count': v} for k, v in role_facets.items()],
+        request_values=request_facets,
         selected_classifications=selected_classes,
         selected_roles=selected_roles,
+        selected_requests=selected_requests,
         form_id=_ACCOUNTS_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
         target_id=_ACCOUNTS_TARGET,
+    )
+
+
+_PENDING_TARGET = 'alloc-xras-pending-requests'
+
+
+@bp.route('/xras_pending_requests_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_pending_requests_fragment():
+    """HTMX fragment: Feed B — XRAS requests SAM has no project for yet.
+
+    **Read from a cache the `xras_sweep` task publishes, never computed
+    here.** The enumeration behind this is 21 pages and 60-90 seconds against
+    `api.xras.org`; no htmx round-trip can afford it, which is why the sweep
+    is a producer and this is a consumer. The tab is therefore exactly as
+    fresh as the last successful sweep, and it says so.
+
+    Three distinct empty states, and conflating them would mislead:
+
+    - **unconfigured** — `XRAS_OUTGOING_ENABLED` is off, so no sweep can run.
+    - **no snapshot** — configured, but no sweep has published yet (the task
+      may be disabled, or this is the first hour after a deploy).
+    - **published and empty** — a real sweep found nothing pending, which is
+      the healthy steady state.
+
+    Same PII rule as the accounts tab: person detail only for MANAGE_XRAS,
+    stripped in the route so a VIEW_XRAS response never carries it.
+    """
+    from sam.integration.xras_api import xras_api_configured
+    from sam.integration.xras_api.cache import load_pending_worklist
+
+    may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
+    configured = xras_api_configured()
+    snapshot = load_pending_worklist() if configured else None
+
+    rows = list(snapshot.get('rows') or []) if snapshot else []
+    selected_requests = [r for r in request.args.getlist('request_number') if r]
+    selected_classes = [c for c in request.args.getlist('classification') if c]
+
+    if not may_manage:
+        rows = [{**r, 'person': None} for r in rows]
+
+    class_facets = _account_facets(rows, 'classification')
+    request_facets = _request_facets(rows, classifications=selected_classes)
+
+    rows = _filter_accounts(rows, classifications=selected_classes)
+    if selected_requests:
+        rows = [r for r in rows
+                if {a['request_number'] for a in r['actions']} & set(selected_requests)]
+
+    return render_template(
+        'dashboards/allocations/partials/xras_pending_requests_card.html',
+        rows=rows,
+        snapshot=snapshot,
+        configured=configured,
+        may_manage=may_manage,
+        counts=worklist_counts(rows),
+        classification_values=[
+            {'value': key,
+             'label': _ACCOUNT_CLASSIFICATION_LABELS.get(key, key),
+             'count': class_facets.get(key, 0)}
+            for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)],
+        request_values=request_facets,
+        selected_classifications=selected_classes,
+        selected_requests=selected_requests,
+        form_id=_PENDING_FORM_ID,
+        fragment_url=url_for(
+            'allocations_dashboard.xras_pending_requests_fragment'),
+        target_id=_PENDING_TARGET,
     )
 
 
