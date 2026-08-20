@@ -164,6 +164,18 @@ spec:
                 value: {{ .Values.webapp.env.SAM_DB_SERVER | quote }}
               - name: SAM_DB_REQUIRE_SSL
                 value: {{ .Values.webapp.env.SAM_DB_REQUIRE_SSL | quote }}
+              # ⚠️ The sweep PUBLISHES its worklist into the shared cache for
+              # the dashboard to read, so it needs the same Redis the webapp
+              # uses. Without this the bucket falls back to a per-worker
+              # in-process TTLCacheAdapter (by design — an unreachable Redis
+              # must never take the app down), the sweep writes into it
+              # happily, and the pod then EXITS and takes the cache with it.
+              # Producer succeeds, consumer sees nothing, nothing errors.
+              # Found exactly that way on the first production run.
+              {{- if .Values.cache.enabled }}
+              - name: CACHE_REDIS_URL
+                value: "redis://{{ .Values.cache.name }}.{{ .Release.Namespace }}.svc:{{ .Values.cache.port }}/0"
+              {{- end }}
               # ── XRAS outgoing (xras_sweep) ──────────────────────────────
               # ⚠️ This manifest renders `.Values.tasks.env` and does NOT
               # inherit `.Values.webapp.env`, so every key the sweep reads is

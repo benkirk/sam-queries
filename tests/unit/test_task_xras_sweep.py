@@ -469,3 +469,62 @@ class TestItWritesNothing:
         wire([[_request(1, 'ZZZZ9999')]])
         mod.xras_sweep(ctx())
         assert session.query(XrasActivationEvent).count() == before
+
+
+class TestPublishHonesty:
+    """⚠️ Found on the first production run, and the reason `published` is not
+    just "did a write return".
+
+    `BucketedTTLCache.adapter()` falls back to a per-worker in-process cache
+    when `CACHE_REDIS_URL` is unset or Redis is unreachable. That fallback is
+    load-bearing for the webapp — an unreachable Redis must never take it down
+    — but this task runs in a **one-shot CronJob pod**: the write succeeds, the
+    pod exits, the cache dies with it. Producer reports success, dashboard sees
+    nothing, nothing errors.
+
+    Production did exactly that: `cronjob-tasks.yaml` carried the four XRAS
+    keys but not `CACHE_REDIS_URL`, the ledger said `published: true`, and the
+    tab said "no sweep has published yet".
+    """
+
+    def test_a_process_local_store_is_not_published(self, ctx, wire,
+                                                    monkeypatch):
+        from sam.integration.xras_api import cache as xc
+
+        wire([[_request(1, 'ZZZZ9999')]])
+        # The in-process fallback adapter — what a pod with no CACHE_REDIS_URL
+        # gets.
+        monkeypatch.setattr(xc, 'is_shared_backend', lambda adapter: False)
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['publish_backend'] == 'local'
+        assert detail['published'] is False, (
+            'a cache that dies with the pod must not report as published')
+
+    def test_a_shared_store_is_published(self, ctx, wire, monkeypatch):
+        from sam.integration.xras_api import cache as xc
+
+        wire([[_request(1, 'ZZZZ9999')]])
+        monkeypatch.setattr(xc, 'is_shared_backend', lambda adapter: True)
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['publish_backend'] == 'redis'
+        assert detail['published'] is True
+
+    def test_the_backend_is_always_reported(self, ctx, wire):
+        """"0 findings, succeeded" already had to be distinguishable from "did
+        not look"; this is the same rule for the handoff."""
+        wire([])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['publish_backend'] in ('redis', 'local', 'disabled', 'full')
+
+
+class TestTheChartCarriesTheSharedCache:
+    """The wiring half of the same bug. `cronjob-tasks.yaml` renders
+    `.Values.tasks.env` plus a hand-listed set and does NOT inherit
+    `webapp.env` — the same cross-referencing trap `NOTIFY_*` hit."""
+
+    def test_the_cronjob_template_sets_cache_redis_url(self):
+        manifest = (Path(__file__).resolve().parents[2] / 'helm' / 'templates'
+                    / 'cronjob-tasks.yaml').read_text()
+        assert 'CACHE_REDIS_URL' in manifest, (
+            'without the shared Redis the sweep publishes into a cache that '
+            'dies with its pod')

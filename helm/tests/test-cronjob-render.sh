@@ -191,6 +191,13 @@ because 2500 is ~50x that task's realistic volume"
 # by hand in cronjob-tasks.yaml. Asserted against THIS manifest (-s) because a
 # whole-render grep passes on the Deployment's copy and proves nothing about the
 # pod that actually calls XRAS.
+# ⚠️ The sweep publishes into the SHARED cache the webapp reads. Without this
+# the bucket silently falls back to a per-worker in-process cache, the sweep
+# reports success, the pod exits, and the dashboard tab shows "no sweep has
+# published yet" forever. Caught on the first production run.
+assert_contains "$cron_out" 'name: CACHE_REDIS_URL' \
+  "the sweep cannot hand its worklist to the dashboard without the shared Redis"
+
 assert_contains "$cron_out" 'name: XRAS_OUTGOING_ENABLED' \
   "the sweep's master lever must reach the CronJob, not just the Deployment"
 assert_contains "$cron_out" 'name: XRAS_API_BASE' \

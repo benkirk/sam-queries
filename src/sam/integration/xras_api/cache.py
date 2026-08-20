@@ -85,17 +85,28 @@ def cached_resources(compute: Callable[[], Any]) -> Optional[Any]:
     return _CACHE.get_or_compute('resources', 'catalog', compute)
 
 
-def store_pending_worklist(payload: Any) -> bool:
+def store_pending_worklist(payload: Any) -> str:
     """Publish the sweep's Feed-B result for the dashboard to read.
 
-    Returns True if it was stored. A disabled bucket (TTL or size <= 0, or
-    caching switched off in this worker) is **not** an error: the sweep still
-    reports its findings in the ledger row, and the tab renders its
-    "no sweep data yet" state.
+    Returns **where it landed**, not merely whether a write succeeded:
+    ``'redis'`` (shared, the dashboard will see it), ``'local'`` (a per-worker
+    in-process cache), or ``'disabled'`` / ``'full'``.
+
+    ⚠️ **Why this is not a bool.** `BucketedTTLCache.adapter()` falls back to a
+    per-worker `TTLCacheAdapter` when `CACHE_REDIS_URL` is unset or Redis is
+    unreachable, and that fallback is load-bearing — an unreachable Redis must
+    never take the webapp down. But `xras_sweep` runs in a **one-shot CronJob
+    pod**: a process-local write succeeds, the pod exits, and the cache dies
+    with it. The producer reports success, the consumer sees nothing, and
+    nothing anywhere errors.
+
+    That is not hypothetical — it is what the first production run did, because
+    `cronjob-tasks.yaml` did not carry `CACHE_REDIS_URL`. A bool could not tell
+    the two apart, so the caller could not report the difference.
     """
     adapter = _CACHE.adapter('pending')
     if adapter is None:
-        return False
+        return 'disabled'
     with adapter.lock:
         adapter.pop(_PENDING_KEY, None)
         try:
@@ -103,8 +114,17 @@ def store_pending_worklist(payload: Any) -> bool:
         except ValueError:
             # Full with nothing expired to evict — skip rather than fail the
             # sweep, which has already done the useful work.
-            return False
-    return True
+            return 'full'
+    return 'redis' if is_shared_backend(adapter) else 'local'
+
+
+def is_shared_backend(adapter: Any) -> bool:
+    """Is this adapter visible to other processes?
+
+    The one question a producer in a short-lived pod actually needs answered.
+    """
+    from sam.caching.redis_ttl import RedisTTLAdapter
+    return isinstance(adapter, RedisTTLAdapter)
 
 
 def load_pending_worklist() -> Optional[Any]:

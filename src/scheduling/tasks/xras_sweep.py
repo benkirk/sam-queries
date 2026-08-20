@@ -250,6 +250,7 @@ def xras_sweep(ctx) -> TaskResult:
         'people_refreshed': 0,
         'reconciled': 0,
         'published': False,
+        'publish_backend': '',
         'unavailable_errors': 0,
     }
 
@@ -363,7 +364,7 @@ def xras_sweep(ctx) -> TaskResult:
     # Send first, record second — the ledger row must not claim a snapshot the
     # tab cannot read. A disabled bucket is not an error: the findings are
     # still in `detail`, and the tab renders its "no sweep data yet" state.
-    detail['published'] = store_pending_worklist({
+    backend = store_pending_worklist({
         # A datetime, not an ISO string: this payload is pickled into the
         # cache and read straight by a Jinja `fmt_date`, whereas the ledger's
         # `detail` beside it is JSON and must stay stringly-typed. The two
@@ -379,6 +380,19 @@ def xras_sweep(ctx) -> TaskResult:
         'counts': detail['accounts'],
         'rows': enumerated,
     })
+
+    # ⚠️ `published` means "the dashboard can read this", NOT "a write
+    # returned". The bucket falls back to a per-worker in-process cache when
+    # CACHE_REDIS_URL is unset or Redis is unreachable, and this task runs in a
+    # ONE-SHOT pod — so a process-local write succeeds and then dies with the
+    # pod. The first production run did exactly that and reported success.
+    detail['publish_backend'] = backend
+    detail['published'] = backend == 'redis'
+    if backend != 'redis':
+        ctx.logger.warning(
+            'xras_sweep: worklist went to the %s cache, so the dashboard tab '
+            'will NOT see it (CACHE_REDIS_URL unset or Redis unreachable?)',
+            backend)
 
     counts = detail['accounts']
     message = (f"{detail['requests_in_window']}/{detail['requests_seen']} in-window request(s), "
