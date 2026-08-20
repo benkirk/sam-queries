@@ -50,6 +50,7 @@ _BUCKETED_CACHE_MODULES = (
     'webapp.disk_scans.cache',
     'webapp.jobs.cache',
     'sam.integration.awards.cache',
+    'sam.integration.xras_api.cache',
 )
 
 
