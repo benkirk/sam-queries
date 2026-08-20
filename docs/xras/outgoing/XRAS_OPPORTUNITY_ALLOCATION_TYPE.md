@@ -404,63 +404,107 @@ doing. They are separable on purpose.
 
 ---
 
-## 8.5 Follow-ups — raised by the operator, not yet built
+## 8.5 Auto-detection — BUILT 2026-08-20
 
-Two, in order. Both were scoped against the shipped code on 2026-08-20.
+The operator posts roughly **four opportunities a year** (University Large x2,
+NSC x2). Each used to be a hand-written `INSERT`. It no longer is: `xras_sweep`
+maps a new opportunity by itself, and writes nothing it cannot corroborate.
 
-### 8.5.1 Nothing alerts on the unmapped count
+### What the full enumeration showed
 
-`xras_sweep` reports `opportunities_unmapped` in `TaskResult.detail`, rendered
-in Admin → Scheduled Tasks → run detail. Nothing reads it. `partial_failures`
-is fed only by `unavailable_errors`, so an unmapped opportunity leaves the run
-**green** — correctly, since it is not a fault — but also invisible unless
-somebody goes looking. The sweep sends no summary mail by design (50 wakes a
-week, most sending nothing).
+Probed live, 21 pages, 4,088 requests: **42 distinct opportunities**, not the 9
+the scrubbed corpus contains. They collapse to **eight** stable
+`(allocationTypeId, primary panelId)` pairs, and two of those carry the bulk:
 
-Small: the number already exists. The question is only which surface earns it —
-the admin card's badge, or the sweep's message.
+| `allocationTypeId` | primary `panelId` | XRAS type | SAM `(panel, allocation_type)` |
+|---|---|---|---|
+| 500023 | 500022 (CISL HPC Allocation Panel) | Large | CHAP / CHAP |
+| 500088 | 500045 (NSC Allocation Panel) | NCAR Strategic Computing | NCAR-ARP / NSC |
+| 500026 | 500021 (CISL Resource Support) | Educational | UNIV USS / Classroom |
+| 500024 | 500021 | Small | UNIV USS / Small |
+| 500847 | 500021 | Exploratory | UNIV USS / Small (No NSF award) |
+| 500848 | 500021 | Data Analysis | UNIV USS / Data |
+| 501276 | 500046 (Admin Panel) | NCAR External Projects | External Projects / External Project |
+| 500023 | **500045** | Large *(2018-era NSC)* | NCAR-ARP / NSC |
 
-### 8.5.2 Auto-populate the map — and why the obvious version is wrong
+Every University Large since 2021 shares one pair; so does every NSC request.
+**The operator's whole annual churn reuses two rows that have been stable for
+five years** — which is why the reference half is eight entries rather than a
+row per opportunity, and why it is a **constant** (`sam/xras/opportunity_types.py`)
+rather than a table: it changes at code cadence, and a constant can be
+test-asserted to name real `allocation_type` rows.
 
-**The operator creates ~4 new opportunities a year** — NSC ×2 and University
-Large ×2 — and each currently needs a hand-written INSERT (runbook § 2c).
-Automating that is worth doing, but two naive forms are actively harmful:
+⚠️ That last row is why the key is the **pair**. `500023` on the CHAP panel is
+CHAP; on the NSC panel it is NSC. Keying on `allocationTypeId` alone would have
+filed a 2018 NSC request under CHAP.
 
-| Approach | Why not |
+### ⚠️ The premise this document opened with is wrong
+
+Section 3 says `/v1/opportunities` means "XRAS already knows the answer the
+ladder is guessing at". It does not. The mapping is **not injective onto SAM's
+types**, in two directions:
+
+| | ladder | XRAS |
+|---|---|---|
+| the unsponsored family (4 ids) | UNIV USS / **Small (No NSF award)** | UNIV USS / **Classroom** |
+| `NCAR - ASD Opportunity` | **ASD-NCAR** (facility 7) | **NCAR-ARP / NSC** (facility 1) |
+
+XRAS files unsponsored requests under `Educational`, the same id as
+Classroom/Training; and it gives ASD NSC's own type *and* panel, so the two are
+indistinguishable from the API at all. Both differences change the **facility**,
+which is what reaches `next_projcode`. The operator adjudicated both: the ladder
+is right, and all four are pinned `source='manual'`.
+
+### The rule: two derivations must agree
+
+`propose_opportunity_mapping` (`sam/queries/xras_actions.py`) derives the pair
+twice — once from the constant, once from the free-text ladder — and the sweep
+writes **only when they match**. Disagreement, an unknown pair, or a ladder that
+declines is reported and withheld.
+
+This is not belt-and-braces. It:
+
+- **caught all four bad cases without knowing about any of them** — including
+  two the design never anticipated (530296, 530315), found by the rule rather
+  than by hand;
+- **withholds the first Wyoming opportunity**, since the ladder cannot produce
+  `UW` — which is also the alerting this section originally asked for;
+- makes an error in the constant **self-limiting**: a wrong entry disagrees with
+  the ladder and is withheld rather than written;
+- held under a **partially-loaded database** — observed during a snapshot
+  rebuild, where the `allocation_type` rows briefly vanished and all 41
+  candidates were withheld with `missing_allocation_type`, writing nothing.
+
+The value auto-writing adds is **durability**, not new correctness: the rows it
+writes are ones the ladder already got right, made explicit so an opportunity
+rename cannot break them. Correctness stays with the human-confirmed rows.
+
+### What it writes, and what it cannot
+
+| | |
 |---|---|
-| Auto-seed with **what the ladder inferred** | Adds no fidelity and *freezes* the ladder's answer. On the WNA case it would persist the wrong panel, converting a silent-but-fixable divergence into a permanent one. |
-| Match XRAS's `allocationType` **string** to SAM's | The vocabularies differ: `Large`→`CHAP`, `Educational`→`Classroom`, `Exploratory`→`Small (No NSF award)`, `Data Analysis`→`Data`. Four of five miss — and the one name that *does* match, `Small`, is precisely the ambiguous two-panel row this table exists to disambiguate. Worst of both. |
+| **Provenance** | `source` — `manual` or `task:xras_sweep`. The one schema change: `ALTER ... ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'manual'`, recorded in the runbook. |
+| **Never overwrites** | inserts only where no row exists, checked against the database rather than against `source`, so a `manual` row is safe from any future writer. |
+| **Cap** | `SAM_TASKS_XRAS_MAP_MAX`, default 20 — a blast-radius bound. Steady state is zero or one a quarter. |
+| **Ingest is untouched** | the handler path still reads one local table and never calls out. Writing happens out of band; if the sweep stops, the map stops growing and the ladder covers the gap. |
+| **`--dry-run` is a full rehearsal** | `TaskContext.close_sessions` rolls back rather than commits, so the report is exactly what a real run would have done. Use it before any large backfill. |
 
-**The version that works keys one level up.** `/v1/opportunities` returns
-`allocationTypeInfo.allocationTypeId` and `panels: [{panelId, isPrimary}]`, both
-numeric and stable. So:
+Measured preview against the live API with the four manual rows in place:
+**42 seen, 29 unmapped, 29 agreeing, 0 needing review, 0 unknown** — written 20
+then 9 across two hourly runs.
 
-1. A **small hand-maintained table**: `(XRAS allocationTypeId, XRAS primary
-   panelId) → allocation_type_id`. On the order of five or six rows against
-   XRAS's five panels, and it changes only when NCAR invents a genuinely new
-   allocation product — not when an existing one is reissued for a new term.
-2. `xras_sweep` derives the opportunity rows itself: unmapped id → resolve via
-   `GET /v1/opportunities/list/:ids` → look up the stable pair → INSERT.
+⚠️ **The helper must stay above the `@task` decorator.** A module-level function
+defined between `@task(...)` and `def xras_sweep` is registered as the task
+body — silently, because the name is a decorator argument, and invisibly to
+every unit test that calls `mod.xras_sweep` directly. It fails only at dispatch.
+That happened; `test_the_decorator_is_bound_to_the_task_body` is the guard.
 
-The four-a-year opportunities reuse existing XRAS allocation types, so they land
-with no SQL. And because the panel comes from **XRAS's own declaration** rather
-than from our inference, this *resolves* the WNA case instead of merely flagging
-it — which the opportunity-level table cannot do on its own.
+### Still deferred
 
-⚠️ **This contradicts § 9's "do not let the sweep write the table", and that rule
-conflates two things.** The inviolable half is *the ingest path must never call
-out* — untouched: ingestion still reads only the local table. The sweep writing
-is out-of-band and asynchronous; if it is down the map simply stops growing and
-the ladder covers it, exactly as today. No new runtime dependency, which is the
-property § 2 was actually protecting.
-
-The genuine new risk is different: an auto-written row **overrides the ladder
-for every subsequent action**, and a wrong one is silent and permanent. Pair it
-with all four of — write only on an exact hit in the stable table, never
-overwrite an existing row, a provenance column so auto rows are distinguishable
-and revertible, and every write reported in `detail`.
-
----
+`sam-admin xras --validate-opportunities`. The decision function is already
+shared, so it is CLI wiring: option, `execute` kwarg, mode method, builder,
+display. Use `GET /v1/opportunities/list/:ids` (the client method exists) — the
+open list cannot explain the 30-odd closed opportunities.
 
 ## 9. Do not
 

@@ -140,8 +140,21 @@ SELECT v.oid, at.allocation_type_id, v.name
 SELECT COUNT(*) FROM xras_opportunity_allocation_type;   -- 9
 ```
 
-Adding a **new** opportunity later is one more row of that INSERT — a data fix,
-not a deploy. Design:
+**Provenance, added 2026-08-20** so an automatically-derived row is
+distinguishable from a human's decision:
+
+```sql
+ALTER TABLE xras_opportunity_allocation_type
+  ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'manual';
+```
+
+Four rows are `manual` because XRAS is wrong about them and no API can say so —
+the unsponsored family (530296, 530315, 530900) and `NCAR - ASD Opportunity`
+(531461). See the design doc § 8.5.
+
+Adding a **new** opportunity is now nothing at all: `xras_sweep` writes it on
+the next hourly run when the type map and the free-text ladder agree, and
+withholds it for review when they do not. Design:
 [`XRAS_OPPORTUNITY_ALLOCATION_TYPE.md`](../outgoing/XRAS_OPPORTUNITY_ALLOCATION_TYPE.md).
 
 Verified on production, all five matching:
