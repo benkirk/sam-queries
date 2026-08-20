@@ -53,7 +53,7 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         {{- end }}
-        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled (or .Values.webapp.jhDbCredentials.enabled .Values.webapp.fsDbCredentials.enabled))))) }}
+        {{- if or .Values.webapp.env (or .Values.webapp.dbCredentials.enabled (or .Values.webapp.samDbCredentials.enabled (or .Values.webapp.jupyterhubCredentials.enabled (or .Values.webapp.oidcCredentials.enabled (or .Values.webapp.jhDbCredentials.enabled (or .Values.webapp.fsDbCredentials.enabled .Values.webapp.xrasApiCredentials.enabled)))))) }}
         env:
           {{- range $key, $value := .Values.webapp.env }}
           - name: {{ $key }}
@@ -162,6 +162,15 @@ spec:
             valueFrom:
               secretKeyRef:
                 name: {{ .Values.webapp.name }}-jh-credentials
+                key: token
+          {{- end }}
+          {{- if .Values.webapp.xrasApiCredentials.enabled }}
+          # SAM calling OUT to XRAS. ⚠️ Also needed by the CronJob (xras_sweep),
+          # which shares no env anchor with this file — see cronjob-tasks.yaml.
+          - name: XRAS_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.webapp.name }}-xras-api-credentials
                 key: token
           {{- end }}
           {{- if .Values.webapp.oidcCredentials.enabled }}

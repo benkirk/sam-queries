@@ -318,6 +318,25 @@ webapp:
     # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
     # manual without a revert; an unknown token leaves that type disabled.
     XRAS_ACTIONS_ENABLED: "all"
+    # ── XRAS Allocations API: SAM calling OUT to XRAS (docs/xras/outgoing/) ──
+    # The opposite direction from the two levers above. Read-only and GET-only:
+    # the client has no verb method but an internal _get, because the SAME key
+    # can create requests, modify roles and merge one person into another.
+    #
+    # Fail-closed. With XRAS_OUTGOING_ENABLED "0" the account-creation card
+    # renders its unconfigured state, the xras_sweep task records a skip, and
+    # sam-admin degrades — nothing raises for lack of a key. Flip to "1" once
+    # the card has been reviewed against real data.
+    #
+    # ⚠️ The KEY is not here. It arrives from OpenBao via the
+    # webapp.xrasApiCredentials ExternalSecret below, injected as XRAS_API_KEY
+    # by secretKeyRef into BOTH deployment.yaml and cronjob-tasks.yaml.
+    XRAS_OUTGOING_ENABLED: "0"
+    XRAS_API_BASE: "https://api.xras.org"
+    XRAS_ALLOCATIONS_PROCESS: "NCAR"
+    # Required header on every call; scopes nothing outside /v1/requests, which
+    # this client never reads. The value XRAS provisioned for the ARC scripts.
+    XRAS_API_USER: "arcguest"
 
   # system_status DB credentials (injected as STATUS_DB_USERNAME / STATUS_DB_PASSWORD).
   # MUST be a non-superuser role — connecting as the postgres SUPERUSER causes
@@ -380,6 +399,18 @@ webapp:
     useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
     secretStoreRefName: csg-ro            # Name of the SecretStore to use
     secretPath: csg/jh-api-token          # Path in OpenBao where JupyterHub credentials are stored
+    tokenKey: token                       # Key in OpenBao for the token
+
+  # XRAS Allocations API key — SAM calling OUT to XRAS. Same five-key shape as
+  # jupyterhubCredentials above, and the same single-value payload.
+  # ⚠️ Consumed by TWO manifests: the Deployment (the dashboard card) and the
+  # CronJob (the xras_sweep task). They share no env anchor, so the secretKeyRef
+  # is written out in both — the same cross-referencing trap NOTIFY_* hit.
+  xrasApiCredentials:
+    enabled: true                         # Enable syncing the XRAS API key from OpenBao
+    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
+    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    secretPath: csg/xras-api-key          # Path in OpenBao where the XRAS API key is stored
     tokenKey: token                       # Key in OpenBao for the token
 
   # OIDC SSO credentials + Flask session-signing key.
@@ -464,6 +495,12 @@ tasks:
     # src/scheduling/tasks/xras_notices.py; this pins it visibly, because the
     # number is a policy decision rather than a code one.
     SAM_TASKS_XRAS_MAX: "50"
+    # xras_sweep budgets. Both are BOUNDS, not targets: the task reports
+    # `budget_exhausted` in its ledger detail when a cap actually bit, so a cap
+    # that starts truncating is visible rather than reading as full coverage.
+    # 25 pages x 200 requests is comfortably the whole NCAR process today.
+    SAM_TASKS_XRAS_SWEEP_MAX_PAGES: "25"
+    SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE: "250"
     # ⚠️ Comma-separated task names to skip, WITHOUT a code deploy. This is a
     # staged-enable control: exactly one task is live, and the rest are named
     # here until each has been reviewed on its own.
@@ -472,6 +509,7 @@ tasks:
     # Disabled: deactivate_expired_projects  (writes inactivate_time in SAM)
     #           expiration_notices           (mails external PIs)
     #           xras_notices                 (mails external PIs)
+    #           xras_sweep                   (calls out to api.xras.org)
     #
     # ⚠️ There is NO wildcard. `disabled_tasks()` in src/scheduling/runner.py
     # is a case-sensitive exact match against registry keys — `all`, `*` and

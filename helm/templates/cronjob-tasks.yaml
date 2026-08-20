@@ -164,6 +164,31 @@ spec:
                 value: {{ .Values.webapp.env.SAM_DB_SERVER | quote }}
               - name: SAM_DB_REQUIRE_SSL
                 value: {{ .Values.webapp.env.SAM_DB_REQUIRE_SSL | quote }}
+              # ── XRAS outgoing (xras_sweep) ──────────────────────────────
+              # ⚠️ This manifest renders `.Values.tasks.env` and does NOT
+              # inherit `.Values.webapp.env`, so every key the sweep reads is
+              # cross-referenced by hand here. Omitting one is fail-CLOSED for
+              # this task — an unconfigured sweep records a visible `skipped`
+              # rather than lying about coverage — but it would also mean the
+              # task never runs while reporting success, which is exactly the
+              # NOTIFY_* trap. `helm/tests/test-cronjob-render.sh` asserts each
+              # of these against THIS manifest (-s), because a whole-render
+              # grep passes on the Deployment's copy and proves nothing.
+              - name: XRAS_OUTGOING_ENABLED
+                value: {{ .Values.webapp.env.XRAS_OUTGOING_ENABLED | quote }}
+              - name: XRAS_API_BASE
+                value: {{ .Values.webapp.env.XRAS_API_BASE | quote }}
+              - name: XRAS_ALLOCATIONS_PROCESS
+                value: {{ .Values.webapp.env.XRAS_ALLOCATIONS_PROCESS | quote }}
+              - name: XRAS_API_USER
+                value: {{ .Values.webapp.env.XRAS_API_USER | quote }}
+              {{- if .Values.webapp.xrasApiCredentials.enabled }}
+              - name: XRAS_API_KEY
+                valueFrom:
+                  secretKeyRef:
+                    name: {{ .Values.webapp.name }}-xras-api-credentials
+                    key: token
+              {{- end }}
               {{- if .Values.webapp.dbCredentials.enabled }}
               - name: STATUS_DB_USERNAME
                 valueFrom:

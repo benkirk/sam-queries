@@ -185,6 +185,37 @@ assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_MAX' \
   "and xras_notices' own runaway guard — it does NOT share SAM_TASKS_EMAIL_MAX, \
 because 2500 is ~50x that task's realistic volume"
 
+# ── XRAS outgoing (xras_sweep) ──────────────────────────────────────────────
+# Same trap as NOTIFY_*: this manifest renders `.Values.tasks.env` and does NOT
+# inherit `.Values.webapp.env`, so every key the sweep reads is cross-referenced
+# by hand in cronjob-tasks.yaml. Asserted against THIS manifest (-s) because a
+# whole-render grep passes on the Deployment's copy and proves nothing about the
+# pod that actually calls XRAS.
+assert_contains "$cron_out" 'name: XRAS_OUTGOING_ENABLED' \
+  "the sweep's master lever must reach the CronJob, not just the Deployment"
+assert_contains "$cron_out" 'name: XRAS_API_BASE' \
+  "and the API base URL"
+assert_contains "$cron_out" 'name: XRAS_ALLOCATIONS_PROCESS' \
+  "and the allocations process header"
+assert_contains "$cron_out" 'name: XRAS_API_USER' \
+  "and the required XA-USER header"
+assert_contains "$cron_out" 'name: XRAS_API_KEY' \
+  "and the key itself, via secretKeyRef — the sweep cannot enumerate without it"
+assert_contains "$cron_out" 'name: samuel-xras-api-credentials' \
+  "which must name the Secret the ExternalSecret materialises"
+assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_SWEEP_MAX_PAGES' \
+  "and the sweep's page budget"
+assert_contains "$cron_out" 'name: SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE' \
+  "and its person-refresh budget"
+
+# Fail-closed, and pinned: the sweep ships switched off at BOTH levers — its
+# name in SAM_TASKS_DISABLED, and XRAS_OUTGOING_ENABLED "0". Derived from
+# values.yaml rather than hardcoded, so flipping either is a deliberate edit
+# here as well as there.
+outgoing=$(grep -E '^\s+XRAS_OUTGOING_ENABLED:' "$CHART_DIR/values.yaml" | awk '{print $2}' | tr -d '"')
+assert_contains "$cron_out" "value: \"${outgoing}\"" \
+  "XRAS_OUTGOING_ENABLED must render the value values.yaml declares"
+
 # The values must MATCH the Deployment's — cross-referenced, not duplicated.
 notify_enabled=$(grep -E '^\s+NOTIFY_ENABLED:' "$CHART_DIR/values.yaml" \
                  | awk '{print $2}' | tr -d '"')
@@ -218,6 +249,14 @@ assert_contains "$deploy_out" 'name: SAM_TASKS_DISABLED' \
   "the webapp Deployment must carry the kill switch too, or the admin card lies"
 assert_contains "$deploy_out" "value: \"${switch}\"" \
   "and it must carry the SAME value — one declaration, two consumers"
+
+# The Deployment needs the key too — the dashboard card enriches from it. The
+# two manifests share no env anchor, so this is a second hand-written copy and
+# must be asserted separately.
+assert_contains "$deploy_out" 'name: XRAS_API_KEY' \
+  "the webapp needs the XRAS key for the account-creation card's person detail"
+assert_contains "$deploy_out" 'name: XRAS_OUTGOING_ENABLED' \
+  "and the same fail-closed lever"
 
 # ---------------------------------------------------------------------------
 # Local dev render (values.yaml + values-local.yaml)
