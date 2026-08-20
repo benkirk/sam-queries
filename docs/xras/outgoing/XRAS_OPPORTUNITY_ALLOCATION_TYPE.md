@@ -1,14 +1,113 @@
 # `opportunityId` → allocation type — a mapping table, built additively
 
-**Status:** designed, **not implemented**. Sketched 2026-08-20 with the operator.
-**Base:** stacks on **PR #458** (`probing_xras` → `staging`, 19 commits, all CI
-green). Branch from that head; do not branch from `staging`.
+**Status:** **implemented as built**, 2026-08-20, on `xras_opportunityId`.
+Phase 1 shipped in full, plus the free half of Phase 2 (§ 5.2). Phase 2's CLI
+audit (§ 5.1) stays deferred.
+**Base:** branched from `staging` after PR #458 squash-merged as `8ae154d`.
 **Origin:** the deferred § 8.2 item in
 `docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md`, reshaped around one hard
 constraint (§ 2).
 
-This is a handoff document. It assumes **no prior context** — an implementation
-session should be able to start cold from here.
+The design below stands as written except where § 0 records a deviation.
+
+---
+
+## 0. As built — corrections and findings
+
+Six things the design did not know. Each was verified against the code or the
+production database before the build, and each is now pinned by a test.
+
+### The premise was never checked — and it holds
+
+This document proposes keying a table on `opportunityId` without ever asking
+whether that id is **single-valued**. It is: across all 41 payloads, nine ids
+resolve to five distinct `(panel, allocation_type)` pairs, **one pair each**.
+That is what makes the map coherent rather than arbitrary, and it also *is*
+the seed. Pinned by
+`test_opportunity_id_is_single_valued_across_the_corpus` — a future fixture
+that broke it would otherwise land silently.
+
+### `Small` is the only *silent* case — § 3 implies two
+
+§ 3 lists both `Small` and `Education` as panel collisions. Both really are
+two-panel names in the database, but the ladder's twelve declared
+`SelectionParms` (`extractors.py:91-104`) never name `UW`, `WRAP` or `LCAP` —
+**the whole of facility 4 is unreachable through it** — and `Education` is not
+among the twelve type names at all. So a WNA `Education` request fails
+resolution **loudly** (422, nothing written), while a WNA `Small` resolves
+silently to `UNIV USS`.
+
+This sharpens the argument rather than weakening it: there is exactly one
+nameable silent failure, and both halves are now asserted —
+`test_a_wyoming_small_request_is_the_silent_case` and
+`test_a_wyoming_education_request_fails_loudly_instead`.
+
+### `allocation_type.panel_id` is NULLABLE
+
+`src/sam/accounting/allocations.py:496`. The obvious implementation of
+§ 4.2 — `row.allocation_type.panel.panel_name` — raises `AttributeError`
+mid-dispatch on a type with no panel, turning an action the ladder would have
+resolved perfectly well into a 500. The lookup treats a null panel as a **miss**
+and falls through. `test_a_mapped_row_whose_type_has_no_panel_falls_through`.
+
+### The § 4.2 trap is real, but only its *first* arm
+
+`auth_at_panel_meeting` has two arms (`handlers/_allocations.py:239-246`).
+Arm 1 — the payload carries `allocationType` — runs the chain, and is the one
+that had to change. Arm 2 reads the **stored** `project.allocation_type`, which
+is already map-consistent because the mapped resolver is what wrote it.
+Repointing arm 2 at the map would change behaviour for payloads that omit
+`allocationType` entirely, which is a different question. Both are now
+documented in place, and the consistency invariant is asserted across the whole
+corpus by `TestPanelAuthorisationAgreesWithTheResolvedType`.
+
+Both guards were **negative-tested**: reverting arm 1 to the pure chain, and
+separately disabling the map lookup, each fail the expected tests and only
+those.
+
+### § 5.2 came free, so it shipped now
+
+The sweep needs no `/v1/opportunities` fetch to count unmapped ids: every
+`reports/requests` payload it already enumerates carries `opportunityId`
+inline. So `audit_opportunity_mapping` — which § 5.1 assigns to Phase 2 — was
+built now, with `audit_resource_mapping`'s injection contract intact
+(`opportunity_ids=None`, `live_checked`). The deferred CLI is then pure wiring.
+
+⚠️ The reports payload spells the sibling field **snake_case**
+(`opportunity_name`) while the inbound action wire spells it `opportunityName`.
+Two vocabularies for one concept meeting inside one feature — the shape of the
+`key`/`resourceRepositoryKey` bug. `test_the_opportunity_id_field_is_read_and_spelled_camel_case`
+pins the inbound spelling.
+
+### § 6's DDL row is wrong twice over
+
+The `initdb.d` hook was not recreated. Two reasons the design could not have
+known: `containers/sam-sql-dev/Dockerfile:8-27` deliberately **deleted** the
+`COPY initdb.d/` line and records that an empty directory is not git-tracked,
+so the directory and the COPY must be recreated together or the image build
+fails — and the retired `zz-90` has drifted (`replay_of_id` vs today's
+`source_action_id`), so it was a template, not a copy.
+
+Instead the DDL was applied to production directly (`hpc-writer` holds
+`CREATE, REFERENCES, INDEX, ALTER` — see the runbook) and the snapshot
+regenerated, which is what was done for the previous three tables on
+2026-08-10. The statements of record are in
+`docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` § 2.
+
+⚠️ Consequently the nine seed rows are **in every regenerated snapshot**, so the
+additivity tests `DELETE` inside their SAVEPOINT rather than assuming an empty
+table.
+
+### Still deferred
+
+`sam-admin xras --validate-opportunities` (§ 5.1). Two notes for whoever builds
+it: XRAS's `panels[]` is the *review-panel* vocabulary (`CISL Resource
+Support`/`CISL RSD`), **not** SAM's `panel` table — only `CHAP` coincides, so
+`/v1/opportunities`'s `panels: [{panelId}]` is evidence for a human and never a
+derivation. And use `GET /v1/opportunities/list/:ids`, which is batched and
+resolves historic/Terminating opportunities: five of the nine known ids are
+closed, and the open list cannot explain them. § 6's "5-edit CLI recipe" is
+really 7 edit points across 4 files.
 
 ---
 
