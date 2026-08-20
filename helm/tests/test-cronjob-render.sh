@@ -220,6 +220,18 @@ outgoing=$(grep -E '^\s+XRAS_OUTGOING_ENABLED:' "$CHART_DIR/values.yaml" | awk '
 assert_contains "$cron_out" "value: \"${outgoing}\"" \
   "XRAS_OUTGOING_ENABLED must render the value values.yaml declares"
 
+# ⚠️ The sweep and the lever are ONE decision. The task skips while the lever
+# is off, and the Feed-B dashboard tab renders only what the task publishes —
+# so a chart with the task enabled and the lever off yields a permanently
+# empty tab and a ledger full of `skipped`, with nothing failing to say so.
+if ! printf '%s' "$switch" | grep -q 'xras_sweep'; then
+  if [[ "$outgoing" != "1" ]]; then
+    red "FAIL: xras_sweep is enabled but XRAS_OUTGOING_ENABLED is \"${outgoing}\""
+    red "  The task would skip every run and the Feed-B tab would never fill."
+    exit 1
+  fi
+fi
+
 # The values must MATCH the Deployment's — cross-referenced, not duplicated.
 notify_enabled=$(grep -E '^\s+NOTIFY_ENABLED:' "$CHART_DIR/values.yaml" \
                  | awk '{print $2}' | tr -d '"')

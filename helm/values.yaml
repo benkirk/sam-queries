@@ -325,13 +325,17 @@ webapp:
     #
     # Fail-closed. With XRAS_OUTGOING_ENABLED "0" the account-creation card
     # renders its unconfigured state, the xras_sweep task records a skip, and
-    # sam-admin degrades — nothing raises for lack of a key. Flip to "1" once
-    # the card has been reviewed against real data.
+    # sam-admin degrades — nothing raises for lack of a key.
+    #
+    # ⚠️ ON. The `xras_sweep` task SKIPS while this is "0", and the Feed-B tab
+    # renders what that task publishes — so turning the task on without this
+    # would produce a permanently empty tab and a ledger full of `skipped`.
+    # The two switches are one decision.
     #
     # ⚠️ The KEY is not here. It arrives from OpenBao via the
     # webapp.xrasApiCredentials ExternalSecret below, injected as XRAS_API_KEY
     # by secretKeyRef into BOTH deployment.yaml and cronjob-tasks.yaml.
-    XRAS_OUTGOING_ENABLED: "0"
+    XRAS_OUTGOING_ENABLED: "1"
     XRAS_API_BASE: "https://api.xras.org"
     XRAS_ALLOCATIONS_PROCESS: "NCAR"
     # Required header on every call; scopes nothing outside /v1/requests, which
@@ -520,7 +524,10 @@ tasks:
     # Disabled: deactivate_expired_projects  (writes inactivate_time in SAM)
     #           expiration_notices           (mails external PIs)
     #           xras_notices                 (mails external PIs)
-    #           xras_sweep                   (calls out to api.xras.org)
+    #
+    # `xras_sweep` was enabled once its output became a queue rather than a
+    # census (see its module docstring). It is read-only — it calls out to
+    # api.xras.org and writes nothing but a cache entry the dashboard reads.
     #
     # ⚠️ There is NO wildcard. `disabled_tasks()` in src/scheduling/runner.py
     # is a case-sensitive exact match against registry keys — `all`, `*` and
@@ -538,4 +545,4 @@ tasks:
     # slot, so re-enabling one mid-slot does not backfill — the first real run
     # is the next occurrence. The switch is also checked ahead of `only`/
     # `force`, so `sam-admin tasks --run X --force` cannot override it.
-    SAM_TASKS_DISABLED: "expiration_notices,xras_notices,xras_sweep"
+    SAM_TASKS_DISABLED: "expiration_notices,xras_notices"

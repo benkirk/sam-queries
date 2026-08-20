@@ -1,7 +1,14 @@
 """``xras_sweep`` — enumerate XRAS nightly and diff it against SAM.
 
-Daily 03:30 Mountain. The first task that calls **out** to XRAS rather than
-reading only SAM's own tables, and the third declaring ``needs=('sam',)``.
+Hourly 08:00-17:00 Mon-Fri Mountain. The first task that calls **out** to XRAS
+rather than reading only SAM's own tables, and the third declaring
+``needs=('sam',)``.
+
+It is also the first task that **publishes to the dashboard**. The Feed-B tab
+on Allocations → XRAS renders what this writes to the ``xras_pending`` cache
+bucket, because the enumeration behind it (21 pages, 60-90s) is far outside
+what an htmx round-trip can afford. The cadence here is therefore the tab's
+freshness, which is why this runs hourly rather than nightly.
 
 What it is for
 --------------
@@ -53,12 +60,20 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
-from scheduling.schedules import Daily, to_local_naive
+from scheduling.schedules import BusinessHourly, to_local_naive
 
 #: Overnight on purpose: nothing here is time-critical, the enumeration is the
 #: heaviest outbound call SAM makes, and a warm people-cache at 03:30 is still
 #: warm for the first card render of the working day.
-SCHEDULE = Daily(3, 30, tz='America/Denver')
+#: Hourly through the business day, matching `xras_notices`. The Feed-B tab
+#: reads what this publishes, so the cadence IS the tab's freshness — a
+#: nightly sweep would show an operator yesterday's queue all day.
+#:
+#: `minute=0` for the same reason `xras_notices` uses it: the CronJob wakes at
+#: :07, so a :00 slot dispatches about seven minutes later where a :20 slot
+#: would wait for the next wake. Both tasks share the wake and run
+#: sequentially under `concurrencyPolicy: Forbid`; this one takes 60-90s.
+SCHEDULE = BusinessHourly(minute=0, tz='America/Denver')
 
 #: Pages of ``reports/requests`` per run, overridable via
 #: ``$SAM_TASKS_XRAS_SWEEP_MAX_PAGES``. At the default page size that is 5,000
@@ -212,6 +227,7 @@ def xras_sweep(ctx) -> TaskResult:
         XrasSourceUnavailable,
         xras_api_configured,
     )
+    from sam.integration.xras_api.cache import store_pending_worklist
     from sam.projects.projects import Project
     from sam.queries.xras_accounts import (
         classify_accounts,
@@ -233,6 +249,7 @@ def xras_sweep(ctx) -> TaskResult:
         'accounts': {},
         'people_refreshed': 0,
         'reconciled': 0,
+        'published': False,
         'unavailable_errors': 0,
     }
 
@@ -340,6 +357,28 @@ def xras_sweep(ctx) -> TaskResult:
             # work. It is reported because it says the account can be created
             # from real detail, not because anything closed.
             detail['reconciled'] += 1
+
+    # ── 5. publish for the dashboard ────────────────────────────────────
+    #
+    # Send first, record second — the ledger row must not claim a snapshot the
+    # tab cannot read. A disabled bucket is not an error: the findings are
+    # still in `detail`, and the tab renders its "no sweep data yet" state.
+    detail['published'] = store_pending_worklist({
+        # A datetime, not an ISO string: this payload is pickled into the
+        # cache and read straight by a Jinja `fmt_date`, whereas the ledger's
+        # `detail` beside it is JSON and must stay stringly-typed. The two
+        # have different serialisation contracts and this is the seam.
+        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz)),
+        'window_days': window,
+        'status': detail['status'],
+        'requests_seen': detail['requests_seen'],
+        'requests_in_window': detail['requests_in_window'],
+        'budget_exhausted': detail['budget_exhausted'],
+        'pending_push': detail['pending_push'],
+        'pending_push_sample': detail['pending_push_sample'],
+        'counts': detail['accounts'],
+        'rows': enumerated,
+    })
 
     counts = detail['accounts']
     message = (f"{detail['requests_in_window']}/{detail['requests_seen']} in-window request(s), "

@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import Daily, occurrence_key
+from scheduling.schedules import BusinessHourly, occurrence_key
 from scheduling.tasks import xras_sweep as mod
 
 pytestmark = pytest.mark.unit
@@ -102,10 +102,14 @@ class TestRegistration:
         import scheduling.tasks                   # noqa: F401
         assert NAME in TASKS
 
-    def test_it_runs_nightly_in_mountain_time(self):
+    def test_it_runs_hourly_through_the_business_day(self):
+        """The cadence IS the Feed-B tab's freshness — the tab renders what
+        this publishes, so a nightly sweep would show an operator yesterday's
+        queue all day."""
         schedule = TASKS[NAME].schedule
-        assert isinstance(schedule, Daily)
-        assert (schedule.hour, schedule.minute) == (3, 30)
+        assert isinstance(schedule, BusinessHourly)
+        assert (schedule.minute, schedule.start_hour, schedule.end_hour) == (0, 8, 17)
+        assert schedule.weekdays == (0, 1, 2, 3, 4)
         assert schedule.tz == 'America/Denver'
 
     def test_it_needs_sam_and_not_status(self):
@@ -134,18 +138,27 @@ class TestRegistration:
         assert lease_for(TASKS[NAME].expected_runtime).total_seconds() > \
             int(match.group(1))
 
-    def test_it_ships_switched_off(self):
-        """⚠️ `SAM_TASKS_DISABLED` is fail-OPEN: a registered task dispatches on
-        the next hourly wake unless the chart names it. This one soaks first,
-        so the name must be in `values.yaml` from the commit that registers it
-        — nothing else couples the registry to the chart.
+    def test_it_is_enabled_and_its_lever_is_on(self):
+        """⚠️ The kill switch and `XRAS_OUTGOING_ENABLED` are ONE decision.
 
-        Delete this test in the commit that clears the switch."""
+        The task skips every run while the lever is off, and the Feed-B tab
+        renders only what the task publishes — so a chart that enables the task
+        with the lever off yields a permanently empty tab and a ledger full of
+        `skipped`, with nothing failing to say so. This asserts they agree.
+
+        (It replaces `test_it_ships_switched_off` from the commit that
+        registered the task, which soaked it before the tab existed.)
+        """
         values = (Path(__file__).resolve().parents[2]
                   / 'helm' / 'values.yaml').read_text()
         line, = [ln for ln in values.splitlines()
                  if ln.strip().startswith('SAM_TASKS_DISABLED:')]
-        assert NAME in line, line
+        assert NAME not in line, line
+
+        lever, = [ln for ln in values.splitlines()
+                  if ln.strip().startswith('XRAS_OUTGOING_ENABLED:')]
+        assert '"1"' in lever, (
+            f'{NAME} is enabled but the outgoing lever is off: {lever}')
 
 
 # ── env readers ──────────────────────────────────────────────────────────
@@ -237,6 +250,20 @@ class TestTheWindow:
         detail = mod.xras_sweep(ctx()).detail
         assert detail['requests_seen'] == 2
         assert detail['requests_in_window'] == 1
+
+    def test_the_published_timestamp_is_a_datetime(self, ctx, wire):
+        """The tab renders it through `fmt_date`. An ISO string here is an
+        AttributeError at render time, in a fragment, which is exactly how it
+        was found."""
+        from datetime import datetime as dt
+
+        from sam.integration.xras_api.cache import load_pending_worklist
+
+        wire([])
+        mod.xras_sweep(ctx())
+        snapshot = load_pending_worklist()
+        assert snapshot is not None
+        assert isinstance(snapshot['generated_at'], dt)
 
     def test_the_window_and_status_are_recorded(self, ctx, wire):
         wire([])
