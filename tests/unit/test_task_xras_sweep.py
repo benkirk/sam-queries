@@ -64,10 +64,19 @@ def _request(request_id: int, number: str, username: str = 'ghost-user-1',
 class _StubClient:
     """A client whose enumeration is scripted, page by page."""
 
-    def __init__(self, pages, *, fail_after=None):
+    def __init__(self, pages, *, fail_after=None, opportunities=()):
         self.pages = pages
         self.fail_after = fail_after
+        self.opportunities = list(opportunities)
         self.calls = 0
+
+    def get_opportunities(self, opportunity_ids):
+        """Resolve opportunities by id. Empty unless a test scripts it.
+
+        Defaulting to empty keeps every pre-existing test honest: the sweep asks,
+        XRAS answers with nothing it can map, and no row is written.
+        """
+        return list(self.opportunities)
 
     def iter_request_pages(self, *, status=None, page_size=None, max_pages=None):
         for index, page in enumerate(self.pages):
@@ -103,6 +112,23 @@ class TestRegistration:
     def test_importing_the_package_registers_it(self):
         import scheduling.tasks                   # noqa: F401
         assert NAME in TASKS
+
+    def test_the_decorator_is_bound_to_the_task_body(self):
+        """⚠️ Registration checks the *name*, which is an argument to the
+        decorator and therefore right no matter what it decorates.
+
+        Adding a module-level helper between `@task(...)` and `def xras_sweep`
+        silently registers the helper instead, and every unit test here keeps
+        passing because they call `mod.xras_sweep` directly. It only fails at
+        dispatch, as `task.fn(ctx)` with the wrong signature. That happened; this
+        is the guard.
+        """
+        assert TASKS[NAME].fn.__name__ == 'xras_sweep'
+        assert TASKS[NAME].fn is not None
+        import inspect
+        params = list(inspect.signature(TASKS[NAME].fn).parameters)
+        assert params == ['ctx'], (
+            f'the registered callable takes {params}; a task body takes only ctx')
 
     def test_it_runs_hourly_through_the_business_day(self):
         """The cadence IS the Feed-B tab's freshness — the tab renders what
@@ -588,16 +614,27 @@ class TestUnmappedOpportunities:
         assert result.detail['opportunities_unmapped'] == 0
         assert result.detail['opportunities_unmapped_sample'] == []
 
-    def test_the_sweep_writes_no_mapping_rows(self, ctx, wire, session):
-        """⚠️ The sweep is read-only and the map is populated out-of-band. A sweep
-        that "helpfully" inserted what it saw would make ingestion depend on the
-        outgoing API being reachable — the circularity this design exists to avoid."""
+    def test_an_unresolvable_opportunity_writes_nothing(self, ctx, wire, session):
+        """The sweep may now write mapping rows, but only ones it can corroborate.
+
+        ⚠️ This replaced a flat "the sweep never writes" assertion, and the
+        distinction is the whole design. What must stay true is not that the
+        sweep never writes — it is that **ingestion never calls out**: the
+        handler path reads one local table, so an inbound action does not depend
+        on `XRAS_OUTGOING_ENABLED` or on `api.xras.org` being up. Writing here is
+        out of band; if it stops, the map stops growing and the free-text ladder
+        covers the gap exactly as it did before the table existed.
+
+        Here XRAS resolves nothing for the id, so there is nothing to corroborate
+        and nothing is written.
+        """
         from sam.integration.xras import XrasOpportunityAllocationType
 
         before = session.query(XrasOpportunityAllocationType).count()
         wire([[self._req(1, 'NCAR9001', 771005)]])
-        mod.xras_sweep(ctx())
+        result = mod.xras_sweep(ctx())
         assert session.query(XrasOpportunityAllocationType).count() == before
+        assert result.detail['opportunities_written'] == 0
 
     def test_the_count_is_not_published_to_the_dashboard(self, ctx, wire, session,
                                                          monkeypatch):
@@ -611,3 +648,203 @@ class TestUnmappedOpportunities:
         result = mod.xras_sweep(ctx())
         assert result.detail['opportunities_unmapped'] == 1
         assert not [k for k in captured if 'opportunit' in k]
+
+
+# ── auto-mapping new opportunities ───────────────────────────────────────
+
+def _opportunity(oid, name, alloc_type, type_id, panel_id, *, extra_panels=()):
+    """One `/v1/opportunities/list/:ids` entry, shaped like the live payload."""
+    panels = [{'panelId': p, 'isPrimary': False} for p in extra_panels]
+    panels.append({'panelId': panel_id, 'isPrimary': True})
+    return {'opportunityId': oid, 'opportunityName': name,
+            'allocationType': alloc_type,
+            'allocationTypeInfo': {'allocationTypeId': type_id,
+                                   'allocationType': alloc_type},
+            'panels': panels}
+
+
+#: The two real opportunities where XRAS and SAM genuinely disagree, verbatim
+#: from `/v1/opportunities/list/:ids` on 2026-08-20. These are the regression
+#: cases the agree-only rule exists for — see `sam.xras.opportunity_types`.
+_UNSPONSORED = _opportunity(
+    530900, 'University small request — unsponsored', 'Educational', 500026, 500021)
+_NCAR_ASD = _opportunity(
+    531461, 'NCAR - ASD Opportunity', 'NCAR Strategic Computing', 500088, 500045)
+
+#: A reissue of each kind the operator actually posts, twice a year.
+_LARGE_2026 = _opportunity(
+    999801, 'Large Allocation (University) - Fall 2026', 'Large', 500023, 500022,
+    extra_panels=(500032,))
+_NSC_2026 = _opportunity(
+    999802, 'NCAR - NSC Allocation Request - Fall 2026', 'NCAR Strategic Computing',
+    500088, 500045)
+
+
+class TestOpportunitiesAreMappedOnlyWhenBothDerivationsAgree:
+    """⚠️ The safety rule, and the two production cases that justify it.
+
+    XRAS's own `allocationTypeId` is **not** authoritative about SAM. Measured
+    across all 27 opportunities in the NCAR process, it disagrees with the
+    free-text ladder twice — and both times it is XRAS that is wrong, in a way
+    that changes the *facility* and therefore the projcode series.
+    """
+
+    def _wire_opportunities(self, wire, monkeypatch, payloads):
+        client = wire([[]])
+        monkeypatch.setattr(type(client), 'get_opportunities',
+                            lambda self, ids: list(payloads), raising=False)
+        return client
+
+    def _run(self, ctx, wire, monkeypatch, session, payloads, unmapped_ids):
+        self._wire_opportunities(wire, monkeypatch, payloads)
+        detail = {'unavailable_errors': 0}
+        from sam.integration.xras_api import XrasApiClient
+        mod._map_new_opportunities(ctx(), session, XrasApiClient.from_environment(),
+                                   unmapped_ids, detail)
+        return detail
+
+    def test_the_unsponsored_opportunity_is_withheld(self, ctx, wire, session,
+                                                     monkeypatch):
+        """530900: XRAS files it under `Educational` — the same allocationTypeId
+        as Classroom/Training — but SAM means `Small (No NSF award)`. Writing
+        XRAS's answer would silently retype every unsponsored request."""
+        detail = self._run(ctx, wire, monkeypatch, session, [_UNSPONSORED], [530900])
+        assert detail['opportunities_written'] == 0
+        review = {r['opportunity_id'] for r in detail['opportunities_needing_review']}
+        assert review == {530900}
+        row, = detail['opportunities_needing_review']
+        assert tuple(row['ladder']) == ('UNIV USS', 'Small (No NSF award)')
+        assert tuple(row['xras']) == ('UNIV USS', 'Classroom')
+
+    def test_the_ncar_asd_opportunity_is_withheld(self, ctx, wire, session,
+                                                  monkeypatch):
+        """531461: XRAS gives ASD **NSC's own** allocationTypeId and panel, so the
+        two are indistinguishable from the API. SAM means `ASD-NCAR`, which is
+        facility 7 rather than facility 1 — a different projcode series, and not
+        undoable once minted."""
+        detail = self._run(ctx, wire, monkeypatch, session, [_NCAR_ASD], [531461])
+        assert detail['opportunities_written'] == 0
+        row, = detail['opportunities_needing_review']
+        assert row['opportunity_id'] == 531461
+        assert tuple(row['ladder']) == ('ASD-NCAR', 'ASD-NCAR')
+        assert tuple(row['xras']) == ('NCAR-ARP', 'NSC')
+
+    def test_a_large_reissue_maps_itself(self, ctx, wire, session, monkeypatch):
+        """The point of the feature. Every University Large since 2021 shares one
+        (allocationTypeId, panelId), so a new one needs no SQL at all.
+
+        Also pins that the **primary** panel is chosen: Large carries 500032
+        (external reviewers) alongside 500022, and only the latter is SAM's CHAP.
+        """
+        from sam.integration.xras import SOURCE_SWEEP, XrasOpportunityAllocationType
+
+        detail = self._run(ctx, wire, monkeypatch, session, [_LARGE_2026], [999801])
+        assert detail['opportunities_written'] == 1
+        row = session.get(XrasOpportunityAllocationType, 999801)
+        assert row is not None
+        assert row.source == SOURCE_SWEEP
+        assert row.allocation_type.panel.panel_name == 'CHAP'
+        assert row.allocation_type.allocation_type == 'CHAP'
+
+    def test_an_nsc_reissue_maps_itself(self, ctx, wire, session, monkeypatch):
+        """The other half of the operator's twice-yearly churn."""
+        from sam.integration.xras import XrasOpportunityAllocationType
+
+        detail = self._run(ctx, wire, monkeypatch, session, [_NSC_2026], [999802])
+        assert detail['opportunities_written'] == 1
+        row = session.get(XrasOpportunityAllocationType, 999802)
+        assert row.allocation_type.panel.panel_name == 'NCAR-ARP'
+        assert row.allocation_type.allocation_type == 'NSC'
+
+    def test_an_existing_row_is_never_overwritten(self, ctx, wire, session,
+                                                  monkeypatch):
+        """⚠️ A `manual` row is a human's answer to a question the API cannot
+        settle. The sweep inserts only where nothing exists — checked against the
+        database, not against `source`."""
+        from sam.accounting.allocations import AllocationType
+        from sam.integration.xras import XrasOpportunityAllocationType
+        from sam.resources.facilities import Panel
+
+        keep = (session.query(AllocationType)
+                .join(Panel, AllocationType.panel_id == Panel.panel_id)
+                .filter(Panel.panel_name == 'UNIV USS')
+                .filter(AllocationType.allocation_type == 'Data').one())
+        make_xras_opportunity_mapping(session, allocation_type=keep,
+                                      opportunity_id=999801)
+
+        detail = self._run(ctx, wire, monkeypatch, session, [_LARGE_2026], [999801])
+        assert detail['opportunities_written'] == 0
+        row = session.get(XrasOpportunityAllocationType, 999801)
+        assert row.allocation_type.allocation_type == 'Data'      # untouched
+
+    def test_an_unknown_pair_is_reported_not_guessed(self, ctx, wire, session,
+                                                     monkeypatch):
+        """A genuinely new allocation product. Adding it is a one-line edit to the
+        constant — a code review, not a silent write."""
+        novel = _opportunity(999803, 'Quantum Allocation (University)', 'Quantum',
+                             777777, 500021)
+        detail = self._run(ctx, wire, monkeypatch, session, [novel], [999803])
+        assert detail['opportunities_written'] == 0
+        assert [r['opportunity_id'] for r in detail['opportunities_unknown_pair']] == [999803]
+
+    def test_a_missing_primary_panel_writes_nothing(self, ctx, wire, session,
+                                                    monkeypatch):
+        payload = dict(_LARGE_2026,
+                       panels=[{'panelId': 500032, 'isPrimary': False}])
+        detail = self._run(ctx, wire, monkeypatch, session, [payload], [999801])
+        assert detail['opportunities_written'] == 0
+        assert detail['opportunities_unknown_pair']
+
+    def test_the_per_run_cap_bounds_the_blast_radius(self, ctx, wire, session,
+                                                     monkeypatch):
+        monkeypatch.setenv('SAM_TASKS_XRAS_MAP_MAX', '1')
+        payloads = [_LARGE_2026, _NSC_2026]
+        detail = self._run(ctx, wire, monkeypatch, session, payloads, [999801, 999802])
+        assert detail['opportunities_written'] == 1
+        assert detail['map_budget_exhausted'] is True
+
+    def test_an_api_outage_costs_only_this_step(self, ctx, wire, session,
+                                                monkeypatch):
+        """The enumeration and worklist are already in hand and still get reported;
+        the same ids are retried next slot."""
+        from sam.integration.xras_api import XrasApiClient, XrasSourceUnavailable
+
+        client = wire([[]])
+
+        def boom(self, ids):
+            raise XrasSourceUnavailable('down')
+
+        monkeypatch.setattr(type(client), 'get_opportunities', boom, raising=False)
+        detail = {'unavailable_errors': 0}
+        mod._map_new_opportunities(ctx(), session, XrasApiClient.from_environment(),
+                                   [999801], detail)
+        assert detail['unavailable_errors'] == 1
+        assert detail.get('opportunities_written', 0) == 0
+
+
+class TestTheDryRunIsAFullRehearsal:
+    """`--dry-run` is the operator's preview, and it must write nothing.
+
+    Not a special code path: `TaskContext.close_sessions` rolls back instead of
+    committing when `dry_run` is set, so the task body is identical and the
+    report is exactly what a real run would have done.
+    """
+
+    def test_a_dry_run_reports_but_does_not_commit(self, ctx, wire, session,
+                                                   monkeypatch):
+        from sam.integration.xras_api import XrasApiClient
+
+        client = wire([[]])
+        monkeypatch.setattr(type(client), 'get_opportunities',
+                            lambda self, ids: [_LARGE_2026], raising=False)
+        context = ctx(dry_run=True)
+        detail = {'unavailable_errors': 0}
+        mod._map_new_opportunities(context, session,
+                                   XrasApiClient.from_environment(), [999801], detail)
+
+        # The report is identical to a live run — that is the point of a rehearsal.
+        assert detail['opportunities_written'] == 1
+
+        # ...and the runner throws the work away rather than committing it.
+        context._sam_session = session
+        context.close_sessions(commit=True)

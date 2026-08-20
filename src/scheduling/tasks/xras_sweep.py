@@ -117,6 +117,9 @@ DEFAULT_STATUS = 'Approved'
 #: and the cache means the card's own renders do not repeat them.
 DEFAULT_MAX_PEOPLE = 250
 
+#: Opportunity mapping rows writable per run. See :func:`map_max`.
+DEFAULT_MAP_MAX = 20
+
 #: Cap on rows echoed into the ledger row. `detail` is TEXT and the runner
 #: truncates the JSON at 60 kB.
 _MAX_REPORTED = 100
@@ -150,6 +153,20 @@ def max_people(env: Optional[dict] = None) -> int:
     """Person-refresh budget, from ``$SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE``."""
     return _positive_int(env, 'SAM_TASKS_XRAS_SWEEP_MAX_PEOPLE',
                          DEFAULT_MAX_PEOPLE)
+
+
+def map_max(env: Optional[dict] = None) -> int:
+    """Opportunity rows the sweep may write per run, from ``$SAM_TASKS_XRAS_MAP_MAX``.
+
+    A **blast-radius bound, not a target**, on the only thing this task writes.
+    The steady state is zero or one — roughly four new opportunities a year — so
+    a run proposing dozens means the derivation has gone wrong, and the cap turns
+    that from a table rewrite into a truncated run that says so in `detail`.
+
+    The one legitimately large run is the first, which backfills whatever the
+    seed left unmapped. Rehearse it with ``--dry-run`` before it writes.
+    """
+    return _positive_int(env, 'SAM_TASKS_XRAS_MAP_MAX', DEFAULT_MAP_MAX)
 
 
 def window_days(env: Optional[dict] = None) -> int:
@@ -205,6 +222,91 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
         return True
 
 
+def _map_new_opportunities(ctx, session, client, unmapped_ids, detail) -> None:
+    """Map the opportunities XRAS and the ladder agree about; report the rest.
+
+    ⚠️ **The only write this task performs**, and the only one it may perform.
+    Everything else here is a read published to a cache bucket.
+
+    Why writing at all does not break the design's central promise: ingestion
+    still reads one local table and never calls out, so handling an inbound
+    action does not depend on ``XRAS_OUTGOING_ENABLED`` or on ``api.xras.org``
+    being up. This runs out of band; if it stops, the map stops growing and the
+    free-text ladder covers the gap exactly as it did before the table existed.
+
+    What it must never do is *overwrite*. A ``manual`` row is a human's answer to
+    a question the API cannot settle — there are two, both documented in
+    ``sam.xras.opportunity_types`` — so this inserts only where no row exists.
+    That is checked against the database rather than against ``source``, which
+    keeps the property even for rows some future process adds.
+
+    The decision itself lives in ``sam.queries.xras_actions`` so the CLI and the
+    tests share it rather than reimplementing it; this function is only budget,
+    persistence and reporting.
+
+    ⚠️ **Must stay above the ``@task`` decorator.** A module-level function
+    defined between ``@task(...)`` and ``def xras_sweep`` gets registered as the
+    task body — silently, since the name is a decorator argument. It fails only
+    at dispatch. ``test_the_decorator_is_bound_to_the_task_body`` is the guard.
+    """
+    from sam.integration.xras_api import XrasSourceUnavailable
+    from sam.integration.xras import SOURCE_SWEEP, XrasOpportunityAllocationType
+    from sam.queries.xras_actions import propose_opportunity_mapping
+
+    try:
+        payloads = client.get_opportunities(unmapped_ids)
+    except XrasSourceUnavailable as exc:
+        # The enumeration and the account worklist are already in hand and worth
+        # reporting; failing to resolve opportunities costs only this step, and
+        # the next slot retries the same ids.
+        detail['unavailable_errors'] += 1
+        ctx.logger.warning('xras_sweep: opportunity resolve failed: %s', exc)
+        return
+
+    proposal = propose_opportunity_mapping(session, payloads)
+    detail['opportunities_needing_review'] = proposal['review'][:_MAX_REPORTED]
+    detail['opportunities_unknown_pair'] = proposal['unknown_pair'][:_MAX_REPORTED]
+
+    budget = map_max()
+    agreed = proposal['agree']
+    if len(agreed) > budget:
+        ctx.logger.warning(
+            'xras_sweep: %d opportunities agreed but the per-run cap is %d; '
+            'writing the first %d', len(agreed), budget, budget)
+        detail['map_budget_exhausted'] = True
+        agreed = agreed[:budget]
+
+    written = []
+    for entry in agreed:
+        opportunity_id = entry['opportunity_id']
+        # Re-checked here rather than trusted from the audit above: that ran
+        # before the network call, and this is the assertion that a manual row is
+        # never clobbered.
+        exists = (session.query(XrasOpportunityAllocationType.opportunity_id)
+                  .filter(XrasOpportunityAllocationType.opportunity_id == opportunity_id)
+                  .first())
+        if exists:
+            continue
+        XrasOpportunityAllocationType.create(
+            session,
+            opportunity_id=opportunity_id,
+            allocation_type_id=entry['allocation_type_id'],
+            opportunity_name=(entry.get('opportunity_name') or None),
+            source=SOURCE_SWEEP)
+        written.append(entry)
+        ctx.logger.info('xras_sweep: mapped opportunity %s -> %s/%s',
+                        opportunity_id, *entry['pair'])
+
+    detail['opportunities_written'] = len(written)
+    detail['opportunities_written_sample'] = [
+        {'opportunity_id': w['opportunity_id'], 'pair': list(w['pair'])}
+        for w in written[:_MAX_REPORTED]]
+
+    # No commit here, deliberately: the runner commits `ctx.sam_session` on
+    # success and rolls it back on failure or `--dry-run`, which is what makes a
+    # dry run a full rehearsal that reports exactly what it would have written.
+
+
 @task(name='xras_sweep',
       schedule=SCHEDULE,
       needs=('sam',),
@@ -214,10 +316,12 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
       # `TaskContext` exposes no ledger handle, so the task cannot heartbeat
       # instead. The drift test asserts the inequality against values.yaml.
       expected_runtime=timedelta(minutes=20),
-      # The 6h default. A missed nightly slot costs nothing: this task writes
-      # no state, so tomorrow's run subsumes today's entirely.
+      # The 6h default. A missed slot costs little: the enumeration window is
+      # rolling, so the next run subsumes it. The one piece of state this now
+      # writes — opportunity mapping rows — is insert-if-absent, so a skipped
+      # slot delays a row rather than losing it.
       misfire_grace=timedelta(hours=6),
-      description='Enumerate XRAS and diff it against SAM (reads only)')
+      description='Enumerate XRAS, diff it against SAM, map new opportunities')
 def xras_sweep(ctx) -> TaskResult:
     """Enumerate Approved XRAS requests and report what SAM is missing."""
     # Deferred: `scheduling/` is imported by the CLI's --list path, which must
@@ -235,7 +339,8 @@ def xras_sweep(ctx) -> TaskResult:
         records_from_report_requests,
         worklist_counts,
     )
-    from sam.queries.xras_actions import audit_opportunity_mapping
+    from sam.queries.xras_actions import (audit_opportunity_mapping,
+                                          propose_opportunity_mapping)
 
     detail = {
         'skipped': False,
@@ -251,6 +356,10 @@ def xras_sweep(ctx) -> TaskResult:
         'opportunities_seen': 0,
         'opportunities_unmapped': 0,
         'opportunities_unmapped_sample': [],
+        'opportunities_written': 0,
+        'opportunities_written_sample': [],
+        'opportunities_needing_review': [],
+        'opportunities_unknown_pair': [],
         'people_refreshed': 0,
         'reconciled': 0,
         'published': False,
@@ -327,6 +436,10 @@ def xras_sweep(ctx) -> TaskResult:
         detail['opportunities_seen'] = len(seen_ids)
         detail['opportunities_unmapped'] = len(audit['unmapped_ids'])
         detail['opportunities_unmapped_sample'] = audit['unmapped_ids'][:_MAX_REPORTED]
+
+        if audit['unmapped_ids']:
+            _map_new_opportunities(ctx, session, client,
+                                   audit['unmapped_ids'], detail)
 
     # ── 2. dropped / pending pushes ─────────────────────────────────────
     numbers = {str(p.get('requestNumber')).strip() for p in payloads
@@ -429,7 +542,9 @@ def xras_sweep(ctx) -> TaskResult:
                f"{counts.get('total', 0)} account(s) needed, "
                f"{detail['reconciled']} reconciled in XRAS, "
                f"{detail['opportunities_unmapped']}/{detail['opportunities_seen']} "
-               f"opportunity id(s) unmapped")
+               f"opportunity id(s) unmapped, "
+               f"{detail['opportunities_written']} mapped automatically, "
+               f"{len(detail['opportunities_needing_review'])} needing review")
     ctx.logger.info('xras_sweep: %s', message)
 
     # "0 findings, succeeded" must be distinguishable from "did not look" —
