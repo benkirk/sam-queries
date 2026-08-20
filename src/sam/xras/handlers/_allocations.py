@@ -36,7 +36,7 @@ from sam.resources.resources import Resource
 
 from .. import errors as e
 from ..errors import ActionErrors
-from ..extractors import select_allocation_type_parms
+from ..extractors import select_allocation_type_mapped
 from ..wire import get_field
 
 logger = logging.getLogger(__name__)
@@ -235,9 +235,19 @@ def auth_at_panel_meeting(session, action) -> bool:
     phase would read back the type the action just installed rather than the one the
     project had when it arrived. Nothing catches that today: no test changes
     ``allocationType`` on an Update whose resources take the add branch.
+
+    ⚠️ **Only the first arm consults the ``opportunityId`` map, and that is not an
+    oversight.** This function re-derives the pair independently of
+    ``resolve_allocation_type``, so if it kept calling the *pure* chain a project's
+    allocation type could come from the map while its transactions'
+    ``auth_at_panel_mtg`` flag came from the ladder — inconsistent rows, written,
+    silently. The second arm needs no such change: it reads the type already stored
+    on the project, which the mapped resolver is what wrote. Pointing it at the map
+    would change behaviour for payloads that omit ``allocationType`` entirely, which
+    is a different question from this one.
     """
     if get_field(action, 'allocationType'):
-        parms = select_allocation_type_parms(action)
+        parms = select_allocation_type_mapped(session, action)
         return parms is not None and parms.allocation_type in _PANEL_AUTHORISED
 
     projcode = (get_field(action, 'requestNumber') or '').strip()

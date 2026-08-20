@@ -28,17 +28,26 @@ from datetime import datetime
 from sam.integration.xras import (
     XrasActionLog,
     XrasActivationEvent,
+    XrasOpportunityAllocationType,
     XrasResourceRepositoryKeyResource,
 )
 
+from .projects import make_allocation_type
 from .resources import make_resource
 
 #: Offset applied to ``resource_id`` to keep synthetic keys clear of the 13 real
 #: mapping rows in the snapshot, whose keys are all below 10,000.
 _KEY_BASE = 900_000
 
+#: Offset applied to ``allocation_type_id`` for synthetic opportunity ids, on the
+#: same reasoning as ``_KEY_BASE``: ``opportunity_id`` is this table's primary key,
+#: so a process-local counter would collide across xdist workers. Real XRAS ids are
+#: six digits (530,902-533,936), which this clears.
+_OPPORTUNITY_BASE = 9_000_000
+
 __all__ = [
     'make_xras_key_mapping',
+    'make_xras_opportunity_mapping',
     'make_xras_action',
     'make_xras_activation_event',
 ]
@@ -117,3 +126,30 @@ def make_xras_activation_event(session, project, event_type, *, when=None,
         event.creation_time = when
         session.flush()
     return event
+
+
+def make_xras_opportunity_mapping(session, *, allocation_type=None,
+                                  opportunity_id=None, opportunity_name=None):
+    """Map an XRAS ``opportunityId`` to an allocation type, creating one if needed.
+
+    Returns the **mapping row**, not the allocation type — the opposite of
+    :func:`make_xras_key_mapping`, and for the same reason it returns a resource:
+    what a caller asserts on here is the mapping itself, and the type is reachable
+    through ``row.allocation_type``.
+
+    ``allocation_type`` accepts a real snapshot row as readily as a factory-built
+    one, which is what the panel-collision tests need: they must pit the *actual*
+    ``UNIV USS``/``UW`` pair against each other, not two synthetic panels.
+    """
+    if allocation_type is None:
+        allocation_type = make_allocation_type(session)
+    if opportunity_id is None:
+        opportunity_id = _OPPORTUNITY_BASE + allocation_type.allocation_type_id
+
+    row = XrasOpportunityAllocationType(
+        opportunity_id=opportunity_id,
+        allocation_type_id=allocation_type.allocation_type_id,
+        opportunity_name=opportunity_name)
+    session.add(row)
+    session.flush()
+    return row

@@ -25,6 +25,7 @@ from .xras import (
     make_xras_action,
     make_xras_activation_event,
     make_xras_key_mapping,
+    make_xras_opportunity_mapping,
 )
 from .projects import (
     make_account,
@@ -77,6 +78,7 @@ __all__ = [
     "make_xras_action",
     "make_xras_activation_event",
     "make_xras_key_mapping",
+    "make_xras_opportunity_mapping",
     "make_facility",
     "make_panel",
     "make_aoi_group",

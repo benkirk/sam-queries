@@ -738,7 +738,17 @@ live list iff `xras_api_configured()`, and degrades to the one-sided report
 `dangling_keys` **or** `xras_only_keys` is non-empty. Self-verifying: must
 report 13/13 against today's catalog (§ 6).
 
-### 8.2 `opportunityId` → allocation type — DEFERRED
+### 8.2 `opportunityId` → allocation type — ✅ **BUILT 2026-08-20**
+
+**Superseded by [`XRAS_OPPORTUNITY_ALLOCATION_TYPE.md`](XRAS_OPPORTUNITY_ALLOCATION_TYPE.md)**,
+which carries the design, the corrections the build found, and what stays
+deferred (the `--validate-opportunities` CLI).
+
+The deferral reasoning below is kept because it is what the decision was
+reversed *against*: the criterion was "assess after the first triage week under
+live dispatch", and the reversal turns on that criterion being unable to produce
+evidence — triage week is 100% University traffic, so it reports zero collisions
+right up until the day WNA onboards.
 
 Assess **after the first triage week under live dispatch**. The case is
 recorded so it isn't lost: SAM derives allocation type with an 11-strategy

@@ -90,6 +90,73 @@ mysql --defaults-file=<creds> < containers/sam-sql-dev/initdb.d/zz-92-notificati
 this gate listed only the two XRAS tables for a while, which is precisely the
 one-table-short mistake the "one ticket" rule exists to prevent.
 
+### 2c · `xras_opportunity_allocation_type` · ✅ **DONE 2026-08-20**
+
+A fourth table, applied the same way and by the same grant. It is **not** part of
+the cutover gate — the map is additive by design, and an empty table simply falls
+through to the extractor ladder — but the DDL of record belongs here with the rest.
+
+No `initdb.d` hook this time: that directory and its `COPY` were retired
+(`containers/sam-sql-dev/Dockerfile:8-27`), so this was applied to production and
+the snapshot regenerated instead. `REFERENCES` is again the load-bearing grant —
+this table has an FK to `allocation_type`.
+
+```sql
+CREATE TABLE IF NOT EXISTS xras_opportunity_allocation_type (
+  opportunity_id     INT          NOT NULL,
+  allocation_type_id INT          NOT NULL,
+  opportunity_name   VARCHAR(120)     NULL,
+  PRIMARY KEY (opportunity_id),
+  KEY xras_opportunity_alloc_type_at_idx (allocation_type_id),
+  CONSTRAINT xras_opportunity_alloc_type_at_fk
+    FOREIGN KEY (allocation_type_id)
+    REFERENCES allocation_type (allocation_type_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
+```
+
+Then the nine known opportunities, seeded with **the pair the ladder already
+produces** — which is what makes the map a drop-in rather than a behaviour change.
+
+⚠️ Connect with a **utf8mb4 client charset**: 530902's name carries an em-dash.
+⚠️ Ids are resolved by name at runtime, never pinned — and the row count is the
+check. Fewer than 9 means a panel or allocation-type name has drifted.
+
+```sql
+INSERT INTO xras_opportunity_allocation_type (opportunity_id, allocation_type_id, opportunity_name)
+SELECT v.oid, at.allocation_type_id, v.name
+  FROM ( SELECT 530902 AS oid, 'UNIV USS' AS panel, 'Small' AS atype,
+                'University small request — with NSF award' AS name
+         UNION ALL SELECT 531428, 'CHAP', 'CHAP', 'University Large Request - Fall 2021'
+         UNION ALL SELECT 532220, 'UNIV USS', 'Small', 'Small Allocation (University)'
+         UNION ALL SELECT 532221, 'UNIV USS', 'Small (No NSF award)', 'Exploratory Allocation (University)'
+         UNION ALL SELECT 532222, 'UNIV USS', 'Data', 'Data Analysis Allocation (University)'
+         UNION ALL SELECT 532223, 'UNIV USS', 'Classroom', 'Classroom Allocation (University)'
+         UNION ALL SELECT 533144, 'CHAP', 'CHAP', 'Large Allocation (University) - Spring 2024'
+         UNION ALL SELECT 533606, 'CHAP', 'CHAP', 'Large Allocation (University) - Fall 2024'
+         UNION ALL SELECT 533936, 'CHAP', 'CHAP', 'Large Allocation (University) - Spring 2025' ) v
+  JOIN panel p            ON p.panel_name = v.panel
+  JOIN allocation_type at ON at.panel_id = p.panel_id AND at.allocation_type = v.atype;
+
+SELECT COUNT(*) FROM xras_opportunity_allocation_type;   -- 9
+```
+
+**Provenance, added 2026-08-20** so an automatically-derived row is
+distinguishable from a human's decision:
+
+```sql
+ALTER TABLE xras_opportunity_allocation_type
+  ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'manual';
+```
+
+Four rows are `manual` because XRAS is wrong about them and no API can say so —
+the unsponsored family (530296, 530315, 530900) and `NCAR - ASD Opportunity`
+(531461). See the design doc § 8.5.
+
+Adding a **new** opportunity is now nothing at all: `xras_sweep` writes it on
+the next hourly run when the type map and the free-text ladder agree, and
+withholds it for review when they do not. Design:
+[`XRAS_OPPORTUNITY_ALLOCATION_TYPE.md`](../outgoing/XRAS_OPPORTUNITY_ALLOCATION_TYPE.md).
+
 Verified on production, all five matching:
 
 | Check | Expected | Got |

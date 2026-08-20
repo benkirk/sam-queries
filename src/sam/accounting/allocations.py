@@ -496,6 +496,8 @@ class AllocationType(Base, TimestampMixin, ActiveFlagMixin, SessionMixin):
 
     panel = relationship('Panel', back_populates='allocation_types')
     projects = relationship('Project', back_populates='allocation_type')
+    xras_opportunities = relationship('XrasOpportunityAllocationType',
+                                      back_populates='allocation_type')
 
     def update(
         self,

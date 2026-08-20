@@ -1,14 +1,113 @@
 # `opportunityId` → allocation type — a mapping table, built additively
 
-**Status:** designed, **not implemented**. Sketched 2026-08-20 with the operator.
-**Base:** stacks on **PR #458** (`probing_xras` → `staging`, 19 commits, all CI
-green). Branch from that head; do not branch from `staging`.
+**Status:** **implemented as built**, 2026-08-20, on `xras_opportunityId`.
+Phase 1 shipped in full, plus the free half of Phase 2 (§ 5.2). Phase 2's CLI
+audit (§ 5.1) stays deferred.
+**Base:** branched from `staging` after PR #458 squash-merged as `8ae154d`.
 **Origin:** the deferred § 8.2 item in
 `docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md`, reshaped around one hard
 constraint (§ 2).
 
-This is a handoff document. It assumes **no prior context** — an implementation
-session should be able to start cold from here.
+The design below stands as written except where § 0 records a deviation.
+
+---
+
+## 0. As built — corrections and findings
+
+Six things the design did not know. Each was verified against the code or the
+production database before the build, and each is now pinned by a test.
+
+### The premise was never checked — and it holds
+
+This document proposes keying a table on `opportunityId` without ever asking
+whether that id is **single-valued**. It is: across all 41 payloads, nine ids
+resolve to five distinct `(panel, allocation_type)` pairs, **one pair each**.
+That is what makes the map coherent rather than arbitrary, and it also *is*
+the seed. Pinned by
+`test_opportunity_id_is_single_valued_across_the_corpus` — a future fixture
+that broke it would otherwise land silently.
+
+### `Small` is the only *silent* case — § 3 implies two
+
+§ 3 lists both `Small` and `Education` as panel collisions. Both really are
+two-panel names in the database, but the ladder's twelve declared
+`SelectionParms` (`extractors.py:91-104`) never name `UW`, `WRAP` or `LCAP` —
+**the whole of facility 4 is unreachable through it** — and `Education` is not
+among the twelve type names at all. So a WNA `Education` request fails
+resolution **loudly** (422, nothing written), while a WNA `Small` resolves
+silently to `UNIV USS`.
+
+This sharpens the argument rather than weakening it: there is exactly one
+nameable silent failure, and both halves are now asserted —
+`test_a_wyoming_small_request_is_the_silent_case` and
+`test_a_wyoming_education_request_fails_loudly_instead`.
+
+### `allocation_type.panel_id` is NULLABLE
+
+`src/sam/accounting/allocations.py:496`. The obvious implementation of
+§ 4.2 — `row.allocation_type.panel.panel_name` — raises `AttributeError`
+mid-dispatch on a type with no panel, turning an action the ladder would have
+resolved perfectly well into a 500. The lookup treats a null panel as a **miss**
+and falls through. `test_a_mapped_row_whose_type_has_no_panel_falls_through`.
+
+### The § 4.2 trap is real, but only its *first* arm
+
+`auth_at_panel_meeting` has two arms (`handlers/_allocations.py:239-246`).
+Arm 1 — the payload carries `allocationType` — runs the chain, and is the one
+that had to change. Arm 2 reads the **stored** `project.allocation_type`, which
+is already map-consistent because the mapped resolver is what wrote it.
+Repointing arm 2 at the map would change behaviour for payloads that omit
+`allocationType` entirely, which is a different question. Both are now
+documented in place, and the consistency invariant is asserted across the whole
+corpus by `TestPanelAuthorisationAgreesWithTheResolvedType`.
+
+Both guards were **negative-tested**: reverting arm 1 to the pure chain, and
+separately disabling the map lookup, each fail the expected tests and only
+those.
+
+### § 5.2 came free, so it shipped now
+
+The sweep needs no `/v1/opportunities` fetch to count unmapped ids: every
+`reports/requests` payload it already enumerates carries `opportunityId`
+inline. So `audit_opportunity_mapping` — which § 5.1 assigns to Phase 2 — was
+built now, with `audit_resource_mapping`'s injection contract intact
+(`opportunity_ids=None`, `live_checked`). The deferred CLI is then pure wiring.
+
+⚠️ The reports payload spells the sibling field **snake_case**
+(`opportunity_name`) while the inbound action wire spells it `opportunityName`.
+Two vocabularies for one concept meeting inside one feature — the shape of the
+`key`/`resourceRepositoryKey` bug. `test_the_opportunity_id_field_is_read_and_spelled_camel_case`
+pins the inbound spelling.
+
+### § 6's DDL row is wrong twice over
+
+The `initdb.d` hook was not recreated. Two reasons the design could not have
+known: `containers/sam-sql-dev/Dockerfile:8-27` deliberately **deleted** the
+`COPY initdb.d/` line and records that an empty directory is not git-tracked,
+so the directory and the COPY must be recreated together or the image build
+fails — and the retired `zz-90` has drifted (`replay_of_id` vs today's
+`source_action_id`), so it was a template, not a copy.
+
+Instead the DDL was applied to production directly (`hpc-writer` holds
+`CREATE, REFERENCES, INDEX, ALTER` — see the runbook) and the snapshot
+regenerated, which is what was done for the previous three tables on
+2026-08-10. The statements of record are in
+`docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md` § 2.
+
+⚠️ Consequently the nine seed rows are **in every regenerated snapshot**, so the
+additivity tests `DELETE` inside their SAVEPOINT rather than assuming an empty
+table.
+
+### Still deferred
+
+`sam-admin xras --validate-opportunities` (§ 5.1). Two notes for whoever builds
+it: XRAS's `panels[]` is the *review-panel* vocabulary (`CISL Resource
+Support`/`CISL RSD`), **not** SAM's `panel` table — only `CHAP` coincides, so
+`/v1/opportunities`'s `panels: [{panelId}]` is evidence for a human and never a
+derivation. And use `GET /v1/opportunities/list/:ids`, which is batched and
+resolves historic/Terminating opportunities: five of the nine known ids are
+closed, and the open list cannot explain them. § 6's "5-edit CLI recipe" is
+really 7 edit points across 4 files.
 
 ---
 
@@ -305,6 +404,108 @@ doing. They are separable on purpose.
 
 ---
 
+## 8.5 Auto-detection — BUILT 2026-08-20
+
+The operator posts roughly **four opportunities a year** (University Large x2,
+NSC x2). Each used to be a hand-written `INSERT`. It no longer is: `xras_sweep`
+maps a new opportunity by itself, and writes nothing it cannot corroborate.
+
+### What the full enumeration showed
+
+Probed live, 21 pages, 4,088 requests: **42 distinct opportunities**, not the 9
+the scrubbed corpus contains. They collapse to **eight** stable
+`(allocationTypeId, primary panelId)` pairs, and two of those carry the bulk:
+
+| `allocationTypeId` | primary `panelId` | XRAS type | SAM `(panel, allocation_type)` |
+|---|---|---|---|
+| 500023 | 500022 (CISL HPC Allocation Panel) | Large | CHAP / CHAP |
+| 500088 | 500045 (NSC Allocation Panel) | NCAR Strategic Computing | NCAR-ARP / NSC |
+| 500026 | 500021 (CISL Resource Support) | Educational | UNIV USS / Classroom |
+| 500024 | 500021 | Small | UNIV USS / Small |
+| 500847 | 500021 | Exploratory | UNIV USS / Small (No NSF award) |
+| 500848 | 500021 | Data Analysis | UNIV USS / Data |
+| 501276 | 500046 (Admin Panel) | NCAR External Projects | External Projects / External Project |
+| 500023 | **500045** | Large *(2018-era NSC)* | NCAR-ARP / NSC |
+
+Every University Large since 2021 shares one pair; so does every NSC request.
+**The operator's whole annual churn reuses two rows that have been stable for
+five years** — which is why the reference half is eight entries rather than a
+row per opportunity, and why it is a **constant** (`sam/xras/opportunity_types.py`)
+rather than a table: it changes at code cadence, and a constant can be
+test-asserted to name real `allocation_type` rows.
+
+⚠️ That last row is why the key is the **pair**. `500023` on the CHAP panel is
+CHAP; on the NSC panel it is NSC. Keying on `allocationTypeId` alone would have
+filed a 2018 NSC request under CHAP.
+
+### ⚠️ The premise this document opened with is wrong
+
+Section 3 says `/v1/opportunities` means "XRAS already knows the answer the
+ladder is guessing at". It does not. The mapping is **not injective onto SAM's
+types**, in two directions:
+
+| | ladder | XRAS |
+|---|---|---|
+| the unsponsored family (4 ids) | UNIV USS / **Small (No NSF award)** | UNIV USS / **Classroom** |
+| `NCAR - ASD Opportunity` | **ASD-NCAR** (facility 7) | **NCAR-ARP / NSC** (facility 1) |
+
+XRAS files unsponsored requests under `Educational`, the same id as
+Classroom/Training; and it gives ASD NSC's own type *and* panel, so the two are
+indistinguishable from the API at all. Both differences change the **facility**,
+which is what reaches `next_projcode`. The operator adjudicated both: the ladder
+is right, and all four are pinned `source='manual'`.
+
+### The rule: two derivations must agree
+
+`propose_opportunity_mapping` (`sam/queries/xras_actions.py`) derives the pair
+twice — once from the constant, once from the free-text ladder — and the sweep
+writes **only when they match**. Disagreement, an unknown pair, or a ladder that
+declines is reported and withheld.
+
+This is not belt-and-braces. It:
+
+- **caught all four bad cases without knowing about any of them** — including
+  two the design never anticipated (530296, 530315), found by the rule rather
+  than by hand;
+- **withholds the first Wyoming opportunity**, since the ladder cannot produce
+  `UW` — which is also the alerting this section originally asked for;
+- makes an error in the constant **self-limiting**: a wrong entry disagrees with
+  the ladder and is withheld rather than written;
+- held under a **partially-loaded database** — observed during a snapshot
+  rebuild, where the `allocation_type` rows briefly vanished and all 41
+  candidates were withheld with `missing_allocation_type`, writing nothing.
+
+The value auto-writing adds is **durability**, not new correctness: the rows it
+writes are ones the ladder already got right, made explicit so an opportunity
+rename cannot break them. Correctness stays with the human-confirmed rows.
+
+### What it writes, and what it cannot
+
+| | |
+|---|---|
+| **Provenance** | `source` — `manual` or `task:xras_sweep`. The one schema change: `ALTER ... ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'manual'`, recorded in the runbook. |
+| **Never overwrites** | inserts only where no row exists, checked against the database rather than against `source`, so a `manual` row is safe from any future writer. |
+| **Cap** | `SAM_TASKS_XRAS_MAP_MAX`, default 20 — a blast-radius bound. Steady state is zero or one a quarter. |
+| **Ingest is untouched** | the handler path still reads one local table and never calls out. Writing happens out of band; if the sweep stops, the map stops growing and the ladder covers the gap. |
+| **`--dry-run` is a full rehearsal** | `TaskContext.close_sessions` rolls back rather than commits, so the report is exactly what a real run would have done. Use it before any large backfill. |
+
+Measured preview against the live API with the four manual rows in place:
+**42 seen, 29 unmapped, 29 agreeing, 0 needing review, 0 unknown** — written 20
+then 9 across two hourly runs.
+
+⚠️ **The helper must stay above the `@task` decorator.** A module-level function
+defined between `@task(...)` and `def xras_sweep` is registered as the task
+body — silently, because the name is a decorator argument, and invisibly to
+every unit test that calls `mod.xras_sweep` directly. It fails only at dispatch.
+That happened; `test_the_decorator_is_bound_to_the_task_body` is the guard.
+
+### Still deferred
+
+`sam-admin xras --validate-opportunities`. The decision function is already
+shared, so it is CLI wiring: option, `execute` kwarg, mode method, builder,
+display. Use `GET /v1/opportunities/list/:ids` (the client method exists) — the
+open list cannot explain the 30-odd closed opportunities.
+
 ## 9. Do not
 
 - ❌ Call the XRAS API from the ingest path. That is the circularity this design
@@ -318,7 +519,10 @@ doing. They are separable on purpose.
   reads it for the lab mnemonic route.
 - ❌ Delete or rewrite the ladder. It is the fallback, and it is what an empty
   table falls through to.
-- ❌ Let the sweep write the table.
+- ❌ Let the sweep write the table — **as shipped**. § 8.5.2 revisits this
+  deliberately, and narrows it: the rule that must never bend is that the
+  *ingest path* does not call out. A sweep that writes rows derived from
+  XRAS's own declaration adds no runtime dependency to ingestion.
 
 ## 10. Reference
 

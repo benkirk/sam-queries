@@ -734,3 +734,152 @@ def audit_resource_mapping(session: Session, *,
         'live_checked': xras_keys is not None,
         'live_key_count': len(set(xras_keys)) if xras_keys is not None else None,
     }
+
+
+def audit_opportunity_mapping(session: Session, *,
+                              opportunity_ids: Optional[Iterable[int]] = None
+                              ) -> Dict[str, Any]:
+    """Which XRAS opportunities SAM can and cannot resolve to an allocation type.
+
+    The ``opportunityId`` analogue of :func:`audit_resource_mapping`, and it copies
+    that function's contract deliberately, including the wart-free half: the ids are
+    **injected rather than fetched**, so this keeps zero network knowledge and stays
+    usable offline. ``opportunity_ids=None`` reports the local half only, with
+    ``live_checked`` False to say so.
+
+    ⚠️ **An unmapped opportunity is not a failure.** With an empty table *every*
+    opportunity is unmapped and ingestion is completely healthy — the ladder resolves
+    it, exactly as it did before the map existed. This is a diagnostic, not a gate.
+    The one genuinely broken state is ``dangling``: a mapping row whose
+    ``allocation_type`` has vanished, or has no panel, which the ingest-side lookup
+    must treat as a miss and which no operator would otherwise see.
+
+    Callers with ids in hand should pass them: ``xras_sweep`` already holds an
+    ``opportunityId`` on every ``reports/requests`` payload it enumerates, so its
+    half of this costs no extra round trips.
+    """
+    from sam.integration.xras import XrasOpportunityAllocationType
+
+    rows = session.query(XrasOpportunityAllocationType).all()
+
+    dangling = [row.opportunity_id for row in rows
+                if row.allocation_type is None or row.allocation_type.panel is None]
+
+    known_ids = {row.opportunity_id for row in rows}
+    seen = {int(i) for i in opportunity_ids} if opportunity_ids is not None else None
+    unmapped = sorted(i for i in seen if i not in known_ids) if seen else []
+
+    return {
+        'mapped': len(rows),
+        'mapped_ids': sorted(known_ids),
+        # Rows the ingest-side lookup would silently fall through on.
+        'dangling_ids': sorted(dangling),
+        # Ids seen in the wild with no map row — these fall back to the ladder.
+        'unmapped_ids': unmapped,
+        # Distinguishes "nothing unmapped out there" from "we never asked".
+        'live_checked': opportunity_ids is not None,
+        'live_id_count': len(seen) if seen is not None else None,
+    }
+
+
+def propose_opportunity_mapping(session, opportunity_payloads) -> Dict[str, Any]:
+    """Which unmapped opportunities can be mapped automatically, and which cannot.
+
+    Two **independent** derivations must agree before an opportunity is
+    proposed:
+
+    1. ``sam.xras.opportunity_types`` — XRAS's own ``allocationTypeId`` plus its
+       primary ``panelId``, through a seven-entry constant.
+    2. The free-text ladder in ``sam.xras.extractors``, run on the opportunity's
+       name and type.
+
+    Agreement is the whole safety rule, and it is not belt-and-braces. Measured
+    across all 27 opportunities in the NCAR process on 2026-08-20, the two
+    disagree **twice**, and both times XRAS is the one that is wrong about SAM:
+    ``University small request - unsponsored`` (XRAS calls it ``Educational``;
+    SAM means ``Small (No NSF award)``) and ``NCAR - ASD Opportunity`` (XRAS
+    gives it NSC's type *and* panel; SAM means ``ASD-NCAR``, a different
+    **facility**, which is what reaches ``next_projcode``). Requiring agreement
+    withholds both without needing to know about either — and withholds the
+    first Wyoming opportunity too, which is exactly the one a human should see.
+
+    It also makes a mistake in the constant self-limiting: a wrong entry
+    disagrees with the ladder and is withheld rather than written.
+
+    ⚠️ **The ladder half is an approximation, deliberately on the conservative
+    side.** At ingest the chain also sees ``requestTitle``, which an opportunity
+    payload has no equivalent of, so two strategies (``_csl_strategy`` and part
+    of ``_external_strategy``) cannot fire here. That can only turn an agreement
+    into a non-agreement — never the reverse — so the failure mode is "asks a
+    human unnecessarily", not "writes something wrong".
+
+    Reads the database and nothing else: **no network, no writes.** Payloads are
+    injected exactly as ``audit_resource_mapping`` injects ``xras_keys``, so the
+    sweep, the CLI and the tests all share one decision rather than three
+    reimplementations of it.
+
+    Returns ``{'agree': [...], 'review': [...], 'unknown_pair': [...]}``, each
+    entry carrying ``opportunity_id``/``opportunity_name`` plus whichever pairs
+    were derived — ``review`` carries **both**, so a ledger row explains itself
+    without a second query.
+    """
+    from sam.accounting.allocations import AllocationType
+    from sam.resources.facilities import Panel
+    from sam.xras.extractors import select_allocation_type_parms
+    from sam.xras.opportunity_types import pair_for_opportunity
+
+    agree: List[Dict[str, Any]] = []
+    review: List[Dict[str, Any]] = []
+    unknown: List[Dict[str, Any]] = []
+
+    for payload in opportunity_payloads or []:
+        if not isinstance(payload, dict):
+            continue
+        opportunity_id = payload.get('opportunityId')
+        if opportunity_id is None:
+            continue
+        name = payload.get('opportunityName')
+        entry = {'opportunity_id': int(opportunity_id), 'opportunity_name': name}
+
+        mapped = pair_for_opportunity(payload)
+        parms = select_allocation_type_parms({
+            'opportunityName': name,
+            'allocationType': payload.get('allocationType'),
+            'requestTitle': None,
+        })
+        ladder = (parms.panel, parms.allocation_type) if parms else None
+
+        if mapped is None:
+            # A genuinely new allocation product looks exactly like this. It is
+            # reported, never guessed at — adding it is a one-line edit to the
+            # constant, which is a code review rather than a silent DB write.
+            unknown.append({**entry, 'ladder': ladder})
+            continue
+
+        if ladder != mapped:
+            review.append({**entry, 'ladder': ladder, 'xras': mapped})
+            continue
+
+        panel_name, type_name = mapped
+        row = (session.query(AllocationType)
+               .join(Panel, AllocationType.panel_id == Panel.panel_id)
+               .filter(Panel.panel_name == panel_name)
+               .filter(AllocationType.allocation_type == type_name)
+               .first())
+        if row is None:
+            # The constant names a pair the lookup tables do not have. A unit
+            # test pins against this, so reaching it means the tables moved
+            # under us — report rather than write a dangling row.
+            review.append({**entry, 'ladder': ladder, 'xras': mapped,
+                           'missing_allocation_type': True})
+            continue
+
+        agree.append({**entry, 'pair': mapped,
+                      'allocation_type_id': row.allocation_type_id})
+
+    key = lambda d: d['opportunity_id']          # noqa: E731 - sort key only
+    return {
+        'agree': sorted(agree, key=key),
+        'review': sorted(review, key=key),
+        'unknown_pair': sorted(unknown, key=key),
+    }

@@ -45,6 +45,7 @@ from typing import Dict, List, Optional
 
 from sam.accounting.allocations import AllocationType
 from sam.core.organizations import MnemonicCode, Organization
+from sam.integration.xras import XrasOpportunityAllocationType
 from sam.core.users import User
 from sam.projects.areas import AreaOfInterest
 from sam.projects.contracts import Contract
@@ -57,6 +58,7 @@ from .wire import get_field
 __all__ = [
     'SelectionParms',
     'select_allocation_type_parms',
+    'select_allocation_type_mapped',
     'resolve_allocation_type',
     'resolve_area_of_interest',
     'resolve_mnemonic_code',
@@ -320,6 +322,48 @@ def select_allocation_type_parms(action) -> Optional[SelectionParms]:
     return None
 
 
+def select_allocation_type_mapped(session, action) -> Optional[SelectionParms]:
+    """The ``(panel, type)`` pair, preferring the ``opportunityId`` map.
+
+    A map hit yields the pair implied by the FK'd ``allocation_type`` row. A miss
+    falls straight through to :func:`select_allocation_type_parms`, so **an empty
+    table reproduces the ladder exactly** — which is the whole safety property:
+    this adds fidelity when the map is populated and changes nothing when it is
+    not.
+
+    This is the one session-taking pre-step the strategy chain is not allowed to
+    contain. The chain is pure and sessionless by construction (see the module
+    docstring); a database read belongs here.
+
+    ⚠️ **Both consumers must use this, not the pure form.**
+    :func:`resolve_allocation_type` sets ``project.allocation_type_id``, but
+    ``handlers/_allocations.auth_at_panel_meeting`` independently re-derives the
+    pair to set ``auth_at_panel_mtg`` on **allocation_transaction** rows. Wiring
+    only one of them would let a project's type come from the map while its
+    transactions' panel-authorisation flag came from the ladder — inconsistent
+    rows, written, silently.
+
+    Three ways to miss, all of them falling through rather than raising: no
+    ``opportunityId`` on the wire (the field is optional), no row for it, or a
+    row whose ``allocation_type`` has no panel. That last one is real —
+    ``allocation_type.panel_id`` is **nullable**, so the ``.panel.panel_name``
+    traversal would otherwise raise ``AttributeError`` mid-dispatch.
+    """
+    opportunity_id = get_field(action, 'opportunityId')
+    if opportunity_id is not None:
+        # `opportunityId` is `_opt_int()`, so it arrives as an int or None —
+        # deliberately not run through `_clean`, which is str-only.
+        row = (session.query(XrasOpportunityAllocationType)
+               .filter(XrasOpportunityAllocationType.opportunity_id == opportunity_id)
+               .first())
+        panel = getattr(getattr(row, 'allocation_type', None), 'panel', None)
+        if panel is not None:
+            return SelectionParms(panel.panel_name,
+                                  row.allocation_type.allocation_type)
+
+    return select_allocation_type_parms(action)
+
+
 def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[AllocationType]:
     """The ``allocation_type`` row this action's project belongs to.
 
@@ -334,11 +378,16 @@ def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[All
     chain can produce are active today, and filtering would turn a data change into a
     silent behaviour change.
 
+    The pair comes from :func:`select_allocation_type_mapped`, which prefers the
+    ``opportunityId`` map and falls back to the ladder — so with an empty table this
+    function behaves exactly as it did before the map existed.
+
     Reports ``Unable to determine allocation type from action data`` when no strategy
     matched, or ``No AllocationType for SelectionParms{…}`` when one did but the pair
-    names no row.
+    names no row. A map hit cannot reach the second message: the pair is read back off
+    a real ``allocation_type`` row, so the join that follows is guaranteed to find it.
     """
-    parms = select_allocation_type_parms(action)
+    parms = select_allocation_type_mapped(session, action)
     if parms is None:
         errs.report(e.allocation_type_undetermined())
         return None

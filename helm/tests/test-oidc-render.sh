@@ -26,7 +26,7 @@ green() { printf '\033[32m%s\033[0m\n' "$*"; }
 
 assert_contains() {
   local haystack="$1" needle="$2" msg="$3"
-  if ! printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if ! grep -qF -- "$needle" <<<"$haystack"; then
     red "FAIL: $msg"
     red "  expected to find: $needle"
     return 1
@@ -35,7 +35,7 @@ assert_contains() {
 
 assert_not_contains() {
   local haystack="$1" needle="$2" msg="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if grep -qF -- "$needle" <<<"$haystack"; then
     red "FAIL: $msg"
     red "  unexpectedly found: $needle"
     return 1
