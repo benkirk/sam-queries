@@ -510,3 +510,19 @@ class TestOpportunityResolution:
     def test_ids_xras_does_not_know_are_simply_absent(self, monkeypatch):
         client = _client(monkeypatch, [_response(200, _envelope([]))])
         assert client.get_opportunities([999999]) == []
+
+    def test_the_open_list_is_a_different_route(self):
+        """`/v1/opportunities` and `/v1/opportunities/list/:ids` answer different
+        questions and neither subsumes the other: the open list sees an
+        opportunity nobody has submitted against yet, the by-id form resolves
+        closed ones. The sweep needs both."""
+        assert hasattr(XrasApiClient, 'get_open_opportunities')
+        assert hasattr(XrasApiClient, 'get_opportunities')
+
+    def test_the_open_list_asks_for_no_ids(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope([self._opp(535388)]))])
+        result = client.get_open_opportunities()
+        assert [o['opportunityId'] for o in result] == [535388]
+        (_method, url), _kwargs = client.session.request.call_args
+        assert url.endswith('/v1/opportunities')
+        assert '/list/' not in url

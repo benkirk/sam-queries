@@ -201,6 +201,26 @@ class XrasApiClient:
 
     # ── opportunities ───────────────────────────────────────────────────
 
+    def get_open_opportunities(self) -> List[Dict[str, Any]]:
+        """Every **currently open** opportunity, in full.
+
+        ⚠️ **This is the only way to see an opportunity nobody has submitted
+        against yet**, and that is the whole reason it exists. The sweep's other
+        source of opportunity ids is ``reports/requests``, which by construction
+        cannot mention an opportunity with no requests — so a brand-new one is
+        invisible there until its first request is *approved*, which may be
+        weeks later.
+
+        Measured: `Large Allocation (University) - Fall 2026` (535388) was
+        posted and returned here immediately, while the Approved enumeration
+        knew nothing of it.
+
+        Complements :meth:`get_opportunities`, which resolves ids that are
+        already known but may be closed. Neither subsumes the other: this one
+        sees the future, that one sees the past.
+        """
+        return _as_list(self._get('/v1/opportunities')) or []
+
     def get_opportunities(self, opportunity_ids) -> List[Dict[str, Any]]:
         """Resolve opportunities by id, **including closed and Terminating ones**.
 

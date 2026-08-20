@@ -64,11 +64,22 @@ def _request(request_id: int, number: str, username: str = 'ghost-user-1',
 class _StubClient:
     """A client whose enumeration is scripted, page by page."""
 
-    def __init__(self, pages, *, fail_after=None, opportunities=()):
+    def __init__(self, pages, *, fail_after=None, opportunities=(),
+                 open_opportunities=()):
         self.pages = pages
         self.fail_after = fail_after
         self.opportunities = list(opportunities)
+        self.open_opportunities = list(open_opportunities)
         self.calls = 0
+
+    def get_open_opportunities(self):
+        """Currently-open opportunities. Empty unless a test scripts it.
+
+        Empty is the honest default: it means the sweep still discovers ids from
+        the request enumeration alone, which is what every pre-existing test here
+        exercises.
+        """
+        return list(self.open_opportunities)
 
     def get_opportunities(self, opportunity_ids):
         """Resolve opportunities by id. Empty unless a test scripts it.
@@ -92,10 +103,12 @@ class _StubClient:
 @pytest.fixture
 def wire(monkeypatch):
     """Configure the API and swap in a stub client and person lookup."""
-    def configure(pages=(), *, people=None, fail_after=None):
+    def configure(pages=(), *, people=None, fail_after=None,
+                  open_opportunities=()):
         monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
         monkeypatch.setenv('XRAS_API_KEY', 'k')
-        client = _StubClient(list(pages), fail_after=fail_after)
+        client = _StubClient(list(pages), fail_after=fail_after,
+                             open_opportunities=open_opportunities)
         monkeypatch.setattr(
             'sam.integration.xras_api.XrasApiClient.from_environment',
             classmethod(lambda cls, config=None: client))
@@ -848,3 +861,113 @@ class TestTheDryRunIsAFullRehearsal:
         # ...and the runner throws the work away rather than committing it.
         context._sam_session = session
         context.close_sessions(commit=True)
+
+
+class TestABrandNewOpportunityIsSeenBeforeAnyRequestExists:
+    """⚠️ The lead-time property, and the reason the open list is queried at all.
+
+    The request enumeration **cannot** mention an opportunity that has no
+    requests. So a newly-posted one is invisible there until its first request is
+    *approved* — which can be weeks later, and is exactly the window the map is
+    supposed to buy.
+
+    Measured against production on 2026-08-20: `Large Allocation (University) -
+    Fall 2026` (535388) was returned by `/v1/opportunities` the moment it was
+    posted, while `/v1/reports/requests?status=Approved` knew nothing of it.
+    """
+
+    #: 535388 as XRAS actually returned it, trimmed to the fields that matter.
+    FALL_2026 = _opportunity(535388, 'Large Allocation (University) - Fall 2026',
+                             'Large', 500023, 500022, extra_panels=(500032,))
+
+    def test_it_is_mapped_with_no_requests_anywhere(self, ctx, wire, session):
+        """No pages at all — nothing has ever been submitted against it."""
+        from sam.integration.xras import SOURCE_SWEEP, XrasOpportunityAllocationType
+
+        wire([[]], open_opportunities=[self.FALL_2026])
+        result = mod.xras_sweep(ctx())
+
+        assert result.detail['opportunities_open'] == 1
+        assert result.detail['opportunities_written'] == 1
+        row = session.get(XrasOpportunityAllocationType, 535388)
+        assert row.source == SOURCE_SWEEP
+        assert row.allocation_type.panel.panel_name == 'CHAP'
+        assert row.allocation_type.allocation_type == 'CHAP'
+
+    def test_without_the_open_list_it_would_be_invisible(self, ctx, wire, session):
+        """The negative half, so the property cannot be quietly removed: with the
+        open list empty and no requests, nothing is seen and nothing is written."""
+        from sam.integration.xras import XrasOpportunityAllocationType
+
+        wire([[]])
+        result = mod.xras_sweep(ctx())
+        assert result.detail['opportunities_seen'] == 0
+        assert result.detail['opportunities_written'] == 0
+        assert session.get(XrasOpportunityAllocationType, 535388) is None
+
+    def test_an_open_opportunity_costs_no_by_id_round_trip(self, ctx, wire, session,
+                                                          monkeypatch):
+        """The open list arrives with `allocationTypeInfo` and `panels` attached,
+        so re-resolving it by id would be a wasted call."""
+        client = wire([[]], open_opportunities=[self.FALL_2026])
+        calls = []
+        original = client.get_opportunities
+        monkeypatch.setattr(type(client), 'get_opportunities',
+                            lambda self, ids: calls.append(list(ids)) or original(ids),
+                            raising=False)
+        mod.xras_sweep(ctx())
+        assert calls == [[]], f'expected no by-id fetch, got {calls}'
+
+    def test_an_open_list_outage_does_not_lose_the_request_half(self, ctx, wire,
+                                                               session, monkeypatch):
+        """It is an enrichment. Losing it must not cost the ids the enumeration
+        already found."""
+        from sam.integration.xras_api import XrasSourceUnavailable
+
+        client = wire([[self._req_with(1, 'NCAR9001', 999801)]])
+
+        def boom(self):
+            raise XrasSourceUnavailable('down')
+
+        monkeypatch.setattr(type(client), 'get_open_opportunities', boom, raising=False)
+        monkeypatch.setattr(type(client), 'get_opportunities',
+                            lambda self, ids: [_LARGE_2026], raising=False)
+        result = mod.xras_sweep(ctx())
+        assert result.detail['unavailable_errors'] == 1
+        assert result.detail['opportunities_seen'] == 1        # the request half survived
+        assert result.detail['opportunities_written'] == 1
+
+    def _req_with(self, request_id, number, opportunity_id):
+        payload = _request(request_id, number)
+        payload['opportunityId'] = opportunity_id
+        return payload
+
+
+class TestTheCapTakesTheNewestFirst:
+    """Under the cap, a historical backfill must not crowd out a new arrival.
+
+    `opportunity_id` ascends with time. A newly-posted opportunity is the whole
+    point of the feature — it is the one an imminent action might reference —
+    while a closed 2018 opportunity has no pending handoff and can wait an hour.
+    Measured: the first production backfill proposed 30 rows against a cap of 20,
+    and the newly-posted 535388 was the highest id of the set.
+    """
+
+    def test_the_newest_win_when_the_cap_bites(self, ctx, wire, session, monkeypatch):
+        from sam.integration.xras import XrasOpportunityAllocationType
+
+        monkeypatch.setenv('SAM_TASKS_XRAS_MAP_MAX', '2')
+        old_a = _opportunity(999101, 'Large Allocation (University) - Fall 2019',
+                             'Large', 500023, 500022)
+        old_b = _opportunity(999102, 'Large Allocation (University) - Fall 2020',
+                             'Large', 500023, 500022)
+        newest = _opportunity(999999, 'Large Allocation (University) - Fall 2026',
+                              'Large', 500023, 500022)
+        wire([[]], open_opportunities=[old_a, old_b, newest])
+
+        result = mod.xras_sweep(ctx())
+        assert result.detail['map_budget_exhausted'] is True
+        assert result.detail['opportunities_written'] == 2
+        assert session.get(XrasOpportunityAllocationType, 999999) is not None, \
+            'the newly-posted opportunity was crowded out by the backfill'
+        assert session.get(XrasOpportunityAllocationType, 999101) is None

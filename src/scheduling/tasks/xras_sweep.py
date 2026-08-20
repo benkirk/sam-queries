@@ -222,7 +222,8 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
         return True
 
 
-def _map_new_opportunities(ctx, session, client, unmapped_ids, detail) -> None:
+def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
+                           *, known=()) -> None:
     """Map the opportunities XRAS and the ladder agree about; report the rest.
 
     ⚠️ **The only write this task performs**, and the only one it may perform.
@@ -253,15 +254,25 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail) -> None:
     from sam.integration.xras import SOURCE_SWEEP, XrasOpportunityAllocationType
     from sam.queries.xras_actions import propose_opportunity_mapping
 
+    # Anything the open list already handed us needs no second round trip; only
+    # the rest — the closed ones — has to be resolved by id.
+    have = {o['opportunityId']: o for o in (known or ())
+            if isinstance(o, dict) and o.get('opportunityId') is not None}
+    wanted = [i for i in unmapped_ids if i not in have]
+    payloads = [have[i] for i in unmapped_ids if i in have]
+
     try:
-        payloads = client.get_opportunities(unmapped_ids)
+        payloads += client.get_opportunities(wanted)
     except XrasSourceUnavailable as exc:
         # The enumeration and the account worklist are already in hand and worth
         # reporting; failing to resolve opportunities costs only this step, and
         # the next slot retries the same ids.
         detail['unavailable_errors'] += 1
         ctx.logger.warning('xras_sweep: opportunity resolve failed: %s', exc)
-        return
+        if not payloads:
+            return
+        # Keep going on the open ones already in hand — a partial answer is a
+        # subset of the truth here, not a wrong one.
 
     proposal = propose_opportunity_mapping(session, payloads)
     detail['opportunities_needing_review'] = proposal['review'][:_MAX_REPORTED]
@@ -270,11 +281,20 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail) -> None:
     budget = map_max()
     agreed = proposal['agree']
     if len(agreed) > budget:
+        # ⚠️ **Newest first when the cap bites**, not lowest id first.
+        # `opportunity_id` ascends with time, and the rows worth having soonest
+        # are the ones an imminent action might reference — a newly-posted
+        # opportunity is the entire reason this feature exists. A historical
+        # backfill has no pending handoffs and can wait for the next slot, so
+        # letting it crowd out the new arrival would invert the priority.
+        # (Only the *selection* is newest-first; the writes below stay in id
+        # order so the log reads predictably.)
         ctx.logger.warning(
             'xras_sweep: %d opportunities agreed but the per-run cap is %d; '
-            'writing the first %d', len(agreed), budget, budget)
+            'taking the %d newest', len(agreed), budget, budget)
         detail['map_budget_exhausted'] = True
-        agreed = agreed[:budget]
+        newest = sorted(agreed, key=lambda e: e['opportunity_id'], reverse=True)
+        agreed = sorted(newest[:budget], key=lambda e: e['opportunity_id'])
 
     written = []
     for entry in agreed:
@@ -353,6 +373,7 @@ def xras_sweep(ctx) -> TaskResult:
         'pending_push': 0,
         'pending_push_sample': [],
         'accounts': {},
+        'opportunities_open': 0,
         'opportunities_seen': 0,
         'opportunities_unmapped': 0,
         'opportunities_unmapped_sample': [],
@@ -431,6 +452,30 @@ def xras_sweep(ctx) -> TaskResult:
     # time the map exists to buy. The sweep must never write the table.
     seen_ids = {int(oid) for p in payloads
                 if (oid := p.get('opportunityId')) is not None}
+
+    # ⚠️ **Requests cannot mention an opportunity that has none**, so the
+    # enumeration above is blind to a brand-new one until its first request is
+    # *approved* — which can be weeks after it is posted, and is precisely the
+    # lead time this map exists to buy. The open list closes that gap for one
+    # cheap call, and it arrives with `allocationTypeInfo` and `panels` already
+    # attached, so an open opportunity never needs the by-id round trip.
+    #
+    # Measured 2026-08-20: `Large Allocation (University) - Fall 2026` (535388)
+    # was returned here the moment it was posted, while the Approved
+    # enumeration knew nothing about it.
+    #
+    # Guarded rather than fatal: this is an enrichment, and losing it must not
+    # cost the request-derived half.
+    open_payloads = []
+    try:
+        open_payloads = client.get_open_opportunities()
+    except XrasSourceUnavailable as exc:
+        detail['unavailable_errors'] += 1
+        ctx.logger.warning('xras_sweep: open opportunity list failed: %s', exc)
+    detail['opportunities_open'] = len(open_payloads)
+    seen_ids |= {int(oid) for o in open_payloads
+                 if isinstance(o, dict) and (oid := o.get('opportunityId')) is not None}
+
     if seen_ids:
         audit = audit_opportunity_mapping(session, opportunity_ids=seen_ids)
         detail['opportunities_seen'] = len(seen_ids)
@@ -438,8 +483,8 @@ def xras_sweep(ctx) -> TaskResult:
         detail['opportunities_unmapped_sample'] = audit['unmapped_ids'][:_MAX_REPORTED]
 
         if audit['unmapped_ids']:
-            _map_new_opportunities(ctx, session, client,
-                                   audit['unmapped_ids'], detail)
+            _map_new_opportunities(ctx, session, client, audit['unmapped_ids'],
+                                   detail, known=open_payloads)
 
     # ── 2. dropped / pending pushes ─────────────────────────────────────
     numbers = {str(p.get('requestNumber')).strip() for p in payloads
