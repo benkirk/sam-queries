@@ -254,3 +254,63 @@ class TestTheHeaderDoesNotConflateTwoFacts:
         assert 'placeholder' in body
         assert 'unreconciled' not in body.split('<tbody>')[0], (
             'the header badge must not call a placeholder count "unreconciled"')
+
+
+class TestTheWindowNeverHidesSilently:
+    """⚠️ On the Feed-B tab an OLDER unpushed request is usually the MORE
+    urgent one — a request submitted six months ago that still has no SAM
+    project is the worst case there. A recency filter that quietly dropped it
+    would invert the priority the tab exists to surface.
+
+    Measured on the live snapshot: the sweep found 21 accounts needed and the
+    90-day pill showed 12. The nine hidden rows were the oldest, i.e. the ones
+    most worth acting on. The filter stays — one window across three tabs is
+    the point — but the header must say what it hid.
+    """
+
+    URL = '/allocations/xras_pending_requests_fragment'
+
+    def _publish(self, rows_total, shown_total):
+        from sam.integration.xras_api.cache import store_pending_worklist
+        from datetime import datetime
+        rows = []
+        for i in range(rows_total):
+            # The first `shown_total` are recent; the rest are ancient.
+            submitted = '2026-08-19' if i < shown_total else '2019-01-01'
+            rows.append({
+                'username': f'ghost-user-{i}', 'classification': 'absent',
+                'remedy': 'create', 'placeholder': False, 'roles': ('PI',),
+                'is_account_to_be_created': False, 'is_reconciled': None,
+                'person': None, 'sources': ['reports'],
+                'actions': [{'action_log_id': None,
+                             'request_number': f'NCAR{i:04d}',
+                             'action_type': 'New', 'status': 'Approved',
+                             'received_time': None, 'submit_date': submitted,
+                             'source': 'reports', 'would_succeed': None,
+                             'reject_messages': []}],
+            })
+        store_pending_worklist({
+            'generated_at': datetime(2026, 8, 20), 'window_days': 90,
+            'status': 'Approved', 'requests_seen': 100,
+            'requests_in_window': 50, 'budget_exhausted': False,
+            'pending_push': rows_total, 'pending_push_sample': [],
+            'counts': {'total': rows_total, 'absent': rows_total,
+                       'inactive': 0, 'placeholder': 0, 'reconciled': 0},
+            'rows': rows,
+        })
+
+    def test_it_reports_how_many_the_window_hid(self, auth_client, monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        self._publish(rows_total=5, shown_total=2)
+        body = auth_client.get(f'{self.URL}?days=30').get_data(as_text=True)
+        assert '2 of 5' in body
+        assert 'outside the window' in body
+
+    def test_it_says_nothing_when_the_window_hides_nothing(self, auth_client,
+                                                           monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        self._publish(rows_total=3, shown_total=3)
+        body = auth_client.get(f'{self.URL}?days=30').get_data(as_text=True)
+        assert 'outside the window' not in body

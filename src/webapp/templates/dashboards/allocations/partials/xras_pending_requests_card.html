@@ -30,7 +30,25 @@
         <strong>XRAS Requests Awaiting a Handoff</strong>
         {% if snapshot %}
         <span class="badge bg-secondary">{{ snapshot.pending_push | fmt_number }} request(s)</span>
-        <span class="badge bg-info text-dark">{{ counts.total | fmt_number }} account(s) needed</span>
+        {# ⚠️ "N of M" whenever the window hides rows, never a bare N.
+           An OLD unpushed handoff is MORE urgent, not less — a request
+           submitted six months ago that still has no SAM project is the worst
+           case on this tab — so a recency filter that quietly dropped it would
+           invert the priority it exists to surface. The filter stays (one
+           window across three tabs), but it can never hide silently. #}
+        {% set swept_total = snapshot.counts.total | default(counts.total) %}
+        <span class="badge bg-info text-dark">
+            {% if counts.total != swept_total %}
+            {{ counts.total | fmt_number }} of {{ swept_total | fmt_number }}
+            {% else %}{{ counts.total | fmt_number }}{% endif %}
+            account(s) needed
+        </span>
+        {% if counts.total != swept_total %}
+        <span class="badge bg-warning text-dark"
+              title="Older requests are hidden by the window above. On this tab an older unpushed request is usually the more urgent one — widen the window to see them.">
+            {{ (swept_total - counts.total) | fmt_number }} outside the window
+        </span>
+        {% endif %}
         {% endif %}
         {% if snapshot %}
         <span class="ms-auto small text-muted"

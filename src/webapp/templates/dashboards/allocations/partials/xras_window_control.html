@@ -1,0 +1,19 @@
+{% from 'dashboards/fragments/window_pills.html' import window_pills %}
+{#
+  The shared window control for the XRAS worklist tabs.
+
+  Its own swap target, and that is the whole point. `window_pills` marks the
+  active pill server-side from the window it is given; while the pills lived
+  inside each worklist fragment that came free, because a submit re-rendered
+  the fragment. Sharing one control across three tabs moved it into the page
+  shell, outside every swap target — so it kept whatever state the page load
+  gave it, and clicking 7D re-filtered the data while leaving the pill looking
+  untouched. That reads as a dead control.
+
+  Still exactly ONE start_date/end_date pair on the page: the pills are
+  rendered here and only here, bound to `#xras-window-filters` with `form=`.
+#}
+{{ window_pills(form_id, window_pill_choices, window.days,
+                custom=window.custom,
+                start_date=window.start_date,
+                end_date=window.end_date) }}

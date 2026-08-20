@@ -11,7 +11,7 @@ from flask import (
     current_app,
 )
 from flask_login import login_required, current_user
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Dict
 
 from webapp.extensions import db, cache, user_aware_cache_key
@@ -1344,6 +1344,7 @@ def xras():
         # only one start_date/end_date pair exists (see the template).
         window=_parse_activity_window(request.args),
         window_pill_choices=_ACTIVITY_WINDOW_PILLS,
+        form_id='xras-window-filters',
         **_window_control_context(end_date, start_str, end_str),
         all_statuses=list(XRAS_ACTION_STATUSES),
         all_action_types=_xras_action_types(),
@@ -1661,6 +1662,33 @@ _PENDING_FORM_ID = 'xras-pending-filters'
 _MAX_REQUEST_CHIPS = 12
 
 
+def _submitted_since(row, since):
+    """Did any request naming this person appear in XRAS within the window?
+
+    The Feed-B analogue of Feed A's ``received_time`` filter — the same
+    question ("when did this show up?") asked of a feed that has no arrival of
+    its own, which is what lets one control span both tabs.
+
+    A row with no usable submit date is kept: that is missing information, not
+    evidence of age, and dropping it would silently shrink the queue.
+    """
+    if since is None:
+        return True
+    start = since.date() if hasattr(since, 'date') else since
+    dates = [a.get('submit_date') for a in row.get('actions') or []]
+    if not any(dates):
+        return True
+    for raw in dates:
+        if not raw:
+            return True
+        try:
+            if date.fromisoformat(str(raw)[:10]) >= start:
+                return True
+        except ValueError:
+            return True
+    return False
+
+
 def _request_facets(rows, *, classifications=None):
     """Counts per XRAS request number, most-affected first.
 
@@ -1785,6 +1813,32 @@ def xras_accounts_fragment():
 
 
 _PENDING_TARGET = 'alloc-xras-pending-requests'
+_WINDOW_TARGET = 'alloc-xras-window'
+
+
+@bp.route('/xras_window_fragment')
+@login_required
+@require_permission(Permission.VIEW_XRAS)
+def xras_window_fragment():
+    """HTMX fragment: just the shared window pills.
+
+    ⚠️ **The control has to re-render itself, and this is why the route
+    exists.** `window_pills` marks the active pill server-side from the
+    window it is handed. While the pills lived inside each worklist fragment
+    that came free — a submit re-rendered the fragment and the pill state
+    came with it. Sharing one control across three tabs moved it into the page
+    shell, outside every swap target, so it kept whatever state the page load
+    gave it: clicking 7D re-filtered the data and left the pill looking
+    unchanged, which reads as a dead control.
+
+    So the pills are their own swap target, listening for the same submit the
+    panes do.
+    """
+    window = _parse_activity_window(request.args)
+    return render_template(
+        'dashboards/allocations/partials/xras_window_control.html',
+        window=window, window_pill_choices=_ACTIVITY_WINDOW_PILLS,
+        form_id='xras-window-filters')
 
 
 @bp.route('/xras_pending_requests_fragment')
@@ -1818,8 +1872,21 @@ def xras_pending_requests_fragment():
     snapshot = load_pending_worklist() if configured else None
 
     rows = list(snapshot.get('rows') or []) if snapshot else []
+    window = _parse_activity_window(request.args)
     selected_requests = [r for r in request.args.getlist('request_number') if r]
     selected_classes = [c for c in request.args.getlist('classification') if c]
+
+    # ⚠️ A shared control that silently does nothing on one tab is worse than
+    # no control, so the pills mean the same thing here as on the other two:
+    # "what showed up in the last N days". For Feed B that is `submitDate`.
+    #
+    # Filtering on the period of performance was tried first and is wrong: a
+    # pending request's allocation almost always ends a year out, so a
+    # one-sided window keeps every row at every width and the pill looks dead
+    # — the exact complaint this is fixing. The period of performance stays
+    # where it belongs, bounding what the SWEEP collects; the header reports
+    # that width so the two are never confused.
+    rows = [r for r in rows if _submitted_since(r, window['since'])]
 
     if not may_manage:
         rows = [{**r, 'person': None} for r in rows]

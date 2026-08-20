@@ -1,6 +1,5 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
 {% from 'dashboards/fragments/xras_filters.html' import xras_filters %}
-{% from 'dashboards/fragments/window_pills.html' import window_pills %}
 
 {% block title %}XRAS Action Log - SAM{% endblock %}
 
@@ -61,11 +60,14 @@
                     role="tab">Pending Requests</button>
         </li>
     </ul>
-    <div>
-        {{ window_pills('xras-window-filters', window_pill_choices,
-                        window.days, custom=window.custom,
-                        start_date=window.start_date,
-                        end_date=window.end_date) }}
+    {# Its own swap target: the pills must re-render to restyle the active
+       one. See partials/xras_window_control.html. #}
+    <div id="alloc-xras-window"
+         hx-get="{{ url_for('allocations_dashboard.xras_window_fragment') }}"
+         hx-trigger="submit from:#xras-window-filters"
+         hx-include="#xras-window-filters"
+         hx-swap="innerHTML">
+        {% include 'dashboards/allocations/partials/xras_window_control.html' %}
     </div>
 </div>
 

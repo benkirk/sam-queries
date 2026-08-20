@@ -1582,6 +1582,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_window_fragment",
+    "/allocations/xras_window_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
     "disk_scans.access_history_fragment",
     "/dashboards/user/disk-scans/<projcode>/access-history",
     [

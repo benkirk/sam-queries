@@ -128,6 +128,18 @@ class ActionRef:
     action_type: Optional[str] = None
     status: Optional[str] = None
     received_time: Optional[datetime] = None
+    #: When the request appeared in XRAS (``submitDate``), for a feed that has
+    #: no arrival of its own. Feed A leaves it ``None`` and uses
+    #: ``received_time`` — when XRAS pushed the action to us.
+    #:
+    #: These two are the SAME QUESTION per feed — "when did this show up?" —
+    #: which is what lets one window control span both. Filtering Feed B on
+    #: its period of performance instead was tried and is wrong: a pending
+    #: request's allocation almost always ends a year out, so a one-sided
+    #: window keeps every row at every width and the control looks dead. The
+    #: period of performance belongs where it already is, bounding what the
+    #: sweep collects.
+    submit_date: Optional[str] = None
     source: str = 'action_log'
     #: ``dispatch_action(validate_only=True)``'s verdict. ``None`` = not run.
     would_succeed: Optional[bool] = None
@@ -352,6 +364,8 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
                           action_type=payload.get('requestType'),
                           status=payload.get('requestStatus'),
                           received_time=None,
+                          submit_date=(str(payload.get('submitDate'))[:10]
+                                       if payload.get('submitDate') else None),
                           source='reports'),
             usernames=tuple(usernames),
             roles_by_username={k: tuple(v) for k, v in roles.items()},
@@ -465,6 +479,7 @@ def classify_accounts(session: Session,
                 'action_type': record.ref.action_type,
                 'status': record.ref.status,
                 'received_time': record.ref.received_time,
+                'submit_date': record.ref.submit_date,
                 'source': record.ref.source,
                 'would_succeed': record.ref.would_succeed,
                 'reject_messages': list(record.ref.reject_messages),
