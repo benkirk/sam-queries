@@ -62,6 +62,10 @@ REQUEST_STATUSES = ('Submitted', 'Approved', 'Rejected', 'Incomplete',
 
 DEFAULT_PAGE_SIZE = 50
 
+#: Opportunity ids per ``/v1/opportunities/list/:ids`` call. They travel in
+#: the path, so this bounds URL length rather than response size.
+_OPPORTUNITY_CHUNK = 50
+
 
 class XrasApiClient:
     """Retrying JSON client over a persistent session. Reads only."""
@@ -194,6 +198,42 @@ class XrasApiClient:
         actually send.
         """
         return _as_list(self._get('/v1/resources'))
+
+    # ── opportunities ───────────────────────────────────────────────────
+
+    def get_opportunities(self, opportunity_ids) -> List[Dict[str, Any]]:
+        """Resolve opportunities by id, **including closed and Terminating ones**.
+
+        ``GET /v1/opportunities/list/:ids``. The plain ``/v1/opportunities``
+        route lists only what is *open* — five opportunities today — which is
+        useless for this job: of the 27 the NCAR process has ever run, 22 are
+        closed, and every one of them can still arrive on an inbound action.
+
+        This is the only reason SAM calls out for opportunity data at all. A
+        ``reports/requests`` row carries ``opportunityId`` and
+        ``opportunity_name`` and nothing else — no ``allocationTypeId``, no
+        panels — so the sweep cannot derive a mapping from the enumeration it
+        already has.
+
+        Chunked because the ids go in the **path**, not a query string, and a
+        long path is the one thing a proxy in front of the API is most likely
+        to truncate. 50 ids is roughly 350 characters.
+
+        Returns the flattened list; ids XRAS does not know are simply absent,
+        which is the same shape as asking about none of them.
+        """
+        wanted = [int(i) for i in opportunity_ids]
+        if not wanted:
+            # No request at all rather than `/list/` with an empty path segment,
+            # which is a different route and answers 404.
+            return []
+
+        found: List[Dict[str, Any]] = []
+        for start in range(0, len(wanted), _OPPORTUNITY_CHUNK):
+            chunk = wanted[start:start + _OPPORTUNITY_CHUNK]
+            path = '/v1/opportunities/list/' + ','.join(str(i) for i in chunk)
+            found.extend(_as_list(self._get(path)) or [])
+        return found
 
     # ── requests (the Reports family) ───────────────────────────────────
 

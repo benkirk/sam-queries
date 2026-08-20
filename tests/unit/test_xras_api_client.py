@@ -452,3 +452,61 @@ class TestResourceKeys:
         # It could never have joined to the integer column, so reporting it
         # as "XRAS sent a key SAM lacks" would be a lie.
         assert xras_people.resource_repository_keys() == [7]
+
+
+class TestOpportunityResolution:
+    """`GET /v1/opportunities/list/:ids` — the one outbound call the mapping needs.
+
+    ⚠️ Required, not incidental: a live `reports/requests` row carries
+    `opportunityId` and `opportunity_name` and nothing else — no
+    `allocationTypeId`, no panels — so the sweep cannot derive a mapping from the
+    enumeration it already has.
+    """
+
+    def _opp(self, oid):
+        return {'opportunityId': oid, 'opportunityName': f'Opp {oid}',
+                'allocationTypeInfo': {'allocationTypeId': 500023},
+                'panels': [{'panelId': 500022, 'isPrimary': True}]}
+
+    def test_it_asks_for_the_ids_in_the_path(self, monkeypatch):
+        client = _client(monkeypatch,
+                         [_response(200, _envelope([self._opp(1), self._opp(2)]))])
+        result = client.get_opportunities([1, 2])
+        assert [o['opportunityId'] for o in result] == [1, 2]
+
+        (_method, url), _kwargs = client.session.request.call_args
+        assert url.endswith('/v1/opportunities/list/1,2')
+
+    def test_it_resolves_closed_opportunities_not_just_open_ones(self, monkeypatch):
+        """The whole reason for the `/list/` route. Of the 27 opportunities the
+        NCAR process has run, 22 are closed — and every one can still arrive on an
+        inbound action, so `/v1/opportunities` (open only) is useless here."""
+        client = _client(monkeypatch, [_response(200, _envelope([self._opp(531428)]))])
+        assert client.get_opportunities([531428])[0]['opportunityId'] == 531428
+        (_method, url), _kwargs = client.session.request.call_args
+        assert '/v1/opportunities/list/' in url
+        assert not url.endswith('/v1/opportunities')
+
+    def test_it_chunks_long_id_lists(self, monkeypatch):
+        """Ids travel in the **path**, so this bounds URL length — the thing a
+        proxy in front of the API is likeliest to truncate."""
+        ids = list(range(1, 121))
+        client = _client(monkeypatch, [_response(200, _envelope([self._opp(i)]))
+                                       for i in (1, 51, 101)])
+        result = client.get_opportunities(ids)
+        assert client.session.request.call_count == 3        # 50 + 50 + 20
+        assert len(result) == 3
+        for (_method, url), _kwargs in client.session.request.call_args_list:
+            assert len(url) < 400
+
+    def test_an_empty_id_list_makes_no_request(self, monkeypatch):
+        """`/v1/opportunities/list/` with an empty segment is a different route
+        that answers 404 — so not asking is the correct behaviour, not an
+        optimisation."""
+        client = _client(monkeypatch, [])
+        assert client.get_opportunities([]) == []
+        assert client.session.request.call_count == 0
+
+    def test_ids_xras_does_not_know_are_simply_absent(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope([]))])
+        assert client.get_opportunities([999999]) == []
