@@ -676,6 +676,12 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[rollup] Counts by status and action type')
 @click.option('--validate-mapping', is_flag=True,
               help='[check] Report SAM resources XRAS cannot name (pre-cutover gate)')
+@click.option('--accounts', is_flag=True,
+              help='[worklist] Accounts to create or reactivate before a handoff')
+@click.option('--enrich', is_flag=True,
+              help='[worklist] Add XRAS person detail (requires --accounts and the API)')
+@click.option('--person', type=str, default=None,
+              help='[detail] Look one username up in the XRAS directory')
 @click.option('--status', multiple=True,
               type=click.Choice(['received', 'processed', 'manual',
                                  'failed', 'rechecked']),
@@ -691,6 +697,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
+         accounts, enrich, person,
          status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
@@ -705,6 +712,9 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --show ID    one action in full, with its re-check lineage
       --summary    counts by status, and by status x action type
       --recheck ID would this action succeed now? (applies nothing)
+      --accounts   who must be created or reactivated before a handoff works
+      --person U   one username in the XRAS directory
+      --validate-mapping  which resources XRAS and SAM can name each other's
 
     \b
     --recheck answers "would this succeed if XRAS posted it now?" It re-parses the
@@ -715,12 +725,29 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
     to resend will land.
 
     \b
+    --accounts is the account-creation worklist: unreconciled ARC placeholder
+    identities are 55% of production handoff failures, and account creation is
+    manual. Rows are usernames XRAS names that SAM cannot use — either absent
+    (create) or inactive (reactivate). An EMPTY worklist exits 0; nobody being
+    blocked is a successful report, not a miss. --enrich adds names, emails and
+    the isReconciled closure signal, one XRAS round trip per username.
+
+    \b
+    --validate-mapping is two-sided when the XRAS API is configured: it also
+    reports keys XRAS sends that SAM has no mapping row for, which is the
+    failure that breaks an award. Unconfigured, it degrades to the local-only
+    report and says so.
+
+    \b
     Examples:
       sam-admin xras --last 7d
       sam-admin xras --status failed --type Extension
       sam-admin xras --show 42 --payload
       sam-admin xras --summary --last 30d
       sam-admin xras --validate-mapping
+      sam-admin xras --accounts
+      sam-admin xras --accounts --enrich --last 30d
+      sam-admin xras --person somebody-user-00042
       sam-admin xras --recheck 42
       sam-admin --format json xras --summary | jq .by_status
     """
@@ -729,6 +756,10 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
 
     if show_payload and action_id is None:
         ctx.console.print('Error: --payload requires --show', style='bold red')
+        sys.exit(EXIT_ERROR)
+
+    if enrich and not accounts:
+        ctx.console.print('Error: --enrich requires --accounts', style='bold red')
         sys.exit(EXIT_ERROR)
 
     # Writes have no JSON contract: the envelope is for consumers reading state,
@@ -746,6 +777,9 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         recheck=recheck,
         summary=summary,
         validate_mapping=validate_mapping,
+        accounts=accounts,
+        enrich=enrich,
+        person=person,
         status=status,
         action_type=action_type,
         request_number=request_number,

@@ -17,7 +17,8 @@ class XrasCommand(BaseCommand):
     """
 
     def execute(self, *, action_id=None, recheck=None, summary=False,
-                validate_mapping=False,
+                validate_mapping=False, accounts=False, person=None,
+                enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
         try:
@@ -25,6 +26,10 @@ class XrasCommand(BaseCommand):
 
             if validate_mapping:
                 return self._validate_mapping()
+            if person is not None:
+                return self._person(person)
+            if accounts:
+                return self._accounts(filters, enrich)
             if recheck is not None:
                 return self._recheck(recheck)
             if action_id is not None:
@@ -56,12 +61,94 @@ class XrasCommand(BaseCommand):
         a mapping row pointing at a resource row that does not exist. A
         decommissioned mapping is reported and does not fail — untidy, not broken.
         """
-        payload = builders.build_mapping_report(self.session)
+        payload = builders.build_mapping_report(self.session,
+                                                xras_keys=self._live_keys())
         if self.ctx.output_format == 'json':
             output_json(payload)
         else:
             display.display_mapping_report(self.ctx, payload)
-        return EXIT_NOT_FOUND if payload['dangling_keys'] else EXIT_SUCCESS
+        # Two failing states now: a dangling key (a broken FK on our side) and
+        # a key XRAS sends that SAM cannot resolve — the one that breaks awards.
+        return (EXIT_NOT_FOUND
+                if payload['dangling_keys'] or payload['xras_only_keys']
+                else EXIT_SUCCESS)
+
+    def _live_keys(self):
+        """The XRAS resource catalog, or ``None`` if we could not ask.
+
+        Auto-detecting rather than taking a flag: an operator running the
+        pre-cutover gate wants the strongest check available, and the
+        unconfigured case must degrade to today's one-sided report rather than
+        fail. A configured-but-unreachable API is a warning, not an error —
+        the local half of the audit is still worth reporting.
+        """
+        from sam.integration.xras_api import (XrasSourceUnavailable,
+                                              resource_repository_keys,
+                                              xras_api_configured)
+
+        if not xras_api_configured():
+            return None
+        try:
+            return resource_repository_keys()
+        except XrasSourceUnavailable as exc:
+            self.ctx.console.print(
+                f'[yellow]Could not reach the XRAS API ({exc}); reporting the '
+                f'local half only.[/yellow]')
+            return None
+
+    def _accounts(self, filters, enrich) -> int:
+        """The account-creation worklist.
+
+        An empty worklist exits 0. It is a successful report — "nobody is
+        blocked" — not a miss, and a deploy gate that treated it as one would
+        fail every healthy day.
+        """
+        if enrich:
+            from sam.integration.xras_api import xras_api_configured
+
+            if not xras_api_configured():
+                self.ctx.console.print(
+                    '[red]--enrich needs the XRAS API: set '
+                    'XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY.[/red]')
+                return EXIT_ERROR
+
+        payload = builders.build_account_worklist(
+            self.session, since=filters.get('start_date'),
+            until=filters.get('end_date'), enrich=enrich)
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_account_worklist(self.ctx, payload)
+        return EXIT_SUCCESS
+
+    def _person(self, username) -> int:
+        """Probe one username through ``GET /v1/people``.
+
+        The three-outcome model reaches the exit code intact: found 0,
+        no such username 1, could-not-ask 2. Collapsing the last two would
+        make "XRAS is down" indistinguishable from "this person does not
+        exist", which are opposite conclusions for an operator.
+        """
+        from sam.integration.xras_api import (XrasSourceUnavailable, get_person,
+                                              xras_api_configured)
+
+        if not xras_api_configured():
+            self.ctx.console.print(
+                '[red]--person needs the XRAS API: set XRAS_OUTGOING_ENABLED=1 '
+                'and XRAS_API_KEY.[/red]')
+            return EXIT_ERROR
+        try:
+            person = get_person(username)
+        except XrasSourceUnavailable as exc:
+            self.ctx.console.print(f'[red]XRAS unavailable: {exc}[/red]')
+            return EXIT_ERROR
+
+        payload = builders.build_person_report(username, person)
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_person(self.ctx, payload)
+        return EXIT_SUCCESS if person else EXIT_NOT_FOUND
 
     def _list(self, filters, limit) -> int:
         payload = builders.build_action_list(self.session, filters=filters,

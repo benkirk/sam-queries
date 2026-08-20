@@ -24,7 +24,7 @@ drift (``src/cli/README.md`` § *Adding New Commands*).
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -649,8 +649,10 @@ def get_projects_by_ids(session: Session, project_ids) -> List[Project]:
 
 
 
-def audit_resource_mapping(session: Session) -> Dict[str, Any]:
-    """Which SAM resources XRAS can and cannot name, in three groups.
+def audit_resource_mapping(session: Session, *,
+                           xras_keys: Optional[Iterable[int]] = None
+                           ) -> Dict[str, Any]:
+    """Which SAM resources XRAS can and cannot name, in four groups.
 
     ``xras_resource_repository_key_resource`` maps an XRAS ``resourceRepositoryKey``
     to a SAM resource, and it is the join behind two different things:
@@ -675,6 +677,18 @@ def audit_resource_mapping(session: Session) -> Dict[str, Any]:
     Lives here rather than in ``cli/xras/builders.py``, where it was: builders are
     ORM→dict extractors per ``src/cli/README.md``, and a webapp surface that wants
     the same audit should not have to import the CLI to get it.
+
+    **The fourth group needs *xras_keys*.** Read from two local tables alone, this
+    function has no list of the keys XRAS will actually send — so the failure that
+    genuinely breaks an award, XRAS naming a ``resourceRepositoryKey`` SAM has no
+    row for, was invisible here and surfaced only at runtime as
+    ``No resource found in SAM corresponding to key %s``. Pass the live catalog
+    (``sam.integration.xras_api.resource_repository_keys()``) and it becomes
+    ``xras_only_keys``.
+
+    The iterable is **injected rather than fetched**, so this function keeps zero
+    network knowledge and stays usable offline: ``xras_keys=None`` reproduces the
+    previous report byte for byte, with ``live_checked`` False to say so.
     """
     from sam.integration.xras import XrasResourceRepositoryKeyResource
     from sam.resources.resources import Resource
@@ -704,10 +718,19 @@ def audit_resource_mapping(session: Session) -> Dict[str, Any]:
         if row.resource is None:
             dangling.append(row.resource_repository_key)
 
+    known_keys = {row.resource_repository_key for row in rows}
+    xras_only = (sorted(int(k) for k in xras_keys if int(k) not in known_keys)
+                 if xras_keys is not None else [])
+
     return {
         'mapped': len(rows),
         'unmapped_active': sorted(unmapped_active),
         'mapped_decommissioned': sorted(mapped_decommissioned,
                                         key=lambda d: d['resource']),
         'dangling_keys': sorted(dangling),
+        # Keys XRAS sends that SAM cannot resolve — the one that breaks awards.
+        'xras_only_keys': xras_only,
+        # Distinguishes "XRAS sends nothing SAM lacks" from "we never asked".
+        'live_checked': xras_keys is not None,
+        'live_key_count': len(set(xras_keys)) if xras_keys is not None else None,
     }

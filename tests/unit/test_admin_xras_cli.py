@@ -21,6 +21,7 @@ import pytest
 from click.testing import CliRunner
 
 from cli.cmds.admin import cli
+from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
 
 
 @pytest.fixture
@@ -201,3 +202,252 @@ class TestWindowParsing:
     def test_parse_days(self, value, expected_days):
         from cli.xras.commands import XrasCommand
         assert XrasCommand._parse_days(value) == expected_days
+
+
+# ── the account worklist, person lookup, and the two-sided mapping audit ──
+
+class TestAccountsMode:
+    """``--accounts``: who must exist in SAM before a handoff works."""
+
+    def test_an_empty_worklist_exits_zero(self, runner, cli_session):
+        """Nobody blocked is a successful report, not a miss. A gate that
+        treated it as one would fail every healthy day."""
+        result = runner.invoke(cli, ['xras', '--accounts'])
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_the_json_envelope_carries_the_expected_kind(self, runner, cli_session):
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
+        assert result.exit_code == EXIT_SUCCESS
+        payload = json.loads(result.output)
+        assert payload['kind'] == 'xras_accounts'
+        assert set(payload['counts']) >= {'total', 'absent', 'inactive',
+                                          'placeholder'}
+        assert payload['enriched'] is False
+        assert payload['enrichment'] is None
+
+    def test_enrich_without_the_api_is_an_error(self, runner, cli_session,
+                                                monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['xras', '--accounts', '--enrich'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_enrich_requires_accounts(self, runner, cli_session):
+        result = runner.invoke(cli, ['xras', '--enrich'])
+        assert result.exit_code == EXIT_ERROR
+        assert '--enrich requires --accounts' in result.output
+
+
+class TestPersonMode:
+    """The three-outcome model reaches the exit code intact."""
+
+    def _configure(self, monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+
+    def test_a_found_person_exits_zero(self, runner, cli_session, monkeypatch):
+        self._configure(monkeypatch)
+        monkeypatch.setattr('sam.integration.xras_api.get_person',
+                            lambda u: {'username': u, 'firstName': 'Ada',
+                                       'lastName': 'Invented',
+                                       'isReconciled': False})
+        result = runner.invoke(cli, ['xras', '--person', 'ghost-user-1'])
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unknown_username_exits_not_found(self, runner, cli_session,
+                                                 monkeypatch):
+        self._configure(monkeypatch)
+        monkeypatch.setattr('sam.integration.xras_api.get_person',
+                            lambda u: None)
+        result = runner.invoke(cli, ['xras', '--person', 'nobody'])
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    def test_an_outage_exits_error_not_not_found(self, runner, cli_session,
+                                                 monkeypatch):
+        """Collapsing these would make "XRAS is down" indistinguishable from
+        "this person does not exist" — opposite conclusions for an operator."""
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        self._configure(monkeypatch)
+
+        def boom(_u):
+            raise XrasSourceUnavailable('down')
+
+        monkeypatch.setattr('sam.integration.xras_api.get_person', boom)
+        result = runner.invoke(cli, ['xras', '--person', 'anyone'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_unconfigured_exits_error(self, runner, cli_session, monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['xras', '--person', 'anyone'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_the_json_envelope_carries_the_expected_kind(self, runner, cli_session,
+                                                         monkeypatch):
+        self._configure(monkeypatch)
+        monkeypatch.setattr('sam.integration.xras_api.get_person',
+                            lambda u: None)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--person', 'nobody'])
+        payload = json.loads(result.output)
+        assert payload == {'kind': 'xras_person', 'username': 'nobody',
+                           'found': False, 'person': None}
+
+
+class TestTwoSidedMappingAudit:
+    """The gap that made the pre-cutover gate one-sided."""
+
+    def test_unconfigured_reproduces_the_local_only_report(self, runner,
+                                                           cli_session,
+                                                           monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-mapping'])
+        payload = json.loads(result.output)
+        # `live_checked` False distinguishes "XRAS sends nothing SAM lacks"
+        # from "we never asked" — the report must not imply the stronger claim.
+        assert payload['live_checked'] is False
+        assert payload['xras_only_keys'] == []
+        assert payload['live_key_count'] is None
+
+    def test_a_key_xras_sends_that_sam_lacks_fails_the_gate(self, runner,
+                                                            cli_session,
+                                                            monkeypatch):
+        """The runtime failure this makes visible ahead of time:
+        ``No resource found in SAM corresponding to key %s``."""
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.resource_repository_keys',
+            lambda: [999999999])
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-mapping'])
+        payload = json.loads(result.output)
+        assert payload['live_checked'] is True
+        assert 999999999 in payload['xras_only_keys']
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    def test_an_unreachable_api_warns_and_degrades(self, runner, cli_session,
+                                                   monkeypatch):
+        """The local half is still worth reporting."""
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+
+        def boom():
+            raise XrasSourceUnavailable('down')
+
+        monkeypatch.setattr(
+            'sam.integration.xras_api.resource_repository_keys', boom)
+        result = runner.invoke(cli, ['xras', '--validate-mapping'])
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_the_live_catalog_self_verifies(self, runner, cli_session,
+                                            monkeypatch):
+        """Feeding back exactly the keys SAM already holds must report zero
+        gaps — the shape of the real 13/13 result against production."""
+        from sam.queries.xras_actions import audit_resource_mapping
+
+        from sam.integration.xras import XrasResourceRepositoryKeyResource
+
+        local = audit_resource_mapping(cli_session)
+        known = [r.resource_repository_key for r in
+                 cli_session.query(XrasResourceRepositoryKeyResource).all()]
+
+        report = audit_resource_mapping(cli_session, xras_keys=known)
+        assert report['xras_only_keys'] == []
+        assert report['live_checked'] is True
+        assert report['live_key_count'] == len(set(known))
+        # The local half is untouched by the new argument.
+        assert report['unmapped_active'] == local['unmapped_active']
+        assert report['dangling_keys'] == local['dangling_keys']
+
+
+class TestWorklistRendering:
+    """The rich renderers on a populated worklist.
+
+    The empty-list cases above never reach the table-building code, so a
+    formatting mistake there would ship green.
+    """
+
+    @staticmethod
+    def _payload(**overrides):
+        row = {
+            'username': 'ghost-user-1', 'classification': 'absent',
+            'remedy': 'create', 'placeholder': True, 'roles': ['PI'],
+            'is_account_to_be_created': True, 'is_reconciled': False,
+            'first_seen': None, 'last_seen': None,
+            'latest_action_log_id': 7, 'sources': ['action_log'],
+            'person': None,
+            'actions': [{'action_log_id': 7, 'request_number': 'NCAR0001',
+                         'action_type': 'New', 'status': 'received',
+                         'received_time': None, 'source': 'action_log',
+                         'would_succeed': False,
+                         'reject_messages': ['Username x is missing']}],
+        }
+        row.update(overrides)
+        return {'kind': 'xras_accounts',
+                'counts': {'total': 1, 'absent': 1, 'inactive': 0,
+                           'placeholder': 1, 'reconciled': 0},
+                'enriched': False, 'enrichment': None, 'accounts': [row]}
+
+    def _render(self, payload):
+        from rich.console import Console
+
+        from cli.xras.display import display_account_worklist
+
+        console = Console(record=True, width=200)
+        ctx = MagicMock()
+        ctx.console = console
+        display_account_worklist(ctx, payload)
+        return console.export_text()
+
+    def test_an_absent_placeholder_renders(self):
+        out = self._render(self._payload())
+        assert 'ghost-user-1' in out
+        assert 'create' in out and 'placeholder' in out
+        assert 'NCAR0001' in out
+
+    def test_an_inactive_row_says_reactivate(self):
+        out = self._render(self._payload(classification='inactive',
+                                         remedy='reactivate',
+                                         placeholder=False))
+        assert 'reactivate' in out
+
+    def test_reconciliation_renders_in_all_three_states(self):
+        assert 'unreconciled' in self._render(self._payload(is_reconciled=False))
+        assert 'reconciled' in self._render(self._payload(is_reconciled=True))
+        # None means "XRAS was not asked" — distinct from a definite answer.
+        self._render(self._payload(is_reconciled=None))
+
+    def test_an_outage_is_reported_under_the_table(self):
+        payload = self._payload()
+        payload['enriched'] = True
+        payload['enrichment'] = {'looked_up': 0, 'found': 0, 'closed': 0,
+                                 'unavailable': True, 'budget_exhausted': False,
+                                 'error': 'down'}
+        out = self._render(payload)
+        assert 'unavailable' in out
+        assert 'complete' in out          # the worklist itself still is
+
+    def test_the_person_renderer_covers_found_and_missing(self):
+        from rich.console import Console
+
+        from cli.xras.display import display_person
+
+        for payload, expected in (
+                ({'kind': 'xras_person', 'username': 'u', 'found': False,
+                  'person': None}, 'no user'),
+                ({'kind': 'xras_person', 'username': 'u', 'found': True,
+                  'person': {'firstName': 'Ada', 'lastName': 'Invented',
+                             'email': 'ada@example.invalid',
+                             'residenceCountry': 'Kiribati',
+                             'isReconciled': False}}, 'Kiribati')):
+            console = Console(record=True, width=200)
+            ctx = MagicMock()
+            ctx.console = console
+            display_person(ctx, payload)
+            assert expected in console.export_text()

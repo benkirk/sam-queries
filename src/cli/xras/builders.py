@@ -120,11 +120,84 @@ def _describe_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def build_mapping_report(session) -> dict:
+def build_mapping_report(session, *, xras_keys=None) -> dict:
     """The ``xras_resource_mapping`` envelope.
 
     The audit itself is :func:`sam.queries.xras_actions.audit_resource_mapping` —
     builders are ORM→dict extractors, not query modules, and the webapp should be
     able to reach the same answer without importing the CLI.
+
+    *xras_keys* is the live catalog when one could be fetched, making the report
+    two-sided; ``None`` reproduces the local-only report byte for byte.
     """
-    return {'kind': 'xras_resource_mapping', **audit_resource_mapping(session)}
+    return {'kind': 'xras_resource_mapping',
+            **audit_resource_mapping(session, xras_keys=xras_keys)}
+
+
+def build_account_worklist(session, *, since=None, until=None,
+                           enrich=False, max_lookups=100) -> dict:
+    """The ``xras_accounts`` envelope — who needs an account before a handoff.
+
+    *enrich* is opt-in because it costs a round trip to XRAS per username. The
+    enrichment report rides in the envelope rather than being folded into the
+    rows: "we did not ask" and "we asked and XRAS was down" are different facts
+    and a consumer diffing two runs needs to tell them apart.
+    """
+    from sam.queries.xras_accounts import (enrich_worklist,
+                                           get_account_worklist,
+                                           worklist_counts)
+
+    rows = get_account_worklist(session, since=since, until=until)
+    enrichment = (enrich_worklist(rows, max_lookups=max_lookups)
+                  if enrich else None)
+
+    return {
+        'kind': 'xras_accounts',
+        'counts': worklist_counts(rows),
+        'enriched': bool(enrich),
+        'enrichment': enrichment,
+        'accounts': [_account_row(r) for r in rows],
+    }
+
+
+def _account_row(row) -> dict:
+    """One worklist row, JSON-shaped. Key order is wire order."""
+    return {
+        'username': row['username'],
+        'classification': row['classification'],
+        'remedy': row['remedy'],
+        'placeholder': row['placeholder'],
+        'roles': list(row['roles']),
+        'is_account_to_be_created': row['is_account_to_be_created'],
+        'is_reconciled': row['is_reconciled'],
+        'first_seen': row['first_seen'],
+        'last_seen': row['last_seen'],
+        'latest_action_log_id': row['latest_action_log_id'],
+        'sources': list(row['sources']),
+        'person': row['person'],
+        'actions': [
+            {'action_log_id': a['action_log_id'],
+             'request_number': a['request_number'],
+             'action_type': a['action_type'],
+             'status': a['status'],
+             'received_time': a['received_time'],
+             'source': a['source'],
+             'would_succeed': a['would_succeed'],
+             'reject_messages': list(a['reject_messages'])}
+            for a in row['actions']
+        ],
+    }
+
+
+def build_person_report(username, person) -> dict:
+    """The ``xras_person`` envelope — a direct ``/v1/people`` probe.
+
+    *person* is ``None`` when XRAS answered and has no such username; an
+    unreachable API raises before this is called, so the two stay distinct.
+    """
+    return {
+        'kind': 'xras_person',
+        'username': username,
+        'found': person is not None,
+        'person': person,
+    }
