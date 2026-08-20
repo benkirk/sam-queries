@@ -734,3 +734,49 @@ def audit_resource_mapping(session: Session, *,
         'live_checked': xras_keys is not None,
         'live_key_count': len(set(xras_keys)) if xras_keys is not None else None,
     }
+
+
+def audit_opportunity_mapping(session: Session, *,
+                              opportunity_ids: Optional[Iterable[int]] = None
+                              ) -> Dict[str, Any]:
+    """Which XRAS opportunities SAM can and cannot resolve to an allocation type.
+
+    The ``opportunityId`` analogue of :func:`audit_resource_mapping`, and it copies
+    that function's contract deliberately, including the wart-free half: the ids are
+    **injected rather than fetched**, so this keeps zero network knowledge and stays
+    usable offline. ``opportunity_ids=None`` reports the local half only, with
+    ``live_checked`` False to say so.
+
+    ⚠️ **An unmapped opportunity is not a failure.** With an empty table *every*
+    opportunity is unmapped and ingestion is completely healthy — the ladder resolves
+    it, exactly as it did before the map existed. This is a diagnostic, not a gate.
+    The one genuinely broken state is ``dangling``: a mapping row whose
+    ``allocation_type`` has vanished, or has no panel, which the ingest-side lookup
+    must treat as a miss and which no operator would otherwise see.
+
+    Callers with ids in hand should pass them: ``xras_sweep`` already holds an
+    ``opportunityId`` on every ``reports/requests`` payload it enumerates, so its
+    half of this costs no extra round trips.
+    """
+    from sam.integration.xras import XrasOpportunityAllocationType
+
+    rows = session.query(XrasOpportunityAllocationType).all()
+
+    dangling = [row.opportunity_id for row in rows
+                if row.allocation_type is None or row.allocation_type.panel is None]
+
+    known_ids = {row.opportunity_id for row in rows}
+    seen = {int(i) for i in opportunity_ids} if opportunity_ids is not None else None
+    unmapped = sorted(i for i in seen if i not in known_ids) if seen else []
+
+    return {
+        'mapped': len(rows),
+        'mapped_ids': sorted(known_ids),
+        # Rows the ingest-side lookup would silently fall through on.
+        'dangling_ids': sorted(dangling),
+        # Ids seen in the wild with no map row — these fall back to the ladder.
+        'unmapped_ids': unmapped,
+        # Distinguishes "nothing unmapped out there" from "we never asked".
+        'live_checked': opportunity_ids is not None,
+        'live_id_count': len(seen) if seen is not None else None,
+    }

@@ -27,6 +27,8 @@ from scheduling.registry import TASKS, TaskContext
 from scheduling.schedules import BusinessHourly, occurrence_key
 from scheduling.tasks import xras_sweep as mod
 
+from factories import make_xras_opportunity_mapping
+
 pytestmark = pytest.mark.unit
 
 NAME = 'xras_sweep'
@@ -528,3 +530,84 @@ class TestTheChartCarriesTheSharedCache:
         assert 'CACHE_REDIS_URL' in manifest, (
             'without the shared Redis the sweep publishes into a cache that '
             'dies with its pod')
+
+
+# ── unmapped opportunity ids ─────────────────────────────────────────────
+
+class TestUnmappedOpportunities:
+    """The ``opportunityId`` map's read-side report.
+
+    ⚠️ **This must cost nothing extra.** Every ``reports/requests`` payload already
+    carries ``opportunityId``, so the count comes off data the sweep has in hand —
+    which is the entire reason it lives in this task rather than behind a
+    ``/v1/opportunities`` fetch. A test that let it grow a round trip would not fail;
+    the stub client simply has no such method, so a fetch would raise.
+
+    An unmapped id is **not** a fault. It falls through to the extractor ladder,
+    which is what resolved it before the map existed. It is reported so a *new*
+    opportunity is visible before any action is pushed against it.
+    """
+
+    def _mapped_type(self, session):
+        from sam.accounting.allocations import AllocationType
+        from sam.resources.facilities import Panel
+        return (session.query(AllocationType)
+                .join(Panel, AllocationType.panel_id == Panel.panel_id)
+                .filter(Panel.panel_name == 'CHAP')
+                .filter(AllocationType.allocation_type == 'CHAP').one())
+
+    def _req(self, request_id, number, opportunity_id):
+        payload = _request(request_id, number)
+        payload['opportunityId'] = opportunity_id
+        return payload
+
+    def test_ids_with_no_map_row_are_counted_and_sampled(self, ctx, wire, session):
+        wire([[self._req(1, 'NCAR9001', 771001),
+               self._req(2, 'NCAR9002', 771002),
+               self._req(3, 'NCAR9003', 771001)]])
+        result = mod.xras_sweep(ctx())
+        assert result.detail['opportunities_seen'] == 2      # distinct, not rows
+        assert result.detail['opportunities_unmapped'] == 2
+        assert result.detail['opportunities_unmapped_sample'] == [771001, 771002]
+
+    def test_a_mapped_id_drops_out_of_the_count(self, ctx, wire, session):
+        make_xras_opportunity_mapping(session,
+                                      allocation_type=self._mapped_type(session),
+                                      opportunity_id=771003)
+        wire([[self._req(1, 'NCAR9001', 771003),
+               self._req(2, 'NCAR9002', 771004)]])
+        result = mod.xras_sweep(ctx())
+        assert result.detail['opportunities_seen'] == 2
+        assert result.detail['opportunities_unmapped'] == 1
+        assert result.detail['opportunities_unmapped_sample'] == [771004]
+
+    def test_payloads_without_an_opportunity_id_are_not_counted(self, ctx, wire, session):
+        wire([[_request(1, 'NCAR9001')]])
+        result = mod.xras_sweep(ctx())
+        assert result.detail['opportunities_seen'] == 0
+        assert result.detail['opportunities_unmapped'] == 0
+        assert result.detail['opportunities_unmapped_sample'] == []
+
+    def test_the_sweep_writes_no_mapping_rows(self, ctx, wire, session):
+        """⚠️ The sweep is read-only and the map is populated out-of-band. A sweep
+        that "helpfully" inserted what it saw would make ingestion depend on the
+        outgoing API being reachable — the circularity this design exists to avoid."""
+        from sam.integration.xras import XrasOpportunityAllocationType
+
+        before = session.query(XrasOpportunityAllocationType).count()
+        wire([[self._req(1, 'NCAR9001', 771005)]])
+        mod.xras_sweep(ctx())
+        assert session.query(XrasOpportunityAllocationType).count() == before
+
+    def test_the_count_is_not_published_to_the_dashboard(self, ctx, wire, session,
+                                                         monkeypatch):
+        """It belongs in the ledger row, not in the Feed-B payload — that bucket
+        renders the account worklist, and this is a different question."""
+        captured = {}
+        monkeypatch.setattr(
+            'sam.integration.xras_api.cache.store_pending_worklist',
+            lambda payload: captured.update(payload) or True)
+        wire([[self._req(1, 'NCAR9001', 771006)]])
+        result = mod.xras_sweep(ctx())
+        assert result.detail['opportunities_unmapped'] == 1
+        assert not [k for k in captured if 'opportunit' in k]

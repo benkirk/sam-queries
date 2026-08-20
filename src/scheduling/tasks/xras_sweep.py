@@ -235,6 +235,7 @@ def xras_sweep(ctx) -> TaskResult:
         records_from_report_requests,
         worklist_counts,
     )
+    from sam.queries.xras_actions import audit_opportunity_mapping
 
     detail = {
         'skipped': False,
@@ -247,6 +248,9 @@ def xras_sweep(ctx) -> TaskResult:
         'pending_push': 0,
         'pending_push_sample': [],
         'accounts': {},
+        'opportunities_seen': 0,
+        'opportunities_unmapped': 0,
+        'opportunities_unmapped_sample': [],
         'people_refreshed': 0,
         'reconciled': 0,
         'published': False,
@@ -298,6 +302,31 @@ def xras_sweep(ctx) -> TaskResult:
     payloads = [p for p in payloads
                 if overlaps_window(p, window_start=window_start)]
     detail['requests_in_window'] = len(payloads)
+
+    # ── 1c. opportunities SAM cannot resolve to an allocation type ──────
+    #
+    # Free: every `reports/requests` payload already carries `opportunityId`,
+    # so this costs no round trips — which is the whole reason it lives here
+    # rather than behind a `/v1/opportunities` fetch.
+    #
+    # ⚠️ The reports payload spells it **snake_case** `opportunity_name`,
+    # while the inbound action wire spells the sibling field
+    # `opportunityName`. Only the id is read here, but the two vocabularies
+    # meeting in one task is exactly the shape of bug that cost this repo a
+    # sprint on `key` vs `resourceRepositoryKey`.
+    #
+    # **Read-only, and deliberately not published.** An unmapped id is not a
+    # fault — it falls through to the extractor ladder, which is what resolved
+    # it before the map existed. It is reported so a *new* opportunity is
+    # visible here before any action is pushed against it, which is the lead
+    # time the map exists to buy. The sweep must never write the table.
+    seen_ids = {int(oid) for p in payloads
+                if (oid := p.get('opportunityId')) is not None}
+    if seen_ids:
+        audit = audit_opportunity_mapping(session, opportunity_ids=seen_ids)
+        detail['opportunities_seen'] = len(seen_ids)
+        detail['opportunities_unmapped'] = len(audit['unmapped_ids'])
+        detail['opportunities_unmapped_sample'] = audit['unmapped_ids'][:_MAX_REPORTED]
 
     # ── 2. dropped / pending pushes ─────────────────────────────────────
     numbers = {str(p.get('requestNumber')).strip() for p in payloads
@@ -398,7 +427,9 @@ def xras_sweep(ctx) -> TaskResult:
     message = (f"{detail['requests_in_window']}/{detail['requests_seen']} in-window request(s), "
                f"{detail['pending_push']} pending push, "
                f"{counts.get('total', 0)} account(s) needed, "
-               f"{detail['reconciled']} reconciled in XRAS")
+               f"{detail['reconciled']} reconciled in XRAS, "
+               f"{detail['opportunities_unmapped']}/{detail['opportunities_seen']} "
+               f"opportunity id(s) unmapped")
     ctx.logger.info('xras_sweep: %s', message)
 
     # "0 findings, succeeded" must be distinguishable from "did not look" —
