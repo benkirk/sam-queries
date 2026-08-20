@@ -305,7 +305,7 @@ class TestTheWindowNeverHidesSilently:
         self._publish(rows_total=5, shown_total=2)
         body = auth_client.get(f'{self.URL}?days=30').get_data(as_text=True)
         assert '2 of 5' in body
-        assert 'outside the window' in body
+        assert 'outside the date filter' in body
 
     def test_it_says_nothing_when_the_window_hides_nothing(self, auth_client,
                                                            monkeypatch):
@@ -313,7 +313,7 @@ class TestTheWindowNeverHidesSilently:
         monkeypatch.setenv('XRAS_API_KEY', 'k')
         self._publish(rows_total=3, shown_total=3)
         body = auth_client.get(f'{self.URL}?days=30').get_data(as_text=True)
-        assert 'outside the window' not in body
+        assert 'outside the date filter' not in body
 
 
 class TestBothTabsShowTheSameDetail:

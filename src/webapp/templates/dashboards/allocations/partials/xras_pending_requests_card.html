@@ -47,16 +47,16 @@
         </span>
         {% if counts.total != swept_total %}
         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
-              title="Older requests are hidden by the window above. On this tab an older unpushed request is usually the more urgent one — widen the window to see them.">
-            {{ (swept_total - counts.total) | fmt_number }} outside the window
+              title="Older requests are hidden by the date filter above. On this tab an older unpushed request is usually the more urgent one — widen the filter to see them.">
+            {{ (swept_total - counts.total) | fmt_number }} outside the date filter
         </span>
         {% endif %}
         {% endif %}
         {% if snapshot %}
         <span class="ms-auto small text-muted"
-              title="This tab renders what the xras_sweep task last published; it is not fetched live.">
+              title="This tab renders what the xras_sweep task last published; it is not fetched live. The lookback is how far back the sweep asked XRAS for requests — a separate knob from the date filter above.">
             swept {{ snapshot.generated_at | fmt_date }}
-            · {{ snapshot.window_days }}d window
+            · {{ snapshot.window_days }}d lookback
             {%- if snapshot.budget_exhausted %} · <span class="text-warning">page cap reached</span>{% endif %}
         </span>
         {% endif %}
