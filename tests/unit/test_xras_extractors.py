@@ -1003,3 +1003,60 @@ class TestTheOpportunityMapAddsFidelity:
 
         wire = action(allocationType='Small', opportunityId=_WYOMING_OPPORTUNITY)
         assert select_allocation_type_mapped(session, wire) == SelectionParms('UNIV USS', 'Small')
+
+
+class TestTheXrasTypeMapNamesRealRows:
+    """⚠️ The guarantee that justifies a constant over a table.
+
+    ``XRAS_TYPE_MAP`` is reference data keyed on XRAS's ids, and a typo in it is
+    invisible: the pair simply never matches, the sweep proposes nothing, and an
+    opportunity quietly keeps falling through to the ladder forever. A database
+    table could not be checked this way — these tests are the reason it is code.
+    """
+
+    def test_every_mapped_pair_resolves_to_an_allocation_type(self, session):
+        from sam.accounting.allocations import AllocationType
+        from sam.resources.facilities import Panel
+        from sam.xras.opportunity_types import XRAS_TYPE_MAP
+
+        missing = []
+        for key, (panel_name, type_name) in XRAS_TYPE_MAP.items():
+            row = (session.query(AllocationType)
+                   .join(Panel, AllocationType.panel_id == Panel.panel_id)
+                   .filter(Panel.panel_name == panel_name)
+                   .filter(AllocationType.allocation_type == type_name).first())
+            if row is None:
+                missing.append((key, panel_name, type_name))
+        assert not missing, f'XRAS_TYPE_MAP names rows that do not exist: {missing}'
+
+    def test_the_two_known_exceptions_are_documented(self):
+        """Both non-injective cases must stay visible in the module docstring.
+
+        ``500026`` covers Classroom *and* unsponsored; ``(500088, 500045)`` covers
+        NSC *and* NCAR ASD. Someone who deletes that prose is likely also about to
+        'simplify' the agree-only rule that exists because of them.
+        """
+        import sam.xras.opportunity_types as mod
+
+        doc = mod.__doc__ or ''
+        assert '500026' in doc and '500088' in doc
+        assert 'not injective' in doc
+
+    def test_the_primary_panel_is_chosen_not_the_first(self):
+        """Large opportunities carry two panels and only one is SAM's CHAP."""
+        from sam.xras.opportunity_types import pair_for_opportunity
+
+        payload = {'allocationTypeInfo': {'allocationTypeId': 500023},
+                   'panels': [{'panelId': 500032, 'isPrimary': False},
+                              {'panelId': 500022, 'isPrimary': True}]}
+        assert pair_for_opportunity(payload) == ('CHAP', 'CHAP')
+
+    def test_incomplete_payloads_yield_none_rather_than_raising(self):
+        from sam.xras.opportunity_types import pair_for_opportunity
+
+        for payload in ({}, {'panels': []},
+                        {'allocationTypeInfo': {}, 'panels': [{'panelId': 500021,
+                                                               'isPrimary': True}]},
+                        {'allocationTypeInfo': {'allocationTypeId': 500023},
+                         'panels': [{'panelId': 500032, 'isPrimary': False}]}):
+            assert pair_for_opportunity(payload) is None
