@@ -120,6 +120,22 @@ DEFAULT_MAX_PEOPLE = 250
 #: Opportunity mapping rows writable per run. See :func:`map_max`.
 DEFAULT_MAP_MAX = 20
 
+#: Statuses swept **in addition to** the primary pass, for the Remediations
+#: card. Hardcoded, and deliberately not reachable from
+#: ``$SAM_TASKS_XRAS_SWEEP_STATUS``: that variable governs the *primary* pass
+#: (the account worklist), and letting a typo'd chart value silently drop the
+#: remediation feed as a side effect is exactly the coupling worth refusing.
+#: An operator who wants to look at Rejected requests changes the primary pass
+#: and gets a different card, not a broken one.
+EXTRA_STATUSES = ('Submitted', 'Under Review')
+
+#: Page budget for **each** extra pass. Far smaller than the primary budget
+#: because these cohorts are small — a process holds a few dozen requests
+#: awaiting review at any moment, against thousands ever approved. Reported
+#: per status in ``detail`` so a cohort that outgrows it is visible rather
+#: than silently truncated.
+EXTRA_STATUS_MAX_PAGES = 5
+
 #: Cap on rows echoed into the ledger row. `detail` is TEXT and the runner
 #: truncates the JSON at 60 kB.
 _MAX_REPORTED = 100
@@ -220,6 +236,95 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
         return date.fromisoformat(str(raw)[:10]) >= window_start
     except ValueError:
         return True
+
+
+def _build_requests_index(ctx, client, session, approved_payloads, detail):
+    """Build the Remediations card's request index. Never raises.
+
+    **The cohort, and why it is not the worklist's.**
+    ``(Approved AND not yet pushed) + every Submitted + every Under Review``,
+    with **no period-of-performance window**. Each half of that is deliberate:
+
+    * *Approved and pushed* is excluded — its handoff already happened, so
+      there is nothing here to remediate. The escape hatch for one of those is
+      the action log's request-number filter plus a live modal, not a hundredfold
+      larger card.
+    * *No window*, unlike the account worklist. Remediation is about requests
+      that went **stale**: a 2015 approval nobody ever pushed is the row an
+      operator most needs to close, and a 90-day window hides exactly those.
+    * *Submitted / Under Review* are the pipeline — where a withdraw retracts
+      something still in flight rather than de-approving an award.
+
+    Roughly a hundred requests today, against the thousands the primary pass
+    reads, which is why the extra passes get their own small page budget.
+
+    Guarded end to end: this is an enrichment on a task whose primary job is
+    the account worklist, and a remediation feed that fails must not cost the
+    feed that was already working.
+    """
+    from sam.projects.projects import Project
+    from sam.queries.xras_requests import request_index_entry
+
+    payloads = list(approved_payloads or ())
+    extra_payloads = []
+
+    for status in EXTRA_STATUSES:
+        seen, pages = [], 0
+        try:
+            for page in client.iter_request_pages(
+                    status=status, page_size=PAGE_SIZE,
+                    max_pages=EXTRA_STATUS_MAX_PAGES):
+                pages += 1
+                seen.extend(page)
+        except Exception as exc:                        # noqa: BLE001
+            # A status that cannot be read costs that status, not the index —
+            # and says so, rather than looking like an empty cohort.
+            detail['unavailable_errors'] += 1
+            ctx.logger.warning('xras_sweep: %s pass failed after %d page(s): %s',
+                               status, pages, exc)
+        detail['extra_statuses'][status] = {
+            'seen': len(seen),
+            'pages': pages,
+            # Per status, because one cohort outgrowing its budget must not be
+            # reported as the whole index being truncated — or hidden by
+            # another cohort that fitted.
+            'budget_exhausted': pages >= EXTRA_STATUS_MAX_PAGES,
+        }
+        extra_payloads.extend(seen)
+
+    numbers = {n for p in payloads + extra_payloads
+               if isinstance(p, dict)
+               and (n := str(p.get('requestNumber') or '').strip())}
+    if not numbers:
+        return []
+
+    try:
+        known = {code for (code,) in session.query(Project.projcode)
+                 .filter(Project.projcode.in_(sorted(numbers))).all()}
+    except Exception as exc:                            # noqa: BLE001
+        ctx.logger.warning('xras_sweep: index projcode lookup failed: %s', exc)
+        return []
+    pending = numbers - known
+
+    # Approved requests that HAVE been pushed drop out here; the extra statuses
+    # are kept whatever SAM knows, because a Submitted request having a project
+    # already is itself worth an operator's eye.
+    cohort = [p for p in payloads
+              if str(p.get('requestNumber') or '').strip() in pending]
+    cohort.extend(p for p in extra_payloads if isinstance(p, dict))
+
+    entries = []
+    for payload in cohort:
+        entry = request_index_entry(
+            payload,
+            pending_push=str(payload.get('requestNumber') or '').strip() in pending)
+        if entry is not None:
+            entries.append(entry)
+
+    entries.sort(key=lambda e: (str(e.get('opportunity_name') or ''),
+                                str(e.get('request_number') or '')))
+    detail['index_requests'] = len(entries)
+    return entries
 
 
 def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
@@ -351,7 +456,8 @@ def xras_sweep(ctx) -> TaskResult:
         XrasSourceUnavailable,
         xras_api_configured,
     )
-    from sam.integration.xras_api.cache import store_pending_worklist
+    from sam.integration.xras_api.cache import (store_pending_worklist,
+                                                store_requests_index)
     from sam.projects.projects import Project
     from sam.queries.xras_accounts import (
         classify_accounts,
@@ -386,6 +492,13 @@ def xras_sweep(ctx) -> TaskResult:
         'published': False,
         'publish_backend': '',
         'unavailable_errors': 0,
+        # The Remediations feed, reported separately from the worklist above so
+        # that "the card is empty" and "the extra passes never ran" cannot be
+        # confused for one another.
+        'extra_statuses': {},
+        'index_requests': 0,
+        'index_published': False,
+        'index_publish_backend': '',
     }
 
     if not xras_api_configured():
@@ -423,6 +536,14 @@ def xras_sweep(ctx) -> TaskResult:
 
     detail['requests_seen'] = len(payloads)
     detail['budget_exhausted'] = detail['pages'] >= page_budget
+
+    # ⚠️ Kept **before** the window filter below, for the Remediations index.
+    # The two feeds want opposite things from the same enumeration: the account
+    # worklist wants only live periods of performance, while remediation is
+    # about requests that went stale — a 2015 approval nobody ever pushed is
+    # precisely the row an operator needs to close, and the window would hide
+    # exactly those. Same read, two cohorts, no second enumeration.
+    unwindowed = list(payloads)
 
     # ── 1b. drop what had already ended when the window opened ──────────
     #
@@ -546,6 +667,9 @@ def xras_sweep(ctx) -> TaskResult:
             # from real detail, not because anything closed.
             detail['reconciled'] += 1
 
+    # ── 4b. the Remediations index ──────────────────────────────────────
+    index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
+
     # ── 5. publish for the dashboard ────────────────────────────────────
     #
     # Send first, record second — the ledger row must not claim a snapshot the
@@ -575,6 +699,18 @@ def xras_sweep(ctx) -> TaskResult:
     # pod. The first production run did exactly that and reported success.
     detail['publish_backend'] = backend
     detail['published'] = backend == 'redis'
+
+    # The second key in the same bucket, written by the same run. Separate
+    # because the `worklist` value must keep its exact shape — an older webapp
+    # reading a newer sweep sees what it expects and never asks for this one.
+    index_backend = store_requests_index({
+        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz)),
+        'statuses': [detail['status']] + list(EXTRA_STATUSES),
+        'extra_statuses': detail['extra_statuses'],
+        'rows': index_entries,
+    })
+    detail['index_publish_backend'] = index_backend
+    detail['index_published'] = index_backend == 'redis'
     if backend != 'redis':
         ctx.logger.warning(
             'xras_sweep: worklist went to the %s cache, so the dashboard tab '

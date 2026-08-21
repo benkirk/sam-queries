@@ -65,11 +65,17 @@ class _StubClient:
     """A client whose enumeration is scripted, page by page."""
 
     def __init__(self, pages, *, fail_after=None, opportunities=(),
-                 open_opportunities=()):
+                 open_opportunities=(), extra_pages=None):
         self.pages = pages
         self.fail_after = fail_after
         self.opportunities = list(opportunities)
         self.open_opportunities = list(open_opportunities)
+        #: Per-status pages for the Remediations index passes. Empty by
+        #: default, which is the honest shape: a process with nothing awaiting
+        #: review returns nothing, and every pre-existing test here describes
+        #: only the Approved pass.
+        self.extra_pages = dict(extra_pages or {})
+        self.statuses_asked = []
         self.calls = 0
 
     def get_open_opportunities(self):
@@ -90,7 +96,10 @@ class _StubClient:
         return list(self.opportunities)
 
     def iter_request_pages(self, *, status=None, page_size=None, max_pages=None):
-        for index, page in enumerate(self.pages):
+        self.statuses_asked.append(status)
+        pages = (self.extra_pages.get(status, [])
+                 if status in mod.EXTRA_STATUSES else self.pages)
+        for index, page in enumerate(pages):
             if max_pages is not None and index >= max_pages:
                 return
             if self.fail_after is not None and index >= self.fail_after:
@@ -104,11 +113,12 @@ class _StubClient:
 def wire(monkeypatch):
     """Configure the API and swap in a stub client and person lookup."""
     def configure(pages=(), *, people=None, fail_after=None,
-                  open_opportunities=()):
+                  open_opportunities=(), extra_pages=None):
         monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
         monkeypatch.setenv('XRAS_API_KEY', 'k')
         client = _StubClient(list(pages), fail_after=fail_after,
-                             open_opportunities=open_opportunities)
+                             open_opportunities=open_opportunities,
+                             extra_pages=extra_pages)
         monkeypatch.setattr(
             'sam.integration.xras_api.XrasApiClient.from_environment',
             classmethod(lambda cls, config=None: client))
@@ -971,3 +981,159 @@ class TestTheCapTakesTheNewestFirst:
         assert session.get(XrasOpportunityAllocationType, 999999) is not None, \
             'the newly-posted opportunity was crowded out by the backfill'
         assert session.get(XrasOpportunityAllocationType, 999101) is None
+
+
+# ── the Remediations index (second cache key) ───────────────────────────
+
+def _pending_request(request_id, number, *, status='Approved',
+                     actions=(), username='ghost-user-1', reconciled=False):
+    return {
+        'requestId': request_id, 'requestNumber': number, 'endDate': None,
+        'requestStatus': status, 'requestType': 'New',
+        'opportunityId': 5, 'opportunity_name': 'Small',
+        'roles': [{'person': {'username': username, 'firstName': 'Ada',
+                              'lastName': 'Invented', 'isReconciled': reconciled},
+                   'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]}],
+        'actions': [{'actionId': a, 'actionType': 'New', 'actionStatus': s}
+                    for (a, s) in actions],
+    }
+
+
+class TestTheRequestsIndex:
+    """The Remediations card's feed — a second key, same bucket, same run."""
+
+    def test_the_old_worklist_key_is_untouched(self, ctx, wire):
+        """Back-compat both ways: an older webapp must read what it expects."""
+        from sam.integration.xras_api.cache import load_pending_worklist
+        wire([[_request(1, 'NCAR0001')]])
+        mod.xras_sweep(ctx())
+        worklist = load_pending_worklist()
+        assert set(worklist) == {'generated_at', 'window_days', 'status',
+                                 'requests_seen', 'requests_in_window',
+                                 'budget_exhausted', 'pending_push',
+                                 'pending_push_sample', 'counts', 'rows'}
+
+    def test_it_publishes_a_second_key(self, ctx, wire):
+        from sam.integration.xras_api.cache import load_requests_index
+        wire([[_pending_request(1, 'NCAR0001')]])
+        mod.xras_sweep(ctx())
+        index = load_requests_index()
+        assert [r['request_number'] for r in index['rows']] == ['NCAR0001']
+
+    def test_the_extra_statuses_are_swept_too(self, ctx, wire):
+        from sam.integration.xras_api.cache import load_requests_index
+        wire([[_pending_request(1, 'NCAR0001')]],
+             extra_pages={'Submitted': [[_pending_request(2, 'NCAR0002',
+                                                          status='Submitted')]],
+                          'Under Review': [[_pending_request(3, 'NCAR0003',
+                                                             status='Under Review')]]})
+        mod.xras_sweep(ctx())
+        rows = load_requests_index()['rows']
+        assert {r['request_number'] for r in rows} == {'NCAR0001', 'NCAR0002',
+                                                       'NCAR0003'}
+
+    def test_the_status_env_var_governs_only_the_primary_pass(self, ctx, wire,
+                                                              monkeypatch):
+        """A typo'd chart value must not silently drop the remediation feed."""
+        monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_STATUS', 'Rejected')
+        client = wire([[_pending_request(1, 'NCAR0001', status='Rejected')]],
+                      extra_pages={'Submitted': [[_pending_request(
+                          2, 'NCAR0002', status='Submitted')]]})
+        mod.xras_sweep(ctx())
+        assert client.statuses_asked == ['Rejected', 'Submitted', 'Under Review']
+
+    def test_an_already_pushed_approved_request_is_excluded(self, ctx, wire,
+                                                            session):
+        """Its handoff happened; there is nothing here to remediate."""
+        from factories.projects import make_project
+
+        from sam.integration.xras_api.cache import load_requests_index
+        project = make_project(session)
+        wire([[_pending_request(1, project.projcode),
+               _pending_request(2, 'NCAR9999')]])
+        mod.xras_sweep(ctx())
+        numbers = {r['request_number'] for r in load_requests_index()['rows']}
+        assert project.projcode not in numbers
+        assert 'NCAR9999' in numbers
+
+    def test_a_submitted_request_is_kept_even_when_sam_knows_it(self, ctx, wire,
+                                                                session):
+        """Worth an operator's eye precisely because it is unexpected."""
+        from factories.projects import make_project
+
+        from sam.integration.xras_api.cache import load_requests_index
+        project = make_project(session)
+        wire([], extra_pages={'Submitted': [[_pending_request(
+            2, project.projcode, status='Submitted')]]})
+        mod.xras_sweep(ctx())
+        numbers = {r['request_number'] for r in load_requests_index()['rows']}
+        assert project.projcode in numbers
+
+    def test_the_index_ignores_the_period_of_performance_window(self, ctx, wire):
+        """⚠️ The stale ones are the point — a window would hide exactly them."""
+        from sam.integration.xras_api.cache import (load_pending_worklist,
+                                                    load_requests_index)
+        ancient = _pending_request(1, 'NCAR0001')
+        ancient['endDate'] = '2015-12-31'
+        wire([[ancient]])
+        detail = mod.xras_sweep(ctx()).detail
+
+        assert detail['requests_in_window'] == 0, 'the worklist drops it'
+        assert load_pending_worklist()['rows'] == []
+        assert [r['request_number'] for r in load_requests_index()['rows']] \
+            == ['NCAR0001'], 'the index keeps it'
+
+    def test_each_extra_status_reports_its_own_budget(self, ctx, wire,
+                                                      monkeypatch):
+        """One cohort outgrowing its cap must not read as the whole index
+        truncating — nor be hidden by another cohort that fitted."""
+        monkeypatch.setattr(mod, 'EXTRA_STATUS_MAX_PAGES', 1)
+        wire([], extra_pages={
+            'Submitted': [[_pending_request(2, 'NCAR0002', status='Submitted')],
+                          [_pending_request(3, 'NCAR0003', status='Submitted')]],
+            'Under Review': [],
+        })
+        extra = mod.xras_sweep(ctx()).detail['extra_statuses']
+        assert extra['Submitted']['budget_exhausted'] is True
+        assert extra['Under Review']['budget_exhausted'] is False
+
+    def test_an_extra_pass_outage_costs_that_status_only(self, ctx, wire,
+                                                         monkeypatch):
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        from sam.integration.xras_api.cache import load_requests_index
+        client = wire([[_pending_request(1, 'NCAR0001')]])
+
+        real = client.iter_request_pages
+
+        def flaky(*, status=None, **kw):
+            if status == 'Submitted':
+                raise XrasSourceUnavailable('down')
+            return real(status=status, **kw)
+
+        monkeypatch.setattr(client, 'iter_request_pages', flaky)
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['extra_statuses']['Submitted']['seen'] == 0
+        assert detail['unavailable_errors'] == 1
+        # The Approved half still published.
+        assert [r['request_number'] for r in load_requests_index()['rows']] \
+            == ['NCAR0001']
+
+    def test_the_entries_are_the_shared_builders_output(self, ctx, wire):
+        """The sweep has no private copy of this derivation."""
+        from sam.integration.xras_api.cache import load_requests_index
+        from sam.queries.xras_requests import request_index_entry
+
+        payload = _pending_request(1, 'NCAR0001', actions=((7, 'Approved'),))
+        wire([[payload]])
+        mod.xras_sweep(ctx())
+        assert load_requests_index()['rows'][0] == request_index_entry(
+            payload, pending_push=True)
+
+    def test_the_detail_carries_counts_not_rows(self, ctx, wire):
+        """`detail` is JSON truncated at 60 kB — the rows live in the cache."""
+        wire([[_pending_request(1, 'NCAR0001')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['index_requests'] == 1
+        assert 'rows' not in detail['extra_statuses']
+        assert detail['index_publish_backend'] in ('redis', 'local', 'disabled')
