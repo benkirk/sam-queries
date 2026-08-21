@@ -505,6 +505,16 @@ pytest -n 0                                 # force serial
 ```
 
 **Key mechanics:**
+- **Outbound is closed, twice.** No test may open an SMTP socket
+  (`smtplib.SMTP` raises) or make a real outbound HTTP request
+  (`requests.Session.request` raises for any non-localhost host).
+  `pytest_configure` also pins `XRAS_API_KEY=''` and both XRAS levers off
+  **before** `load_dotenv` can supply the real ones. ⚠️ That key is
+  write-provisioned — a person merge deletes an account in production with no
+  undo — so config alone is not enough: config is a value a test can override
+  and a fixture can forget. Gates: `tests/unit/test_outbound_guards.py`.
+  Tests drive the configured path with fakes, patching the transport on the
+  *instance* (which shadows the guard) or replacing `from_environment`.
 - **Isolation**: per-test SAVEPOINT rollback
   (`join_transaction_mode="create_savepoint"`) — xdist workers share one DB
   safely. **Safety guard**: `tests/conftest.py` refuses any database other
