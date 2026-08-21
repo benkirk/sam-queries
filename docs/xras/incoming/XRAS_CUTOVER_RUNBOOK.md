@@ -28,9 +28,15 @@ no code is left.** The design, the measurements and the reasoning live in
 | 1b | The whole legacy surface is mapped — all eight endpoints, not the seven XRAS calls today | `pytest tests/api/test_xras_roles.py tests/api/test_xras_unmapped.py -q` |
 | 2 | ✅ **Done 2026-08-10.** The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
 | 2b | ✅ **Done 2026-08-10.** ⚠️ The DDL applied is the **current** `zz-90`/`zz-91`/`zz-92` — **exactly 7** columns must come back utf8mb4: `raw_payload`, `error_messages`, `comment`, `notified_to`, `recipient_name`, `subject`, `error` | `SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='sam' AND TABLE_NAME IN ('xras_action_log','xras_activation_event','notification_log') AND CHARACTER_SET_NAME='utf8mb4'` |
-| 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml:316` — and confirm it in the running pod's env before anything else |
+| 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml`, key `XRAS_ACTIONS_CAPTURE_ONLY` — and confirm it in the running pod's env before anything else |
 | 4 | The replay-and-diff oracle passes | `pytest tests/unit/test_xras_oracle.py -q` |
 | 5 | A notification path exists for `active = 0` projects | Sprint B's pending-activation card on the Allocations dashboard |
+
+⚠️ **This document cites `helm/values.yaml` by key name, never by line number.** Three
+refs here were repaired once (`:291` → `:316`) and were wrong again within the same
+branch, because the commit that repaired them also rewrote the comment above the setting
+and pushed it down sixteen lines. Both keys are unique in the file; `grep` is the stable
+address and a line number is a fact with a half-life.
 
 ⚠️ **Precondition 3 is the interlock and it is the one to physically check**, not assume.
 While it is `"1"` the endpoint authenticates, parses and audits every post and dispatches
@@ -216,6 +222,16 @@ This is the **GET-side** cutover verification and it is independent of gate 4.
   row changes GET response bytes** and invalidates a previous clean run. That is the most
   likely triage-week fix, so expect to re-run this during the week.
 
+✅ **#458 and #459 do NOT invalidate this run** — checked rather than assumed, because the
+default assumption for two large XRAS PRs is that they do. Three independent reasons:
+`src/webapp/api/xras/` is untouched by both merges; `src/sam/xras/roster.py`'s nine new
+lines are a comment block (why exact `String.equals` role matching is correct) with no
+executable change; and neither PR adds a `xras_resource_repository_key_resource` row —
+there is no DDL or seed in either diff. `xras_opportunity_allocation_type` is read only by
+`sam/xras/extractors.py`, i.e. the inbound **POST** path, so it cannot move GET bytes.
+
+The trigger above stays exactly as sharp: it is a *mapping row*, not "an XRAS change".
+
 ### 4 · The 400/422 contract · ✅ **ANSWERED 2026-08-11**
 
 Legacy answers 500 for both a malformed body and a failed validation, and a bare 200 for
@@ -293,7 +309,7 @@ it later would not either.
 Coordinated with ACCESS. Two things happen, and the order matters:
 
 1. **XRAS repoints** its base URL to `sam.hpc.ucar.edu`.
-2. **`XRAS_ACTIONS_CAPTURE_ONLY` flips to `"0"`** in `helm/values.yaml:316`, and deploy.
+2. **`XRAS_ACTIONS_CAPTURE_ONLY` flips to `"0"`** in `helm/values.yaml`, and deploy.
 
 Flipping *before* the repoint is harmless (nothing is arriving). Flipping *after* means
 every post in the gap is captured as `received`. Flipping **early on a stack XRAS is
@@ -330,10 +346,19 @@ The watch surface, in the order you will reach for it:
 
 | Surface | What it answers |
 |---|---|
-| Allocations → XRAS page | Everything, filterable, with the raw payload behind `MANAGE_XRAS` |
+| XRAS → **Pending Activations & Notifications** | Everything received, filterable, raw payload behind `MANAGE_XRAS` |
+| XRAS → **Accounts Needed** | The usernames on received actions with no usable SAM account — the 55% failure class, as a worklist |
+| XRAS → **Pending Requests** | Approved XRAS requests *not yet pushed*: the same problem before the action arrives |
 | `sam-admin xras --summary` | Status counts at a glance |
 | `sam-admin xras --status failed` | The 422s, with their error lists |
 | `sam-admin xras --status manual` | What was parked, and now **why** |
+| `sam-admin xras --accounts [--enrich]` | The account worklist on the CLI |
+| `sam-admin xras --validate-mapping` / `--validate-opportunities` | The two mapping tables, both sides |
+
+⚠️ **A populated Pending Requests tab beside an empty Accounts Needed tab is the correct
+state before the repoint**, not a bug. Accounts Needed reads `xras_action_log`, which is
+at 0 rows until XRAS repoints; Pending Requests reaches `api.xras.org` directly and was
+answering in production on 2026-08-20 (22 requests, 18 accounts needed).
 
 **The three columns C.1b added are what make a row triageable**, so use them:
 
@@ -356,7 +381,7 @@ The watch surface, in the order you will reach for it:
 **Park one action type by config, without a revert:**
 
 ```yaml
-XRAS_ACTIONS_ENABLED: "Extension,Supplement"   # helm/values.yaml:320
+XRAS_ACTIONS_ENABLED: "Extension,Supplement"   # helm/values.yaml
 ```
 
 Narrow it to whatever should keep running. The excluded types take the audited `manual`
@@ -402,7 +427,13 @@ new.
 - **11 active resources have no XRAS mapping.** ✅ **Expected** — not every internal
   resource is offered for allocation through XRAS. `sam-admin xras --validate-mapping` is
   a *diagnostic*, not a gate: it matters only if a resource that **should** be allocatable
-  appears in that list. It exits non-zero only on a dangling key.
+  appears in that list.
+  ⚠️ Since #458 the audit is **two-sided** and exits non-zero on **two** states, not one:
+  a dangling key (a broken FK on our side) *and* `xras_only_keys`, a key XRAS offers that
+  SAM cannot resolve — the one that actually breaks an award. Measured 2026-08-20:
+  **13/13 of the keys XRAS offers resolve**, zero dangling, so that failure cannot fire
+  against today's catalog. Unconfigured or unreachable API degrades to the local half and
+  says so; do not read a one-sided report as a clean two-sided one.
 - **89% of active organizations have no mnemonic soft link** (153 of 171), and 80% of
   institutions. This is the root of New's 24% mnemonic failure class. A data fix, and it
   would move New's success rate more than any code.
