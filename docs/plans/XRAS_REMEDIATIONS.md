@@ -235,8 +235,10 @@ since=None, limit=50)` — NOT exported from `sam/queries/__init__.py` (the eage
 - Publish as a **second key** in the `xras_pending` bucket: `store_requests_index()` /
   `load_requests_index()` (same backend-name return contract as `store_pending_worklist` — the
   one-shot-pod Redis-vs-local lesson applies identically; TTL 86400). The `worklist` key and shape
-  stay byte-identical → full back-compat in both deploy directions. Ledger `detail` gains counts
-  only (60 kB cap).
+  stay untouched, so the two feeds fail independently — a failed index write must not cost the
+  account worklist. Not a compatibility boundary: sweep and webapp ship in one image, so neither
+  shape is frozen and `sam-admin cache --refresh` settles any disagreement. Ledger `detail` gains
+  counts only (60 kB cap).
 
 ## 6. Post-write interactivity — cache coherence without a full sweep
 
@@ -363,7 +365,8 @@ never merged — XRAS keeps sending the throwaway username").
   `e2e/test_xras_remediations_card.py` (DOM order, tab count still 3, chips; no PII assertions —
   unscrubbed-corpus rules).
 - Edited: `test_schema_validation.py` (UTF8MB4_COLUMNS + table case), `test_task_xras_sweep.py`
-  (extra passes, second key, **old-key back-compat pin**), a `tests/stress` audit-survival case,
+  (extra passes, second key, a **refactor guard** on the worklist payload shape — not a
+  compatibility pin), a `tests/stress` audit-survival case,
   factories, route-map snapshot. `test_xras_api_client.py` stays untouched (pins verified
   class-scoped).
 
@@ -386,7 +389,7 @@ One PR vs staging with an ordered commit series, after the probe:
    `sam/queries/xras_remediations.py`, and `sam/queries/xras_requests.py` (the shared index-entry
    builder). 41 tests.
 4. ✅ **Sweep broadening + second cache key** — two extra passes, per-status budgets, the
-   `requests_index` key, and a back-compat pin on the old key's exact shape. 11 tests.
+   `requests_index` key, and a refactor guard on the worklist payload's shape. 11 tests.
 5. ✅ **UI** — 10 routes in `xras_remediation_routes.py`, the card, three modals, three form
    schemas, the Accounts Needed merge entry, route-map regen, modal-shell pin, e2e file. 44 tests.
 6. ⏳ **Arm** — flip `XRAS_WRITE_ENABLED` in `values.yaml` + its drift test, same commit. **Not

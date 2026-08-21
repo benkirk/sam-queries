@@ -65,12 +65,19 @@
             may be disabled, or this may be the first hour after a deploy.
         </div>
     {% elif snapshot is none %}
-        {# The deploy window. Distinguishing this from "nothing to remediate"
-           is the reason the route checks for the older key at all. #}
+        {# A sweep has published the account worklist but not this index. Two
+           causes, and the copy has to cover both: the hour after this feature
+           deploys, and the independent-failure case the two keys exist for —
+           the index write failing or being evicted while the worklist
+           survives. Naming the deploy specifically would be wrong for the
+           second, so the copy states what is true either way.
+
+           Distinguishing this from "nothing to remediate" is the whole reason
+           the route looks for the worklist key at all. #}
         <div class="alert alert-info mb-0">
-            <strong>The last sweep predates this card.</strong>
-            A sweep has run, but it published only the account worklist — this
-            list arrives with the next one, within the hour.
+            <strong>The last sweep did not publish this list.</strong>
+            A sweep has run — the account worklist is there — but this list is
+            not. It arrives with the next sweep, within the hour.
         </div>
     {% elif not groups %}
         {% if swept_total %}

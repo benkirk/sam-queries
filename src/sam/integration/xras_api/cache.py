@@ -64,13 +64,21 @@ _PENDING_KEY = 'worklist'
 #: The Remediations card's request index — a **second key in the same bucket**,
 #: written by the same sweep run.
 #:
-#: Two keys rather than one payload, deliberately: the ``worklist`` value keeps
-#: its exact shape, so a deploy in either direction stays compatible. An old
-#: webapp reading a new sweep's output sees the worklist it expects and simply
-#: never asks for this key; a new webapp reading an old sweep's output finds no
-#: index and renders its "no sweep has published one yet" state — which is a
-#: real state during the first hour after a deploy, and one the card names
-#: rather than showing an empty table.
+#: Two keys rather than one payload so the two feeds **fail independently**:
+#: if the index write hits the ``full`` branch, or building it throws, the
+#: account worklist still publishes and its tab still renders. One payload
+#: would couple them for no gain.
+#:
+#: A missing index is therefore a state worth naming rather than an error —
+#: the sweep is disabled by default, and it does not run outside business
+#: hours — which is why the card distinguishes "no index published" from
+#: "an index with nothing in it".
+#:
+#: ⚠️ This is **not** a compatibility boundary. The sweep and the webapp ship
+#: in the same image and the same Helm release, so nothing external consumes
+#: either key and neither shape is frozen. Change them freely; if a payload
+#: shape and its reader ever disagree, ``sam-admin cache --refresh`` is the
+#: answer, not a migration.
 _REQUESTS_KEY = 'requests_index'
 
 #: Test seam, matching the awards / fs-scans / jobs idiom: ``_adapters`` IS

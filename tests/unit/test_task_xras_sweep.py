@@ -1002,8 +1002,18 @@ def _pending_request(request_id, number, *, status='Approved',
 class TestTheRequestsIndex:
     """The Remediations card's feed — a second key, same bucket, same run."""
 
-    def test_the_old_worklist_key_is_untouched(self, ctx, wire):
-        """Back-compat both ways: an older webapp must read what it expects."""
+    def test_the_worklist_payload_shape_is_unchanged(self, ctx, wire):
+        """A refactor guard, NOT a compatibility pin.
+
+        The commit that added the index also moved `store_pending_worklist`
+        onto a shared helper and restructured this task's publish region, and
+        this asserts that pass left the worklist payload alone.
+
+        Nothing external consumes this shape — the sweep and the webapp ship in
+        one image — so **change this test freely when you mean to change the
+        payload**. It exists to make an accidental change loud, not to freeze
+        anything.
+        """
         from sam.integration.xras_api.cache import load_pending_worklist
         wire([[_request(1, 'NCAR0001')]])
         mod.xras_sweep(ctx())

@@ -202,11 +202,12 @@ class TestTheFourEmptyStates:
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert 'No sweep has published yet' in body
 
-    def test_a_sweep_that_predates_this_card(self, auth_client, configured):
-        """The deploy window — a lie if reported as 'nothing to remediate'."""
+    def test_a_worklist_without_an_index(self, auth_client, configured):
+        """The hour after deploy, and the independent-failure case the two
+        cache keys exist for. A lie if reported as 'nothing to remediate'."""
         xras_cache.store_pending_worklist({'rows': [], 'counts': {}})
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert 'predates this card' in body
+        assert 'did not publish this list' in body
 
     def test_published_and_empty(self, auth_client, configured):
         xras_cache.store_requests_index({'generated_at': datetime.now(),
