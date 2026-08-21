@@ -1,7 +1,6 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
-{% from 'dashboards/fragments/window_pills.html' import window_pills %}
 {#
   Recent XRAS outcomes — "Pending Activations & Recent Notifications".
 
@@ -45,12 +44,6 @@
         <i class="fas fa-paper-plane text-secondary"></i>
         <strong>Pending Activations &amp; Recent Notifications</strong>
         <span class="badge bg-secondary">{{ rows | length | fmt_number }}</span>
-        <div class="ms-auto">
-            {{ window_pills(form_id, window_pill_choices, window.days,
-                            custom=window.custom,
-                            start_date=window.start_date,
-                            end_date=window.end_date) }}
-        </div>
     </div>
 
     <div class="card-body border-bottom py-2">

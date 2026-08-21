@@ -19,6 +19,7 @@ import json
 
 import pytest
 
+from sam.integration.xras import XrasOpportunityAllocationType
 from sam.xras.errors import ActionErrors
 from sam.xras.extractors import (
 
@@ -29,12 +30,37 @@ from sam.xras.extractors import (
     resolve_area_of_interest,
     resolve_contract,
     resolve_mnemonic_code,
+    select_allocation_type_mapped,
     select_allocation_type_parms,
 )
 
+from factories import make_xras_opportunity_mapping
 from xras_helpers import FIXTURE_DIR, load_fixture
 
 pytestmark = pytest.mark.unit
+
+#: The nine rows seeded into production on 2026-08-20, as ``id -> (panel, type)``.
+#:
+#: Deliberately the pair the **ladder already produces** for each id, which is what
+#: makes the map a drop-in: see
+#: ``TestTheOpportunityMapIsAdditive.test_the_seeded_map_is_equivalent_to_the_ladder``.
+#: Panel and type are named, never their ids — the house rule against pinning
+#: lookup-table primary keys applies to test data as much as to app constants.
+_SEEDED_MAP = {
+    530902: ('UNIV USS', 'Small'),
+    531428: ('CHAP', 'CHAP'),
+    532220: ('UNIV USS', 'Small'),
+    532221: ('UNIV USS', 'Small (No NSF award)'),
+    532222: ('UNIV USS', 'Data'),
+    532223: ('UNIV USS', 'Classroom'),
+    533144: ('CHAP', 'CHAP'),
+    533606: ('CHAP', 'CHAP'),
+    533936: ('CHAP', 'CHAP'),
+}
+
+#: A synthetic id for the case production cannot show us yet. Six digits like the
+#: real ones, but far outside the range XRAS has issued.
+_WYOMING_OPPORTUNITY = 999001
 
 
 def action(**overrides):
@@ -794,3 +820,243 @@ class TestOrganizationParentageIsCycleSafe:
         parentage = _organization_parentage(b)
         assert {o.organization_id for o in parentage} == {a.organization_id,
                                                           b.organization_id}
+
+
+# ---------------------------------------------------------------------------
+# The opportunityId map.
+# ---------------------------------------------------------------------------
+
+
+class TestTheOpportunityMapIsAdditive:
+    """The safety property, stated as tests: an empty table changes nothing.
+
+    ``xras_opportunity_allocation_type`` exists so a *future* WNA request resolves
+    to the right panel. It must buy that without touching a single one of the 41
+    payloads that work today — which is what makes it shippable ahead of the
+    traffic that would justify it.
+
+    ⚠️ **These clear the table rather than assuming it empty.** The nine seed rows
+    live in production, so every snapshot regenerated after 2026-08-20 carries
+    them: the table is well under ``config.yaml``'s ``size_threshold_mb`` and the
+    anonymizer has no reason to purge it. Per-test SAVEPOINT rollback makes the
+    DELETE free.
+    """
+
+    @pytest.fixture
+    def empty_map(self, session):
+        session.query(XrasOpportunityAllocationType).delete()
+        session.flush()
+
+    @pytest.mark.parametrize('name', sorted(TestTheCorpusOracle.EXPECTED))
+    def test_an_empty_map_reproduces_the_ladder_exactly(self, session, empty_map, name):
+        """The literal statement of "does not break anything in its absence"."""
+        payload = load_fixture(name)
+        parms = select_allocation_type_mapped(session, payload)
+        assert parms is not None
+        assert (parms.panel, parms.allocation_type) == TestTheCorpusOracle.EXPECTED[name]
+
+    def test_an_empty_map_still_exercises_five_distinct_strategies(self, session, empty_map):
+        """Guard on the guard: if the fallback quietly stopped running, every payload
+        would resolve to whatever the map happened to hold and the parametrized test
+        above could still pass on a one-pair corpus."""
+        pairs = {(p.panel, p.allocation_type) for p in (
+            select_allocation_type_mapped(session, load_fixture(n))
+            for n in TestTheCorpusOracle.EXPECTED)}
+        assert len(pairs) == 5
+
+    def test_the_seeded_map_is_equivalent_to_the_ladder(self, session, empty_map):
+        """The nine production rows are a **drop-in**, not a behaviour change.
+
+        Seeding the pair the ladder already produces is what makes any future
+        divergence a deliberate, visible data edit rather than a silent one.
+        """
+        from sam.accounting.allocations import AllocationType
+        from sam.resources.facilities import Panel
+
+        for oid, (panel_name, type_name) in _SEEDED_MAP.items():
+            row = (session.query(AllocationType)
+                   .join(Panel, AllocationType.panel_id == Panel.panel_id)
+                   .filter(Panel.panel_name == panel_name)
+                   .filter(AllocationType.allocation_type == type_name).one())
+            make_xras_opportunity_mapping(session, allocation_type=row,
+                                          opportunity_id=oid)
+
+        for name, expected in TestTheCorpusOracle.EXPECTED.items():
+            parms = select_allocation_type_mapped(session, load_fixture(name))
+            assert (parms.panel, parms.allocation_type) == expected, name
+
+    def test_opportunity_id_is_single_valued_across_the_corpus(self):
+        """The map's premise, pinned.
+
+        A table keyed on ``opportunityId`` is only coherent if one id never implies
+        two different pairs. Across all 41 payloads it never does — nine ids, five
+        pairs, one pair each. A fixture that broke that would otherwise land
+        silently and make the seed arbitrary.
+        """
+        by_id = {}
+        for name, expected in TestTheCorpusOracle.EXPECTED.items():
+            oid = load_fixture(name).get('opportunityId')
+            assert oid is not None, f'{name} carries no opportunityId'
+            by_id.setdefault(oid, set()).add(expected)
+
+        multi = {oid: pairs for oid, pairs in by_id.items() if len(pairs) > 1}
+        assert not multi, f'opportunityId maps to more than one pair: {multi}'
+        assert set(by_id) == set(_SEEDED_MAP), (
+            'the corpus and the seeded map name different opportunity ids')
+
+
+class TestTheOpportunityMapAddsFidelity:
+    """What the map buys, and the one failure it disarms."""
+
+    def test_a_wyoming_small_request_is_the_silent_case(self, session):
+        """⚠️ **The whole reason this table exists**, and it cannot be observed in
+        production until it is too late.
+
+        ``Small`` names two real rows — ``UNIV USS`` (facility UNIV) and ``UW``
+        (facility WNA) — and the ladder's twelve declared pairs never name ``UW``,
+        ``WRAP`` or ``LCAP``: the entire WNA facility is unreachable through it. So a
+        Wyoming ``Small`` request does not fail. The join **succeeds**, because
+        ``('UNIV USS', 'Small')`` is a perfectly valid row, and the action is
+        processed — with the projcode drawn from the wrong facility's series, since
+        ``handlers/new.py`` reads ``allocation_type.panel.facility_id``. Projcodes are
+        not undoable.
+
+        Both halves are asserted: that the ladder diverges *and succeeds* (documenting
+        the failure, not just the fix), and that the map corrects it.
+        """
+        from sam.accounting.allocations import AllocationType
+
+        pair = {at.panel.panel_name: at for at in session.query(AllocationType)
+                .filter(AllocationType.allocation_type == 'Small').all()}
+        assert set(pair) == {'UNIV USS', 'UW'}, 'the collision itself has gone away'
+
+        wire = action(allocationType='Small', opportunityId=_WYOMING_OPPORTUNITY)
+
+        # The ladder: wrong panel, wrong facility, and no error whatsoever.
+        ladder = select_allocation_type_parms(wire)
+        assert ladder == SelectionParms('UNIV USS', 'Small')
+        errs = ActionErrors()
+        assert resolve_allocation_type(session, wire, errs) is not None
+        assert list(errs) == []
+
+        # The map: the pair XRAS actually meant.
+        make_xras_opportunity_mapping(session, allocation_type=pair['UW'],
+                                      opportunity_id=_WYOMING_OPPORTUNITY)
+        assert select_allocation_type_mapped(session, wire) == SelectionParms('UW', 'Small')
+
+        # And the difference reaches `next_projcode`, which is what actually bites.
+        assert (pair['UW'].panel.facility_id
+                != pair['UNIV USS'].panel.facility_id)
+
+    def test_a_wyoming_education_request_fails_loudly_instead(self, session):
+        """The counterpart, and the reason ``Small`` is the *only* silent case.
+
+        ``Education`` is also a two-panel name, but it is absent from the ladder's
+        twelve type names entirely — so a request naming it resolves to nothing and
+        422s before any transaction opens. Loud is survivable; that one needs no map.
+        """
+        errs = ActionErrors()
+        assert resolve_allocation_type(
+            session, action(allocationType='Education'), errs) is None
+        assert list(errs) == ['Unable to determine allocation type from action data']
+
+    def test_a_mapped_id_wins_over_what_the_ladder_would_have_said(self, session):
+        """Precedence, stated once: the map is consulted first, not merged."""
+        from sam.accounting.allocations import AllocationType
+        from sam.resources.facilities import Panel
+
+        chap = (session.query(AllocationType)
+                .join(Panel, AllocationType.panel_id == Panel.panel_id)
+                .filter(Panel.panel_name == 'CHAP')
+                .filter(AllocationType.allocation_type == 'CHAP').one())
+        wire = action(allocationType='Small', opportunityId=_WYOMING_OPPORTUNITY)
+        assert select_allocation_type_parms(wire).allocation_type == 'Small'
+
+        make_xras_opportunity_mapping(session, allocation_type=chap,
+                                      opportunity_id=_WYOMING_OPPORTUNITY)
+        assert select_allocation_type_mapped(session, wire) == SelectionParms('CHAP', 'CHAP')
+
+    def test_an_unknown_id_falls_through_rather_than_failing(self, session):
+        """An unmapped opportunity is **not** an error — unlike an unmapped
+        ``resourceRepositoryKey``, which 422s the action. It is simply the state the
+        table ships in."""
+        wire = action(allocationType='Small', opportunityId=_WYOMING_OPPORTUNITY)
+        assert select_allocation_type_mapped(session, wire) == SelectionParms('UNIV USS', 'Small')
+
+    def test_a_null_opportunity_id_falls_through(self, session):
+        """``opportunityId`` is ``_opt_int()`` — optional on the wire, so absent is
+        ordinary. Notably it arrives as an ``int``, never a string, which is why it
+        must not go through ``_clean``."""
+        assert select_allocation_type_mapped(
+            session, action(allocationType='Small')) == SelectionParms('UNIV USS', 'Small')
+
+    def test_a_mapped_row_whose_type_has_no_panel_falls_through(self, session):
+        """⚠️ ``allocation_type.panel_id`` is **nullable**, so ``.panel.panel_name``
+        can raise ``AttributeError`` mid-dispatch — a 500 on an action that would
+        otherwise have resolved perfectly well through the ladder."""
+        from sam.accounting.allocations import AllocationType
+
+        orphan = AllocationType.create(session, allocation_type='NoPanel')
+        assert orphan.panel is None
+        make_xras_opportunity_mapping(session, allocation_type=orphan,
+                                      opportunity_id=_WYOMING_OPPORTUNITY)
+
+        wire = action(allocationType='Small', opportunityId=_WYOMING_OPPORTUNITY)
+        assert select_allocation_type_mapped(session, wire) == SelectionParms('UNIV USS', 'Small')
+
+
+class TestTheXrasTypeMapNamesRealRows:
+    """⚠️ The guarantee that justifies a constant over a table.
+
+    ``XRAS_TYPE_MAP`` is reference data keyed on XRAS's ids, and a typo in it is
+    invisible: the pair simply never matches, the sweep proposes nothing, and an
+    opportunity quietly keeps falling through to the ladder forever. A database
+    table could not be checked this way — these tests are the reason it is code.
+    """
+
+    def test_every_mapped_pair_resolves_to_an_allocation_type(self, session):
+        from sam.accounting.allocations import AllocationType
+        from sam.resources.facilities import Panel
+        from sam.xras.opportunity_types import XRAS_TYPE_MAP
+
+        missing = []
+        for key, (panel_name, type_name) in XRAS_TYPE_MAP.items():
+            row = (session.query(AllocationType)
+                   .join(Panel, AllocationType.panel_id == Panel.panel_id)
+                   .filter(Panel.panel_name == panel_name)
+                   .filter(AllocationType.allocation_type == type_name).first())
+            if row is None:
+                missing.append((key, panel_name, type_name))
+        assert not missing, f'XRAS_TYPE_MAP names rows that do not exist: {missing}'
+
+    def test_the_two_known_exceptions_are_documented(self):
+        """Both non-injective cases must stay visible in the module docstring.
+
+        ``500026`` covers Classroom *and* unsponsored; ``(500088, 500045)`` covers
+        NSC *and* NCAR ASD. Someone who deletes that prose is likely also about to
+        'simplify' the agree-only rule that exists because of them.
+        """
+        import sam.xras.opportunity_types as mod
+
+        doc = mod.__doc__ or ''
+        assert '500026' in doc and '500088' in doc
+        assert 'not injective' in doc
+
+    def test_the_primary_panel_is_chosen_not_the_first(self):
+        """Large opportunities carry two panels and only one is SAM's CHAP."""
+        from sam.xras.opportunity_types import pair_for_opportunity
+
+        payload = {'allocationTypeInfo': {'allocationTypeId': 500023},
+                   'panels': [{'panelId': 500032, 'isPrimary': False},
+                              {'panelId': 500022, 'isPrimary': True}]}
+        assert pair_for_opportunity(payload) == ('CHAP', 'CHAP')
+
+    def test_incomplete_payloads_yield_none_rather_than_raising(self):
+        from sam.xras.opportunity_types import pair_for_opportunity
+
+        for payload in ({}, {'panels': []},
+                        {'allocationTypeInfo': {}, 'panels': [{'panelId': 500021,
+                                                               'isPrimary': True}]},
+                        {'allocationTypeInfo': {'allocationTypeId': 500023},
+                         'panels': [{'panelId': 500032, 'isPrimary': False}]}):
+            assert pair_for_opportunity(payload) is None

@@ -9,12 +9,30 @@ the **site-side server** it talks to: XRAS **pushes** allocation decisions in
 Java/Tomcat server (deployed build 2.0.3), as a drop-in replacement: same URLs,
 same auth headers, same response bytes.
 
+`outgoing/` is the **opposite direction**: SAM calling out to the XRAS
+Allocations API at `https://api.xras.org/v1/…`. Read-only and GET-only — the
+same credential can create requests, modify roles and merge one person into
+another, so the client has no verb method but an internal `_get`.
+
+## Start here
+
+| Doc | What it is |
+|---|---|
+| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](PROJECT_AND_ACCOUNT_LIFECYCLE.md) | Where a project comes from — ARC → XRAS → SAM, and the internal path beside it. ⚠️ **SAM never creates users**: `users` is mirrored in from an organizational LDAP, which is why the account worklist is a worklist and not a button |
+
 ## Live docs — `incoming/`
 
 | Doc | What it is |
 |---|---|
 | [`XRAS_REIMPLEMENTATION.md`](incoming/XRAS_REIMPLEMENTATION.md) | The reference: wire contract, production data, deliberate divergences, phase status |
 | [`XRAS_CUTOVER_RUNBOOK.md`](incoming/XRAS_CUTOVER_RUNBOOK.md) | The day-of sequence. Operational only — no code left. Cutover is **abrupt**: XRAS holds one base URL, so all seven endpoints and all six handlers move at once |
+| [`XRAS_TRIAGE_PLAYBOOK.md`](incoming/XRAS_TRIAGE_PLAYBOOK.md) | The week after. Classify a row, then the 422 catalog with the data fix for each. ⚠️ `--recheck` validates, it cannot apply — every fix ends by asking XRAS to re-post |
+
+## SAM → XRAS — `outgoing/`
+
+| Doc | What it is |
+|---|---|
+| [`XRAS_OUTGOING_QUERIES.md`](outgoing/XRAS_OUTGOING_QUERIES.md) | The account-creation worklist: the readable API surface, every closed path, and the two-feed design. Implemented 2026-08-20; § 0 records what the build learned |
 
 ## Shipped — `incoming/implemented/`
 

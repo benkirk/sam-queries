@@ -31,7 +31,7 @@ from xras_helpers import (  # noqa: F401  — pytest resolves fixtures by name
     xras_keys,
 )
 
-from webapp.api.xras import serialize
+from webapp.api.xras import actions, serialize
 
 
 # ---------------------------------------------------------------------------
@@ -653,8 +653,10 @@ class TestPostActionsCapture:
             self, app, xras_client, action_log, no_handlers):
         """With capture off and no handler for the service, the action parks as 'manual'.
 
-        Legacy answers a bare 200 here too, but leaves no record that SAM quietly
-        deferred the action to a human — the distinction this table exists to make.
+        Legacy answers a bare 200 here too, and leaves no record that SAM quietly
+        deferred the action to a human — the distinction this table exists to make. We
+        keep the 200 (ACCESS treats anything else as an error) but say so in the body;
+        see ``TestParkedActionsAreVisibleToTheCaller``.
 
         ``no_handlers`` empties the registry for the duration. Two reasons, and the
         second is the one that bites: a real handler would **commit** through
@@ -671,7 +673,8 @@ class TestPostActionsCapture:
             app.config['XRAS_ACTIONS_CAPTURE_ONLY'] = True
 
         assert resp.status_code == 200
-        assert json.loads(resp.data) == {'message': 'OK', 'result': None}
+        assert json.loads(resp.data) == {'message': actions._MANUAL_MESSAGE,
+                                         'result': None}
         row = action_log.one()
         assert row['status'] == 'manual'
         assert row['processed_time'] is not None
@@ -951,6 +954,69 @@ class TestDispatchArms:
                          content_type='application/json', headers=_auth())
         assert ran == []
         assert action_log.one()['status'] == 'received'
+
+    # -- the parked/processed wire split -------------------------------------
+    #
+    # Gate 4 of the cutover runbook. Legacy answered a bare 'OK' for an action it had
+    # silently deferred to a human, byte-identical to a success, so the admin who
+    # pushed the button in xras_admin was told it worked. `Date Adjustment` parks and
+    # is 4 of the 41 corpus payloads, so that is the common case, not a corner. ACCESS
+    # asked for an informative body on 2026-08-11; these three pin what moved and,
+    # more importantly, what did not.
+
+    def _post_body(self, xras_client):
+        resp = xras_client.post(
+            self.PATH, data=_payload('extension_ucub0166_ok.json'),
+            content_type='application/json', headers=_auth())
+        return resp.status_code, json.loads(resp.data)
+
+    def test_a_parked_action_is_not_byte_identical_to_a_success(
+            self, xras_client, action_log, dispatching):
+        """The whole point: the caller can tell "we applied it" from "a human will"."""
+        dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
+            status='manual', service='extend', projcode='UCUB0166',
+            reason='parked on purpose'))
+
+        status, body = self._post_body(xras_client)
+
+        assert action_log.one()['status'] == 'manual'
+        # Still 200 — ACCESS treats any other status as an error, and a parked action
+        # is not one. Only the body moved.
+        assert status == 200
+        assert body == {'message': actions._MANUAL_MESSAGE, 'result': None}
+        assert body['message'] != 'OK'
+
+    def test_the_parked_body_does_not_leak_the_internal_reason(
+            self, xras_client, action_log, dispatching):
+        """``outcome_reason`` names machinery an ACCESS admin cannot act on.
+
+        Three of the four park causes cite ``XRAS_ACTIONS_ENABLED`` or an unregistered
+        handler. Those belong in the audit row, which is ours; the wire gets one stable
+        sentence. Returning ``result.reason`` verbatim would have been the obvious
+        implementation and is the thing this forbids.
+        """
+        dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
+            status='manual', service='extend', projcode='UCUB0166',
+            reason="actionType='Extension' is disabled by XRAS_ACTIONS_ENABLED"))
+
+        _, body = self._post_body(xras_client)
+
+        assert action_log.one()['outcome_reason'] == (
+            "actionType='Extension' is disabled by XRAS_ACTIONS_ENABLED")
+        assert 'XRAS_ACTIONS_ENABLED' not in body['message']
+        assert body['message'] == actions._MANUAL_MESSAGE
+
+    def test_a_processed_action_still_answers_exactly_OK(
+            self, xras_client, action_log, dispatching):
+        """The half that must NOT move. ``'OK'`` on success is legacy's byte-exact
+        success body, and the parked split is not a licence to redesign it."""
+        dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
+            status='processed', service='extend', projcode='UCUB0166'))
+
+        status, body = self._post_body(xras_client)
+
+        assert action_log.one()['status'] == 'processed'
+        assert (status, body) == (200, {'message': 'OK', 'result': None})
 
 
 class TestPostActionsErrors:

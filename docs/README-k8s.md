@@ -247,7 +247,7 @@ Scheduled tasks, by environment:
 |---|---|---|
 | Local Docker Compose (`webdev`) | n/a — no chart | Run by hand: `sam-admin tasks --run-due` |
 | Local k8s (Docker Desktop) | `false` | Nothing should silently DELETE local data |
-| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable: only `cleanup_status_snapshots` runs. `SAM_TASKS_DISABLED=deactivate_expired_projects,expiration_notices,xras_notices` |
+| CIRRUS k8s (this chart) | `true`, kill-switched | Staged enable: only `cleanup_status_snapshots` runs. `SAM_TASKS_DISABLED=deactivate_expired_projects,expiration_notices,xras_notices,xras_sweep` |
 
 When the per-environment Entra app strategy is adopted (separate `sam-production`
 and `sam-staging` Entra apps), only the OpenBao / SSM values change — the chart
@@ -329,7 +329,8 @@ of task names to skip, flippable in `values.yaml` with no code deploy. It ships
 until it has been reviewed on its own, so the dispatcher wakes hourly and the
 untried task writes a `skipped` row instead of running. Today only
 `cleanup_status_snapshots` is live; `deactivate_expired_projects`,
-`expiration_notices` and `xras_notices` are switched off. Enabling one is a
+`expiration_notices`, `xras_notices` and `xras_sweep` are switched off.
+Enabling one is a
 separate, reviewable one-line commit.
 
 ⚠️ **It is an enumeration, and it is fail-OPEN.** `disabled_tasks()` in
@@ -368,7 +369,7 @@ that needs no task to actually do anything:
 ```bash
 helm upgrade --install samuel ./helm -f helm/values.yaml -f helm/values-local.yaml \
   -n samuel-dev --set tasks.enabled=true --set tasks.schedule='*/5 * * * *' \
-  --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots\,deactivate_expired_projects\,expiration_notices\,xras_notices'
+  --set 'tasks.env.SAM_TASKS_DISABLED=cleanup_status_snapshots\,deactivate_expired_projects\,expiration_notices\,xras_notices\,xras_sweep'
 ```
 
 ⚠️ `--set` **replaces** the list rather than adding to it, and the commas need

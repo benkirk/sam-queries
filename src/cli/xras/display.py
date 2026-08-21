@@ -212,3 +212,249 @@ def display_mapping_report(ctx, payload) -> None:
         ctx.console.print(
             f"[bold red]Dangling keys with no resource row:[/bold red] "
             f"{', '.join(str(k) for k in payload['dangling_keys'])}")
+
+    # ── the XRAS half ───────────────────────────────────────────────────
+    if not payload.get('live_checked'):
+        ctx.console.print(
+            '[dim]Local half only — the XRAS API was not configured or not '
+            'reachable, so keys XRAS sends that SAM cannot resolve are NOT '
+            'checked. Set XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY for the '
+            'two-sided report.[/dim]')
+        return
+
+    ctx.console.print(
+        f"[bold]{payload['live_key_count']}[/bold] key(s) offered by XRAS")
+    if payload['xras_only_keys']:
+        ctx.console.print(
+            f"[bold red]XRAS sends keys SAM cannot resolve:[/bold red] "
+            f"{', '.join(str(k) for k in payload['xras_only_keys'])}")
+        ctx.console.print(
+            '[dim]This is the failure that breaks an award: the action fails '
+            'at runtime with "No resource found in SAM corresponding to key %s". '
+            'Add the mapping row before cutover.[/dim]')
+    else:
+        ctx.console.print(
+            '[green]Every key XRAS offers resolves to a SAM resource.[/green]')
+
+
+def _pair(pair) -> str:
+    """A ``(panel, allocation_type)`` tuple as one cell, or the miss marker."""
+    return f'{pair[0]} / {pair[1]}' if pair else BLANK
+
+
+def display_opportunity_report(ctx, payload) -> None:
+    """Render the opportunityId map, broken rows first, then what is undecided.
+
+    Order is deliberate and is not "worst group first" in the usual sense: a
+    dangling row is the only broken state, but the group an operator is actually
+    here for is ``review`` — the opportunities two independent derivations
+    disagree about, which is where the silent wrong-projcode failure would come
+    from if anyone resolved one by guessing.
+    """
+    ctx.console.rule('[bold]XRAS opportunity mapping')
+    ctx.console.print(
+        f"[bold]{payload['mapped']}[/bold] mapping row(s) in "
+        f"xras_opportunity_allocation_type")
+
+    if payload['dangling_ids']:
+        ctx.console.print(
+            f"[bold red]Rows whose allocation type has vanished or has no "
+            f"panel:[/bold red] "
+            f"{', '.join(str(i) for i in payload['dangling_ids'])}")
+        ctx.console.print(
+            '[dim]The ingest-side lookup treats these as a miss and falls back to '
+            'the free-text ladder, silently. This is the only state this command '
+            'exits non-zero on.[/dim]')
+
+    if not payload['live_checked']:
+        ctx.console.print(
+            '[dim]Local half only — the XRAS API was not configured or not '
+            'reachable, so opportunities XRAS is currently offering are NOT '
+            'checked. Set XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY for the '
+            'two-sided report.[/dim]')
+        return
+
+    ctx.console.print(
+        f"[bold]{payload['live_id_count']}[/bold] opportunity(ies) currently open "
+        f"in XRAS")
+
+    if not payload['unmapped_ids']:
+        ctx.console.print(
+            '[green]Every open opportunity resolves through the map.[/green]')
+        return
+
+    ctx.console.print(
+        f"[bold]{len(payload['unmapped_ids'])}[/bold] of them have no mapping row")
+    ctx.console.print(
+        '[dim]Not a failure: an unmapped opportunity falls back to the free-text '
+        'ladder, exactly as every opportunity did before the map existed. What '
+        'follows is whether it could be mapped automatically.[/dim]')
+
+    proposal = payload['proposal']
+
+    if proposal['agree']:
+        table = Table(title='Would be mapped automatically (both derivations agree)',
+                      title_style='bold')
+        table.add_column('Id', justify='right', style='cyan')
+        table.add_column('Opportunity', style='dim')
+        table.add_column('Panel / type', style='green')
+        for entry in proposal['agree']:
+            table.add_row(str(entry['opportunity_id']),
+                          truncate(text(entry['opportunity_name']), 44),
+                          _pair(entry['pair']))
+        ctx.console.print(table)
+        ctx.console.print(
+            '[dim]xras_sweep writes these on its next run, newest first, capped by '
+            'SAM_TASKS_XRAS_MAP_MAX. Nothing to do.[/dim]')
+
+    if proposal['review']:
+        table = Table(title='Withheld — the two derivations disagree',
+                      title_style='bold')
+        table.add_column('Id', justify='right', style='cyan')
+        table.add_column('Opportunity', style='dim')
+        table.add_column('XRAS says', style='yellow')
+        table.add_column('Ladder says', style='yellow')
+        for entry in proposal['review']:
+            table.add_row(str(entry['opportunity_id']),
+                          truncate(text(entry['opportunity_name']), 36),
+                          _pair(entry.get('xras')),
+                          _pair(entry.get('ladder')))
+        ctx.console.print(table)
+        ctx.console.print(
+            '[dim]A human decides these, as a `source=manual` row. Disagreement is '
+            'the rule working: XRAS is not authoritative about SAM, and each known '
+            'case changes the FACILITY, which is what reaches next_projcode. A '
+            'Wyoming opportunity lands here by construction.[/dim]')
+
+    if proposal['unknown_pair']:
+        table = Table(title='Unknown to the reference map — a new allocation product',
+                      title_style='bold')
+        table.add_column('Id', justify='right', style='cyan')
+        table.add_column('Opportunity', style='dim')
+        table.add_column('Ladder says', style='yellow')
+        for entry in proposal['unknown_pair']:
+            table.add_row(str(entry['opportunity_id']),
+                          truncate(text(entry['opportunity_name']), 44),
+                          _pair(entry.get('ladder')))
+        ctx.console.print(table)
+        ctx.console.print(
+            '[dim]XRAS shipped an (allocationTypeId, panelId) pair that '
+            'sam/xras/opportunity_types.py does not name. Adding it is a one-line '
+            'edit to the constant — a code review, never a silent DB write.[/dim]')
+
+
+def display_account_worklist(ctx, payload) -> None:
+    """Render the account-creation worklist, absent before inactive."""
+    counts = payload['counts']
+    ctx.console.rule('[bold]XRAS accounts needed')
+
+    if not payload['accounts']:
+        ctx.console.print(
+            '[green]No accounts are waiting on creation or reactivation.[/green]')
+        return
+
+    oldest = counts.get('oldest_days')
+    title = f"{counts['total']} account(s) blocking XRAS handoffs"
+    if oldest:
+        title += f' — oldest waiting {oldest}d'
+    table = Table(title=title, title_style='bold')
+    table.add_column('Username', style='cyan')
+    table.add_column('Needs')
+    table.add_column('Role', style='dim')
+    table.add_column('Requests', style='dim')
+    table.add_column('XRAS identity')
+    table.add_column('Waiting', justify='right')
+
+    for row in payload['accounts']:
+        # ⚠️ The artifact, not an action — SAM cannot create or reactivate an
+        # account. Same words the card uses, because the terminal and the
+        # dashboard have to teach one vocabulary; the footer says who does.
+        needs = ('[red]new account[/red]' if row['classification'] == 'absent'
+                 else '[yellow]reactivation[/yellow]')
+        if row['placeholder']:
+            needs += ' [dim](placeholder)[/dim]'
+        numbers = [a['request_number'] for a in row['actions'] if a['request_number']]
+        # XRAS-side identity state, NOT progress: 9 of 9 rows measured on
+        # the local smoke were reconciled and still needed a SAM account.
+        # `unidentified` is the harder case — no detail sheet to create from.
+        reconciled = {None: BLANK,
+                      True: 'identified',
+                      False: '[yellow]unidentified[/yellow]'}[row['is_reconciled']]
+        waited = row.get('waiting_days')
+        table.add_row(row['username'], needs, ', '.join(row['roles']),
+                      truncate(', '.join(dict.fromkeys(numbers)), 40), reconciled,
+                      BLANK if waited is None else f'{waited}d')
+
+    ctx.console.print(table)
+    ctx.console.print(
+        # "placeholder", NOT "unreconciled" — a placeholder is a username
+        # SHAPE, reconciliation is whether XRAS has linked it to a confirmed
+        # identity. The smoke found all three placeholders reconciled, so
+        # conflating them made this line contradict the table above it.
+        f"[dim]{counts['absent']} new account(s), {counts['inactive']} "
+        f"reactivation(s), {counts['placeholder']} ARC placeholder "
+        f"identities.[/dim]")
+    ctx.console.print(
+        # The invariant, said once. There is no INSERT into `users` anywhere in
+        # this repo and nothing writes `active`/`locked` — both remedies are
+        # somebody else's work, and a list that implies otherwise sends an
+        # operator looking for a button that cannot exist.
+        '[dim]Accounts are mirrored into SAM from the enterprise directory; '
+        'SAM cannot create or reactivate one. Rows clear on the next '
+        'sync.[/dim]')
+
+    # ⚠️ A subset must never be printed as if it were the whole queue. This is
+    # the CLI half of the gap that had `--accounts` reporting 0 while the
+    # dashboard showed a real worklist: the card reads the sweep's published
+    # snapshot and this only ever read the action log.
+    if not payload.get('pending_checked'):
+        ctx.console.print(
+            '[yellow]Posted actions only — the pending-request worklist could '
+            'not be read, so accounts XRAS has approved but not yet sent are '
+            'NOT counted here. Set XRAS_OUTGOING_ENABLED=1 with a reachable '
+            'cache for the full queue.[/yellow]')
+
+    enrichment = payload.get('enrichment')
+    if enrichment and enrichment['unavailable']:
+        ctx.console.print(
+            '[yellow]Person detail unavailable — the XRAS API could not be '
+            'reached. The worklist itself is complete.[/yellow]')
+    elif enrichment and enrichment['budget_exhausted']:
+        ctx.console.print(
+            f"[dim]Person detail fetched for the first "
+            f"{enrichment['looked_up']} row(s).[/dim]")
+    elif not payload['enriched']:
+        ctx.console.print(
+            '[dim]Pass --enrich for names, emails and XRAS identity state.[/dim]')
+
+
+def display_person(ctx, payload) -> None:
+    """Render one XRAS person record."""
+    ctx.console.rule(f"[bold]XRAS person: {payload['username']}")
+    if not payload['found']:
+        ctx.console.print(
+            f"[yellow]XRAS has no user {payload['username']}.[/yellow]")
+        return
+
+    person = payload['person']
+    table = Table(show_header=False)
+    table.add_column('Field', style='dim')
+    table.add_column('Value')
+    for label, key in (('Name', None), ('Email', 'email'),
+                       ('Phone', 'phone'), ('Organization', 'organization'),
+                       ('Academic status', 'academicStatus'),
+                       ('Residence country', 'residenceCountry'),
+                       ('ORCID', 'orcid')):
+        if key is None:
+            value = ' '.join(str(person.get(k) or '') for k in
+                             ('firstName', 'middleName', 'lastName')).strip()
+        else:
+            value = person.get(key)
+        table.add_row(label, text(value))
+    reconciled = person.get('isReconciled')
+    table.add_row('Reconciled', 'yes' if reconciled else '[yellow]no[/yellow]')
+    ctx.console.print(table)
+    if not reconciled:
+        ctx.console.print(
+            '[dim]XRAS has not linked this username to a confirmed identity, so '
+            'the detail above may be self-reported and incomplete.[/dim]')

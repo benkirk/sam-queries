@@ -49,6 +49,12 @@ services:
       #    fall back to compose service-name defaults. If the user
       #    uncomments PROD in .env, that flows through to in-stack
       #    containers (intentional pass-through).
+      # ⚠️ Match the chart (helm/values.yaml sets TZ: America/Denver). SAM's
+      # MySQL columns are naive-MOUNTAIN, stamped from the app clock — so a
+      # container left on UTC writes `received_time` six hours in the future
+      # relative to the data around it, and any column that renders an age
+      # comes out negative. Prod has always set this; local never did.
+      - "TZ=${TZ:-America/Denver}"
       - "SAM_DB_SERVER=${SAM_DB_SERVER:-mysql}"
       - "SAM_DB_USERNAME=${SAM_DB_USERNAME:-root}"
       - "SAM_DB_PASSWORD=${SAM_DB_PASSWORD:-root}"
@@ -134,6 +140,12 @@ services:
     # when adding new files/functions. Remove for production deployment.
     environment:
       # ── DB routing (see `webapp` for the pass-through reasoning)
+      # ⚠️ Match the chart (helm/values.yaml sets TZ: America/Denver). SAM's
+      # MySQL columns are naive-MOUNTAIN, stamped from the app clock — so a
+      # container left on UTC writes `received_time` six hours in the future
+      # relative to the data around it, and any column that renders an age
+      # comes out negative. Prod has always set this; local never did.
+      - "TZ=${TZ:-America/Denver}"
       - "SAM_DB_SERVER=${SAM_DB_SERVER:-mysql}"
       - "SAM_DB_USERNAME=${SAM_DB_USERNAME:-root}"
       - "SAM_DB_PASSWORD=${SAM_DB_PASSWORD:-root}"

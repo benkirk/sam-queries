@@ -169,6 +169,26 @@ class TestTheHandlersReadFieldsThatExist:
             "'key' is not an XRAS wire field — the payload sends "
             f"'resourceRepositoryKey'. Read at: {read.get('key')}")
 
+    def test_the_opportunity_id_field_is_read_and_spelled_camel_case(self):
+        """The ``opportunityId`` map's read, pinned the same way.
+
+        Same failure shape as ``key``/``resourceRepositoryKey``: the id is
+        ``opportunityId`` on the **inbound action wire**, but the *outbound*
+        ``reports/requests`` payloads the sweep enumerates spell the sibling name
+        snake_case (``opportunity_name``). Two vocabularies for one concept, meeting
+        inside one feature. A misspelling here would not raise — ``get_field``
+        returns ``None`` — it would silently disable the map on every action and
+        fall back to the ladder, which is exactly the behaviour that looks correct.
+        """
+        read = fields_read_by_handlers()
+        assert 'opportunityId' in read, (
+            'the opportunityId map lookup is gone or misspelled; '
+            f'fields read: {sorted(read)}')
+        for wrong in ('opportunity_id', 'opportunityID'):
+            assert wrong not in read, (
+                f"'{wrong}' is not an XRAS wire field — the action sends "
+                f"'opportunityId'. Read at: {read.get(wrong)}")
+
 
 class TestTheCorpusAgrees:
     """The measurement the fix rests on, pinned so it cannot rot."""

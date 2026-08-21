@@ -28,6 +28,9 @@ import pytest
 
 import sam.xras
 import sam.xras.handlers  # noqa: F401  — imports all six for their registration
+from sam.xras.errors import ActionErrors
+
+from factories import make_xras_opportunity_mapping
 
 pytestmark = pytest.mark.unit
 
@@ -193,3 +196,75 @@ class TestTheNewHandlerDoesNotOwnProject:
             'resources': []})
         assert handler.project is None
         assert handler.projcode == 'NOSUCH9999'
+
+
+class TestPanelAuthorisationAgreesWithTheResolvedType:
+    """⚠️ **The sharp edge of the ``opportunityId`` map.**
+
+    ``auth_at_panel_meeting`` re-derives the ``(panel, type)`` pair *independently*
+    of ``resolve_allocation_type`` — the first sets ``auth_at_panel_mtg`` on
+    ``allocation_transaction`` rows, the second sets ``project.allocation_type_id``.
+    Wiring only the second to the map would let a project's type come from the map
+    while its transactions' panel-authorisation flag came from the ladder:
+    inconsistent rows, written, with nothing raised and nothing logged.
+
+    Called from ``new.py``, ``update.py``, ``supplement.py`` and ``adjustment.py``,
+    so this is not a corner.
+    """
+
+    def _chap(self, session):
+        from sam.accounting.allocations import AllocationType
+        from sam.resources.facilities import Panel
+        return (session.query(AllocationType)
+                .join(Panel, AllocationType.panel_id == Panel.panel_id)
+                .filter(Panel.panel_name == 'CHAP')
+                .filter(AllocationType.allocation_type == 'CHAP').one())
+
+    def test_a_mapped_action_is_panel_authorised_through_the_map(self, session):
+        """``Small`` is not panel-authorised; ``CHAP`` is. Mapping the id to CHAP must
+        flip the flag — if this reads the ladder it stays False and the transaction is
+        written unauthorised while the project sits on a CHAP type."""
+        from sam.xras.extractors import resolve_allocation_type
+        from sam.xras.handlers._allocations import auth_at_panel_meeting
+
+        wire = {'allocationType': 'Small', 'opportunityId': 999002}
+        assert auth_at_panel_meeting(session, wire) is False
+
+        make_xras_opportunity_mapping(session, allocation_type=self._chap(session),
+                                      opportunity_id=999002)
+
+        assert auth_at_panel_meeting(session, wire) is True
+        row = resolve_allocation_type(session, wire, ActionErrors())
+        assert row.allocation_type == 'CHAP'
+
+    def test_an_unmapped_action_still_reads_the_ladder(self, session):
+        """The fallback, on the same call path — an empty map changes nothing here
+        either."""
+        from sam.xras.handlers._allocations import auth_at_panel_meeting
+
+        assert auth_at_panel_meeting(
+            session, {'allocationType': 'Small', 'opportunityId': 999003}) is False
+        assert auth_at_panel_meeting(
+            session, {'allocationType': 'CSL', 'requestTitle': 'CSL'}) is True
+
+    def test_the_two_functions_agree_on_every_seeded_corpus_payload(self, session):
+        """Stated as the invariant rather than a case: whatever the pair comes from,
+        both consumers must read the *same* pair."""
+        from sam.xras.extractors import (resolve_allocation_type,
+                                         select_allocation_type_mapped)
+        from sam.xras.handlers._allocations import (_PANEL_AUTHORISED,
+                                                    auth_at_panel_meeting)
+        from xras_helpers import FIXTURE_DIR, load_fixture
+
+        checked = 0
+        for path in sorted(FIXTURE_DIR.glob('*.json')):
+            payload = load_fixture(path.name)
+            if not payload.get('allocationType'):
+                continue          # the second arm; a different question (see the docstring there)
+            checked += 1
+            parms = select_allocation_type_mapped(session, payload)
+            row = resolve_allocation_type(session, payload, ActionErrors())
+            assert row is not None and row.allocation_type == parms.allocation_type
+            assert auth_at_panel_meeting(session, payload) == (
+                parms.allocation_type in _PANEL_AUTHORISED)
+        assert checked, 'no payload carried allocationType — the loop proved nothing'

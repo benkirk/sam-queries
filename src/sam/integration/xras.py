@@ -38,6 +38,103 @@ class XrasResourceRepositoryKeyResource(Base):
         return f"<XrasResourceRepositoryKeyResource(key={self.resource_repository_key}, resource_id={self.resource_id})>"
 
 
+#: Who wrote a row in ``xras_opportunity_allocation_type``.
+#:
+#: ``manual`` is a human's decision and is never overwritten; ``task:xras_sweep``
+#: was derived automatically, and is the set to review or revert if the
+#: derivation ever proves wrong. Spelled like ``XrasActivationEvent``'s
+#: ``created_by='task:xras_notices'`` so the two read the same in a query.
+SOURCE_MANUAL = 'manual'
+SOURCE_SWEEP = 'task:xras_sweep'
+
+
+#----------------------------------------------------------------------------
+class XrasOpportunityAllocationType(Base):
+    """Maps an XRAS ``opportunityId`` to the SAM allocation type it means.
+
+    This is an actual database TABLE (not a view), and the direct analogue of
+    :class:`XrasResourceRepositoryKeyResource` above: a local table mapping an
+    XRAS key to a SAM entity, populated out-of-band, read at ingest, never
+    written by anything that talks to the XRAS API.
+
+    **Why it exists.** ``sam.xras.extractors`` decides a project's allocation
+    type with an eleven-strategy free-text ladder over ``allocationType``,
+    ``opportunityName`` and ``requestTitle``. Each strategy hardcodes a
+    ``(panel, allocation_type)`` pair, and the twelve pairs it can produce
+    never name ``UW``, ``WRAP`` or ``LCAP`` — the whole of facility 4. So when
+    University of Wyoming eventually submits through XRAS, a ``Small`` request
+    resolves to panel ``UNIV USS`` and the join **succeeds**, because that is a
+    perfectly valid row. Nothing fails. The only symptom is a WNA project
+    holding a UNIV projcode, because ``handlers/new.py`` draws the projcode
+    series from ``allocation_type.panel.facility_id``. Projcodes are not
+    undoable.
+
+    Every other mapping gap in this stack shouts — an unmapped
+    ``resourceRepositoryKey`` 422s the action and writes nothing. This one is
+    silent, which is why it is worth pre-empting rather than waiting for
+    evidence that cannot arrive until the day it is too late.
+
+    **The FK is to `allocation_type_id`, not to the ``(panel, type)`` string
+    pair.** That resolves the ambiguity by construction and cannot drift when a
+    type is renamed.
+
+    ⚠️ **Never key this on the wire ``allocationType`` string.** Its vocabulary
+    differs from SAM's and it is not unique — ``sam/schemas/forms/xras.py`` says
+    so explicitly. ``opportunityId`` is the stable key, it is on 41/41 observed
+    payloads, and across that corpus it is single-valued: nine ids, five
+    distinct pairs, one pair each.
+
+    ``opportunity_name`` is a snapshot for humans reading the table. It is
+    deliberately **not** used for anything — ``opportunityName`` has a second,
+    independent consumer in ``extractors.resolve_mnemonic_code``, which routes
+    on an ``'NCAR '`` prefix, and this table must not entangle itself with that.
+    """
+    __tablename__ = 'xras_opportunity_allocation_type'
+
+    __table_args__ = (
+        Index('xras_opportunity_alloc_type_at_idx', 'allocation_type_id'),
+    )
+
+    opportunity_id = Column(Integer, primary_key=True, autoincrement=False)
+    allocation_type_id = Column(Integer,
+                                ForeignKey('allocation_type.allocation_type_id'),
+                                nullable=False)
+    opportunity_name = Column(String(120))
+    source = Column(String(32), nullable=False, server_default=text("'manual'"))
+
+    allocation_type = relationship('AllocationType',
+                                   back_populates='xras_opportunities')
+
+    @classmethod
+    def create(cls, session, *, opportunity_id, allocation_type_id,
+               opportunity_name=None, source=SOURCE_MANUAL):
+        """Add one mapping row.
+
+        ⚠️ **Callers must check the row does not already exist.** This does not
+        upsert, deliberately: a ``manual`` row is a human's answer to a question
+        the API cannot settle — the two documented cases are in
+        ``sam.xras.opportunity_types`` — and the sweep must never overwrite one.
+        Insert-if-absent keeps that property without needing to inspect
+        ``source`` at all.
+        """
+        row = cls(opportunity_id=opportunity_id,
+                  allocation_type_id=allocation_type_id,
+                  opportunity_name=opportunity_name,
+                  source=source)
+        session.add(row)
+        session.flush()
+        return row
+
+    def __str__(self):
+        return (f"XRAS opportunity {self.opportunity_id} -> "
+                f"AllocationType {self.allocation_type_id}")
+
+    def __repr__(self):
+        return (f"<XrasOpportunityAllocationType("
+                f"opportunity_id={self.opportunity_id}, "
+                f"allocation_type_id={self.allocation_type_id})>")
+
+
 #----------------------------------------------------------------------------
 class XrasActionLog(Base):
     """Audit trail for ``POST /api/xras/v1/actions`` — one row per post.

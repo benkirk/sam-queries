@@ -230,6 +230,15 @@ def role_candidates(action, role_type: str, *, today: Optional[str] = None) -> T
 
     candidates: List[str] = []
     for role in get_field(action, 'roles') or ():
+        # Exact string inequality, reproducing Java's String.equals: no case
+        # folding, no alias table. Settled 2026-08-19 by probing
+        # `GET /v1/types/roles`: the NCAR process defines exactly THREE role
+        # types — 13 PI, 14 Allocation Manager, 19 User — so `roleType` has a
+        # closed three-value vocabulary and no co-PI can ever appear on this
+        # wire. (The generic XRAS product does define CoPI at roleTypeId 1;
+        # those ids are per-process, which is why NCAR's are 13/14/19.)
+        # Confirmed again on live data: zero co-PIs across 64 sampled role
+        # entries. See docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md § 3.4.
         if _wire_str(get_field(role, 'roleType')) != role_type:
             continue
         begin_date = _wire_str(get_field(role, 'beginDate'))

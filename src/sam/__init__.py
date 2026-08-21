@@ -182,6 +182,9 @@ from .summaries.archive_summaries import (
 # XRAS table models (actual tables, not views)
 from .integration.xras import (
     XrasResourceRepositoryKeyResource,
+    XrasOpportunityAllocationType,
+    SOURCE_MANUAL,
+    SOURCE_SWEEP,
     XrasActionLog,
     XrasActivationEvent,
     XRAS_ACTIVATION_EVENT_TYPES,
@@ -266,7 +269,9 @@ __all__ = [
     'DiskChargeSummary', 'DiskChargeSummaryStatus',
     'ArchiveChargeSummary', 'ArchiveChargeSummaryStatus',
     # Integration
-    'XrasResourceRepositoryKeyResource', 'XrasActionLog',
+    'XrasResourceRepositoryKeyResource', 'XrasOpportunityAllocationType',
+    'SOURCE_MANUAL', 'SOURCE_SWEEP',
+    'XrasActionLog',
     'XrasActivationEvent', 'XRAS_ACTIVATION_EVENT_TYPES',
     'XrasUserView', 'XrasRoleView', 'XrasActionView',
     'XrasAllocationView', 'XrasHpcAllocationAmountView', 'XrasRequestView',

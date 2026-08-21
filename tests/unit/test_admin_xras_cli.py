@@ -21,6 +21,7 @@ import pytest
 from click.testing import CliRunner
 
 from cli.cmds.admin import cli
+from cli.core.utils import EXIT_ERROR, EXIT_NOT_FOUND, EXIT_SUCCESS
 
 
 @pytest.fixture
@@ -201,3 +202,528 @@ class TestWindowParsing:
     def test_parse_days(self, value, expected_days):
         from cli.xras.commands import XrasCommand
         assert XrasCommand._parse_days(value) == expected_days
+
+
+# ── the account worklist, person lookup, and the two-sided mapping audit ──
+
+class TestAccountsMode:
+    """``--accounts``: who must exist in SAM before a handoff works."""
+
+    def test_an_empty_worklist_exits_zero(self, runner, cli_session):
+        """Nobody blocked is a successful report, not a miss. A gate that
+        treated it as one would fail every healthy day."""
+        result = runner.invoke(cli, ['xras', '--accounts'])
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_the_json_envelope_carries_the_expected_kind(self, runner, cli_session):
+        # ⚠️ `result.stdout`, not `result.output` — the latter merges stderr,
+        # and the whole point of the split below is that a degradation notice
+        # must not land inside the envelope.
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
+        assert result.exit_code == EXIT_SUCCESS
+        payload = json.loads(result.stdout)
+        assert payload['kind'] == 'xras_accounts'
+        assert set(payload['counts']) >= {'total', 'absent', 'inactive',
+                                          'placeholder', 'oldest_days'}
+        assert payload['enriched'] is False
+        assert payload['enrichment'] is None
+        # "Feed B was empty" and "we could not read Feed B" are different
+        # facts, and only the second means this count is a subset.
+        assert payload['pending_checked'] is False
+
+    def test_a_degradation_notice_never_lands_inside_the_json(
+            self, runner, cli_session, monkeypatch):
+        """⚠️ Regression: `ctx.console` is **stdout**.
+
+        Every "could not reach X, reporting the local half" notice on this
+        command used to print there, which put prose ahead of the envelope and
+        broke `sam-admin --format json xras ... | jq` for exactly the runs an
+        operator most needs to pipe. They belong on stderr; the envelope
+        already carries the machine-readable form of the same fact.
+        """
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.cache.load_pending_worklist',
+            lambda: (_ for _ in ()).throw(RuntimeError('no redis here')))
+
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
+
+        json.loads(result.stdout)                    # parses, i.e. clean
+        assert 'no redis here' not in result.stdout
+        assert json.loads(result.stdout)['pending_checked'] is False
+
+    def test_the_worklist_unions_both_feeds(self, runner, cli_session,
+                                            monkeypatch):
+        """The gap this closes: `--accounts` reported 0 in production while the
+        dashboard showed a real queue, because it only ever read the action log
+        and the card reads the sweep's published snapshot.
+
+        ⚠️ Overlap between the feeds is normal — Feed A is precisely what has
+        POSTED, Feed B what XRAS approved and may or may not have sent — so
+        this is a union on the casefolded username, not a concatenation.
+        """
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.cache.load_pending_worklist',
+            lambda: {'rows': [{'username': 'ghostpendingonly',
+                               'classification': 'absent', 'remedy': 'create',
+                               'placeholder': False, 'roles': ('PI',),
+                               'actions': [], 'sources': ['reports'],
+                               'is_account_to_be_created': False,
+                               'first_seen': None, 'last_seen': None,
+                               'person': None, 'is_reconciled': None,
+                               'latest_action_log_id': None}]})
+
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
+        payload = json.loads(result.stdout)
+
+        assert payload['pending_checked'] is True
+        names = [a['username'] for a in payload['accounts']]
+        assert 'ghostpendingonly' in names
+
+    def test_enrich_without_the_api_is_an_error(self, runner, cli_session,
+                                                monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['xras', '--accounts', '--enrich'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_enrich_requires_accounts(self, runner, cli_session):
+        result = runner.invoke(cli, ['xras', '--enrich'])
+        assert result.exit_code == EXIT_ERROR
+        assert '--enrich requires --accounts' in result.output
+
+
+class TestPersonMode:
+    """The three-outcome model reaches the exit code intact."""
+
+    def _configure(self, monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+
+    def test_a_found_person_exits_zero(self, runner, cli_session, monkeypatch):
+        self._configure(monkeypatch)
+        monkeypatch.setattr('sam.integration.xras_api.get_person',
+                            lambda u: {'username': u, 'firstName': 'Ada',
+                                       'lastName': 'Invented',
+                                       'isReconciled': False})
+        result = runner.invoke(cli, ['xras', '--person', 'ghost-user-1'])
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unknown_username_exits_not_found(self, runner, cli_session,
+                                                 monkeypatch):
+        self._configure(monkeypatch)
+        monkeypatch.setattr('sam.integration.xras_api.get_person',
+                            lambda u: None)
+        result = runner.invoke(cli, ['xras', '--person', 'nobody'])
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    def test_an_outage_exits_error_not_not_found(self, runner, cli_session,
+                                                 monkeypatch):
+        """Collapsing these would make "XRAS is down" indistinguishable from
+        "this person does not exist" — opposite conclusions for an operator."""
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        self._configure(monkeypatch)
+
+        def boom(_u):
+            raise XrasSourceUnavailable('down')
+
+        monkeypatch.setattr('sam.integration.xras_api.get_person', boom)
+        result = runner.invoke(cli, ['xras', '--person', 'anyone'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_unconfigured_exits_error(self, runner, cli_session, monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['xras', '--person', 'anyone'])
+        assert result.exit_code == EXIT_ERROR
+
+    def test_the_json_envelope_carries_the_expected_kind(self, runner, cli_session,
+                                                         monkeypatch):
+        self._configure(monkeypatch)
+        monkeypatch.setattr('sam.integration.xras_api.get_person',
+                            lambda u: None)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--person', 'nobody'])
+        payload = json.loads(result.output)
+        assert payload == {'kind': 'xras_person', 'username': 'nobody',
+                           'found': False, 'person': None}
+
+
+class TestTwoSidedMappingAudit:
+    """The gap that made the pre-cutover gate one-sided."""
+
+    def test_unconfigured_reproduces_the_local_only_report(self, runner,
+                                                           cli_session,
+                                                           monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-mapping'])
+        payload = json.loads(result.output)
+        # `live_checked` False distinguishes "XRAS sends nothing SAM lacks"
+        # from "we never asked" — the report must not imply the stronger claim.
+        assert payload['live_checked'] is False
+        assert payload['xras_only_keys'] == []
+        assert payload['live_key_count'] is None
+
+    def test_a_key_xras_sends_that_sam_lacks_fails_the_gate(self, runner,
+                                                            cli_session,
+                                                            monkeypatch):
+        """The runtime failure this makes visible ahead of time:
+        ``No resource found in SAM corresponding to key %s``."""
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.resource_repository_keys',
+            lambda: [999999999])
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-mapping'])
+        payload = json.loads(result.output)
+        assert payload['live_checked'] is True
+        assert 999999999 in payload['xras_only_keys']
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    def test_an_unreachable_api_warns_and_degrades(self, runner, cli_session,
+                                                   monkeypatch):
+        """The local half is still worth reporting."""
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+
+        def boom():
+            raise XrasSourceUnavailable('down')
+
+        monkeypatch.setattr(
+            'sam.integration.xras_api.resource_repository_keys', boom)
+        result = runner.invoke(cli, ['xras', '--validate-mapping'])
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_the_live_catalog_self_verifies(self, runner, cli_session,
+                                            monkeypatch):
+        """Feeding back exactly the keys SAM already holds must report zero
+        gaps — the shape of the real 13/13 result against production."""
+        from sam.queries.xras_actions import audit_resource_mapping
+
+        from sam.integration.xras import XrasResourceRepositoryKeyResource
+
+        local = audit_resource_mapping(cli_session)
+        known = [r.resource_repository_key for r in
+                 cli_session.query(XrasResourceRepositoryKeyResource).all()]
+
+        report = audit_resource_mapping(cli_session, xras_keys=known)
+        assert report['xras_only_keys'] == []
+        assert report['live_checked'] is True
+        assert report['live_key_count'] == len(set(known))
+        # The local half is untouched by the new argument.
+        assert report['unmapped_active'] == local['unmapped_active']
+        assert report['dangling_keys'] == local['dangling_keys']
+
+
+class TestOpportunityAudit:
+    """``--validate-opportunities`` — the map whose failure mode is silent.
+
+    Every other XRAS mapping gap 422s the action. An unmapped ``opportunityId``
+    falls through to the free-text ladder, which cannot name any facility-4
+    allocation type — so a Wyoming request resolves to a UNIV panel, the join
+    *succeeds*, and the project is created with a UNIV projcode. Nothing fails.
+    That is why this command exists and why its exit code is so narrow.
+    """
+
+    #: One open-opportunity payload, in the shape ``GET /v1/opportunities``
+    #: returns: the type id lives under ``allocationTypeInfo`` and the panel is
+    #: the one flagged ``isPrimary``, never ``panels[0]``.
+    @staticmethod
+    def _payload(opportunity_id, *, type_id, panel_id, name, alloc_type=None):
+        return {
+            'opportunityId': opportunity_id,
+            'opportunityName': name,
+            'allocationType': alloc_type,
+            'allocationTypeInfo': {'allocationTypeId': type_id},
+            'panels': [{'panelId': panel_id, 'isPrimary': True}],
+        }
+
+    def _run(self, runner, payloads, monkeypatch, *, fmt_json=True):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        client = MagicMock()
+        client.get_open_opportunities.return_value = payloads
+        monkeypatch.setattr(
+            'sam.integration.xras_api.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        args = ['xras', '--validate-opportunities']
+        return runner.invoke(cli, (['--format', 'json'] + args) if fmt_json
+                             else args)
+
+    # -- the degraded halves ------------------------------------------------
+
+    def test_unconfigured_reports_the_local_half_and_says_so(self, runner,
+                                                             cli_session,
+                                                             monkeypatch):
+        """Fail-closed, exactly as ``--validate-mapping`` degrades.
+
+        ``live_checked`` False is the whole point: "nothing is unmapped out
+        there" and "we never asked" must not render as the same report.
+        """
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '0')
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-opportunities'])
+        payload = json.loads(result.output)
+        assert payload['kind'] == 'xras_opportunity_mapping'
+        assert payload['live_checked'] is False
+        assert payload['live_id_count'] is None
+        assert payload['unmapped_ids'] == []
+        assert payload['proposal'] == {'agree': [], 'review': [],
+                                       'unknown_pair': []}
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unreachable_api_warns_and_degrades(self, runner, cli_session,
+                                                   monkeypatch):
+        """The local half is still worth reporting, and it is still exit 0."""
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        client = MagicMock()
+        client.get_open_opportunities.side_effect = XrasSourceUnavailable('down')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        result = runner.invoke(cli, ['xras', '--validate-opportunities'])
+        assert result.exit_code == EXIT_SUCCESS
+        assert 'local half only' in result.output
+
+    # -- the exit-code contract, which is the easy thing to get wrong -------
+
+    def test_an_unmapped_opportunity_is_not_a_failure(self, runner, cli_session,
+                                                      monkeypatch):
+        """With an EMPTY table every opportunity is unmapped and ingestion is
+        completely healthy — the ladder resolves them exactly as it did before
+        the table existed. A gate keyed on this would fail forever, which is
+        the mistake ``--validate-mapping`` already made once and corrected."""
+        result = self._run(runner, [self._payload(
+            9_100_001, type_id=500024, panel_id=500021,
+            name='Small Allocation (University)', alloc_type='Small')],
+            monkeypatch)
+        payload = json.loads(result.output)
+        assert 9_100_001 in payload['unmapped_ids']
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_a_dangling_row_is_the_one_failing_state(self, runner, cli_session,
+                                                     monkeypatch, session):
+        """A mapping row whose allocation type has no panel. The ingest-side
+        lookup must treat it as a miss and fall through *silently*, so nothing
+        else would ever surface it."""
+        from factories import make_allocation_type, make_xras_opportunity_mapping
+
+        alloc_type = make_allocation_type(session)
+        alloc_type.panel_id = None
+        session.flush()
+        row = make_xras_opportunity_mapping(session, allocation_type=alloc_type)
+
+        result = self._run(runner, [], monkeypatch)
+        payload = json.loads(result.output)
+        assert row.opportunity_id in payload['dangling_ids']
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    # -- the agree rule -----------------------------------------------------
+
+    def test_an_agreed_pair_is_reported_as_mappable(self, runner, cli_session,
+                                                    monkeypatch):
+        """Both derivations produce ``CHAP``/``CHAP``, so the sweep would write
+        it and there is nothing for a human to decide."""
+        result = self._run(runner, [self._payload(
+            9_100_002, type_id=500023, panel_id=500022,
+            name='Large Allocation (University) - Fall 2026',
+            alloc_type='Large')], monkeypatch)
+        payload = json.loads(result.output)
+        agreed = {e['opportunity_id']: e for e in payload['proposal']['agree']}
+        assert 9_100_002 in agreed
+        assert agreed[9_100_002]['pair'] == ['CHAP', 'CHAP']
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_a_disagreement_is_withheld_and_reported_with_both_answers(
+            self, runner, cli_session, monkeypatch):
+        """The known live case: XRAS files the unsponsored family under
+        ``Educational`` — the same type id as Classroom — while SAM means
+        ``Small (No NSF award)``. It changes the answer, so a human decides.
+
+        ⚠️ Reported with **both** derivations, so the row explains itself
+        without a second query. That is what makes it actionable rather than
+        merely alarming.
+        """
+        result = self._run(runner, [self._payload(
+            9_100_003, type_id=500026, panel_id=500021,
+            name='University small request - unsponsored',
+            alloc_type='Exploratory')], monkeypatch)
+        payload = json.loads(result.output)
+        review = {e['opportunity_id']: e for e in payload['proposal']['review']}
+        assert 9_100_003 in review
+        assert review[9_100_003]['xras'] != review[9_100_003]['ladder']
+        assert payload['proposal']['agree'] == []
+        # A withheld row is the rule WORKING. Two pairs sit here permanently by
+        # design, so exiting non-zero would train an operator to ignore the one
+        # bucket that matters.
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unknown_pair_is_reported_never_guessed(self, runner, cli_session,
+                                                       monkeypatch):
+        """A genuinely new allocation product. Adding it is a one-line edit to
+        ``sam/xras/opportunity_types.py`` — a code review, not a silent write."""
+        result = self._run(runner, [self._payload(
+            9_100_004, type_id=999_001, panel_id=999_002,
+            name='Wyoming Small Allocation', alloc_type='Small')], monkeypatch)
+        payload = json.loads(result.output)
+        unknown = [e['opportunity_id']
+                   for e in payload['proposal']['unknown_pair']]
+        assert 9_100_004 in unknown
+        assert payload['proposal']['agree'] == []
+        assert result.exit_code == EXIT_SUCCESS
+
+    # -- the scoping rule ---------------------------------------------------
+
+    def test_the_proposal_covers_only_unmapped_opportunities(
+            self, runner, cli_session, monkeypatch, session):
+        """⚠️ The rule that keeps the ``review`` bucket meaningful.
+
+        Two rows in production are ``source='manual'`` *because* the two
+        derivations disagree and a human settled it. Run the proposal over
+        everything and those reappear in ``review`` on every invocation, which
+        is precisely how an operator learns to ignore the bucket. So the
+        proposal sees the unmapped subset only — the same scoping
+        ``_map_new_opportunities`` uses in ``xras_sweep``.
+        """
+        from factories import make_allocation_type, make_xras_opportunity_mapping
+
+        row = make_xras_opportunity_mapping(
+            session, allocation_type=make_allocation_type(session),
+            opportunity_name='already decided by a human')
+
+        result = self._run(runner, [self._payload(
+            row.opportunity_id, type_id=500026, panel_id=500021,
+            name='already decided by a human',
+            alloc_type='Exploratory')], monkeypatch)
+        payload = json.loads(result.output)
+
+        assert row.opportunity_id in payload['mapped_ids']
+        assert row.opportunity_id not in payload['unmapped_ids']
+        seen = [e['opportunity_id']
+                for bucket in payload['proposal'].values() for e in bucket]
+        assert row.opportunity_id not in seen
+
+    # -- rendering ----------------------------------------------------------
+
+    def test_rich_mode_renders_all_three_buckets(self, runner, cli_session,
+                                                 monkeypatch):
+        result = self._run(runner, [
+            self._payload(9_100_005, type_id=500023, panel_id=500022,
+                          name='agrees', alloc_type='Large'),
+            self._payload(9_100_006, type_id=500026, panel_id=500021,
+                          name='disagrees', alloc_type='Exploratory'),
+            self._payload(9_100_007, type_id=999_001, panel_id=999_002,
+                          name='unknown to the constant', alloc_type='Small'),
+        ], monkeypatch, fmt_json=False)
+        assert result.exit_code == EXIT_SUCCESS
+        assert 'Would be mapped automatically' in result.output
+        assert 'the two derivations disagree' in result.output
+        assert 'a new allocation product' in result.output
+
+
+class TestWorklistRendering:
+    """The rich renderers on a populated worklist.
+
+    The empty-list cases above never reach the table-building code, so a
+    formatting mistake there would ship green.
+    """
+
+    @staticmethod
+    def _payload(**overrides):
+        row = {
+            'username': 'ghost-user-1', 'classification': 'absent',
+            'remedy': 'create', 'placeholder': True, 'roles': ['PI'],
+            'is_account_to_be_created': True, 'is_reconciled': False,
+            'first_seen': None, 'last_seen': None,
+            'latest_action_log_id': 7, 'sources': ['action_log'],
+            'person': None,
+            'actions': [{'action_log_id': 7, 'request_number': 'NCAR0001',
+                         'action_type': 'New', 'status': 'received',
+                         'received_time': None, 'source': 'action_log',
+                         'would_succeed': False,
+                         'reject_messages': ['Username x is missing']}],
+        }
+        row.update(overrides)
+        return {'kind': 'xras_accounts',
+                'counts': {'total': 1, 'absent': 1, 'inactive': 0,
+                           'placeholder': 1, 'reconciled': 0},
+                'enriched': False, 'enrichment': None, 'accounts': [row]}
+
+    def _render(self, payload):
+        from rich.console import Console
+
+        from cli.xras.display import display_account_worklist
+
+        console = Console(record=True, width=200)
+        ctx = MagicMock()
+        ctx.console = console
+        display_account_worklist(ctx, payload)
+        return console.export_text()
+
+    def test_an_absent_placeholder_renders(self):
+        out = self._render(self._payload())
+        assert 'ghost-user-1' in out
+        assert 'create' in out and 'placeholder' in out
+        assert 'NCAR0001' in out
+
+    def test_an_inactive_row_says_reactivate(self):
+        out = self._render(self._payload(classification='inactive',
+                                         remedy='reactivate',
+                                         placeholder=False))
+        assert 'reactivate' in out
+
+    def test_identity_state_renders_in_all_three_states(self):
+        """XRAS-side identity, not progress — and deliberately not worded as
+        "reconciled"/"unreconciled" next to a placeholder count, which is a
+        different fact entirely (see the card's header-badge test)."""
+        assert 'unidentified' in self._render(self._payload(is_reconciled=False))
+        assert 'identified' in self._render(self._payload(is_reconciled=True))
+        # None means "XRAS was not asked" — distinct from a definite answer.
+        self._render(self._payload(is_reconciled=None))
+
+    def test_the_summary_line_calls_placeholders_placeholders(self):
+        out = self._render(self._payload())
+        assert 'placeholder identities' in out
+        assert 'unreconciled ARC' not in out
+
+    def test_an_outage_is_reported_under_the_table(self):
+        payload = self._payload()
+        payload['enriched'] = True
+        payload['enrichment'] = {'looked_up': 0, 'found': 0, 'closed': 0,
+                                 'unavailable': True, 'budget_exhausted': False,
+                                 'error': 'down'}
+        out = self._render(payload)
+        assert 'unavailable' in out
+        assert 'complete' in out          # the worklist itself still is
+
+    def test_the_person_renderer_covers_found_and_missing(self):
+        from rich.console import Console
+
+        from cli.xras.display import display_person
+
+        for payload, expected in (
+                ({'kind': 'xras_person', 'username': 'u', 'found': False,
+                  'person': None}, 'no user'),
+                ({'kind': 'xras_person', 'username': 'u', 'found': True,
+                  'person': {'firstName': 'Ada', 'lastName': 'Invented',
+                             'email': 'ada@example.invalid',
+                             'residenceCountry': 'Kiribati',
+                             'isReconciled': False}}, 'Kiribati')):
+            console = Console(record=True, width=200)
+            ctx = MagicMock()
+            ctx.console = console
+            display_person(ctx, payload)
+            assert expected in console.export_text()

@@ -1484,6 +1484,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_accounts_fragment",
+    "/allocations/xras_accounts_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_action_details",
     "/allocations/xras_action_details/<int:action_id>",
     [
@@ -1554,6 +1561,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_pending_requests_fragment",
+    "/allocations/xras_pending_requests_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_recheck",
     "/allocations/xras_recheck/<int:action_id>",
     [
@@ -1565,6 +1579,13 @@
     "/allocations/xras_restore/<int:project_id>",
     [
       "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_window_fragment",
+    "/allocations/xras_window_fragment",
+    [
+      "GET"
     ]
   ],
   [

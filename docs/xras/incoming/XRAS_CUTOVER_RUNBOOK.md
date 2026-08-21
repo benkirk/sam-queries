@@ -28,9 +28,15 @@ no code is left.** The design, the measurements and the reasoning live in
 | 1b | The whole legacy surface is mapped — all eight endpoints, not the seven XRAS calls today | `pytest tests/api/test_xras_roles.py tests/api/test_xras_unmapped.py -q` |
 | 2 | ✅ **Done 2026-08-10.** The audit table carries `action_id`, `service`, `outcome_reason` | `SHOW COLUMNS FROM xras_action_log` on the target DB |
 | 2b | ✅ **Done 2026-08-10.** ⚠️ The DDL applied is the **current** `zz-90`/`zz-91`/`zz-92` — **exactly 7** columns must come back utf8mb4: `raw_payload`, `error_messages`, `comment`, `notified_to`, `recipient_name`, `subject`, `error` | `SELECT TABLE_NAME, COLUMN_NAME, CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='sam' AND TABLE_NAME IN ('xras_action_log','xras_activation_event','notification_log') AND CHARACTER_SET_NAME='utf8mb4'` |
-| 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml:291` — and confirm it in the running pod's env before anything else |
+| 3 | `XRAS_ACTIONS_CAPTURE_ONLY` is `"1"` | `helm/values.yaml`, key `XRAS_ACTIONS_CAPTURE_ONLY` — and confirm it in the running pod's env before anything else |
 | 4 | The replay-and-diff oracle passes | `pytest tests/unit/test_xras_oracle.py -q` |
 | 5 | A notification path exists for `active = 0` projects | Sprint B's pending-activation card on the Allocations dashboard |
+
+⚠️ **This document cites `helm/values.yaml` by key name, never by line number.** Three
+refs here were repaired once (`:291` → `:316`) and were wrong again within the same
+branch, because the commit that repaired them also rewrote the comment above the setting
+and pushed it down sixteen lines. Both keys are unique in the file; `grep` is the stable
+address and a line number is a fact with a half-life.
 
 ⚠️ **Precondition 3 is the interlock and it is the one to physically check**, not assume.
 While it is `"1"` the endpoint authenticates, parses and audits every post and dispatches
@@ -90,6 +96,73 @@ mysql --defaults-file=<creds> < containers/sam-sql-dev/initdb.d/zz-92-notificati
 this gate listed only the two XRAS tables for a while, which is precisely the
 one-table-short mistake the "one ticket" rule exists to prevent.
 
+### 2c · `xras_opportunity_allocation_type` · ✅ **DONE 2026-08-20**
+
+A fourth table, applied the same way and by the same grant. It is **not** part of
+the cutover gate — the map is additive by design, and an empty table simply falls
+through to the extractor ladder — but the DDL of record belongs here with the rest.
+
+No `initdb.d` hook this time: that directory and its `COPY` were retired
+(`containers/sam-sql-dev/Dockerfile:8-27`), so this was applied to production and
+the snapshot regenerated instead. `REFERENCES` is again the load-bearing grant —
+this table has an FK to `allocation_type`.
+
+```sql
+CREATE TABLE IF NOT EXISTS xras_opportunity_allocation_type (
+  opportunity_id     INT          NOT NULL,
+  allocation_type_id INT          NOT NULL,
+  opportunity_name   VARCHAR(120)     NULL,
+  PRIMARY KEY (opportunity_id),
+  KEY xras_opportunity_alloc_type_at_idx (allocation_type_id),
+  CONSTRAINT xras_opportunity_alloc_type_at_fk
+    FOREIGN KEY (allocation_type_id)
+    REFERENCES allocation_type (allocation_type_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
+```
+
+Then the nine known opportunities, seeded with **the pair the ladder already
+produces** — which is what makes the map a drop-in rather than a behaviour change.
+
+⚠️ Connect with a **utf8mb4 client charset**: 530902's name carries an em-dash.
+⚠️ Ids are resolved by name at runtime, never pinned — and the row count is the
+check. Fewer than 9 means a panel or allocation-type name has drifted.
+
+```sql
+INSERT INTO xras_opportunity_allocation_type (opportunity_id, allocation_type_id, opportunity_name)
+SELECT v.oid, at.allocation_type_id, v.name
+  FROM ( SELECT 530902 AS oid, 'UNIV USS' AS panel, 'Small' AS atype,
+                'University small request — with NSF award' AS name
+         UNION ALL SELECT 531428, 'CHAP', 'CHAP', 'University Large Request - Fall 2021'
+         UNION ALL SELECT 532220, 'UNIV USS', 'Small', 'Small Allocation (University)'
+         UNION ALL SELECT 532221, 'UNIV USS', 'Small (No NSF award)', 'Exploratory Allocation (University)'
+         UNION ALL SELECT 532222, 'UNIV USS', 'Data', 'Data Analysis Allocation (University)'
+         UNION ALL SELECT 532223, 'UNIV USS', 'Classroom', 'Classroom Allocation (University)'
+         UNION ALL SELECT 533144, 'CHAP', 'CHAP', 'Large Allocation (University) - Spring 2024'
+         UNION ALL SELECT 533606, 'CHAP', 'CHAP', 'Large Allocation (University) - Fall 2024'
+         UNION ALL SELECT 533936, 'CHAP', 'CHAP', 'Large Allocation (University) - Spring 2025' ) v
+  JOIN panel p            ON p.panel_name = v.panel
+  JOIN allocation_type at ON at.panel_id = p.panel_id AND at.allocation_type = v.atype;
+
+SELECT COUNT(*) FROM xras_opportunity_allocation_type;   -- 9
+```
+
+**Provenance, added 2026-08-20** so an automatically-derived row is
+distinguishable from a human's decision:
+
+```sql
+ALTER TABLE xras_opportunity_allocation_type
+  ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'manual';
+```
+
+Four rows are `manual` because XRAS is wrong about them and no API can say so —
+the unsponsored family (530296, 530315, 530900) and `NCAR - ASD Opportunity`
+(531461). See the design doc § 8.5.
+
+Adding a **new** opportunity is now nothing at all: `xras_sweep` writes it on
+the next hourly run when the type map and the free-text ladder agree, and
+withholds it for review when they do not. Design:
+[`XRAS_OPPORTUNITY_ALLOCATION_TYPE.md`](../outgoing/XRAS_OPPORTUNITY_ALLOCATION_TYPE.md).
+
 Verified on production, all five matching:
 
 | Check | Expected | Got |
@@ -109,19 +182,55 @@ bootstrap after `terraform apply`, so an existing instance never picks them up. 
 that DB is given the DDL, the XRAS tab and Admin → Notifications 500 there. CIRRUS/k8s
 is the deployment target; ECS-staging is a check-the-render environment.
 
-### 3 · Parity against the deployed host
+### 3 · Parity against the deployed host · ✅ **PASSED 2026-08-19 — 13/13 byte-identical**
 
 ```bash
-python utils/parity/check_legacy_apis.py --api xras   # against sam.hpc.ucar.edu
+python utils/parity/check_legacy_apis.py --api xras \
+       --new-base-url https://sam.hpc.ucar.edu --xras-user benkirk --timeout 120
 ```
 
-Uses our own `samuel` credential. This is the **GET-side** cutover verification and it is
-independent of gate 4.
+Uses the `ROLE_XRAS` credential (`SAM_XRAS_USER` / `SAM_XRAS_PASS`, already in `.env`).
+This is the **GET-side** cutover verification and it is independent of gate 4.
 
-- **Done when** the run is byte-clean across all six endpoints.
+```
+== xras == 13/13 checks passed (65.2s)
+  ✓ people roster: 3,844,518 B identical      ✓ dates/requests single: 120 B identical
+  ✓ people/{username}: 170 B identical        ✓ dates/requests multi:  306 B identical
+  ✓ people/{username} 404: 58 B identical     ✓ requests/request/{SCSG0001,SCSG0002,UCIS0004}
+  ✓ requests/user/benkirk: 6 masters          ✓ requests/role/{pi,co_pi,allocation_manager}
+```
+
+⚠️ **Three flags are load-bearing, and the bare command is a weaker run than it looks.**
+
+- **`--new-base-url`** — the script's default is `samuel.k8s.ucar.edu`. Same app, but the
+  cutover host is the one to prove.
+- **`--xras-user`** — without it the script *samples* the roster for a user with requests,
+  and on a real run **all eight sampled users had none**. It warns and carries on, and the
+  result is `8/8 passed` with `requests/request/*` exercised only against an unknown
+  number and `dates/requests` **not probed at all**. A green 8/8 and a green 13/13 look
+  identical at a glance. Read the check list, not the count.
+- **`--timeout 120`** — legacy answers `requests/request/SCSG0001` in ~6.8 s (the new
+  stack: ~0.67 s) and dropped the connection outright on one run:
+  `RemoteDisconnected('Remote end closed connection without response')`. That is legacy
+  being slow, not a parity failure — both hosts return the same 30,296 bytes. Retry
+  before investigating.
+
+- **Done when** the run is byte-clean across all six endpoints — i.e. **13** checks, with
+  `dates/requests` and a populated `requests/request/{n}` among them.
 - ⚠️ Re-run it if anything changes `xras_resource_repository_key_resource`.
   `resourceRepositoryKey` is *omitted* when a resource is unmapped, so **adding a mapping
-  row changes GET response bytes** and invalidates a previous clean run.
+  row changes GET response bytes** and invalidates a previous clean run. That is the most
+  likely triage-week fix, so expect to re-run this during the week.
+
+✅ **#458 and #459 do NOT invalidate this run** — checked rather than assumed, because the
+default assumption for two large XRAS PRs is that they do. Three independent reasons:
+`src/webapp/api/xras/` is untouched by both merges; `src/sam/xras/roster.py`'s nine new
+lines are a comment block (why exact `String.equals` role matching is correct) with no
+executable change; and neither PR adds a `xras_resource_repository_key_resource` row —
+there is no DDL or seed in either diff. `xras_opportunity_allocation_type` is read only by
+`sam/xras/extractors.py`, i.e. the inbound **POST** path, so it cannot move GET bytes.
+
+The trigger above stays exactly as sharp: it is a *mapping row*, not "an XRAS change".
 
 ### 4 · The 400/422 contract · ✅ **ANSWERED 2026-08-11**
 
@@ -146,12 +255,26 @@ thread. Verbatim, because each clause retires something:
   (timestamp 1771966790970)","result":null}` — against ACCESS's own accounting service,
   which explains *why* an action failed. Our accumulated 422 list is exactly that fix.
 
-⚠️ **One thing this opens.** The response body is shown to a human, and a **parked**
-action currently answers `message: 'OK'` — byte-identical to a success. So an admin who
-posts a `Date Adjustment` (or a Transfer, or anything disabled by the triage lever) is
-told it worked. Legacy does the same, so this is not a regression and not a cutover
-blocker, but Steve has explicitly invited an informative body. Cheap to fix and outside
-the parity gate, which covers the six **GET** endpoints only. **Decide before cutover.**
+✅ **The one thing this opened is now closed — 2026-08-19.** The response body is shown
+to a human, and a **parked** action answered `message: 'OK'` — byte-identical to a
+success. So an admin who posted a `Date Adjustment` (or a Transfer, or anything disabled
+by the triage lever) was told it worked. Legacy does the same, so it was never a
+regression or a blocker; but `Date Adjustment` parks and is 4 of the 41 corpus payloads,
+which makes the silent-success arm the *common* one, and Steve explicitly invited an
+informative body.
+
+**Decided: the `manual` arm now answers a distinct message; `processed` still answers
+`'OK'`.** Two constraints shaped it:
+
+- **The status stays 200.** Steve: *"Any status other than 200/OK is considered an
+  error."* A parked action is not an error, so 202 — the tidy REST answer — would have
+  been read as a failure.
+- **The body is a module constant, not `DispatchResult.reason`.** Three of the four
+  parking causes name internal machinery (`XRAS_ACTIONS_ENABLED`, an unregistered
+  handler) that an ACCESS admin can neither act on nor should see. That detail stays in
+  `xras_action_log.outcome_reason`, which is what our own operator surfaces read.
+
+Outside the parity gate, which covers the six **GET** endpoints only.
 
 ⚠️ **Also raised, and not yet triaged.** Steve reports anomalies in the *GET*
 `/v1/requests/*` responses: NCAR does not return `xrasActionId` or `xrasActionResourceId`,
@@ -186,25 +309,56 @@ it later would not either.
 Coordinated with ACCESS. Two things happen, and the order matters:
 
 1. **XRAS repoints** its base URL to `sam.hpc.ucar.edu`.
-2. **`XRAS_ACTIONS_CAPTURE_ONLY` flips to `"0"`** in `helm/values.yaml:291`, and deploy.
+2. **`XRAS_ACTIONS_CAPTURE_ONLY` flips to `"0"`** in `helm/values.yaml`, and deploy.
 
 Flipping *before* the repoint is harmless (nothing is arriving). Flipping *after* means
-every post in the gap is captured as `received` and must be replayed by hand — recoverable,
-but work. Flipping **early on a stack XRAS is already posting to** is the double-apply, and
-is the thing this interlock exists to prevent.
+every post in the gap is captured as `received`. Flipping **early on a stack XRAS is
+already posting to** is the double-apply, and is the thing this interlock exists to
+prevent.
+
+✅ **Done 2026-08-19: step 2 landed first, deliberately, ahead of the repoint.** The
+runbook originally read as if the two steps were simultaneous. They are not symmetric,
+and the asymmetry is worth stating because it is the opposite of the intuition that a
+safety interlock should come off last:
+
+> A post that arrives while `CAPTURE_ONLY` is `"1"` is stranded. **`--recheck` cannot
+> apply it** — `dispatch_action(..., validate_only=True)` returns before
+> `management_transaction` opens, structurally — so the only recovery is asking the XRAS
+> admin to push the button again, per action. Meanwhile flipping early costs nothing at
+> all: XRAS is still posting to `sam.ucar.edu`, so the dispatching arm sees no traffic
+> until the repoint.
+
+So the gap has a real price in one direction and none in the other. Verify the log holds
+no `received` rows before flipping — if it does, XRAS has already repointed and those
+posts need to be re-sent.
+
+⚠️ Order the *checks* accordingly: `sam-admin xras --summary` first, flip second.
 
 ---
 
 ## Triage week
 
+➡️ **The full version is [`XRAS_TRIAGE_PLAYBOOK.md`](XRAS_TRIAGE_PLAYBOOK.md)** — how to
+classify a row, the 422 catalog with the data fix for each, and what the levers cost.
+What follows is the short form.
+
 The watch surface, in the order you will reach for it:
 
 | Surface | What it answers |
 |---|---|
-| Allocations → XRAS page | Everything, filterable, with the raw payload behind `MANAGE_XRAS` |
+| XRAS → **Pending Activations & Notifications** | Everything received, filterable, raw payload behind `MANAGE_XRAS` |
+| XRAS → **Accounts Needed** | The usernames on received actions with no usable SAM account — the 55% failure class, as a worklist |
+| XRAS → **Pending Requests** | Approved XRAS requests *not yet pushed*: the same problem before the action arrives |
 | `sam-admin xras --summary` | Status counts at a glance |
 | `sam-admin xras --status failed` | The 422s, with their error lists |
 | `sam-admin xras --status manual` | What was parked, and now **why** |
+| `sam-admin xras --accounts [--enrich]` | The account worklist on the CLI |
+| `sam-admin xras --validate-mapping` / `--validate-opportunities` | The two mapping tables, both sides |
+
+⚠️ **A populated Pending Requests tab beside an empty Accounts Needed tab is the correct
+state before the repoint**, not a bug. Accounts Needed reads `xras_action_log`, which is
+at 0 rows until XRAS repoints; Pending Requests reaches `api.xras.org` directly and was
+answering in production on 2026-08-20 (22 requests, 18 accounts needed).
 
 **The three columns C.1b added are what make a row triageable**, so use them:
 
@@ -227,7 +381,7 @@ The watch surface, in the order you will reach for it:
 **Park one action type by config, without a revert:**
 
 ```yaml
-XRAS_ACTIONS_ENABLED: "Extension,Supplement"   # helm/values.yaml:295
+XRAS_ACTIONS_ENABLED: "Extension,Supplement"   # helm/values.yaml
 ```
 
 Narrow it to whatever should keep running. The excluded types take the audited `manual`
@@ -273,7 +427,13 @@ new.
 - **11 active resources have no XRAS mapping.** ✅ **Expected** — not every internal
   resource is offered for allocation through XRAS. `sam-admin xras --validate-mapping` is
   a *diagnostic*, not a gate: it matters only if a resource that **should** be allocatable
-  appears in that list. It exits non-zero only on a dangling key.
+  appears in that list.
+  ⚠️ Since #458 the audit is **two-sided** and exits non-zero on **two** states, not one:
+  a dangling key (a broken FK on our side) *and* `xras_only_keys`, a key XRAS offers that
+  SAM cannot resolve — the one that actually breaks an award. Measured 2026-08-20:
+  **13/13 of the keys XRAS offers resolve**, zero dangling, so that failure cannot fire
+  against today's catalog. Unconfigured or unreachable API degrades to the local half and
+  says so; do not read a one-sided report as a clean two-sided one.
 - **89% of active organizations have no mnemonic soft link** (153 of 171), and 80% of
   institutions. This is the root of New's 24% mnemonic failure class. A data fix, and it
   would move New's success rate more than any code.
