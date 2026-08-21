@@ -86,6 +86,12 @@
 <form id="xras-accounts-filters" class="d-none">
     <select name="classification" multiple hidden></select>
     <select name="role" multiple hidden></select>
+    {# ⚠️ A facet_row whose `field` has no control here renders as chips that
+       silently do nothing — the click writes into a form field that does not
+       exist and the re-submit carries no value. Caught by the smoke, and the
+       macro says so in as many words. Every dimension the card offers needs a
+       line in this form. #}
+    <select name="origin" multiple hidden></select>
     <select name="request_number" multiple hidden></select>
 </form>
 <form id="xras-pending-filters" class="d-none">

@@ -146,8 +146,8 @@ def test_both_classification_chips_render(page):
     different claim from 'none'."""
     card = _load(page)
     text = card.inner_text()
-    assert 'Create account' in text
-    assert 'Reactivate account' in text
+    assert 'New account' in text
+    assert 'Reactivation' in text
 
 
 def test_a_chip_filters_without_a_page_load(page):
@@ -158,7 +158,7 @@ def test_a_chip_filters_without_a_page_load(page):
 
     before = _rows(card).count()
     page.once('load', lambda _: pytest.fail('the chip triggered a full reload'))
-    card.locator('button.facet-chip', has_text='Create account').first.click()
+    card.locator('button.facet-chip', has_text='New account').first.click()
     page.wait_for_timeout(1200)
 
     card = page.locator(CARD)

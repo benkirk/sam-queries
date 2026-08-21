@@ -89,6 +89,25 @@
             {{ facet_row('Request', request_values, form_id, 'request_number',
                          active=selected_requests) }}
         </div>
+        {# ── What this tab IS, so it is not read as a record ───────────────
+           A LOOKAHEAD, not a worklist of record: these are requests approved
+           on the XRAS side that may or may not have posted to SAM yet. It is
+           also the contingent half — it exists only while the outbound API is
+           configured and a sweep has published, whereas the sibling tab is
+           derived from our own audit table and always works. Keeping the two
+           apart is the point; conflating them would trade a guarantee for a
+           maybe. #}
+        <div class="small text-muted mt-2">
+            <i class="fas fa-binoculars"></i>
+            A look ahead at what XRAS has approved and may send soon — not a
+            record of what has been sent. Accounts blocking actions that have
+            <em>already</em> posted are on <strong>Accounts Needed</strong>.
+        </div>
+        <div class="small text-muted mt-1">
+            <i class="fas fa-circle-info"></i>
+            Accounts are mirrored into SAM from the enterprise directory —
+            SAM cannot create or reactivate one.
+        </div>
     </div>
 
     {% if rows %}
@@ -124,9 +143,9 @@
                     </td>
                     <td>
                         {% if row.classification == 'absent' %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Create</span>
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">New account</span>
                         {% else %}
-                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Reactivate</span>
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Reactivation</span>
                         {% endif %}
                     </td>
                     <td>
