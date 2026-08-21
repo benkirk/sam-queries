@@ -151,7 +151,7 @@
                    see dashboards/fragments/collapse.html for when it cannot. #}
                 <tr class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                     <td class="font-monospace text-nowrap">
-                        {{ row.username }}
+                        <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>{{ row.username }}
                         {% if row.placeholder %}
                         {# Text, not an icon: the placeholder shape is already
                            legible in the username itself, and a glyph beside it

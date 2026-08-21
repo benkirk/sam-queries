@@ -16,6 +16,7 @@ Two properties here are specific to this card and worth stating:
 
 from __future__ import annotations
 
+import pathlib
 from datetime import datetime
 from unittest.mock import MagicMock
 
@@ -172,6 +173,41 @@ class TestItIsACardNotATab:
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
         assert body.index('</div>\n\n{% if' if False else 'alloc-xras-remediations') \
             > body.index('alloc-xras-pending-requests')
+
+
+# ── the collapse affordance ─────────────────────────────────────────────
+
+class TestEveryExpandableRowShowsAChevron:
+    """The page shipped four expandable tables and two chevrons.
+
+    A `cursor-pointer` row announces itself only to someone already hovering
+    it, so three of the four tables had no visible affordance at all. The
+    chevron is `.collapse-icon` and nothing else: components.css rotates it
+    off the `aria-expanded` Bootstrap writes onto the trigger, which works for
+    a toggle on the `<tr>` and for one on a `<td>`, and survives an htmx swap
+    with no registration anywhere.
+    """
+
+    PARTIALS = (pathlib.Path(__file__).resolve().parents[2] / 'src' / 'webapp'
+                / 'templates' / 'dashboards' / 'allocations' / 'partials')
+
+    @pytest.mark.parametrize('name', [
+        'xras_activity_card.html',
+        'xras_accounts_card.html',
+        'xras_pending_requests_card.html',
+        'xras_remediations_card.html',
+        'xras_table.html',
+    ])
+    def test_each_expandable_table_offers_one(self, name):
+        assert 'collapse-icon' in (self.PARTIALS / name).read_text()
+
+    @pytest.mark.parametrize('name', [
+        'xras_activity_card.html', 'xras_table.html'])
+    def test_none_still_uses_the_js_driven_marker(self, name):
+        """`.xras-collapse-icon` rotated via an admin-cards.js registration
+        that no longer exists. The class alone renders a chevron that never
+        moves — a silent, plausible-looking regression."""
+        assert 'xras-collapse-icon' not in (self.PARTIALS / name).read_text()
 
 
 # ── facet / control parity ──────────────────────────────────────────────

@@ -100,8 +100,7 @@
                     <td style="white-space:nowrap;"
                         {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
                         {% if expandable %}
-                        <i class="fas fa-chevron-right small text-muted me-1 xras-collapse-icon"
-                           style="transition: transform 0.2s;"></i>
+                        <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>
                         {% endif %}
                         <button type="button" class="btn btn-link p-0 align-baseline"
                                 hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"

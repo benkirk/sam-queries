@@ -131,8 +131,11 @@
         </div>
 
         <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-            <thead>
+        {# Same class string as the three sibling cards. `table-hover` is not
+           decoration here: every row on this table is a click target, and
+           without the hover tint the only cue is the cursor. #}
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-subtle">
                 <tr>
                     <th>Request</th>
                     <th>Status</th>
@@ -174,8 +177,8 @@
                    before any handler on the button runs. See
                    dashboards/fragments/collapse.html. #}
                 <tr class="cursor-pointer" {{ collapse_toggle(rid) }}>
-                    <td class="font-monospace">
-                        {{ row.request_number }}
+                    <td class="font-monospace text-nowrap">
+                        <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>{{ row.request_number }}
                         {% if row.refreshed_at %}
                         {# The tell that this row was patched after a write
                            rather than swept — so an operator can see their own

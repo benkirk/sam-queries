@@ -35,9 +35,23 @@
   A row with NO buttons can keep the toggle on the `<tr>` — there is nothing
   to collide with. Add `cursor-pointer` to whichever cells carry the toggle.
 
-  `SamCollapseChevron.attach()` is unaffected: it looks up
-  `[data-bs-toggle="collapse"]` and finds the chevron inside the trigger,
-  which is now the first cell.
+  ── The affordance: a chevron, and it needs no JavaScript ────────────────
+  A `cursor-pointer` row is only discoverable to someone already hovering it.
+  The house affordance is a right-pointing chevron in the FIRST cell, which
+  rotates to point down when the row opens:
+
+      <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>
+
+  `.collapse-icon` is all it takes. components.css rotates it off the
+  `aria-expanded="true"` Bootstrap writes onto every trigger for the target,
+  so it works for a toggle on the `<tr>` and for one on a `<td>`, survives an
+  htmx swap, and needs no registration anywhere.
+
+  `SamCollapseChevron.attach()` is the older, JS-driven form — an inline
+  `style.transform` set on `show.bs.collapse`, needed only where the icon
+  carries a per-feature marker class the CSS rule cannot see. It also wires
+  up only the triggers present when it runs, which is why each caller has to
+  re-attach on `htmx.onLoad`. Prefer `.collapse-icon` for anything new.
 #}
 
 {% macro collapse_toggle(target_id, expanded=false) -%}

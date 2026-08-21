@@ -54,9 +54,11 @@
                  form_id, 'action_type', filters.action_type or []) }}
 </div>
 
-{# The id is the htmx.onLoad marker admin-cards.js gates chevron wiring on —
-   same mechanism as #contractsTable. #}
+{# The id is the htmx swap target and the re-check route's refresh anchor.
+   The chevron below needs no JS: `.collapse-icon` rotates off the
+   `aria-expanded` Bootstrap writes onto the toggling cell — components.css. #}
 <div id="xrasActionsTable">
+    <div class="table-responsive">
     <table class="table table-sm table-striped table-hover mb-0 audit-table">
         <thead class="table-subtle">
             <tr>
@@ -158,8 +160,7 @@
                 {# THE toggle cell — the only one. See the header note. #}
                 {% if r.errors %}
                 <td class="cursor-pointer small" {{ collapse_toggle(errors_id) }}>
-                    <i class="fas fa-chevron-right small text-muted me-1 xras-collapse-icon"
-                       style="transition: transform 0.2s;"></i>
+                    <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>
                     {# text-danger-emphasis, NOT text-danger: the latter is the
                        saturated brand red, which measures 3.35:1 against the dark
                        card (--surface-card #1b2733) and fails WCAG AA. The
@@ -227,6 +228,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 
     {{ pagination(page, total, fragment_url, target_id, form_id, sort) }}
 </div>

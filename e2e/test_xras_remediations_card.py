@@ -47,7 +47,7 @@ def _rows(card):
     """
     return card.locator(
         '> .card > .card-body > .table-responsive > table > tbody '
-        '> tr:not(.collapse):not(.table-light)')
+        '> tr:not(.collapse):not(.table-subtle)')
 
 
 class TestItRenders:
