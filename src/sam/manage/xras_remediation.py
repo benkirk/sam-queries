@@ -118,11 +118,19 @@ def _close_event(session_factory, event_id, **fields) -> None:
 
 
 def _outcome_fields(result) -> Dict[str, Any]:
-    """Map an :class:`XrasWriteResult` onto the audit row's closing columns."""
+    """Map an :class:`XrasWriteResult` onto the audit row's closing columns.
+
+    ⚠️ ``before_state`` travels here rather than at ``create()``. The client
+    makes its pre-capture *inside* the call, so the ``attempted`` row cannot
+    carry it — and for a merge it is the whole point of the column: the source
+    person's detail sheet, including ``residenceCountry``, exists nowhere else
+    SAM can reach once the merge has deleted them.
+    """
     return {
         'status': result.status,
         'http_status': result.http_status or None,
         'outcome_reason': result.verify_detail or result.write_error,
+        'before_state': result.before,
         'after_state': result.after,
     }
 

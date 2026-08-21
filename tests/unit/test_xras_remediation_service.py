@@ -55,6 +55,8 @@ def _payload(number='EXAM0001', status='Approved', action_status='Approved'):
 
 
 def _result(operation='withdraw_action', verified=True, **kw):
+    kw.setdefault('before', 'Approved')
+    kw.setdefault('after', 'Incomplete')
     return XrasWriteResult(operation=operation, method='DELETE', path='/p',
                            http_status=200, verified=verified,
                            verify_detail='detail', **kw)
@@ -134,6 +136,19 @@ class TestTheAuditRowSurvives:
         row = session.get(XrasRemediationEvent, outcome.event_id)
         assert (row.created_by, row.xa_user) == ('benkirk', 'pi-user')
 
+    def test_the_before_state_is_recorded_for_action_ops_too(
+            self, factory, session):
+        """Not merge-specific: the prior status is what makes a withdraw row
+        readable a year later."""
+        client = MagicMock()
+        client.withdraw_action.return_value = _result()
+        outcome = service.withdraw_action(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            pi_username='pi-user', operator='benkirk', comment='x',
+            client=client)
+        assert session.get(XrasRemediationEvent,
+                           outcome.event_id).before_state == 'Approved'
+
     def test_an_unverified_write_is_not_reported_as_success(
             self, factory, session):
         client = MagicMock()
@@ -192,6 +207,37 @@ class TestMerge:
                                   target_username='real', operator='benkirk',
                                   client=client)
         assert seen == []
+
+    def test_the_pre_merge_person_sheet_is_recorded(self, factory, session,
+                                                    monkeypatch):
+        """⚠️ The reason `before_state` exists at all.
+
+        Merge does not copy person detail, so `residenceCountry` — which the
+        inbound wire never carries either — exists nowhere SAM can reach once
+        the source is deleted. This column is the only copy.
+
+        Regression: the service captured it in the client result and never
+        wrote it, leaving the column permanently NULL. Caught by a local DDL
+        smoke on 2026-08-21, not by any test — hence this one.
+        """
+        monkeypatch.setattr(service, '_patch_requests_naming', lambda _u: True)
+        monkeypatch.setattr(xras_cache, 'invalidate_person', lambda _u: None)
+
+        sheet = {'username': 'ghost-user-abcde', 'residenceCountry': 'Canada',
+                 'organization': 'Example University', 'phone': '555'}
+        client = MagicMock()
+        client.merge_person.return_value = _result(
+            'merge_person', before={'source': sheet, 'target': None})
+
+        outcome = service.merge_placeholder(
+            factory, source_username='ghost-user-abcde',
+            target_username='real', operator='benkirk', client=client)
+
+        row = session.get(XrasRemediationEvent, outcome.event_id)
+        assert row.before_state is not None, \
+            'the pre-merge capture never reached the audit row'
+        assert 'Canada' in row.before_state
+        assert 'Example University' in row.before_state
 
     def test_both_usernames_are_recorded(self, factory, session):
         client = MagicMock()

@@ -115,6 +115,17 @@ class TestTheTwoPhaseWrite:
         assert event.completed_time is not None
         assert event.after_state == '{"source": null}'
 
+    def test_completion_can_write_the_before_capture(self, session):
+        """⚠️ It arrives at COMPLETION, not creation — the client makes the
+        capture during the call, so the `attempted` row cannot carry it."""
+        event = make_xras_remediation_event(session)
+        assert event.before_state is None
+        XrasRemediationEvent.complete(
+            session, event.xras_remediation_event_id, status='verified',
+            before_state={'source': {'residenceCountry': 'Canada'}})
+        session.refresh(event)
+        assert 'Canada' in event.before_state
+
     def test_a_missing_row_is_none_not_an_exception(self, session):
         """The write's own result must not be masked by a bookkeeping failure."""
         assert XrasRemediationEvent.complete(

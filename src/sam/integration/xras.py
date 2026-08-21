@@ -637,8 +637,16 @@ class XrasRemediationEvent(Base, SessionMixin):
 
     @classmethod
     def complete(cls, session, event_id, *, status, http_status=None,
-                 outcome_reason=None, after_state=None, role_id=None):
+                 outcome_reason=None, before_state=None, after_state=None,
+                 role_id=None):
         """Close the row once the outcome is known. Returns it, or ``None``.
+
+        ⚠️ **``before_state`` is written here, not at :meth:`create`.** The
+        capture is made by the client *during* the call — it re-reads the
+        subject immediately before dispatching — so it does not exist yet when
+        the ``attempted`` row is opened. Recording it only at open time would
+        leave this column permanently NULL, which is exactly what it did until
+        2026-08-21.
 
         Called on a **fresh** session — the one that opened the row has already
         committed and gone. ``None`` back means the row vanished, which should
@@ -658,6 +666,8 @@ class XrasRemediationEvent(Base, SessionMixin):
         event.http_status = http_status
         if outcome_reason:
             event.outcome_reason = str(outcome_reason)[:255]
+        if before_state is not None:
+            event.before_state = _as_json_text(before_state)
         if after_state is not None:
             event.after_state = _as_json_text(after_state)
         if role_id is not None:
