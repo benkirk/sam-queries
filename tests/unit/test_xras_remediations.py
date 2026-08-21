@@ -222,6 +222,21 @@ class TestFacetParity:
             assert f'name="{field}"' in form, \
                 f'{field} chips would be silently inert'
 
+    def test_the_search_box_is_bound_to_that_form(self, auth_client, armed):
+        """It renders inside the card and belongs to the form outside it.
+
+        `form=` is what makes a chip click carry the search term: the chip
+        submits `#xras-remediation-filters`, and htmx serializes a form through
+        `form.elements` / `FormData`, both of which include form-associated
+        controls wherever they sit in the document. Drop the attribute and
+        every chip silently resets the search.
+        """
+        _publish(_payload())
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        box = body.split('id="xras-remediation-search"')[1].split('>')[0]
+        assert 'name="search"' in box
+        assert 'form="xras-remediation-filters"' in box
+
 
 # ── the four empty states ───────────────────────────────────────────────
 
@@ -339,6 +354,90 @@ class TestRendering:
         body = auth_client.get(
             FRAGMENT + '?status=Submitted').get_data(as_text=True)
         assert 'EXAM0002' in body and 'EXAM0001' not in body
+
+    def test_the_action_count_is_shown_only_when_it_is_not_one(
+            self, auth_client, armed):
+        """Every row on this card says "1 action". A column of that is noise;
+        the case a withdraw has to reason about is the one that is not 1."""
+        _publish(_payload())
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '1 action' not in body
+
+        payload = _payload()
+        payload['actions'].append({'actionId': 8, 'actionType': 'Extension',
+                                   'actionStatus': 'Approved'})
+        _publish(payload)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '2 actions' in body
+
+
+# ── the search box ──────────────────────────────────────────────────────
+
+class TestSearch:
+    """One box over the fields an operator arrives holding.
+
+    The request number IS the projcode — the sweep resolves a handoff by
+    ``Project.projcode == requestNumber`` — so there is no second identifier
+    to search for. The other two are people, and one of them is invisible
+    until a row is expanded.
+    """
+
+    def test_it_matches_the_request_number(self, auth_client, armed):
+        _publish(_payload('EXAM0001'), _payload('EXAM0002'))
+        body = auth_client.get(
+            FRAGMENT + '?search=exam0002').get_data(as_text=True)
+        assert 'EXAM0002' in body and 'EXAM0001' not in body
+
+    def test_it_matches_the_project_lead_by_display_name(self, auth_client,
+                                                          armed):
+        """The column shows a name, so a name is what gets typed."""
+        _publish(_payload('EXAM0001'), _payload('EXAM0002'))
+        body = auth_client.get(FRAGMENT + '?search=Eye').get_data(as_text=True)
+        assert 'EXAM0001' in body and 'EXAM0002' in body
+
+    def test_it_matches_a_roster_member_the_row_does_not_show(
+            self, auth_client, armed):
+        """⚠️ The reason a request is on this card is usually one person on
+        its roster, and that person is not rendered until the row is expanded.
+        A search that only saw the summary row would miss every one of them."""
+        _publish(_payload('EXAM0001'),
+                 _payload('EXAM0002', placeholder=False))
+        body = auth_client.get(
+            FRAGMENT + '?search=ghost-user').get_data(as_text=True)
+        assert 'EXAM0001' in body and 'EXAM0002' not in body
+
+    def test_a_search_that_matches_nothing_keeps_its_own_box(self, auth_client,
+                                                              armed):
+        """Otherwise the only way out of a typo is a page reload."""
+        _publish(_payload())
+        body = auth_client.get(
+            FRAGMENT + '?search=nothingmatchesthis').get_data(as_text=True)
+        assert 'the current filters hide all of them' in body
+        assert 'id="xras-remediation-search"' in body
+        assert 'value="nothingmatchesthis"' in body
+
+    def test_the_chips_survive_emptying_the_card(self, auth_client, armed):
+        """The copy says "clear the search and chips"; both must be there to
+        clear. They used to render only alongside rows, so they vanished at
+        the moment they were needed."""
+        _publish(_payload('EXAM0001'), _payload('EXAM0002', status='Submitted'))
+        body = auth_client.get(
+            FRAGMENT + '?status=Submitted&search=EXAM0001').get_data(as_text=True)
+        assert 'the current filters hide all of them' in body
+        assert 'facet-chip' in body
+
+    def test_the_date_badge_counts_only_what_the_date_hid(self, auth_client,
+                                                          armed):
+        """⚠️ Measured against `total` it would grow with every keystroke and
+        blame the window for the search."""
+        _publish(_payload('EXAM0001'),
+                 _payload('EXAM0002', submit_date='2015-01-01T00:00:00Z'))
+        plain = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '1 outside the date filter' in plain
+
+        searched = auth_client.get(
+            FRAGMENT + '?search=zzz').get_data(as_text=True)
+        assert '1 outside the date filter' in searched
 
 
 # ── modal GETs ──────────────────────────────────────────────────────────

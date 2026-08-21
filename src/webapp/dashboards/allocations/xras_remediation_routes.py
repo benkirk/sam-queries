@@ -183,6 +183,12 @@ def xras_remediations_fragment():
 
     Renders with **disabled** controls when the write lever is off rather than
     hiding itself: a card that vanishes teaches nobody that a switch exists.
+
+    Filtering is the chips plus a ``search`` box (``_search``), and the
+    controls render whenever anything was swept — including when they have
+    hidden every row. Rendering them only alongside rows is the trap: they
+    disappear at the moment they empty the card, which is the one moment an
+    operator needs to clear them.
     """
     payload = _index()
     configured = xras_api_configured()
@@ -193,6 +199,15 @@ def xras_remediations_fragment():
 
     window = _parse_activity_window(request.args)
     rows = [r for r in rows if _in_window(r, window['since'])]
+    # Counted BEFORE the chips and the search box, because the header badge it
+    # feeds names the date filter specifically. Measured against `swept_total`
+    # it would grow every time an operator typed, and blame the window for it.
+    window_total = len(rows)
+
+    # Applied before the facets, so every chip counts within the search rather
+    # than promising rows the search has already removed.
+    search = (request.args.get('search') or '').strip()
+    rows = _search(rows, search)
 
     selected_statuses = [s for s in request.args.getlist('status') if s]
     selected_opportunities = [o for o in request.args.getlist('opportunity') if o]
@@ -222,6 +237,8 @@ def xras_remediations_fragment():
         groups=_group_by_opportunity(rows),
         total=len(rows),
         swept_total=swept_total,
+        window_total=window_total,
+        search=search,
         snapshot=payload,
         configured=configured,
         write_enabled=write_enabled,
@@ -263,6 +280,42 @@ def _in_window(row, since):
         return True
     start = since.date() if hasattr(since, 'date') else since
     return submitted >= start
+
+
+def _search(rows, needle):
+    """Free-text narrowing over the fields an operator arrives holding.
+
+    Three of them, and they are one field fewer than they look:
+
+    * the **request number, which is also the projcode** — the sweep resolves
+      a handoff by ``Project.projcode == requestNumber``, so ``NCAR4282``
+      typed from a ticket and typed from SAM are the same string. There is no
+      separate projcode to search;
+    * the **project lead**, name or username, because the column shows the
+      display name and "Sharma" is what someone remembers;
+    * **every roster member**, name or username, because the reason a request
+      is on this card is usually one person on its roster — and that person is
+      not visible until the row is expanded, which is exactly why searching
+      for them has to work from the outside.
+
+    Substring, case-folded, no wildcards: the corpus is ~100 rows in memory
+    and anything cleverer would need explaining in the placeholder.
+    """
+    if not needle:
+        return list(rows)
+    wanted = needle.casefold()
+
+    def haystack(row):
+        yield row.get('request_number')
+        pi = row.get('pi') or {}
+        yield pi.get('username')
+        yield pi.get('name')
+        for member in row.get('roster') or ():
+            yield member.get('username')
+            yield member.get('name')
+
+    return [r for r in rows
+            if any(wanted in str(v).casefold() for v in haystack(r) if v)]
 
 
 def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=()):
