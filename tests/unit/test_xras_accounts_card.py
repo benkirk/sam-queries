@@ -148,7 +148,7 @@ class TestRenderStates:
             self, auth_client, committed_worklist_action):
         body = auth_client.get(URL).get_data(as_text=True)
         assert 'placeholder38-user-00038' in body
-        assert 'Create' in body
+        assert 'New account' in body
 
 
 class TestPiiGating:
@@ -201,7 +201,24 @@ class TestFacets:
     def test_both_classifications_render_even_at_zero(self, auth_client):
         """An absent chip reads as 'not measured' — a different claim."""
         body = auth_client.get(URL).get_data(as_text=True)
-        assert 'Create account' in body and 'Reactivate account' in body
+        assert 'New account' in body and 'Reactivation' in body
+
+    def test_the_labels_do_not_tell_an_operator_to_do_what_SAM_cannot(
+            self, auth_client):
+        """⚠️ The remedies are somebody else's work, and the card must not
+        imply otherwise.
+
+        There is no INSERT into ``users`` anywhere in this repo, ``User`` alone
+        among the models has no ``create()``, and nothing writes ``active`` or
+        ``locked`` — identities are mirrored in from the enterprise directory.
+        So "Create account" as a badge was an instruction to a SAM operator who
+        has no way to carry it out. The wire values are unchanged; only what a
+        human reads moved.
+        """
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'Create account' not in body
+        assert 'Reactivate account' not in body
+        assert 'mirrored into SAM from the enterprise directory' in body
 
     def test_facets_are_self_excluding(self):
         """Scope a dimension by itself and every unselected value reads 0 the

@@ -98,16 +98,16 @@ regenerated, which is what was done for the previous three tables on
 additivity tests `DELETE` inside their SAVEPOINT rather than assuming an empty
 table.
 
-### Still deferred
+### ~~Still deferred~~ · ✅ **BUILT 2026-08-20**
 
-`sam-admin xras --validate-opportunities` (§ 5.1). Two notes for whoever builds
-it: XRAS's `panels[]` is the *review-panel* vocabulary (`CISL Resource
-Support`/`CISL RSD`), **not** SAM's `panel` table — only `CHAP` coincides, so
-`/v1/opportunities`'s `panels: [{panelId}]` is evidence for a human and never a
-derivation. And use `GET /v1/opportunities/list/:ids`, which is batched and
-resolves historic/Terminating opportunities: five of the nine known ids are
-closed, and the open list cannot explain them. § 6's "5-edit CLI recipe" is
-really 7 edit points across 4 files.
+`sam-admin xras --validate-opportunities`. See § 8.6 for what it does and the one
+place it deviates from the recipe below.
+
+The two notes written for whoever built it both held: XRAS's `panels[]` is the
+*review-panel* vocabulary (`CISL Resource Support`/`CISL RSD`), **not** SAM's
+`panel` table — only `CHAP` coincides, so `/v1/opportunities`'s
+`panels: [{panelId}]` is evidence for a human and never a derivation. And § 6's
+"5-edit CLI recipe" is indeed 7 edit points across 4 files.
 
 ---
 
@@ -499,12 +499,44 @@ body — silently, because the name is a decorator argument, and invisibly to
 every unit test that calls `mod.xras_sweep` directly. It fails only at dispatch.
 That happened; `test_the_decorator_is_bound_to_the_task_body` is the guard.
 
-### Still deferred
+### 8.6 `sam-admin xras --validate-opportunities` · ✅ **BUILT 2026-08-20**
 
-`sam-admin xras --validate-opportunities`. The decision function is already
-shared, so it is CLI wiring: option, `execute` kwarg, mode method, builder,
-display. Use `GET /v1/opportunities/list/:ids` (the client method exists) — the
-open list cannot explain the 30-odd closed opportunities.
+CLI wiring over `audit_opportunity_mapping` and `propose_opportunity_mapping`, as
+predicted: option, `execute` kwarg, mode method, `_live_opportunities()`, builder,
+display. Both query functions keep their injection contract — the CLI fetches, they
+take ids or payloads and hold zero network knowledge, and `live_checked`
+distinguishes "nothing unmapped out there" from "we never asked".
+
+**Two decisions the recipe did not settle.**
+
+⚠️ **It reads `GET /v1/opportunities` — the OPEN list — not
+`/v1/opportunities/list/:ids`**, which is the opposite of what this section said
+before it was built. The reasoning it was written with is sound for *backfill* and
+wrong for a **check**:
+
+- The historical tail is not this command's job. `xras_sweep` already resolves
+  closed and Terminating ids by batch from `reports/requests`, hourly, and writes
+  the agreeing ones. Duplicating that in the CLI means a 21-page, 60-90 s
+  enumeration behind an interactive flag — and the ids it would report are ones no
+  future action can cite, because the opportunity is closed.
+- The open list is the only place a **brand-new** opportunity appears. By
+  construction `reports/requests` cannot mention one nobody has submitted against
+  yet — and that is exactly the row that would silently mis-resolve, because there
+  is no request yet to notice it on. The lead indicator is the point.
+
+The display says which scope it used, so a one-sided or open-only report cannot be
+read as a stronger claim than it is.
+
+⚠️ **The proposal runs over the UNMAPPED subset only**, mirroring
+`_map_new_opportunities`. Run over everything and the four `source='manual'` rows —
+the ones a human settled precisely *because* the derivations disagree — reappear in
+`review` on every invocation. A bucket that is never empty is a bucket an operator
+stops reading, and this is the one bucket that must be read.
+
+**Exit code: non-zero on `dangling_ids` only.** Not on `unmapped_ids` (an empty
+table is a healthy table — the ladder resolves everything, as it always did) and
+not on `review` (never empty, by design). This is the same trap `--validate-mapping`
+fell into once and corrected; both guards are negative-tested.
 
 ## 9. Do not
 

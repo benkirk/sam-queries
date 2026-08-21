@@ -309,11 +309,27 @@ webapp:
     FS_SCAN_PG_DB: "campaign"
     FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:destor"
     # XRAS action ingestion. CAPTURE_ONLY is the safety interlock: while it is "1" the
-    # endpoint authenticates, parses and audits every post but dispatches nothing,
-    # because legacy SAM at sam.ucar.edu is still the system of record. It flips to "0"
-    # only at cutover, in step with XRAS repointing its base URL to sam.hpc.ucar.edu —
-    # dispatching before then would double-apply actions legacy has already applied.
-    XRAS_ACTIONS_CAPTURE_ONLY: "1"
+    # endpoint authenticates, parses and audits every post but dispatches nothing.
+    #
+    # ✅ RELEASED 2026-08-19, deliberately AHEAD of XRAS repointing its base URL to
+    # sam.hpc.ucar.edu. The two directions are not symmetric:
+    #
+    #   - flipping early costs nothing — XRAS still posts to sam.ucar.edu, so the
+    #     dispatching arm sees no traffic at all until the repoint;
+    #   - flipping late strands every post in the gap as status='received', and
+    #     `sam-admin xras --recheck` CANNOT apply one (validate_only returns before
+    #     management_transaction opens). Recovery is asking the XRAS admin to push the
+    #     button again, per action.
+    #
+    # ⚠️ What this must NOT do is flip early on a stack XRAS is ALREADY posting to —
+    # that double-applies actions legacy has already applied, against live allocations,
+    # with no undo. The precondition is therefore checked, not assumed: no
+    # status='received' rows in xras_action_log before this lands.
+    #
+    # Setting it back to "1" stops all dispatch, at the cost above. To park one
+    # misbehaving action type instead, narrow XRAS_ACTIONS_ENABLED below.
+    # Triage: docs/xras/incoming/XRAS_TRIAGE_PLAYBOOK.md
+    XRAS_ACTIONS_CAPTURE_ONLY: "0"
     # Per-type triage lever, checked only once CAPTURE_ONLY is off. "all" | "none" |
     # e.g. "Extension,Supplement". Narrow this to park a misbehaving payload class as
     # manual without a revert; an unknown token leaves that type disabled.
@@ -516,18 +532,33 @@ tasks:
     # "Approved" is the only status that produces a handoff. Widen to any of
     # the API's filter values, or "all", to survey the pipeline pre-approval.
     SAM_TASKS_XRAS_SWEEP_STATUS: "Approved"
+    # Per-run cap on the sweep's ONE write — new xras_opportunity_allocation_type
+    # rows. Pinned here for the same reason SAM_TASKS_XRAS_MAX above is: it is a
+    # policy decision, and it was the only sweep knob the chart did not name, so
+    # the cluster silently ran the code default. Reports `map_budget_exhausted`
+    # when it bites, and the cap selects NEWEST first — a just-posted opportunity
+    # is the case the feature exists for; a historical backfill can wait a slot.
+    SAM_TASKS_XRAS_MAP_MAX: "20"
     # ⚠️ Comma-separated task names to skip, WITHOUT a code deploy. This is a
-    # staged-enable control: exactly one task is live, and the rest are named
-    # here until each has been reviewed on its own.
+    # staged-enable control: the live set is enumerated below and the rest are
+    # named here until each has been reviewed on its own.
     #
     # Live:     cleanup_status_snapshots     (daily 02:15 MT, status DB only)
-    # Disabled: deactivate_expired_projects  (writes inactivate_time in SAM)
-    #           expiration_notices           (mails external PIs)
+    #           deactivate_expired_projects  (writes inactivate_time in SAM)
+    #           xras_sweep                   (reads api.xras.org; one narrow write)
+    # Disabled: expiration_notices           (mails external PIs)
     #           xras_notices                 (mails external PIs)
     #
     # `xras_sweep` was enabled once its output became a queue rather than a
-    # census (see its module docstring). It is read-only — it calls out to
-    # api.xras.org and writes nothing but a cache entry the dashboard reads.
+    # census (see its module docstring). It calls out to api.xras.org and
+    # publishes a cache entry the dashboard reads.
+    #
+    # ⚠️ It is NOT read-only, and its own comment here said so until #459. It
+    # inserts xras_opportunity_allocation_type rows — "the only write this task
+    # performs", src/scheduling/tasks/xras_sweep.py — and only where two
+    # independent derivations agree, never overwriting an existing row. An
+    # inbound action still reads that table locally and never calls out, so
+    # ingestion does not depend on this task or on api.xras.org being up.
     #
     # ⚠️ There is NO wildcard. `disabled_tasks()` in src/scheduling/runner.py
     # is a case-sensitive exact match against registry keys — `all`, `*` and

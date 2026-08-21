@@ -49,7 +49,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import (Any, Callable, Dict, Iterable, List, Mapping, Optional,
                     Sequence, Tuple)
 
@@ -382,6 +382,40 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
 
 # ── the classifier ──────────────────────────────────────────────────────
 
+def _waiting_since(first_seen: Optional[datetime],
+                   actions: Sequence[Dict[str, Any]]) -> Optional[date]:
+    """The earliest date this person is known to have been blocking something.
+
+    ⚠️ **Neither feed alone answers this**, which is why it is derived here
+    rather than read off a column. Feed A knows ``received_time`` — when XRAS
+    pushed the action at us — and leaves ``submit_date`` null. Feed B is the
+    exact inverse: a request that has not been pushed has no arrival, only the
+    ``submitDate`` it got in XRAS. A merged row carries both.
+
+    Returned as a **date**, not a datetime: the answer is rendered as a whole
+    number of days waiting, and a spurious time-of-day on one feed and not the
+    other would imply a precision the two sources do not share.
+
+    Distinct from ``last_seen``, which is when we most recently *heard* about
+    the person — on a freshly seeded log that is today for every row, which is
+    exactly the reading that makes it useless as a queue order.
+    """
+    candidates = []
+    if first_seen is not None:
+        candidates.append(first_seen.date())
+    for action in actions:
+        raw = action.get('submit_date')
+        if not raw:
+            continue
+        try:
+            candidates.append(date.fromisoformat(str(raw)[:10]))
+        except ValueError:
+            # A feed that changes its date format must not take the card down;
+            # the row simply has no age, and renders as such.
+            continue
+    return min(candidates) if candidates else None
+
+
 def _sorted_roles(names: Iterable[str]) -> Tuple[str, ...]:
     """Strongest first, then anything unrecognised, alphabetically."""
     unique = set(names)
@@ -461,6 +495,7 @@ def classify_accounts(session: Session,
                     'latest_action_log_id': None,
                     'first_seen': None,
                     'last_seen': None,
+                    'waiting_since': None,
                     'person': None,
                     'is_reconciled': None,
                     'sources': set(),
@@ -508,6 +543,7 @@ def classify_accounts(session: Session,
         stamps = [a['received_time'] for a in row['actions'] if a['received_time']]
         row['first_seen'] = min(stamps) if stamps else None
         row['last_seen'] = max(stamps) if stamps else None
+        row['waiting_since'] = _waiting_since(row['first_seen'], row['actions'])
         # Deliberately the future notes-table FK target.
         row['latest_action_log_id'] = next(
             (a['action_log_id'] for a in row['actions'] if a['action_log_id']), None)
@@ -523,11 +559,85 @@ def get_account_worklist(session: Session, *,
                          since: Optional[datetime] = None,
                          until: Optional[datetime] = None,
                          validate: bool = True,
-                         limit: Optional[int] = None) -> List[Dict[str, Any]]:
-    """Feed A composed with the classifier — what the card and CLI call."""
-    return classify_accounts(session, records_from_action_log(
+                         limit: Optional[int] = None,
+                         pending_rows: Optional[Sequence[Dict[str, Any]]] = None
+                         ) -> List[Dict[str, Any]]:
+    """Feed A composed with the classifier, optionally unioned with Feed B.
+
+    *pending_rows* is the worklist ``xras_sweep`` published — **injected, never
+    fetched**, exactly as :func:`~sam.queries.xras_actions.audit_resource_mapping`
+    takes *xras_keys*. This module stays free of cache and network knowledge;
+    the caller decides whether it can reach the snapshot.
+
+    ``None`` reproduces the Feed-A-only answer byte for byte, which is what a
+    consumer with no Redis gets — and it must be able to tell that apart from
+    "Feed B is empty", so a caller that *tried* should say so rather than
+    reporting a smaller queue as if it were the whole one.
+
+    ⚠️ **Overlap is normal**, and this is a union, not a concatenation. The two
+    feeds answer adjacent questions — Feed A is precisely the actions that have
+    **posted**, Feed B is what XRAS has approved and *may or may not* have
+    posted — so the same person legitimately appears in both. They are merged
+    on the casefolded username (``users.username`` is ``utf8mb3_general_ci``,
+    so two spellings are one account) with their provenance unioned.
+    """
+    rows = classify_accounts(session, records_from_action_log(
         session, statuses=statuses, since=since, until=until,
         validate=validate, limit=limit))
+    if pending_rows is None:
+        return rows
+    return merge_worklists(rows, pending_rows)
+
+
+def merge_worklists(primary: Sequence[Dict[str, Any]],
+                    secondary: Sequence[Dict[str, Any]]
+                    ) -> List[Dict[str, Any]]:
+    """Union two already-classified worklists on the casefolded username.
+
+    Both sides were classified against the same ``users`` table by the same
+    :func:`classify_accounts`, so this merges answers rather than recomputing
+    one. Where a username is in both, *primary* wins the scalar fields: it is
+    the live classification, while *secondary* is as old as the last sweep.
+
+    What is unioned rather than overwritten: ``roles``, ``actions`` and
+    ``sources`` — a person can be a PI on a posted action and a User on a
+    pending one, and losing either would misreport why they are blocking.
+    ``waiting_since`` takes the **earlier** of the two, because the question is
+    how long they have been waiting, not which feed noticed first.
+    """
+    merged: Dict[str, Dict[str, Any]] = {}
+    for row in list(primary) + list(secondary):
+        key = (row.get('username') or '').casefold()
+        if not key:
+            continue
+        seen = merged.get(key)
+        if seen is None:
+            merged[key] = dict(row)
+            merged[key]['roles'] = tuple(row.get('roles') or ())
+            merged[key]['actions'] = list(row.get('actions') or [])
+            merged[key]['sources'] = list(row.get('sources') or [])
+            continue
+        seen['roles'] = _sorted_roles((*seen['roles'], *(row.get('roles') or ())))
+        seen['actions'] = list(seen['actions']) + list(row.get('actions') or [])
+        seen['sources'] = sorted(set(seen['sources']) | set(row.get('sources') or []))
+        for field_name in ('first_seen', 'waiting_since'):
+            other = row.get(field_name)
+            if other is not None and (seen.get(field_name) is None
+                                      or other < seen[field_name]):
+                seen[field_name] = other
+        if row.get('last_seen') is not None and (
+                seen.get('last_seen') is None
+                or row['last_seen'] > seen['last_seen']):
+            seen['last_seen'] = row['last_seen']
+        # Person detail and the XRAS identity flag ride whichever feed carried
+        # them; Feed B always does, Feed A only after an --enrich pass.
+        for field_name in ('person', 'is_reconciled', 'latest_action_log_id'):
+            if seen.get(field_name) is None and row.get(field_name) is not None:
+                seen[field_name] = row[field_name]
+
+    return sorted(merged.values(),
+                  key=lambda r: (r['classification'] != CLASSIFICATION_ABSENT,
+                                 r['username']))
 
 
 # ── enrichment ──────────────────────────────────────────────────────────
@@ -609,4 +719,54 @@ def worklist_counts(rows: Sequence[Dict[str, Any]]) -> Dict[str, int]:
             1 for r in rows if r['classification'] == CLASSIFICATION_INACTIVE),
         'placeholder': sum(1 for r in rows if r['placeholder']),
         'reconciled': sum(1 for r in rows if r.get('is_reconciled') is True),
+        # How long the oldest row has been blocking something, in days. The
+        # single number that says whether this queue is being worked — a count
+        # alone reads the same on a healthy day and a neglected one.
+        'oldest_days': max(
+            (r['waiting_days'] for r in rows
+             if r.get('waiting_days') is not None), default=None),
     }
+
+
+def waiting_days(row: Dict[str, Any], *, today: Optional[date] = None
+                 ) -> Optional[int]:
+    """Whole days since :func:`_waiting_since`, or ``None`` if undatable.
+
+    *today* is injectable because a test that read the wall clock would pass or
+    fail depending on the day it ran — the same reason
+    ``sam/queries/xras_accounts.py``'s window predicate takes its boundary.
+    """
+    since = row.get('waiting_since')
+    if since is None:
+        return None
+    # ⚠️ Clamped at zero. `received_time` is naive-Mountain from the app clock,
+    # so a process running in a different zone stamps rows that read as the
+    # future — a container with no TZ set does exactly this, six hours ahead of
+    # the data it is writing. A negative age is never a fact about the queue,
+    # only about the clock, and "-1d waiting" is a worse thing to render than
+    # "0d". The cause is fixed where it belongs (compose sets TZ, as the chart
+    # already does); this keeps the column honest if it ever recurs.
+    return max(0, ((today or date.today()) - since).days)
+
+
+def stamp_waiting_days(rows: Sequence[Dict[str, Any]], *,
+                       today: Optional[date] = None) -> None:
+    """Stamp ``waiting_days`` onto each row, in place.
+
+    Separate from classification and applied by the caller, for the same reason
+    :func:`enrich_worklist` is: it is the only field whose value depends on
+    *when you asked*, and a cached row carrying a stale age would be worse than
+    one carrying none.
+    """
+    when = today or date.today()
+    for row in rows:
+        # ⚠️ Backfill rather than assume. A Feed-B row is read back from a
+        # snapshot the *task* published, and the task can be running older code
+        # than the reader — mid-deploy that is guaranteed, and a cached
+        # snapshot outlives a rollback. So a row with no `waiting_since` is a
+        # version skew, not a row with no age, and it is recomputed from the
+        # provenance every row carries.
+        if row.get('waiting_since') is None:
+            row['waiting_since'] = _waiting_since(row.get('first_seen'),
+                                                  row.get('actions') or ())
+        row['waiting_days'] = waiting_days(row, today=when)

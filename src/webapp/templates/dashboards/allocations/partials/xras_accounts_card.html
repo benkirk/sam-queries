@@ -9,12 +9,14 @@
     rows            classify_accounts(...) rows, already filtered
     counts          worklist_counts(rows)
     may_manage      bool — MANAGE_XRAS
-    enrichment      {'looked_up','found','closed','unavailable','budget_exhausted','error'}
+    enrichment      {'looked_up','found','reconciled','unavailable','budget_exhausted','error'}
     window          {'days','since','until','start_date','end_date','custom'}
     window_pill_choices  ((days, label), ...)
     classification_values  [{'value','label','count'}]  self-excluding
     role_values            [{'value','count'}]          self-excluding
-    selected_classifications, selected_roles  [str]
+    origin_values          [{'value','label','count'}]  self-excluding
+    pending_total          int|None — what the sibling tab holds, or None
+    selected_classifications, selected_roles, selected_origins  [str]
     form_id, fragment_url, target_id
 
   ── ONE ROW PER USERNAME, NOT PER ACTION ─────────────────────────────────
@@ -37,6 +39,14 @@
     <div class="card-header d-flex align-items-center flex-wrap gap-2">
         <strong>Accounts Needed for XRAS Handoffs</strong>
         <span class="badge bg-secondary">{{ counts.total | fmt_number }}</span>
+        {% if counts.oldest_days %}
+        {# The number that says whether the queue is being WORKED. A count
+           alone reads identically on a healthy day and a neglected one. #}
+        <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+              title="How long the longest-waiting account has been blocking a handoff">
+            oldest {{ counts.oldest_days | fmt_number }}d
+        </span>
+        {% endif %}
         {% if counts.placeholder %}
         {# ⚠️ "placeholder", NOT "unreconciled". These are two different facts
            and the smoke caught the badge conflating them: all three
@@ -58,12 +68,42 @@
                          'classification', active=selected_classifications) }}
             {{ facet_row('Role', role_values, form_id, 'role',
                          active=selected_roles) }}
+            {# Separates the two populations that share this card: an ARC
+               placeholder never had a site account, a known identity had one
+               that lapsed. Different work, different people. Deliberately NOT
+               defaulted — on this card no selection means no filter. #}
+            {{ facet_row('Identity', origin_values, form_id, 'origin',
+                         active=selected_origins) }}
             {# The operator working one project's activation filters to it
                here; the same value is a column below so it is visible before
                it is selectable. #}
             {{ facet_row('Request', request_values, form_id, 'request_number',
                          active=selected_requests) }}
         </div>
+        {# ── The invariant, said once ──────────────────────────────────
+           Every other worklist in SAM ends in a button that does the thing.
+           This one cannot: `users` is mirrored from the enterprise directory
+           by a process outside SAM, so neither remedy on this card is an
+           action anyone here can take. Saying so once beats implying
+           otherwise 26 times. #}
+        <div class="small text-muted mt-2">
+            <i class="fas fa-circle-info"></i>
+            Accounts are mirrored into SAM from the enterprise directory —
+            SAM cannot create or reactivate one. These rows are handed to the
+            team that does, and clear on their own once the next sync lands.
+        </div>
+        {% if pending_total %}
+        {# So "8" never reads as the whole queue when 18 more sit one click
+           away. Counts only — the rows stay on their own tab, because what
+           has POSTED and what XRAS MAY SEND are different claims. #}
+        <div class="small text-muted mt-1">
+            <i class="fas fa-arrow-right-long"></i>
+            These are accounts blocking actions that have already posted.
+            <strong>Pending Requests</strong> holds
+            {{ pending_total | fmt_number }} more that XRAS has approved and
+            may send soon.
+        </div>
+        {% endif %}
         {% if enrichment.unavailable %}
         {# The designed unconfigured/degraded state. The worklist above is
            complete — only XRAS-sourced detail is missing. #}
@@ -95,7 +135,13 @@
                     <th style="width:99%; min-width:12rem;">Person</th>
                     {% endif %}
                     <th style="width:120px; white-space:nowrap;">XRAS identity</th>
-                    <th style="width:130px; white-space:nowrap;">Last seen</th>
+                    {# ⚠️ Waiting, NOT "last seen". `last_seen` is when we most
+                       recently HEARD about the person, which on a freshly
+                       seeded log is today for every row — an order that tells
+                       an operator nothing. This is how long they have been
+                       blocking something, which is the only field on the card
+                       that says whether the queue is being worked. #}
+                    <th style="width:120px; white-space:nowrap;">Waiting</th>
                 </tr>
             </thead>
             <tbody>
@@ -117,16 +163,29 @@
 
                     <td>
                         {% if row.classification == 'absent' %}
-                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">Create</span>
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">New account</span>
                         {% else %}
-                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Reactivate</span>
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Reactivation</span>
                         {% endif %}
 
                     </td>
 
                     <td>
+                        {# ⚠️ PI carries weight because a missing PI is the only
+                           one that HARD-FAILS the handoff — `roster.py` reports
+                           `PI %s is not in database` and the action 422s, while
+                           a missing Allocation Manager is explicitly not an
+                           error and a missing User just drops from the roster.
+                           Same list, three very different consequences, and the
+                           row read identically for all of them. #}
                         {% for role in row.roles %}
-                        <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ role }}</span>
+                        {% if role == 'PI' %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+                              title="A missing or inactive PI rejects the whole action (422). This row blocks its handoff.">{{ role }}</span>
+                        {% else %}
+                        <span class="badge bg-body-secondary text-body-secondary border fw-normal"
+                              title="Not fatal on its own — only a missing PI rejects the action">{{ role }}</span>
+                        {% endif %}
                         {% endfor %}
                     </td>
 
@@ -180,7 +239,13 @@
                     </td>
 
                     <td class="text-nowrap small text-muted">
-                        {{ row.last_seen | fmt_date }}
+                        {% if row.waiting_days is none %}
+                        <span class="text-muted" title="No dated provenance on this row">—</span>
+                        {% else %}
+                        <span title="Blocking since {{ row.waiting_since | fmt_date }}">
+                            {{ row.waiting_days | fmt_number }}d
+                        </span>
+                        {% endif %}
                     </td>
                 </tr>
 
@@ -234,7 +299,7 @@
        until ACCESS is repointed and the action log starts filling. #}
     <div class="card-body text-center text-muted py-4">
         No accounts are waiting on creation or reactivation
-        {%- if selected_classifications or selected_roles %} for these filters{% endif %}.
+        {%- if selected_classifications or selected_roles or selected_origins or selected_requests %} for these filters{% endif %}.
     </div>
     {% endif %}
 </div>

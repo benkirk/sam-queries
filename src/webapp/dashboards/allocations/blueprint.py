@@ -66,6 +66,7 @@ from sam.queries.xras_accounts import (
     CLASSIFICATION_INACTIVE,
     enrich_worklist,
     get_account_worklist,
+    stamp_waiting_days,
     worklist_counts,
 )
 from sam.queries.usage_cache import cached_allocation_usage, purge_usage_cache, usage_cache_info
@@ -1630,9 +1631,21 @@ def xras_pending_fragment():
 
 #: Display labels for the classification facet. The slug is what round-trips
 #: through the form; an operator should never see it.
+#: ⚠️ These name the ARTIFACT, not an action SAM performs — and that is the
+#: whole point of the wording. `users` is mirrored into SAM from the enterprise
+#: directory by a process outside this codebase: there is no INSERT into
+#: `users` anywhere in the tree, `User` alone among the models has no
+#: `create()`, and nothing here ever writes `active` or `locked`. So both
+#: remedies are somebody else's work, and the earlier labels — "Create
+#: account" / "Reactivate account" — read as instructions to a SAM operator who
+#: has no way to carry them out.
+#:
+#: Naming the artifact rather than the team is deliberate too: the owning group
+#: can change without touching 26 rows and the CLI's JSON envelope, and the
+#: banner names it once where it can be kept current.
 _ACCOUNT_CLASSIFICATION_LABELS = {
-    CLASSIFICATION_ABSENT: 'Create account',
-    CLASSIFICATION_INACTIVE: 'Reactivate account',
+    CLASSIFICATION_ABSENT: 'New account',
+    CLASSIFICATION_INACTIVE: 'Reactivation',
 }
 
 _ACCOUNTS_FORM_ID = 'xras-accounts-filters'
@@ -1643,14 +1656,40 @@ _ACCOUNTS_TARGET = 'alloc-xras-accounts'
 #: past it still render, just without person detail.
 _ACCOUNTS_ENRICH_BUDGET = 25
 
+#: The ``placeholder`` facet's two values. Strings rather than a bool because a
+#: form round-trips strings, and ``'false'`` is truthy on the way back in.
+ORIGIN_PLACEHOLDER = 'placeholder'
+ORIGIN_KNOWN = 'known'
 
-def _filter_accounts(rows, *, classifications=None, roles=None):
-    """Facet filters: ANDed across dimensions, ORed within one."""
+_ORIGIN_LABELS = {
+    ORIGIN_PLACEHOLDER: 'ARC placeholder',
+    ORIGIN_KNOWN: 'Known identity',
+}
+
+
+def _filter_accounts(rows, *, classifications=None, roles=None, origins=None):
+    """Facet filters: ANDed across dimensions, ORed within one.
+
+    *origins* is the ``placeholder`` dimension, expressed as the two values a
+    form can round-trip. It earns a facet because it separates the two
+    populations that share this card: an ARC placeholder is a researcher who
+    has never had a site account, while a non-placeholder is a real identity
+    whose account lapsed. Those are different pieces of work for different
+    people, and until now the only way to tell them apart was to read the shape
+    of the username.
+
+    ⚠️ Deliberately **not** defaulted. The rule on this card is *no selection =
+    no filter*, and defaulting one dimension on would make an empty facet row
+    mean something different here than on every other card.
+    """
     out = rows
     if classifications:
         out = [r for r in out if r['classification'] in classifications]
     if roles:
         out = [r for r in out if any(role in roles for role in r['roles'])]
+    if origins:
+        wanted = {o == ORIGIN_PLACEHOLDER for o in origins}
+        out = [r for r in out if bool(r['placeholder']) in wanted]
     return out
 
 
@@ -1725,7 +1764,47 @@ def _account_facets(rows, dimension, *, classifications=None, roles=None):
                 counts[role] = counts.get(role, 0) + 1
         return dict(sorted(counts.items()))
 
+    if dimension == 'origin':
+        scoped = _filter_accounts(rows, classifications=classifications,
+                                  roles=roles)
+        return {
+            ORIGIN_PLACEHOLDER: sum(1 for r in scoped if r['placeholder']),
+            ORIGIN_KNOWN: sum(1 for r in scoped if not r['placeholder']),
+        }
+
     raise ValueError(f'unknown account facet dimension {dimension!r}')
+
+
+def _pending_account_total():
+    """How many accounts the *other* tab is holding, or ``None``.
+
+    ⚠️ Counts only. Reading the sibling feed's rows into this card would undo
+    the split the two tabs exist to draw — one is what has posted, the other is
+    a lookahead at what XRAS may send. But a card that reports "8" while 18
+    more sit one click away is a queue that reads as smaller than it is, and
+    that is the failure this whole change is about.
+
+    ``None`` means "could not look", which is the honest answer when the
+    outbound API is off or no sweep has published — distinct from zero.
+    """
+    from sam.integration.xras_api import xras_api_configured
+
+    if not xras_api_configured():
+        return None
+    try:
+        from sam.integration.xras_api.cache import load_pending_worklist
+
+        snapshot = load_pending_worklist()
+    except Exception:                                # noqa: BLE001
+        # Cache backends are infrastructure. A cross-reference is a courtesy;
+        # it must never be the reason the worklist 500s.
+        current_app.logger.warning(
+            'xras accounts: could not read the pending worklist for the '
+            'cross-reference', exc_info=True)
+        return None
+    if not snapshot:
+        return None
+    return (snapshot.get('counts') or {}).get('total')
 
 
 @bp.route('/xras_accounts_fragment')
@@ -1758,9 +1837,19 @@ def xras_accounts_fragment():
     window = _parse_activity_window(request.args)
     selected_classes = [c for c in request.args.getlist('classification') if c]
     selected_roles = [r for r in request.args.getlist('role') if r]
+    selected_origins = [o for o in request.args.getlist('origin') if o]
 
     rows = get_account_worklist(db.session,
                                 since=window['since'], until=window['until'])
+
+    # ⚠️ Feed A ONLY, on purpose — this tab is precisely the accounts blocking
+    # actions that have already POSTED, which is a claim we can always make
+    # from our own audit table. The lookahead at what XRAS has approved but not
+    # yet sent is the sibling tab, and it is contingent on the outbound API
+    # being configured. Merging them would trade a guarantee for a maybe. The
+    # union is available where it is actually needed — `sam-admin xras
+    # --accounts`, and whatever digest comes after it.
+    stamp_waiting_days(rows)
 
     # Enrichment is best-effort and never fatal: an outage or an unconfigured
     # deployment leaves `person` None and flags the batch, so the card degrades
@@ -1777,10 +1866,13 @@ def xras_accounts_fragment():
 
     class_facets = _account_facets(rows, 'classification', roles=selected_roles)
     role_facets = _account_facets(rows, 'role', classifications=selected_classes)
+    origin_facets = _account_facets(rows, 'origin',
+                                    classifications=selected_classes,
+                                    roles=selected_roles)
     request_facets = _request_facets(rows, classifications=selected_classes)
 
     rows = _filter_accounts(rows, classifications=selected_classes,
-                            roles=selected_roles)
+                            roles=selected_roles, origins=selected_origins)
     if selected_requests:
         # The operator working one project's activation wants only its rows.
         rows = [r for r in rows
@@ -1802,9 +1894,16 @@ def xras_accounts_fragment():
              'count': class_facets.get(key, 0)}
             for key in (CLASSIFICATION_ABSENT, CLASSIFICATION_INACTIVE)],
         role_values=[{'value': k, 'count': v} for k, v in role_facets.items()],
+        origin_values=[{'value': k, 'label': _ORIGIN_LABELS[k],
+                        'count': origin_facets.get(k, 0)}
+                       for k in (ORIGIN_PLACEHOLDER, ORIGIN_KNOWN)],
         request_values=request_facets,
+        # What the sibling tab holds, so neither reads as the whole queue.
+        # Counts only — never its rows, which would defeat the tab split.
+        pending_total=_pending_account_total(),
         selected_classifications=selected_classes,
         selected_roles=selected_roles,
+        selected_origins=selected_origins,
         selected_requests=selected_requests,
         form_id=_ACCOUNTS_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
@@ -1872,6 +1971,11 @@ def xras_pending_requests_fragment():
     snapshot = load_pending_worklist() if configured else None
 
     rows = list(snapshot.get('rows') or []) if snapshot else []
+    # The snapshot is written by the task and read here, so the two can be on
+    # different code — `stamp_waiting_days` backfills rather than assuming the
+    # publisher already derived it. Stamped on read, never cached: an age is
+    # the one field whose value depends on when you asked.
+    stamp_waiting_days(rows)
     window = _parse_activity_window(request.args)
     selected_requests = [r for r in request.args.getlist('request_number') if r]
     selected_classes = [c for c in request.args.getlist('classification') if c]

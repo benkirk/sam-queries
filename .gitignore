@@ -23,6 +23,15 @@ megalinter-reports/
 .coverage.*
 Vermilion_NSFNCAR-UCAR-UCP_BrandGuide.pdf
 .playwright-mcp/
+# ⚠️ Playwright/MCP writes snapshots and screenshots to the CWD when a relative
+# filename is passed, not into .playwright-mcp/ — so they land in the repo root.
+# Smoking the XRAS cards means rendering UNSCRUBBED production PII, and two such
+# files (a page snapshot and a full-page PNG) were caught one `git add` away
+# from a public repo. Ignore them by shape rather than relying on the reviewer.
+page-????-??-??T*.yml
+*-pane.md
+*-before.png
+*-after.png
 legacy_sam
 data/
 
