@@ -383,6 +383,12 @@ One PR vs staging with an ordered commit series, after the probe:
 6. **Arm**: flip `XRAS_WRITE_ENABLED` in values.yaml + flip its drift test, same commit. Ben owns
    deploy mechanics; prepare the verification steps.
 
+⚠️ **Across commits 1, 3 and 5**: every site that exists only because of the key's privilege
+ceiling carries a `PRIVILEGE(#n)` comment keyed to
+[`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) § 7, so
+`grep -rn 'PRIVILEGE(#' src/` is a live index rather than a doc that quietly goes stale. The PR
+body's **Follow-ons** paragraph names § 7 and its top three rows.
+
 ## 10. Verification
 
 - `pytest` (Ben runs by hand); schema-validation after the model lands; route-map parity regen
@@ -408,8 +414,15 @@ One PR vs staging with an ordered commit series, after the probe:
    family. ⚠️ Still open, and deliberately not probed: the **projcode-keyed** role family
    (`/v1/roles/<requestNumber>/...`) is provisioned but cannot resolve legacy test request
    numbers, so verifying it would mean writing to a live NCAR project. Not needed for v1.
-4. A scoped write key (`XRAS_WRITE_FIXUPS.md` § 8.1) stays on the XRAS ask register; nothing here
-   blocks on it.
+4. **Key privilege / the refactor register.** A scoped write key (`XRAS_WRITE_FIXUPS.md` § 8.1)
+   stays on the XRAS ask register; nothing here blocks on it. ⚠️ Separately, **eleven places in
+   this design are shaped by what our key may *not* do** — inventoried in
+   [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) § 7, with the code deleted by
+   each. The highest-value ask there is a **read** grant, not a write one: `GET /v1/requests/<rid>`
+   alone retires the four structural contortions (`rules{}` inference, the admin client's second
+   report-context `reader`, the `request_id` + `request_number` double parameter, and the nested
+   roster flattening). Carry § 7 as a named **follow-on in the PR body**, not just in the docs —
+   these read as ordinary code within a release and nobody remembers what they compensate for.
 5. Feed-B redundancy: revisit dropping "Requests Awaiting a Handoff" only after this ships.
 
 ## 12. References

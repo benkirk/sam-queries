@@ -328,7 +328,65 @@ Role `580030` was created and deleted within the session and does not exist.
 
 ---
 
-## 7. References
+## 7. Fighting the permissions model — what a higher-privilege key would let us delete
+
+**Why this section exists.** Almost every awkward shape in the remediation design descends from two
+measured facts: our key's context ceiling is **submit ✅ report ✅ review ❌ admin ❌**, and
+`GET /v1/requests/<rid>` is **401 in all four**. The workarounds are sound, but within a release or
+two they will read as ordinary code and nobody will remember they are compensating for a
+credential. This is the list to revisit **if XRAS ever widens the grant** — and, read the other
+way, the concrete argument for asking.
+
+Sorted by how much code a wider key would actually remove.
+
+| # | What we do today | Forced by | What a wider key deletes |
+|---|---|---|---|
+| 1 | Derive "what may I do to this action" from the sweep snapshot's `actionStatus` plus the `validate` preflight | `GET /v1/requests/<rid>` 401 → `rules{allowedOperations, allowedActions, existingActions[].allowedOperations}` unreachable | The whole derivation. XRAS publishes the authoritative per-action answer; we would read it instead of inferring which button is legal |
+| 2 | `XrasAdminClient` carries a **`reader`** — a second, report-context `XrasApiClient` — purely to verify its own writes | Reports answer under `report` and 401 under `submit`; requests-by-id 401s under both | The dual-context object graph. One GET verifies; no delegate, no two-sessions-one-config arrangement |
+| 3 | Every action and role method takes **both** `request_id` *and* `request_number` | Write routes key on `requestId`; the only readable state source (reports) keys on `requestNumber` | `request_number` leaves the client signatures entirely. The purest privilege artifact in the design — a parameter that exists only to bridge two identifier spaces |
+| 4 | `roster()` flattens the nested `roles[].roles[]` reports shape, and `remove_role` is keyed on a `roleId` fished out of it | Same as #3 | Reading the roster from the request itself, in the shape the write routes already speak |
+| 5 | Impersonate a role-holder, `resolve_pi()` off the roster, and carry **two** identity columns in the audit row (`xa_user` vs `created_by`) | Every request-scoped write authorizes on "XA-USER holds a role on *that* request"; `arcguest` never suffices | `resolve_pi()`, the PI-over-Allocation-Manager preference, the not-a-role-holder error copy, and arguably one audit column — an `admin`-context key might act as SAM itself |
+| 6 | Label every validate verdict with the user it was evaluated as; never cache across users; treat a failed preflight as non-terminal | P2 — the same action validates as the PI and fails as the Allocation Manager | The caveat, the labelling, and a chunk of the re-submit modal's copy |
+| 7 | The remedy **is** merge — destructive, one-way, with a candidate-ranking decision tree and a fragility warning | `POST /v1/people` ignores `isReconciled=false`; there is no un-reconcile | Merge demotes to the *fallback*. The assisted-disambiguation UI (the `kquagraine` decoy) stops being load-bearing |
+| 8 | "Close a stale request" is really "withdraw each stuck action, one at a time"; a multi-action request never fully closes | `DELETE /v1/requests/<rid>` 401 for every XA-USER | A real close/archive action, and the per-action framing in the UI |
+| 9 | Build on the requests-keyed role family; the projcode-keyed one stays provisioned-but-unverified | It cannot resolve legacy test request numbers, and verifying it means writing to a live NCAR project | Possibly a preference flip — projcode is the key SAM naturally thinks in. Needs a **test-capable target** more than a bigger key |
+| 10 | Carry all three spellings of a role type (`13` / `User` / `Project Lead`) | The two role families disagree on the encoding | Nothing while we use both families; collapses if #9 resolves |
+| 11 | `write_configured` conjoins the **read** lever ("no write-without-read mode") | Verification needs reads, and one key does both today | If XRAS issues the scoped write credential on the ask register, this becomes a separate `XRAS_WRITE_API_KEY` and the conjunction is revisited |
+
+### Two things that would **not** change
+
+Named explicitly so a future session with a better key does not "simplify" them away:
+
+- **Verify-after-write.** An API-honesty artifact, not a privilege one — `POST .../submit` returns
+  a `null` body where the docs promise the request object, and `POST /v1/people` returns 200 while
+  ignoring the parameter it was handed. A stronger key gets told the same things.
+- **Single-attempt writes.** Retrying a merge or a submit is dangerous whatever the key may do.
+
+### What to actually ask XRAS for
+
+The register in [`XRAS_WRITE_FIXUPS.md`](XRAS_WRITE_FIXUPS.md) § 8.1 currently asks for a
+**narrower** key (scoped write). This list is the argument for a *differently* scoped one, and the
+single highest-value item is not a write privilege at all:
+
+> **Read access to `GET /v1/requests/<requestId>`.** It alone retires #1, #2, #3 and #4 — the four
+> structural contortions — and it is a **read** grant, which should be a materially easier ask than
+> anything on the write side.
+
+### Keeping the list honest
+
+A doc drifts. Mark each site in code with a greppable tag as it lands:
+
+```python
+# PRIVILEGE(#3): request_number is here only because the verify read is
+# keyed on the number while the write route is keyed on the id.
+```
+
+`grep -rn 'PRIVILEGE(#' src/` is then the live index, and any row above with no matching anchor is
+either not built yet or no longer true. Applied in the phases that introduce each site.
+
+---
+
+## 8. References
 
 | | |
 |---|---|
