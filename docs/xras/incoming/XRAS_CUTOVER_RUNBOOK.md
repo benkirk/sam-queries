@@ -196,6 +196,18 @@ usernames, `request_id`, `action_id`, `role_id` — belongs to XRAS, and the mer
 operation a row records *deletes* the username it names. `REFERENCES` is therefore
 not needed for this one.
 
+**Apply the committed script rather than copying out of this document** —
+it carries the same statements plus the verification queries, and it is the
+artifact that was tested:
+
+```bash
+mysql -u <hpc-writer> -h <host> -p sam < scripts/create_xras_remediation_event.sql
+```
+
+Verified 2026-08-21: that script applied to an empty schema produces a table
+byte-identical to the one the suite runs against, and the ORM validates against
+it with no column drift. For reference, the statements are:
+
 ```sql
 CREATE TABLE IF NOT EXISTS xras_remediation_event (
   xras_remediation_event_id  INT UNSIGNED NOT NULL AUTO_INCREMENT,
