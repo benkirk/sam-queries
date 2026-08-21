@@ -532,18 +532,33 @@ tasks:
     # "Approved" is the only status that produces a handoff. Widen to any of
     # the API's filter values, or "all", to survey the pipeline pre-approval.
     SAM_TASKS_XRAS_SWEEP_STATUS: "Approved"
+    # Per-run cap on the sweep's ONE write — new xras_opportunity_allocation_type
+    # rows. Pinned here for the same reason SAM_TASKS_XRAS_MAX above is: it is a
+    # policy decision, and it was the only sweep knob the chart did not name, so
+    # the cluster silently ran the code default. Reports `map_budget_exhausted`
+    # when it bites, and the cap selects NEWEST first — a just-posted opportunity
+    # is the case the feature exists for; a historical backfill can wait a slot.
+    SAM_TASKS_XRAS_MAP_MAX: "20"
     # ⚠️ Comma-separated task names to skip, WITHOUT a code deploy. This is a
-    # staged-enable control: exactly one task is live, and the rest are named
-    # here until each has been reviewed on its own.
+    # staged-enable control: the live set is enumerated below and the rest are
+    # named here until each has been reviewed on its own.
     #
     # Live:     cleanup_status_snapshots     (daily 02:15 MT, status DB only)
     #           deactivate_expired_projects  (writes inactivate_time in SAM)
+    #           xras_sweep                   (reads api.xras.org; one narrow write)
     # Disabled: expiration_notices           (mails external PIs)
     #           xras_notices                 (mails external PIs)
     #
     # `xras_sweep` was enabled once its output became a queue rather than a
-    # census (see its module docstring). It is read-only — it calls out to
-    # api.xras.org and writes nothing but a cache entry the dashboard reads.
+    # census (see its module docstring). It calls out to api.xras.org and
+    # publishes a cache entry the dashboard reads.
+    #
+    # ⚠️ It is NOT read-only, and its own comment here said so until #459. It
+    # inserts xras_opportunity_allocation_type rows — "the only write this task
+    # performs", src/scheduling/tasks/xras_sweep.py — and only where two
+    # independent derivations agree, never overwriting an existing row. An
+    # inbound action still reads that table locally and never calls out, so
+    # ingestion does not depend on this task or on api.xras.org being up.
     #
     # ⚠️ There is NO wildcard. `disabled_tasks()` in src/scheduling/runner.py
     # is a case-sensitive exact match against registry keys — `all`, `*` and
