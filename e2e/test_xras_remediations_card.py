@@ -95,8 +95,62 @@ class TestInteraction:
         page.wait_for_timeout(400)
         expansion = card.locator('tr.collapse.show').first
         assert expansion.count() == 1
-        text = expansion.inner_text()
-        assert 'Roster' in text and 'Actions' in text
+        # ⚠️ Case-folded. `inner_text()` returns *rendered* text, and both
+        # section labels are `.text-uppercase` — so the obvious spelling has
+        # never once matched. It went unseen because the guard above skips on
+        # any stack whose sweep has not run, which is every CI runner.
+        text = expansion.inner_text().casefold()
+        assert 'roster' in text and 'actions' in text
+
+    def test_the_chevron_rotates_when_a_row_opens(self, page):
+        """The affordance is pure CSS — `.collapse-icon` rotating off the
+        `aria-expanded` Bootstrap writes onto the trigger. Nothing registers
+        it, so nothing can forget to re-register it after an htmx swap; what
+        this asserts is that the class is still on the icon and the rule still
+        reaches it."""
+        card = _load(page)
+        rows = _rows(card)
+        if rows.count() == 0:
+            pytest.skip('no swept requests on this stack')
+
+        icon = rows.first.locator('.collapse-icon')
+        assert icon.count() == 1, 'the row offers no visible expand affordance'
+        flat = icon.evaluate('e => getComputedStyle(e).transform')
+        rows.first.click()
+        page.wait_for_timeout(400)
+        assert icon.evaluate('e => getComputedStyle(e).transform') != flat
+
+    def test_a_chip_click_carries_the_search_term(self, page):
+        """⚠️ The whole point of `form=` on the search input. The chip submits
+        the hidden filter form; the input lives inside the card, two elements
+        away. Without the attribute the term is not in that form's data and
+        every chip click silently clears the search."""
+        card = _load(page)
+        box = card.locator('#xras-remediation-search')
+        chips = card.locator('.facet-chip')
+        if chips.count() == 0 or _rows(card).count() == 0:
+            pytest.skip('nothing to filter on this stack')
+
+        box.fill('a')
+        page.wait_for_timeout(700)
+        if card.locator('.facet-chip').count() == 0:
+            pytest.skip('the probe term matched nothing on this stack')
+
+        card.locator('.facet-chip').first.click()
+        page.wait_for_timeout(700)
+        assert card.locator('#xras-remediation-search').input_value() == 'a'
+
+    def test_the_search_box_survives_matching_nothing(self, page):
+        """Otherwise the only way out of a typo is a page reload."""
+        card = _load(page)
+        if _rows(card).count() == 0:
+            pytest.skip('no swept requests on this stack')
+
+        card.locator('#xras-remediation-search').fill('zzz-matches-nothing')
+        page.wait_for_timeout(700)
+        assert _rows(card).count() == 0
+        assert card.locator('#xras-remediation-search').input_value() \
+            == 'zzz-matches-nothing'
 
     def test_a_status_chip_filters_without_a_page_reload(self, page):
         card = _load(page)
