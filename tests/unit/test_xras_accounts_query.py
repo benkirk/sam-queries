@@ -25,7 +25,7 @@ those payloads may enter a commit.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -37,8 +37,10 @@ from sam.queries.xras_accounts import (
     classify_accounts,
     enrich_worklist,
     is_placeholder,
+    merge_worklists,
     records_from_action_log,
     records_from_report_requests,
+    stamp_waiting_days,
     worklist_counts,
 )
 
@@ -55,6 +57,17 @@ PLACEHOLDER_USERNAME = 'placeholder38-user-00038'
 
 def _payload(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text())
+
+
+def _pending_record(*usernames, submit_date='2026-07-14', **kwargs):
+    """A Feed-B RosterRecord: no arrival of its own, only a ``submitDate``.
+
+    The inverse of :func:`_record`, and the pair is the point — the two feeds
+    date a row from different fields, so anything deriving an age has to handle
+    both or it silently reports one feed as undatable.
+    """
+    return _record(*usernames, action_log_id=None, received_time=None,
+                   submit_date=submit_date, source='reports', **kwargs)
 
 
 def _record(*usernames, roles=None, flags=None, people=None, **ref_kwargs):
@@ -577,3 +590,124 @@ class TestUsernameCaseFolding:
         present one the mismatch is itself worth seeing."""
         rows = classify_accounts(session, [_record('GhostCaseUser')])
         assert rows[0]['username'] == 'GhostCaseUser'
+
+
+class TestWaitingSince:
+    """How long a row has been blocking something.
+
+    ⚠️ **Neither feed alone answers this**, which is the whole reason it is
+    derived rather than read off a column. Feed A knows ``received_time`` —
+    when XRAS pushed the action at us — and leaves ``submit_date`` null. Feed B
+    is the exact inverse: a request that has not been pushed has no arrival,
+    only the ``submitDate`` it got in XRAS.
+    """
+
+    def test_feed_a_dates_from_when_the_action_arrived(self, session):
+        rows = classify_accounts(session, [_record('ghostwaiting')])
+        stamp_waiting_days(rows, today=date(2026, 8, 20))
+        assert rows[0]['waiting_since'] is not None
+
+    def test_feed_b_dates_from_the_xras_submit_date(self, session):
+        """A pending request has no arrival of its own — only a submitDate."""
+        rows = classify_accounts(session, [_pending_record(
+            'ghostpending', submit_date='2026-07-14')])
+        stamp_waiting_days(rows, today=date(2026, 8, 20))
+        assert rows[0]['waiting_since'] == date(2026, 7, 14)
+        assert rows[0]['waiting_days'] == 37
+
+    def test_the_earliest_signal_wins_across_feeds(self, session):
+        """A person on both feeds has been waiting since the EARLIER of them,
+        not since whichever feed happened to notice second."""
+        rows = classify_accounts(session, [
+            _pending_record('ghostboth', submit_date='2026-07-14'),
+            _pending_record('ghostboth', submit_date='2026-08-01')])
+        stamp_waiting_days(rows, today=date(2026, 8, 20))
+        assert rows[0]['waiting_since'] == date(2026, 7, 14)
+
+    def test_a_negative_age_is_clamped_not_rendered(self, session):
+        """⚠️ Clock skew, not a fact about the queue.
+
+        ``received_time`` is naive-Mountain from the app clock, so a process
+        running in another zone stamps rows that read as the future — a
+        container with no TZ set does exactly this, six hours ahead of the data
+        it is writing. "-1d waiting" is a worse thing to render than "0d".
+        """
+        rows = classify_accounts(session, [_pending_record(
+            'ghostfuture', submit_date='2026-08-25')])
+        stamp_waiting_days(rows, today=date(2026, 8, 20))
+        assert rows[0]['waiting_days'] == 0
+
+    def test_an_undatable_row_has_no_age_rather_than_a_wrong_one(self, session):
+        rows = classify_accounts(session, [_pending_record(
+            'ghostnodate', submit_date=None)])
+        for row in rows:
+            row['first_seen'] = None
+            row['waiting_since'] = None
+            row['actions'] = [dict(a, received_time=None) for a in row['actions']]
+        stamp_waiting_days(rows, today=date(2026, 8, 20))
+        assert rows[0]['waiting_days'] is None
+
+    def test_a_snapshot_written_by_older_code_is_backfilled(self, session):
+        """⚠️ The publisher and the reader can be on different code.
+
+        Feed B is read back from a snapshot ``xras_sweep`` wrote; mid-deploy the
+        task is guaranteed to be older than the reader, and a cached snapshot
+        outlives a rollback. A row with no ``waiting_since`` is version skew,
+        not a row with no age.
+        """
+        rows = classify_accounts(session, [_pending_record(
+            'ghostskew', submit_date='2026-07-14')])
+        del rows[0]['waiting_since']          # as an older publisher left it
+        stamp_waiting_days(rows, today=date(2026, 8, 20))
+        assert rows[0]['waiting_days'] == 37
+
+
+class TestMergeWorklists:
+    """The union behind ``sam-admin xras --accounts``.
+
+    ⚠️ **Overlap is normal.** Feed A is precisely the actions that have
+    *posted*; Feed B is what XRAS approved and *may or may not* have posted. The
+    same person legitimately appears in both, so this is a union on the
+    casefolded username, not a concatenation.
+    """
+
+    def test_a_person_on_both_feeds_is_one_row_of_work(self):
+        a = [{'username': 'Ghost', 'classification': 'absent',
+              'roles': ('PI',), 'actions': [{'request_number': 'NCAR0001'}],
+              'sources': ['action_log'], 'first_seen': None, 'last_seen': None,
+              'waiting_since': date(2026, 8, 1), 'person': None,
+              'is_reconciled': None, 'latest_action_log_id': 7}]
+        b = [{'username': 'ghost', 'classification': 'absent',
+              'roles': ('User',), 'actions': [{'request_number': 'NCAR0002'}],
+              'sources': ['reports'], 'first_seen': None, 'last_seen': None,
+              'waiting_since': date(2026, 7, 1), 'person': {'lastName': 'X'},
+              'is_reconciled': True, 'latest_action_log_id': None}]
+        merged = merge_worklists(a, b)
+        assert len(merged) == 1
+        row = merged[0]
+        # Provenance is unioned — a person can be a PI on a posted action and a
+        # User on a pending one, and losing either misreports why they block.
+        assert set(row['roles']) == {'PI', 'User'}
+        assert row['sources'] == ['action_log', 'reports']
+        assert len(row['actions']) == 2
+        # Earliest wins: the question is how long they have waited, not which
+        # feed noticed first.
+        assert row['waiting_since'] == date(2026, 7, 1)
+        # Detail rides whichever feed carried it.
+        assert row['person'] == {'lastName': 'X'}
+        assert row['is_reconciled'] is True
+        assert row['latest_action_log_id'] == 7
+
+    def test_disjoint_feeds_concatenate(self):
+        a = [{'username': 'one', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': ['action_log'], 'waiting_since': None}]
+        b = [{'username': 'two', 'classification': 'inactive', 'roles': (),
+              'actions': [], 'sources': ['reports'], 'waiting_since': None}]
+        assert len(merge_worklists(a, b)) == 2
+
+    def test_absent_still_sorts_before_inactive(self):
+        a = [{'username': 'zzz', 'classification': 'absent', 'roles': (),
+              'actions': [], 'sources': [], 'waiting_since': None}]
+        b = [{'username': 'aaa', 'classification': 'inactive', 'roles': (),
+              'actions': [], 'sources': [], 'waiting_since': None}]
+        assert [r['username'] for r in merge_worklists(a, b)] == ['zzz', 'aaa']
