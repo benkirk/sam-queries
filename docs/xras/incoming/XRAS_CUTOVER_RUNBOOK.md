@@ -182,7 +182,7 @@ bootstrap after `terraform apply`, so an existing instance never picks them up. 
 that DB is given the DDL, the XRAS tab and Admin → Notifications 500 there. CIRRUS/k8s
 is the deployment target; ECS-staging is a check-the-render environment.
 
-### 2d · `xras_remediation_event` · ⏳ **dev + test applied; PRODUCTION PENDING**
+### 2d · `xras_remediation_event` · ✅ **DONE 2026-08-21 — applied to production**
 
 The fifth table, and the first that records SAM writing **out** to XRAS rather than
 XRAS writing in. Backs the Remediations card
@@ -272,6 +272,25 @@ SELECT COLUMN_NAME, CHARACTER_SET_NAME
    AND CHARACTER_SET_NAME = 'utf8mb4';                  -- 3 rows
 SHOW INDEX FROM xras_remediation_event;                 -- PRIMARY + 4 named keys
 ```
+
+**Verified on production 2026-08-21**, and not merely by the counts the script
+prints — those identify nothing. `information_schema` was read back in full and
+diffed against the schema the suite runs on:
+
+| Check | Result |
+|---|---|
+| 19 columns: name, type, nullability, charset, collation | ✅ byte-identical |
+| `request_number` | ✅ `varchar(128)` utf8mb3 — the width the live cohort forced |
+| utf8mb4 on exactly `comment` / `before_state` / `after_state` | ✅ and no others |
+| 5 indexes, by column and ordinal | ✅ identical |
+| Engine / table collation | ✅ InnoDB / utf8mb3_general_ci |
+| Rows, foreign keys | ✅ 0 / 0 |
+
+⚠️ The count-only queries in the script are a smoke, not a proof: "3 utf8mb4
+columns" is equally true if the wrong three widened, and that particular
+mistake — `request_number` drifting to utf8mb4 — would silently turn the
+lookup against `xras_action_log` into a mixed-charset full scan. Read the
+columns back by name.
 
 ⚠️ **CI stays red until the snapshot is regenerated — this is a hand-off, not an
 oversight.** The CI test database is the committed LFS blob

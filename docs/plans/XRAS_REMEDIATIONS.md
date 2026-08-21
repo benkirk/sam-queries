@@ -379,12 +379,12 @@ One PR vs staging with an ordered commit series, after the probe:
    replaced with what the probes settled.
 1. ✅ **Config + client** — `write_enabled`, `admin_client.py`, exceptions,
    `invalidate_person`, helm key + `TestingConfig` pin, 47 tests. Inert without callers.
-2. **Audit table**: the full § 5.2 checklist. ⚠️ Two steps in it are **operator
-   actions, not code**, and both are outstanding: the production DDL (hpc-writer
-   grant, no DROP — get it right the first time) and the obfuscated-snapshot
-   regeneration that carries the table into CI. Until the second one lands,
-   `test_schema_validation.py` fails in CI while passing locally. DDL of record
-   and the interim workaround: `XRAS_CUTOVER_RUNBOOK.md` § 2d.
+2. ✅ **Audit table** — the full § 5.2 checklist. Production DDL applied
+   **2026-08-21** and verified column-by-column against the tested schema
+   (`XRAS_CUTOVER_RUNBOOK.md` § 2d). ⏳ One operator step remains: the
+   obfuscated-snapshot regeneration that carries the table into CI. Until it
+   lands `test_schema_validation.py` passes locally and fails in CI, because
+   the CI database is the committed LFS blob.
 3. ✅ **Service + queries + coherence patch** — `sam/manage/xras_remediation.py`,
    `sam/queries/xras_remediations.py`, and `sam/queries/xras_requests.py` (the shared index-entry
    builder). 41 tests.
