@@ -353,17 +353,24 @@ def display_account_worklist(ctx, payload) -> None:
             '[green]No accounts are waiting on creation or reactivation.[/green]')
         return
 
-    table = Table(title=f"{counts['total']} account(s) blocking XRAS handoffs",
-                  title_style='bold')
+    oldest = counts.get('oldest_days')
+    title = f"{counts['total']} account(s) blocking XRAS handoffs"
+    if oldest:
+        title += f' — oldest waiting {oldest}d'
+    table = Table(title=title, title_style='bold')
     table.add_column('Username', style='cyan')
     table.add_column('Needs')
     table.add_column('Role', style='dim')
     table.add_column('Requests', style='dim')
     table.add_column('XRAS identity')
+    table.add_column('Waiting', justify='right')
 
     for row in payload['accounts']:
-        needs = ('[red]create[/red]' if row['classification'] == 'absent'
-                 else '[yellow]reactivate[/yellow]')
+        # ⚠️ The artifact, not an action — SAM cannot create or reactivate an
+        # account. Same words the card uses, because the terminal and the
+        # dashboard have to teach one vocabulary; the footer says who does.
+        needs = ('[red]new account[/red]' if row['classification'] == 'absent'
+                 else '[yellow]reactivation[/yellow]')
         if row['placeholder']:
             needs += ' [dim](placeholder)[/dim]'
         numbers = [a['request_number'] for a in row['actions'] if a['request_number']]
@@ -373,8 +380,10 @@ def display_account_worklist(ctx, payload) -> None:
         reconciled = {None: BLANK,
                       True: 'identified',
                       False: '[yellow]unidentified[/yellow]'}[row['is_reconciled']]
+        waited = row.get('waiting_days')
         table.add_row(row['username'], needs, ', '.join(row['roles']),
-                      truncate(', '.join(dict.fromkeys(numbers)), 40), reconciled)
+                      truncate(', '.join(dict.fromkeys(numbers)), 40), reconciled,
+                      BLANK if waited is None else f'{waited}d')
 
     ctx.console.print(table)
     ctx.console.print(
@@ -382,8 +391,28 @@ def display_account_worklist(ctx, payload) -> None:
         # SHAPE, reconciliation is whether XRAS has linked it to a confirmed
         # identity. The smoke found all three placeholders reconciled, so
         # conflating them made this line contradict the table above it.
-        f"[dim]{counts['absent']} to create, {counts['inactive']} to reactivate, "
-        f"{counts['placeholder']} ARC placeholder identities.[/dim]")
+        f"[dim]{counts['absent']} new account(s), {counts['inactive']} "
+        f"reactivation(s), {counts['placeholder']} ARC placeholder "
+        f"identities.[/dim]")
+    ctx.console.print(
+        # The invariant, said once. There is no INSERT into `users` anywhere in
+        # this repo and nothing writes `active`/`locked` — both remedies are
+        # somebody else's work, and a list that implies otherwise sends an
+        # operator looking for a button that cannot exist.
+        '[dim]Accounts are mirrored into SAM from the enterprise directory; '
+        'SAM cannot create or reactivate one. Rows clear on the next '
+        'sync.[/dim]')
+
+    # ⚠️ A subset must never be printed as if it were the whole queue. This is
+    # the CLI half of the gap that had `--accounts` reporting 0 while the
+    # dashboard showed a real worklist: the card reads the sweep's published
+    # snapshot and this only ever read the action log.
+    if not payload.get('pending_checked'):
+        ctx.console.print(
+            '[yellow]Posted actions only — the pending-request worklist could '
+            'not be read, so accounts XRAS has approved but not yet sent are '
+            'NOT counted here. Set XRAS_OUTGOING_ENABLED=1 with a reachable '
+            'cache for the full queue.[/yellow]')
 
     enrichment = payload.get('enrichment')
     if enrichment and enrichment['unavailable']:

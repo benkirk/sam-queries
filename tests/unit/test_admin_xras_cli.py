@@ -216,14 +216,72 @@ class TestAccountsMode:
         assert result.exit_code == EXIT_SUCCESS
 
     def test_the_json_envelope_carries_the_expected_kind(self, runner, cli_session):
+        # ⚠️ `result.stdout`, not `result.output` — the latter merges stderr,
+        # and the whole point of the split below is that a degradation notice
+        # must not land inside the envelope.
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
         assert result.exit_code == EXIT_SUCCESS
-        payload = json.loads(result.output)
+        payload = json.loads(result.stdout)
         assert payload['kind'] == 'xras_accounts'
         assert set(payload['counts']) >= {'total', 'absent', 'inactive',
-                                          'placeholder'}
+                                          'placeholder', 'oldest_days'}
         assert payload['enriched'] is False
         assert payload['enrichment'] is None
+        # "Feed B was empty" and "we could not read Feed B" are different
+        # facts, and only the second means this count is a subset.
+        assert payload['pending_checked'] is False
+
+    def test_a_degradation_notice_never_lands_inside_the_json(
+            self, runner, cli_session, monkeypatch):
+        """⚠️ Regression: `ctx.console` is **stdout**.
+
+        Every "could not reach X, reporting the local half" notice on this
+        command used to print there, which put prose ahead of the envelope and
+        broke `sam-admin --format json xras ... | jq` for exactly the runs an
+        operator most needs to pipe. They belong on stderr; the envelope
+        already carries the machine-readable form of the same fact.
+        """
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.cache.load_pending_worklist',
+            lambda: (_ for _ in ()).throw(RuntimeError('no redis here')))
+
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
+
+        json.loads(result.stdout)                    # parses, i.e. clean
+        assert 'no redis here' not in result.stdout
+        assert json.loads(result.stdout)['pending_checked'] is False
+
+    def test_the_worklist_unions_both_feeds(self, runner, cli_session,
+                                            monkeypatch):
+        """The gap this closes: `--accounts` reported 0 in production while the
+        dashboard showed a real queue, because it only ever read the action log
+        and the card reads the sweep's published snapshot.
+
+        ⚠️ Overlap between the feeds is normal — Feed A is precisely what has
+        POSTED, Feed B what XRAS approved and may or may not have sent — so
+        this is a union on the casefolded username, not a concatenation.
+        """
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.cache.load_pending_worklist',
+            lambda: {'rows': [{'username': 'ghostpendingonly',
+                               'classification': 'absent', 'remedy': 'create',
+                               'placeholder': False, 'roles': ('PI',),
+                               'actions': [], 'sources': ['reports'],
+                               'is_account_to_be_created': False,
+                               'first_seen': None, 'last_seen': None,
+                               'person': None, 'is_reconciled': None,
+                               'latest_action_log_id': None}]})
+
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
+        payload = json.loads(result.stdout)
+
+        assert payload['pending_checked'] is True
+        names = [a['username'] for a in payload['accounts']]
+        assert 'ghostpendingonly' in names
 
     def test_enrich_without_the_api_is_an_error(self, runner, cli_session,
                                                 monkeypatch):

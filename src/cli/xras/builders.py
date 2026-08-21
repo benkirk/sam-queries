@@ -170,19 +170,30 @@ def build_opportunity_report(session, *, opportunities=None) -> dict:
 
 
 def build_account_worklist(session, *, since=None, until=None,
-                           enrich=False, max_lookups=100) -> dict:
+                           enrich=False, max_lookups=100,
+                           pending_rows=None, pending_checked=False) -> dict:
     """The ``xras_accounts`` envelope — who needs an account before a handoff.
 
     *enrich* is opt-in because it costs a round trip to XRAS per username. The
     enrichment report rides in the envelope rather than being folded into the
     rows: "we did not ask" and "we asked and XRAS was down" are different facts
     and a consumer diffing two runs needs to tell them apart.
+
+    *pending_rows* is the Feed-B worklist ``xras_sweep`` published, injected by
+    the caller. ⚠️ ``pending_checked`` is the same distinction ``live_checked``
+    draws on the mapping audit and is the reason it is a separate flag rather
+    than ``pending_rows is not None``: a consumer must be able to tell "Feed B
+    is empty" from "we could not read Feed B", because the second one means the
+    number it is looking at is a **subset of the queue** and the first does not.
     """
     from sam.queries.xras_accounts import (enrich_worklist,
                                            get_account_worklist,
+                                           stamp_waiting_days,
                                            worklist_counts)
 
-    rows = get_account_worklist(session, since=since, until=until)
+    rows = get_account_worklist(session, since=since, until=until,
+                                pending_rows=pending_rows)
+    stamp_waiting_days(rows)
     enrichment = (enrich_worklist(rows, max_lookups=max_lookups)
                   if enrich else None)
 
@@ -191,6 +202,7 @@ def build_account_worklist(session, *, since=None, until=None,
         'counts': worklist_counts(rows),
         'enriched': bool(enrich),
         'enrichment': enrichment,
+        'pending_checked': bool(pending_checked),
         'accounts': [_account_row(r) for r in rows],
     }
 
@@ -207,6 +219,8 @@ def _account_row(row) -> dict:
         'is_reconciled': row['is_reconciled'],
         'first_seen': row['first_seen'],
         'last_seen': row['last_seen'],
+        'waiting_since': row.get('waiting_since'),
+        'waiting_days': row.get('waiting_days'),
         'latest_action_log_id': row['latest_action_log_id'],
         'sources': list(row['sources']),
         'person': row['person'],
