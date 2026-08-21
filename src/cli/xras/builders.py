@@ -12,8 +12,10 @@ sees.
 from typing import Any, Dict, List, Optional
 
 from sam.queries.xras_actions import (
+    audit_opportunity_mapping,
     audit_resource_mapping,
     get_recent_xras_actions,
+    propose_opportunity_mapping,
     summarize_xras_actions,
 )
 
@@ -132,6 +134,39 @@ def build_mapping_report(session, *, xras_keys=None) -> dict:
     """
     return {'kind': 'xras_resource_mapping',
             **audit_resource_mapping(session, xras_keys=xras_keys)}
+
+
+def build_opportunity_report(session, *, opportunities=None) -> dict:
+    """The ``xras_opportunity_mapping`` envelope.
+
+    Two query-layer calls, deliberately not one: :func:`audit_opportunity_mapping`
+    answers *what is mapped*, and :func:`propose_opportunity_mapping` answers *what
+    could be, and by whose authority*. Both live in ``sam.queries.xras_actions`` and
+    are shared with ``xras_sweep``, so the CLI and the task cannot drift into two
+    opinions about the same opportunity.
+
+    ⚠️ **The proposal runs over the UNMAPPED subset only**, exactly as
+    ``_map_new_opportunities`` does in the sweep. Run over everything and the two
+    permanent ``manual`` rows — the ones where XRAS is wrong about SAM and a human
+    said so — reappear in ``review`` on every invocation, which is how an operator
+    learns to ignore the bucket that matters.
+
+    *opportunities* is the live open catalog when one could be fetched, making the
+    report two-sided; ``None`` reports the local half with ``live_checked`` False to
+    say so. Injected rather than fetched here for the same reason
+    :func:`build_mapping_report` injects *xras_keys*.
+    """
+    payloads = [o for o in (opportunities or []) if isinstance(o, dict)]
+    ids = [o['opportunityId'] for o in payloads if o.get('opportunityId') is not None]
+
+    audit = audit_opportunity_mapping(
+        session, opportunity_ids=ids if opportunities is not None else None)
+
+    unmapped = set(audit['unmapped_ids'])
+    proposal = propose_opportunity_mapping(
+        session, [o for o in payloads if o.get('opportunityId') in unmapped])
+
+    return {'kind': 'xras_opportunity_mapping', **audit, 'proposal': proposal}
 
 
 def build_account_worklist(session, *, since=None, until=None,

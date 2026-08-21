@@ -17,7 +17,8 @@ class XrasCommand(BaseCommand):
     """
 
     def execute(self, *, action_id=None, recheck=None, summary=False,
-                validate_mapping=False, accounts=False, person=None,
+                validate_mapping=False, validate_opportunities=False,
+                accounts=False, person=None,
                 enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
@@ -26,6 +27,8 @@ class XrasCommand(BaseCommand):
 
             if validate_mapping:
                 return self._validate_mapping()
+            if validate_opportunities:
+                return self._validate_opportunities()
             if person is not None:
                 return self._person(person)
             if accounts:
@@ -90,6 +93,70 @@ class XrasCommand(BaseCommand):
             return None
         try:
             return resource_repository_keys()
+        except XrasSourceUnavailable as exc:
+            self.ctx.console.print(
+                f'[yellow]Could not reach the XRAS API ({exc}); reporting the '
+                f'local half only.[/yellow]')
+            return None
+
+    def _validate_opportunities(self) -> int:
+        """Report the state of ``xras_opportunity_allocation_type``.
+
+        The ``opportunityId`` twin of :meth:`_validate_mapping`, and it exists
+        because this map is the only one in the integration whose failure is
+        **silent**. An unmapped resource key 422s the action; an unmapped
+        opportunity falls through to the free-text ladder, whose twelve
+        ``SelectionParms`` pairs never name ``UW``, ``WRAP`` or ``LCAP`` — so a
+        Wyoming ``Small`` request resolves to panel ``UNIV USS``, the join
+        *succeeds*, and the project is created with a UNIV-series projcode.
+        Nothing fails, and projcodes are not undoable.
+
+        **Exit code discipline is copied from ``--validate-mapping``, including
+        the mistake it already corrected once.** Non-zero is reserved for
+        ``dangling_ids`` — a mapping row whose ``allocation_type`` has vanished
+        or has no panel, which the ingest-side lookup must treat as a miss and
+        which nothing else would surface. It is deliberately **not** returned
+        for:
+
+        * ``unmapped_ids`` — with an empty table *every* opportunity is unmapped
+          and ingestion is completely healthy, because the ladder resolves them
+          exactly as it did before the table existed. A gate keyed on this would
+          fail on the day the feature shipped and every day after.
+        * ``review`` — two pairs sit there **permanently by design** (XRAS files
+          the unsponsored family under ``Educational``, and gives ``NCAR - ASD
+          Opportunity`` NSC's own type *and* panel; both change the facility).
+          A non-zero exit on a bucket that is never empty trains an operator to
+          ignore the bucket that matters.
+        """
+        payload = builders.build_opportunity_report(
+            self.session, opportunities=self._live_opportunities())
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_opportunity_report(self.ctx, payload)
+        return (EXIT_NOT_FOUND if payload['dangling_ids'] else EXIT_SUCCESS)
+
+    def _live_opportunities(self):
+        """Every currently-open XRAS opportunity, or ``None`` if we could not ask.
+
+        Auto-detecting rather than flagged, for the same reasons as
+        :meth:`_live_keys`: the operator wants the strongest check available and
+        the unconfigured case must degrade rather than fail.
+
+        ⚠️ **Open ones only** (``GET /v1/opportunities``), which is the right
+        scope rather than a limitation. ``reports/requests`` cannot mention an
+        opportunity nobody has submitted against — and that is precisely the one
+        this check exists for, because it is the one an imminent action would
+        silently mis-resolve.
+        """
+        from sam.integration.xras_api import (XrasApiClient,
+                                              XrasSourceUnavailable,
+                                              xras_api_configured)
+
+        if not xras_api_configured():
+            return None
+        try:
+            return XrasApiClient.from_environment().get_open_opportunities()
         except XrasSourceUnavailable as exc:
             self.ctx.console.print(
                 f'[yellow]Could not reach the XRAS API ({exc}); reporting the '

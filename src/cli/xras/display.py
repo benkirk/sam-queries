@@ -237,6 +237,112 @@ def display_mapping_report(ctx, payload) -> None:
             '[green]Every key XRAS offers resolves to a SAM resource.[/green]')
 
 
+def _pair(pair) -> str:
+    """A ``(panel, allocation_type)`` tuple as one cell, or the miss marker."""
+    return f'{pair[0]} / {pair[1]}' if pair else BLANK
+
+
+def display_opportunity_report(ctx, payload) -> None:
+    """Render the opportunityId map, broken rows first, then what is undecided.
+
+    Order is deliberate and is not "worst group first" in the usual sense: a
+    dangling row is the only broken state, but the group an operator is actually
+    here for is ``review`` — the opportunities two independent derivations
+    disagree about, which is where the silent wrong-projcode failure would come
+    from if anyone resolved one by guessing.
+    """
+    ctx.console.rule('[bold]XRAS opportunity mapping')
+    ctx.console.print(
+        f"[bold]{payload['mapped']}[/bold] mapping row(s) in "
+        f"xras_opportunity_allocation_type")
+
+    if payload['dangling_ids']:
+        ctx.console.print(
+            f"[bold red]Rows whose allocation type has vanished or has no "
+            f"panel:[/bold red] "
+            f"{', '.join(str(i) for i in payload['dangling_ids'])}")
+        ctx.console.print(
+            '[dim]The ingest-side lookup treats these as a miss and falls back to '
+            'the free-text ladder, silently. This is the only state this command '
+            'exits non-zero on.[/dim]')
+
+    if not payload['live_checked']:
+        ctx.console.print(
+            '[dim]Local half only — the XRAS API was not configured or not '
+            'reachable, so opportunities XRAS is currently offering are NOT '
+            'checked. Set XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY for the '
+            'two-sided report.[/dim]')
+        return
+
+    ctx.console.print(
+        f"[bold]{payload['live_id_count']}[/bold] opportunity(ies) currently open "
+        f"in XRAS")
+
+    if not payload['unmapped_ids']:
+        ctx.console.print(
+            '[green]Every open opportunity resolves through the map.[/green]')
+        return
+
+    ctx.console.print(
+        f"[bold]{len(payload['unmapped_ids'])}[/bold] of them have no mapping row")
+    ctx.console.print(
+        '[dim]Not a failure: an unmapped opportunity falls back to the free-text '
+        'ladder, exactly as every opportunity did before the map existed. What '
+        'follows is whether it could be mapped automatically.[/dim]')
+
+    proposal = payload['proposal']
+
+    if proposal['agree']:
+        table = Table(title='Would be mapped automatically (both derivations agree)',
+                      title_style='bold')
+        table.add_column('Id', justify='right', style='cyan')
+        table.add_column('Opportunity', style='dim')
+        table.add_column('Panel / type', style='green')
+        for entry in proposal['agree']:
+            table.add_row(str(entry['opportunity_id']),
+                          truncate(text(entry['opportunity_name']), 44),
+                          _pair(entry['pair']))
+        ctx.console.print(table)
+        ctx.console.print(
+            '[dim]xras_sweep writes these on its next run, newest first, capped by '
+            'SAM_TASKS_XRAS_MAP_MAX. Nothing to do.[/dim]')
+
+    if proposal['review']:
+        table = Table(title='Withheld — the two derivations disagree',
+                      title_style='bold')
+        table.add_column('Id', justify='right', style='cyan')
+        table.add_column('Opportunity', style='dim')
+        table.add_column('XRAS says', style='yellow')
+        table.add_column('Ladder says', style='yellow')
+        for entry in proposal['review']:
+            table.add_row(str(entry['opportunity_id']),
+                          truncate(text(entry['opportunity_name']), 36),
+                          _pair(entry.get('xras')),
+                          _pair(entry.get('ladder')))
+        ctx.console.print(table)
+        ctx.console.print(
+            '[dim]A human decides these, as a `source=manual` row. Disagreement is '
+            'the rule working: XRAS is not authoritative about SAM, and each known '
+            'case changes the FACILITY, which is what reaches next_projcode. A '
+            'Wyoming opportunity lands here by construction.[/dim]')
+
+    if proposal['unknown_pair']:
+        table = Table(title='Unknown to the reference map — a new allocation product',
+                      title_style='bold')
+        table.add_column('Id', justify='right', style='cyan')
+        table.add_column('Opportunity', style='dim')
+        table.add_column('Ladder says', style='yellow')
+        for entry in proposal['unknown_pair']:
+            table.add_row(str(entry['opportunity_id']),
+                          truncate(text(entry['opportunity_name']), 44),
+                          _pair(entry.get('ladder')))
+        ctx.console.print(table)
+        ctx.console.print(
+            '[dim]XRAS shipped an (allocationTypeId, panelId) pair that '
+            'sam/xras/opportunity_types.py does not name. Adding it is a one-line '
+            'edit to the constant — a code review, never a silent DB write.[/dim]')
+
+
 def display_account_worklist(ctx, payload) -> None:
     """Render the account-creation worklist, absent before inactive."""
     counts = payload['counts']

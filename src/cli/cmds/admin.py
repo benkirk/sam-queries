@@ -676,6 +676,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[rollup] Counts by status and action type')
 @click.option('--validate-mapping', is_flag=True,
               help='[check] Report SAM resources XRAS cannot name (pre-cutover gate)')
+@click.option('--validate-opportunities', is_flag=True,
+              help='[check] Report the opportunityId -> allocation-type map')
 @click.option('--accounts', is_flag=True,
               help='[worklist] Accounts to create or reactivate before a handoff')
 @click.option('--enrich', is_flag=True,
@@ -697,7 +699,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
-         accounts, enrich, person,
+         validate_opportunities, accounts, enrich, person,
          status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
@@ -715,6 +717,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --accounts   who must be created or reactivated before a handoff works
       --person U   one username in the XRAS directory
       --validate-mapping  which resources XRAS and SAM can name each other's
+      --validate-opportunities  which XRAS opportunities resolve to a SAM type
 
     \b
     --recheck answers "would this succeed if XRAS posted it now?" It re-parses the
@@ -739,12 +742,22 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
     report and says so.
 
     \b
+    --validate-opportunities is the same shape for xras_opportunity_allocation_type,
+    and it exists because that map's failure mode is the only SILENT one in the
+    integration: an unmapped opportunity falls back to the free-text ladder, which
+    cannot name any facility-4 allocation type, so a Wyoming request resolves to a
+    UNIV panel, the join SUCCEEDS, and the project gets a UNIV projcode. Nothing
+    fails. For each unmapped opportunity it reports whether XRAS's own type/panel
+    pair and the ladder AGREE -- the rule xras_sweep writes rows under.
+
+    \b
     Examples:
       sam-admin xras --last 7d
       sam-admin xras --status failed --type Extension
       sam-admin xras --show 42 --payload
       sam-admin xras --summary --last 30d
       sam-admin xras --validate-mapping
+      sam-admin xras --validate-opportunities
       sam-admin xras --accounts
       sam-admin xras --accounts --enrich --last 30d
       sam-admin xras --person somebody-user-00042
@@ -777,6 +790,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         recheck=recheck,
         summary=summary,
         validate_mapping=validate_mapping,
+        validate_opportunities=validate_opportunities,
         accounts=accounts,
         enrich=enrich,
         person=person,

@@ -366,6 +366,216 @@ class TestTwoSidedMappingAudit:
         assert report['dangling_keys'] == local['dangling_keys']
 
 
+class TestOpportunityAudit:
+    """``--validate-opportunities`` — the map whose failure mode is silent.
+
+    Every other XRAS mapping gap 422s the action. An unmapped ``opportunityId``
+    falls through to the free-text ladder, which cannot name any facility-4
+    allocation type — so a Wyoming request resolves to a UNIV panel, the join
+    *succeeds*, and the project is created with a UNIV projcode. Nothing fails.
+    That is why this command exists and why its exit code is so narrow.
+    """
+
+    #: One open-opportunity payload, in the shape ``GET /v1/opportunities``
+    #: returns: the type id lives under ``allocationTypeInfo`` and the panel is
+    #: the one flagged ``isPrimary``, never ``panels[0]``.
+    @staticmethod
+    def _payload(opportunity_id, *, type_id, panel_id, name, alloc_type=None):
+        return {
+            'opportunityId': opportunity_id,
+            'opportunityName': name,
+            'allocationType': alloc_type,
+            'allocationTypeInfo': {'allocationTypeId': type_id},
+            'panels': [{'panelId': panel_id, 'isPrimary': True}],
+        }
+
+    def _run(self, runner, payloads, monkeypatch, *, fmt_json=True):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        client = MagicMock()
+        client.get_open_opportunities.return_value = payloads
+        monkeypatch.setattr(
+            'sam.integration.xras_api.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        args = ['xras', '--validate-opportunities']
+        return runner.invoke(cli, (['--format', 'json'] + args) if fmt_json
+                             else args)
+
+    # -- the degraded halves ------------------------------------------------
+
+    def test_unconfigured_reports_the_local_half_and_says_so(self, runner,
+                                                             cli_session,
+                                                             monkeypatch):
+        """Fail-closed, exactly as ``--validate-mapping`` degrades.
+
+        ``live_checked`` False is the whole point: "nothing is unmapped out
+        there" and "we never asked" must not render as the same report.
+        """
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '0')
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        result = runner.invoke(cli, ['--format', 'json', 'xras',
+                                     '--validate-opportunities'])
+        payload = json.loads(result.output)
+        assert payload['kind'] == 'xras_opportunity_mapping'
+        assert payload['live_checked'] is False
+        assert payload['live_id_count'] is None
+        assert payload['unmapped_ids'] == []
+        assert payload['proposal'] == {'agree': [], 'review': [],
+                                       'unknown_pair': []}
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unreachable_api_warns_and_degrades(self, runner, cli_session,
+                                                   monkeypatch):
+        """The local half is still worth reporting, and it is still exit 0."""
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        client = MagicMock()
+        client.get_open_opportunities.side_effect = XrasSourceUnavailable('down')
+        monkeypatch.setattr(
+            'sam.integration.xras_api.XrasApiClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        result = runner.invoke(cli, ['xras', '--validate-opportunities'])
+        assert result.exit_code == EXIT_SUCCESS
+        assert 'local half only' in result.output
+
+    # -- the exit-code contract, which is the easy thing to get wrong -------
+
+    def test_an_unmapped_opportunity_is_not_a_failure(self, runner, cli_session,
+                                                      monkeypatch):
+        """With an EMPTY table every opportunity is unmapped and ingestion is
+        completely healthy — the ladder resolves them exactly as it did before
+        the table existed. A gate keyed on this would fail forever, which is
+        the mistake ``--validate-mapping`` already made once and corrected."""
+        result = self._run(runner, [self._payload(
+            9_100_001, type_id=500024, panel_id=500021,
+            name='Small Allocation (University)', alloc_type='Small')],
+            monkeypatch)
+        payload = json.loads(result.output)
+        assert 9_100_001 in payload['unmapped_ids']
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_a_dangling_row_is_the_one_failing_state(self, runner, cli_session,
+                                                     monkeypatch, session):
+        """A mapping row whose allocation type has no panel. The ingest-side
+        lookup must treat it as a miss and fall through *silently*, so nothing
+        else would ever surface it."""
+        from factories import make_allocation_type, make_xras_opportunity_mapping
+
+        alloc_type = make_allocation_type(session)
+        alloc_type.panel_id = None
+        session.flush()
+        row = make_xras_opportunity_mapping(session, allocation_type=alloc_type)
+
+        result = self._run(runner, [], monkeypatch)
+        payload = json.loads(result.output)
+        assert row.opportunity_id in payload['dangling_ids']
+        assert result.exit_code == EXIT_NOT_FOUND
+
+    # -- the agree rule -----------------------------------------------------
+
+    def test_an_agreed_pair_is_reported_as_mappable(self, runner, cli_session,
+                                                    monkeypatch):
+        """Both derivations produce ``CHAP``/``CHAP``, so the sweep would write
+        it and there is nothing for a human to decide."""
+        result = self._run(runner, [self._payload(
+            9_100_002, type_id=500023, panel_id=500022,
+            name='Large Allocation (University) - Fall 2026',
+            alloc_type='Large')], monkeypatch)
+        payload = json.loads(result.output)
+        agreed = {e['opportunity_id']: e for e in payload['proposal']['agree']}
+        assert 9_100_002 in agreed
+        assert agreed[9_100_002]['pair'] == ['CHAP', 'CHAP']
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_a_disagreement_is_withheld_and_reported_with_both_answers(
+            self, runner, cli_session, monkeypatch):
+        """The known live case: XRAS files the unsponsored family under
+        ``Educational`` — the same type id as Classroom — while SAM means
+        ``Small (No NSF award)``. It changes the answer, so a human decides.
+
+        ⚠️ Reported with **both** derivations, so the row explains itself
+        without a second query. That is what makes it actionable rather than
+        merely alarming.
+        """
+        result = self._run(runner, [self._payload(
+            9_100_003, type_id=500026, panel_id=500021,
+            name='University small request - unsponsored',
+            alloc_type='Exploratory')], monkeypatch)
+        payload = json.loads(result.output)
+        review = {e['opportunity_id']: e for e in payload['proposal']['review']}
+        assert 9_100_003 in review
+        assert review[9_100_003]['xras'] != review[9_100_003]['ladder']
+        assert payload['proposal']['agree'] == []
+        # A withheld row is the rule WORKING. Two pairs sit here permanently by
+        # design, so exiting non-zero would train an operator to ignore the one
+        # bucket that matters.
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_an_unknown_pair_is_reported_never_guessed(self, runner, cli_session,
+                                                       monkeypatch):
+        """A genuinely new allocation product. Adding it is a one-line edit to
+        ``sam/xras/opportunity_types.py`` — a code review, not a silent write."""
+        result = self._run(runner, [self._payload(
+            9_100_004, type_id=999_001, panel_id=999_002,
+            name='Wyoming Small Allocation', alloc_type='Small')], monkeypatch)
+        payload = json.loads(result.output)
+        unknown = [e['opportunity_id']
+                   for e in payload['proposal']['unknown_pair']]
+        assert 9_100_004 in unknown
+        assert payload['proposal']['agree'] == []
+        assert result.exit_code == EXIT_SUCCESS
+
+    # -- the scoping rule ---------------------------------------------------
+
+    def test_the_proposal_covers_only_unmapped_opportunities(
+            self, runner, cli_session, monkeypatch, session):
+        """⚠️ The rule that keeps the ``review`` bucket meaningful.
+
+        Two rows in production are ``source='manual'`` *because* the two
+        derivations disagree and a human settled it. Run the proposal over
+        everything and those reappear in ``review`` on every invocation, which
+        is precisely how an operator learns to ignore the bucket. So the
+        proposal sees the unmapped subset only — the same scoping
+        ``_map_new_opportunities`` uses in ``xras_sweep``.
+        """
+        from factories import make_allocation_type, make_xras_opportunity_mapping
+
+        row = make_xras_opportunity_mapping(
+            session, allocation_type=make_allocation_type(session),
+            opportunity_name='already decided by a human')
+
+        result = self._run(runner, [self._payload(
+            row.opportunity_id, type_id=500026, panel_id=500021,
+            name='already decided by a human',
+            alloc_type='Exploratory')], monkeypatch)
+        payload = json.loads(result.output)
+
+        assert row.opportunity_id in payload['mapped_ids']
+        assert row.opportunity_id not in payload['unmapped_ids']
+        seen = [e['opportunity_id']
+                for bucket in payload['proposal'].values() for e in bucket]
+        assert row.opportunity_id not in seen
+
+    # -- rendering ----------------------------------------------------------
+
+    def test_rich_mode_renders_all_three_buckets(self, runner, cli_session,
+                                                 monkeypatch):
+        result = self._run(runner, [
+            self._payload(9_100_005, type_id=500023, panel_id=500022,
+                          name='agrees', alloc_type='Large'),
+            self._payload(9_100_006, type_id=500026, panel_id=500021,
+                          name='disagrees', alloc_type='Exploratory'),
+            self._payload(9_100_007, type_id=999_001, panel_id=999_002,
+                          name='unknown to the constant', alloc_type='Small'),
+        ], monkeypatch, fmt_json=False)
+        assert result.exit_code == EXIT_SUCCESS
+        assert 'Would be mapped automatically' in result.output
+        assert 'the two derivations disagree' in result.output
+        assert 'a new allocation product' in result.output
+
+
 class TestWorklistRendering:
     """The rich renderers on a populated worklist.
 

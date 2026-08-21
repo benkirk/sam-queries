@@ -741,8 +741,9 @@ report 13/13 against today's catalog (§ 6).
 ### 8.2 `opportunityId` → allocation type — ✅ **BUILT 2026-08-20**
 
 **Superseded by [`XRAS_OPPORTUNITY_ALLOCATION_TYPE.md`](XRAS_OPPORTUNITY_ALLOCATION_TYPE.md)**,
-which carries the design, the corrections the build found, and what stays
-deferred (the `--validate-opportunities` CLI).
+which carries the design, the corrections the build found, and — as of
+2026-08-20 — the `--validate-opportunities` CLI, which is no longer deferred
+(§ 8.6 there).
 
 The deferral reasoning below is kept because it is what the decision was
 reversed *against*: the criterion was "assess after the first triage week under
