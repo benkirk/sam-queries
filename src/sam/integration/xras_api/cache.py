@@ -57,8 +57,21 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
     ),
 })
 
-#: One key: the sweep publishes a single whole-process snapshot.
+#: The Feed-B account worklist. The sweep publishes a single whole-process
+#: snapshot under this key.
 _PENDING_KEY = 'worklist'
+
+#: The Remediations card's request index — a **second key in the same bucket**,
+#: written by the same sweep run.
+#:
+#: Two keys rather than one payload, deliberately: the ``worklist`` value keeps
+#: its exact shape, so a deploy in either direction stays compatible. An old
+#: webapp reading a new sweep's output sees the worklist it expects and simply
+#: never asks for this key; a new webapp reading an old sweep's output finds no
+#: index and renders its "no sweep has published one yet" state — which is a
+#: real state during the first hour after a deploy, and one the card names
+#: rather than showing an empty table.
+_REQUESTS_KEY = 'requests_index'
 
 #: Test seam, matching the awards / fs-scans / jobs idiom: ``_adapters`` IS
 #: the cache's memo dict, so clearing it re-initialises the cache.
@@ -125,18 +138,10 @@ def store_pending_worklist(payload: Any) -> str:
     `cronjob-tasks.yaml` did not carry `CACHE_REDIS_URL`. A bool could not tell
     the two apart, so the caller could not report the difference.
     """
-    adapter = _CACHE.adapter('pending')
-    if adapter is None:
-        return 'disabled'
-    with adapter.lock:
-        adapter.pop(_PENDING_KEY, None)
-        try:
-            adapter[_PENDING_KEY] = payload
-        except ValueError:
-            # Full with nothing expired to evict — skip rather than fail the
-            # sweep, which has already done the useful work.
-            return 'full'
-    return 'redis' if is_shared_backend(adapter) else 'local'
+    # 'full' back from the helper means the bucket had nothing expired to
+    # evict — skipped rather than failing the sweep, which has already done the
+    # useful work.
+    return _store('pending', _PENDING_KEY, payload)
 
 
 def is_shared_backend(adapter: Any) -> bool:
@@ -148,6 +153,107 @@ def is_shared_backend(adapter: Any) -> bool:
     return isinstance(adapter, RedisTTLAdapter)
 
 
+def store_requests_index(payload: Any) -> str:
+    """Publish the sweep's Remediations index. Same contract as
+    :func:`store_pending_worklist` — including returning **where it landed**,
+    because this is written from the same one-shot CronJob pod and a
+    process-local write there succeeds and then dies with the process.
+    """
+    return _store('pending', _REQUESTS_KEY, payload)
+
+
+def load_requests_index() -> Optional[Any]:
+    """Read the last published request index, or ``None``.
+
+    ``None`` is a distinct and meaningful answer: no sweep has published one
+    yet. That is the state for the first hour after this ships, and for as long
+    as the sweep stays disabled, and the card says so rather than rendering an
+    empty table that looks like "nothing to remediate".
+    """
+    return _load('pending', _REQUESTS_KEY)
+
+
+def patch_requests_index(request_number: str, entry: Optional[Any]) -> bool:
+    """Replace one entry in the published index, in place. ``True`` if it stuck.
+
+    ⚠️ **This is what makes a write visible in the same interaction.** The card
+    renders from an hourly snapshot, but an operator who withdraws an action
+    must not keep reading "Approved" for another fifty minutes, and re-running
+    the 60-90s enumeration per click is not on the table. So the service
+    re-fetches the one request it just changed and patches its entry here.
+
+    Read-modify-write under the adapter's lock. The lock matters more than it
+    looks: the bucket may be Redis shared across every webapp worker, and two
+    operators acting on different requests in the same second would otherwise
+    race to write back two whole payloads, one of which would lose an edit.
+
+    *entry* of ``None`` removes the row. Callers should prefer patching a row
+    into its new state over dropping it — a row that vanishes on click reads as
+    a bug, while a row that changes reads as the effect.
+
+    ``False`` means there was nothing to patch (no index published, or the
+    request is not in it), which is not an error: the write itself already
+    happened and was verified, and the next sweep will pick the request up.
+    """
+    adapter = _CACHE.adapter('pending')
+    if adapter is None:
+        return False
+    with adapter.lock:
+        if _REQUESTS_KEY not in adapter:
+            return False
+        payload = adapter[_REQUESTS_KEY]
+        if not isinstance(payload, dict) or not isinstance(payload.get('rows'), list):
+            return False
+
+        wanted = str(request_number).strip()
+        rows = payload['rows']
+        index = next((i for i, row in enumerate(rows)
+                      if isinstance(row, dict)
+                      and str(row.get('request_number') or '').strip() == wanted),
+                     None)
+        if index is None:
+            return False
+
+        if entry is None:
+            rows.pop(index)
+        else:
+            rows[index] = entry
+
+        # Re-store rather than mutate in place: the Redis adapter serializes on
+        # assignment, so an in-place edit of the object we read back would
+        # change nothing on a shared backend and everything on a local one —
+        # the worst kind of difference to carry between dev and production.
+        adapter.pop(_REQUESTS_KEY, None)
+        try:
+            adapter[_REQUESTS_KEY] = payload
+        except ValueError:
+            return False
+    return True
+
+
+def _store(bucket: str, key: str, payload: Any) -> str:
+    adapter = _CACHE.adapter(bucket)
+    if adapter is None:
+        return 'disabled'
+    with adapter.lock:
+        adapter.pop(key, None)
+        try:
+            adapter[key] = payload
+        except ValueError:
+            return 'full'
+    return 'redis' if is_shared_backend(adapter) else 'local'
+
+
+def _load(bucket: str, key: str) -> Optional[Any]:
+    adapter = _CACHE.adapter(bucket)
+    if adapter is None:
+        return None
+    with adapter.lock:
+        if key not in adapter:
+            return None
+        return adapter[key]
+
+
 def load_pending_worklist() -> Optional[Any]:
     """Read the sweep's last published Feed-B result, or ``None``.
 
@@ -156,10 +262,4 @@ def load_pending_worklist() -> Optional[Any]:
     is deliberately distinguishable from a published-but-empty result (a real
     sweep that found nothing), which comes back as a payload with zero rows.
     """
-    adapter = _CACHE.adapter('pending')
-    if adapter is None:
-        return None
-    with adapter.lock:
-        if _PENDING_KEY not in adapter:
-            return None
-        return adapter[_PENDING_KEY]
+    return _load('pending', _PENDING_KEY)
