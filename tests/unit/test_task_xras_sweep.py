@@ -890,6 +890,30 @@ class TestABrandNewOpportunityIsSeenBeforeAnyRequestExists:
     FALL_2026 = _opportunity(535388, 'Large Allocation (University) - Fall 2026',
                              'Large', 500023, 500022, extra_panels=(500032,))
 
+    @pytest.fixture(autouse=True)
+    def _unmapped(self, session):
+        """Guarantee 535388 is unmapped, instead of assuming the snapshot is.
+
+        ⚠️ **This class describes a BRAND-NEW opportunity, so every assertion
+        below depends on that id being absent — and the obfuscated snapshot is
+        not a fixed thing.** `xras_sweep` writes mapping rows itself
+        (`source='task:xras_sweep'`), so the dev database accumulates them, and
+        a regeneration carries whatever it had accumulated into CI.
+
+        That is exactly what happened on 2026-08-21: the snapshot went from 13
+        mapping rows to 43, 535388 among them, and all three tests here failed
+        in CI while passing locally against the older blob. The id stays real
+        because the measurement is the documentation — this fixture just stops
+        the test borrowing a precondition it does not control.
+
+        Deleted inside the per-test SAVEPOINT, so nothing leaks to other tests.
+        """
+        from sam.integration.xras import XrasOpportunityAllocationType
+
+        session.query(XrasOpportunityAllocationType).filter_by(
+            opportunity_id=535388).delete(synchronize_session=False)
+        session.flush()
+
     def test_it_is_mapped_with_no_requests_anywhere(self, ctx, wire, session):
         """No pages at all — nothing has ever been submitted against it."""
         from sam.integration.xras import SOURCE_SWEEP, XrasOpportunityAllocationType

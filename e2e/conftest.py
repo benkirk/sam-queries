@@ -62,24 +62,27 @@ def dashboard_page_routes():
         '/admin/expirations/export',
         # JSON diagnostic endpoint.
         '/allocations/cache/status',
-        # htmx fragment, despite the rule not saying so — the view is
-        # `expirations_fragment` and it returns bare cards plus an OOB badge,
-        # with no <html> wrapper. The filters below key off the *rule*
-        # (`/htmx/`, `_fragment` suffix) and this one is spelled
-        # `/admin/expirations`, so it has to be named explicitly. Found by the
-        # dark-mode sweep: `assert_theme_applied` reported `data-bs-theme` was
-        # None here, which is exactly right for a fragment and impossible for a
-        # page. It was previously swept as a page and passed only because a
-        # fragment emits no console errors.
-        '/admin/expirations',
     }
     rows = json.loads(ROUTE_MAP.read_text())
     return sorted({
-        rule for _endpoint, rule, methods in rows
+        rule for endpoint, rule, methods in rows
         if 'GET' in methods
         and '<' not in rule                 # no URL converters
         and '/htmx/' not in rule            # htmx fragment, not a page
-        and not rule.endswith('_fragment')
+        # ⚠️ Classify on the ENDPOINT, not the rule. A fragment view is named
+        # `*_fragment` by convention, but its URL need not be: `/admin/expirations`
+        # is `expirations_fragment`, and `/allocations/xras_remediations` is
+        # `xras_remediations_fragment`. Keying off the rule meant each such route
+        # had to be named in `skip` by hand, one incident at a time — the first
+        # was found when `assert_theme_applied` reported `data-bs-theme` was None,
+        # which is exactly right for a fragment and impossible for a page, and the
+        # second the same way when the XRAS Remediations card landed.
+        #
+        # Before that, both were swept as pages and PASSED, because a fragment
+        # emits no console errors — so the sweep was reporting coverage it did
+        # not have. Endpoint-based classification closes the class instead of
+        # chasing names.
+        and not endpoint.endswith('_fragment')
         and rule not in skip
     })
 
