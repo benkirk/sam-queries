@@ -41,6 +41,7 @@ live, inside a permission-gated route.
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from sam.queries.xras_accounts import is_placeholder
@@ -60,6 +61,32 @@ TERMINAL_ACTION_STATUSES = ('Rejected', 'Cancelled', 'Withdrawn')
 DRAFT_ACTION_STATUS = 'Incomplete'
 
 PI_ROLE_TYPE_ID = 13
+
+
+def _as_date(value: Any):
+    """XRAS date → ``date``, or ``None``.
+
+    Parsed here rather than left as a string because the entry is **pickled
+    into a cache and read straight by a Jinja ``fmt_date``**, which needs a
+    real date object — the same contract the sweep's ``generated_at`` already
+    follows. Doing it in the builder means both consumers get it and neither
+    template has to know the wire format.
+
+    Three shapes arrive: ``2015-07-09T19:16:58.481Z``, ``2026-01-01T00:00:00Z``
+    and a bare ``2015-07-09``. All three are answered by taking the first ten
+    characters, which is also why an unparsable value returns ``None`` rather
+    than raising — a malformed date must cost that field, not the row.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return datetime.strptime(str(value)[:10], '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return None
 
 
 def _text(value: Any) -> Optional[str]:
@@ -134,7 +161,7 @@ def actions_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             'action_id': action.get('actionId'),
             'action_type': _text(action.get('actionType')),
             'action_status': status,
-            'submit_date': action.get('submitDate'),
+            'submit_date': _as_date(action.get('submitDate')),
             # Snapshot-derived *offers*, not permissions. The modal's live read
             # is the authority on legality; these only decide which button to
             # draw, and drawing one that XRAS then refuses is a 4xx the modal
@@ -181,9 +208,9 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         'request_id': request_id,
         'status': _text(payload.get('requestStatus')),
         'request_type': _text(payload.get('requestType')),
-        'submit_date': payload.get('submitDate'),
-        'begin_date': payload.get('beginDate'),
-        'end_date': payload.get('endDate'),
+        'submit_date': _as_date(payload.get('submitDate')),
+        'begin_date': _as_date(payload.get('beginDate')),
+        'end_date': _as_date(payload.get('endDate')),
         'pending_push': bool(pending_push),
         'opportunity_id': payload.get('opportunityId'),
         'opportunity_name': _text(payload.get('opportunity_name')

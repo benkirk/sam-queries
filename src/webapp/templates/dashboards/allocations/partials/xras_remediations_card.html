@@ -1,0 +1,209 @@
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{% from 'dashboards/fragments/facet_chips.html' import facet_row %}
+{#
+  XRAS Remediations — the operator WRITE surface.
+
+  Context:
+    groups          [{name, opportunity_id, rows[]}] grouped by opportunity
+    total           rows after filtering;  swept_total  rows before the window
+    snapshot        the published index payload, or None
+    configured      XRAS_OUTGOING_ENABLED + key;  write_enabled  + XRAS_WRITE_ENABLED
+    has_worklist    a sweep has published the ACCOUNT worklist (see below)
+    *_values / selected_*  facet state
+    form_id, fragment_url, target_id
+
+  ── EVERY BUTTON HERE WRITES TO PRODUCTION XRAS ──────────────────────────
+  This is a scoped subset of the external XRAS admin dashboard, not a
+  replacement for it. Merging deletes an account. Withdrawing de-approves an
+  award and rewrites its history. Neither is undone by closing the tab.
+
+  ── FOUR EMPTY STATES, AND THEY MEAN DIFFERENT THINGS ────────────────────
+  The third is the subtle one: a sweep has published the account worklist but
+  not this index, which is exactly the window between deploying this feature
+  and the first sweep that carries it. Reporting that as "nothing to
+  remediate" would be a lie during the one hour an operator is most likely to
+  be looking at a brand-new card.
+#}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center flex-wrap gap-2">
+        <strong>XRAS Remediations</strong>
+        {% if snapshot %}
+        <span class="badge bg-secondary">{{ total | fmt_number }} request(s)</span>
+        {# ⚠️ "N of M" whenever the window hides rows, never a bare N — and on
+           THIS card the hidden ones skew urgent. A 2015 approval nobody ever
+           pushed is the row most worth closing, and it is the first thing any
+           recency filter drops. #}
+        {% if total != swept_total %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+              title="Older requests are hidden by the date filter above. On this card an older request is usually the MORE urgent one — widen the filter to see them.">
+            {{ (swept_total - total) | fmt_number }} outside the date filter
+        </span>
+        {% endif %}
+        <span class="ms-auto small text-muted"
+              title="This card renders what the xras_sweep task last published; it is not fetched live. Rows you have just acted on are refreshed individually and marked.">
+            swept {{ snapshot.generated_at | fmt_date }}
+            {%- if snapshot.statuses %} · {{ snapshot.statuses | join(', ') }}{% endif %}
+            {%- for status, info in (snapshot.extra_statuses or {}).items() %}
+                {%- if info.budget_exhausted %} · <span class="text-warning">{{ status }} page cap reached</span>{% endif %}
+            {%- endfor %}
+        </span>
+        {% endif %}
+    </div>
+
+    <div class="card-body">
+    {% if not configured %}
+        <div class="alert alert-secondary mb-0">
+            <strong>The outgoing XRAS API is not configured.</strong>
+            Remediations read and write through it, so nothing can be shown or
+            done here until <code>XRAS_OUTGOING_ENABLED</code> and an API key
+            are set.
+        </div>
+    {% elif snapshot is none and not has_worklist %}
+        <div class="alert alert-secondary mb-0">
+            <strong>No sweep has published yet.</strong>
+            The <code>xras_sweep</code> task builds this list once an hour; it
+            may be disabled, or this may be the first hour after a deploy.
+        </div>
+    {% elif snapshot is none %}
+        {# The deploy window. Distinguishing this from "nothing to remediate"
+           is the reason the route checks for the older key at all. #}
+        <div class="alert alert-info mb-0">
+            <strong>The last sweep predates this card.</strong>
+            A sweep has run, but it published only the account worklist — this
+            list arrives with the next one, within the hour.
+        </div>
+    {% elif not groups %}
+        {% if swept_total %}
+        {# ⚠️ "No matches" would be a misleading thing to say here. The shared
+           window defaults to a recent lookback, and on THIS card the rows it
+           hides are the ones most worth acting on — a request approved years
+           ago and never pushed is precisely a remediation. So when the filter
+           is what emptied the card, the card says so and says how many, rather
+           than implying there is no work. #}
+        <div class="alert alert-warning mb-0">
+            <strong>{{ swept_total | fmt_number }} request(s) were swept, and
+            the current filters hide all of them.</strong>
+            On this card an older request is usually the <em>more</em> urgent
+            one — widen the date filter above, or clear the chips, to see them.
+        </div>
+        {% else %}
+        <div class="text-muted mb-0">
+            Nothing to remediate. Every swept request is where it should be.
+        </div>
+        {% endif %}
+    {% else %}
+
+        {# One warning, said once, at the top — not repeated on every button,
+           where it would become wallpaper and stop being read. #}
+        <div class="alert alert-warning d-flex gap-2 py-2 mb-3">
+            <i class="fas fa-triangle-exclamation mt-1"></i>
+            <div class="small">
+                <strong>These actions change production XRAS.</strong>
+                Each one is confirmed, verified by re-reading XRAS afterwards,
+                and recorded against your username in the remediation log.
+                {% if not write_enabled %}
+                <br><strong>Writes are currently switched off</strong>
+                (<code>XRAS_WRITE_ENABLED</code>), so the controls below are
+                disabled.
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="facet-grid mb-3">
+            {{ facet_row('Status', status_values, form_id, 'status',
+                         active=selected_statuses) }}
+            {{ facet_row('Opportunity', opportunity_values, form_id, 'opportunity',
+                         active=selected_opportunities) }}
+            {{ facet_row('SAM project', push_values, form_id, 'push',
+                         active=selected_push) }}
+            {# Built in the route — Jinja has no list comprehension. Present
+               only when a request filter is active, which is how the action
+               log's "Show in action log" round-trip renders a clearable chip. #}
+            {{ facet_row('Request', request_values, form_id, 'request_number',
+                         active=selected_requests) }}
+        </div>
+
+        <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+            <thead>
+                <tr>
+                    <th style="width:2rem"></th>
+                    <th>Request</th>
+                    <th>Status</th>
+                    <th>Project lead</th>
+                    <th>Submitted</th>
+                    <th>Period</th>
+                    <th>SAM</th>
+                    <th></th>
+                </tr>
+            </thead>
+            {% for group in groups %}
+            <tbody>
+                <tr class="table-light">
+                    <td colspan="8" class="fw-semibold">
+                        {{ group.name }}
+                        {% if group.opportunity_id %}
+                        <span class="text-muted fw-normal small">#{{ group.opportunity_id }}</span>
+                        {% endif %}
+                        <span class="badge bg-secondary ms-1">{{ group.rows | length }}</span>
+                    </td>
+                </tr>
+                {% for row in group.rows %}
+                {% set rid = 'xrem-' ~ row.request_number %}
+                {# The toggle lives on the <td>s, not on a nested button:
+                   Bootstrap's collapse data-api runs in the CAPTURE phase, so
+                   a button inside a clickable row cannot stopPropagation the
+                   row's own toggle. Same shape as the sibling cards. #}
+                <tr data-bs-toggle="collapse" data-bs-target="#{{ rid }}"
+                    style="cursor:pointer">
+                    <td>{{ collapse_toggle(rid) }}</td>
+                    <td class="font-monospace">
+                        {{ row.request_number }}
+                        {% if row.refreshed_at %}
+                        {# The tell that this row was patched after a write
+                           rather than swept — so an operator can see their own
+                           change landed instead of wondering. #}
+                        <i class="fas fa-circle-check text-success ms-1"
+                           title="Updated just now, after your change — newer than the sweep."></i>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-body-secondary text-body-secondary border">
+                            {{ row.status or '—' }}
+                        </span>
+                    </td>
+                    <td>{{ row.pi.name or row.pi.username or '—' }}</td>
+                    <td>{{ row.submit_date | fmt_date }}</td>
+                    <td class="small text-muted">
+                        {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}
+                    </td>
+                    <td>
+                        {% if row.pending_push %}
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">no project</span>
+                        {% else %}
+                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">project</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end small">
+                        <span class="text-muted">{{ row.actions | length }} action(s)</span>
+                        {% if row.has_stuck_placeholder %}
+                        <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle ms-1"
+                              title="A roster member is an ARC placeholder that XRAS has already flagged reconciled — a contradiction. XRAS keeps sending the throwaway username and the handoff stays blocked.">
+                            placeholder roster
+                        </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr class="collapse" id="{{ rid }}">
+                    <td colspan="8" class="bg-body-tertiary">
+                        {% include 'dashboards/allocations/partials/xras_remediation_row.html' %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% endfor %}
+        </table>
+        </div>
+    {% endif %}
+    </div>
+</div>

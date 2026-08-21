@@ -1,0 +1,130 @@
+{#
+  Resolve identity — the assisted merge decision, rendered into
+  #auditDetailsModalBody and re-rendered in place on a validation error.
+
+  Context: username, person, candidates[], write_enabled, post_url
+
+  ── WHY THIS IS A MERGE AND NOT AN "UNRECONCILE" ─────────────────────────
+  The obvious fix — flip `isReconciled` back to false so the placeholder
+  rejoins XRAS's own unreconciled queue — does not exist. That endpoint
+  returns 200 and silently drops the parameter; a button wired to it would be
+  the worst kind, green and inert. Reconciliation in XRAS *is* a merge, so the
+  remedy is to complete the merge that never happened.
+
+  ── WHY NOTHING IS PRESELECTED WHEN THERE IS MORE THAN ONE CANDIDATE ─────
+  Measured on real data: one human had two live XRAS identities differing only
+  by email and organization — a university address and an NCAR-staff one. A
+  name match picks between them arbitrarily, and merge DELETES the loser and
+  moves the placeholder's roles onto the winner. So the safe key is email and
+  organization, never the name, and the operator chooses.
+
+  Deliberate deviation from the plan: the override is a plain text input, not
+  an FK picker. A picker over SAM users would return a SAM username, and the
+  merge target is an XRAS identity — the two are not the same namespace. The
+  handler resolves whatever is typed against XRAS and refuses if it does not
+  already exist, because the API CREATES an unknown target rather than failing.
+#}
+{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, form_errors_panel with context %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Resolve identity — {{ username }}
+</h5>
+
+<p class="text-muted small">
+    This placeholder is marked <em>reconciled</em> in XRAS but was never merged
+    into a real account, so XRAS keeps sending the throwaway username and the
+    handoff stays blocked. Resolving it <strong>merges this placeholder into the
+    real XRAS identity you pick below and deletes the placeholder.</strong> From
+    then on XRAS sends the real username. This does <strong>not</strong> create
+    a SAM account — that is still a separate step if the person has none.
+    <strong>It cannot be undone from here.</strong>
+</p>
+
+{% if person %}
+<div class="card mb-3">
+    <div class="card-header py-1 small text-uppercase text-muted">The placeholder</div>
+    <div class="card-body py-2 small">
+        <div class="font-monospace">{{ person.username }}</div>
+        <div>{{ person.firstName }} {{ person.lastName }}</div>
+        <div class="text-muted">{{ person.email }}</div>
+        <div class="text-muted">{{ person.organization }}</div>
+        {% if person.residenceCountry %}
+        <div class="text-muted">{{ person.residenceCountry }}</div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<form hx-post="{{ post_url }}"
+      hx-target="#auditDetailsModalBody"
+      hx-swap="innerHTML">
+
+    <div class="mb-3">
+        <div class="form-label">
+            Merge into
+            {% if candidates | length > 1 %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle ms-1">
+                {{ candidates | length }} candidates — check the email and organization
+            </span>
+            {% endif %}
+        </div>
+
+        {% for candidate in candidates %}
+        <div class="form-check border rounded p-2 mb-1">
+            {# `required` on every radio, and NO `checked` on any of them, even
+               when there is only one: the browser then refuses to submit an
+               unmade choice, which is exactly the guarantee this needs. #}
+            <input class="form-check-input" type="radio" name="candidate"
+                   id="cand-{{ loop.index }}" value="{{ candidate.username }}" required>
+            <label class="form-check-label w-100" for="cand-{{ loop.index }}">
+                <span class="font-monospace">{{ candidate.username }}</span>
+                {% if candidate.rank == 0 %}
+                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">{{ candidate.why }}</span>
+                {% elif candidate.rank == 1 %}
+                <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">{{ candidate.why }}</span>
+                {% else %}
+                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">{{ candidate.why }}</span>
+                {% endif %}
+                <br>
+                <span class="small">{{ candidate.name }}</span>
+                <span class="small text-muted">· {{ candidate.email }}</span>
+                <span class="small text-muted">· {{ candidate.organization }}</span>
+                <br>
+                {% if candidate.sam_active %}
+                <span class="small text-success">has an active SAM account — the handoff can proceed after the merge</span>
+                {% elif candidate.in_sam %}
+                <span class="small text-warning">SAM account exists but is inactive</span>
+                {% else %}
+                <span class="small text-muted">no SAM account — the person will still need one created</span>
+                {% endif %}
+            </label>
+        </div>
+        {% else %}
+        <div class="alert alert-warning py-2 small mb-2">
+            No real XRAS identity matched this placeholder's email or surname.
+            Merging is not the fix here — this person genuinely needs an account
+            or identity created first, which is the ordinary
+            <em>Accounts Needed</em> path. The reconciled flag was a red herring.
+        </div>
+        {% endfor %}
+    </div>
+
+    {{ text_field('target_username', 'Or merge into a different XRAS username',
+                  placeholder='exact XRAS username',
+                  help='Only if none of the candidates above is right. The name must already exist in XRAS — a username that does not would be CREATED, and this placeholder\'s roles moved onto it.') }}
+
+    {{ textarea_field('comment', 'Note', rows=2, maxlength=4000,
+                      placeholder='Why this target? (recorded in the remediation log)') }}
+
+    {{ form_errors_panel() }}
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            Cancel
+        </button>
+        <button type="submit" class="btn btn-danger"
+                {% if not write_enabled %}disabled title="XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED)."{% endif %}>
+            <i class="fas fa-code-merge"></i> Merge and delete placeholder
+        </button>
+    </div>
+</form>

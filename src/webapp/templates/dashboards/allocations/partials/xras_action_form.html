@@ -1,0 +1,146 @@
+{#
+  Withdraw / Re-submit one action. One template, two modes — they are exact
+  inverses of each other and splitting them would duplicate the impersonation
+  block, the state block, and the honesty copy three times over.
+
+  Context: mode ('withdraw'|'resubmit'), request_number, request_id,
+           request_status, action, action_id, action_count,
+           xa_user, xa_user_is_pi, validation (resubmit only),
+           write_enabled, post_url
+#}
+{% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+{% set withdrawing = mode == 'withdraw' %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    {{ 'Withdraw' if withdrawing else 'Re-submit' }}
+    action {{ action_id }} — {{ request_number }}
+</h5>
+
+{% if withdrawing %}
+{# ⚠️ The word "withdraw" sounds lighter than what this does, and an operator
+   reaching for it is usually thinking "close this stale request". Say plainly
+   that it de-approves and rewrites history, and that a multi-action request
+   does not close this way. #}
+<p class="text-muted small">
+    This <strong>de-approves</strong> the action back to a draft
+    (<code>Incomplete</code>) in XRAS. It is not an archive and not a delete:
+    the record is <strong>rewritten</strong> so its history no longer shows an
+    approval, and the project lead — or the Re-submit button here — can send it
+    back at any time.
+    {% if action_count > 1 %}
+    This request has {{ action_count }} actions, so it will
+    <strong>stay {{ request_status }}</strong> while another approved action
+    survives; withdraw each stuck action separately.
+    {% else %}
+    This is the request's only action, so the whole request will follow it to
+    <code>Incomplete</code> and drop off the pending lists.
+    {% endif %}
+</p>
+{% else %}
+<p class="text-muted small">
+    This re-submits the drafted action for review in XRAS. It is the inverse of
+    a withdrawal: the action leaves <code>Incomplete</code> and lands in
+    <strong>Under Review</strong> — not <em>Approved</em>, and not
+    <em>Submitted</em>. Approval remains a decision for the review process.
+</p>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-body py-2 small">
+        <div>
+            <span class="text-muted">Action</span>
+            <span class="font-monospace">{{ action_id }}</span>
+            · {{ action.actionType if action else '—' }}
+            · <span class="badge bg-body-secondary text-body-secondary border">
+                {{ action.actionStatus if action else '—' }}
+              </span>
+        </div>
+        <div>
+            <span class="text-muted">Request</span>
+            <span class="font-monospace">{{ request_number }}</span>
+            · {{ request_status or '—' }}
+        </div>
+        <div class="mt-1">
+            {# Two identities, and they are not the same person. Every
+               request-scoped XRAS write authorizes on XA-USER holding a role on
+               that request, so SAM impersonates the lead — but the decision is
+               the operator's and that is what the audit row records. #}
+            <span class="text-muted">Sent to XRAS as</span>
+            <code>{{ xa_user or '—' }}</code>
+            {% if xa_user and not xa_user_is_pi %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                  title="This request has no project lead, so SAM will act as another role-holder. XRAS may evaluate the request differently for them.">
+                not the project lead
+            </span>
+            {% endif %}
+            <span class="text-muted">· recorded against</span>
+            <code>{{ current_user.username }}</code>
+        </div>
+    </div>
+</div>
+
+{% if not withdrawing %}
+{# ⚠️ The preflight verdict is a function of WHO we impersonate, not only of
+   the action: the same action has been measured validating as the project lead
+   and failing as the allocation manager. So it is always shown next to the
+   user it was evaluated as, and a failure disables the button rather than
+   hiding the reason. #}
+{% if validation is none %}
+<div class="alert alert-secondary py-2 small">
+    XRAS could not be asked to pre-check this action, so it has not been
+    validated. {% if not write_enabled %}Writes are switched off for this
+    deployment.{% endif %}
+</div>
+{% elif validation.validation == 'successful' %}
+<div class="alert alert-success py-2 small mb-3">
+    XRAS pre-checked this action as <code>{{ xa_user }}</code> and it validates.
+</div>
+{% else %}
+<div class="alert alert-danger py-2 small mb-3">
+    <strong>XRAS pre-checked this action as <code>{{ xa_user }}</code> and it
+    does not validate:</strong>
+    <ul class="mb-0 mt-1">
+        {% for error in validation.errors or [] %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+    <div class="mt-1 text-muted">
+        A different role-holder may get a different answer — this check is
+        evaluated as the user above, not as the request.
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+{% set blocked = (not write_enabled)
+                 or (not xa_user)
+                 or (not withdrawing and validation and validation.validation != 'successful') %}
+
+<form hx-post="{{ post_url }}"
+      hx-target="#auditDetailsModalBody"
+      hx-swap="innerHTML">
+    {% if withdrawing %}
+    {# Required, unlike re-submit: de-approving someone's award without a
+       stated reason is not an audit trail, and the moment of the decision is
+       the cheapest time to capture one. #}
+    {{ textarea_field('comment', 'Reason', required=True, rows=3, maxlength=4000,
+                      placeholder='Why is this action being withdrawn?',
+                      help='Recorded in the remediation log with your username.') }}
+    {% endif %}
+
+    {{ form_errors_panel() }}
+
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            Cancel
+        </button>
+        <button type="submit"
+                class="btn {{ 'btn-warning' if withdrawing else 'btn-primary' }}"
+                {% if blocked %}disabled
+                title="{% if not write_enabled %}XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).{% elif not xa_user %}This request has no role-holder for SAM to act as.{% else %}XRAS validation must pass first.{% endif %}"{% endif %}>
+            {% if withdrawing %}
+            <i class="fas fa-rotate-left"></i> Withdraw (de-approve to a draft)
+            {% else %}
+            <i class="fas fa-paper-plane"></i> Re-submit for review
+            {% endif %}
+        </button>
+    </div>
+</form>

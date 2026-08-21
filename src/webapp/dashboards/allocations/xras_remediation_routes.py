@@ -1,0 +1,954 @@
+"""XRAS Remediations — the operator write surface on Allocations → XRAS.
+
+A scoped **subset** of the external XRAS admin dashboard, never a replacement:
+resolve an erroneously-reconciled placeholder by merge, withdraw a stale or
+in-flight submission, re-submit, and fix a roster. `MANAGE_XRAS` only,
+conditional on the outgoing write lever, never automated.
+
+Its own module rather than more of ``blueprint.py`` (already 2,500 lines), on
+that file's existing ``bp``, imported at its foot.
+
+Three things a reader coming from the sibling cards must know
+------------------------------------------------------------
+**1. These routes write to a system SAM does not own, and the write is done
+before the response is.** Nothing here is undone by an exception, a rollback,
+or a browser closing. The service layer (``sam.manage.xras_remediation``)
+commits its audit row on a private session *before* dispatching, precisely so
+the record survives everything the request does not.
+
+**2. ``perform()`` opens ``management_transaction`` and writes nothing to it.**
+The handler base wraps every ``perform()`` that way, and these handlers do
+their persistence on the service's own connections. So each POST holds an idle
+SAM transaction across an HTTP call to ``api.xras.org``. That is accepted
+rather than engineered around: the alternative is a second handler base whose
+only difference is the missing wrapper, and the calls are single-attempt with a
+10 s timeout.
+
+**3. Every modal GET degrades with a 200, not a 4xx.** Remediation needs live
+reads — a roster, a person, a preflight — and htmx will not swap a 4xx body
+into an already-open modal, so an XRAS outage rendered as an error status is an
+empty modal with no explanation. The degraded body says what happened instead.
+"""
+
+from __future__ import annotations
+
+from flask import current_app, render_template, request, url_for
+from flask_login import current_user, login_required
+
+from sam.core.users import User
+from sam.integration.xras_api import (
+    XrasSourceUnavailable,
+    XrasWriteNotConfigured,
+    XrasWriteRejected,
+    xras_api_configured,
+    xras_write_configured,
+)
+from sam.manage import xras_remediation as remediation
+from sam.schemas.forms import (
+    XrasMergeForm,
+    XrasRemediationReasonForm,
+    XrasRoleForm,
+)
+from webapp.extensions import db
+from webapp.utils.form_handler import FormError, HtmxFormHandler
+from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message
+from webapp.utils.rbac import Permission, require_permission
+
+from .blueprint import (
+    _PENDING_TARGET,  # noqa: F401  (kept for grep-adjacency with the sibling cards)
+    _XRAS_MODAL_TRIGGERS,
+    _parse_activity_window,
+    bp,
+)
+
+#: Facet form and swap target — mirrors the sibling cards' pair. Both names are
+#: also written into ``xras.html``; a mismatch renders chips that silently do
+#: nothing, so they live in one place.
+_REMEDIATION_FORM_ID = 'xras-remediation-filters'
+_REMEDIATION_TARGET = 'alloc-xras-remediations'
+
+_CARD = 'dashboards/allocations/partials/xras_remediations_card.html'
+_MERGE_FORM = 'dashboards/allocations/partials/xras_merge_form.html'
+_ACTION_FORM = 'dashboards/allocations/partials/xras_action_form.html'
+_ROLES_FORM = 'dashboards/allocations/partials/xras_roles_form.html'
+
+
+# ---------------------------------------------------------------------------
+# shared helpers
+# ---------------------------------------------------------------------------
+
+def _session_factory():
+    """Private sessions for the service's audit writes.
+
+    Deliberately **not** ``db.session``: an audit row that a request rollback
+    could erase would be a record of an irreversible act that can be un-said.
+    """
+    from sqlalchemy.orm import Session
+    return Session(db.engine)
+
+
+def _index():
+    """The published request index, or ``None`` if no sweep has written one."""
+    from sam.integration.xras_api.cache import load_requests_index
+    return load_requests_index()
+
+
+def _entry(request_number):
+    """One request's snapshot entry, or ``None``.
+
+    Snapshot-derived and therefore possibly stale — which is fine for deciding
+    *which buttons to draw*. Every modal re-reads live before offering to act,
+    and the client verifies after acting.
+    """
+    payload = _index() or {}
+    wanted = str(request_number).strip()
+    for row in payload.get('rows') or ():
+        if isinstance(row, dict) and str(row.get('request_number') or '').strip() == wanted:
+            return row
+    return None
+
+
+def _degraded(message, *, title='XRAS unavailable'):
+    """A 200 body explaining why a modal cannot proceed. See the module docstring."""
+    return render_template(
+        'dashboards/allocations/partials/xras_remediation_degraded.html',
+        title=title, message=message)
+
+
+def _read_client():
+    from sam.integration.xras_api import XrasApiClient
+    return XrasApiClient.from_environment()
+
+
+def _live_request(request_number):
+    """Live roster + action states for one request, via the reports family.
+
+    ⚠️ Not ``GET /v1/requests/<id>``, which is 401 for our credential in every
+    context — so ``rules{allowedOperations}``, the API's own answer to "what may
+    I do to this action", is unavailable and the offers are derived instead
+    (PRIVILEGE(#1)).
+    """
+    return _read_client().get_request_by_number(request_number)
+
+
+def _impersonation(entry, live=None):
+    """Who SAM should act as: the request's PI.
+
+    Falls back to any role-holder, because a request whose PI record is broken
+    is exactly the sort this card exists to fix and refusing to act on it would
+    be unhelpful. Returns ``(username, is_pi)`` so the modal can say which it
+    got — probe P2 measured the PI and the Allocation Manager giving *different*
+    validation verdicts on the same action, so the distinction is operational,
+    not cosmetic.
+    """
+    from sam.queries.xras_requests import resolve_pi, roster_from_payload
+
+    roster = (roster_from_payload(live) if live
+              else (entry or {}).get('roster') or [])
+    pi = resolve_pi(roster)
+    if pi:
+        return pi, True
+    other = next((r.get('username') for r in roster if r.get('username')), None)
+    return other, False
+
+
+# ---------------------------------------------------------------------------
+# the card
+# ---------------------------------------------------------------------------
+
+@bp.route('/xras_remediations')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_remediations_fragment():
+    """HTMX fragment: the Remediations card.
+
+    Read from the sweep's second cache key, never computed here — the
+    enumeration behind it is minutes, not an htmx round trip.
+
+    **Four empty states, and collapsing any two would mislead:**
+
+    - *not configured* — the outgoing API is off, so no sweep can run;
+    - *no sweep yet* — configured, but nothing has published (the task may be
+      disabled, or this is the first hour after a deploy);
+    - *snapshot predates the index* — a sweep has published the account
+      worklist but not this key, which is precisely the window between
+      deploying this code and the first sweep that carries it. Reporting it as
+      "nothing to remediate" would be a lie during the one hour an operator is
+      most likely to be looking;
+    - *published and empty* — a real sweep found nothing, the healthy state.
+
+    Renders with **disabled** controls when the write lever is off rather than
+    hiding itself: a card that vanishes teaches nobody that a switch exists.
+    """
+    payload = _index()
+    configured = xras_api_configured()
+    write_enabled = xras_write_configured()
+
+    rows = list(payload.get('rows') or []) if payload else []
+    swept_total = len(rows)
+
+    window = _parse_activity_window(request.args)
+    rows = [r for r in rows if _in_window(r, window['since'])]
+
+    selected_statuses = [s for s in request.args.getlist('status') if s]
+    selected_opportunities = [o for o in request.args.getlist('opportunity') if o]
+    selected_push = [p for p in request.args.getlist('push') if p]
+    selected_requests = [n for n in request.args.getlist('request_number') if n]
+
+    # Self-excluding facets: each dimension counts over the set filtered by the
+    # *other* dimensions, so a chip never shows a zero that its own selection
+    # caused and clicking one never empties the row it lives in.
+    status_values = _facet(rows, 'status',
+                           _apply(rows, opportunities=selected_opportunities,
+                                  push=selected_push, requests=selected_requests))
+    opportunity_values = _facet(rows, 'opportunity_name',
+                                _apply(rows, statuses=selected_statuses,
+                                       push=selected_push,
+                                       requests=selected_requests))
+    push_values = _push_facet(_apply(rows, statuses=selected_statuses,
+                                     opportunities=selected_opportunities,
+                                     requests=selected_requests))
+
+    rows = _apply(rows, statuses=selected_statuses,
+                  opportunities=selected_opportunities,
+                  push=selected_push, requests=selected_requests)
+
+    return render_template(
+        _CARD,
+        groups=_group_by_opportunity(rows),
+        total=len(rows),
+        swept_total=swept_total,
+        snapshot=payload,
+        configured=configured,
+        write_enabled=write_enabled,
+        # Distinguishes "no sweep at all" from "a sweep that predates this
+        # feature" — see the docstring.
+        has_worklist=_has_worklist(),
+        status_values=status_values,
+        opportunity_values=opportunity_values,
+        push_values=push_values,
+        selected_statuses=selected_statuses,
+        selected_opportunities=selected_opportunities,
+        selected_push=selected_push,
+        selected_requests=selected_requests,
+        request_values=[{'value': n, 'label': n, 'count': 1}
+                        for n in selected_requests],
+        form_id=_REMEDIATION_FORM_ID,
+        fragment_url=url_for('allocations_dashboard.xras_remediations_fragment'),
+        target_id=_REMEDIATION_TARGET,
+    )
+
+
+def _has_worklist():
+    from sam.integration.xras_api.cache import load_pending_worklist
+    return load_pending_worklist() is not None
+
+
+def _in_window(row, since):
+    """Keep a row with no submit date.
+
+    Missing information is not evidence of age, and on **this** card an older
+    row is the more urgent one — a 2015 approval nobody pushed is the whole
+    point — so a date filter may narrow the view but must never silently drop
+    the rows the card exists to surface. The header says how many it hid.
+    """
+    if since is None:
+        return True
+    submitted = row.get('submit_date')
+    if submitted is None:
+        return True
+    start = since.date() if hasattr(since, 'date') else since
+    return submitted >= start
+
+
+def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=()):
+    out = list(rows)
+    if statuses:
+        out = [r for r in out if r.get('status') in statuses]
+    if opportunities:
+        out = [r for r in out if r.get('opportunity_name') in opportunities]
+    if push:
+        out = [r for r in out
+               if ('pending' if r.get('pending_push') else 'pushed') in push]
+    if requests:
+        out = [r for r in out if r.get('request_number') in requests]
+    return out
+
+
+def _facet(all_rows, key, scoped_rows):
+    counts = {}
+    for row in scoped_rows:
+        value = row.get(key)
+        if value:
+            counts[value] = counts.get(value, 0) + 1
+    values = {row.get(key) for row in all_rows if row.get(key)}
+    return [{'value': v, 'label': v, 'count': counts.get(v, 0)}
+            for v in sorted(values)]
+
+
+def _push_facet(scoped_rows):
+    counts = {'pending': 0, 'pushed': 0}
+    for row in scoped_rows:
+        counts['pending' if row.get('pending_push') else 'pushed'] += 1
+    return [{'value': 'pending', 'label': 'No SAM project', 'count': counts['pending']},
+            {'value': 'pushed', 'label': 'Project exists', 'count': counts['pushed']}]
+
+
+def _group_by_opportunity(rows):
+    """Group for the nested table, preserving the sweep's ordering."""
+    groups = []
+    seen = {}
+    for row in rows:
+        name = row.get('opportunity_name') or 'Unknown opportunity'
+        if name not in seen:
+            seen[name] = {'name': name, 'opportunity_id': row.get('opportunity_id'),
+                          'rows': []}
+            groups.append(seen[name])
+        seen[name]['rows'].append(row)
+    return groups
+
+
+# ---------------------------------------------------------------------------
+# handler base
+# ---------------------------------------------------------------------------
+
+class _XrasRemediationHandler(HtmxFormHandler):
+    """Shared plumbing for every remediation POST.
+
+    ``exception_map`` translates the three ways an XRAS write fails into copy an
+    operator can act on. The distinctions are not cosmetic:
+
+    * **not configured** — a switch is off; nothing was attempted.
+    * **rejected** — XRAS understood and refused. A 401 means the impersonated
+      user holds no role on that request; a 400 carries XRAS's own validation
+      errors. Retrying identically cannot help.
+    * **unavailable** — we could not ask, or could not tell. The write may have
+      landed; the audit row says which, and it exists either way.
+    """
+
+    error_prefix = 'XRAS remediation failed'
+    exception_map = (
+        (XrasWriteNotConfigured,
+         'XRAS writes are switched off for this deployment '
+         '(XRAS_WRITE_ENABLED). Nothing was sent.'),
+        (XrasWriteRejected, lambda e: f'XRAS refused this: {e}'),
+        (XrasSourceUnavailable,
+         'XRAS could not be reached. If a write had already been sent it is '
+         'recorded in the remediation log — check there before retrying.'),
+    )
+
+    def triggers(self, result):
+        return _XRAS_MODAL_TRIGGERS
+
+    def detail(self, result):
+        """Say so when the card could not be refreshed.
+
+        The write is done and verified by this point; only the *view* lags. An
+        operator who is not told will re-click, and on this card a re-click is
+        a second production write.
+        """
+        if result is not None and not getattr(result, 'patched', True):
+            return ('The card may lag until the next hourly sweep — the write '
+                    'itself is recorded.')
+        return None
+
+    def _finish(self, outcome, *, verb):
+        """Turn a service outcome into a response, or raise for the error map."""
+        if outcome.status == 'rejected':
+            raise XrasWriteRejected(outcome.error or 'refused')
+        if outcome.status == 'error':
+            raise XrasSourceUnavailable(outcome.error or 'unavailable')
+        if outcome.status == 'unverified':
+            # ⚠️ Not an error and not a success. XRAS answered, the re-read did
+            # not confirm it, and an operator has to go and look — so this must
+            # not render as a green tick.
+            raise FormError(
+                f'{verb} was sent but could NOT be verified. Check XRAS '
+                'directly before retrying — the attempt is recorded in the '
+                'remediation log.')
+        return outcome
+
+
+# ---------------------------------------------------------------------------
+# merge — a person operation
+# ---------------------------------------------------------------------------
+
+def _merge_candidates(person, *, source_username):
+    """Real XRAS identities this placeholder might be, best first.
+
+    Searched by **email first, then surname**, and ranked email → organization →
+    name. That order is the whole safety property, measured on real data: one
+    human had two live identities differing only in email and organization (a
+    university address and an NCAR-staff one), and a name match picks between
+    them arbitrarily. Merge deletes the loser.
+
+    Intersected with SAM's ``users`` so the modal can say whether the target has
+    a SAM account — which decides whether the handoff can proceed after the
+    merge or the person still needs an account created.
+    """
+    client = _read_client()
+    email = (person or {}).get('email') or ''
+    surname = (person or {}).get('lastName') or ''
+    organization = ((person or {}).get('organization') or '').strip().casefold()
+
+    found = {}
+    for query in [q for q in (email, surname) if q]:
+        for row in (client.search_people(query) or ()):
+            if not isinstance(row, dict):
+                continue
+            username = (row.get('username') or '').strip()
+            if username and username != source_username:
+                found.setdefault(username, row)
+
+    candidates = []
+    for username, row in found.items():
+        row_email = (row.get('email') or '').strip().casefold()
+        row_org = (row.get('organization') or '').strip().casefold()
+        if email and row_email == email.strip().casefold():
+            rank, why = 0, 'email matches exactly'
+        elif organization and row_org == organization:
+            rank, why = 1, 'organization matches'
+        else:
+            rank, why = 2, 'name only — check the email and organization'
+        sam_user = User.get_by_username(db.session, username)
+        candidates.append({
+            'username': username, 'rank': rank, 'why': why,
+            'name': ' '.join(x for x in [row.get('firstName'),
+                                         row.get('lastName')] if x),
+            'email': row.get('email'),
+            'organization': row.get('organization'),
+            'in_sam': sam_user is not None,
+            'sam_active': bool(sam_user is not None and sam_user.is_active),
+        })
+    candidates.sort(key=lambda c: (c['rank'], c['username']))
+    return candidates
+
+
+@bp.route('/xras_merge_form/<path:username>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_merge_form(username: str):
+    """Modal body: the assisted merge decision.
+
+    Deliberately mirrors the XRAS admin Reconcile-User screen — an operator who
+    knows that screen reads this one for free.
+    """
+    try:
+        person = _read_client().get_person(username)
+        if person is None:
+            # Not an error: the placeholder is already gone from XRAS and this
+            # row is a stale echo of a username that no longer exists.
+            return _degraded(
+                f'{username} no longer exists in XRAS — it has already been '
+                'merged away. This row is a stale echo and will clear on the '
+                'next sweep.', title='Already merged')
+        candidates = _merge_candidates(person, source_username=username)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras merge form: %s', exc)
+        return _degraded(
+            'Resolving an identity requires a live read from XRAS, and XRAS '
+            'is not answering. Nothing can proceed from cached data here.')
+
+    return render_template(
+        _MERGE_FORM, username=username, person=person, candidates=candidates,
+        write_enabled=xras_write_configured(),
+        post_url=url_for('allocations_dashboard.xras_merge', username=username),
+    )
+
+
+class _XrasMergeHandler(_XrasRemediationHandler):
+    """Merge a placeholder into a real identity. One-way."""
+
+    schema_cls = XrasMergeForm
+    template = _MERGE_FORM
+    success_message = 'Merged in XRAS.'
+
+    def clean(self, data):
+        target = data['target_username']
+        if target == self.username:
+            raise FormError('The target must be a different account.')
+
+        # ⚠️ **Fail closed.** The API documents merge as "merge a username into
+        # an existing/new username" — a typo does not fail, it CREATES an
+        # identity and hands it the placeholder's roles. So the target is
+        # resolved server-side before anything is sent, whichever field named
+        # it. The client checks this too; both, because the cost of being wrong
+        # is unrecoverable and the check is one GET.
+        try:
+            if _read_client().get_person(target) is None:
+                raise FormError(
+                    f'No XRAS account named "{target}". Merging into a name '
+                    'that does not exist would CREATE it and move this '
+                    "placeholder's roles onto it.")
+        except XrasSourceUnavailable:
+            raise FormError('Could not confirm the target account with XRAS, '
+                            'so nothing was merged. Try again shortly.')
+        return data
+
+    def perform(self, data):
+        outcome = remediation.merge_placeholder(
+            _session_factory(), source_username=self.username,
+            target_username=data['target_username'],
+            operator=current_user.username, comment=data.get('comment'))
+        self._target = data['target_username']
+        return self._finish(outcome, verb='The merge')
+
+    def detail(self, result):
+        base = super().detail(result)
+        note = (f'{self.username} was deleted in XRAS; its roles are now on '
+                f'{self._target}. XRAS will send the real username from now on.')
+        return f'{note} {base}' if base else note
+
+    def context(self):
+        """Rebuild the modal for an error re-render — it needs its candidates."""
+        try:
+            person = _read_client().get_person(self.username)
+            candidates = _merge_candidates(person, source_username=self.username)
+        except XrasSourceUnavailable:
+            person, candidates = None, []
+        return {'username': self.username, 'person': person,
+                'candidates': candidates,
+                'write_enabled': xras_write_configured(),
+                'post_url': url_for('allocations_dashboard.xras_merge',
+                                    username=self.username)}
+
+    def render_errors(self, errors, field_errors=None):
+        """Reroute the hidden picker's errors to the panel.
+
+        ``target_username`` is a hidden value written by the FK picker and
+        ``candidate`` is a radio group — neither has a visible input the
+        per-field macros can attach a message to, so an error left on them
+        renders nowhere and reads as a form that ignored the click.
+        """
+        field_errors = dict(field_errors or {})
+        for hidden in ('candidate', 'target_username'):
+            for message in field_errors.pop(hidden, []):
+                errors = list(errors) + [message]
+        return super().render_errors(errors, field_errors)
+
+
+@bp.route('/xras_merge/<path:username>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_merge(username: str):
+    return _XrasMergeHandler(username=username).handle()
+
+
+# ---------------------------------------------------------------------------
+# withdraw / re-submit — request operations
+# ---------------------------------------------------------------------------
+
+def _action_context(request_number, action_id, *, mode):
+    """Live state for one action, or ``None`` when XRAS cannot be read.
+
+    Returns the context both action modals render from. The *live* read is the
+    authority — the snapshot decided which button to draw, this decides whether
+    the button may still be pressed.
+    """
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+
+    entry = _entry(request_number)
+    actions = [a for a in (payload.get('actions') or ())
+               if isinstance(a, dict) and a.get('actionId') == action_id]
+    action = actions[0] if actions else None
+    xa_user, is_pi = _impersonation(entry, live=payload)
+
+    return {
+        'request_number': request_number,
+        'request_id': payload.get('requestId'),
+        'request_status': payload.get('requestStatus'),
+        'action': action,
+        'action_id': action_id,
+        'action_count': len(payload.get('actions') or ()),
+        'xa_user': xa_user,
+        'xa_user_is_pi': is_pi,
+        'mode': mode,
+        'write_enabled': xras_write_configured(),
+    }
+
+
+@bp.route('/xras_withdraw_form/<path:request_number>/<int:action_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_withdraw_form(request_number: str, action_id: int):
+    """Modal body: confirm a withdrawal, with a required reason.
+
+    The copy has to be honest about a verb that sounds lighter than it is:
+    withdrawal **de-approves** the action back to a draft and rewrites the XRAS
+    record so the history no longer shows an approval. It is reversible — a PI,
+    or the Re-submit button here, can send it back — but it is not archival and
+    it is not a delete, and "close this request" is what an operator will think
+    they are doing.
+    """
+    try:
+        context = _action_context(request_number, action_id, mode='withdraw')
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras withdraw form: %s', exc)
+        return _degraded('Withdrawing needs a live read of the request from '
+                         'XRAS, and XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    if context['action'] is None:
+        return _degraded(
+            f'XRAS no longer lists action {action_id} on {request_number}. '
+            'The card will catch up on the next sweep.', title='Action not found')
+
+    return render_template(
+        _ACTION_FORM, **context,
+        post_url=url_for('allocations_dashboard.xras_withdraw',
+                         request_number=request_number, action_id=action_id))
+
+
+class _XrasWithdrawHandler(_XrasRemediationHandler):
+    """De-approve one action. Reason required."""
+
+    schema_cls = XrasRemediationReasonForm
+    template = _ACTION_FORM
+    success_message = 'Withdrawn in XRAS.'
+
+    def clean(self, data):
+        context = _action_context(self.request_number, self.action_id,
+                                  mode='withdraw')
+        if context is None or context['action'] is None:
+            raise FormError('XRAS no longer lists this action.')
+        if not context['xa_user']:
+            # Every request-scoped XRAS write authorizes on XA-USER holding a
+            # role on that request; with nobody to impersonate the call would
+            # 401 and we would have written an audit row for nothing.
+            raise FormError('This request has no role-holder for SAM to act '
+                            'as, so XRAS would refuse the withdrawal.')
+        self._context = context
+        return data
+
+    def perform(self, data):
+        outcome = remediation.withdraw_action(
+            _session_factory(), request_number=self.request_number,
+            request_id=self._context['request_id'], action_id=self.action_id,
+            pi_username=self._context['xa_user'],
+            operator=current_user.username, comment=data['comment'])
+        return self._finish(outcome, verb='The withdrawal')
+
+    def detail(self, result):
+        base = super().detail(result)
+        note = (f"Sent as {self._context['xa_user']}, recorded against "
+                f'{current_user.username}. The action is a draft again and can '
+                'be re-submitted.')
+        return f'{note} {base}' if base else note
+
+    def context(self):
+        context = _safe_action_context(self.request_number, self.action_id,
+                                       mode='withdraw')
+        context['post_url'] = url_for('allocations_dashboard.xras_withdraw',
+                                      request_number=self.request_number,
+                                      action_id=self.action_id)
+        return context
+
+
+@bp.route('/xras_withdraw/<path:request_number>/<int:action_id>',
+          methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_withdraw(request_number: str, action_id: int):
+    return _XrasWithdrawHandler(request_number=request_number,
+                                action_id=action_id).handle()
+
+
+def _safe_action_context(request_number, action_id, *, mode):
+    """`_action_context` that degrades to a renderable shell on an outage."""
+    try:
+        context = _action_context(request_number, action_id, mode=mode)
+    except XrasSourceUnavailable:
+        context = None
+    return context or {
+        'request_number': request_number, 'request_id': None, 'action': None,
+        'action_id': action_id, 'action_count': 0, 'request_status': None,
+        'xa_user': None, 'xa_user_is_pi': False, 'mode': mode,
+        'write_enabled': xras_write_configured(),
+    }
+
+
+@bp.route('/xras_resubmit_form/<path:request_number>/<int:action_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_resubmit_form(request_number: str, action_id: int):
+    """Modal body: the inverse of withdraw, with its preflight rendered first.
+
+    ⚠️ The preflight verdict is a function of **who** we impersonate, not only
+    of the action — measured: the same action validated as the PI and failed as
+    the Allocation Manager. So the verdict is always rendered next to the user
+    it was evaluated as, and a failure disables the button rather than hiding
+    the reason.
+    """
+    try:
+        context = _action_context(request_number, action_id, mode='resubmit')
+        if context and context['xa_user'] and context['request_id']:
+            from sam.integration.xras_api.admin_client import XrasAdminClient
+            try:
+                admin = XrasAdminClient.from_environment()
+                context['validation'] = admin.validate_action(
+                    context['request_id'], action_id,
+                    xa_user=context['xa_user'])
+            except XrasWriteNotConfigured:
+                # The lever is off. The modal still renders — with a disabled
+                # button and an explanation — because a control that silently
+                # vanishes teaches nobody that a switch exists.
+                context['validation'] = None
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras resubmit form: %s', exc)
+        return _degraded('Re-submitting needs a live read of the request from '
+                         'XRAS, and XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    if context['action'] is None:
+        return _degraded(
+            f'XRAS no longer lists action {action_id} on {request_number}.',
+            title='Action not found')
+
+    return render_template(
+        _ACTION_FORM, **context,
+        post_url=url_for('allocations_dashboard.xras_resubmit',
+                         request_number=request_number, action_id=action_id))
+
+
+@bp.route('/xras_resubmit/<path:request_number>/<int:action_id>',
+          methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_resubmit(request_number: str, action_id: int):
+    """Re-submit a drafted action. Bodiless — no schema, by design.
+
+    There is nothing to validate in the body: the target is in the URL, and a
+    schema with no fields would be furniture. The precedent is the one-click
+    actions on the sibling card. What *does* get validated is the action
+    itself, by XRAS, before the submit — and a failure comes back as the
+    rejection copy with XRAS's own reasons in it.
+    """
+    context = _safe_action_context(request_number, action_id, mode='resubmit')
+    if context['action'] is None:
+        return ('<div class="alert alert-warning mb-0">XRAS no longer lists '
+                'this action.</div>', 200)
+    if not context['xa_user']:
+        return ('<div class="alert alert-warning mb-0">This request has no '
+                'role-holder for SAM to act as, so XRAS would refuse the '
+                're-submission.</div>', 200)
+
+    try:
+        outcome = remediation.resubmit_action(
+            _session_factory(), request_number=request_number,
+            request_id=context['request_id'], action_id=action_id,
+            pi_username=context['xa_user'], operator=current_user.username)
+    except XrasWriteNotConfigured:
+        return ('<div class="alert alert-warning mb-0">XRAS writes are '
+                'switched off for this deployment. Nothing was sent.</div>', 200)
+
+    if outcome.status != 'verified':
+        return (f'<div class="alert alert-danger mb-0">Re-submission did not '
+                f'complete: {outcome.error or "XRAS did not confirm it"}. The '
+                f'attempt is recorded in the remediation log.</div>', 200)
+
+    detail = (f"Sent as {context['xa_user']}. It is now under review in XRAS.")
+    if not outcome.patched:
+        detail += ' The card may lag until the next hourly sweep.'
+    return htmx_success_message(_XRAS_MODAL_TRIGGERS,
+                                f'Re-submitted action {action_id}.',
+                                detail=detail)
+
+
+# ---------------------------------------------------------------------------
+# roles
+# ---------------------------------------------------------------------------
+
+def _roles_context(request_number):
+    """Live roster for the roles modal, or ``None`` if the request is gone."""
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+
+    from sam.queries.xras_requests import roster_from_payload
+
+    roster = roster_from_payload(payload)
+    xa_user, is_pi = _impersonation(_entry(request_number), live=payload)
+    return {
+        'request_number': request_number,
+        'request_id': payload.get('requestId'),
+        'request_status': payload.get('requestStatus'),
+        'roster': roster,
+        'xa_user': xa_user,
+        'xa_user_is_pi': is_pi,
+        'roles': remediation.role_choices(),
+        'role_options': _role_options(),
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_role_add',
+                            request_number=request_number),
+    }
+
+
+def _role_options():
+    """(wire name, display label) pairs for the role select.
+
+    Built here rather than in the template because Jinja has no list
+    comprehension — and the pairing matters: the **name** goes on the wire and
+    the **display** is XRAS's own operator vocabulary, so an operator reading
+    SAM and the XRAS admin app sees one word for one thing.
+    """
+    return [(r['name'], r['display']) for r in remediation.role_choices()]
+
+
+@bp.route('/xras_roles_form/<path:request_number>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_roles_form(request_number: str):
+    """Modal body: the live roster, with add and remove."""
+    try:
+        context = _roles_context(request_number)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras roles form: %s', exc)
+        return _degraded('Editing a roster needs a live read from XRAS, and '
+                         'XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    return render_template(_ROLES_FORM, **context)
+
+
+class _XrasRoleAddHandler(_XrasRemediationHandler):
+    """Put one username on a request's roster.
+
+    Unlike every other handler here, success **re-renders the roster and leaves
+    the modal open**: roster fixes come in batches (add the new admin, remove
+    the departed one), and closing after each would make the common case four
+    clicks longer for no reason.
+    """
+
+    schema_cls = XrasRoleForm
+    template = _ROLES_FORM
+    success_message = 'Role added in XRAS.'
+
+    def clean(self, data):
+        context = _roles_context(self.request_number)
+        if context is None:
+            raise FormError('XRAS no longer lists this request.')
+        if not context['xa_user']:
+            raise FormError('This request has no role-holder for SAM to act '
+                            'as, so XRAS would refuse the change.')
+
+        # ⚠️ **Resolve the username first.** The add route accepts optional
+        # person parameters that XRAS uses to CREATE an unknown user, with
+        # `isReconciled` defaulting true — the exact mechanism that mints the
+        # stuck placeholders this card exists to clean up. SAM never sends
+        # those parameters, but an unknown username is still worth refusing
+        # here rather than discovering later.
+        try:
+            if _read_client().get_person(data['username']) is None:
+                raise FormError(
+                    f"No XRAS account named \"{data['username']}\". Adding an "
+                    'unknown username can create a new XRAS identity rather '
+                    'than adding the person you meant.')
+        except XrasSourceUnavailable:
+            raise FormError('Could not confirm that account with XRAS, so '
+                            'nothing was changed. Try again shortly.')
+
+        already = [r for r in context['roster']
+                   if (r.get('username') or '').casefold()
+                   == data['username'].casefold()
+                   and r.get('role_type') == data['role_type']]
+        if already:
+            raise FormError(f"{data['username']} already holds "
+                            f"{data['role_type']} on this request.")
+
+        self._context = context
+        return data
+
+    def perform(self, data):
+        outcome = remediation.change_role(
+            _session_factory(), add=True, request_number=self.request_number,
+            request_id=self._context['request_id'], username=data['username'],
+            operator=current_user.username, xa_user=self._context['xa_user'],
+            role=data['role_type'], comment=data.get('comment'))
+        return self._finish(outcome, verb='The role change')
+
+    def on_success(self, result):
+        """Re-render the roster in place; do not close the modal."""
+        context = _safe_roles_context(self.request_number)
+        context['flash'] = (f'Added {result.result.extra.get("username")} as '
+                            f'{result.result.extra.get("role_type")}.')
+        response = current_app.make_response(
+            render_template(_ROLES_FORM, **context))
+        # The card behind the modal still needs to know something changed.
+        response.headers['HX-Trigger'] = 'refreshXrasTab'
+        return response
+
+    def context(self):
+        return _safe_roles_context(self.request_number)
+
+
+def _safe_roles_context(request_number):
+    try:
+        context = _roles_context(request_number)
+    except XrasSourceUnavailable:
+        context = None
+    return context or {
+        'request_number': request_number, 'request_id': None, 'roster': [],
+        'request_status': None, 'xa_user': None, 'xa_user_is_pi': False,
+        'roles': remediation.role_choices(),
+        'role_options': _role_options(),
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_role_add',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_role_add/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_role_add(request_number: str):
+    return _XrasRoleAddHandler(request_number=request_number).handle()
+
+
+@bp.route('/xras_role_remove/<path:request_number>/<int:role_id>',
+          methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_role_remove(request_number: str, role_id: int):
+    """Take one role off the roster. Bodiless; confirmed with ``hx-confirm``.
+
+    Keyed on ``role_id`` rather than username because one person can hold two
+    roles on a request and only the id says which one goes.
+    """
+    context = _safe_roles_context(request_number)
+    if not context['xa_user'] or context['request_id'] is None:
+        context['flash_error'] = ('XRAS could not be read, so nothing was '
+                                  'changed.')
+        return render_template(_ROLES_FORM, **context)
+
+    target = next((r for r in context['roster'] if r.get('role_id') == role_id),
+                  None)
+    if target is None:
+        context['flash_error'] = 'That role is no longer on the roster.'
+        return render_template(_ROLES_FORM, **context)
+
+    try:
+        outcome = remediation.change_role(
+            _session_factory(), add=False, request_number=request_number,
+            request_id=context['request_id'], username=target.get('username'),
+            operator=current_user.username, xa_user=context['xa_user'],
+            role_id=role_id)
+    except XrasWriteNotConfigured:
+        context['flash_error'] = ('XRAS writes are switched off for this '
+                                  'deployment. Nothing was sent.')
+        return render_template(_ROLES_FORM, **context)
+
+    refreshed = _safe_roles_context(request_number)
+    if outcome.status == 'verified':
+        refreshed['flash'] = (f"Removed {target.get('username')} "
+                              f"({target.get('role_type')}).")
+    else:
+        reason = outcome.error or 'XRAS did not confirm it'
+        refreshed['flash_error'] = (
+            f'Removal did not complete: {reason}. The attempt is recorded in '
+            'the remediation log.')
+
+    response = current_app.make_response(render_template(_ROLES_FORM, **refreshed))
+    response.headers['HX-Trigger'] = 'refreshXrasTab'
+    return response

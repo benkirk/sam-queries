@@ -229,6 +229,17 @@
                            create the account from. #}
                         {% if row.is_reconciled is none %}
                         <span class="text-muted" title="XRAS was not asked">—</span>
+                        {% elif row.is_reconciled and row.placeholder %}
+                        {# ⚠️ A CONTRADICTION, not a good state. Reconciliation
+                           in XRAS *is* a merge — the placeholder is folded into
+                           the real identity and deleted — so a placeholder that
+                           still exists AND is flagged reconciled was flagged
+                           without one. It never reaches XRAS's own unreconciled
+                           queue, so nobody ever merges it, so XRAS keeps sending
+                           the throwaway username and this handoff stays blocked
+                           forever. The fix is in the expansion panel. #}
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                              title="Identified but never merged — XRAS keeps sending this throwaway username, so the handoff cannot complete. Expand the row to resolve it.">identified, not merged</span>
                         {% elif row.is_reconciled %}
                         <span class="badge bg-body-secondary text-body-secondary border fw-normal"
                               title="XRAS has linked this username to a real identity, so the person detail here is usable for account creation. It does NOT mean the account exists.">identified</span>
@@ -251,6 +262,29 @@
 
                 <tr class="collapse" id="{{ body_id }}">
                     <td colspan="7" class="bg-body-tertiary">
+                        {% if may_manage and row.placeholder and row.is_reconciled %}
+                        {# Inside the EXPANSION, above the detail sheet — not on
+                           the <tr>. Bootstrap's collapse data-api runs in the
+                           capture phase, so a button on the row cannot stop the
+                           row's own toggle firing, and the e2e suite pins the
+                           data-bs-target off the row. Same modal as the
+                           Remediations card, keyed on the username. #}
+                        <div class="alert alert-warning d-flex align-items-center gap-2 py-2">
+                            <i class="fas fa-triangle-exclamation"></i>
+                            <div class="small flex-grow-1">
+                                XRAS marks this placeholder as identified but it
+                                was never merged, so XRAS keeps sending the
+                                throwaway username and the handoff stays blocked.
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger text-nowrap"
+                                    hx-get="{{ url_for('allocations_dashboard.xras_merge_form',
+                                                       username=row.username) }}"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                    data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                                Resolve identity (merge in XRAS)…
+                            </button>
+                        </div>
+                        {% endif %}
                         {% if may_manage %}{{ person_detail(row.person) }}{% endif %}
 
                         <table class="table table-sm mb-0">

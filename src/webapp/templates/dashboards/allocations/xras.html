@@ -98,6 +98,17 @@
     <select name="classification" multiple hidden></select>
     <select name="request_number" multiple hidden></select>
 </form>
+{% if has_permission(Permission.MANAGE_XRAS) %}
+{# The Remediations card's facet state. Same rule as the forms above: every
+   dimension the card offers a chip for needs a control here, or the chip
+   writes into a field that does not exist and filters nothing. #}
+<form id="xras-remediation-filters" class="d-none">
+    <select name="status" multiple hidden></select>
+    <select name="opportunity" multiple hidden></select>
+    <select name="push" multiple hidden></select>
+    <select name="request_number" multiple hidden></select>
+</form>
+{% endif %}
 
 <div class="tab-content mb-3">
     <div class="tab-pane fade show active" id="xras-pane-activity" role="tabpanel">
@@ -126,6 +137,27 @@
              hx-swap="innerHTML"></div>
     </div>
 </div>
+
+{% if has_permission(Permission.MANAGE_XRAS) %}
+{# ── The operator WRITE surface ────────────────────────────────────────────
+   A CARD, not a fourth tab: `#xrasWorklistTabs` stays at three, which the e2e
+   suite pins. The three tabs are read-only views of the same window; this is
+   a different kind of thing — every control on it changes production XRAS —
+   and burying it as a peer of "Accounts Needed" would understate that.
+
+   Double-gated: this block and every route behind it check MANAGE_XRAS. The
+   template gate keeps a view-only operator from seeing controls they cannot
+   use; the route gate is the one that matters.
+
+   Listens for BOTH submits, like every pane above: the shared window moves
+   the whole page, its own facet form moves only this card. Wiring just the
+   window is the easy mistake and it makes every chip here silently inert. #}
+<div id="alloc-xras-remediations"
+     hx-get="{{ url_for('allocations_dashboard.xras_remediations_fragment') }}"
+     hx-trigger="load, refreshXrasTab from:body, submit from:#xras-window-filters, submit from:#xras-remediation-filters"
+     hx-include="#xras-window-filters, #xras-remediation-filters"
+     hx-swap="innerHTML"></div>
+{% endif %}
 
 <div class="filter-sidebar mb-3">
     {{ xras_filters(

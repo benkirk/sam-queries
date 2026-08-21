@@ -2486,3 +2486,18 @@ def xras_recheck(action_id: int):
         f'{headline} (action #{action_id})',
         detail=f'Nothing was applied. Recorded as #{new_id}; open it for details.',
     )
+
+
+# ---------------------------------------------------------------------------
+# XRAS Remediations — the operator WRITE surface, in its own module.
+#
+# Imported here at the foot, after `bp` and the helpers it borrows exist, which
+# is what makes the split possible without a circular import. Its routes attach
+# to this same blueprint; nothing else imports it, so removing this line
+# removes the whole feature from the URL map.
+#
+# It is separate because it is a different KIND of thing from everything above:
+# these routes write to a system SAM does not own, over HTTP, irreversibly. The
+# file's docstring carries the three rules that follow from that.
+# ---------------------------------------------------------------------------
+from . import xras_remediation_routes  # noqa: E402,F401  (side-effect import)
