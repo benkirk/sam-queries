@@ -14,6 +14,12 @@ Allocations API at `https://api.xras.org/v1/…`. Read-only and GET-only — the
 same credential can create requests, modify roles and merge one person into
 another, so the client has no verb method but an internal `_get`.
 
+## Start here
+
+| Doc | What it is |
+|---|---|
+| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](PROJECT_AND_ACCOUNT_LIFECYCLE.md) | Where a project comes from — ARC → XRAS → SAM, and the internal path beside it. ⚠️ **SAM never creates users**: `users` is mirrored in from an organizational LDAP, which is why the account worklist is a worklist and not a button |
+
 ## Live docs — `incoming/`
 
 | Doc | What it is |
