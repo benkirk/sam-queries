@@ -80,6 +80,27 @@ def cached_person(username: str, compute: Callable[[], Any]) -> Optional[Any]:
     return _CACHE.get_or_compute('people', username.strip().casefold(), compute)
 
 
+def invalidate_person(username: str) -> None:
+    """Forget one cached person lookup.
+
+    ⚠️ **Load-bearing after a merge.** A merge deletes the source username in
+    XRAS, but this bucket holds it for four hours — so without this the very
+    card the operator just fixed keeps rendering the placeholder it merged
+    away, and re-merging it 404s. The service calls this for **both** the
+    source and the target: the source because it no longer exists, the target
+    because merge folds roles into it and its detail sheet is now different.
+
+    Casefolds the same way :func:`cached_person` does, or it would miss.
+    Absent keys are not an error — a merge from a card that never rendered the
+    person is perfectly ordinary.
+    """
+    adapter = _CACHE.adapter('people')
+    if adapter is None:
+        return
+    with adapter.lock:
+        adapter.pop(username.strip().casefold(), None)
+
+
 def cached_resources(compute: Callable[[], Any]) -> Optional[Any]:
     """Memoise the resource catalog. One key — it takes no arguments."""
     return _CACHE.get_or_compute('resources', 'catalog', compute)
