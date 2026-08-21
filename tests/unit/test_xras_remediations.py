@@ -370,6 +370,37 @@ class TestModalGets:
             '/allocations/xras_withdraw_form/EXAM0001/7').get_data(as_text=True)
         assert 'stay' in body and '2 actions' in body
 
+    def test_a_placeholder_role_holder_is_flagged(self, auth_client, armed,
+                                                  monkeypatch):
+        """⚠️ The project lead is sometimes an unmerged placeholder — 2 of 27
+        live rows the first time this card met production.
+
+        XRAS authorizes the call (the placeholder really does hold the role),
+        so this is a tell rather than a block: the operator is acting as a
+        throwaway identity that a merge on this same card would delete.
+        Silently preferring a different role-holder would change who the write
+        is attributed to.
+        """
+        payload = _payload()
+        # The placeholder holds PI, exactly as NCAR4262 does in production.
+        payload['roles'] = [{'person': {'username': 'ghost-user-abcde',
+                                        'firstName': 'G', 'lastName': 'Host',
+                                        'isReconciled': True},
+                             'roles': [{'roleId': 1, 'role': 'PI',
+                                        'roleTypeId': 13}]}]
+        _reader(monkeypatch, payload=payload)
+        for path in (f'/allocations/xras_withdraw_form/EXAM0001/7',
+                     f'/allocations/xras_roles_form/EXAM0001'):
+            body = auth_client.get(path).get_data(as_text=True)
+            assert 'placeholder identity' in body, path
+
+    def test_a_real_role_holder_is_not_flagged(self, auth_client, armed,
+                                               monkeypatch):
+        _reader(monkeypatch)
+        body = auth_client.get(
+            '/allocations/xras_roles_form/EXAM0001').get_data(as_text=True)
+        assert 'placeholder identity' not in body
+
     def test_the_roles_modal_renders_the_live_roster(self, auth_client, armed,
                                                      monkeypatch):
         _reader(monkeypatch)

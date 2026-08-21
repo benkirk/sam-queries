@@ -73,6 +73,18 @@
                 not the project lead
             </span>
             {% endif %}
+            {% if xa_user_is_placeholder %}
+            {# ⚠️ The role-holder SAM impersonates is itself an unmerged ARC
+               placeholder. XRAS authorizes it — the placeholder really does
+               hold the role — but the operator is acting as a throwaway
+               identity that a merge on this card would delete. Worth seeing;
+               silently preferring someone else would change who the write is
+               attributed to. #}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+                  title="This role-holder is an unmerged ARC placeholder. The call will authorize, but the identity is a throwaway that a merge would delete.">
+                placeholder identity
+            </span>
+            {% endif %}
             <span class="text-muted">· recorded against</span>
             <code>{{ current_user.username }}</code>
         </div>

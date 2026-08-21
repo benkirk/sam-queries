@@ -54,13 +54,27 @@
         <div class="small text-uppercase text-muted mb-1">Roster</div>
         <table class="table table-sm mb-0">
             <tbody>
+            {# ⚠️ The roster is one row per ROLE — a person holding both PI and
+               User appears twice, and that is deliberate: role removal is keyed
+               on `role_id`, so collapsing to one row per person would lose the
+               identifier the remove button needs.
+
+               But **merge is a person-level operation**. Offered per row it
+               renders twice for one human, which reads as two different people
+               or two different merges when in fact either button does the same
+               single, irreversible thing. So the offer is shown once, on the
+               first row that names each username. Measured live on NCAR4262,
+               where one placeholder holds both roles. #}
+            {% set merge_offered = [] %}
             {% for member in row.roster %}
                 <tr>
                     <td class="font-monospace">{{ member.username }}</td>
                     <td>{{ member.name or '—' }}</td>
                     <td>{{ member.role_type or '—' }}</td>
                     <td class="text-end">
-                        {% if member.placeholder and member.is_reconciled %}
+                        {% if member.placeholder and member.is_reconciled
+                              and member.username not in merge_offered %}
+                        {% set _ = merge_offered.append(member.username) %}
                         {# ⚠️ The contradiction the merge fixup exists for.
                            Reconciliation in XRAS IS a merge, so a reconciled
                            placeholder that still exists was flagged without
@@ -74,7 +88,9 @@
                                 data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
                             Resolve identity (merge in XRAS)…
                         </button>
-                        {% elif member.placeholder %}
+                        {% elif member.placeholder
+                                and member.username not in merge_offered %}
+                        {% set _ = merge_offered.append(member.username) %}
                         <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
                               title="Genuinely unreconciled — XRAS cannot yet say who this is. The healthy path: create the account.">
                             needs an account

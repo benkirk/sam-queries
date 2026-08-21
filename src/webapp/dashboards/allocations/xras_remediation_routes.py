@@ -131,8 +131,8 @@ def _impersonation(entry, live=None):
 
     Falls back to any role-holder, because a request whose PI record is broken
     is exactly the sort this card exists to fix and refusing to act on it would
-    be unhelpful. Returns ``(username, is_pi)`` so the modal can say which it
-    got — probe P2 measured the PI and the Allocation Manager giving *different*
+    be unhelpful. Returns ``(username, is_pi, is_placeholder)`` so the modal can
+    say what it got — probe P2 measured the PI and the Allocation Manager giving *different*
     validation verdicts on the same action, so the distinction is operational,
     not cosmetic.
     """
@@ -141,10 +141,19 @@ def _impersonation(entry, live=None):
     roster = (roster_from_payload(live) if live
               else (entry or {}).get('roster') or [])
     pi = resolve_pi(roster)
-    if pi:
-        return pi, True
-    other = next((r.get('username') for r in roster if r.get('username')), None)
-    return other, False
+    username, is_pi = (pi, True) if pi else (
+        next((r.get('username') for r in roster if r.get('username')), None), False)
+
+    # ⚠️ The project lead is sometimes an unmerged placeholder — measured on 2
+    # of 27 live rows the first time this card was pointed at production. That
+    # is legitimate as far as XRAS is concerned (the placeholder really does
+    # hold the role, so the call authorizes), but the operator is then acting
+    # as a throwaway identity that a merge on this very card would delete. It
+    # is surfaced rather than worked around: preferring a different role-holder
+    # would change who the write is attributed to, silently.
+    placeholder = any(r.get('placeholder') and r.get('username') == username
+                      for r in roster)
+    return username, is_pi, placeholder
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +557,7 @@ def _action_context(request_number, action_id, *, mode):
     actions = [a for a in (payload.get('actions') or ())
                if isinstance(a, dict) and a.get('actionId') == action_id]
     action = actions[0] if actions else None
-    xa_user, is_pi = _impersonation(entry, live=payload)
+    xa_user, is_pi, xa_placeholder = _impersonation(entry, live=payload)
 
     return {
         'request_number': request_number,
@@ -559,6 +568,7 @@ def _action_context(request_number, action_id, *, mode):
         'action_count': len(payload.get('actions') or ()),
         'xa_user': xa_user,
         'xa_user_is_pi': is_pi,
+        'xa_user_is_placeholder': xa_placeholder,
         'mode': mode,
         'write_enabled': xras_write_configured(),
     }
@@ -659,7 +669,8 @@ def _safe_action_context(request_number, action_id, *, mode):
     return context or {
         'request_number': request_number, 'request_id': None, 'action': None,
         'action_id': action_id, 'action_count': 0, 'request_status': None,
-        'xa_user': None, 'xa_user_is_pi': False, 'mode': mode,
+        'xa_user': None, 'xa_user_is_pi': False,
+        'xa_user_is_placeholder': False, 'mode': mode,
         'write_enabled': xras_write_configured(),
     }
 
@@ -764,7 +775,8 @@ def _roles_context(request_number):
     from sam.queries.xras_requests import roster_from_payload
 
     roster = roster_from_payload(payload)
-    xa_user, is_pi = _impersonation(_entry(request_number), live=payload)
+    xa_user, is_pi, xa_placeholder = _impersonation(_entry(request_number),
+                                                    live=payload)
     return {
         'request_number': request_number,
         'request_id': payload.get('requestId'),
@@ -772,6 +784,7 @@ def _roles_context(request_number):
         'roster': roster,
         'xa_user': xa_user,
         'xa_user_is_pi': is_pi,
+        'xa_user_is_placeholder': xa_placeholder,
         'roles': remediation.role_choices(),
         'role_options': _role_options(),
         'write_enabled': xras_write_configured(),
@@ -886,6 +899,7 @@ def _safe_roles_context(request_number):
     return context or {
         'request_number': request_number, 'request_id': None, 'roster': [],
         'request_status': None, 'xa_user': None, 'xa_user_is_pi': False,
+        'xa_user_is_placeholder': False,
         'roles': remediation.role_choices(),
         'role_options': _role_options(),
         'write_enabled': xras_write_configured(),

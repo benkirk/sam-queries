@@ -134,7 +134,6 @@
         <table class="table table-sm align-middle mb-0">
             <thead>
                 <tr>
-                    <th style="width:2rem"></th>
                     <th>Request</th>
                     <th>Status</th>
                     <th>Project lead</th>
@@ -146,8 +145,15 @@
             </thead>
             {% for group in groups %}
             <tbody>
-                <tr class="table-light">
-                    <td colspan="8" class="fw-semibold">
+                {# ⚠️ `table-subtle`, NEVER Bootstrap's `table-light`. The
+                   stock class hardcodes `--bs-table-color: #000` on a light
+                   tint, so in dark mode it paints a light stripe with black
+                   text across a dark table. `.table-subtle` is SAM's
+                   token-driven replacement — byte-identical in light mode
+                   (`--surface-tertiary` IS #f8f9fa) and correct in dark. See
+                   the comment above `.table-subtle` in dashboard.css. #}
+                <tr class="table-subtle fw-semibold">
+                    <td colspan="7">
                         {{ group.name }}
                         {% if group.opportunity_id %}
                         <span class="text-muted fw-normal small">#{{ group.opportunity_id }}</span>
@@ -157,13 +163,17 @@
                 </tr>
                 {% for row in group.rows %}
                 {% set rid = 'xrem-' ~ row.request_number %}
-                {# The toggle lives on the <td>s, not on a nested button:
-                   Bootstrap's collapse data-api runs in the CAPTURE phase, so
-                   a button inside a clickable row cannot stopPropagation the
-                   row's own toggle. Same shape as the sibling cards. #}
-                <tr data-bs-toggle="collapse" data-bs-target="#{{ rid }}"
-                    style="cursor:pointer">
-                    <td>{{ collapse_toggle(rid) }}</td>
+                {# ⚠️ `collapse_toggle` emits ATTRIBUTES, not markup — it goes
+                   inside the tag, never in a cell. Used as content it renders
+                   its own attribute string as visible text.
+
+                   No buttons on this summary row (they all live in the
+                   expansion below), so the toggle can sit on the <tr>. When a
+                   row does carry buttons it cannot: Bootstrap's collapse
+                   data-api runs in the CAPTURE phase, so the row toggles
+                   before any handler on the button runs. See
+                   dashboards/fragments/collapse.html. #}
+                <tr class="cursor-pointer" {{ collapse_toggle(rid) }}>
                     <td class="font-monospace">
                         {{ row.request_number }}
                         {% if row.refreshed_at %}
@@ -202,7 +212,7 @@
                     </td>
                 </tr>
                 <tr class="collapse" id="{{ rid }}">
-                    <td colspan="8" class="bg-body-tertiary">
+                    <td colspan="7" class="bg-body-tertiary">
                         {% include 'dashboards/allocations/partials/xras_remediation_row.html' %}
                     </td>
                 </tr>

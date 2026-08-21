@@ -385,3 +385,41 @@ def test_ratchet_lists_only_real_files():
     unknown = sorted(set(ALLOWED) - present)
     assert not unknown, (
         f'ALLOWED names CSS files that do not exist: {unknown}')
+
+
+# ---------------------------------------------------------------------------
+# Templates: the theme-invariant Bootstrap classes that were migrated away
+# ---------------------------------------------------------------------------
+
+def test_no_template_uses_table_light():
+    """`.table-light` hardcodes a light row in a themed table.
+
+    Both halves of the stock class bite in dark mode, and independently:
+    `--bs-table-bg` is a fixed light tint and `--bs-table-color` is `#000`, so
+    the row lands as a light stripe with black text across a dark table.
+    `.table-subtle` (dashboard.css) is the token-driven replacement — chosen to
+    be byte-identical in light mode, since `--surface-tertiary` IS `#f8f9fa`.
+
+    Every call site was migrated when `.table-subtle` landed, so this ratchet
+    carries **no allowlist**: the correct count is zero. It exists because the
+    tests above gate the *stylesheets*, and nothing gated a template from
+    reaching for the stock class again — which is exactly what happened on the
+    XRAS Remediations card, caught by eye in a browser rather than by the
+    suite.
+    """
+    import re
+
+    templates = CSS_DIR.parents[1] / 'templates'
+    offenders = []
+    for path in templates.rglob('*.html'):
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            # Only in a class attribute — the name appears in prose comments
+            # (including this fix's own) and those are not call sites.
+            for attr in re.findall(r'class="([^"]*)"', line):
+                if 'table-light' in attr.split():
+                    offenders.append(f'{path.relative_to(templates)}:{number}')
+
+    assert not offenders, (
+        'table-light is a fixed light row in a themed table — use '
+        '`table-subtle` (SAM, token-driven) instead:\n  '
+        + '\n  '.join(offenders))

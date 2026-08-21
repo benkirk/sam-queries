@@ -28,6 +28,15 @@
     sends them as <code>{{ xa_user or '—' }}</code>
     {%- if xa_user and not xa_user_is_pi %} (not the project lead){% endif %},
     recorded against <code>{{ current_user.username }}</code>.
+    {%- if xa_user_is_placeholder %}
+    {# ⚠️ The role-holder is itself an unmerged ARC placeholder. XRAS
+       authorizes it, but the operator is acting as a throwaway identity that a
+       merge on this card would delete. #}
+    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
+          title="This role-holder is an unmerged ARC placeholder. The call will authorize, but the identity is a throwaway that a merge would delete.">
+        placeholder identity
+    </span>
+    {%- endif %}
 </p>
 
 <table class="table table-sm align-middle">
@@ -65,7 +74,14 @@
 <form hx-post="{{ post_url }}"
       hx-target="#auditDetailsModalBody"
       hx-swap="innerHTML">
-    <div class="row g-2 align-items-end">
+    {# ⚠️ `align-items-start`, NOT `-end`. The username column is taller than
+       its siblings — `text_field` hangs a `.form-text` help line below the
+       input — so aligning BOTTOMS pushes the select and the button down by the
+       height of that help text and staggers the two labels. Aligning tops puts
+       the labels on one baseline and, because both labels are a single line,
+       the controls on another. The button column carries an invisible label so
+       it lands on the control line rather than up beside the labels. #}
+    <div class="row g-2 align-items-start">
         <div class="col-sm-6">
             {# ⚠️ A plain username field, and the handler resolves it against
                XRAS before writing. The add route accepts optional person
@@ -85,7 +101,14 @@
                             options=role_options) }}
         </div>
         <div class="col-sm-2">
-            <button type="submit" class="btn btn-outline-primary w-100 mb-3"
+            {# Spacer: matches the siblings' label line so the button sits with
+               the controls. `aria-hidden` because it labels nothing. #}
+            <div class="form-label" aria-hidden="true">&nbsp;</div>
+            {# `btn-sm`: SAM's default `.btn` is 20px/12px — a large button that
+               stands 54px against a 38px form control and overhangs the row.
+               Small also matches the REMOVE buttons above, so the modal has one
+               button scale. #}
+            <button type="submit" class="btn btn-sm btn-outline-primary w-100"
                     {% if not write_enabled or not xa_user %}disabled
                     title="{% if not write_enabled %}XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).{% else %}This request has no role-holder for SAM to act as.{% endif %}"{% endif %}>
                 Add
