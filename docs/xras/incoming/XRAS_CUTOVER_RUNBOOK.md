@@ -203,7 +203,7 @@ CREATE TABLE IF NOT EXISTS xras_remediation_event (
   status           VARCHAR(16)      NOT NULL,
   username         VARCHAR(64)          NULL,
   target_username  VARCHAR(64)          NULL,
-  request_number   VARCHAR(30)          NULL,
+  request_number   VARCHAR(128)         NULL,
   request_id       INT UNSIGNED         NULL,
   action_id        INT UNSIGNED         NULL,
   role_id          INT UNSIGNED         NULL,
@@ -229,6 +229,16 @@ ALTER TABLE xras_remediation_event
   MODIFY before_state TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
   MODIFY after_state  TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL;
 ```
+
+⚠️ **`request_number` is VARCHAR(128), NOT 30 like `xras_action_log`.** That
+divergence is deliberate. The action log only sees requests being *pushed*,
+which always carry a real projcode; this table sees the whole remediation
+cohort, including Submitted requests whose number is still free text a PI
+typed. Measured on the live cohort: `'New University Large Request - Fall 2017
+UCUD0005 Zhong'` is **55 characters**, and it renders on the card with a
+Withdraw button — so it is reachable, and at 30 the insert truncates or errors
+under strict mode. It stays `utf8mb3` so an equality lookup against the action
+log is not a mixed-charset comparison.
 
 ⚠️ **The `ALTER` is not optional and is not cosmetic.** `before_state` captures a
 pre-merge person detail sheet — free text, real names, `residenceCountry` — and

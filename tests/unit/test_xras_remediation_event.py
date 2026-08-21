@@ -170,6 +170,36 @@ class TestTheCaptures:
         assert '2026-08-21' in event.before_state
 
 
+class TestColumnWidths:
+    """Sized against live data, not against the sibling table."""
+
+    def test_request_number_is_wider_than_the_action_log(self):
+        """⚠️ XRAS's requestNumber is not always a projcode.
+
+        Measured on the live remediation cohort: one Submitted request carries
+        `'New University Large Request - Fall 2017 UCUD0005 Zhong'` — 55
+        characters of free text a PI typed — and it renders on the card with a
+        Withdraw button, so an audit row for it is reachable. `xras_action_log`
+        gets away with 30 because it only ever sees requests being *pushed*,
+        which always have a real projcode. This table sees a wider population.
+        """
+        width = XrasRemediationEvent.__table__.c.request_number.type.length
+        assert width >= 64, (
+            'request_number must hold a free-text XRAS request number, not '
+            'just an 8-character projcode')
+
+    def test_a_free_text_request_number_survives_a_round_trip(self, session):
+        number = 'New University Large Request - Fall 2017 UCUD0005 Zhong'
+        event = make_xras_remediation_event(
+            session, operation='withdraw_action', request_number=number)
+        session.expire(event)
+        assert event.request_number == number, 'truncated on the way in'
+
+    def test_the_placeholder_username_width_has_headroom(self):
+        """Longest seen live is 25 (`cradhakrishnan-user-9drdn`)."""
+        assert XrasRemediationEvent.__table__.c.username.type.length >= 64
+
+
 class TestNoForeignKeys:
     """Every identifier belongs to XRAS — an FK would block the merge case."""
 

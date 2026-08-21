@@ -117,6 +117,29 @@ def _close_event(session_factory, event_id, **fields) -> None:
                           event_id)
 
 
+def _rejection_fields(exc) -> Dict[str, Any]:
+    """Closing columns for a write XRAS refused.
+
+    ⚠️ **``errors`` goes into ``after_state``, not into ``outcome_reason``.**
+    A 400 from XRAS carries its own list of what failed validation — six
+    entries is ordinary — and that list is the single most useful thing to know
+    about a rejection three weeks later. ``outcome_reason`` is VARCHAR(255) and
+    holds the one-line summary; ``after_state`` is TEXT and utf8mb4, which is
+    exactly what a list of free-text messages needs.
+
+    Recording the reasons in the *after* column of a write that did not happen
+    reads oddly for a heartbeat, but it is right: this is the state XRAS
+    reported back, which is what both capture columns are for.
+    """
+    errors = list(getattr(exc, 'errors', ()) or ())
+    return {
+        'status': 'rejected',
+        'http_status': getattr(exc, 'status', None) or None,
+        'outcome_reason': str(exc),
+        'after_state': {'rejected': str(exc), 'errors': errors} if errors else None,
+    }
+
+
 def _outcome_fields(result) -> Dict[str, Any]:
     """Map an :class:`XrasWriteResult` onto the audit row's closing columns.
 
@@ -237,9 +260,7 @@ def merge_placeholder(session_factory, *, source_username, target_username,
     try:
         result = admin.merge_person(source_username, target_username)
     except XrasWriteRejected as exc:
-        _close_event(session_factory, event_id, status='rejected',
-                     http_status=getattr(exc, 'status', None) or None,
-                     outcome_reason=str(exc))
+        _close_event(session_factory, event_id, **_rejection_fields(exc))
         return RemediationOutcome(event_id, status='rejected', error=str(exc))
     except XrasSourceUnavailable as exc:
         _close_event(session_factory, event_id, status='error',
@@ -343,9 +364,7 @@ def _action_op(operation, session_factory, *, request_number, request_id,
                                          xa_user=pi_username,
                                          preflight=bool(preflight))
     except XrasWriteRejected as exc:
-        _close_event(session_factory, event_id, status='rejected',
-                     http_status=getattr(exc, 'status', None) or None,
-                     outcome_reason=str(exc))
+        _close_event(session_factory, event_id, **_rejection_fields(exc))
         return RemediationOutcome(event_id, status='rejected', error=str(exc),
                                   result=exc)
     except XrasSourceUnavailable as exc:
@@ -398,9 +417,7 @@ def change_role(session_factory, *, add, request_number, request_id, username,
                                        request_number=request_number,
                                        xa_user=xa_user)
     except XrasWriteRejected as exc:
-        _close_event(session_factory, event_id, status='rejected',
-                     http_status=getattr(exc, 'status', None) or None,
-                     outcome_reason=str(exc))
+        _close_event(session_factory, event_id, **_rejection_fields(exc))
         return RemediationOutcome(event_id, status='rejected', error=str(exc))
     except XrasSourceUnavailable as exc:
         _close_event(session_factory, event_id, status='error',

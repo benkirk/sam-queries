@@ -533,9 +533,20 @@ class XrasRemediationEvent(Base, SessionMixin):
     #: Merge only: the identity retained.
     target_username = Column(String(64))
 
-    #: The projcode-shaped request number. ``varchar(30)`` matches
-    #: ``xras_action_log.request_number`` so the two audit trails join.
-    request_number = Column(String(30))
+    #: XRAS's request number — **usually** a projcode, but not always.
+    #:
+    #: ⚠️ Wider than ``xras_action_log.request_number`` (30) on purpose, and
+    #: that divergence is the point. The action log only ever sees requests
+    #: being *pushed*, which always carry a real projcode. This table sees the
+    #: whole remediation cohort, including Submitted requests whose number is
+    #: still free text a PI typed — measured live: ``'New University Large
+    #: Request - Fall 2017 UCUD0005 Zhong'`` is 55 characters, and it renders
+    #: on the card with a Withdraw button, so it is reachable. At 30 the insert
+    #: would truncate, or error outright under strict mode.
+    #:
+    #: Stays utf8mb3 like the other identifiers, so an equality lookup against
+    #: the action log is not a mixed-charset comparison.
+    request_number = Column(String(128))
 
     #: XRAS-side ids. ``request_id`` is what the write routes key on while
     #: ``request_number`` is what the readable reports family keys on — SAM has

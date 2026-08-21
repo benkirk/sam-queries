@@ -123,6 +123,41 @@ class TestTheAuditRowSurvives:
         row = session.get(XrasRemediationEvent, outcome.event_id)
         assert (row.status, row.http_status) == ('rejected', 401)
 
+    def test_a_rejection_records_xras_own_validation_errors(
+            self, factory, session):
+        """⚠️ The list is what an operator revisits, and it does not fit in
+        `outcome_reason` (VARCHAR(255)) — so it goes to `after_state`, which is
+        TEXT and utf8mb4. Previously `exc.errors` was dropped entirely and the
+        row said only "validation failed"."""
+        client = MagicMock()
+        client.submit_action.side_effect = XrasWriteRejected(
+            'XRAS validation failed for action 7 as pi-user', status=400,
+            errors=['Title is a required field',
+                    'A PI CV is required for each PI',
+                    'The Progress Report upload is required'])
+
+        outcome = service.resubmit_action(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            pi_username='pi-user', operator='benkirk', client=client)
+
+        row = session.get(XrasRemediationEvent, outcome.event_id)
+        assert (row.status, row.http_status) == ('rejected', 400)
+        assert 'A PI CV is required' in row.after_state
+        assert 'Progress Report' in row.after_state
+
+    def test_a_rejection_with_no_error_list_leaves_after_state_empty(
+            self, factory, session):
+        """A 401 carries no `errors[]` — an empty JSON husk would be noise."""
+        client = MagicMock()
+        client.withdraw_action.side_effect = XrasWriteRejected(
+            'not a role holder', status=401)
+        outcome = service.withdraw_action(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            pi_username='nobody', operator='benkirk', comment='x', client=client)
+        row = session.get(XrasRemediationEvent, outcome.event_id)
+        assert row.after_state is None
+        assert row.outcome_reason == 'not a role holder'
+
     def test_the_operator_and_the_impersonation_are_both_recorded(
             self, factory, session):
         client = MagicMock()
