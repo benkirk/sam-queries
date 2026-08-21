@@ -1,7 +1,8 @@
 # XRAS Remediations — an operator write surface on Allocations → XRAS
 
-**Status: designed 2026-08-21. Phase 0 complete 2026-08-21; Phases 1-6 NOT built.** This is a
-handoff document — a fresh session should be able to execute it without re-deriving anything.
+**Status: Phases 0-5 BUILT 2026-08-21 on `xras_write_exploration`. Phase 6 (arming) NOT done,
+deliberately.** This document is now a record of what was built and why, plus the two operator
+steps that remain.
 
 ✅ **Phase 0 (the live probe) is done** — results in
 [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md), and § 3, § 5.1, § 5.3, § 5.4,
@@ -373,26 +374,50 @@ One PR vs staging with an ordered commit series, after the probe:
 0. ✅ **Probe session — DONE 2026-08-21**: `XRAS_WRITE_PROBES.md` written, P0-P7 run,
    `XRAS_WRITE_FIXUPS.md` § 2 verdict table extended, and this plan's provisional signatures
    replaced with what the probes settled.
-1. **Config + client**: `write_enabled`, `admin_client.py`, exceptions, `invalidate_person`, helm
-   key + `TestingConfig` pin (`XRAS_WRITE_ENABLED = False`, the `XRAS_ACTIONS_CAPTURE_ONLY`
-   precedent), client tests. Inert without callers.
+1. ✅ **Config + client** — `write_enabled`, `admin_client.py`, exceptions,
+   `invalidate_person`, helm key + `TestingConfig` pin, 47 tests. Inert without callers.
 2. **Audit table**: the full § 5.2 checklist. ⚠️ Two steps in it are **operator
    actions, not code**, and both are outstanding: the production DDL (hpc-writer
    grant, no DROP — get it right the first time) and the obfuscated-snapshot
    regeneration that carries the table into CI. Until the second one lands,
    `test_schema_validation.py` fails in CI while passing locally. DDL of record
    and the interim workaround: `XRAS_CUTOVER_RUNBOOK.md` § 2d.
-3. **Service + queries + coherence patch** (needs 1+2; the shared index-entry builder lands here).
-4. **Sweep broadening + second cache key** (needs 1 and the shared builder; parallel with 2).
-5. **UI**: routes module, templates, schemas, accounts-card entry, tests, route-map regen.
-6. **Arm**: flip `XRAS_WRITE_ENABLED` in values.yaml + flip its drift test, same commit. Ben owns
-   deploy mechanics; prepare the verification steps.
+3. ✅ **Service + queries + coherence patch** — `sam/manage/xras_remediation.py`,
+   `sam/queries/xras_remediations.py`, and `sam/queries/xras_requests.py` (the shared index-entry
+   builder). 41 tests.
+4. ✅ **Sweep broadening + second cache key** — two extra passes, per-status budgets, the
+   `requests_index` key, and a back-compat pin on the old key's exact shape. 11 tests.
+5. ✅ **UI** — 10 routes in `xras_remediation_routes.py`, the card, three modals, three form
+   schemas, the Accounts Needed merge entry, route-map regen, modal-shell pin, e2e file. 44 tests.
+6. ⏳ **Arm** — flip `XRAS_WRITE_ENABLED` in `values.yaml` + its drift test, same commit. **Not
+   done**: the whole design is fail-closed until this is a deliberate, reviewed act, and Ben owns
+   deploy mechanics. § 10 has the verification steps.
 
 ⚠️ **Across commits 1, 3 and 5**: every site that exists only because of the key's privilege
 ceiling carries a `PRIVILEGE(#n)` comment keyed to
 [`XRAS_WRITE_PROBES.md`](../xras/outgoing/XRAS_WRITE_PROBES.md) § 7, so
 `grep -rn 'PRIVILEGE(#' src/` is a live index rather than a doc that quietly goes stale. The PR
 body's **Follow-ons** paragraph names § 7 and its top three rows.
+
+### What was built differently from this plan
+
+Three deviations, each because the repo or the probe said otherwise:
+
+1. **No `get_request()` on the admin client, and no `rules{}` anywhere** — probe P1 found that
+   route 401s for our credential in every context. Offer legality is derived from the snapshot's
+   `actionStatus` plus the `validate` preflight (§ 3).
+2. **The merge override is a plain text input, not an FK picker.** A picker over SAM users returns
+   a *SAM* username; the merge target is an *XRAS* identity, and the two are not the same
+   namespace. The handler resolves whatever is typed against XRAS and fails closed — the API
+   *creates* an unknown target rather than refusing.
+3. **Roles use the requests-keyed family with a string `roleType`** (P7), not the projcode-keyed
+   numeric one this plan preferred. That family cannot resolve our test request numbers, and the
+   reason the plan preferred it — avoiding the `isReconciled` create trap — is answered by *not
+   sending person parameters*, which this route allows.
+
+One addition the plan did not call for: a **fifth empty state**. When the shared date window hides
+every swept row, the card says so and says how many. The default lookback hides precisely the
+stale requests this card exists for, so a generic "no matches" would read as "no work".
 
 ## 10. Verification
 

@@ -54,12 +54,7 @@ from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message
 from webapp.utils.rbac import Permission, require_permission
 
-from .blueprint import (
-    _PENDING_TARGET,  # noqa: F401  (kept for grep-adjacency with the sibling cards)
-    _XRAS_MODAL_TRIGGERS,
-    _parse_activity_window,
-    bp,
-)
+from .blueprint import _XRAS_MODAL_TRIGGERS, _parse_activity_window, bp
 
 #: Facet form and swap target — mirrors the sibling cards' pair. Both names are
 #: also written into ``xras.html``; a mismatch renders chips that silently do
