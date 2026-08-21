@@ -182,6 +182,102 @@ bootstrap after `terraform apply`, so an existing instance never picks them up. 
 that DB is given the DDL, the XRAS tab and Admin → Notifications 500 there. CIRRUS/k8s
 is the deployment target; ECS-staging is a check-the-render environment.
 
+### 2d · `xras_remediation_event` · ⏳ **dev + test applied; PRODUCTION PENDING**
+
+The fifth table, and the first that records SAM writing **out** to XRAS rather than
+XRAS writing in. Backs the Remediations card
+([`../../plans/XRAS_REMEDIATIONS.md`](../../plans/XRAS_REMEDIATIONS.md)); the write
+surface it audits is measured in
+[`../outgoing/XRAS_WRITE_PROBES.md`](../outgoing/XRAS_WRITE_PROBES.md).
+
+Same grant, same `initdb.d`-is-retired route as § 2c. **No foreign keys at all**,
+which is a first here and deliberate: every identifier on this table — both
+usernames, `request_id`, `action_id`, `role_id` — belongs to XRAS, and the merge
+operation a row records *deletes* the username it names. `REFERENCES` is therefore
+not needed for this one.
+
+```sql
+CREATE TABLE IF NOT EXISTS xras_remediation_event (
+  xras_remediation_event_id  INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  operation        VARCHAR(24)      NOT NULL,
+  status           VARCHAR(16)      NOT NULL,
+  username         VARCHAR(64)          NULL,
+  target_username  VARCHAR(64)          NULL,
+  request_number   VARCHAR(30)          NULL,
+  request_id       INT UNSIGNED         NULL,
+  action_id        INT UNSIGNED         NULL,
+  role_id          INT UNSIGNED         NULL,
+  role_type        VARCHAR(24)          NULL,
+  xa_user          VARCHAR(64)          NULL,
+  created_by       VARCHAR(35)      NOT NULL,
+  creation_time    DATETIME         NOT NULL,
+  completed_time   DATETIME             NULL,
+  http_status      SMALLINT UNSIGNED    NULL,
+  outcome_reason   VARCHAR(255)         NULL,
+  comment          TEXT                 NULL,
+  before_state     TEXT                 NULL,
+  after_state      TEXT                 NULL,
+  PRIMARY KEY (xras_remediation_event_id),
+  KEY xras_remediation_event_op_time  (operation, creation_time),
+  KEY xras_remediation_event_user     (username),
+  KEY xras_remediation_event_request  (request_number),
+  KEY xras_remediation_event_operator (created_by, creation_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
+
+ALTER TABLE xras_remediation_event
+  MODIFY comment      TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY before_state TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL,
+  MODIFY after_state  TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL;
+```
+
+⚠️ **The `ALTER` is not optional and is not cosmetic.** `before_state` captures a
+pre-merge person detail sheet — free text, real names, `residenceCountry` — and
+`comment` is unconstrained operator prose. Applied as `utf8mb3` they silently
+truncate at the first 4-byte character. Doing it later is an `ALTER` on a table
+with an audit trail in it; doing it now is a property of an empty table.
+`tests/integration/test_schema_validation.py` pins the resulting set at **10**
+utf8mb4 columns and, on the other side, that `request_number` / `username` /
+`created_by` stay `utf8mb3` so they keep joining `xras_action_log`.
+
+Verification after applying:
+
+```sql
+SELECT COUNT(*) FROM xras_remediation_event;            -- 0
+SELECT COLUMN_NAME, CHARACTER_SET_NAME
+  FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA = DATABASE()
+   AND TABLE_NAME = 'xras_remediation_event'
+   AND CHARACTER_SET_NAME = 'utf8mb4';                  -- 3 rows
+SHOW INDEX FROM xras_remediation_event;                 -- PRIMARY + 4 named keys
+```
+
+⚠️ **CI stays red until the snapshot is regenerated — this is a hand-off, not an
+oversight.** The CI test database is the committed LFS blob
+(`containers/sam-sql-dev/backups/sam-obfuscated.sql.xz`), so a table applied to a
+local MySQL reaches CI only after a regeneration and a re-commit of that blob.
+`test_schema_validation.py` asserts an exact utf8mb4 column set and will fail
+there until then.
+
+Not done automatically, and deliberately so: the regeneration reads the **dev
+database, which holds real production data**, and produces a *public* blob. The
+anonymizer is what stands between those two facts, `make bootstrap` swallows its
+failures with `|| true`, and the result is committed either way — so the run and
+its by-hand verification belong to an operator, not to a build step.
+
+Interim: apply the DDL by hand to any local MySQL that needs it, including the
+test container on 3307 —
+
+```bash
+mysql -u root -h 127.0.0.1 -P 3307 -proot sam < path/to/the/DDL/above
+```
+
+⚠️ **The snapshot purge must land with the table.**
+`containers/sam-sql-dev/anonymize_sam_db.py::purge_xras_remediation_event` empties
+it before the obfuscated dump, because `before_state` is the worst payload on any
+of these tables and the dump is a **public Git LFS blob**. `make bootstrap`
+swallows anonymization failures with `|| true` and dumps anyway, so **verify the
+purge by hand** on every regeneration — a silent skip ships the PII.
+
 ### 3 · Parity against the deployed host · ✅ **PASSED 2026-08-19 — 13/13 byte-identical**
 
 ```bash

@@ -376,7 +376,12 @@ One PR vs staging with an ordered commit series, after the probe:
 1. **Config + client**: `write_enabled`, `admin_client.py`, exceptions, `invalidate_person`, helm
    key + `TestingConfig` pin (`XRAS_WRITE_ENABLED = False`, the `XRAS_ACTIONS_CAPTURE_ONLY`
    precedent), client tests. Inert without callers.
-2. **Audit table**: the full § 5.2 checklist.
+2. **Audit table**: the full § 5.2 checklist. ⚠️ Two steps in it are **operator
+   actions, not code**, and both are outstanding: the production DDL (hpc-writer
+   grant, no DROP — get it right the first time) and the obfuscated-snapshot
+   regeneration that carries the table into CI. Until the second one lands,
+   `test_schema_validation.py` fails in CI while passing locally. DDL of record
+   and the interim workaround: `XRAS_CUTOVER_RUNBOOK.md` § 2d.
 3. **Service + queries + coherence patch** (needs 1+2; the shared index-entry builder lands here).
 4. **Sweep broadening + second cache key** (needs 1 and the shared builder; parallel with 2).
 5. **UI**: routes module, templates, schemas, accounts-card entry, tests, route-map regen.

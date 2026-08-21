@@ -1053,6 +1053,46 @@ class SAMAnonymizer:
         print(f"[✓] Purged {total:,} xras_activation_event records")
         return total
 
+    def purge_xras_remediation_event(self, session: Session) -> int:
+        """
+        Empty xras_remediation_event — ``before_state`` is a person detail sheet.
+
+        This is the strongest case on the table: a merge row deliberately
+        captures the pre-merge XRAS person record — name, email, organization,
+        ``residenceCountry`` — precisely *because* the merge deletes it and it
+        exists nowhere else. That is the right thing for a production audit
+        trail and exactly the wrong thing to ship in a **public Git LFS blob**
+        (``backups/sam-obfuscated.sql.xz``). ``comment`` is unconstrained
+        operator prose on top, and ``username`` / ``target_username`` carry
+        XRAS-side identities that the username map cannot rewrite — they are
+        not SAM accounts.
+
+        Deleting is safer and free: nothing in dev or CI reads historical rows,
+        and the tests that exercise the table create their own
+        (``tests/factories/xras.py``).
+
+        No FK either way (every identifier belongs to XRAS), so unlike the two
+        above, ordering does not matter here.
+
+        ⚠️ **Verify this by hand after every regeneration.** ``make bootstrap``
+        swallows anonymization failures with ``|| true`` and dumps the blob
+        anyway, so a silent skip here ships the PII rather than failing loudly.
+        """
+        print("\n[*] Purging xras_remediation_event table...")
+
+        result = session.execute(
+            text("SELECT COUNT(*) FROM xras_remediation_event"))
+        total = result.scalar()
+        print(f"  Found {total:,} remediation events "
+              f"(captured person detail — cannot be scrubbed in place)")
+
+        if not self.dry_run:
+            session.execute(text("DELETE FROM xras_remediation_event"))
+            session.commit()
+
+        print(f"[✓] Purged {total:,} xras_remediation_event records")
+        return total
+
     def purge_notification_log(self, session: Session) -> int:
         """
         Empty notification_log — every row names a real person's email address.
@@ -1165,6 +1205,16 @@ class SAMAnonymizer:
                     self.purge_xras_action_log(session)
                 else:
                     print("\n[!] xras_action_log not present in source — skipping")
+
+                # Same tolerance, no ordering constraint: xras_remediation_event
+                # has no foreign keys at all (every identifier in it is
+                # XRAS-side). Its `before_state` carries a captured person
+                # detail sheet, so this purge is the one guarding the worst
+                # payload on any of these tables.
+                if self._table_exists(session, 'xras_remediation_event'):
+                    self.purge_xras_remediation_event(session)
+                else:
+                    print("\n[!] xras_remediation_event not present in source — skipping")
 
                 # Same tolerance, same reason: notification_log also awaits the
                 # DBA. No FK to or from it, so ordering does not matter here.
