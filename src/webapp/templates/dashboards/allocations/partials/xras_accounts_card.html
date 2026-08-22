@@ -9,16 +9,28 @@
   card by `stamp_project_existence`; see its docstring for why there are two
   states here and three on the action log.
 #}
-{% macro request_cell(number, is_project) -%}
+{% macro request_cell(number, is_project, configured=false) -%}
 {%- if not number -%}<span class="text-muted">—</span>
+{%- elif configured -%}
+{#- Outbound read available → open the full XRAS request detail, even when a
+    project by this name exists. The modal reads XRAS live and degrades
+    gracefully if the number is not found. Same `.btn-link .btn-entity` /
+    inner `.font-monospace` treatment as the project link below (`.btn`
+    uppercases; `.btn .font-monospace` is the carve-out). -#}
+<button type="button" class="btn btn-link btn-entity p-0"
+        title="Full request detail (read-only)"
+        data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+        hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
+        hx-target="#auditDetailsModalBody"
+        hx-swap="innerHTML"><span class="font-monospace">{{ number }}</span></button>
 {%- elif is_project -%}
-{#- ⚠️ `btn btn-link`, NOT the `text-decoration-none text-reset` anchor used
-    by user_rows.html and contract_bits.html. That treatment makes a link
-    inherit its cell's colour, which is right where EVERY name in the column
-    is a link — the column itself is the affordance. Here most of these
-    numbers have no project, so a link that looked like its neighbours was
-    indistinguishable from them: UWIS0064 opened a modal and UAHV0010 did not,
-    and nothing on screen said which.
+{#- Incoming-only fallback. ⚠️ `btn btn-link`, NOT the `text-decoration-none
+    text-reset` anchor used by user_rows.html and contract_bits.html. That
+    treatment makes a link inherit its cell's colour, which is right where
+    EVERY name in the column is a link — the column itself is the affordance.
+    Here most of these numbers have no project, so a link that looked like its
+    neighbours was indistinguishable from them: UWIS0064 opened a modal and
+    UAHV0010 did not, and nothing on screen said which.
 
     `.btn-link` gives `--text-link` and underlines on hover (dashboard.css).
     The inner `.font-monospace` is load-bearing, not decoration: `.btn`
@@ -289,7 +301,7 @@
                         {% for number in numbers[:2] %}
                         {%- set linked = row.actions | selectattr('request_number', 'equalto', number)
                                                      | selectattr('is_project') | list | length > 0 -%}
-                        {{ request_cell(number, linked) }}{% if not loop.last %}, {% endif %}
+                        {{ request_cell(number, linked, configured) }}{% if not loop.last %}, {% endif %}
                         {% endfor %}
                         {% if not numbers %}<span class="text-muted">—</span>{% endif %}
                         {% if numbers | length > 2 %}
@@ -390,7 +402,7 @@
                             <tbody>
                                 {% for action in row.actions %}
                                 <tr class="small">
-                                    <td class="font-monospace">{{ request_cell(action.request_number, action.is_project) }}</td>
+                                    <td class="font-monospace">{{ request_cell(action.request_number, action.is_project, configured) }}</td>
                                     <td>{{ action.action_type or '—' }}</td>
                                     <td>{% if action.status %}{{ status_badge(action.status, tooltip=False) }}{% endif %}</td>
                                     <td>{{ action.received_time | fmt_date }}</td>

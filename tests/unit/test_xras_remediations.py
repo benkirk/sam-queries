@@ -359,9 +359,13 @@ class TestTheFourEmptyStates:
 
 class TestRendering:
 
-    def test_a_published_row_renders_with_its_offers(self, auth_client, armed):
-        _publish(_payload())
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+    # The roster/action offers moved from the card's per-request expansion into
+    # the detail modal (the card row now just links to it), so these behaviours
+    # are asserted against the modal body — fed by a live read (`_reader`).
+    def test_the_modal_renders_the_offers(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'EXAM0001' in body
         assert 'Withdraw…' in body
         assert 'Resolve identity (merge in XRAS)…' in body
@@ -370,23 +374,27 @@ class TestRendering:
                                                       configured, monkeypatch):
         """A control that vanishes teaches nobody that a switch exists."""
         monkeypatch.delenv('XRAS_WRITE_ENABLED', raising=False)
-        _publish(_payload())
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        _reader(monkeypatch, payload=_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Withdraw…' in body
         assert 'XRAS_WRITE_ENABLED' in body
         assert 'disabled' in body
 
-    def test_a_drafted_action_offers_resubmit_instead(self, auth_client, armed):
-        _publish(_payload(action_status='Incomplete'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+    def test_a_drafted_action_offers_resubmit_instead(self, auth_client, armed,
+                                                       monkeypatch):
+        _reader(monkeypatch, payload=_payload(action_status='Incomplete'))
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Re-submit…' in body
         assert 'Withdraw…' not in body
 
     def test_an_unreconciled_placeholder_offers_no_merge(self, auth_client,
-                                                          armed):
+                                                         armed, monkeypatch):
         """That row means 'create the account' — the healthy path."""
-        _publish(_payload(reconciled=False))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        _reader(monkeypatch, payload=_payload(reconciled=False))
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Resolve identity' not in body
         assert 'needs an account' in body
 
@@ -474,44 +482,53 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         assert 'no project' in body
         assert 'projectDetailsModal' not in body
 
-    def test_the_request_column_is_deliberately_not_the_link(self, auth_client,
-                                                             armed):
-        """It carries the same string, but it also carries the chevron. An
-        expand affordance beside something that opens a modal instead would
-        make one cell mean two things."""
+    def test_the_request_column_opens_the_detail_modal(self, auth_client, armed):
+        """The request number IS the XRAS request, so it opens the read-only
+        detail modal — even when a SAM project by that name exists (the SAM
+        cell keeps the project link). It is no longer a collapse trigger."""
         _publish(_payload('EXAM0001'), pending=False)
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        request_cell = body.split('font-monospace text-nowrap', 1)[1].split('</td>', 1)[0]
-        assert 'collapse-icon' in request_cell
-        assert 'projectDetailsModal' not in request_cell
+        assert '/allocations/xras_request_detail/EXAM0001' in body
+        assert 'data-bs-target="#auditDetailsModal"' in body
+        # The SAM cell still links the found project — Request vs Result.
+        assert '/user/project-details-modal/EXAM0001' in body
 
 
-class TestTheRowStillExpands:
-    """⚠️ The link forced the toggle off the `<tr>` — Bootstrap's data-api
-    runs in the capture phase, so an ancestor toggle fires before the link and
-    the row would flip open behind the modal on every click."""
+class TestTheOpportunityGroupCollapses:
+    """The per-request expansion was folded into the detail modal (the Request
+    cell opens it). The opportunity group is the collapsible layer now, default
+    open: its header row carries the toggle — it holds no link, so a row-level
+    toggle is safe — and the member rows live in a sibling `collapse show`
+    tbody keyed on the numeric opportunity id."""
 
-    def test_the_summary_row_no_longer_carries_the_toggle(self, auth_client,
-                                                          armed):
+    def test_the_group_header_is_the_toggle_default_open(self, auth_client,
+                                                         armed):
         _publish(_payload('EXAM0001'))
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert '<tr class="cursor-pointer" data-bs-toggle="collapse"' not in body
-        # Five of the six cells carry it instead; the SAM cell is the link's.
-        # ⚠️ Keyed on the numeric requestId, not the request number — see below.
-        assert body.count('data-bs-target="#xrem-900001"') == 5
+        assert 'data-bs-target="#xopp-5"' in body
+        assert 'aria-expanded="true"' in body
+        assert '<tbody id="xopp-5" class="collapse show">' in body
 
-    def test_the_collapse_id_is_numeric_even_for_free_text_numbers(
+    def test_the_per_request_expansion_is_gone(self, auth_client, armed):
+        """No `#xrem-<id>` collapse rows and no row include — the request row is
+        a single line that opens the modal, so the roster/actions expansion no
+        longer ships in the card (it lives in the modal)."""
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '#xrem-' not in body
+
+    def test_the_group_id_is_numeric_not_the_free_text_number(
             self, auth_client, armed):
         """Submitted numbers can be free text with spaces ('New University
-        Large Request - Fall 2017 …' is live). Interpolated raw into the id,
-        that is an unmatchable ``data-bs-target`` — the row could never
-        expand, and every remediation control lives inside it."""
+        Large Request - Fall 2017 …' is live) — an unmatchable id. The
+        collapsible layer is keyed on the numeric opportunity id, never the
+        request number."""
         payload = _payload('New University Large Request - Fall 2017 Zhong',
                            status='Submitted')
         _publish(payload)
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert 'data-bs-target="#xrem-900001"' in body
-        assert 'data-bs-target="#xrem-New' not in body
+        assert 'data-bs-target="#xopp-5"' in body
+        assert 'id="xopp-New' not in body
 
 
 # ── the search box ──────────────────────────────────────────────────────
@@ -766,13 +783,14 @@ class TestRequestDetailModal:
         # But NOT a Details… link back to itself.
         assert 'Details…' not in body
 
-    def test_the_card_row_offers_a_details_link(self, auth_client, armed,
-                                                monkeypatch):
-        """A "Details…" entry point in the non-toggle SAM cell of the card."""
+    def test_the_card_row_links_the_request_to_the_detail_modal(
+            self, auth_client, armed):
+        """The Request number is the single entry point into the detail modal
+        now — the separate "Details…" link is gone."""
         _publish(_payload('EXAM0001'))
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '/allocations/xras_request_detail/EXAM0001' in body
-        assert 'Details…' in body
+        assert 'Details…' not in body
 
 
 # ── the request editor (Part B) ──────────────────────────────────────────

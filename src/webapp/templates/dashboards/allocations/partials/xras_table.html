@@ -95,15 +95,43 @@
                     {% endif %}
                 </td>
                 <td>
-                    {# Three states, because "not a project" means two different
-                       things. On the New path request_number is a request token
-                       (NCAR#### here — XRAS_REQUEST_TOKEN_PREFIXES) and having no
-                       project yet is the normal, expected case. On every other
-                       path it IS a projcode, so failing to resolve means the
-                       project is gone, renamed, or the payload was mis-sent —
-                       which is worth an operator's attention. Linking either one
-                       blindly would 404 on the 21% of traffic that fails most. #}
-                    {% if r.request_number and r.request_is_project %}
+                    {# The Request # is the XRAS request itself, so when an
+                       outbound read is available it opens the full request
+                       detail modal — EVEN when the number is a live projcode
+                       (the Result column keeps the project link). Incoming-only
+                       falls back to the three-state cell below. #}
+                    {% if not r.request_number %}
+                    <span class="text-muted">—</span>
+                    {% elif configured %}
+                    <button class="btn btn-link p-0"
+                            title="Full request detail (read-only)"
+                            data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                            hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=r.request_number) }}"
+                            hx-target="#auditDetailsModalBody"
+                            hx-swap="innerHTML"
+                            data-stop-propagation>
+                        {% if r.request_is_project or r.request_is_token %}
+                        <strong>{{ r.request_number }}</strong>
+                        {% else %}
+                        {# Not a project and not a recognised token: still let the
+                           operator look — the modal degrades gracefully if XRAS
+                           has no such request — but keep the warning cue. #}
+                        <span class="text-warning-emphasis"
+                              title="Not a SAM project, and not a recognised XRAS request number — the project may have been deleted or renamed">
+                            <i class="fas fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
+                        </span>
+                        {% endif %}
+                    </button>
+                    {% else %}
+                    {# Incoming-only. Three states, because "not a project" means
+                       two different things. On the New path request_number is a
+                       request token (NCAR#### here — XRAS_REQUEST_TOKEN_PREFIXES)
+                       and having no project yet is the normal, expected case. On
+                       every other path it IS a projcode, so failing to resolve
+                       means the project is gone, renamed, or the payload was
+                       mis-sent. Linking either one blindly would 404 on the 21%
+                       of traffic that fails most. #}
+                    {% if r.request_is_project %}
                     <button class="btn btn-link p-0"
                             title="View project details"
                             data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
@@ -113,17 +141,16 @@
                             data-stop-propagation>
                         <strong>{{ r.request_number }}</strong>
                     </button>
-                    {% elif r.request_number and r.request_is_token %}
+                    {% elif r.request_is_token %}
                     <span title="XRAS request number — no project exists yet, which is normal for a New action">
                         {{ r.request_number }}
                     </span>
-                    {% elif r.request_number %}
+                    {% else %}
                     <span class="text-warning-emphasis"
                           title="Not a SAM project, and not a recognised XRAS request number — the project may have been deleted or renamed">
                         <i class="fas fa-triangle-exclamation small me-1"></i>{{ r.request_number }}
                     </span>
-                    {% else %}
-                    <span class="text-muted">—</span>
+                    {% endif %}
                     {% endif %}
                 </td>
                 <td style="white-space:nowrap;">

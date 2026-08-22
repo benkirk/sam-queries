@@ -1,18 +1,15 @@
 {#
   Shared roster / actions / write-button strip for one request.
 
-  Rendered in TWO places, which is the whole point of extracting it — the
-  expanded card row (`xras_remediation_row.html`) and the read-only detail modal
-  (`xras_request_detail.html`) must offer byte-identical remediation buttons, so
-  a verb added to one can never be missing from the other.
+  Rendered by the read-only detail modal (`xras_request_detail.html`). Extracted
+  as its own partial so the modal's remediation buttons live in one place; it was
+  formerly also included by the card's per-request expansion, which the request
+  detail modal has since replaced (the Request cell opens this same modal).
 
   Context:
     row            an index-entry dict (request_index_entry shape):
                    request_number, pi.username, roster[], actions[]
     write_enabled  XRAS_WRITE_ENABLED
-    show_details   optional; when true, render a "Details…" button that opens the
-                   read-only detail modal. False (the default) inside that modal
-                   itself, so it never offers a link back to itself.
 
   ── THE OFFERS HERE ARE SNAPSHOT-DERIVED, NOT AUTHORITATIVE ──────────────
   XRAS publishes the real answer to "what may I do to this action" in
@@ -29,18 +26,6 @@
 {% set why_disabled = 'XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).' %}
 
 <div class="d-flex flex-wrap gap-2 mb-3">
-    {% if show_details %}
-    {# Non-toggle context (inside the collapse body, never a trigger cell), so a
-       button here is safe — see test_collapse_trigger_rows.py. #}
-    <button type="button" class="btn btn-sm btn-outline-secondary"
-            hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
-                               request_number=row.request_number) }}"
-            hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-            data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
-        <i class="fas fa-file-lines"></i> Details…
-    </button>
-    {% endif %}
-
     <button type="button" class="btn btn-sm btn-outline-secondary"
             hx-get="{{ url_for('allocations_dashboard.xras_roles_form',
                                request_number=row.request_number) }}"

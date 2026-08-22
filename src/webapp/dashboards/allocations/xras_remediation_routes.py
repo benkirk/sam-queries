@@ -1204,9 +1204,10 @@ def xras_request_detail(request_number: str):
     Renders resources grouped by XRAS stage (Requested / Recommended /
     Approved) so requested-vs-awarded is visible, the rich request sections
     (abstract, FoS, grants, documents), and — via the shared
-    ``_xras_remediation_actions`` include — the same roster and write buttons
-    the card row offers, so the two can never drift. The Requested-stage rows
-    carry the amount/date editors (Part B); the Approved editors render
+    ``_xras_remediation_actions`` include — the roster and write buttons. This
+    modal is the single opener the Remediations card's Request cell links to
+    (the old per-request expansion was folded into it). The Requested-stage
+    rows carry the amount/date editors (Part B); the Approved editors render
     fail-visible until the elevated key lands.
 
     Degrades with a **200** on an XRAS outage, like every modal GET here: htmx

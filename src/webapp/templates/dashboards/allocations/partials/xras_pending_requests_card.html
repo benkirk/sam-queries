@@ -201,12 +201,38 @@
                         <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ role }}</span>
                         {% endfor %}
                     </td>
+                    {# When an outbound read is available each request number is
+                       a link into the full detail modal, so this cell is NOT a
+                       collapse trigger — the capture-phase toggle would fire
+                       before the link and expand the row behind the modal. The
+                       row's other cells keep the toggle. Incoming-only is a
+                       plain-text toggle cell, exactly as before.
+
+                       Two separate <td>s, not one conditional cell: the
+                       collapse-trigger static guard scans template SOURCE and
+                       cannot see the if/else branch, so a single cell carrying
+                       both the toggle and the link would read as the very bug
+                       that guard forbids (test_collapse_trigger_rows.py). #}
+                    {% set numbers = row.actions | map(attribute='request_number')
+                                     | reject('none') | unique | list %}
+                    {% if configured %}
+                    <td class="font-monospace small">
+                        {% for number in numbers[:2] %}
+                        <button type="button" class="btn btn-link btn-entity p-0"
+                                title="Full request detail (read-only)"
+                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                                hx-get="{{ url_for('allocations_dashboard.xras_request_detail', request_number=number) }}"
+                                hx-target="#auditDetailsModalBody"
+                                hx-swap="innerHTML"><span class="font-monospace">{{ number }}</span></button>{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                        {% if not numbers %}<span class="text-muted">—</span>{% endif %}
+                    </td>
+                    {% else %}
                     <td class="font-monospace small cursor-pointer" {{ collapse_toggle(body_id) }}>
-                        {% set numbers = row.actions | map(attribute='request_number')
-                                         | reject('none') | unique | list %}
                         {% for number in numbers[:2] %}{{ number }}{% if not loop.last %}, {% endif %}{% endfor %}
                         {% if not numbers %}<span class="text-muted">—</span>{% endif %}
                     </td>
+                    {% endif %}
                     {% if may_manage %}
                     <td class="text-truncate cursor-pointer" style="max-width:0;" {{ collapse_toggle(body_id) }}>
                         {% if row.person %}
