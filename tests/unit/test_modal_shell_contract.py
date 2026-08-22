@@ -288,11 +288,12 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/allocations/partials/xras_remediations_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],
-    # The shared roster/actions/button strip, now included only by the read-only
-    # detail modal (the card's per-request expansion it also fed was folded into
-    # that modal).
+    # The shared roster/actions strip, included only by the read-only detail
+    # modal. Its controls swap #auditDetailsModalBody in place and carry NO
+    # data-bs-toggle="modal" — clicked inside the open modal that would hide it —
+    # so it references the body id alone, not the modal shell.
     'dashboards/allocations/partials/_xras_remediation_actions.html': [
-        'auditDetailsModal', 'auditDetailsModalBody'],
+        'auditDetailsModalBody'],
     # The read-only + editor detail modal and its two editor forms, all reached
     # only from xras.html (same host page as the card) and all rendering into
     # #auditDetailsModalBody. The detail modal's Requested-stage editors and the
@@ -312,8 +313,6 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/allocations/partials/xras_merge_form.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_action_form.html': [
-        'auditDetailsModalBody'],
-    'dashboards/allocations/partials/xras_roles_form.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_history_modal.html': [
         'auditDetailsModalBody'],

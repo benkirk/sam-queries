@@ -196,7 +196,6 @@ class TestAccessControl:
         '/allocations/xras_merge_form/ghost-user-abcde',
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
-        '/allocations/xras_roles_form/EXAM0001',
         '/allocations/xras_request_detail/EXAM0001',
         '/allocations/xras_resource_form/EXAM0001/7/530201',
         '/allocations/xras_dates_form/EXAM0001/7',
@@ -368,7 +367,7 @@ class TestRendering:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'EXAM0001' in body
         assert 'Withdraw…' in body
-        assert 'Resolve identity (merge in XRAS)…' in body
+        assert 'Resolve identity (merge)…' in body
 
     def test_the_lever_off_disables_rather_than_hides(self, auth_client,
                                                       configured, monkeypatch):
@@ -684,23 +683,24 @@ class TestModalGets:
                              'roles': [{'roleId': 1, 'role': 'PI',
                                         'roleTypeId': 13}]}]
         _reader(monkeypatch, payload=payload)
-        for path in (f'/allocations/xras_withdraw_form/EXAM0001/7',
-                     f'/allocations/xras_roles_form/EXAM0001'):
-            body = auth_client.get(path).get_data(as_text=True)
-            assert 'placeholder identity' in body, path
+        body = auth_client.get(
+            '/allocations/xras_withdraw_form/EXAM0001/7').get_data(as_text=True)
+        assert 'placeholder identity' in body
 
     def test_a_real_role_holder_is_not_flagged(self, auth_client, armed,
                                                monkeypatch):
         _reader(monkeypatch)
         body = auth_client.get(
-            '/allocations/xras_roles_form/EXAM0001').get_data(as_text=True)
+            '/allocations/xras_withdraw_form/EXAM0001/7').get_data(as_text=True)
         assert 'placeholder identity' not in body
 
-    def test_the_roles_modal_renders_the_live_roster(self, auth_client, armed,
-                                                     monkeypatch):
+    def test_the_detail_modal_renders_the_live_roster(self, auth_client, armed,
+                                                      monkeypatch):
+        """The roster is inline in the detail modal now; the add-role select
+        carries XRAS's display vocabulary."""
         _reader(monkeypatch)
         body = auth_client.get(
-            '/allocations/xras_roles_form/EXAM0001').get_data(as_text=True)
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'ghost-user-abcde' in body
         assert 'Project Lead' in body, 'XRAS display vocabulary, not "PI"'
 
@@ -708,7 +708,6 @@ class TestModalGets:
         '/allocations/xras_merge_form/ghost-user-abcde',
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
-        '/allocations/xras_roles_form/EXAM0001',
         '/allocations/xras_request_detail/EXAM0001',
     ])
     def test_an_outage_degrades_with_a_200(self, auth_client, armed,
@@ -781,15 +780,18 @@ class TestRequestDetailModal:
 
     def test_it_carries_the_shared_write_buttons(self, auth_client, armed,
                                                  monkeypatch):
-        """Roster + actions come from the SHARED include, so the modal offers
-        the same verbs as the card row — here, Withdraw on an Approved action
-        and the roster's Roles editor entry point."""
+        """Roster + actions strip: Withdraw on an Approved action, and the
+        roster editor is inline in the modal (add + remove a role) rather than
+        a separate Roles… view."""
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Withdraw…' in body
-        assert 'Roles…' in body
-        # But NOT a Details… link back to itself.
+        # The inline roster editor: an add-role form and a per-role Remove.
+        assert 'Add XRAS username' in body
+        assert '/allocations/xras_role_remove/EXAM0001/' in body
+        # No separate Roles… entry point, and no Details… link back to itself.
+        assert 'Roles…' not in body
         assert 'Details…' not in body
 
     def test_the_card_row_links_the_request_to_the_detail_modal(

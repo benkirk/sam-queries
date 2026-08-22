@@ -73,7 +73,6 @@ _REMEDIATION_TARGET = 'alloc-xras-remediations'
 _CARD = 'dashboards/allocations/partials/xras_remediations_card.html'
 _MERGE_FORM = 'dashboards/allocations/partials/xras_merge_form.html'
 _ACTION_FORM = 'dashboards/allocations/partials/xras_action_form.html'
-_ROLES_FORM = 'dashboards/allocations/partials/xras_roles_form.html'
 
 
 # ---------------------------------------------------------------------------
@@ -909,22 +908,6 @@ def _role_options():
     return [(r['name'], r['display']) for r in remediation.role_choices()]
 
 
-@bp.route('/xras_roles_form/<path:request_number>')
-@login_required
-@require_permission(Permission.MANAGE_XRAS)
-def xras_roles_form(request_number: str):
-    """Modal body: the live roster, with add and remove."""
-    try:
-        context = _roles_context(request_number)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras roles form: %s', exc)
-        return _degraded('Editing a roster needs a live read from XRAS, and '
-                         'XRAS is not answering.')
-    if context is None:
-        return htmx_modal_not_found('Request')
-    return render_template(_ROLES_FORM, **context)
-
-
 class _XrasRoleAddHandler(_XrasRemediationHandler):
     """Put one username on a request's roster.
 
@@ -935,7 +918,9 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
     """
 
     schema_cls = XrasRoleForm
-    template = _ROLES_FORM
+    # `on_success`/`render_errors` are both overridden below to re-render the
+    # whole detail modal (the roster editor is inline in it now), so the base's
+    # `template` renderer is never reached.
     success_message = 'Role added in XRAS.'
 
     def clean(self, data):
@@ -989,18 +974,23 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
         return self._finish(outcome, verb='The role change')
 
     def on_success(self, result):
-        """Re-render the roster in place; do not close the modal."""
-        context = _safe_roles_context(self.request_number)
-        context['flash'] = (f'Added {result.result.extra.get("username")} as '
-                            f'{result.result.extra.get("role_type")}.')
-        response = current_app.make_response(
-            render_template(_ROLES_FORM, **context))
-        # The card behind the modal still needs to know something changed.
-        response.headers['HX-Trigger'] = 'refreshXrasTab'
-        return response
+        """Re-render the detail modal in place with a flash; keep it open —
+        roster fixes come in batches and closing after each would cost clicks."""
+        return _render_detail(
+            self.request_number,
+            flash=(f'Added {result.result.extra.get("username")} as '
+                   f'{result.result.extra.get("role_type")}.'))
 
-    def context(self):
-        return _safe_roles_context(self.request_number)
+    def render_errors(self, errors, field_errors=None):
+        """The add-role form is inline in the detail modal, which carries no
+        per-field macros, so collapse every error into a top-of-modal alert."""
+        messages = list(errors or [])
+        for msgs in (field_errors or {}).values():
+            messages.extend(msgs)
+        return _render_detail(
+            self.request_number,
+            flash_error=' '.join(str(m) for m in messages)
+            or 'Could not add the role.')
 
 
 def _safe_roles_context(request_number):
@@ -1037,17 +1027,19 @@ def xras_role_remove(request_number: str, role_id: int):
     Keyed on ``role_id`` rather than username because one person can hold two
     roles on a request and only the id says which one goes.
     """
+    # The roster editor is inline in the detail modal, so every outcome
+    # re-renders that modal in place (with a flash), not a separate roles view.
     context = _safe_roles_context(request_number)
     if not context['xa_user'] or context['request_id'] is None:
-        context['flash_error'] = ('XRAS could not be read, so nothing was '
-                                  'changed.')
-        return render_template(_ROLES_FORM, **context)
+        return _render_detail(
+            request_number,
+            flash_error='XRAS could not be read, so nothing was changed.')
 
     target = next((r for r in context['roster'] if r.get('role_id') == role_id),
                   None)
     if target is None:
-        context['flash_error'] = 'That role is no longer on the roster.'
-        return render_template(_ROLES_FORM, **context)
+        return _render_detail(
+            request_number, flash_error='That role is no longer on the roster.')
 
     try:
         outcome = remediation.change_role(
@@ -1056,23 +1048,20 @@ def xras_role_remove(request_number: str, role_id: int):
             operator=current_user.username, xa_user=context['xa_user'],
             role_id=role_id)
     except XrasWriteNotConfigured:
-        context['flash_error'] = ('XRAS writes are switched off for this '
-                                  'deployment. Nothing was sent.')
-        return render_template(_ROLES_FORM, **context)
+        return _render_detail(
+            request_number,
+            flash_error='XRAS writes are switched off for this deployment. '
+                        'Nothing was sent.')
 
-    refreshed = _safe_roles_context(request_number)
     if outcome.status == 'verified':
-        refreshed['flash'] = (f"Removed {target.get('username')} "
-                              f"({target.get('role_type')}).")
-    else:
-        reason = outcome.error or 'XRAS did not confirm it'
-        refreshed['flash_error'] = (
-            f'Removal did not complete: {reason}. The attempt is recorded in '
-            'the remediation log.')
-
-    response = current_app.make_response(render_template(_ROLES_FORM, **refreshed))
-    response.headers['HX-Trigger'] = 'refreshXrasTab'
-    return response
+        return _render_detail(
+            request_number,
+            flash=f"Removed {target.get('username')} ({target.get('role_type')}).")
+    reason = outcome.error or 'XRAS did not confirm it'
+    return _render_detail(
+        request_number,
+        flash_error=f'Removal did not complete: {reason}. The attempt is '
+                    'recorded in the remediation log.')
 
 
 # ---------------------------------------------------------------------------
@@ -1223,6 +1212,12 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         # them, and the routes 403 anyway.
         'is_xras_admin': has_permission(current_user, Permission.ADMIN_XRAS),
         'action_types': list(XRAS_ACTION_TYPES),
+        # The roster editor is inline in the modal now (no separate Roles form):
+        # `row.roster` already carries `role_id` (roster_from_payload), and these
+        # two feed the add-role control below it.
+        'role_options': _role_options(),
+        'role_add_url': url_for('allocations_dashboard.xras_role_add',
+                                request_number=request_number),
         'flash': flash,
         'flash_error': flash_error,
     }

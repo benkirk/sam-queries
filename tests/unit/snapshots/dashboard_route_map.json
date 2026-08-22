@@ -1736,13 +1736,6 @@
     ]
   ],
   [
-    "allocations_dashboard.xras_roles_form",
-    "/allocations/xras_roles_form/<path:request_number>",
-    [
-      "GET"
-    ]
-  ],
-  [
     "allocations_dashboard.xras_window_fragment",
     "/allocations/xras_window_fragment",
     [
