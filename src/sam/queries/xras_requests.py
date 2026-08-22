@@ -246,3 +246,49 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                                      for r in roster),
         'refreshed_at': refreshed_at,
     }
+
+
+def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Flatten a ``reports/username/<username>`` payload to role-labelled rows.
+
+    The feed groups a person's requests by role name
+    (``{requestRoles: [{roleName, requests[]}]}``); this preserves that
+    grouping and keeps only what the XRAS User modal renders — a request is a
+    link to the Request modal plus a few identifying fields. Deliberately
+    **no ``requestStatus``**: this feed does not carry one (probed 2026-08-22),
+    and the modal keys each row to the Request modal by number for live state.
+
+    A group with no usable request, and a request with no ``requestNumber``
+    (the modal's only link key), is dropped — the same "cost the row, not the
+    view" rule the sweep's :func:`request_index_entry` follows.
+    """
+    groups: List[Dict[str, Any]] = []
+    if not isinstance(payload, dict):
+        return groups
+    for group in payload.get('requestRoles') or ():
+        if not isinstance(group, dict):
+            continue
+        rows: List[Dict[str, Any]] = []
+        for req in group.get('requests') or ():
+            if not isinstance(req, dict):
+                continue
+            number = _text(req.get('requestNumber'))
+            if not number:
+                continue
+            rows.append({
+                'request_number': number,
+                # The feed spells it both ways; take either.
+                'request_id': req.get('requestId') or req.get('requestID'),
+                'title': _text(req.get('requestTitle')),
+                'action_type': _text(req.get('actionType')),
+                'allocation_type': _text(req.get('allocationType')),
+                'opportunity': _text(req.get('opportunity')),
+                'begin_date': _as_date(req.get('beginDate')),
+                'end_date': _as_date(req.get('endDate')),
+                'pi': _text(req.get('pi')),
+                'pi_username': _text(req.get('piUsername')),
+            })
+        if rows:
+            groups.append({'role_name': _text(group.get('roleName')),
+                           'requests': rows})
+    return groups

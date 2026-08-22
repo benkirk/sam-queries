@@ -252,6 +252,34 @@ Three consequences, each load-bearing:
    connected to nobody SAM knows — is reachable *before* the push**, with
    their person detail already inline.
 
+### 3.2a `reports/username/:username` payload shape — probed 2026-08-22
+
+Wired for the **XRAS User** modal. Probed live against a PI (`janebaldwin`) and
+an Allocation Manager (`Karpus`); a stuck-placeholder (`*-user-*`) **404s** here
+(and at `/v1/people` and `/v1/permissions`) once merged away, so the modal
+degrades on `None`. `/v1/permissions/:username` returned an **empty list** for
+both real users — carries nothing worth rendering, so it is not wired.
+
+```
+{ panels: [...],                      ← reviewer panel memberships (unused; our
+  requestRoles: [                       people are PIs / Managers, not reviewers)
+    { roleName: "Project Lead",       ← XRAS display vocabulary (Project Lead /
+      requests: [                       Allocation Manager / User) — matches
+        { requestNumber: "UCIR0072",    ROLE_TYPES[].display
+          requestId: 1446007,          (also spelled requestID)
+          requestTitle, actionType, allocationType,
+          opportunity, opportunityId,
+          beginDate, endDate, updateDate,
+          pi, piUsername, piInstitution, coPis[],
+          fos, fosTypeId,
+          requestedResources[], resources[] },
+        ... ] },
+    ... ] }
+```
+
+⚠️ **No `requestStatus`** in this feed — the panel keys each request to the
+Request modal by `requestNumber` (the projcode) for the live status instead.
+
 ### 3.3 `/v1/requests` payload shape
 
 (One request from `reports/requests` / `reports/request_numbers` is this same

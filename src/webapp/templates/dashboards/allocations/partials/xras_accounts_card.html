@@ -326,7 +326,13 @@
                     </td>
                     {% endif %}
 
-                    <td class="text-nowrap cursor-pointer" {{ collapse_toggle(body_id) }}>
+                    {# ⚠️ NO collapse toggle on this cell: when `configured` it
+                       holds a modal-opening link, and Bootstrap's collapse
+                       data-api runs in the capture phase — a toggle here would
+                       fire before the link and flip the row open behind the
+                       modal (the same reason col 1 and the Request cell opt
+                       out). The other cells still toggle the row. #}
+                    <td class="text-nowrap">
                         {# ⚠️ This is XRAS-side IDENTITY state, not progress on
                            the row. Measured 9 of 9 on the local smoke: every
                            worklist row was reconciled in XRAS and every one
@@ -335,7 +341,19 @@
                            exists and is active, which is checked every render.
                            `unreconciled` is the HARDER case: XRAS cannot say
                            who they are either, so there is no detail sheet to
-                           create the account from. #}
+                           create the account from.
+
+                           When outgoing XRAS is configured the state links to
+                           the XRAS User modal (this row's XRAS identity), the
+                           mirror of col 1's SAM user link. Degrades to a plain
+                           badge with no outgoing access, like `request_cell`. #}
+                        {% if configured %}
+                        <a href="#" class="text-decoration-none" title="View this XRAS user"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_user_detail',
+                                              username=row.username) }}"
+                           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                        {% endif %}
                         {% if row.is_reconciled is none %}
                         <span class="text-muted" title="XRAS was not asked">—</span>
                         {% elif row.is_reconciled and row.placeholder %}
@@ -356,6 +374,7 @@
                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
                               title="XRAS has not reconciled this identity either — there is no confirmed person behind the username yet">unidentified</span>
                         {% endif %}
+                        {% if configured %}</a>{% endif %}
                     </td>
 
                     <td class="text-nowrap small text-muted cursor-pointer" {{ collapse_toggle(body_id) }}>

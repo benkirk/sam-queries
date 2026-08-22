@@ -187,6 +187,21 @@ class XrasApiClient:
         """Directory search on name/username fragments. Same person shape."""
         return _as_list(self._get('/v1/search/people', params={'q': query}))
 
+    def get_person_roles(self, username: str) -> Optional[Dict[str, Any]]:
+        """Every request this person holds a role on, or ``None`` if unknown.
+
+        ``GET /v1/reports/username/<username>`` — a report-context route, 200 on
+        our key. Returns ``{panels, requestRoles}`` where ``requestRoles`` is a
+        list of ``{roleName, requests[]}`` groups; each request carries
+        ``requestNumber`` (the projcode), ``requestId``, ``requestTitle``,
+        ``actionType``, ``allocationType``, ``opportunity`` and its dates — but
+        **no** ``requestStatus`` (probed 2026-08-22, see
+        ``docs/xras/outgoing/XRAS_OUTGOING_QUERIES.md`` § 3.2a). A merged-away
+        placeholder ``404``s here exactly as :meth:`get_person` does.
+        """
+        return _as_dict(
+            self._get(f'/v1/reports/username/{quote(str(username), safe="")}'))
+
     # ── resources ───────────────────────────────────────────────────────
 
     def get_resources(self) -> Optional[List[Dict[str, Any]]]:

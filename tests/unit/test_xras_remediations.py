@@ -169,12 +169,17 @@ def _detail_payload(number='EXAM0001'):
     return payload
 
 
-def _reader(monkeypatch, payload=_payload(), person=None, candidates=()):
+def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
+            person_roles=None):
     """Swap in a scripted read client for every live lookup."""
     client = MagicMock()
     client.get_request_by_number.return_value = payload
     client.get_person.return_value = person
     client.search_people.return_value = list(candidates)
+    # Default to an empty dict, not MagicMock's auto-child — the parser tests
+    # its type and a MagicMock would read as "no such thing" only by accident.
+    client.get_person_roles.return_value = ({} if person_roles is None
+                                            else person_roles)
     monkeypatch.setattr(
         'sam.integration.xras_api.client.XrasApiClient.from_environment',
         classmethod(lambda cls, *a, **k: client))
@@ -197,6 +202,7 @@ class TestAccessControl:
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_request_detail/EXAM0001',
+        '/allocations/xras_user_detail/janebaldwin',
         '/allocations/xras_resource_form/EXAM0001/7/530201',
         '/allocations/xras_dates_form/EXAM0001/7',
         '/allocations/xras_attributes_form/EXAM0001',
@@ -732,6 +738,7 @@ class TestModalGets:
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_request_detail/EXAM0001',
+        '/allocations/xras_user_detail/janebaldwin',
     ])
     def test_an_outage_degrades_with_a_200(self, auth_client, armed,
                                            monkeypatch, path):
@@ -825,6 +832,114 @@ class TestRequestDetailModal:
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '/allocations/xras_request_detail/EXAM0001' in body
         assert 'Details…' not in body
+
+
+# ── the read-only XRAS User detail modal ─────────────────────────────────
+
+def _person(**over):
+    person = {'username': 'janebaldwin', 'firstName': 'Jane',
+              'middleName': None, 'lastName': 'Baldwin',
+              'email': 'jane.baldwin@uci.edu', 'phone': '555',
+              'organization': 'UC IRVINE', 'academicStatus': 'Faculty',
+              'residenceCountry': 'United States', 'isReconciled': True,
+              'orcid': None, 'hasOrcidToken': False}
+    person.update(over)
+    return person
+
+
+_PERSON_ROLES = {
+    'panels': [],
+    'requestRoles': [
+        {'roleName': 'Project Lead',
+         'requests': [{'requestNumber': 'UCIR0072', 'requestId': 1446007,
+                       'requestTitle': 'CLaSH', 'actionType': 'New',
+                       'allocationType': 'Small',
+                       'opportunity': 'Small Allocation (University)',
+                       'beginDate': '2026-08-04', 'endDate': '2027-08-31',
+                       'pi': 'Baldwin, Jane', 'piUsername': 'janebaldwin'}]}],
+}
+
+
+class TestUserDetailModal:
+    """The XRAS User modal — the person-side analogue of the request detail,
+    reached from any roster username and the Accounts-Needed identity column."""
+
+    def test_a_permitted_operator_gets_200(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=_person(), person_roles=_PERSON_ROLES)
+        response = auth_client.get('/allocations/xras_user_detail/janebaldwin')
+        assert response.status_code == 200
+
+    def test_it_renders_the_person_sheet(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=_person(), person_roles=_PERSON_ROLES)
+        body = auth_client.get(
+            '/allocations/xras_user_detail/janebaldwin').get_data(as_text=True)
+        assert 'Jane' in body and 'Baldwin' in body
+        assert 'jane.baldwin@uci.edu' in body
+
+    def test_it_carries_the_oob_title(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=_person())
+        body = auth_client.get(
+            '/allocations/xras_user_detail/janebaldwin').get_data(as_text=True)
+        assert 'id="auditDetailsModalTitle"' in body
+        assert 'hx-swap-oob="true"' in body
+
+    def test_it_lists_cross_request_roles_linked_to_the_request_modal(
+            self, auth_client, armed, configured, monkeypatch):
+        _reader(monkeypatch, person=_person(), person_roles=_PERSON_ROLES)
+        body = auth_client.get(
+            '/allocations/xras_user_detail/janebaldwin').get_data(as_text=True)
+        assert 'Project Lead' in body          # the role-group label
+        assert 'UCIR0072' in body              # the request number
+        # Each request keys into the Request modal by number, no toggle.
+        assert '/allocations/xras_request_detail/UCIR0072' in body
+
+    def test_an_unknown_user_degrades_with_a_200(self, auth_client, armed,
+                                                 monkeypatch):
+        """A merged-away placeholder 404s at get_person; the modal must say so
+        with a 200, not an empty body htmx cannot swap."""
+        _reader(monkeypatch, person=None)
+        response = auth_client.get(
+            '/allocations/xras_user_detail/gone-user-abcde')
+        assert response.status_code == 200
+        assert 'no account named' in response.get_data(as_text=True)
+
+    def test_a_back_link_appears_only_when_a_request_is_named(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=_person())
+        with_req = auth_client.get(
+            '/allocations/xras_user_detail/janebaldwin?request_number=EXAM0001'
+        ).get_data(as_text=True)
+        assert '/allocations/xras_request_detail/EXAM0001' in with_req
+        assert 'Back to request EXAM0001' in with_req
+
+        without = auth_client.get(
+            '/allocations/xras_user_detail/janebaldwin').get_data(as_text=True)
+        assert 'Back to request' not in without
+
+    def test_a_stuck_placeholder_offers_the_merge(self, auth_client, armed,
+                                                  monkeypatch):
+        """placeholder + reconciled is the contradiction the merge fixes."""
+        _reader(monkeypatch,
+                person=_person(username='ghost-user-abcde', isReconciled=True))
+        body = auth_client.get(
+            '/allocations/xras_user_detail/ghost-user-abcde').get_data(as_text=True)
+        assert '/allocations/xras_merge_form/ghost-user-abcde' in body
+
+    def test_a_real_user_offers_no_merge(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, person=_person())   # not a placeholder username
+        body = auth_client.get(
+            '/allocations/xras_user_detail/janebaldwin').get_data(as_text=True)
+        assert 'xras_merge_form' not in body
+
+    def test_the_roster_username_links_to_the_user_modal(
+            self, auth_client, armed, monkeypatch):
+        """The request detail's roster now opens the XRAS User modal per name,
+        carrying the request number so the user modal can offer a way back."""
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert '/allocations/xras_user_detail/' in body
+        assert 'request_number=EXAM0001' in body
 
 
 # ── the request editor (Part B) ──────────────────────────────────────────

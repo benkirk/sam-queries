@@ -45,7 +45,12 @@ from sam.integration.xras_api import (
     xras_write_configured,
 )
 from sam.manage import xras_remediation as remediation
-from sam.queries.xras_requests import _as_date, request_index_entry
+from sam.queries.xras_accounts import is_placeholder
+from sam.queries.xras_requests import (
+    _as_date,
+    person_roles_from_payload,
+    request_index_entry,
+)
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
@@ -1271,6 +1276,89 @@ def _render_detail(request_number, *, flash=None, flash_error=None):
     response = current_app.make_response(render_template(_DETAIL_FORM, **context))
     response.headers['HX-Trigger'] = 'refreshXrasTab'
     return response
+
+
+# ---------------------------------------------------------------------------
+# read-only XRAS user detail — the analogue of the request detail modal
+# ---------------------------------------------------------------------------
+
+_USER_DETAIL_FORM = 'dashboards/allocations/partials/xras_user_detail.html'
+
+
+def _user_context(username, *, back_request_number=None):
+    """Everything the XRAS User modal renders, or ``None`` if XRAS has no such
+    person. Raises :class:`XrasSourceUnavailable` on an outage — caller degrades.
+
+    Read-only apart from the reused merge: the only person-level write our key
+    holds is the identity merge, offered here only for the stuck-placeholder
+    contradiction (reconciled yet still a placeholder). XRAS exposes no
+    person-attribute write on our credential, so there is nothing else to edit.
+    """
+    person = _read_client().get_person(username)
+    if person is None:
+        return None
+
+    # A merged-away or unknown placeholder 404s here just as get_person does;
+    # person_roles_from_payload tolerates the resulting None.
+    role_groups = person_roles_from_payload(
+        _read_client().get_person_roles(username) or {})
+
+    sam_user = User.get_by_username(db.session, username)
+    placeholder = is_placeholder(username)
+    is_reconciled = person.get('isReconciled')
+
+    back_url = (url_for('allocations_dashboard.xras_request_detail',
+                        request_number=back_request_number)
+                if back_request_number else None)
+
+    return {
+        'username': username,
+        'person': person,
+        'role_groups': role_groups,
+        # SAM cross-reference, informational only: the SAM user modal lives
+        # inside its own #userDetailsModal, and opening it from within this
+        # already-open #auditDetailsModal would stack two Bootstrap modals — an
+        # idiom this page does not use. The Accounts-Needed card keeps the SAM
+        # user opener in its non-modal home.
+        'in_sam': sam_user is not None,
+        'sam_active': bool(sam_user is not None and sam_user.is_active),
+        'placeholder': placeholder,
+        'is_reconciled': is_reconciled,
+        'stuck_placeholder': bool(placeholder and is_reconciled),
+        'merge_url': url_for('allocations_dashboard.xras_merge_form',
+                             username=username),
+        'back_url': back_url,
+        'back_request_number': back_request_number,
+        'write_enabled': xras_write_configured(),
+        'configured': xras_api_configured(),
+    }
+
+
+@bp.route('/xras_user_detail/<path:username>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_user_detail(username: str):
+    """Modal body: the XRAS-side person behind a username.
+
+    The analogue of ``xras_request_detail`` — reached from any roster username
+    (a plain ``hx-get`` into the open modal body, no ``data-bs-toggle``) and
+    from the Accounts-Needed card's XRAS-identity column (``data-bs-toggle``
+    from the closed modal). Person detail is PII, so ``MANAGE_XRAS`` gates it,
+    matching the sibling cards. Degrades with a **200** on an outage.
+    """
+    back = request.args.get('request_number') or None
+    try:
+        context = _user_context(username, back_request_number=back)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras user detail: %s', exc)
+        return _degraded('Showing this user needs a live read from XRAS, and '
+                         'XRAS is not answering.')
+    if context is None:
+        return _degraded(
+            f'XRAS has no account named "{username}". A placeholder is often '
+            'gone because it was merged into a real identity; the card will '
+            'catch up on the next sweep.', title='Unknown XRAS user')
+    return render_template(_USER_DETAIL_FORM, **context)
 
 
 # ── the request editor (Part B): resource amounts & allocation dates ─────
