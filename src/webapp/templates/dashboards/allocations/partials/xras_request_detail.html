@@ -61,14 +61,22 @@
 {% endif %}
 
 {# ── title / abstract ───────────────────────────────────────────────── #}
-{% if payload.title or payload.shortTitle %}
-<div class="mb-3">
-    {% if payload.title %}<div class="fw-semibold">{{ payload.title }}</div>{% endif %}
-    {% if payload.shortTitle and payload.shortTitle != payload.title %}
-    <div class="small text-muted">{{ payload.shortTitle }}</div>
-    {% endif %}
+<div class="d-flex align-items-start gap-2 mb-3">
+    <div class="flex-grow-1">
+        {% if payload.title %}<div class="fw-semibold">{{ payload.title }}</div>{% endif %}
+        {% if payload.shortTitle and payload.shortTitle != payload.title %}
+        <div class="small text-muted">{{ payload.shortTitle }}</div>
+        {% endif %}
+        {% if not payload.title and not payload.shortTitle %}
+        <div class="small text-muted fst-italic">No title.</div>
+        {% endif %}
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" {{ write_disabled }}
+            {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+            hx-get="{{ url_for('allocations_dashboard.xras_attributes_form',
+                               request_number=request_number) }}"
+            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
 </div>
-{% endif %}
 {% if payload.abstract %}
 <details class="mb-3">
     <summary class="small text-uppercase text-muted">Abstract</summary>
@@ -202,9 +210,20 @@
        passes the raw allocationDates dicts through untouched apart from the
        begin/end parse. #}
 
-    {% if action.user_comments %}
-    <div class="small text-muted mt-2"><em>{{ action.user_comments }}</em></div>
-    {% endif %}
+    <div class="small mt-2 d-flex align-items-start gap-2">
+        <div class="flex-grow-1">
+            <span class="text-uppercase text-muted">Comments:</span>
+            {% if action.user_comments %}
+            <em>{{ action.user_comments }}</em>
+            {% else %}<span class="text-muted ms-1">none</span>{% endif %}
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-get="{{ url_for('allocations_dashboard.xras_action_fields_form',
+                                   request_number=request_number,
+                                   action_id=action.action_id) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
+    </div>
 
     {% if action.documents %}
     <div class="small mt-2">

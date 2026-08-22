@@ -15,10 +15,23 @@
 > `submit`, Approved stage fail-visible behind `xras_admin_context_available`
 > (default off). The live write path was smoke-tested reversibly against
 > NCAR0798 through the new client verb (555→556→555, verified, restored). The
-> **broader Tier-M editors** (request attributes, action fields, FoS, grants,
-> publications, resource/opportunity attributes, documents) are **deferred to a
-> Part B2** — documented but not Phase-0-proven. **Part C** (`ADMIN_XRAS`
+> **broader Tier-M editors** — see the split below. **Part C** (`ADMIN_XRAS`
 > destructive verbs) is **not started**; its RBAC decision is settled in §4.
+>
+> **Part B2a (text metadata editors) is BUILT** on the same PR: request
+> attributes (`title`/`shortTitle`/`abstract`, `PUT /attributes`) and action
+> `userComments` (`PUT /actions/<aid>`) — `submit` context, query params,
+> verify-by-reread. Phase 0.75 (`EDIT_REQUESTS.md §8`) proved the whole metadata
+> surface authorizes under our key; B2a ships only the fields the reports feed
+> reads back (so they can be verified). ⚠️ **XRAS strips trailing whitespace on
+> stored text** (measured), so the verify compares whitespace-normalized. Live
+> smoke on NCAR0798 (incl. a long abstract) verified + restored.
+>
+> **Deferred to Part B2b:** grants (POST/PUT/DELETE), publications
+> (POST **JSON body**/DELETE), FoS (needs a new `/v1/types/fos` catalog + picker,
+> `isPrimary`). **Beyond B2:** resource/opportunity attributes (unprobed),
+> documents (multipart upload). `keywords`/`collaborators`/`grantTypeId`/
+> `actionType` excluded (unverifiable or too consequential).
 >
 > **Live writes:** operator sets `XRAS_WRITE_ENABLED=1`. Throwaway requests
 > approved for mutation: **NCAR0004, NCAR0099, NCAR0798** (all edits reversible;

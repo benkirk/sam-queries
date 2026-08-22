@@ -563,3 +563,33 @@ def remove_action_dates(session_factory, *, request_number, request_id,
                          request_number=request_number, request_id=request_id,
                          action_id=action_id, comment=comment),
         request_number=request_number, client=client)
+
+
+def update_request_attributes(session_factory, *, request_number, request_id,
+                              fields, pi_username, operator, comment=None,
+                              context=None, client=None) -> RemediationOutcome:
+    """Set request-level text attributes. ``fields`` is a wire-named dict."""
+    return _editor_op(
+        'update_attributes', session_factory,
+        lambda admin: admin.update_request_attributes(
+            request_id, request_number=request_number, xa_user=pi_username,
+            context=context, **fields),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         comment=comment),
+        request_number=request_number, client=client)
+
+
+def update_action(session_factory, *, request_number, request_id, action_id,
+                  fields, pi_username, operator, comment=None, context=None,
+                  client=None) -> RemediationOutcome:
+    """Set action-level text fields. ``fields`` is a wire-named dict."""
+    return _editor_op(
+        'update_action', session_factory,
+        lambda admin: admin.update_action(
+            request_id, action_id, request_number=request_number,
+            xa_user=pi_username, context=context, **fields),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         action_id=action_id, comment=comment),
+        request_number=request_number, client=client)

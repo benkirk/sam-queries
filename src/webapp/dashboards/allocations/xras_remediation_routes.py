@@ -48,8 +48,10 @@ from sam.manage import xras_remediation as remediation
 from sam.queries.xras_requests import _as_date, request_index_entry
 from sam.schemas.forms import (
     XrasActionDatesForm,
+    XrasActionFieldsForm,
     XrasMergeForm,
     XrasRemediationReasonForm,
+    XrasRequestAttributesForm,
     XrasResourceAmountForm,
     XrasRoleForm,
 )
@@ -1078,6 +1080,9 @@ def xras_role_remove(request_number: str, role_id: int):
 _DETAIL_FORM = 'dashboards/allocations/partials/xras_request_detail.html'
 _RESOURCE_FORM = 'dashboards/allocations/partials/xras_resource_form.html'
 _DATES_FORM = 'dashboards/allocations/partials/xras_dates_form.html'
+_ATTRIBUTES_FORM = 'dashboards/allocations/partials/xras_attributes_form.html'
+# ⚠️ NOT xras_action_form.html — that is the withdraw/re-submit form.
+_ACTION_FIELDS_FORM = 'dashboards/allocations/partials/xras_action_fields_form.html'
 
 #: The XRAS "stage" model, in the order the modal shows it: what was asked for,
 #: what the panel recommended, what was awarded. Every ``resources[]`` entry in
@@ -1561,3 +1566,192 @@ def xras_dates_remove(request_number: str, action_id: int,
     return _render_detail(request_number, flash_error=(
         f'Removal did not complete: {outcome.error or "XRAS did not confirm it"}. '
         'The attempt is recorded in the remediation log.'))
+
+
+# ── the request editor (Part B2a): request attributes & action fields ────
+
+def _attributes_form_context(request_number):
+    """Context for the request-attributes editor, or ``None`` if the request is gone."""
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+    return {
+        'request_number': request_number,
+        'title': payload.get('title'),
+        'short_title': payload.get('shortTitle'),
+        'abstract': payload.get('abstract'),
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_attributes_edit',
+                            request_number=request_number),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+def _safe_attributes_form_context(request_number):
+    try:
+        context = _attributes_form_context(request_number)
+    except XrasSourceUnavailable:
+        context = None
+    return context or {
+        'request_number': request_number, 'title': None, 'short_title': None,
+        'abstract': None, 'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_attributes_edit',
+                            request_number=request_number),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_attributes_form/<path:request_number>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_attributes_form(request_number: str):
+    """Modal body: edit the request's title / short title / abstract."""
+    try:
+        context = _attributes_form_context(request_number)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras attributes form: %s', exc)
+        return _degraded('Editing the request attributes needs a live read '
+                         'from XRAS, and XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    return render_template(_ATTRIBUTES_FORM, **context)
+
+
+class _XrasAttributesHandler(_XrasRemediationHandler):
+    """Set a request's title/shortTitle/abstract — the requested text, not the
+    award. Full-form: prefilled with current values, a save writes all three."""
+
+    schema_cls = XrasRequestAttributesForm
+    template = _ATTRIBUTES_FORM
+    success_message = 'Request attributes updated in XRAS.'
+
+    def clean(self, data):
+        self._request_id, self._xa_user = _editor_target(self.request_number)
+        return data
+
+    def perform(self, data):
+        # snake_case → wire; blanked short_title/abstract clear the field.
+        fields = {
+            'title': data['title'],
+            'shortTitle': data.get('short_title') or '',
+            'abstract': data.get('abstract') or '',
+        }
+        outcome = remediation.update_request_attributes(
+            _session_factory(), request_number=self.request_number,
+            request_id=self._request_id, fields=fields,
+            pi_username=self._xa_user, operator=current_user.username)
+        return self._finish(outcome, verb='The attribute change')
+
+    def on_success(self, result):
+        return _render_detail(self.request_number,
+                              flash='Request attributes updated.')
+
+    def context(self):
+        return _safe_attributes_form_context(self.request_number)
+
+
+@bp.route('/xras_attributes_edit/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_attributes_edit(request_number: str):
+    return _XrasAttributesHandler(request_number=request_number).handle()
+
+
+def _action_fields_form_context(request_number, action_id):
+    """Context for the action-fields editor, or ``None`` if the request is gone."""
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+    action = next((a for a in (payload.get('actions') or ())
+                   if isinstance(a, dict) and a.get('actionId') == action_id),
+                  None)
+    if action is None:
+        return {'_missing': True}
+    return {
+        'request_number': request_number,
+        'action_id': action_id,
+        'user_comments': action.get('userComments'),
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_action_fields_edit',
+                            request_number=request_number, action_id=action_id),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+def _safe_action_fields_form_context(request_number, action_id):
+    try:
+        context = _action_fields_form_context(request_number, action_id)
+    except XrasSourceUnavailable:
+        context = None
+    if context and not context.get('_missing'):
+        return context
+    return {
+        'request_number': request_number, 'action_id': action_id,
+        'user_comments': None, 'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_action_fields_edit',
+                            request_number=request_number, action_id=action_id),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_action_fields_form/<path:request_number>/<int:action_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_action_fields_form(request_number: str, action_id: int):
+    """Modal body: edit an action's user comments."""
+    try:
+        context = _action_fields_form_context(request_number, action_id)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras action fields form: %s', exc)
+        return _degraded('Editing the action fields needs a live read from '
+                         'XRAS, and XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    if context.get('_missing'):
+        return _degraded(
+            f'XRAS no longer lists action {action_id} on {request_number}.',
+            title='Action not found')
+    return render_template(_ACTION_FIELDS_FORM, **context)
+
+
+class _XrasActionFieldsHandler(_XrasRemediationHandler):
+    """Set an action's userComments."""
+
+    schema_cls = XrasActionFieldsForm
+    template = _ACTION_FIELDS_FORM
+    success_message = 'Action fields updated in XRAS.'
+
+    def clean(self, data):
+        self._request_id, self._xa_user = _editor_target(self.request_number)
+        return data
+
+    def perform(self, data):
+        fields = {'userComments': data.get('user_comments') or ''}
+        outcome = remediation.update_action(
+            _session_factory(), request_number=self.request_number,
+            request_id=self._request_id, action_id=self.action_id,
+            fields=fields, pi_username=self._xa_user,
+            operator=current_user.username)
+        return self._finish(outcome, verb='The action field change')
+
+    def on_success(self, result):
+        return _render_detail(self.request_number,
+                              flash=f'Updated the comments on action '
+                                    f'{self.action_id}.')
+
+    def context(self):
+        return _safe_action_fields_form_context(self.request_number,
+                                                self.action_id)
+
+
+@bp.route('/xras_action_fields_edit/<path:request_number>/<int:action_id>',
+          methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_action_fields_edit(request_number: str, action_id: int):
+    return _XrasActionFieldsHandler(
+        request_number=request_number, action_id=action_id).handle()

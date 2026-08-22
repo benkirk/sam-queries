@@ -173,6 +173,8 @@ class TestAccessControl:
         '/allocations/xras_request_detail/EXAM0001',
         '/allocations/xras_resource_form/EXAM0001/7/530201',
         '/allocations/xras_dates_form/EXAM0001/7',
+        '/allocations/xras_attributes_form/EXAM0001',
+        '/allocations/xras_action_fields_form/EXAM0001/7',
     ])
     def test_every_modal_is_gated(self, view_only_client, path):
         assert view_only_client.get(path).status_code == 403
@@ -187,6 +189,8 @@ class TestAccessControl:
         '/allocations/xras_resource_remove/EXAM0001/7/530201',
         '/allocations/xras_dates_edit/EXAM0001/7',
         '/allocations/xras_dates_remove/EXAM0001/7/9',
+        '/allocations/xras_attributes_edit/EXAM0001',
+        '/allocations/xras_action_fields_edit/EXAM0001/7',
     ])
     def test_every_write_is_gated(self, view_only_client, path):
         assert view_only_client.post(path).status_code == 403
@@ -820,6 +824,50 @@ class TestTheEditors:
         body = auth_client.post(
             '/allocations/xras_resource_edit/EXAM0001/7/530201',
             data={'amount': '20', 'stage': 'Requested'}).get_data(as_text=True)
+        assert 'switched off' in body
+
+    # ── the B2a text editors ──────────────────────────────────────────
+
+    def test_the_attributes_form_renders_prefilled(self, auth_client, armed,
+                                                   monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_attributes_form/EXAM0001').get_data(as_text=True)
+        assert 'Edit attributes — EXAM0001' in body
+        assert 'value="Turbulence at scale"' in body   # prefilled title
+        assert 'name="abstract"' in body
+
+    def test_the_action_fields_form_renders(self, auth_client, armed,
+                                            monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_action_fields_form/EXAM0001/7').get_data(as_text=True)
+        assert 'Edit action 7 — EXAM0001' in body
+        assert 'name="user_comments"' in body
+
+    def test_the_detail_modal_offers_the_text_editors(self, auth_client, armed,
+                                                      monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras_attributes_form/EXAM0001' in body
+        assert 'xras_action_fields_form/EXAM0001/7' in body
+
+    def test_attributes_with_no_title_is_rejected(self, auth_client, armed,
+                                                  monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.post(
+            '/allocations/xras_attributes_edit/EXAM0001',
+            data={'title': '   ', 'abstract': 'x'}).get_data(as_text=True)
+        assert 'required' in body.lower()
+
+    def test_the_lever_off_refuses_an_attributes_edit(self, auth_client,
+                                                      configured, monkeypatch):
+        monkeypatch.delenv('XRAS_WRITE_ENABLED', raising=False)
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.post(
+            '/allocations/xras_attributes_edit/EXAM0001',
+            data={'title': 'A new title'}).get_data(as_text=True)
         assert 'switched off' in body
 
 

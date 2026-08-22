@@ -402,3 +402,14 @@ every write reversible, **NCAR0798 restored pristine** at the end.
 existing key — no elevated-key blocker (unlike the Approved *stage*, Phase 0.5).
 Client verbs mirror Part B (params + verify-by-reread), plus a JSON-body path for
 publications and an `isPrimary` param for FoS.
+
+⚠️ **XRAS normalizes trailing whitespace on stored text** (measured 2026-08-22
+building B2a: a 1020-char abstract ending in a space read back at 1019, via
+**both** query params and a body — so it is XRAS, not transport truncation). The
+verify-by-reread therefore compares **whitespace-stripped**, or an
+otherwise-successful long-text write reports `unverified`. A middle truncation
+still differs and is still caught.
+
+**B2a shipped** (title/shortTitle/abstract + action userComments) — only the
+fields the reports feed reads back. `keywords`/`collaborators` are excluded
+precisely because they are **not** in the read-back (unverifiable).

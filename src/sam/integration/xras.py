@@ -450,6 +450,10 @@ XRAS_REMEDIATION_OPERATIONS = (
     'set_action_dates',        # create an allocation-date range
     'update_action_dates',     # update an allocation-date range in place
     'remove_action_dates',     # delete an allocation-date range
+    # The metadata editors (Part B2a, 2026-08-22). ``update_attributes`` is
+    # shortened from "request attributes" to fit VARCHAR(24) — the test guards it.
+    'update_attributes',       # title/shortTitle/abstract
+    'update_action',           # action fields (userComments)
 )
 
 #: ``xras_remediation_event.status``. Five values, and the distinctions matter:

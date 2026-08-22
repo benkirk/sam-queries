@@ -25,7 +25,8 @@ from marshmallow import ValidationError, post_load
 from . import HtmxFormSchema
 
 __all__ = ['XrasMergeForm', 'XrasRemediationReasonForm', 'XrasRoleForm',
-           'XrasResourceAmountForm', 'XrasActionDatesForm']
+           'XrasResourceAmountForm', 'XrasActionDatesForm',
+           'XrasRequestAttributesForm', 'XrasActionFieldsForm']
 
 #: ``xras_remediation_event.comment`` is TEXT — 65,535 **bytes**, and utf8mb4
 #: spends up to 4 per character. A char-counted cap at the column width would
@@ -199,3 +200,46 @@ class XrasActionDatesForm(HtmxFormSchema):
                 'End date must not precede the begin date.']})
         data['comment'] = _clean(data.get('comment')) or None
         return data
+
+
+#: UI bounds for the free-text metadata fields. Generous — the real limit is
+#: XRAS's, which a too-long value surfaces as a 400 the modal renders. `abstract`
+#: and `userComments` are long-form; title/shortTitle are one-liners.
+_TITLE_MAX = 500
+_SHORT_TITLE_MAX = 255
+_LONGTEXT_MAX = 20000
+
+
+class XrasRequestAttributesForm(HtmxFormSchema):
+    """Edit a request's text attributes: title, short title, abstract.
+
+    Only the fields the reports feed reads back are here — a field that cannot
+    be re-read cannot be verified, and every write here verifies. ``title`` is
+    required (a request needs one); ``short_title``/``abstract`` may be blanked
+    to clear them. The form is prefilled with the current values, so a save
+    rewrites all three to what the operator sees — the ones they did not touch to
+    their existing values.
+    """
+
+    title = f.Str(required=True, validate=v.Length(min=1, max=_TITLE_MAX))
+    short_title = f.Str(load_default=None,
+                        validate=v.Length(max=_SHORT_TITLE_MAX))
+    abstract = f.Str(load_default=None, validate=v.Length(max=_LONGTEXT_MAX))
+
+    @post_load
+    def _normalize(self, data, **kwargs):
+        title = _clean(data.get('title'))
+        if not title:
+            raise ValidationError({'title': ['This field is required.']})
+        data['title'] = title
+        # short_title/abstract: keep '' (a deliberate clear) distinct from a
+        # value; empty-string dropping already turned a blank into a missing
+        # key, which the route reads as "clear" via request.form presence.
+        return data
+
+
+class XrasActionFieldsForm(HtmxFormSchema):
+    """Edit an action's text fields. Just ``user_comments`` in B2a."""
+
+    user_comments = f.Str(load_default=None,
+                          validate=v.Length(max=_LONGTEXT_MAX))

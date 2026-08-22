@@ -559,6 +559,38 @@ class TestTheEditorOps:
             XrasRemediationEvent,
             rm_outcome.event_id).operation == 'remove_action_dates'
 
+    def test_update_attributes_records_and_passes_wire_fields(
+            self, factory, session, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.update_request_attributes.return_value = _result(
+            'update_attributes', verified=True, before={'title': 'Old'},
+            after={'title': 'New'})
+        outcome = service.update_request_attributes(
+            factory, request_number='EXAM0001', request_id=900001,
+            fields={'title': 'New', 'shortTitle': '', 'abstract': 'A'},
+            pi_username='pi-user', operator='benkirk', client=client)
+        assert session.get(XrasRemediationEvent,
+                           outcome.event_id).operation == 'update_attributes'
+        # the wire-named dict reaches the client verbatim
+        assert client.update_request_attributes.call_args.kwargs['title'] == 'New'
+        assert client.update_request_attributes.call_args.kwargs['shortTitle'] == ''
+
+    def test_update_action_records_and_passes_wire_fields(
+            self, factory, session, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.update_action.return_value = _result(
+            'update_action', verified=True, before={'userComments': None},
+            after={'userComments': 'hi'})
+        outcome = service.update_action(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            fields={'userComments': 'hi'}, pi_username='pi-user',
+            operator='benkirk', client=client)
+        row = session.get(XrasRemediationEvent, outcome.event_id)
+        assert (row.operation, row.action_id) == ('update_action', 7)
+        assert client.update_action.call_args.kwargs['userComments'] == 'hi'
+
 
 # ── the read side ───────────────────────────────────────────────────────
 

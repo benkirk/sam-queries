@@ -1,0 +1,43 @@
+{#
+  Action-fields editor (user comments), rendered into #auditDetailsModalBody.
+  Prefilled; on save the handler re-renders the detail modal in place.
+
+  Context: request_number, action_id, user_comments, write_enabled,
+           post_url, back_url.
+
+  ⚠️ This is NOT xras_action_form.html — that is the withdraw/re-submit form.
+#}
+{% from 'dashboards/fragments/form_fields.html' import textarea_field, form_errors_panel with context %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Edit action {{ action_id }} — {{ request_number }}
+</h5>
+
+<p class="text-muted small">
+    Editing the user comments on action {{ action_id }} in
+    <strong>XRAS</strong>, recorded against
+    <code>{{ current_user.username }}</code>.
+</p>
+
+{% if not write_enabled %}
+<div class="alert alert-warning py-2 small">
+    XRAS writes are switched off for this deployment
+    (<code>XRAS_WRITE_ENABLED</code>).
+</div>
+{% endif %}
+
+<form hx-post="{{ post_url }}" hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+    <fieldset {% if not write_enabled %}disabled{% endif %}>
+        {{ textarea_field('user_comments', 'User comments', rows=5,
+                          maxlength=20000, default=user_comments or '',
+                          help='Leave blank to clear it.') }}
+    </fieldset>
+    {{ form_errors_panel() }}
+    <div class="d-flex justify-content-between mt-3">
+        <button type="button" class="btn btn-outline-secondary"
+                hx-get="{{ back_url }}" hx-target="#auditDetailsModalBody"
+                hx-swap="innerHTML">Back</button>
+        <button type="submit" class="btn btn-primary"
+                {% if not write_enabled %}disabled{% endif %}>Save</button>
+    </div>
+</form>

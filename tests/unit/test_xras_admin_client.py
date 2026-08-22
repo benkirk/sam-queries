@@ -692,6 +692,69 @@ class TestResourceAndDateVerbs:
         assert result.verified is True
 
 
+class TestMetadataVerbs:
+    """The B2a text editors — PUT + params + verify-by-reread against the
+    reports read-back (only fields the feed echoes are editable)."""
+
+    def _attr_payload(self, **top):
+        p = _reports_with(resources=[])
+        p.update(top)
+        return p
+
+    def test_update_attributes_puts_params_and_verifies(self, monkeypatch):
+        before = self._attr_payload(title='Old', shortTitle=None, abstract='A')
+        after = self._attr_payload(title='New', shortTitle='S', abstract='A')
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        result = client.update_request_attributes(
+            900001, request_number='EXAM0001', xa_user='pi-user',
+            title='New', shortTitle='S', abstract='A')
+        assert result.verified is True
+        method, url = client.session.request.call_args[0]
+        _, kwargs = client.session.request.call_args
+        assert method == 'PUT'
+        assert url.endswith('/requests/900001/attributes')
+        assert kwargs['params'] == {'title': 'New', 'shortTitle': 'S',
+                                    'abstract': 'A'}
+
+    def test_a_field_that_does_not_read_back_is_unverified(self, monkeypatch):
+        before = self._attr_payload(title='Old')
+        after = self._attr_payload(title='Old')      # unchanged
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        result = client.update_request_attributes(
+            900001, request_number='EXAM0001', xa_user='pi-user', title='New')
+        assert result.verified is False
+
+    def test_clearing_a_field_sends_empty_and_verifies(self, monkeypatch):
+        before = self._attr_payload(shortTitle='S')
+        after = self._attr_payload(shortTitle=None)   # None reads as cleared
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        result = client.update_request_attributes(
+            900001, request_number='EXAM0001', xa_user='pi-user', shortTitle='')
+        _, kwargs = client.session.request.call_args
+        assert kwargs['params'] == {'shortTitle': ''}
+        assert result.verified is True
+
+    def test_update_action_puts_to_the_action_and_verifies(self, monkeypatch):
+        before = _reports_with(resources=[])
+        before['actions'][0]['userComments'] = 'old'
+        after = _reports_with(resources=[])
+        after['actions'][0]['userComments'] = 'new'
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        result = client.update_action(
+            900001, 7, request_number='EXAM0001', xa_user='pi-user',
+            userComments='new')
+        assert result.verified is True
+        method, url = client.session.request.call_args[0]
+        _, kwargs = client.session.request.call_args
+        assert method == 'PUT'
+        assert url.endswith('/requests/900001/actions/7')
+        assert kwargs['params'] == {'userComments': 'new'}
+
+
 class TestTheResultRecord:
     """What the audit row is built from."""
 

@@ -1498,10 +1498,38 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_action_fields_edit",
+    "/allocations/xras_action_fields_edit/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_action_fields_form",
+    "/allocations/xras_action_fields_form/<path:request_number>/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_activate",
     "/allocations/xras_activate/<int:project_id>",
     [
       "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_attributes_edit",
+    "/allocations/xras_attributes_edit/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_attributes_form",
+    "/allocations/xras_attributes_form/<path:request_number>",
+    [
+      "GET"
     ]
   ],
   [

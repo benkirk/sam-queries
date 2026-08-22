@@ -905,3 +905,100 @@ class XrasAdminClient:
             extra={'request_number': request_number, 'action_id': action_id,
                    'allocation_date_id': int(allocation_date_id),
                    'context': context or XA_ADMIN_CONTEXT})
+
+    # ── request attributes & action fields (the metadata editors) ────────
+    #
+    # Both are `PUT` + query params + verify-by-reread, like everything above,
+    # and both take **wire** field names (`shortTitle`, `userComments`) — the
+    # caller maps snake_case→wire, so a field misspelling is a 400 the modal
+    # renders, not a silent no-op. Only fields the reports feed echoes back are
+    # editable here, because a field it does not return could not be verified.
+
+    def _action(self, request_number: str,
+                action_id: int) -> Optional[Dict[str, Any]]:
+        """One action dict, via the reports family, or ``None``."""
+        return next((a for a in self._actions(request_number)
+                     if a.get('actionId') == action_id), None)
+
+    @staticmethod
+    def _fields_verified(source: Optional[Dict[str, Any]],
+                         params: Dict[str, str]) -> bool:
+        """Every sent field reads back equal (``None``/'' both mean empty).
+
+        ⚠️ Compared **whitespace-stripped**: XRAS normalizes leading/trailing
+        whitespace on stored text (measured 2026-08-22 — a 1020-char abstract
+        ending in a space read back at 1019). An exact match would then report
+        an otherwise-successful write as *unverified*. A middle truncation still
+        differs and is still caught.
+        """
+        if source is None:
+            return False
+        return all(str(source.get(k) or '').strip() == v.strip()
+                   for k, v in params.items())
+
+    def update_request_attributes(self, request_id: int, *,
+                                  request_number: str, xa_user: str,
+                                  context: Optional[str] = None,
+                                  **fields: Any) -> XrasWriteResult:
+        """Set request-level text attributes (``title``/``shortTitle``/``abstract``).
+
+        ``fields`` are **wire-named**; an empty string clears one. Verified by
+        re-reading the request and confirming each sent field matches.
+        """
+        params = {k: ('' if v is None else str(v)) for k, v in fields.items()}
+        path = f'/v1/requests/{int(request_id)}/attributes'
+        before_src = self.reader.get_request_by_number(request_number) or {}
+        before = {k: before_src.get(k) for k in fields}
+        status, _, message, error = self._write(
+            'PUT', path, params=params, xa_user=xa_user, context=context)
+
+        try:
+            after_src = self.reader.get_request_by_number(request_number) or {}
+            verified = self._fields_verified(after_src, params)
+            after = {k: after_src.get(k) for k in fields}
+            detail = 'attributes ' + ', '.join(
+                f'{k}={after_src.get(k)!r}' for k in fields)
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='update_attributes', method='PUT', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=after, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'fields': list(fields),
+                   'context': context or XA_ADMIN_CONTEXT})
+
+    def update_action(self, request_id: int, action_id: int, *,
+                      request_number: str, xa_user: str,
+                      context: Optional[str] = None,
+                      **fields: Any) -> XrasWriteResult:
+        """Set action-level text fields (``userComments``).
+
+        ``fields`` are **wire-named**; an empty string clears one. Verified by
+        re-reading the action and confirming each sent field matches.
+        """
+        params = {k: ('' if v is None else str(v)) for k, v in fields.items()}
+        path = f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+        before_src = self._action(request_number, action_id) or {}
+        before = {k: before_src.get(k) for k in fields}
+        status, _, message, error = self._write(
+            'PUT', path, params=params, xa_user=xa_user, context=context)
+
+        try:
+            after_src = self._action(request_number, action_id)
+            verified = self._fields_verified(after_src, params)
+            after = ({k: after_src.get(k) for k in fields}
+                     if after_src is not None else None)
+            detail = 'action fields ' + ', '.join(
+                f'{k}={(after_src or {}).get(k)!r}' for k in fields)
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='update_action', method='PUT', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=after, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'action_id': action_id,
+                   'fields': list(fields), 'context': context or XA_ADMIN_CONTEXT})
