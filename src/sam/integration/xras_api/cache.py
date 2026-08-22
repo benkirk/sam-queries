@@ -11,6 +11,12 @@ Two buckets with deliberately different horizons:
 ``xras_resources`` (1 day)
     A 13-row catalog that changes on the order of once a year.
 
+``xras_lookups`` (1 day)
+    Reference data the request/opportunity modals resolve names from — the FoS
+    catalog (~39 rows) and per-id opportunity detail (~27 ever). Same slow
+    horizon as the resource catalog; separated only so the admin card and
+    ``clear()`` name it for what it is.
+
 Registered with the webapp caching facade via ``_BUCKETED_CACHE_MODULES`` in
 ``webapp/caching/__init__.py``, which is the one line that buys the Admin card
 row, ``stats()``, ``clear()`` and
@@ -36,6 +42,14 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
         name='xras_resources',
         ttl_key='XRAS_RESOURCES_CACHE_TTL', ttl_default=86400,   # 1 day
         size_key='XRAS_RESOURCES_CACHE_SIZE', size_default=8,
+    ),
+    # FoS catalog (one key) + opportunity detail (per-id). Both slow-changing
+    # reference data the modals resolve names from. Sized for the FoS row plus
+    # every opportunity the process has ever run.
+    'lookups': BucketSpec(
+        name='xras_lookups',
+        ttl_key='XRAS_LOOKUPS_CACHE_TTL', ttl_default=86400,     # 1 day
+        size_key='XRAS_LOOKUPS_CACHE_SIZE', size_default=128,
     ),
     # The Feed-B handoff. Unlike the two above this is NOT a memo of an
     # expensive read — it is a **producer/consumer mailbox**: `xras_sweep`
@@ -125,6 +139,17 @@ def invalidate_person(username: str) -> None:
 def cached_resources(compute: Callable[[], Any]) -> Optional[Any]:
     """Memoise the resource catalog. One key — it takes no arguments."""
     return _CACHE.get_or_compute('resources', 'catalog', compute)
+
+
+def cached_fos_types(compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise the FoS catalog. One key — the whole list."""
+    return _CACHE.get_or_compute('lookups', 'fos_types', compute)
+
+
+def cached_opportunity(opportunity_id, compute: Callable[[], Any]) -> Optional[Any]:
+    """Memoise one opportunity's detail. Definite negatives cache too — a 404
+    for an id is a real answer and re-asking costs a round trip per modal."""
+    return _CACHE.get_or_compute('lookups', f'opp:{opportunity_id}', compute)
 
 
 def store_pending_worklist(payload: Any) -> str:

@@ -170,7 +170,7 @@ def _detail_payload(number='EXAM0001'):
 
 
 def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
-            person_roles=None):
+            person_roles=None, opportunity=None, fos_types=None):
     """Swap in a scripted read client for every live lookup."""
     client = MagicMock()
     client.get_request_by_number.return_value = payload
@@ -180,6 +180,11 @@ def _reader(monkeypatch, payload=_payload(), person=None, candidates=(),
     # its type and a MagicMock would read as "no such thing" only by accident.
     client.get_person_roles.return_value = ({} if person_roles is None
                                             else person_roles)
+    client.get_opportunity.return_value = opportunity
+    # Real list, not a MagicMock — fos_name_map iterates it (and swallows a
+    # TypeError to an empty map, so the default keeps the request modal working
+    # with fos ids, but a real list lets a test assert resolved names).
+    client.get_fos_types.return_value = ([] if fos_types is None else fos_types)
     monkeypatch.setattr(
         'sam.integration.xras_api.client.XrasApiClient.from_environment',
         classmethod(lambda cls, *a, **k: client))
@@ -203,6 +208,7 @@ class TestAccessControl:
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_request_detail/EXAM0001',
         '/allocations/xras_user_detail/janebaldwin',
+        '/allocations/xras_opportunity_detail/532220',
         '/allocations/xras_resource_form/EXAM0001/7/530201',
         '/allocations/xras_dates_form/EXAM0001/7',
         '/allocations/xras_attributes_form/EXAM0001',
@@ -739,6 +745,7 @@ class TestModalGets:
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_request_detail/EXAM0001',
         '/allocations/xras_user_detail/janebaldwin',
+        '/allocations/xras_opportunity_detail/532220',
     ])
     def test_an_outage_degrades_with_a_200(self, auth_client, armed,
                                            monkeypatch, path):
@@ -747,6 +754,7 @@ class TestModalGets:
         client = MagicMock()
         client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
         client.get_person.side_effect = XrasSourceUnavailable('down')
+        client.get_opportunity.side_effect = XrasSourceUnavailable('down')
         monkeypatch.setattr(
             'sam.integration.xras_api.client.XrasApiClient.from_environment',
             classmethod(lambda cls, *a, **k: client))
@@ -940,6 +948,114 @@ class TestUserDetailModal:
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert '/allocations/xras_user_detail/' in body
         assert 'request_number=EXAM0001' in body
+
+
+# ── the read-only opportunity detail modal + FoS name resolution ──────────
+
+_OPPORTUNITY = {
+    'opportunityId': 532220, 'opportunityName': 'Small Allocation (University)',
+    'displayOpportunityName': 'Small Allocation (University)',
+    'opportunityType': 'Continuous', 'allocationType': 'Small',
+    'allocationTypeInfo': {'allocationType': 'Small',
+                           'description': 'Up to 400,000 core-hours for NSF-'
+                                          'funded university researchers.'},
+    'defaultAllocationAwardPeriod': 12, 'announcementDate': '2022-08-01',
+    'opportunityStates': ['Reviews Visible'],
+}
+
+
+class TestOpportunityModal:
+    """The opportunity detail modal — reached from the group header and the
+    request modal header."""
+
+    def test_a_permitted_operator_gets_200(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, opportunity=_OPPORTUNITY)
+        response = auth_client.get('/allocations/xras_opportunity_detail/532220')
+        assert response.status_code == 200
+
+    def test_it_renders_the_allocation_description_and_facts(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, opportunity=_OPPORTUNITY)
+        body = auth_client.get(
+            '/allocations/xras_opportunity_detail/532220').get_data(as_text=True)
+        assert 'Small Allocation (University)' in body
+        assert 'Up to 400,000 core-hours' in body       # the description
+        assert '12 months' in body                       # award period
+        assert 'Reviews Visible' in body                 # state
+
+    def test_it_carries_the_oob_title(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, opportunity=_OPPORTUNITY)
+        body = auth_client.get(
+            '/allocations/xras_opportunity_detail/532220').get_data(as_text=True)
+        assert 'id="auditDetailsModalTitle"' in body
+        assert 'hx-swap-oob="true"' in body
+
+    def test_an_unknown_opportunity_degrades_with_a_200(self, auth_client, armed,
+                                                        monkeypatch):
+        _reader(monkeypatch, opportunity=None)
+        response = auth_client.get('/allocations/xras_opportunity_detail/999999')
+        assert response.status_code == 200
+        assert 'no opportunity' in response.get_data(as_text=True)
+
+    def test_a_back_link_appears_only_when_a_request_is_named(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, opportunity=_OPPORTUNITY)
+        with_req = auth_client.get(
+            '/allocations/xras_opportunity_detail/532220?request_number=EXAM0001'
+        ).get_data(as_text=True)
+        assert '/allocations/xras_request_detail/EXAM0001' in with_req
+        without = auth_client.get(
+            '/allocations/xras_opportunity_detail/532220').get_data(as_text=True)
+        assert 'Back to request' not in without
+
+    def test_the_request_modal_header_links_the_opportunity(
+            self, auth_client, armed, configured, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert '/allocations/xras_opportunity_detail/' in body
+
+    def test_the_group_header_links_the_opportunity_when_configured(
+            self, auth_client, configured):
+        _publish(_payload('EXAM0001'))     # opportunityId 5
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '/allocations/xras_opportunity_detail/5' in body
+
+    def test_the_group_header_offers_no_modal_without_the_outbound_api(
+            self, auth_client, monkeypatch):
+        """The whole card gates on `configured`, so with outgoing off it renders
+        its not-configured state and offers no opportunity modal at all."""
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'xras_opportunity_detail' not in body
+
+
+class TestFosNameResolution:
+    """A reports payload spells fos as ids only, so the modal resolves them via
+    the cached FoS catalog rather than rendering 'FoS 30'."""
+
+    def test_the_request_modal_resolves_fos_ids_to_names(
+            self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['fos'] = [{'fosTypeId': 500032, 'fosNum': '30', 'isPrimary': True}]
+        _reader(monkeypatch, payload=payload,
+                fos_types=[{'fosTypeId': 500032, 'fosName': 'Regional Climate'}])
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Regional Climate' in body
+        assert 'FoS 30' not in body
+
+    def test_it_falls_back_to_the_id_when_the_catalog_is_unavailable(
+            self, auth_client, armed, monkeypatch):
+        payload = _detail_payload()
+        payload['fos'] = [{'fosTypeId': 500032, 'fosNum': '30', 'isPrimary': True}]
+        # Default _reader get_fos_types is [] → empty map → id fallback.
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'FoS 30' in body
 
 
 # ── the request editor (Part B) ──────────────────────────────────────────

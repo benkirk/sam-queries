@@ -214,17 +214,28 @@
                    token-driven replacement — byte-identical in light mode
                    (`--surface-tertiary` IS #f8f9fa) and correct in dark. See
                    the comment above `.table-subtle` in dashboard.css. #}
-                {# This header cell holds NO link, so the toggle is safe on the
-                   whole <tr> (unlike the request rows below, which open a
-                   modal) — see dashboards/fragments/collapse.html. #}
-                <tr class="table-subtle fw-semibold cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}>
+                {# ⚠️ The opportunity NAME now opens the opportunity modal when
+                   outgoing XRAS is configured, so the toggle can no longer live
+                   on the <tr> (or on this cell): Bootstrap's collapse data-api
+                   runs in the capture phase, so a click on the link would fire
+                   the toggle first and flip the group as well. The chevron and
+                   the count badge each get their OWN trigger span; the name sits
+                   between them as a plain link. Same pattern as the
+                   Accounts-Needed username cell. The bare #id folds into the
+                   modal — the header just carries the name. #}
+                <tr class="table-subtle fw-semibold">
                     <td colspan="7">
-                        <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>
+                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        {% if configured and group.opportunity_id %}
+                        <a href="#" class="text-decoration-none fw-semibold" title="View this opportunity"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_opportunity_detail',
+                                              opportunity_id=group.opportunity_id) }}"
+                           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ group.name }}</a>
+                        {% else %}
                         {{ group.name }}
-                        {% if group.opportunity_id %}
-                        <span class="text-muted fw-normal small">#{{ group.opportunity_id }}</span>
                         {% endif %}
-                        <span class="badge bg-secondary ms-1">{{ group.rows | length }}</span>
+                        <span class="cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}><span class="badge bg-secondary ms-1">{{ group.rows | length }}</span></span>
                     </td>
                 </tr>
             </tbody>

@@ -1,0 +1,72 @@
+{#
+  Read-only detail of one XRAS opportunity (an allocation "call"), rendered into
+  #auditDetailsModalBody. The analogue of xras_request_detail / xras_user_detail
+  for the opportunity a request was submitted against.
+
+  Context: opportunity_id, opportunity (a /v1/opportunities/:id dict),
+           back_url / back_request_number, configured.
+
+  ⚠️ No `data-bs-toggle="modal"` on any control — this body is swapped into the
+  already-open #auditDetailsModal, and a toggle would hide it (#464 rule).
+
+  Read-only: an opportunity is an allocation call SAM never writes, so there is
+  nothing to edit here.
+#}
+{% set opp = opportunity %}
+{% set info = opp.allocationTypeInfo or {} %}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Opportunity — {{ opp.displayOpportunityName or opp.opportunityName or ('#' ~ opportunity_id) }}
+</h5>
+
+{% if back_url %}
+<a href="#" class="small d-inline-block mb-3"
+   hx-get="{{ back_url }}"
+   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+    <i class="fas fa-arrow-left"></i> Back to request {{ back_request_number }}
+</a>
+{% endif %}
+
+{# ── header badges ──────────────────────────────────────────────────────── #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    {% if opp.opportunityType %}
+    <span class="badge bg-body-secondary text-body-secondary border">{{ opp.opportunityType }}</span>
+    {% endif %}
+    {% if opp.allocationType %}
+    <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">{{ opp.allocationType }} allocation</span>
+    {% endif %}
+    {% for state in opp.opportunityStates or [] %}
+    <span class="badge bg-body-secondary text-body-secondary border fw-normal">{{ state }}</span>
+    {% endfor %}
+    <span class="text-muted small ms-auto font-monospace">#{{ opportunity_id }}</span>
+</div>
+
+{# ── the human description of the allocation type ───────────────────────── #}
+{% if info.description %}
+<p class="small mb-3" style="white-space: pre-wrap;">{{ info.description }}</p>
+{% else %}
+<p class="small text-muted fst-italic mb-3">No description on file for this opportunity.</p>
+{% endif %}
+
+{# ── the few structured facts worth surfacing ───────────────────────────── #}
+<dl class="row g-2 small mb-0">
+    <div class="col-md-6 mb-0">
+        <dt class="text-muted fw-normal d-inline">Award period:</dt>
+        <dd class="d-inline ms-1 mb-0">
+            {% if opp.defaultAllocationAwardPeriod %}{{ opp.defaultAllocationAwardPeriod }} months{% else %}—{% endif %}
+        </dd>
+    </div>
+    <div class="col-md-6 mb-0">
+        <dt class="text-muted fw-normal d-inline">Announced:</dt>
+        <dd class="d-inline ms-1 mb-0">{{ announcement_date | fmt_date if announcement_date else '—' }}</dd>
+    </div>
+    {% if info.allocationType %}
+    <div class="col-md-6 mb-0">
+        <dt class="text-muted fw-normal d-inline">Allocation type:</dt>
+        <dd class="d-inline ms-1 mb-0">{{ info.allocationType }}</dd>
+    </div>
+    {% endif %}
+</dl>
+
+<div class="d-flex justify-content-end mt-3">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
+</div>

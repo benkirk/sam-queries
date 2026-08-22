@@ -40,8 +40,18 @@
     {% endif %}
     {% if payload.opportunity_name %}
     <span class="small text-muted">·
+        {# The opportunity opens its own detail modal in place — a plain hx-get
+           into this open body (no data-bs-toggle, the #464 rule), carrying the
+           request number for a Back link. The bare #id moves into that modal. #}
+        {% if configured and payload.opportunityId %}
+        <a href="#" class="text-decoration-none" title="View this opportunity"
+           hx-get="{{ url_for('allocations_dashboard.xras_opportunity_detail',
+                              opportunity_id=payload.opportunityId) }}?request_number={{ request_number }}"
+           hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ payload.opportunity_name }}</a>
+        {% else %}
         {{ payload.opportunity_name }}
         {%- if payload.opportunityId %} <span class="text-muted">#{{ payload.opportunityId }}</span>{% endif %}
+        {% endif %}
     </span>
     {% endif %}
     {% if row and row.submit_date %}
@@ -273,7 +283,9 @@
     <div class="d-flex flex-wrap gap-1">
         {% for f in payload.fos %}
         <span class="badge bg-body-secondary text-body-secondary border">
-            {{ f.fosName or f.fosAbbr or ('FoS ' ~ (f.fosNum or f.fosTypeId)) }}
+            {# A reports payload spells fos as ids only — resolve to the name via
+               the cached FoS catalog (fos_names), falling back to the id. #}
+            {{ fos_names.get(f.fosTypeId) or f.fosName or f.fosAbbr or ('FoS ' ~ (f.fosNum or f.fosTypeId)) }}
             {%- if f.isPrimary %} <i class="fas fa-star text-warning small" title="Primary"></i>{% endif %}
         </span>
         {% endfor %}

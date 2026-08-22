@@ -85,40 +85,46 @@ class TestItRenders:
 
 class TestInteraction:
 
-    def test_expanding_a_row_reveals_its_roster_and_actions(self, page):
+    def test_the_request_link_opens_the_detail_modal_with_roster_and_actions(
+            self, page):
+        """⚠️ The per-request row expansion is GONE — PR #464 folded the roster
+        and actions into the read-only detail modal, and the Request number is
+        now the single entry point. So the roster/actions live in
+        `#auditDetailsModal`, reached by clicking the request link, not by
+        expanding the row."""
         card = _load(page)
         rows = _rows(card)
         if rows.count() == 0:
             pytest.skip('no swept requests on this stack')
 
-        rows.first.click()
-        page.wait_for_timeout(400)
-        expansion = card.locator('tr.collapse.show').first
-        assert expansion.count() == 1
-        # ⚠️ Case-folded. `inner_text()` returns *rendered* text, and both
-        # section labels are `.text-uppercase` — so the obvious spelling has
-        # never once matched. It went unseen because the guard above skips on
-        # any stack whose sweep has not run, which is every CI runner.
-        text = expansion.inner_text().casefold()
+        link = card.locator('a[hx-get*="xras_request_detail"]').first
+        assert link.count() == 1, 'the request has no detail-modal link'
+        link.click()
+        page.wait_for_selector('#auditDetailsModal.show', timeout=15_000)
+        # The detail read is live; on any stack that swept, outgoing is
+        # configured, so the modal carries the shared roster/actions strip.
+        page.wait_for_timeout(800)
+        text = page.locator('#auditDetailsModalBody').inner_text().casefold()
         assert 'roster' in text and 'actions' in text
 
-    def test_the_chevron_rotates_when_a_row_opens(self, page):
+    def test_the_group_header_chevron_rotates_when_the_group_toggles(self, page):
         """The affordance is pure CSS — `.collapse-icon` rotating off the
-        `aria-expanded` Bootstrap writes onto the trigger. Nothing registers
-        it, so nothing can forget to re-register it after an htmx swap; what
-        this asserts is that the class is still on the icon and the rule still
-        reaches it."""
+        `aria-expanded` Bootstrap writes onto the trigger. Since PR #464 the
+        chevron lives on the opportunity GROUP header (`.table-subtle`), and
+        since PR #466 that header's toggle is a chevron span (the header's name
+        is a link to the opportunity modal, so the toggle could not stay on the
+        row). Groups render open, so the chevron starts rotated and a click
+        flattens it."""
         card = _load(page)
-        rows = _rows(card)
-        if rows.count() == 0:
+        if _rows(card).count() == 0:
             pytest.skip('no swept requests on this stack')
 
-        icon = rows.first.locator('.collapse-icon')
-        assert icon.count() == 1, 'the row offers no visible expand affordance'
-        flat = icon.evaluate('e => getComputedStyle(e).transform')
-        rows.first.click()
+        icon = card.locator('tr.table-subtle .collapse-icon').first
+        assert icon.count() == 1, 'the group header offers no expand affordance'
+        expanded = icon.evaluate('e => getComputedStyle(e).transform')
+        icon.click()
         page.wait_for_timeout(400)
-        assert icon.evaluate('e => getComputedStyle(e).transform') != flat
+        assert icon.evaluate('e => getComputedStyle(e).transform') != expanded
 
     def test_a_chip_click_carries_the_search_term(self, page):
         """⚠️ The whole point of `form=` on the search input. The chip submits
