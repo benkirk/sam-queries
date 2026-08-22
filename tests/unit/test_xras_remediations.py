@@ -171,6 +171,8 @@ class TestAccessControl:
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_roles_form/EXAM0001',
         '/allocations/xras_request_detail/EXAM0001',
+        '/allocations/xras_resource_form/EXAM0001/7/530201',
+        '/allocations/xras_dates_form/EXAM0001/7',
     ])
     def test_every_modal_is_gated(self, view_only_client, path):
         assert view_only_client.get(path).status_code == 403
@@ -181,6 +183,10 @@ class TestAccessControl:
         '/allocations/xras_resubmit/EXAM0001/7',
         '/allocations/xras_role_add/EXAM0001',
         '/allocations/xras_role_remove/EXAM0001/2',
+        '/allocations/xras_resource_edit/EXAM0001/7/530201',
+        '/allocations/xras_resource_remove/EXAM0001/7/530201',
+        '/allocations/xras_dates_edit/EXAM0001/7',
+        '/allocations/xras_dates_remove/EXAM0001/7/9',
     ])
     def test_every_write_is_gated(self, view_only_client, path):
         assert view_only_client.post(path).status_code == 403
@@ -736,6 +742,85 @@ class TestRequestDetailModal:
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '/allocations/xras_request_detail/EXAM0001' in body
         assert 'Details…' in body
+
+
+# ── the request editor (Part B) ──────────────────────────────────────────
+
+class TestTheEditors:
+    """The amount/date editors: forms render, validation bites, the lever and
+    the admin-context ceiling both refuse. Write happy-paths live at the
+    service layer (test_xras_remediation_service.py), per the house rule."""
+
+    def test_the_amount_form_renders(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_resource_form/EXAM0001/7/530201'
+            '?stage=Requested').get_data(as_text=True)
+        assert 'Edit amount — EXAM0001' in body
+        assert 'Cheyenne' in body
+        assert 'name="amount"' in body
+
+    def test_the_dates_form_renders(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_dates_form/EXAM0001/7').get_data(as_text=True)
+        assert 'allocation dates — EXAM0001' in body
+        assert 'name="begin_date"' in body
+
+    def test_the_detail_modal_offers_editors_on_requested_rows(
+            self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras_resource_form/EXAM0001/7/530201' in body   # Edit…
+        assert 'xras_resource_remove/EXAM0001/7/530201' in body  # Remove
+        assert 'xras_dates_form/EXAM0001/7' in body             # Set dates…
+
+    def test_the_award_editor_is_locked_without_the_elevated_key(
+            self, auth_client, armed, monkeypatch):
+        """Phase 0.5: our key cannot write the Approved stage, so the award
+        editor renders disabled with a reason rather than firing a 401."""
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Edit award' in body
+        assert 'elevated XRAS key' in body
+        # and it is NOT a live link to the Approved editor
+        assert 'stage=Approved' not in body
+
+    def test_an_invalid_amount_is_rejected(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.post(
+            '/allocations/xras_resource_edit/EXAM0001/7/530201',
+            data={'amount': '-5', 'stage': 'Requested'}).get_data(as_text=True)
+        assert 'zero or more' in body
+
+    def test_a_bad_date_range_is_rejected(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.post(
+            '/allocations/xras_dates_edit/EXAM0001/7',
+            data={'begin_date': '2026-12-31',
+                  'end_date': '2026-01-01'}).get_data(as_text=True)
+        assert 'must not precede' in body
+
+    def test_editing_the_award_is_refused_at_the_post_too(
+            self, auth_client, armed, monkeypatch):
+        """Belt and braces: the button is locked AND the POST refuses."""
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.post(
+            '/allocations/xras_resource_edit/EXAM0001/7/530201',
+            data={'amount': '20', 'stage': 'Approved'}).get_data(as_text=True)
+        assert 'elevated XRAS key' in body
+
+    def test_the_lever_off_refuses_an_amount_edit(self, auth_client, configured,
+                                                  monkeypatch):
+        """Writes off: the service refuses even a well-formed edit."""
+        monkeypatch.delenv('XRAS_WRITE_ENABLED', raising=False)
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.post(
+            '/allocations/xras_resource_edit/EXAM0001/7/530201',
+            data={'amount': '20', 'stage': 'Requested'}).get_data(as_text=True)
+        assert 'switched off' in body
 
 
 # ── POST validation ─────────────────────────────────────────────────────

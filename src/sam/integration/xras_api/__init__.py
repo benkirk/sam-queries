@@ -43,6 +43,7 @@ from sam.integration.xras_api.cache import invalidate_person
 from sam.integration.xras_api.client import XrasApiClient
 from sam.integration.xras_api.config import (
     XrasApiConfig,
+    xras_admin_context_available,
     xras_api_configured,
     xras_write_configured,
 )
@@ -69,6 +70,7 @@ __all__ = [
     'invalidate_person',
     'resource_repository_keys',
     'role_type',
+    'xras_admin_context_available',
     'xras_api_configured',
     'xras_write_configured',
 ]

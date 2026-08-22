@@ -539,6 +539,159 @@ class TestValidatePreflight:
         assert client.session.request.call_count == 1  # no validate call
 
 
+def _reports_with(*, action_id=7, resources=(), dates=(), number='EXAM0001'):
+    """A reports payload carrying one action's ``resources[]``/``allocationDates[]``.
+
+    Resource rows are self-describing, exactly as the live feed returns them
+    (probed 2026-08-22): ``resourceId`` + ``type`` (stage) + ``amount``.
+    """
+    return {
+        'requestId': 900001, 'requestNumber': number,
+        'requestStatus': 'Approved', 'requestType': 'New',
+        'roles': [{'person': _person('pi-user'),
+                   'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]}],
+        'actions': [{'actionId': action_id, 'actionType': 'New',
+                     'actionStatus': 'Approved',
+                     'resources': [dict(r) for r in resources],
+                     'allocationDates': [dict(d) for d in dates]}],
+    }
+
+
+class TestResourceAndDateVerbs:
+    """The request editor's client verbs — query params, per-call context,
+    single attempt, verify-by-reread against the targeted stage."""
+
+    def test_update_amount_puts_query_params_and_verifies(self, monkeypatch):
+        before = _reports_with(resources=[
+            {'resourceId': 530201, 'type': 'Requested', 'amount': '555.0'}])
+        after = _reports_with(resources=[
+            {'resourceId': 530201, 'type': 'Requested', 'amount': '556'}])
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+
+        result = client.update_resource_amount(
+            900001, 7, 530201, '556', request_number='EXAM0001',
+            xa_user='pi-user')
+
+        assert result.verified is True
+        method, url = client.session.request.call_args[0]
+        _, kwargs = client.session.request.call_args
+        assert method == 'PUT'
+        assert url.endswith('/actions/7/resources/530201')
+        assert kwargs['params'] == {'amount': '556', 'comments': ''}
+        # submit context is the session default, so no per-call override header.
+        assert kwargs['headers'] == {'XA-USER': 'pi-user'}
+
+    def test_an_unchanged_amount_reads_back_unverified(self, monkeypatch):
+        same = _reports_with(resources=[
+            {'resourceId': 530201, 'type': 'Requested', 'amount': '555.0'}])
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(same, same))
+        result = client.update_resource_amount(
+            900001, 7, 530201, '999', request_number='EXAM0001',
+            xa_user='pi-user')
+        assert result.verified is False
+
+    def test_admin_context_is_sent_per_call_and_verifies_the_award(
+            self, monkeypatch):
+        before = _reports_with(resources=[
+            {'resourceId': 530201, 'type': 'Approved', 'amount': '10'}])
+        after = _reports_with(resources=[
+            {'resourceId': 530201, 'type': 'Approved', 'amount': '20'}])
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+
+        result = client.update_resource_amount(
+            900001, 7, 530201, '20', request_number='EXAM0001',
+            xa_user='pi-user', context='admin')
+
+        _, kwargs = client.session.request.call_args
+        assert kwargs['headers'] == {'XA-USER': 'pi-user', 'XA-CONTEXT': 'admin'}
+        assert result.verified is True  # verified against the Approved stage
+
+    def test_remove_resource_deletes_and_verifies_the_line_is_gone(
+            self, monkeypatch):
+        before = _reports_with(resources=[
+            {'resourceId': 530201, 'type': 'Requested', 'amount': '555'}])
+        after = _reports_with(resources=[])
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        result = client.remove_resource(
+            900001, 7, 530201, request_number='EXAM0001', xa_user='pi-user')
+        assert result.verified is True
+        assert client.session.request.call_args[0][0] == 'DELETE'
+
+    def test_a_5xx_write_is_not_retried(self, monkeypatch):
+        before = _reports_with(resources=[])
+        client = _client(monkeypatch, [_response(503)],
+                         reader=_FakeReader(before, before))
+        client.update_resource_amount(900001, 7, 530201, '1',
+                                      request_number='EXAM0001',
+                                      xa_user='pi-user')
+        assert client.session.request.call_count == 1
+
+    def test_a_4xx_write_raises_and_carries_errors(self, monkeypatch):
+        client = _client(monkeypatch, [
+            _response(400, {'errors': ['Budget exceeds the opportunity limit']})],
+            reader=_FakeReader(_reports_with(resources=[])))
+        with pytest.raises(XrasWriteRejected) as caught:
+            client.update_resource_amount(900001, 7, 530201, '1',
+                                          request_number='EXAM0001',
+                                          xa_user='pi-user')
+        assert caught.value.errors == ['Budget exceeds the opportunity limit']
+
+    def test_set_dates_posts_query_params_and_returns_the_new_id(
+            self, monkeypatch):
+        before = _reports_with(dates=[])
+        after = _reports_with(dates=[
+            {'allocationDateId': 9, 'beginDate': '2026-01-01',
+             'endDate': '2026-12-31', 'type': 'Requested'}])
+        client = _client(monkeypatch,
+                         [_response(200, {'allocationDateId': 9})],
+                         reader=_FakeReader(before, after))
+        import datetime as dt
+        result = client.set_action_dates(
+            900001, 7, dt.date(2026, 1, 1), dt.date(2026, 12, 31),
+            request_number='EXAM0001', xa_user='pi-user')
+        method, url = client.session.request.call_args[0]
+        _, kwargs = client.session.request.call_args
+        assert method == 'POST'
+        assert url.endswith('/actions/7/allocation_dates')
+        assert kwargs['params'] == {'beginDate': '2026-01-01',
+                                    'endDate': '2026-12-31'}
+        assert result.verified is True
+        assert result.extra['allocation_date_id'] == 9
+
+    def test_update_dates_puts_to_the_id_and_verifies(self, monkeypatch):
+        before = _reports_with(dates=[
+            {'allocationDateId': 9, 'beginDate': '2026-01-01',
+             'endDate': '2026-12-31', 'type': 'Requested'}])
+        after = _reports_with(dates=[
+            {'allocationDateId': 9, 'beginDate': '2026-02-01',
+             'endDate': '2026-11-30', 'type': 'Requested'}])
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        import datetime as dt
+        result = client.update_action_dates(
+            900001, 7, 9, dt.date(2026, 2, 1), dt.date(2026, 11, 30),
+            request_number='EXAM0001', xa_user='pi-user')
+        assert client.session.request.call_args[0][1].endswith(
+            '/allocation_dates/9')
+        assert result.verified is True
+
+    def test_remove_dates_deletes_the_id_and_verifies_gone(self, monkeypatch):
+        before = _reports_with(dates=[
+            {'allocationDateId': 9, 'beginDate': '2026-01-01',
+             'endDate': '2026-12-31', 'type': 'Requested'}])
+        after = _reports_with(dates=[])
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, after))
+        result = client.remove_action_dates(
+            900001, 7, 9, request_number='EXAM0001', xa_user='pi-user')
+        assert client.session.request.call_args[0][0] == 'DELETE'
+        assert result.verified is True
+
+
 class TestTheResultRecord:
     """What the audit row is built from."""
 

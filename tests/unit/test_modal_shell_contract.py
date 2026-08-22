@@ -287,6 +287,16 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # names these shells directly.
     'dashboards/allocations/partials/_xras_remediation_actions.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
+    # The read-only + editor detail modal and its two editor forms, all reached
+    # only from xras.html (same host page as the card) and all rendering into
+    # #auditDetailsModalBody. The detail modal's Requested-stage editors and the
+    # forms' Back/Save all target that body.
+    'dashboards/allocations/partials/xras_request_detail.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_resource_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_dates_form.html': [
+        'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_merge_form.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_action_form.html': [

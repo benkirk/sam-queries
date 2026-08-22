@@ -32,10 +32,18 @@ pytestmark = pytest.mark.unit
 class TestTheVocabularies:
     """Bare VARCHARs, so ``create()`` is the only thing standing in the way."""
 
-    def test_the_operations_are_the_five_proven_verbs(self):
+    def test_the_operations_are_the_proven_verbs(self):
         assert set(XRAS_REMEDIATION_OPERATIONS) == {
+            # The original five (2026-08-21 probe).
             'merge_person', 'withdraw_action', 'submit_action',
-            'add_role', 'remove_role'}
+            'add_role', 'remove_role',
+            # The request editor (Part B, 2026-08-22).
+            'update_resource_amount', 'remove_resource',
+            'set_action_dates', 'update_action_dates', 'remove_action_dates'}
+
+    def test_every_operation_fits_the_column(self):
+        """``operation`` is VARCHAR(24) — a longer verb truncates or errors."""
+        assert max(len(op) for op in XRAS_REMEDIATION_OPERATIONS) <= 24
 
     def test_an_unknown_operation_is_refused(self, session):
         with pytest.raises(ValueError, match='unknown'):

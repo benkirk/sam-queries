@@ -24,7 +24,8 @@ from marshmallow import ValidationError, post_load
 
 from . import HtmxFormSchema
 
-__all__ = ['XrasMergeForm', 'XrasRemediationReasonForm', 'XrasRoleForm']
+__all__ = ['XrasMergeForm', 'XrasRemediationReasonForm', 'XrasRoleForm',
+           'XrasResourceAmountForm', 'XrasActionDatesForm']
 
 #: ``xras_remediation_event.comment`` is TEXT — 65,535 **bytes**, and utf8mb4
 #: spends up to 4 per character. A char-counted cap at the column width would
@@ -151,5 +152,50 @@ class XrasRoleForm(HtmxFormSchema):
 
         data['username'] = username
         data['role_type'] = role
+        data['comment'] = _clean(data.get('comment')) or None
+        return data
+
+
+class XrasResourceAmountForm(HtmxFormSchema):
+    """The requested amount for one resource on one action.
+
+    ``amount`` is the **requested** figure — on our current key the editor
+    touches the Requested stage, never the award (Phase 0). ``comment`` doubles
+    as the resource's XRAS ``comments`` field and the audit note; an empty one
+    clears the resource comment back to null, which is deliberate.
+
+    The ids (request, action, resource) come from the URL, not the body — the
+    schema only shapes what the operator typed.
+    """
+
+    amount = f.Decimal(required=True, places=None,
+                       validate=v.Range(min=0,
+                                        error='Amount must be zero or more.'))
+    comment = f.Str(load_default=None, validate=v.Length(max=_COMMENT_MAX))
+
+    @post_load
+    def _normalize(self, data, **kwargs):
+        data['comment'] = _clean(data.get('comment')) or None
+        return data
+
+
+class XrasActionDatesForm(HtmxFormSchema):
+    """An allocation-date range for one action.
+
+    Both dates are required — a half-open range is not a thing XRAS stores. The
+    end may equal the begin (a single-day allocation) but never precede it.
+    ``comment`` is audit-only; the dates endpoint takes no comment field.
+    """
+
+    begin_date = f.Date(required=True)
+    end_date = f.Date(required=True)
+    comment = f.Str(load_default=None, validate=v.Length(max=_COMMENT_MAX))
+
+    @post_load
+    def _check_range(self, data, **kwargs):
+        begin, end = data.get('begin_date'), data.get('end_date')
+        if begin and end and end < begin:
+            raise ValidationError({'end_date': [
+                'End date must not precede the begin date.']})
         data['comment'] = _clean(data.get('comment')) or None
         return data

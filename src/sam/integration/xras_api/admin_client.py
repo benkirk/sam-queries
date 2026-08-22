@@ -135,6 +135,49 @@ def role_type(key: Any) -> RoleType:
     return found
 
 
+#: XA-CONTEXT → the resource/allocation-date **stage** that context writes.
+#: Phase 0 (2026-08-22) measured that ``submit`` touches ONLY the ``Requested``
+#: stage; an ``admin``/``review`` key would reach ``Approved``/``Recommended``.
+#: The verify-by-reread compares back against the stage the write targeted.
+_CONTEXT_STAGE = {'submit': 'Requested', 'admin': 'Approved',
+                  'review': 'Recommended'}
+
+
+def _amount_str(amount: Any) -> str:
+    """A plain numeric string XRAS accepts — ``'556'``, ``'556.5'``.
+
+    XRAS stores amounts as strings (``'555.0'``); it wants a plain decimal
+    string on the wire, never scientific notation (``Decimal.normalize()`` can
+    yield ``'5.5E+1'`` for ``55``, which ``format(…, 'f')`` renders as ``'55'``).
+    """
+    from decimal import Decimal, InvalidOperation
+    try:
+        return format(Decimal(str(amount)).normalize(), 'f')
+    except (InvalidOperation, ValueError):
+        return str(amount)
+
+
+def _amount_eq(a: Any, b: Any) -> bool:
+    """Numeric equality that survives ``'556'`` vs ``'556.0'`` vs ``556``."""
+    try:
+        return float(a) == float(b)
+    except (TypeError, ValueError):
+        return str(a) == str(b)
+
+
+def _date_str(value: Any) -> Optional[str]:
+    """A ``YYYY-MM-DD`` string for the wire, or ``None``.
+
+    Accepts a ``date``/``datetime`` (uses ``isoformat``) or a string (first ten
+    characters — XRAS returns both bare dates and ``…T00:00:00Z`` timestamps).
+    """
+    if value is None:
+        return None
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()[:10]
+    return str(value)[:10]
+
+
 @dataclass(frozen=True)
 class XrasWriteResult:
     """The whole record of one write attempt — what the audit row is built from.
@@ -226,17 +269,27 @@ class XrasAdminClient:
         return f"{self.config.base_url}/{path.lstrip('/')}"
 
     @staticmethod
-    def _headers(xa_user: Optional[str]) -> Optional[Dict[str, str]]:
-        """Per-request impersonation.
+    def _headers(xa_user: Optional[str],
+                 context: Optional[str] = None) -> Optional[Dict[str, str]]:
+        """Per-request impersonation and (optionally) context override.
 
         Passed to the individual call rather than mutated onto the session:
         one client instance serves several requests with different PIs, and a
-        session-level ``XA-USER`` would leak whichever one was set last.
+        session-level ``XA-USER`` would leak whichever one was set last. The
+        same is true of ``XA-CONTEXT`` — the session default is ``submit``
+        (Requested stage), and the Approved-stage editors override it per call
+        with ``admin`` rather than mutating the shared session.
         """
-        return {'XA-USER': xa_user} if xa_user else None
+        headers: Dict[str, str] = {}
+        if xa_user:
+            headers['XA-USER'] = xa_user
+        if context:
+            headers['XA-CONTEXT'] = context
+        return headers or None
 
     def _get(self, path: str, *, params: Optional[Mapping[str, Any]] = None,
-             xa_user: Optional[str] = None) -> Optional[Any]:
+             xa_user: Optional[str] = None,
+             context: Optional[str] = None) -> Optional[Any]:
         """Submit-context GET. Retries 5xx like the read client; 404 → ``None``.
 
         Reads are idempotent, so this keeps the read client's retry policy —
@@ -248,7 +301,8 @@ class XrasAdminClient:
         for attempt in range(self.config.max_retries):
             try:
                 response = self.session.request(
-                    'GET', url, params=params, headers=self._headers(xa_user),
+                    'GET', url, params=params,
+                    headers=self._headers(xa_user, context),
                     timeout=self.config.timeout)
             except requests.RequestException as exc:
                 last_error = exc
@@ -283,7 +337,8 @@ class XrasAdminClient:
 
     def _write(self, method: str, path: str, *,
                params: Optional[Mapping[str, Any]] = None,
-               xa_user: Optional[str] = None
+               xa_user: Optional[str] = None,
+               context: Optional[str] = None
                ) -> Tuple[int, Any, Optional[str], Optional[str]]:
         """**One** attempt. Returns ``(status, result, message, error)``.
 
@@ -300,7 +355,8 @@ class XrasAdminClient:
         url = self._url(path)
         try:
             response = self.session.request(
-                method, url, params=params, headers=self._headers(xa_user),
+                method, url, params=params,
+                headers=self._headers(xa_user, context),
                 timeout=self.config.timeout)
         except requests.RequestException as exc:
             logger.warning('xras admin %s %s: transport error: %s',
@@ -623,3 +679,229 @@ class XrasAdminClient:
             before=before, after=after, verified=verified,
             verify_detail=detail, write_error=error,
             extra={'request_number': request_number, 'role_id': int(role_id)})
+
+    # ── resources & allocation dates (the request editor) ────────────────
+    #
+    # All keyed on the resource **type** id and the **stage** (Phase 0: there is
+    # no per-line id in the reports feed, and at most one line per resource per
+    # stage, so ``(action, resourceId, stage)`` is unambiguous). Every write is
+    # query-params + verify-by-reread, exactly like the verbs above. The stage a
+    # write lands in is a function of the XA-CONTEXT: ``submit`` → Requested
+    # (default), ``admin`` → Approved. On our current key only ``submit`` is
+    # authorized; the ``context=`` argument is what an elevated key flips.
+
+    @staticmethod
+    def _stage_for(context: Optional[str]) -> str:
+        return _CONTEXT_STAGE.get(context or XA_ADMIN_CONTEXT, 'Requested')
+
+    def action_resources(self, request_number: str,
+                         action_id: int) -> List[Dict[str, Any]]:
+        """One action's ``resources[]`` (all stages), via the reports family."""
+        for action in self._actions(request_number):
+            if action.get('actionId') == action_id:
+                return [r for r in (action.get('resources') or [])
+                        if isinstance(r, dict)]
+        return []
+
+    def action_dates(self, request_number: str,
+                     action_id: int) -> List[Dict[str, Any]]:
+        """One action's ``allocationDates[]``, via the reports family."""
+        for action in self._actions(request_number):
+            if action.get('actionId') == action_id:
+                return [d for d in (action.get('allocationDates') or [])
+                        if isinstance(d, dict)]
+        return []
+
+    @staticmethod
+    def _amount_in(resources: List[Dict[str, Any]], resource_id: int,
+                   stage: str) -> Optional[Any]:
+        for res in resources:
+            if res.get('resourceId') == int(resource_id) \
+                    and res.get('type') == stage:
+                return res.get('amount')
+        return None
+
+    def update_resource_amount(self, request_id: int, action_id: int,
+                               resource_id: int, amount: Any, *,
+                               request_number: str, xa_user: str,
+                               comments: Optional[str] = None,
+                               context: Optional[str] = None) -> XrasWriteResult:
+        """Set a resource's amount for the context's stage — add-or-update.
+
+        The same ``PUT`` both edits an existing stage line and, when none
+        exists, creates one (Phase 0: on an Approved request with only a
+        Recommended/Approved line, editing "the amount" as PI mints a
+        **Requested** line beside the untouched award). ``comments=''`` clears
+        the resource comment back to null.
+
+        Verified by re-reading the stage's amount for this resource and
+        comparing numerically.
+        """
+        stage = self._stage_for(context)
+        amt = _amount_str(amount)
+        params = {'amount': amt,
+                  'comments': '' if comments is None else str(comments)}
+        path = (f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+                f'/resources/{int(resource_id)}')
+        before = self.action_resources(request_number, action_id)
+        status, _, message, error = self._write(
+            'PUT', path, params=params, xa_user=xa_user, context=context)
+
+        try:
+            after = self.action_resources(request_number, action_id)
+            got = self._amount_in(after, resource_id, stage)
+            verified = got is not None and _amount_eq(got, amt)
+            detail = (f'{stage} amount for resource {resource_id}: '
+                      f'{got!r} (wanted {amt})')
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='update_resource_amount', method='PUT', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=after, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'action_id': action_id,
+                   'resource_id': int(resource_id), 'amount': amt,
+                   'stage': stage, 'context': context or XA_ADMIN_CONTEXT})
+
+    def remove_resource(self, request_id: int, action_id: int,
+                        resource_id: int, *, request_number: str, xa_user: str,
+                        context: Optional[str] = None) -> XrasWriteResult:
+        """Delete the context-stage line for a resource (Requested-only on our key).
+
+        Verified by re-reading and confirming no line for this resource remains
+        at the target stage.
+        """
+        stage = self._stage_for(context)
+        path = (f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+                f'/resources/{int(resource_id)}')
+        before = self.action_resources(request_number, action_id)
+        status, _, message, error = self._write(
+            'DELETE', path, xa_user=xa_user, context=context)
+
+        try:
+            after = self.action_resources(request_number, action_id)
+            verified = self._amount_in(after, resource_id, stage) is None
+            detail = (f'{stage} line for resource {resource_id} '
+                      f'{"gone" if verified else "still present"}')
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='remove_resource', method='DELETE', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=after, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'action_id': action_id,
+                   'resource_id': int(resource_id), 'stage': stage,
+                   'context': context or XA_ADMIN_CONTEXT})
+
+    def set_action_dates(self, request_id: int, action_id: int, begin: Any,
+                         end: Any, *, request_number: str, xa_user: str,
+                         context: Optional[str] = None) -> XrasWriteResult:
+        """Create an allocation-date range. Returns the new ``allocationDateId``.
+
+        Verified by re-reading and confirming a date with the requested
+        begin/end exists on the action.
+        """
+        b, e = _date_str(begin), _date_str(end)
+        params = {'beginDate': b, 'endDate': e}
+        path = (f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+                f'/allocation_dates')
+        before = self.action_dates(request_number, action_id)
+        status, result, message, error = self._write(
+            'POST', path, params=params, xa_user=xa_user, context=context)
+        new_id = result.get('allocationDateId') if isinstance(result, dict) \
+            else None
+
+        try:
+            after = self.action_dates(request_number, action_id)
+            verified = any(_date_str(d.get('beginDate')) == b
+                           and _date_str(d.get('endDate')) == e for d in after)
+            detail = (f'dates {b}..{e} '
+                      f'{"present" if verified else "not found"}')
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='set_action_dates', method='POST', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=after, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'action_id': action_id,
+                   'allocation_date_id': new_id, 'begin_date': b,
+                   'end_date': e, 'context': context or XA_ADMIN_CONTEXT})
+
+    def update_action_dates(self, request_id: int, action_id: int,
+                            allocation_date_id: int, begin: Any, end: Any, *,
+                            request_number: str, xa_user: str,
+                            context: Optional[str] = None) -> XrasWriteResult:
+        """Update one allocation-date range in place.
+
+        Verified by re-reading the date with this id and confirming its
+        begin/end match.
+        """
+        b, e = _date_str(begin), _date_str(end)
+        params = {'beginDate': b, 'endDate': e}
+        path = (f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+                f'/allocation_dates/{int(allocation_date_id)}')
+        before = self.action_dates(request_number, action_id)
+        status, _, message, error = self._write(
+            'PUT', path, params=params, xa_user=xa_user, context=context)
+
+        try:
+            after = self.action_dates(request_number, action_id)
+            match = next((d for d in after
+                          if d.get('allocationDateId') == int(allocation_date_id)),
+                         None)
+            verified = (match is not None
+                        and _date_str(match.get('beginDate')) == b
+                        and _date_str(match.get('endDate')) == e)
+            detail = (f'date {allocation_date_id} -> {b}..{e} '
+                      f'{"confirmed" if verified else "not confirmed"}')
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='update_action_dates', method='PUT', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=after, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'action_id': action_id,
+                   'allocation_date_id': int(allocation_date_id),
+                   'begin_date': b, 'end_date': e,
+                   'context': context or XA_ADMIN_CONTEXT})
+
+    def remove_action_dates(self, request_id: int, action_id: int,
+                            allocation_date_id: int, *, request_number: str,
+                            xa_user: str,
+                            context: Optional[str] = None) -> XrasWriteResult:
+        """Delete one allocation-date range.
+
+        Verified by re-reading and confirming no date with this id remains.
+        """
+        path = (f'/v1/requests/{int(request_id)}/actions/{int(action_id)}'
+                f'/allocation_dates/{int(allocation_date_id)}')
+        before = self.action_dates(request_number, action_id)
+        status, _, message, error = self._write(
+            'DELETE', path, xa_user=xa_user, context=context)
+
+        try:
+            after = self.action_dates(request_number, action_id)
+            verified = not any(
+                d.get('allocationDateId') == int(allocation_date_id)
+                for d in after)
+            detail = (f'date {allocation_date_id} '
+                      f'{"gone" if verified else "still present"}')
+        except XrasSourceUnavailable as exc:
+            after, verified, detail = None, None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='remove_action_dates', method='DELETE', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=after, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'action_id': action_id,
+                   'allocation_date_id': int(allocation_date_id),
+                   'context': context or XA_ADMIN_CONTEXT})

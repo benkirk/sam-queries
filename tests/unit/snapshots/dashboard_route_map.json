@@ -1512,6 +1512,27 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_dates_edit",
+    "/allocations/xras_dates_edit/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dates_form",
+    "/allocations/xras_dates_form/<path:request_number>/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dates_remove",
+    "/allocations/xras_dates_remove/<path:request_number>/<int:action_id>/<int:allocation_date_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_dismiss",
     "/allocations/xras_dismiss/<int:project_id>",
     [
@@ -1600,6 +1621,27 @@
     "/allocations/xras_request_detail/<path:request_number>",
     [
       "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_edit",
+    "/allocations/xras_resource_edit/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_form",
+    "/allocations/xras_resource_form/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_remove",
+    "/allocations/xras_resource_remove/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "POST"
     ]
   ],
   [

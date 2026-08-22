@@ -8,7 +8,17 @@
 >
 > **Status:** Phase 0 (submit-surface capability) and Phase 0.5 (admin-context
 > ceiling) are **both COMPLETE** — findings folded into §1, §2 and §11 below.
-> The build (Parts A/B/C) has **not** started.
+> **Part A (read-only detail modal) is BUILT** and **Part B (the amount + date
+> editors) is BUILT** — both on branch `xras_details` / PR #463. Part B ships
+> the **Phase-0-verified core**: per-resource amounts (edit/add-or-update,
+> remove) and allocation dates (set/update/remove), Requested stage live under
+> `submit`, Approved stage fail-visible behind `xras_admin_context_available`
+> (default off). The live write path was smoke-tested reversibly against
+> NCAR0798 through the new client verb (555→556→555, verified, restored). The
+> **broader Tier-M editors** (request attributes, action fields, FoS, grants,
+> publications, resource/opportunity attributes, documents) are **deferred to a
+> Part B2** — documented but not Phase-0-proven. **Part C** (`ADMIN_XRAS`
+> destructive verbs) is **not started**; its RBAC decision is settled in §4.
 >
 > **Live writes:** operator sets `XRAS_WRITE_ENABLED=1`. Throwaway requests
 > approved for mutation: **NCAR0004, NCAR0099, NCAR0798** (all edits reversible;
