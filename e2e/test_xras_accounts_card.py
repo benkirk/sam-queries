@@ -121,9 +121,18 @@ def test_the_row_icons_are_gone(page):
     the only thing that announces the row can be opened at all. Excluded by
     class rather than loosening the count, so a genuine glyph creeping back
     onto a row still fails.
+
+    ⚠️ Scoped to the SUMMARY rows (`tr:not(.collapse)`): the row EXPANSION
+    legitimately carries a `fa-triangle-exclamation` on the stuck-placeholder
+    merge notice — an actionable alert, not a per-row glyph — which only appears
+    when the swept data actually holds such a placeholder (so this passed on an
+    empty CI stack and failed the moment a real sweep surfaced one). The rule is
+    "no decoration on the rows themselves"; a notice inside an opened panel is
+    exactly the muted-notice case the docstring already allows.
     """
     card = _load(page)
-    assert card.locator('tbody i.fas:not(.collapse-icon)').count() == 0
+    assert card.locator(
+        'tbody tr:not(.collapse) i.fas:not(.collapse-icon)').count() == 0
 
 
 def test_the_pending_requests_tab_states_are_distinct(page):
