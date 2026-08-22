@@ -1,0 +1,325 @@
+{#
+  Read-only detail of one XRAS request, rendered into #auditDetailsModalBody.
+
+  Context: request_number, payload (a reports/request_numbers dict), row (a
+           request_index_entry dict for the shared include), detail_actions
+           (per-action stage-grouped resources + dates + docs), xa_user /
+           xa_user_is_pi / xa_user_is_placeholder, write_enabled.
+
+  The data source is `GET /v1/reports/request_numbers/<n>`, which is
+  self-describing: each resource carries `displayResourceName` + `resourceUnits`
+  + `type` (the stage), so no resource-key → SAM-resource mapping is needed here.
+
+  This is the read-only surface the editors (Part B/C) will hang off. The roster,
+  actions and write buttons come from the SHARED include so they can never drift
+  from the card row.
+#}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Request — {{ request_number }}
+</h5>
+
+{% if flash %}
+<div class="alert alert-success py-2 small">{{ flash }}</div>
+{% endif %}
+{% if flash_error %}
+<div class="alert alert-danger py-2 small">{{ flash_error }}</div>
+{% endif %}
+
+{# The editors render whether or not the write lever is on — a disabled control
+   teaches that a switch exists, a vanished one does not (the card's rule). #}
+{% set write_disabled = 'disabled' if not write_enabled else '' %}
+{% set why_off = 'XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).' %}
+
+{# ── header ─────────────────────────────────────────────────────────── #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <span class="badge bg-body-secondary text-body-secondary border">
+        {{ payload.requestStatus or '—' }}
+    </span>
+    {% if payload.requestType %}
+    <span class="small text-muted">{{ payload.requestType }}</span>
+    {% endif %}
+    {% if payload.opportunity_name %}
+    <span class="small text-muted">·
+        {{ payload.opportunity_name }}
+        {%- if payload.opportunityId %} <span class="text-muted">#{{ payload.opportunityId }}</span>{% endif %}
+    </span>
+    {% endif %}
+    {% if row and row.submit_date %}
+    <span class="small text-muted">· submitted {{ row.submit_date | fmt_date }}</span>
+    {% endif %}
+    {% if payload.publicURL %}
+    <a class="small ms-auto" href="{{ payload.publicURL }}" target="_blank" rel="noopener">
+        Open in XRAS <i class="fas fa-arrow-up-right-from-square"></i>
+    </a>
+    {% endif %}
+</div>
+
+{% if payload.isDeleted %}
+<div class="alert alert-warning py-2 small">
+    XRAS marks this request <strong>deleted</strong>.
+</div>
+{% endif %}
+
+{# ── title / abstract ───────────────────────────────────────────────── #}
+<div class="d-flex align-items-start gap-2 mb-3">
+    <div class="flex-grow-1">
+        {% if payload.title %}<div class="fw-semibold">{{ payload.title }}</div>{% endif %}
+        {% if payload.shortTitle and payload.shortTitle != payload.title %}
+        <div class="small text-muted">{{ payload.shortTitle }}</div>
+        {% endif %}
+        {% if not payload.title and not payload.shortTitle %}
+        <div class="small text-muted fst-italic">No title.</div>
+        {% endif %}
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" {{ write_disabled }}
+            {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+            hx-get="{{ url_for('allocations_dashboard.xras_attributes_form',
+                               request_number=request_number) }}"
+            hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
+</div>
+{% if payload.abstract %}
+<details class="mb-3">
+    <summary class="small text-uppercase text-muted">Abstract</summary>
+    <p class="small mt-2 mb-0" style="white-space: pre-wrap;">{{ payload.abstract }}</p>
+</details>
+{% endif %}
+
+{# ── resources, grouped by stage, per action ────────────────────────── #}
+{% for action in detail_actions %}
+<div class="mb-3">
+    <div class="small text-uppercase text-muted mb-1">
+        Action {{ action.action_id }}
+        {%- if action.action_type %} · {{ action.action_type }}{% endif %}
+        {%- if action.action_status %}
+        <span class="badge bg-body-secondary text-body-secondary border ms-1">{{ action.action_status }}</span>
+        {%- endif %}
+    </div>
+
+    {% if action.stages %}
+    <div class="row g-3">
+        {% for stage, resources in action.stages %}
+        <div class="col-md">
+            <div class="small fw-semibold mb-1">{{ stage }}</div>
+            <table class="table table-sm mb-0">
+                <tbody>
+                {% for res in resources %}
+                    <tr>
+                        <td>{{ res.displayResourceName or res.resourceName or ('resource ' ~ res.resourceId) }}</td>
+                        <td class="text-end text-nowrap">
+                            {% if res.amount is not none %}{{ res.amount | float | fmt_number }}{% else %}—{% endif %}
+                            <span class="text-muted small">{{ res.resourceUnits or '' }}</span>
+                        </td>
+                        {# Editors: the Requested stage is live on our key; the
+                           Approved stage is fail-visible (locked until the
+                           elevated key lands); Recommended is read-only. #}
+                        <td class="text-end text-nowrap">
+                        {% if res.resourceId is not none and stage == 'Requested' %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}
+                                    {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                                    hx-get="{{ url_for('allocations_dashboard.xras_resource_form',
+                                                       request_number=request_number,
+                                                       action_id=action.action_id,
+                                                       resource_id=res.resourceId) }}?stage=Requested"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" {{ write_disabled }}
+                                    {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                                    hx-post="{{ url_for('allocations_dashboard.xras_resource_remove',
+                                                        request_number=request_number,
+                                                        action_id=action.action_id,
+                                                        resource_id=res.resourceId) }}"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                    hx-confirm="Remove the requested line for {{ res.displayResourceName or res.resourceName }} from {{ request_number }} in XRAS?"
+                                    data-confirm-title="Remove requested resource"
+                                    data-confirm-ok="Remove" data-confirm-variant="danger">Remove</button>
+                        {% elif res.resourceId is not none and stage == 'Approved' %}
+                            {% if admin_context_available %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}
+                                    {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                                    hx-get="{{ url_for('allocations_dashboard.xras_resource_form',
+                                                       request_number=request_number,
+                                                       action_id=action.action_id,
+                                                       resource_id=res.resourceId) }}?stage=Approved"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit award…</button>
+                            {% else %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled
+                                    title="Editing the awarded amount needs an elevated XRAS key (admin/review context), which this deployment does not have yet.">
+                                Edit award… <i class="fas fa-lock"></i></button>
+                            {% endif %}
+                        {% endif %}
+                        </td>
+                    </tr>
+                    {% if res.comments %}
+                    <tr><td colspan="3" class="small text-muted fst-italic pt-0">{{ res.comments }}</td></tr>
+                    {% endif %}
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="small text-muted">No resources on this action.</div>
+    {% endif %}
+
+    <div class="small mt-2">
+        <span class="text-uppercase text-muted">Allocation dates</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-2" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-get="{{ url_for('allocations_dashboard.xras_dates_form',
+                                   request_number=request_number,
+                                   action_id=action.action_id) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Set dates…</button>
+        {% if action.dates %}
+        <table class="table table-sm mb-0 mt-1">
+            <tbody>
+            {% for d in action.dates %}
+                <tr>
+                    <td>
+                        {{ d.begin | fmt_date }} – {{ d.end | fmt_date }}
+                        {%- if d.type %} <span class="text-muted">({{ d.type }})</span>{% endif %}
+                    </td>
+                    <td class="text-end text-nowrap">
+                    {% if d.allocation_date_id is not none %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}
+                                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                                hx-get="{{ url_for('allocations_dashboard.xras_dates_form',
+                                                   request_number=request_number,
+                                                   action_id=action.action_id) }}?allocation_date_id={{ d.allocation_date_id }}"
+                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" {{ write_disabled }}
+                                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                                hx-post="{{ url_for('allocations_dashboard.xras_dates_remove',
+                                                    request_number=request_number,
+                                                    action_id=action.action_id,
+                                                    allocation_date_id=d.allocation_date_id) }}"
+                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                hx-confirm="Remove this allocation-date range from {{ request_number }} in XRAS?"
+                                data-confirm-title="Remove allocation dates"
+                                data-confirm-ok="Remove" data-confirm-variant="danger">Remove</button>
+                    {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <span class="text-muted ms-1">none</span>
+        {% endif %}
+    </div>
+    {# `d.type` and `d.allocation_date_id` come from _detail_actions, which
+       passes the raw allocationDates dicts through untouched apart from the
+       begin/end parse. #}
+
+    <div class="small mt-2 d-flex align-items-start gap-2">
+        <div class="flex-grow-1">
+            <span class="text-uppercase text-muted">Comments:</span>
+            {% if action.user_comments %}
+            <em>{{ action.user_comments }}</em>
+            {% else %}<span class="text-muted ms-1">none</span>{% endif %}
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary flex-shrink-0" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-get="{{ url_for('allocations_dashboard.xras_action_fields_form',
+                                   request_number=request_number,
+                                   action_id=action.action_id) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
+    </div>
+
+    {% if action.documents %}
+    <div class="small mt-2">
+        <span class="text-uppercase text-muted">Documents:</span>
+        {% for doc in action.documents %}
+        <span class="ms-1">
+            {{ doc.title or doc.filename or 'document' }}
+            {%- if doc.filename %} <span class="text-muted">({{ doc.filename }}{% if doc.size %}, {{ doc.size | fmt_size }}{% endif %})</span>{% endif %}
+        </span>{% if not loop.last %};{% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+
+{# ── fields of science ──────────────────────────────────────────────── #}
+{% if payload.fos %}
+<div class="mb-3">
+    <div class="small text-uppercase text-muted mb-1">Fields of science</div>
+    <div class="d-flex flex-wrap gap-1">
+        {% for f in payload.fos %}
+        <span class="badge bg-body-secondary text-body-secondary border">
+            {{ f.fosName or f.fosAbbr or ('FoS ' ~ (f.fosNum or f.fosTypeId)) }}
+            {%- if f.isPrimary %} <i class="fas fa-star text-warning small" title="Primary"></i>{% endif %}
+        </span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# ── grants ─────────────────────────────────────────────────────────── #}
+{% if grants %}
+<div class="mb-3">
+    <div class="small text-uppercase text-muted mb-1">Grants</div>
+    <table class="table table-sm mb-0">
+        <tbody>
+        {% for g in grants %}
+            <tr>
+                <td class="font-monospace text-nowrap">{{ g.grantNumber or '—' }}</td>
+                <td>
+                    {{ g.title or '—' }}
+                    {%- if g.piName %}<div class="small text-muted">{{ g.piName }}</div>{% endif %}
+                </td>
+                <td class="text-nowrap small text-muted">
+                    {% if g.begin %}{{ g.begin | fmt_date }}{% endif %}
+                    {%- if g.end %} – {{ g.end | fmt_date }}{% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<hr>
+
+{# ── roster + actions + write buttons — SHARED with the card row ─────── #}
+{% if row %}
+{% set show_details = false %}
+{% include 'dashboards/allocations/partials/_xras_remediation_actions.html' %}
+{% endif %}
+
+{# ── danger zone — ADMIN_XRAS only (Part C) ─────────────────────────── #}
+{% if is_xras_admin %}
+<div class="card border-danger-subtle mt-3">
+    <div class="card-header bg-danger-subtle text-danger-emphasis py-1 small fw-semibold">
+        <i class="fas fa-triangle-exclamation"></i> Destructive — XRAS admin only
+    </div>
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+        <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-get="{{ url_for('allocations_dashboard.xras_add_action_form',
+                                   request_number=request_number) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Add action…</button>
+
+        <button type="button" class="btn btn-sm btn-outline-warning" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-post="{{ url_for('allocations_dashboard.xras_request_renew',
+                                    request_number=request_number) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                hx-confirm="Spawn a renewal of {{ request_number }} in XRAS?"
+                data-confirm-title="Renew request in XRAS"
+                data-confirm-ok="Renew" data-confirm-variant="warning">Renew…</button>
+
+        <button type="button" class="btn btn-sm btn-outline-danger ms-auto" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-post="{{ url_for('allocations_dashboard.xras_request_delete',
+                                    request_number=request_number) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                hx-confirm="DELETE request {{ request_number }} from XRAS? This is IRREVERSIBLE — the request and its history are removed."
+                data-confirm-title="Delete request in XRAS"
+                data-confirm-ok="Delete permanently" data-confirm-variant="danger">Delete request…</button>
+    </div>
+</div>
+{% endif %}
+
+<div class="d-flex justify-content-end mt-3">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
+</div>

@@ -1,0 +1,47 @@
+{#
+  Allocation-date editor for one action, rendered into #auditDetailsModalBody.
+  Creates a range (POST) when `allocation_date_id` is absent, updates one in
+  place (PUT) when present. On save the handler re-renders the detail modal.
+
+  Context: request_number, action_id, allocation_date_id, begin_date, end_date,
+           write_enabled, post_url, back_url.
+
+  Edits the Requested-stage dates on our current key (Phase 0).
+#}
+{% from 'dashboards/fragments/form_fields.html' import date_field, textarea_field, form_errors_panel with context %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    {{ 'Edit' if allocation_date_id else 'Set' }} allocation dates — {{ request_number }}
+</h5>
+
+<p class="text-muted small">
+    {{ 'Editing' if allocation_date_id else 'Setting' }} the allocation-date
+    range for action {{ action_id }}. This edits the <em>requested</em> dates.
+</p>
+
+{% if not write_enabled %}
+<div class="alert alert-warning py-2 small">
+    XRAS writes are switched off for this deployment
+    (<code>XRAS_WRITE_ENABLED</code>).
+</div>
+{% endif %}
+
+<form hx-post="{{ post_url }}" hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+    {% if allocation_date_id %}
+    <input type="hidden" name="allocation_date_id" value="{{ allocation_date_id }}">
+    {% endif %}
+    <fieldset {% if not write_enabled %}disabled{% endif %}>
+        {{ date_field('begin_date', 'Begin date', required=True, default=begin_date) }}
+        {{ date_field('end_date', 'End date', required=True, default=end_date) }}
+        {{ textarea_field('comment', 'Comment', rows=2,
+                          help='Recorded in the SAM remediation log.') }}
+    </fieldset>
+    {{ form_errors_panel() }}
+    <div class="d-flex justify-content-between mt-3">
+        <button type="button" class="btn btn-outline-secondary"
+                hx-get="{{ back_url }}" hx-target="#auditDetailsModalBody"
+                hx-swap="innerHTML">Back</button>
+        <button type="submit" class="btn btn-primary"
+                {% if not write_enabled %}disabled{% endif %}>Save</button>
+    </div>
+</form>

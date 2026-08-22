@@ -313,6 +313,19 @@
                            hx-target="#projectDetailsModalBody"
                            hx-swap="innerHTML"><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">project</span></a>
                         {% endif %}
+                        {# ⚠️ In the SAM cell, NOT the Request cell — the latter
+                           carries `collapse_toggle` and Bootstrap's capture-phase
+                           data-api would expand the row before this link fired
+                           (test_collapse_trigger_rows.py). A plain `<a>`, not a
+                           `.btn`, for the same reason the `project` badge is:
+                           `.btn` uppercases in dashboard.css. #}
+                        <a href="#" class="text-decoration-none small ms-1"
+                           title="Full request detail (read-only)"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
+                                              request_number=row.request_number) }}"
+                           hx-target="#auditDetailsModalBody"
+                           hx-swap="innerHTML">Details…</a>
                     </td>
                 </tr>
                 <tr class="collapse" id="{{ rid }}">

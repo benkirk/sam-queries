@@ -448,6 +448,188 @@ class TestRoleChanges:
                                                    'Project Admin', 'User'}
 
 
+class TestTheEditorOps:
+    """The request editor's service verbs — same audit + patch discipline as
+    the action ops, one per operation."""
+
+    def test_an_amount_edit_is_recorded_and_patched_on_success(
+            self, factory, session, monkeypatch):
+        seen = []
+        monkeypatch.setattr(service, '_refresh_index_entry',
+                            lambda n, **kw: seen.append(n) or True)
+        client = MagicMock()
+        client.update_resource_amount.return_value = _result(
+            'update_resource_amount', verified=True,
+            before=[{'resourceId': 530201, 'amount': '555'}],
+            after=[{'resourceId': 530201, 'amount': '556'}])
+
+        outcome = service.update_resource_amount(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            resource_id=530201, amount='556', pi_username='pi-user',
+            operator='benkirk', client=client)
+
+        assert outcome.status == 'verified'
+        assert seen == ['EXAM0001']            # patched exactly once, by number
+        row = session.get(XrasRemediationEvent, outcome.event_id)
+        assert row.operation == 'update_resource_amount'
+        assert (row.request_number, row.request_id, row.action_id) == \
+            ('EXAM0001', 900001, 7)
+        assert (row.xa_user, row.created_by) == ('pi-user', 'benkirk')
+
+    def test_the_context_reaches_the_client(self, factory, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.update_resource_amount.return_value = _result(
+            'update_resource_amount', verified=True, before=[], after=[])
+        service.update_resource_amount(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            resource_id=530201, amount='20', pi_username='pi-user',
+            operator='benkirk', context='admin', client=client)
+        assert client.update_resource_amount.call_args.kwargs['context'] == 'admin'
+
+    def test_a_rejected_amount_is_recorded_and_not_patched(
+            self, factory, session, monkeypatch):
+        called = []
+        monkeypatch.setattr(service, '_refresh_index_entry',
+                            lambda n, **kw: called.append(n) or True)
+        client = MagicMock()
+        client.update_resource_amount.side_effect = XrasWriteRejected(
+            'refused', status=400, errors=['Budget exceeds the limit'])
+
+        outcome = service.update_resource_amount(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            resource_id=530201, amount='1', pi_username='pi-user',
+            operator='benkirk', client=client)
+
+        assert outcome.status == 'rejected'
+        assert called == []                    # no patch on a rejection
+        row = session.get(XrasRemediationEvent, outcome.event_id)
+        assert (row.status, row.http_status) == ('rejected', 400)
+
+    def test_an_unverified_amount_is_not_reported_as_success(
+            self, factory, session, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.update_resource_amount.return_value = _result(
+            'update_resource_amount', verified=False, before=[], after=[])
+        outcome = service.update_resource_amount(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            resource_id=530201, amount='1', pi_username='pi-user',
+            operator='benkirk', client=client)
+        assert outcome.status == 'unverified' and outcome.succeeded is False
+
+    def test_remove_resource_records_its_operation(self, factory, session,
+                                                   monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.remove_resource.return_value = _result(
+            'remove_resource', verified=True,
+            before=[{'resourceId': 530201}], after=[])
+        outcome = service.remove_resource(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            resource_id=530201, pi_username='pi-user', operator='benkirk',
+            client=client)
+        assert session.get(XrasRemediationEvent,
+                           outcome.event_id).operation == 'remove_resource'
+
+    def test_set_and_remove_dates_record_their_operations(
+            self, factory, session, monkeypatch):
+        import datetime as dt
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.set_action_dates.return_value = _result(
+            'set_action_dates', verified=True, before=[],
+            after=[{'allocationDateId': 9}])
+        client.remove_action_dates.return_value = _result(
+            'remove_action_dates', verified=True,
+            before=[{'allocationDateId': 9}], after=[])
+
+        set_outcome = service.set_action_dates(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            begin_date=dt.date(2026, 1, 1), end_date=dt.date(2026, 12, 31),
+            pi_username='pi-user', operator='benkirk', client=client)
+        rm_outcome = service.remove_action_dates(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            allocation_date_id=9, pi_username='pi-user', operator='benkirk',
+            client=client)
+
+        assert session.get(XrasRemediationEvent,
+                           set_outcome.event_id).operation == 'set_action_dates'
+        assert session.get(
+            XrasRemediationEvent,
+            rm_outcome.event_id).operation == 'remove_action_dates'
+
+    def test_update_attributes_records_and_passes_wire_fields(
+            self, factory, session, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.update_request_attributes.return_value = _result(
+            'update_attributes', verified=True, before={'title': 'Old'},
+            after={'title': 'New'})
+        outcome = service.update_request_attributes(
+            factory, request_number='EXAM0001', request_id=900001,
+            fields={'title': 'New', 'shortTitle': '', 'abstract': 'A'},
+            pi_username='pi-user', operator='benkirk', client=client)
+        assert session.get(XrasRemediationEvent,
+                           outcome.event_id).operation == 'update_attributes'
+        # the wire-named dict reaches the client verbatim
+        assert client.update_request_attributes.call_args.kwargs['title'] == 'New'
+        assert client.update_request_attributes.call_args.kwargs['shortTitle'] == ''
+
+    def test_update_action_records_and_passes_wire_fields(
+            self, factory, session, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.update_action.return_value = _result(
+            'update_action', verified=True, before={'userComments': None},
+            after={'userComments': 'hi'})
+        outcome = service.update_action(
+            factory, request_number='EXAM0001', request_id=900001, action_id=7,
+            fields={'userComments': 'hi'}, pi_username='pi-user',
+            operator='benkirk', client=client)
+        row = session.get(XrasRemediationEvent, outcome.event_id)
+        assert (row.operation, row.action_id) == ('update_action', 7)
+        assert client.update_action.call_args.kwargs['userComments'] == 'hi'
+
+    def test_delete_request_records_and_patches_on_success(
+            self, factory, session, monkeypatch):
+        seen = []
+        monkeypatch.setattr(service, '_refresh_index_entry',
+                            lambda n, **kw: seen.append(n) or True)
+        client = MagicMock()
+        client.delete_request.return_value = _result(
+            'delete_request', verified=True,
+            before={'requestNumber': 'EXAM0001'}, after=None)
+        outcome = service.delete_request(
+            factory, request_number='EXAM0001', request_id=900001,
+            pi_username='pi-user', operator='benkirk', client=client)
+        assert outcome.status == 'verified'
+        assert seen == ['EXAM0001']   # the patch re-reads, finds nothing, drops it
+        assert session.get(XrasRemediationEvent,
+                           outcome.event_id).operation == 'delete_request'
+
+    def test_renew_and_add_action_record_their_operations(
+            self, factory, session, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.renew_request.return_value = _result(
+            'renew_request', verified=True, before={}, after={})
+        client.add_action.return_value = _result(
+            'add_action', verified=True, before={}, after={})
+        ro = service.renew_request(
+            factory, request_number='EXAM0001', request_id=900001,
+            pi_username='pi-user', operator='benkirk', client=client)
+        ao = service.add_action(
+            factory, request_number='EXAM0001', request_id=900001,
+            action_type='Supplement', pi_username='pi-user', operator='benkirk',
+            client=client)
+        assert session.get(XrasRemediationEvent,
+                           ro.event_id).operation == 'renew_request'
+        assert session.get(XrasRemediationEvent,
+                           ao.event_id).operation == 'add_action'
+        assert client.add_action.call_args.args[1] == 'Supplement'
+
+
 # ── the read side ───────────────────────────────────────────────────────
 
 class TestListing:

@@ -1498,6 +1498,20 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_action_fields_edit",
+    "/allocations/xras_action_fields_edit/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_action_fields_form",
+    "/allocations/xras_action_fields_form/<path:request_number>/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_activate",
     "/allocations/xras_activate/<int:project_id>",
     [
@@ -1505,8 +1519,57 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_add_action",
+    "/allocations/xras_add_action/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_add_action_form",
+    "/allocations/xras_add_action_form/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_attributes_edit",
+    "/allocations/xras_attributes_edit/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_attributes_form",
+    "/allocations/xras_attributes_form/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_comment",
     "/allocations/xras_comment/<int:project_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dates_edit",
+    "/allocations/xras_dates_edit/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dates_form",
+    "/allocations/xras_dates_form/<path:request_number>/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_dates_remove",
+    "/allocations/xras_dates_remove/<path:request_number>/<int:action_id>/<int:allocation_date_id>",
     [
       "POST"
     ]
@@ -1593,6 +1656,48 @@
     "/allocations/xras_remediations",
     [
       "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_request_delete",
+    "/allocations/xras_request_delete/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_request_detail",
+    "/allocations/xras_request_detail/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_request_renew",
+    "/allocations/xras_request_renew/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_edit",
+    "/allocations/xras_resource_edit/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_form",
+    "/allocations/xras_resource_form/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resource_remove",
+    "/allocations/xras_resource_remove/<path:request_number>/<int:action_id>/<int:resource_id>",
+    [
+      "POST"
     ]
   ],
   [

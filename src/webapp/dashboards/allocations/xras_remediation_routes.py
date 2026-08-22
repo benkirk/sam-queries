@@ -40,19 +40,27 @@ from sam.integration.xras_api import (
     XrasSourceUnavailable,
     XrasWriteNotConfigured,
     XrasWriteRejected,
+    xras_admin_context_available,
     xras_api_configured,
     xras_write_configured,
 )
 from sam.manage import xras_remediation as remediation
+from sam.queries.xras_requests import _as_date, request_index_entry
 from sam.schemas.forms import (
+    XrasActionDatesForm,
+    XrasActionFieldsForm,
+    XrasAddActionForm,
     XrasMergeForm,
     XrasRemediationReasonForm,
+    XrasRequestAttributesForm,
+    XrasResourceAmountForm,
     XrasRoleForm,
 )
+from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message
-from webapp.utils.rbac import Permission, require_permission
+from webapp.utils.rbac import Permission, has_permission, require_permission
 
 from .blueprint import _XRAS_MODAL_TRIGGERS, _parse_activity_window, bp
 
@@ -1065,3 +1073,831 @@ def xras_role_remove(request_number: str, role_id: int):
     response = current_app.make_response(render_template(_ROLES_FORM, **refreshed))
     response.headers['HX-Trigger'] = 'refreshXrasTab'
     return response
+
+
+# ---------------------------------------------------------------------------
+# read-only request detail (Part A) — the surface future editors hang off
+# ---------------------------------------------------------------------------
+
+_DETAIL_FORM = 'dashboards/allocations/partials/xras_request_detail.html'
+_RESOURCE_FORM = 'dashboards/allocations/partials/xras_resource_form.html'
+_DATES_FORM = 'dashboards/allocations/partials/xras_dates_form.html'
+_ATTRIBUTES_FORM = 'dashboards/allocations/partials/xras_attributes_form.html'
+# ⚠️ NOT xras_action_form.html — that is the withdraw/re-submit form.
+_ACTION_FIELDS_FORM = 'dashboards/allocations/partials/xras_action_fields_form.html'
+_ADD_ACTION_FORM = 'dashboards/allocations/partials/xras_add_action_form.html'
+
+#: The XRAS "stage" model, in the order the modal shows it: what was asked for,
+#: what the panel recommended, what was awarded. Every ``resources[]`` entry in
+#: a ``reports/request_numbers`` payload carries one of these as its ``type``,
+#: and a resource appears once per stage — so grouping by stage is what makes
+#: requested-vs-awarded legible at a glance.
+_RESOURCE_STAGES = ('Requested', 'Recommended', 'Approved')
+
+
+def _detail_actions(payload):
+    """Per-action view model for the detail modal: resources grouped by stage.
+
+    Built in Python because Jinja's ``groupby`` cannot both preserve a fixed
+    stage order and keep a trailing bucket for any unexpected stage. Each stage
+    with no resources is dropped, so the template renders only what exists; an
+    unrecognised ``type`` lands in an ``Other`` bucket rather than vanishing.
+    """
+    actions = []
+    for action in payload.get('actions') or ():
+        if not isinstance(action, dict):
+            continue
+        buckets = {stage: [] for stage in _RESOURCE_STAGES}
+        other = []
+        for res in action.get('resources') or ():
+            if not isinstance(res, dict):
+                continue
+            stage = res.get('type')
+            (buckets[stage] if stage in buckets else other).append(res)
+        stages = [(stage, buckets[stage]) for stage in _RESOURCE_STAGES
+                  if buckets[stage]]
+        if other:
+            stages.append(('Other', other))
+        actions.append({
+            'action_id': action.get('actionId'),
+            'action_type': action.get('actionType'),
+            'action_status': action.get('actionStatus'),
+            'user_comments': action.get('userComments'),
+            'stages': stages,
+            # Dates arrive as raw ISO strings; parse to date objects here (the
+            # same parser the entry builder uses) so the template can fmt_date
+            # them — fmt_date raises on a str. `allocation_date_id` is carried
+            # through so the edit/remove editors can target one range.
+            'dates': [{'allocation_date_id': d.get('allocationDateId'),
+                       'begin': _as_date(d.get('beginDate')),
+                       'end': _as_date(d.get('endDate')),
+                       'type': d.get('type')}
+                      for d in (action.get('allocationDates') or ())
+                      if isinstance(d, dict)],
+            'documents': [d for d in (action.get('documents') or ())
+                          if isinstance(d, dict)],
+        })
+    return actions
+
+
+def _detail_grants(payload):
+    """Grants with their raw ISO dates parsed for ``fmt_date``."""
+    grants = []
+    for g in payload.get('grants') or ():
+        if not isinstance(g, dict):
+            continue
+        grants.append({**g,
+                       'begin': _as_date(g.get('beginDate')),
+                       'end': _as_date(g.get('endDate'))})
+    return grants
+
+
+def _detail_context(request_number, *, flash=None, flash_error=None):
+    """Everything the detail modal renders, or ``None`` if the request is gone.
+
+    Shared by the read-only GET and by every editor's success re-render, so the
+    modal looks identical however it was reached. Raises
+    :class:`XrasSourceUnavailable` on an outage — the caller degrades.
+    """
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+
+    entry = _entry(request_number)
+    # Reproduces the exact `row` shape the shared include expects (roster +
+    # actions with can_withdraw/can_resubmit), so the modal's buttons are
+    # identical to the card's by construction. `pending_push` only feeds the
+    # card's SAM badge, which the include does not render — default it safely.
+    row = request_index_entry(
+        payload, pending_push=bool((entry or {}).get('pending_push', True)))
+    xa_user, is_pi, placeholder = _impersonation(entry, live=payload)
+
+    return {
+        'request_number': request_number,
+        'payload': payload,
+        'row': row,
+        'detail_actions': _detail_actions(payload),
+        'grants': _detail_grants(payload),
+        'xa_user': xa_user,
+        'xa_user_is_pi': is_pi,
+        'xa_user_is_placeholder': placeholder,
+        'write_enabled': xras_write_configured(),
+        # Approved/Recommended editors render disabled until the elevated XRAS
+        # key lands (Phase 0.5); this is the flip-point flag.
+        'admin_context_available': xras_admin_context_available(),
+        # The destructive lifecycle buttons render only for ADMIN_XRAS holders
+        # (Part C) — effectively SYSTEM_ADMIN. A MANAGE_XRAS operator never sees
+        # them, and the routes 403 anyway.
+        'is_xras_admin': has_permission(current_user, Permission.ADMIN_XRAS),
+        'action_types': list(XRAS_ACTION_TYPES),
+        'flash': flash,
+        'flash_error': flash_error,
+    }
+
+
+@bp.route('/xras_request_detail/<path:request_number>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_request_detail(request_number: str):
+    """Modal body: the full detail of one request, read-only plus the editors.
+
+    Renders resources grouped by XRAS stage (Requested / Recommended /
+    Approved) so requested-vs-awarded is visible, the rich request sections
+    (abstract, FoS, grants, documents), and — via the shared
+    ``_xras_remediation_actions`` include — the same roster and write buttons
+    the card row offers, so the two can never drift. The Requested-stage rows
+    carry the amount/date editors (Part B); the Approved editors render
+    fail-visible until the elevated key lands.
+
+    Degrades with a **200** on an XRAS outage, like every modal GET here: htmx
+    will not swap a 4xx into an already-open modal.
+    """
+    try:
+        context = _detail_context(request_number)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras request detail: %s', exc)
+        return _degraded('Showing this request needs a live read from XRAS, '
+                         'and XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    return render_template(_DETAIL_FORM, **context)
+
+
+def _render_detail(request_number, *, flash=None, flash_error=None):
+    """Re-render the detail modal in place after a write, with a flash.
+
+    The write is already done, verified and recorded by the time this runs, so
+    an outage here only costs the operator a fresh view — the change stands.
+    """
+    try:
+        context = _detail_context(request_number, flash=flash,
+                                  flash_error=flash_error)
+    except XrasSourceUnavailable:
+        context = None
+    if context is None:
+        note = flash or flash_error or 'Done.'
+        cls = 'alert-danger' if flash_error else 'alert-success'
+        return (f'<div class="alert {cls} mb-0">{note} '
+                'The card may lag until the next hourly sweep.</div>', 200)
+    response = current_app.make_response(render_template(_DETAIL_FORM, **context))
+    response.headers['HX-Trigger'] = 'refreshXrasTab'
+    return response
+
+
+# ── the request editor (Part B): resource amounts & allocation dates ─────
+
+def _editor_target(request_number):
+    """``(request_id, xa_user)`` for a write, or raise :class:`FormError`.
+
+    Wrapped like the withdraw/role handlers' live reads: the handler base maps
+    exceptions only around ``perform()``, so an outage in ``clean()`` must
+    degrade to an inline error rather than a 500 htmx never swaps.
+    """
+    try:
+        payload = _live_request(request_number)
+    except XrasSourceUnavailable:
+        raise FormError('XRAS could not be reached, so nothing was changed. '
+                        'Try again shortly.')
+    if payload is None:
+        raise FormError('XRAS no longer lists this request.')
+    xa_user, _, _ = _impersonation(_entry(request_number), live=payload)
+    if not xa_user:
+        raise FormError('This request has no role-holder for SAM to act as, so '
+                        'XRAS would refuse the change.')
+    return payload.get('requestId'), xa_user
+
+
+def _find_resource(payload, action_id, resource_id, stage):
+    """The resource dict for ``(action, resourceId, stage)``, or any-stage row.
+
+    Returns ``(row_for_stage, any_row)`` — the first prefills the amount editor
+    for that stage, the second supplies the label/units when the stage has no
+    line yet (the add case).
+    """
+    stage_row = any_row = None
+    for action in (payload.get('actions') or ()):
+        if not isinstance(action, dict) or action.get('actionId') != action_id:
+            continue
+        for res in (action.get('resources') or ()):
+            if not isinstance(res, dict) or res.get('resourceId') != resource_id:
+                continue
+            any_row = any_row or res
+            if res.get('type') == stage:
+                stage_row = res
+    return stage_row, any_row
+
+
+def _resource_form_context(request_number, action_id, resource_id, stage):
+    """Context for the amount editor modal, or ``None`` if the request is gone."""
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+    stage_row, any_row = _find_resource(payload, action_id, resource_id, stage)
+    label_row = stage_row or any_row or {}
+    return {
+        'request_number': request_number,
+        'action_id': action_id,
+        'resource_id': resource_id,
+        'stage': stage,
+        'is_award': stage != 'Requested',
+        'resource_name': (label_row.get('displayResourceName')
+                          or label_row.get('resourceName')
+                          or f'resource {resource_id}'),
+        'resource_units': label_row.get('resourceUnits') or '',
+        'current_amount': (stage_row or {}).get('amount'),
+        'current_comment': (stage_row or {}).get('comments'),
+        'write_enabled': xras_write_configured(),
+        'admin_context_available': xras_admin_context_available(),
+        'post_url': url_for('allocations_dashboard.xras_resource_edit',
+                            request_number=request_number, action_id=action_id,
+                            resource_id=resource_id),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+def _safe_resource_form_context(request_number, action_id, resource_id, stage):
+    try:
+        context = _resource_form_context(request_number, action_id,
+                                         resource_id, stage)
+    except XrasSourceUnavailable:
+        context = None
+    return context or {
+        'request_number': request_number, 'action_id': action_id,
+        'resource_id': resource_id, 'stage': stage,
+        'is_award': stage != 'Requested', 'resource_name': f'resource {resource_id}',
+        'resource_units': '', 'current_amount': None, 'current_comment': None,
+        'write_enabled': xras_write_configured(),
+        'admin_context_available': xras_admin_context_available(),
+        'post_url': url_for('allocations_dashboard.xras_resource_edit',
+                            request_number=request_number, action_id=action_id,
+                            resource_id=resource_id),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_resource_form/<path:request_number>/<int:action_id>'
+          '/<int:resource_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_resource_form(request_number: str, action_id: int, resource_id: int):
+    """Modal body: edit one resource's amount for a stage."""
+    stage = request.args.get('stage') or 'Requested'
+    try:
+        context = _resource_form_context(request_number, action_id,
+                                         resource_id, stage)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras resource form: %s', exc)
+        return _degraded('Editing an amount needs a live read from XRAS, and '
+                         'XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    return render_template(_RESOURCE_FORM, **context)
+
+
+class _XrasResourceAmountHandler(_XrasRemediationHandler):
+    """Set one resource's amount. Requested stage on our key; Approved gated."""
+
+    schema_cls = XrasResourceAmountForm
+    template = _RESOURCE_FORM
+    success_message = 'Amount updated in XRAS.'
+
+    def clean(self, data):
+        if self.stage != 'Requested' and not xras_admin_context_available():
+            raise FormError('Editing the awarded amount needs an elevated XRAS '
+                            'key, which this deployment does not have yet.')
+        self._request_id, self._xa_user = _editor_target(self.request_number)
+        return data
+
+    def perform(self, data):
+        context = 'admin' if self.stage != 'Requested' else 'submit'
+        outcome = remediation.update_resource_amount(
+            _session_factory(), request_number=self.request_number,
+            request_id=self._request_id, action_id=self.action_id,
+            resource_id=self.resource_id, amount=data['amount'],
+            pi_username=self._xa_user, operator=current_user.username,
+            comment=data.get('comment'), context=context)
+        return self._finish(outcome, verb='The amount change')
+
+    def on_success(self, result):
+        return _render_detail(
+            self.request_number,
+            flash=f'Set the {self.stage.lower()} amount for resource '
+                  f'{self.resource_id}.')
+
+    def context(self):
+        return _safe_resource_form_context(self.request_number, self.action_id,
+                                           self.resource_id, self.stage)
+
+
+@bp.route('/xras_resource_edit/<path:request_number>/<int:action_id>'
+          '/<int:resource_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_resource_edit(request_number: str, action_id: int, resource_id: int):
+    stage = request.form.get('stage') or 'Requested'
+    return _XrasResourceAmountHandler(
+        request_number=request_number, action_id=action_id,
+        resource_id=resource_id, stage=stage).handle()
+
+
+@bp.route('/xras_resource_remove/<path:request_number>/<int:action_id>'
+          '/<int:resource_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_resource_remove(request_number: str, action_id: int,
+                         resource_id: int):
+    """Delete one resource's Requested line. Bodiless; confirmed with hx-confirm.
+
+    Requested-only on our current key — the button is offered only on Requested
+    rows, and the service refuses anything else structurally (submit context).
+    """
+    try:
+        request_id, xa_user = _editor_target(request_number)
+    except FormError as exc:
+        return _render_detail(request_number, flash_error=str(exc))
+
+    try:
+        outcome = remediation.remove_resource(
+            _session_factory(), request_number=request_number,
+            request_id=request_id, action_id=action_id,
+            resource_id=resource_id, pi_username=xa_user,
+            operator=current_user.username)
+    except XrasWriteNotConfigured:
+        return _render_detail(request_number, flash_error='XRAS writes are '
+                              'switched off for this deployment. Nothing was sent.')
+
+    if outcome.status == 'verified':
+        return _render_detail(request_number,
+                              flash=f'Removed the requested line for resource '
+                                    f'{resource_id}.')
+    return _render_detail(request_number, flash_error=(
+        f'Removal did not complete: {outcome.error or "XRAS did not confirm it"}. '
+        'The attempt is recorded in the remediation log.'))
+
+
+def _dates_form_context(request_number, action_id, allocation_date_id=None):
+    """Context for the allocation-dates editor, or ``None`` if the request is gone."""
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+    target = None
+    for action in (payload.get('actions') or ()):
+        if isinstance(action, dict) and action.get('actionId') == action_id:
+            for d in (action.get('allocationDates') or ()):
+                if isinstance(d, dict) \
+                        and d.get('allocationDateId') == allocation_date_id:
+                    target = d
+    return {
+        'request_number': request_number,
+        'action_id': action_id,
+        'allocation_date_id': allocation_date_id,
+        'begin_date': _as_date((target or {}).get('beginDate')),
+        'end_date': _as_date((target or {}).get('endDate')),
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_dates_edit',
+                            request_number=request_number, action_id=action_id),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+def _safe_dates_form_context(request_number, action_id, allocation_date_id=None):
+    try:
+        context = _dates_form_context(request_number, action_id,
+                                      allocation_date_id)
+    except XrasSourceUnavailable:
+        context = None
+    return context or {
+        'request_number': request_number, 'action_id': action_id,
+        'allocation_date_id': allocation_date_id, 'begin_date': None,
+        'end_date': None, 'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_dates_edit',
+                            request_number=request_number, action_id=action_id),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_dates_form/<path:request_number>/<int:action_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_dates_form(request_number: str, action_id: int):
+    """Modal body: set or edit an allocation-date range."""
+    date_id = request.args.get('allocation_date_id', type=int)
+    try:
+        context = _dates_form_context(request_number, action_id, date_id)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras dates form: %s', exc)
+        return _degraded('Editing allocation dates needs a live read from '
+                         'XRAS, and XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    return render_template(_DATES_FORM, **context)
+
+
+class _XrasActionDatesHandler(_XrasRemediationHandler):
+    """Create or update one allocation-date range. Requested stage on our key."""
+
+    schema_cls = XrasActionDatesForm
+    template = _DATES_FORM
+    success_message = 'Allocation dates updated in XRAS.'
+
+    def clean(self, data):
+        self._request_id, self._xa_user = _editor_target(self.request_number)
+        return data
+
+    def perform(self, data):
+        if self.allocation_date_id:
+            outcome = remediation.update_action_dates(
+                _session_factory(), request_number=self.request_number,
+                request_id=self._request_id, action_id=self.action_id,
+                allocation_date_id=self.allocation_date_id,
+                begin_date=data['begin_date'], end_date=data['end_date'],
+                pi_username=self._xa_user, operator=current_user.username,
+                comment=data.get('comment'))
+        else:
+            outcome = remediation.set_action_dates(
+                _session_factory(), request_number=self.request_number,
+                request_id=self._request_id, action_id=self.action_id,
+                begin_date=data['begin_date'], end_date=data['end_date'],
+                pi_username=self._xa_user, operator=current_user.username,
+                comment=data.get('comment'))
+        return self._finish(outcome, verb='The date change')
+
+    def on_success(self, result):
+        return _render_detail(self.request_number,
+                              flash='Allocation dates updated.')
+
+    def context(self):
+        return _safe_dates_form_context(self.request_number, self.action_id,
+                                        self.allocation_date_id)
+
+
+@bp.route('/xras_dates_edit/<path:request_number>/<int:action_id>',
+          methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_dates_edit(request_number: str, action_id: int):
+    date_id = request.form.get('allocation_date_id', type=int)
+    return _XrasActionDatesHandler(
+        request_number=request_number, action_id=action_id,
+        allocation_date_id=date_id).handle()
+
+
+@bp.route('/xras_dates_remove/<path:request_number>/<int:action_id>'
+          '/<int:allocation_date_id>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_dates_remove(request_number: str, action_id: int,
+                      allocation_date_id: int):
+    """Delete one allocation-date range. Bodiless; confirmed with hx-confirm."""
+    try:
+        request_id, xa_user = _editor_target(request_number)
+    except FormError as exc:
+        return _render_detail(request_number, flash_error=str(exc))
+
+    try:
+        outcome = remediation.remove_action_dates(
+            _session_factory(), request_number=request_number,
+            request_id=request_id, action_id=action_id,
+            allocation_date_id=allocation_date_id, pi_username=xa_user,
+            operator=current_user.username)
+    except XrasWriteNotConfigured:
+        return _render_detail(request_number, flash_error='XRAS writes are '
+                              'switched off for this deployment. Nothing was sent.')
+
+    if outcome.status == 'verified':
+        return _render_detail(request_number,
+                              flash='Removed the allocation dates.')
+    return _render_detail(request_number, flash_error=(
+        f'Removal did not complete: {outcome.error or "XRAS did not confirm it"}. '
+        'The attempt is recorded in the remediation log.'))
+
+
+# ── the request editor (Part B2a): request attributes & action fields ────
+
+def _attributes_form_context(request_number):
+    """Context for the request-attributes editor, or ``None`` if the request is gone."""
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+    return {
+        'request_number': request_number,
+        'title': payload.get('title'),
+        'short_title': payload.get('shortTitle'),
+        'abstract': payload.get('abstract'),
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_attributes_edit',
+                            request_number=request_number),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+def _safe_attributes_form_context(request_number):
+    try:
+        context = _attributes_form_context(request_number)
+    except XrasSourceUnavailable:
+        context = None
+    return context or {
+        'request_number': request_number, 'title': None, 'short_title': None,
+        'abstract': None, 'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_attributes_edit',
+                            request_number=request_number),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_attributes_form/<path:request_number>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_attributes_form(request_number: str):
+    """Modal body: edit the request's title / short title / abstract."""
+    try:
+        context = _attributes_form_context(request_number)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras attributes form: %s', exc)
+        return _degraded('Editing the request attributes needs a live read '
+                         'from XRAS, and XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    return render_template(_ATTRIBUTES_FORM, **context)
+
+
+class _XrasAttributesHandler(_XrasRemediationHandler):
+    """Set a request's title/shortTitle/abstract — the requested text, not the
+    award. Full-form: prefilled with current values, a save writes all three."""
+
+    schema_cls = XrasRequestAttributesForm
+    template = _ATTRIBUTES_FORM
+    success_message = 'Request attributes updated in XRAS.'
+
+    def clean(self, data):
+        self._request_id, self._xa_user = _editor_target(self.request_number)
+        return data
+
+    def perform(self, data):
+        # snake_case → wire; blanked short_title/abstract clear the field.
+        fields = {
+            'title': data['title'],
+            'shortTitle': data.get('short_title') or '',
+            'abstract': data.get('abstract') or '',
+        }
+        outcome = remediation.update_request_attributes(
+            _session_factory(), request_number=self.request_number,
+            request_id=self._request_id, fields=fields,
+            pi_username=self._xa_user, operator=current_user.username)
+        return self._finish(outcome, verb='The attribute change')
+
+    def on_success(self, result):
+        return _render_detail(self.request_number,
+                              flash='Request attributes updated.')
+
+    def context(self):
+        return _safe_attributes_form_context(self.request_number)
+
+
+@bp.route('/xras_attributes_edit/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_attributes_edit(request_number: str):
+    return _XrasAttributesHandler(request_number=request_number).handle()
+
+
+def _action_fields_form_context(request_number, action_id):
+    """Context for the action-fields editor, or ``None`` if the request is gone."""
+    payload = _live_request(request_number)
+    if payload is None:
+        return None
+    action = next((a for a in (payload.get('actions') or ())
+                   if isinstance(a, dict) and a.get('actionId') == action_id),
+                  None)
+    if action is None:
+        return {'_missing': True}
+    return {
+        'request_number': request_number,
+        'action_id': action_id,
+        'user_comments': action.get('userComments'),
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_action_fields_edit',
+                            request_number=request_number, action_id=action_id),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+def _safe_action_fields_form_context(request_number, action_id):
+    try:
+        context = _action_fields_form_context(request_number, action_id)
+    except XrasSourceUnavailable:
+        context = None
+    if context and not context.get('_missing'):
+        return context
+    return {
+        'request_number': request_number, 'action_id': action_id,
+        'user_comments': None, 'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_action_fields_edit',
+                            request_number=request_number, action_id=action_id),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_action_fields_form/<path:request_number>/<int:action_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_action_fields_form(request_number: str, action_id: int):
+    """Modal body: edit an action's user comments."""
+    try:
+        context = _action_fields_form_context(request_number, action_id)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras action fields form: %s', exc)
+        return _degraded('Editing the action fields needs a live read from '
+                         'XRAS, and XRAS is not answering.')
+    if context is None:
+        return htmx_modal_not_found('Request')
+    if context.get('_missing'):
+        return _degraded(
+            f'XRAS no longer lists action {action_id} on {request_number}.',
+            title='Action not found')
+    return render_template(_ACTION_FIELDS_FORM, **context)
+
+
+class _XrasActionFieldsHandler(_XrasRemediationHandler):
+    """Set an action's userComments."""
+
+    schema_cls = XrasActionFieldsForm
+    template = _ACTION_FIELDS_FORM
+    success_message = 'Action fields updated in XRAS.'
+
+    def clean(self, data):
+        self._request_id, self._xa_user = _editor_target(self.request_number)
+        return data
+
+    def perform(self, data):
+        fields = {'userComments': data.get('user_comments') or ''}
+        outcome = remediation.update_action(
+            _session_factory(), request_number=self.request_number,
+            request_id=self._request_id, action_id=self.action_id,
+            fields=fields, pi_username=self._xa_user,
+            operator=current_user.username)
+        return self._finish(outcome, verb='The action field change')
+
+    def on_success(self, result):
+        return _render_detail(self.request_number,
+                              flash=f'Updated the comments on action '
+                                    f'{self.action_id}.')
+
+    def context(self):
+        return _safe_action_fields_form_context(self.request_number,
+                                                self.action_id)
+
+
+@bp.route('/xras_action_fields_edit/<path:request_number>/<int:action_id>',
+          methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_action_fields_edit(request_number: str, action_id: int):
+    return _XrasActionFieldsHandler(
+        request_number=request_number, action_id=action_id).handle()
+
+
+# ── the destructive lifecycle (Part C — ADMIN_XRAS only) ─────────────────
+#
+# ⚠️ Every route here is gated on ADMIN_XRAS (effectively SYSTEM_ADMIN), NOT
+# MANAGE_XRAS — a full-editor operator cannot reach them. The verbs are
+# irreversible in XRAS and were not live-probed; they are fail-visible.
+
+def _inline_alert(message, *, variant='warning'):
+    """A raw 200 alert for a bodiless destructive route (Jinja never sees it)."""
+    from markupsafe import escape
+    return (f'<div class="alert alert-{variant} mb-0">{escape(message)}</div>', 200)
+
+
+@bp.route('/xras_request_delete/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_request_delete(request_number: str):
+    """Delete a whole request in XRAS. **Irreversible.** Bodiless; hx-confirm.
+
+    On success the request is gone, so the modal cannot re-render it — it closes
+    and the card refreshes (the sweep patch drops the now-missing row).
+    """
+    try:
+        request_id, xa_user = _editor_target(request_number)
+    except FormError as exc:
+        return _inline_alert(str(exc))
+
+    try:
+        outcome = remediation.delete_request(
+            _session_factory(), request_number=request_number,
+            request_id=request_id, pi_username=xa_user,
+            operator=current_user.username)
+    except XrasWriteNotConfigured:
+        return _inline_alert('XRAS writes are switched off for this '
+                             'deployment. Nothing was sent.')
+
+    if outcome.status == 'verified':
+        return htmx_success_message(
+            _XRAS_MODAL_TRIGGERS, f'Deleted request {request_number} in XRAS.',
+            detail='It no longer exists in XRAS and drops off the card.')
+
+    reason = outcome.error or 'XRAS did not confirm it'
+    extra = getattr(outcome.result, 'errors', None)
+    if extra:
+        reason += ' — ' + '; '.join(str(m) for m in extra)
+    return _inline_alert(
+        f'Deletion did not complete: {reason}. The attempt is recorded in the '
+        'remediation log.', variant='danger')
+
+
+@bp.route('/xras_request_renew/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_request_renew(request_number: str):
+    """Spawn a renewal of a request. Bodiless; hx-confirm.
+
+    The original stays, so the detail modal re-renders with a note naming the
+    new renewal request.
+    """
+    try:
+        request_id, xa_user = _editor_target(request_number)
+    except FormError as exc:
+        return _render_detail(request_number, flash_error=str(exc))
+
+    try:
+        outcome = remediation.renew_request(
+            _session_factory(), request_number=request_number,
+            request_id=request_id, pi_username=xa_user,
+            operator=current_user.username)
+    except XrasWriteNotConfigured:
+        return _render_detail(request_number, flash_error='XRAS writes are '
+                              'switched off for this deployment. Nothing was sent.')
+
+    if outcome.status == 'verified':
+        new_id = getattr(outcome.result, 'extra', {}).get('renewal_request_id')
+        return _render_detail(
+            request_number,
+            flash=f'Renewal spawned in XRAS (requestId {new_id}).')
+    return _render_detail(request_number, flash_error=(
+        f'Renewal did not complete: {outcome.error or "XRAS did not confirm it"}. '
+        'Check XRAS — the attempt is recorded in the remediation log.'))
+
+
+def _safe_add_action_form_context(request_number):
+    return {
+        'request_number': request_number,
+        # (value, label) pairs for select_field — Jinja has no comprehension.
+        'action_type_options': [(t, t) for t in XRAS_ACTION_TYPES],
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_add_action',
+                            request_number=request_number),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_add_action_form/<path:request_number>')
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_add_action_form(request_number: str):
+    """Modal body: pick an action type to add. ADMIN_XRAS only."""
+    return render_template(_ADD_ACTION_FORM,
+                           **_safe_add_action_form_context(request_number))
+
+
+class _XrasAddActionHandler(_XrasRemediationHandler):
+    """Add an action to a request. Destructive-adjacent — ADMIN_XRAS only."""
+
+    schema_cls = XrasAddActionForm
+    template = _ADD_ACTION_FORM
+    success_message = 'Action added in XRAS.'
+
+    def clean(self, data):
+        self._request_id, self._xa_user = _editor_target(self.request_number)
+        return data
+
+    def perform(self, data):
+        outcome = remediation.add_action(
+            _session_factory(), request_number=self.request_number,
+            request_id=self._request_id, action_type=data['action_type'],
+            pi_username=self._xa_user, operator=current_user.username)
+        return self._finish(outcome, verb='Adding the action')
+
+    def on_success(self, result):
+        return _render_detail(
+            self.request_number,
+            flash=f'Added a {result.result.extra.get("action_type")} action.')
+
+    def context(self):
+        return _safe_add_action_form_context(self.request_number)
+
+
+@bp.route('/xras_add_action/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_add_action(request_number: str):
+    return _XrasAddActionHandler(request_number=request_number).handle()

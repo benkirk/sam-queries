@@ -438,3 +438,210 @@ def change_role(session_factory, *, add, request_number, request_id, username,
     patched = _refresh_index_entry(request_number) if result.succeeded else True
     return RemediationOutcome(event_id, result=result, status=result.status,
                               patched=patched)
+
+
+# ── the request editor (Part B): resources & allocation dates ────────────
+
+def _editor_op(operation, session_factory, dispatch, *, open_fields,
+               request_number, client=None) -> RemediationOutcome:
+    """Shared open→dispatch→close→patch body for the editor verbs.
+
+    Identical in shape to ``_action_op``/``change_role``: the audit row is
+    committed ``attempted`` before the write leaves, closed on a fresh session
+    after, and the card entry is patched only on a verified success. The verbs
+    differ only in which client call runs and which columns the ``attempted``
+    row carries, both passed in.
+    """
+    from sam.integration.xras_api.base import (
+        XrasSourceUnavailable,
+        XrasWriteRejected,
+    )
+
+    admin = _client(client)
+    event_id = _open_event(session_factory, operation=operation, **open_fields)
+
+    try:
+        result = dispatch(admin)
+    except XrasWriteRejected as exc:
+        _close_event(session_factory, event_id, **_rejection_fields(exc))
+        return RemediationOutcome(event_id, status='rejected', error=str(exc),
+                                  result=exc)
+    except XrasSourceUnavailable as exc:
+        _close_event(session_factory, event_id, status='error',
+                     outcome_reason=str(exc))
+        return RemediationOutcome(event_id, status='error', error=str(exc))
+
+    _close_event(session_factory, event_id, **_outcome_fields(result))
+    patched = _refresh_index_entry(request_number) if result.succeeded else True
+    return RemediationOutcome(event_id, result=result, status=result.status,
+                              patched=patched)
+
+
+def update_resource_amount(session_factory, *, request_number, request_id,
+                           action_id, resource_id, amount, pi_username,
+                           operator, comment=None, context=None,
+                           client=None) -> RemediationOutcome:
+    """Set one resource's amount (add-or-update its stage line) in XRAS.
+
+    On our current key this edits the **Requested** figure — the requested
+    value, not the award. ``comment`` doubles as the resource's XRAS ``comments``
+    field and the audit note.
+    """
+    return _editor_op(
+        'update_resource_amount', session_factory,
+        lambda admin: admin.update_resource_amount(
+            request_id, action_id, resource_id, amount,
+            request_number=request_number, xa_user=pi_username,
+            comments=comment, context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         action_id=action_id, comment=comment),
+        request_number=request_number, client=client)
+
+
+def remove_resource(session_factory, *, request_number, request_id, action_id,
+                    resource_id, pi_username, operator, comment=None,
+                    context=None, client=None) -> RemediationOutcome:
+    """Delete one resource's stage line (Requested-only on our current key)."""
+    return _editor_op(
+        'remove_resource', session_factory,
+        lambda admin: admin.remove_resource(
+            request_id, action_id, resource_id,
+            request_number=request_number, xa_user=pi_username,
+            context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         action_id=action_id, comment=comment),
+        request_number=request_number, client=client)
+
+
+def set_action_dates(session_factory, *, request_number, request_id, action_id,
+                     begin_date, end_date, pi_username, operator, comment=None,
+                     context=None, client=None) -> RemediationOutcome:
+    """Create an allocation-date range on one action in XRAS."""
+    return _editor_op(
+        'set_action_dates', session_factory,
+        lambda admin: admin.set_action_dates(
+            request_id, action_id, begin_date, end_date,
+            request_number=request_number, xa_user=pi_username,
+            context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         action_id=action_id, comment=comment),
+        request_number=request_number, client=client)
+
+
+def update_action_dates(session_factory, *, request_number, request_id,
+                        action_id, allocation_date_id, begin_date, end_date,
+                        pi_username, operator, comment=None, context=None,
+                        client=None) -> RemediationOutcome:
+    """Update one allocation-date range in place."""
+    return _editor_op(
+        'update_action_dates', session_factory,
+        lambda admin: admin.update_action_dates(
+            request_id, action_id, allocation_date_id, begin_date, end_date,
+            request_number=request_number, xa_user=pi_username,
+            context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         action_id=action_id, comment=comment),
+        request_number=request_number, client=client)
+
+
+def remove_action_dates(session_factory, *, request_number, request_id,
+                        action_id, allocation_date_id, pi_username, operator,
+                        comment=None, context=None,
+                        client=None) -> RemediationOutcome:
+    """Delete one allocation-date range."""
+    return _editor_op(
+        'remove_action_dates', session_factory,
+        lambda admin: admin.remove_action_dates(
+            request_id, action_id, allocation_date_id,
+            request_number=request_number, xa_user=pi_username,
+            context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         action_id=action_id, comment=comment),
+        request_number=request_number, client=client)
+
+
+def update_request_attributes(session_factory, *, request_number, request_id,
+                              fields, pi_username, operator, comment=None,
+                              context=None, client=None) -> RemediationOutcome:
+    """Set request-level text attributes. ``fields`` is a wire-named dict."""
+    return _editor_op(
+        'update_attributes', session_factory,
+        lambda admin: admin.update_request_attributes(
+            request_id, request_number=request_number, xa_user=pi_username,
+            context=context, **fields),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         comment=comment),
+        request_number=request_number, client=client)
+
+
+def update_action(session_factory, *, request_number, request_id, action_id,
+                  fields, pi_username, operator, comment=None, context=None,
+                  client=None) -> RemediationOutcome:
+    """Set action-level text fields. ``fields`` is a wire-named dict."""
+    return _editor_op(
+        'update_action', session_factory,
+        lambda admin: admin.update_action(
+            request_id, action_id, request_number=request_number,
+            xa_user=pi_username, context=context, **fields),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         action_id=action_id, comment=comment),
+        request_number=request_number, client=client)
+
+
+# ── destructive lifecycle (Part C, ADMIN_XRAS only) ──────────────────────
+#
+# ⚠️ Irreversible in XRAS and NOT live-probed. Same audit-before-dispatch
+# discipline as every op — the record survives whether or not the destructive
+# call is confirmed. On a verified delete the request is patched OUT of the card
+# (`_refresh_index_entry` re-reads, finds nothing, drops the row).
+
+def delete_request(session_factory, *, request_number, request_id, pi_username,
+                   operator, comment=None, context=None,
+                   client=None) -> RemediationOutcome:
+    """Delete a whole request in XRAS. **Irreversible.**"""
+    return _editor_op(
+        'delete_request', session_factory,
+        lambda admin: admin.delete_request(
+            request_id, request_number=request_number, xa_user=pi_username,
+            context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         comment=comment),
+        request_number=request_number, client=client)
+
+
+def renew_request(session_factory, *, request_number, request_id, pi_username,
+                  operator, comment=None, context=None,
+                  client=None) -> RemediationOutcome:
+    """Spawn a renewal of a request in XRAS."""
+    return _editor_op(
+        'renew_request', session_factory,
+        lambda admin: admin.renew_request(
+            request_id, request_number=request_number, xa_user=pi_username,
+            context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         comment=comment),
+        request_number=request_number, client=client)
+
+
+def add_action(session_factory, *, request_number, request_id, action_type,
+               pi_username, operator, comment=None, context=None,
+               client=None) -> RemediationOutcome:
+    """Add an action to a request in XRAS."""
+    return _editor_op(
+        'add_action', session_factory,
+        lambda admin: admin.add_action(
+            request_id, action_type, request_number=request_number,
+            xa_user=pi_username, context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         comment=comment),
+        request_number=request_number, client=client)

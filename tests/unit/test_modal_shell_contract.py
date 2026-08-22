@@ -277,10 +277,32 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_requests_card.html': [
         'userDetailsModal', 'userDetailsModalBody'],
+    # The card's summary row carries a "Details…" link into #auditDetailsModal
+    # (in the non-toggle SAM cell) alongside the #projectDetailsModal badge link.
     'dashboards/allocations/partials/xras_remediations_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],
-    'dashboards/allocations/partials/xras_remediation_row.html': [
+    # The shared roster/actions/button strip, included by both the expanded card
+    # row and the read-only detail modal — the reason the row itself no longer
+    # names these shells directly.
+    'dashboards/allocations/partials/_xras_remediation_actions.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
+    # The read-only + editor detail modal and its two editor forms, all reached
+    # only from xras.html (same host page as the card) and all rendering into
+    # #auditDetailsModalBody. The detail modal's Requested-stage editors and the
+    # forms' Back/Save all target that body.
+    'dashboards/allocations/partials/xras_request_detail.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_resource_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_dates_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_attributes_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_action_fields_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_add_action_form.html': [
+        'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_merge_form.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_action_form.html': [

@@ -429,19 +429,35 @@ class XrasActivationEvent(Base, SessionMixin):
                 f"created_by={self.created_by!r})>")
 
 
-#: ``xras_remediation_event.operation`` vocabulary — the five write verbs the
-#: XRAS credential actually holds, proven live 2026-08-21
-#: (``docs/xras/outgoing/XRAS_WRITE_PROBES.md``). Validated in
+#: ``xras_remediation_event.operation`` vocabulary — the write verbs the XRAS
+#: credential actually holds, proven live (the first five 2026-08-21,
+#: ``docs/xras/outgoing/XRAS_WRITE_PROBES.md``; the request-editor verbs
+#: 2026-08-22, see ``docs/xras/outgoing/REQUEST_EDITOR.md`` §3/§5). Validated in
 #: :meth:`XrasRemediationEvent.create` for the same reason
 #: :data:`XRAS_ACTIVATION_EVENT_TYPES` is: the column is a bare ``VARCHAR`` by
 #: design, so this tuple is the only thing between a typo and an audit row that
 #: no query ever finds again.
 XRAS_REMEDIATION_OPERATIONS = (
-    'merge_person',     # destructive, user-agnostic; deletes the source
-    'withdraw_action',  # de-approves one action back to Incomplete
-    'submit_action',    # (re-)submits one action; lands in Under Review
-    'add_role',         # puts a username on a request's roster
-    'remove_role',      # takes one roleId off it
+    'merge_person',            # destructive, user-agnostic; deletes the source
+    'withdraw_action',         # de-approves one action back to Incomplete
+    'submit_action',           # (re-)submits one action; lands in Under Review
+    'add_role',                # puts a username on a request's roster
+    'remove_role',             # takes one roleId off it
+    # The request editor (Part B). All edit the Requested stage on our current
+    # key (Phase 0, 2026-08-22); an admin/review key would reach Approved.
+    'update_resource_amount',  # set a resource's amount (add-or-update a line)
+    'remove_resource',         # delete a resource's stage line
+    'set_action_dates',        # create an allocation-date range
+    'update_action_dates',     # update an allocation-date range in place
+    'remove_action_dates',     # delete an allocation-date range
+    # The metadata editors (Part B2a, 2026-08-22). ``update_attributes`` is
+    # shortened from "request attributes" to fit VARCHAR(24) — the test guards it.
+    'update_attributes',       # title/shortTitle/abstract
+    'update_action',           # action fields (userComments)
+    # The destructive lifecycle (Part C, ADMIN_XRAS only). Irreversible in XRAS.
+    'delete_request',          # delete a whole request
+    'renew_request',           # spawn a renewal
+    'add_action',              # add an action to a request
 )
 
 #: ``xras_remediation_event.status``. Five values, and the distinctions matter:

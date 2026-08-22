@@ -24,7 +24,17 @@ from marshmallow import ValidationError, post_load
 
 from . import HtmxFormSchema
 
-__all__ = ['XrasMergeForm', 'XrasRemediationReasonForm', 'XrasRoleForm']
+__all__ = ['XrasMergeForm', 'XrasRemediationReasonForm', 'XrasRoleForm',
+           'XrasResourceAmountForm', 'XrasActionDatesForm',
+           'XrasRequestAttributesForm', 'XrasActionFieldsForm',
+           'XrasAddActionForm']
+
+#: The action types the NCAR process uses, for the add-action picker. A free
+#: text field would let a typo 400 (or worse, create a nonsense action), so the
+#: destructive add-action verb offers a closed list. Observed on the inbound
+#: corpus + the reports feed.
+XRAS_ACTION_TYPES = ('New', 'Supplement', 'Extension', 'Renewal',
+                     'Transfer', 'Adjustment')
 
 #: ``xras_remediation_event.comment`` is TEXT — 65,535 **bytes**, and utf8mb4
 #: spends up to 4 per character. A char-counted cap at the column width would
@@ -152,4 +162,107 @@ class XrasRoleForm(HtmxFormSchema):
         data['username'] = username
         data['role_type'] = role
         data['comment'] = _clean(data.get('comment')) or None
+        return data
+
+
+class XrasResourceAmountForm(HtmxFormSchema):
+    """The requested amount for one resource on one action.
+
+    ``amount`` is the **requested** figure — on our current key the editor
+    touches the Requested stage, never the award (Phase 0). ``comment`` doubles
+    as the resource's XRAS ``comments`` field and the audit note; an empty one
+    clears the resource comment back to null, which is deliberate.
+
+    The ids (request, action, resource) come from the URL, not the body — the
+    schema only shapes what the operator typed.
+    """
+
+    amount = f.Decimal(required=True, places=None,
+                       validate=v.Range(min=0,
+                                        error='Amount must be zero or more.'))
+    comment = f.Str(load_default=None, validate=v.Length(max=_COMMENT_MAX))
+
+    @post_load
+    def _normalize(self, data, **kwargs):
+        data['comment'] = _clean(data.get('comment')) or None
+        return data
+
+
+class XrasActionDatesForm(HtmxFormSchema):
+    """An allocation-date range for one action.
+
+    Both dates are required — a half-open range is not a thing XRAS stores. The
+    end may equal the begin (a single-day allocation) but never precede it.
+    ``comment`` is audit-only; the dates endpoint takes no comment field.
+    """
+
+    begin_date = f.Date(required=True)
+    end_date = f.Date(required=True)
+    comment = f.Str(load_default=None, validate=v.Length(max=_COMMENT_MAX))
+
+    @post_load
+    def _check_range(self, data, **kwargs):
+        begin, end = data.get('begin_date'), data.get('end_date')
+        if begin and end and end < begin:
+            raise ValidationError({'end_date': [
+                'End date must not precede the begin date.']})
+        data['comment'] = _clean(data.get('comment')) or None
+        return data
+
+
+#: UI bounds for the free-text metadata fields. Generous — the real limit is
+#: XRAS's, which a too-long value surfaces as a 400 the modal renders. `abstract`
+#: and `userComments` are long-form; title/shortTitle are one-liners.
+_TITLE_MAX = 500
+_SHORT_TITLE_MAX = 255
+_LONGTEXT_MAX = 20000
+
+
+class XrasRequestAttributesForm(HtmxFormSchema):
+    """Edit a request's text attributes: title, short title, abstract.
+
+    Only the fields the reports feed reads back are here — a field that cannot
+    be re-read cannot be verified, and every write here verifies. ``title`` is
+    required (a request needs one); ``short_title``/``abstract`` may be blanked
+    to clear them. The form is prefilled with the current values, so a save
+    rewrites all three to what the operator sees — the ones they did not touch to
+    their existing values.
+    """
+
+    title = f.Str(required=True, validate=v.Length(min=1, max=_TITLE_MAX))
+    short_title = f.Str(load_default=None,
+                        validate=v.Length(max=_SHORT_TITLE_MAX))
+    abstract = f.Str(load_default=None, validate=v.Length(max=_LONGTEXT_MAX))
+
+    @post_load
+    def _normalize(self, data, **kwargs):
+        title = _clean(data.get('title'))
+        if not title:
+            raise ValidationError({'title': ['This field is required.']})
+        data['title'] = title
+        # short_title/abstract: keep '' (a deliberate clear) distinct from a
+        # value; empty-string dropping already turned a blank into a missing
+        # key, which the route reads as "clear" via request.form presence.
+        return data
+
+
+class XrasActionFieldsForm(HtmxFormSchema):
+    """Edit an action's text fields. Just ``user_comments`` in B2a."""
+
+    user_comments = f.Str(load_default=None,
+                          validate=v.Length(max=_LONGTEXT_MAX))
+
+
+class XrasAddActionForm(HtmxFormSchema):
+    """Add an action to a request (Part C, destructive). Closed action-type list."""
+
+    action_type = f.Str(required=True)
+
+    @post_load
+    def _check(self, data, **kwargs):
+        chosen = _clean(data.get('action_type'))
+        if chosen not in XRAS_ACTION_TYPES:
+            raise ValidationError({'action_type': [
+                f"Must be one of: {', '.join(XRAS_ACTION_TYPES)}."]})
+        data['action_type'] = chosen
         return data

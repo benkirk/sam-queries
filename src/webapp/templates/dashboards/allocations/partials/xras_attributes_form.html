@@ -1,0 +1,49 @@
+{#
+  Request-attributes editor (title / short title / abstract), rendered into
+  #auditDetailsModalBody. Prefilled with the current values; a save writes all
+  three (the untouched ones to what they already were). On success the handler
+  re-renders the whole detail modal in place.
+
+  Context: request_number, title, short_title, abstract, write_enabled,
+           post_url, back_url.
+
+  Edits the *requested* text under the `submit` context on our key (Phase 0.75).
+#}
+{% from 'dashboards/fragments/form_fields.html' import text_field, textarea_field, form_errors_panel with context %}
+
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Edit attributes — {{ request_number }}
+</h5>
+
+<p class="text-muted small">
+    Editing the request's title, short title and abstract in <strong>XRAS</strong>.
+    This changes the <em>requested</em> text, recorded against
+    <code>{{ current_user.username }}</code>.
+</p>
+
+{% if not write_enabled %}
+<div class="alert alert-warning py-2 small">
+    XRAS writes are switched off for this deployment
+    (<code>XRAS_WRITE_ENABLED</code>).
+</div>
+{% endif %}
+
+<form hx-post="{{ post_url }}" hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+    <fieldset {% if not write_enabled %}disabled{% endif %}>
+        {{ text_field('title', 'Title', required=True, maxlength=500,
+                      default=title or '') }}
+        {{ text_field('short_title', 'Short title', maxlength=255,
+                      default=short_title or '',
+                      help='Leave blank to clear it.') }}
+        {{ textarea_field('abstract', 'Abstract', rows=6, maxlength=20000,
+                          default=abstract or '') }}
+    </fieldset>
+    {{ form_errors_panel() }}
+    <div class="d-flex justify-content-between mt-3">
+        <button type="button" class="btn btn-outline-secondary"
+                hx-get="{{ back_url }}" hx-target="#auditDetailsModalBody"
+                hx-swap="innerHTML">Back</button>
+        <button type="submit" class="btn btn-primary"
+                {% if not write_enabled %}disabled{% endif %}>Save</button>
+    </div>
+</form>
