@@ -1,6 +1,6 @@
-"""``xras_sweep`` — enumerate XRAS nightly and diff it against SAM.
+"""``xras_sweep`` — enumerate XRAS hourly and diff it against SAM.
 
-Hourly 08:00-17:00 Mon-Fri Mountain. The first task that calls **out** to XRAS
+Hourly, around the clock. The first task that calls **out** to XRAS
 rather than reading only SAM's own tables, and the third declaring
 ``needs=('sam',)``.
 
@@ -60,20 +60,25 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
-from scheduling.schedules import BusinessHourly, to_local_naive
+from scheduling.schedules import DEFAULT_TZ, Hourly, to_local_naive
 
-#: Overnight on purpose: nothing here is time-critical, the enumeration is the
-#: heaviest outbound call SAM makes, and a warm people-cache at 03:30 is still
-#: warm for the first card render of the working day.
-#: Hourly through the business day, matching `xras_notices`. The Feed-B tab
-#: reads what this publishes, so the cadence IS the tab's freshness — a
-#: nightly sweep would show an operator yesterday's queue all day.
+#: Hourly, every hour of every day. The Feed-B tab reads what this publishes,
+#: so the cadence IS the tab's freshness — and unlike `xras_notices`, which
+#: mails people and therefore has no business waking at 03:00, this one only
+#: refreshes a cache. Restricting it to the business day bought nothing and
+#: cost the first operator in on a Monday a snapshot from Friday afternoon.
+#:
+#: `Hourly` is UTC and takes no `tz`, deliberately: every zone SAM cares about
+#: is a whole-hour offset, so `:00 UTC` and `:00 Mountain` are the same
+#: instants, and computing in UTC means DST can neither duplicate nor drop a
+#: slot. The naive-Mountain conversions below use `DEFAULT_TZ` directly, which
+#: is what `BusinessHourly(tz=...)` was supplying.
 #:
 #: `minute=0` for the same reason `xras_notices` uses it: the CronJob wakes at
 #: :07, so a :00 slot dispatches about seven minutes later where a :20 slot
 #: would wait for the next wake. Both tasks share the wake and run
 #: sequentially under `concurrencyPolicy: Forbid`; this one takes 60-90s.
-SCHEDULE = BusinessHourly(minute=0, tz='America/Denver')
+SCHEDULE = Hourly(minute=0)
 
 #: Pages of ``reports/requests`` per run, overridable via
 #: ``$SAM_TASKS_XRAS_SWEEP_MAX_PAGES``. At the default page size that is 5,000
@@ -119,6 +124,22 @@ DEFAULT_MAX_PEOPLE = 250
 
 #: Opportunity mapping rows writable per run. See :func:`map_max`.
 DEFAULT_MAP_MAX = 20
+
+#: Statuses swept **in addition to** the primary pass, for the Remediations
+#: card. Hardcoded, and deliberately not reachable from
+#: ``$SAM_TASKS_XRAS_SWEEP_STATUS``: that variable governs the *primary* pass
+#: (the account worklist), and letting a typo'd chart value silently drop the
+#: remediation feed as a side effect is exactly the coupling worth refusing.
+#: An operator who wants to look at Rejected requests changes the primary pass
+#: and gets a different card, not a broken one.
+EXTRA_STATUSES = ('Submitted', 'Under Review')
+
+#: Page budget for **each** extra pass. Far smaller than the primary budget
+#: because these cohorts are small — a process holds a few dozen requests
+#: awaiting review at any moment, against thousands ever approved. Reported
+#: per status in ``detail`` so a cohort that outgrows it is visible rather
+#: than silently truncated.
+EXTRA_STATUS_MAX_PAGES = 5
 
 #: Cap on rows echoed into the ledger row. `detail` is TEXT and the runner
 #: truncates the JSON at 60 kB.
@@ -220,6 +241,111 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
         return date.fromisoformat(str(raw)[:10]) >= window_start
     except ValueError:
         return True
+
+
+def _build_requests_index(ctx, client, session, approved_payloads, detail):
+    """Build the Remediations card's request index. Never raises.
+
+    Returns a list of entries, or **``None`` for "the build failed"** — which
+    the caller must treat differently from ``[]``: an empty list is a real
+    answer (nothing to remediate) and publishes, a failure must NOT publish,
+    because replacing the last good snapshot with ``[]`` renders the healthy
+    "nothing to remediate" state over what is actually a blind hour.
+
+    **The cohort, and why it is not the worklist's.**
+    ``(Approved AND not yet pushed) + every Submitted + every Under Review``,
+    with **no period-of-performance window**. Each half of that is deliberate:
+
+    * *Approved and pushed* is excluded — its handoff already happened, so
+      there is nothing here to remediate. The escape hatch for one of those is
+      the action log's request-number filter plus a live modal, not a hundredfold
+      larger card.
+    * *No window*, unlike the account worklist. Remediation is about requests
+      that went **stale**: a 2015 approval nobody ever pushed is the row an
+      operator most needs to close, and a 90-day window hides exactly those.
+    * *Submitted / Under Review* are the pipeline — where a withdraw retracts
+      something still in flight rather than de-approving an award.
+
+    Roughly a hundred requests today, against the thousands the primary pass
+    reads, which is why the extra passes get their own small page budget.
+
+    Guarded end to end: this is an enrichment on a task whose primary job is
+    the account worklist, and a remediation feed that fails must not cost the
+    feed that was already working.
+    """
+    from sam.projects.projects import Project
+    from sam.queries.xras_requests import request_index_entry
+
+    payloads = list(approved_payloads or ())
+    extra_payloads = []
+
+    for status in EXTRA_STATUSES:
+        seen, pages = [], 0
+        try:
+            for page in client.iter_request_pages(
+                    status=status, page_size=PAGE_SIZE,
+                    max_pages=EXTRA_STATUS_MAX_PAGES):
+                pages += 1
+                seen.extend(page)
+        except Exception as exc:                        # noqa: BLE001
+            # A status that cannot be read costs that status, not the index —
+            # and says so, rather than looking like an empty cohort.
+            detail['unavailable_errors'] += 1
+            ctx.logger.warning('xras_sweep: %s pass failed after %d page(s): %s',
+                               status, pages, exc)
+        detail['extra_statuses'][status] = {
+            'seen': len(seen),
+            'pages': pages,
+            # Per status, because one cohort outgrowing its budget must not be
+            # reported as the whole index being truncated — or hidden by
+            # another cohort that fitted.
+            'budget_exhausted': pages >= EXTRA_STATUS_MAX_PAGES,
+        }
+        extra_payloads.extend(seen)
+
+    numbers = {n for p in payloads + extra_payloads
+               if isinstance(p, dict)
+               and (n := str(p.get('requestNumber') or '').strip())}
+    if not numbers:
+        return []
+
+    try:
+        known = {code for (code,) in session.query(Project.projcode)
+                 .filter(Project.projcode.in_(sorted(numbers))).all()}
+    except Exception as exc:                            # noqa: BLE001
+        # None, not []: without the pending classification every entry would
+        # be wrong, and publishing an empty index over the last good one would
+        # render as "nothing to remediate" — see the docstring.
+        ctx.logger.warning('xras_sweep: index projcode lookup failed: %s', exc)
+        return None
+    pending = numbers - known
+
+    # Approved requests that HAVE been pushed drop out here; the extra statuses
+    # are kept whatever SAM knows, because a Submitted request having a project
+    # already is itself worth an operator's eye.
+    cohort = [p for p in payloads
+              if str(p.get('requestNumber') or '').strip() in pending]
+    cohort.extend(p for p in extra_payloads if isinstance(p, dict))
+
+    entries, indexed = [], set()
+    for payload in cohort:
+        number = str(payload.get('requestNumber') or '').strip()
+        if number in indexed:
+            # A primary pass overridden to 'all' (or to one of the extra
+            # statuses) re-reads the extras' cohorts, and a duplicate row
+            # would carry a second Withdraw button — while the post-write
+            # patch rewrites only the first match. First copy wins; the
+            # primary copy comes first and carries the same classification.
+            continue
+        entry = request_index_entry(payload, pending_push=number in pending)
+        if entry is not None:
+            entries.append(entry)
+            indexed.add(number)
+
+    entries.sort(key=lambda e: (str(e.get('opportunity_name') or ''),
+                                str(e.get('request_number') or '')))
+    detail['index_requests'] = len(entries)
+    return entries
 
 
 def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
@@ -337,7 +463,8 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
       # instead. The drift test asserts the inequality against values.yaml.
       expected_runtime=timedelta(minutes=20),
       # The 6h default. A missed slot costs little: the enumeration window is
-      # rolling, so the next run subsumes it. The one piece of state this now
+      # rolling, so the next run subsumes it — and now that the schedule runs
+      # around the clock, the next run is at most an hour away whenever it is. The one piece of state this now
       # writes — opportunity mapping rows — is insert-if-absent, so a skipped
       # slot delays a row rather than losing it.
       misfire_grace=timedelta(hours=6),
@@ -351,7 +478,8 @@ def xras_sweep(ctx) -> TaskResult:
         XrasSourceUnavailable,
         xras_api_configured,
     )
-    from sam.integration.xras_api.cache import store_pending_worklist
+    from sam.integration.xras_api.cache import (store_pending_worklist,
+                                                store_requests_index)
     from sam.projects.projects import Project
     from sam.queries.xras_accounts import (
         classify_accounts,
@@ -386,6 +514,13 @@ def xras_sweep(ctx) -> TaskResult:
         'published': False,
         'publish_backend': '',
         'unavailable_errors': 0,
+        # The Remediations feed, reported separately from the worklist above so
+        # that "the card is empty" and "the extra passes never ran" cannot be
+        # confused for one another.
+        'extra_statuses': {},
+        'index_requests': 0,
+        'index_published': False,
+        'index_publish_backend': '',
     }
 
     if not xras_api_configured():
@@ -402,12 +537,13 @@ def xras_sweep(ctx) -> TaskResult:
     status = sweep_status()
     window = window_days()
     window_start = to_local_naive(
-        ctx.occurrence, ZoneInfo(SCHEDULE.tz)).date() - timedelta(days=window)
+        ctx.occurrence, ZoneInfo(DEFAULT_TZ)).date() - timedelta(days=window)
     detail['window_days'] = window
     detail['status'] = status or 'all'
 
     # ── 1. enumerate ────────────────────────────────────────────────────
     payloads = []
+    enumeration_failed = False
     try:
         for page in client.iter_request_pages(status=status,
                                               page_size=PAGE_SIZE,
@@ -417,12 +553,21 @@ def xras_sweep(ctx) -> TaskResult:
     except XrasSourceUnavailable as exc:
         # Partial pages are still worth reporting: a diff over what we did
         # read is a subset of the truth, not a wrong answer.
+        enumeration_failed = True
         detail['unavailable_errors'] += 1
         ctx.logger.warning('xras_sweep: enumeration failed after %d page(s): %s',
                            detail['pages'], exc)
 
     detail['requests_seen'] = len(payloads)
     detail['budget_exhausted'] = detail['pages'] >= page_budget
+
+    # ⚠️ Kept **before** the window filter below, for the Remediations index.
+    # The two feeds want opposite things from the same enumeration: the account
+    # worklist wants only live periods of performance, while remediation is
+    # about requests that went stale — a 2015 approval nobody ever pushed is
+    # precisely the row an operator needs to close, and the window would hide
+    # exactly those. Same read, two cohorts, no second enumeration.
+    unwindowed = list(payloads)
 
     # ── 1b. drop what had already ended when the window opened ──────────
     #
@@ -546,6 +691,9 @@ def xras_sweep(ctx) -> TaskResult:
             # from real detail, not because anything closed.
             detail['reconciled'] += 1
 
+    # ── 4b. the Remediations index ──────────────────────────────────────
+    index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
+
     # ── 5. publish for the dashboard ────────────────────────────────────
     #
     # Send first, record second — the ledger row must not claim a snapshot the
@@ -556,7 +704,7 @@ def xras_sweep(ctx) -> TaskResult:
         # cache and read straight by a Jinja `fmt_date`, whereas the ledger's
         # `detail` beside it is JSON and must stay stringly-typed. The two
         # have different serialisation contracts and this is the seam.
-        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz)),
+        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
         'window_days': window,
         'status': detail['status'],
         'requests_seen': detail['requests_seen'],
@@ -575,6 +723,36 @@ def xras_sweep(ctx) -> TaskResult:
     # pod. The first production run did exactly that and reported success.
     detail['publish_backend'] = backend
     detail['published'] = backend == 'redis'
+
+    # The second key in the same bucket, written by the same run. Separate
+    # because the `worklist` value must keep its exact shape — an older webapp
+    # reading a newer sweep sees what it expects and never asks for this one.
+    #
+    # ⚠️ **A failed build must not publish.** `None` back from the builder, or
+    # an empty cohort produced by a total outage (nothing enumerated anywhere),
+    # is not "nothing to remediate" — but publishing it over the last good
+    # snapshot would render exactly that, and its 24h TTL would otherwise have
+    # carried the good one across the blind hour. A *genuinely* empty index
+    # still publishes: that IS the healthy answer.
+    extras_seen = sum(s.get('seen', 0)
+                      for s in detail['extra_statuses'].values())
+    if index_entries is None or (not index_entries and enumeration_failed
+                                 and extras_seen == 0):
+        detail['index_publish_backend'] = 'skipped'
+        detail['index_skipped'] = ('build failed' if index_entries is None
+                                   else 'nothing enumerated — total outage')
+        ctx.logger.warning(
+            'xras_sweep: index not published (%s); the card keeps the '
+            'previous snapshot', detail['index_skipped'])
+    else:
+        index_backend = store_requests_index({
+            'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
+            'statuses': [detail['status']] + list(EXTRA_STATUSES),
+            'extra_statuses': detail['extra_statuses'],
+            'rows': index_entries,
+        })
+        detail['index_publish_backend'] = index_backend
+        detail['index_published'] = index_backend == 'redis'
     if backend != 'redis':
         ctx.logger.warning(
             'xras_sweep: worklist went to the %s cache, so the dashboard tab '

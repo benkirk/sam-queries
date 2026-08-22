@@ -32,6 +32,17 @@ page-????-??-??T*.yml
 *-pane.md
 *-before.png
 *-after.png
+# ⚠️ It happened AGAIN on 2026-08-21 — `remediations-light.png` and
+# `roles-modal-aligned.png` reached a commit, because the shape patterns above
+# only guessed at the names a future session would choose. Matching names is
+# whack-a-mole; the invariant is structural instead: real image assets live in
+# `src/webapp/static/img/`, so a PNG at the REPO ROOT is a screenshot artifact.
+# (`badge-light.png` predates this and is already tracked, so it is unaffected —
+# gitignore does not untrack.)
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
 legacy_sam
 data/
 

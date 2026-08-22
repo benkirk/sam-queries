@@ -429,6 +429,287 @@ class XrasActivationEvent(Base, SessionMixin):
                 f"created_by={self.created_by!r})>")
 
 
+#: ``xras_remediation_event.operation`` vocabulary — the five write verbs the
+#: XRAS credential actually holds, proven live 2026-08-21
+#: (``docs/xras/outgoing/XRAS_WRITE_PROBES.md``). Validated in
+#: :meth:`XrasRemediationEvent.create` for the same reason
+#: :data:`XRAS_ACTIVATION_EVENT_TYPES` is: the column is a bare ``VARCHAR`` by
+#: design, so this tuple is the only thing between a typo and an audit row that
+#: no query ever finds again.
+XRAS_REMEDIATION_OPERATIONS = (
+    'merge_person',     # destructive, user-agnostic; deletes the source
+    'withdraw_action',  # de-approves one action back to Incomplete
+    'submit_action',    # (re-)submits one action; lands in Under Review
+    'add_role',         # puts a username on a request's roster
+    'remove_role',      # takes one roleId off it
+)
+
+#: ``xras_remediation_event.status``. Five values, and the distinctions matter:
+#:
+#: ``attempted``  written *before* dispatch, so a row exists even if the process
+#:                dies mid-call. Anything still ``attempted`` needs a human.
+#: ``verified``   a re-read confirmed the effect. The only success.
+#: ``unverified`` XRAS answered 200 and the re-read did **not** confirm it, or
+#:                could not be made at all. Not the same as failure — see
+#:                :class:`~sam.integration.xras_api.admin_client.XrasWriteResult`.
+#: ``rejected``   XRAS refused deterministically (4xx). Nothing happened.
+#: ``error``      the write itself errored. May or may not have applied.
+XRAS_REMEDIATION_STATUSES = (
+    'attempted', 'verified', 'unverified', 'rejected', 'error',
+)
+
+
+#----------------------------------------------------------------------------
+class XrasRemediationEvent(Base, SessionMixin):
+    """One operator write against the **XRAS** side, recorded on SAM's side.
+
+    This is an actual database TABLE (not a view).
+
+    Every row is an irreversible-ish thing a human did to a system SAM does not
+    own: merged one XRAS identity into another (the source is *deleted*),
+    de-approved an award back to a draft, or changed a request's roster. XRAS
+    keeps its own history; this table is the record of **who asked for it from
+    SAM, why, and what we saw happen** — which is the part XRAS cannot tell us.
+
+    **Two identities per row, and they are not the same person.**
+    ``created_by`` is the operator who clicked, at ``users.username`` width like
+    every other audit table here. ``xa_user`` is who SAM *impersonated* to
+    authorize the call — every request-scoped XRAS write authorizes on
+    "``XA-USER`` holds a role on that request", so SAM acts as the PI. Losing
+    that distinction would attribute an operator's decision to a PI who was
+    never involved. ``xa_user`` is NULL for merge, which is user-agnostic.
+
+    **Written twice, on a private session, deliberately.** The row is created
+    ``attempted`` and committed *before* the call goes out, then updated on a
+    fresh session once the outcome is known — both outside any request
+    transaction (the ``NotificationLedger`` idiom). A 200 from XRAS cannot be
+    rolled back, so the record of it must not be rollback-able either. A row
+    left ``attempted`` is therefore meaningful: it says a write went out and SAM
+    never learned how it ended.
+
+    **No foreign keys, on purpose.** Every identifier here — ``request_id``,
+    ``action_id``, ``role_id``, and both usernames — belongs to XRAS. A
+    placeholder username is *deleted* by the merge this row records, so an FK to
+    ``users`` would either fail or, worse, quietly prevent recording the very
+    operation that removed it.
+
+    ``before_state`` / ``after_state`` carry JSON captures. For a merge that
+    includes the pre-merge person detail, because **merge does not copy person
+    detail** — ``residenceCountry`` in particular exists nowhere else SAM can
+    reach once the source is gone.
+
+    Do not overload this with ``xras_account_event``
+    (``XRAS_OUTGOING_QUERIES.md`` § 7.6): that one is username-keyed with
+    state-derive semantics, reserved for its own feature. This one is a flat
+    append-only log of attempts.
+    """
+    __tablename__ = 'xras_remediation_event'
+
+    __table_args__ = (
+        # "What has been done lately", the card's default read.
+        Index('xras_remediation_event_op_time', 'operation', 'creation_time'),
+        # "What happened to this person" — the merge trail.
+        Index('xras_remediation_event_user', 'username'),
+        # "What happened to this request" — reachable from the action log filter.
+        Index('xras_remediation_event_request', 'request_number'),
+        # "What did this operator do" — the accountability read.
+        Index('xras_remediation_event_operator', 'created_by', 'creation_time'),
+    )
+
+    xras_remediation_event_id = Column(Integer, primary_key=True,
+                                       autoincrement=True)
+
+    #: One of :data:`XRAS_REMEDIATION_OPERATIONS`.
+    operation = Column(String(24), nullable=False)
+
+    #: One of :data:`XRAS_REMEDIATION_STATUSES`.
+    status = Column(String(16), nullable=False)
+
+    #: The XRAS username acted on — the merge source, or the person given or
+    #: denied a role. Wider than ``users.username`` because ARC placeholders
+    #: (``<name>-user-<token>``) are longer than any SAM account name.
+    username = Column(String(64))
+
+    #: Merge only: the identity retained.
+    target_username = Column(String(64))
+
+    #: XRAS's request number — **usually** a projcode, but not always.
+    #:
+    #: ⚠️ Wider than ``xras_action_log.request_number`` (30) on purpose, and
+    #: that divergence is the point. The action log only ever sees requests
+    #: being *pushed*, which always carry a real projcode. This table sees the
+    #: whole remediation cohort, including Submitted requests whose number is
+    #: still free text a PI typed — measured live: ``'New University Large
+    #: Request - Fall 2017 UCUD0005 Zhong'`` is 55 characters, and it renders
+    #: on the card with a Withdraw button, so it is reachable. At 30 the insert
+    #: would truncate, or error outright under strict mode.
+    #:
+    #: Stays utf8mb3 like the other identifiers, so an equality lookup against
+    #: the action log is not a mixed-charset comparison.
+    request_number = Column(String(128))
+
+    #: XRAS-side ids. ``request_id`` is what the write routes key on while
+    #: ``request_number`` is what the readable reports family keys on — SAM has
+    #: to carry both (PRIVILEGE(#3)).
+    request_id = Column(Integer)
+    action_id = Column(Integer)
+
+    #: Role ops: the roleId XRAS assigned (add) or removed (remove). Recorded
+    #: because it is what an *undo* would need — role removal is keyed on the
+    #: id, not the username.
+    role_id = Column(Integer)
+
+    #: The wire spelling of the role (``PI`` / ``Allocation Manager`` / ``User``).
+    role_type = Column(String(24))
+
+    #: Who SAM impersonated. NULL for user-agnostic ops. See the class docstring.
+    xa_user = Column(String(64))
+
+    #: The human who clicked. **Never** ``task:*`` — nothing here is automated,
+    #: and the sweep has no business writing rows to this table.
+    created_by = Column(String(35), nullable=False)
+
+    #: Stamped from the *app* clock, never a DB default — same reasoning as
+    #: :class:`XrasActivationEvent` (server default resolves in the server's
+    #: timezone, SAM's convention is naive-Mountain).
+    creation_time = Column(DateTime, nullable=False)
+
+    #: When the outcome was learned. NULL means it never was.
+    completed_time = Column(DateTime)
+
+    http_status = Column(Integer)
+
+    #: One line an operator can read: the verify verdict, or XRAS's refusal.
+    outcome_reason = Column(String(255))
+
+    #: The operator's reason. Required for withdraw — de-approving someone's
+    #: award without saying why is not an audit trail.
+    comment = Column(Text)
+
+    #: JSON captures. utf8mb4: they hold free text and real names.
+    before_state = Column(Text)
+    after_state = Column(Text)
+
+    @classmethod
+    def create(cls, session, *, operation, created_by, username=None,
+               target_username=None, request_number=None, request_id=None,
+               action_id=None, role_id=None, role_type=None, xa_user=None,
+               comment=None, before_state=None, status='attempted'):
+        """Open the row **before** the write goes out.
+
+        Flushes but does not commit — the caller owns the transaction, and for
+        this table the caller is deliberately a private session that commits
+        immediately, so the row survives whatever happens to the request.
+
+        Args:
+            session:         the (private) session to add to.
+            operation:       one of :data:`XRAS_REMEDIATION_OPERATIONS`.
+            created_by:      ``users.username`` of the human who clicked.
+            before_state:    pre-write capture; serialized if not already a str.
+
+        Raises:
+            ValueError: unknown *operation* or *status*, or a ``task:``
+                operator. The last one is not hypothetical bookkeeping — it is
+                the assertion that nothing in ``src/scheduling/`` may ever write
+                to XRAS, made where a row would have to be created to do so.
+        """
+        if operation not in XRAS_REMEDIATION_OPERATIONS:
+            raise ValueError(
+                f"unknown xras_remediation_event.operation {operation!r}; "
+                f"expected one of {', '.join(XRAS_REMEDIATION_OPERATIONS)}")
+        if status not in XRAS_REMEDIATION_STATUSES:
+            raise ValueError(
+                f"unknown xras_remediation_event.status {status!r}; "
+                f"expected one of {', '.join(XRAS_REMEDIATION_STATUSES)}")
+        if str(created_by).startswith('task:'):
+            raise ValueError(
+                'XRAS remediations are operator actions; a scheduled task may '
+                f'never write one (created_by={created_by!r})')
+
+        event = cls(
+            operation=operation,
+            status=status,
+            username=username,
+            target_username=target_username,
+            request_number=request_number,
+            request_id=request_id,
+            action_id=action_id,
+            role_id=role_id,
+            role_type=role_type,
+            xa_user=xa_user,
+            created_by=str(created_by)[:35],
+            comment=comment,
+            before_state=_as_json_text(before_state),
+            creation_time=datetime.now(),
+        )
+        session.add(event)
+        session.flush()
+        return event
+
+    @classmethod
+    def complete(cls, session, event_id, *, status, http_status=None,
+                 outcome_reason=None, before_state=None, after_state=None,
+                 role_id=None):
+        """Close the row once the outcome is known. Returns it, or ``None``.
+
+        ⚠️ **``before_state`` is written here, not at :meth:`create`.** The
+        capture is made by the client *during* the call — it re-reads the
+        subject immediately before dispatching — so it does not exist yet when
+        the ``attempted`` row is opened. Recording it only at open time would
+        leave this column permanently NULL, which is exactly what it did until
+        2026-08-21.
+
+        Called on a **fresh** session — the one that opened the row has already
+        committed and gone. ``None`` back means the row vanished, which should
+        be impossible and is worth a caller's log line rather than an exception
+        that would mask the write's own result.
+        """
+        if status not in XRAS_REMEDIATION_STATUSES:
+            raise ValueError(
+                f"unknown xras_remediation_event.status {status!r}; "
+                f"expected one of {', '.join(XRAS_REMEDIATION_STATUSES)}")
+
+        event = session.get(cls, event_id)
+        if event is None:
+            return None
+
+        event.status = status
+        event.http_status = http_status
+        if outcome_reason:
+            event.outcome_reason = str(outcome_reason)[:255]
+        if before_state is not None:
+            event.before_state = _as_json_text(before_state)
+        if after_state is not None:
+            event.after_state = _as_json_text(after_state)
+        if role_id is not None:
+            event.role_id = role_id
+        event.completed_time = datetime.now()
+        session.flush()
+        return event
+
+    def __str__(self):
+        subject = self.username or self.request_number or '?'
+        return f"{self.operation} on {subject} by {self.created_by} ({self.status})"
+
+    def __repr__(self):
+        return (f"<XrasRemediationEvent(id={self.xras_remediation_event_id}, "
+                f"operation={self.operation!r}, status={self.status!r}, "
+                f"created_by={self.created_by!r})>")
+
+
+def _as_json_text(value):
+    """Serialize a capture for storage, leaving an existing string alone.
+
+    ``default=str`` so a stray datetime in a payload cannot turn an audit write
+    into a ``TypeError`` — losing the row would be far worse than storing a
+    timestamp as text.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    import json
+    return json.dumps(value, default=str, sort_keys=True)
+
+
 # ============================================================================
 # End of module
 # ============================================================================

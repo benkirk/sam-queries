@@ -66,6 +66,7 @@ from sam.queries.xras_accounts import (
     CLASSIFICATION_INACTIVE,
     enrich_worklist,
     get_account_worklist,
+    stamp_project_existence,
     stamp_waiting_days,
     worklist_counts,
 )
@@ -1851,6 +1852,12 @@ def xras_accounts_fragment():
     # --accounts`, and whatever digest comes after it.
     stamp_waiting_days(rows)
 
+    # One query for the whole card, so the Request column can link the numbers
+    # SAM already has a project for. Feed A only — the sibling Feed-B route
+    # deliberately does not call this: its cohort is `numbers - known`, so
+    # every row there is a number with no project by construction.
+    stamp_project_existence(db.session, rows)
+
     # Enrichment is best-effort and never fatal: an outage or an unconfigured
     # deployment leaves `person` None and flags the batch, so the card degrades
     # to counts and usernames rather than returning 500.
@@ -2486,3 +2493,18 @@ def xras_recheck(action_id: int):
         f'{headline} (action #{action_id})',
         detail=f'Nothing was applied. Recorded as #{new_id}; open it for details.',
     )
+
+
+# ---------------------------------------------------------------------------
+# XRAS Remediations — the operator WRITE surface, in its own module.
+#
+# Imported here at the foot, after `bp` and the helpers it borrows exist, which
+# is what makes the split possible without a circular import. Its routes attach
+# to this same blueprint; nothing else imports it, so removing this line
+# removes the whole feature from the URL map.
+#
+# It is separate because it is a different KIND of thing from everything above:
+# these routes write to a system SAM does not own, over HTTP, irreversibly. The
+# file's docstring carries the three rules that follow from that.
+# ---------------------------------------------------------------------------
+from . import xras_remediation_routes  # noqa: E402,F401  (side-effect import)

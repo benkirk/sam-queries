@@ -43,13 +43,13 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
     # reads it. The enumeration behind it is 21 pages and 60-90s, which no
     # htmx round-trip can afford, so the tab cannot compute this itself.
     #
-    # ⚠️ **TTL spans the overnight gap, on purpose.** The sweep runs on
-    # business hours (08:00-17:00 Mountain), so the longest interval between
-    # writes is 17:00 -> 08:00, about 15 hours. A TTL tuned to the *hourly*
-    # cadence would expire around 21:00 and leave the tab blank every morning
-    # until the first sweep of the day — the exact moment an operator looks.
-    # 24h covers the gap with room for a missed run; the data is only ever as
-    # stale as the last successful sweep, and the tab renders that timestamp.
+    # ⚠️ **TTL is 24x the sweep cadence, on purpose.** The sweep runs hourly,
+    # but a TTL tuned to that cadence would blank the tab after a couple of
+    # failed or skipped runs (an XRAS outage, the task disabled mid-incident)
+    # — and a failed index build deliberately publishes nothing, counting on
+    # the previous snapshot to carry. 24h rides out a full day of misses; the
+    # data is only ever as stale as the last successful sweep, and the tab
+    # renders that timestamp.
     'pending': BucketSpec(
         name='xras_pending',
         ttl_key='XRAS_PENDING_CACHE_TTL', ttl_default=86400,     # 1 day
@@ -57,8 +57,29 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
     ),
 })
 
-#: One key: the sweep publishes a single whole-process snapshot.
+#: The Feed-B account worklist. The sweep publishes a single whole-process
+#: snapshot under this key.
 _PENDING_KEY = 'worklist'
+
+#: The Remediations card's request index — a **second key in the same bucket**,
+#: written by the same sweep run.
+#:
+#: Two keys rather than one payload so the two feeds **fail independently**:
+#: if the index write hits the ``full`` branch, or building it throws, the
+#: account worklist still publishes and its tab still renders. One payload
+#: would couple them for no gain.
+#:
+#: A missing index is therefore a state worth naming rather than an error —
+#: the sweep is disabled by default, and it does not run outside business
+#: hours — which is why the card distinguishes "no index published" from
+#: "an index with nothing in it".
+#:
+#: ⚠️ This is **not** a compatibility boundary. The sweep and the webapp ship
+#: in the same image and the same Helm release, so nothing external consumes
+#: either key and neither shape is frozen. Change them freely; if a payload
+#: shape and its reader ever disagree, ``sam-admin cache --refresh`` is the
+#: answer, not a migration.
+_REQUESTS_KEY = 'requests_index'
 
 #: Test seam, matching the awards / fs-scans / jobs idiom: ``_adapters`` IS
 #: the cache's memo dict, so clearing it re-initialises the cache.
@@ -78,6 +99,27 @@ def cached_person(username: str, compute: Callable[[], Any]) -> Optional[Any]:
     would occupy two entries.
     """
     return _CACHE.get_or_compute('people', username.strip().casefold(), compute)
+
+
+def invalidate_person(username: str) -> None:
+    """Forget one cached person lookup.
+
+    ⚠️ **Load-bearing after a merge.** A merge deletes the source username in
+    XRAS, but this bucket holds it for four hours — so without this the very
+    card the operator just fixed keeps rendering the placeholder it merged
+    away, and re-merging it 404s. The service calls this for **both** the
+    source and the target: the source because it no longer exists, the target
+    because merge folds roles into it and its detail sheet is now different.
+
+    Casefolds the same way :func:`cached_person` does, or it would miss.
+    Absent keys are not an error — a merge from a card that never rendered the
+    person is perfectly ordinary.
+    """
+    adapter = _CACHE.adapter('people')
+    if adapter is None:
+        return
+    with adapter.lock:
+        adapter.pop(username.strip().casefold(), None)
 
 
 def cached_resources(compute: Callable[[], Any]) -> Optional[Any]:
@@ -104,18 +146,10 @@ def store_pending_worklist(payload: Any) -> str:
     `cronjob-tasks.yaml` did not carry `CACHE_REDIS_URL`. A bool could not tell
     the two apart, so the caller could not report the difference.
     """
-    adapter = _CACHE.adapter('pending')
-    if adapter is None:
-        return 'disabled'
-    with adapter.lock:
-        adapter.pop(_PENDING_KEY, None)
-        try:
-            adapter[_PENDING_KEY] = payload
-        except ValueError:
-            # Full with nothing expired to evict — skip rather than fail the
-            # sweep, which has already done the useful work.
-            return 'full'
-    return 'redis' if is_shared_backend(adapter) else 'local'
+    # 'full' back from the helper means the bucket had nothing expired to
+    # evict — skipped rather than failing the sweep, which has already done the
+    # useful work.
+    return _store('pending', _PENDING_KEY, payload)
 
 
 def is_shared_backend(adapter: Any) -> bool:
@@ -127,6 +161,112 @@ def is_shared_backend(adapter: Any) -> bool:
     return isinstance(adapter, RedisTTLAdapter)
 
 
+def store_requests_index(payload: Any) -> str:
+    """Publish the sweep's Remediations index. Same contract as
+    :func:`store_pending_worklist` — including returning **where it landed**,
+    because this is written from the same one-shot CronJob pod and a
+    process-local write there succeeds and then dies with the process.
+    """
+    return _store('pending', _REQUESTS_KEY, payload)
+
+
+def load_requests_index() -> Optional[Any]:
+    """Read the last published request index, or ``None``.
+
+    ``None`` is a distinct and meaningful answer: no sweep has published one
+    yet. That is the state for the first hour after this ships, and for as long
+    as the sweep stays disabled, and the card says so rather than rendering an
+    empty table that looks like "nothing to remediate".
+    """
+    return _load('pending', _REQUESTS_KEY)
+
+
+def patch_requests_index(request_number: str, entry: Optional[Any]) -> bool:
+    """Replace one entry in the published index, in place. ``True`` if it stuck.
+
+    ⚠️ **This is what makes a write visible in the same interaction.** The card
+    renders from an hourly snapshot, but an operator who withdraws an action
+    must not keep reading "Approved" for another fifty minutes, and re-running
+    the 60-90s enumeration per click is not on the table. So the service
+    re-fetches the one request it just changed and patches its entry here.
+
+    ⚠️ **Best-effort, last-write-wins — the read-modify-write is NOT atomic.**
+    The adapter's lock is honored, but on the Redis backend it is a documented
+    process-local no-op (``redis_ttl.py``), so two workers patching in the
+    same moment — or a patch racing the hourly sweep's publish — write back
+    two whole payloads and the second silently drops the first's edit. That
+    is accepted rather than engineered around: the write itself is already
+    verified and audited, a lost patch only makes one row lag until the next
+    sweep, and the operator population is a handful. If that trade ever stops
+    holding, the fix is a Redis-side compare-and-set, not a bigger lock.
+
+    *entry* of ``None`` removes the row. Callers should prefer patching a row
+    into its new state over dropping it — a row that vanishes on click reads as
+    a bug, while a row that changes reads as the effect.
+
+    ``False`` means there was nothing to patch (no index published, or the
+    request is not in it), which is not an error: the write itself already
+    happened and was verified, and the next sweep will pick the request up.
+    """
+    adapter = _CACHE.adapter('pending')
+    if adapter is None:
+        return False
+    with adapter.lock:
+        if _REQUESTS_KEY not in adapter:
+            return False
+        payload = adapter[_REQUESTS_KEY]
+        if not isinstance(payload, dict) or not isinstance(payload.get('rows'), list):
+            return False
+
+        wanted = str(request_number).strip()
+        rows = payload['rows']
+        index = next((i for i, row in enumerate(rows)
+                      if isinstance(row, dict)
+                      and str(row.get('request_number') or '').strip() == wanted),
+                     None)
+        if index is None:
+            return False
+
+        if entry is None:
+            rows.pop(index)
+        else:
+            rows[index] = entry
+
+        # Re-store rather than mutate in place: the Redis adapter serializes on
+        # assignment, so an in-place edit of the object we read back would
+        # change nothing on a shared backend and everything on a local one —
+        # the worst kind of difference to carry between dev and production.
+        adapter.pop(_REQUESTS_KEY, None)
+        try:
+            adapter[_REQUESTS_KEY] = payload
+        except ValueError:
+            return False
+    return True
+
+
+def _store(bucket: str, key: str, payload: Any) -> str:
+    adapter = _CACHE.adapter(bucket)
+    if adapter is None:
+        return 'disabled'
+    with adapter.lock:
+        adapter.pop(key, None)
+        try:
+            adapter[key] = payload
+        except ValueError:
+            return 'full'
+    return 'redis' if is_shared_backend(adapter) else 'local'
+
+
+def _load(bucket: str, key: str) -> Optional[Any]:
+    adapter = _CACHE.adapter(bucket)
+    if adapter is None:
+        return None
+    with adapter.lock:
+        if key not in adapter:
+            return None
+        return adapter[key]
+
+
 def load_pending_worklist() -> Optional[Any]:
     """Read the sweep's last published Feed-B result, or ``None``.
 
@@ -135,10 +275,4 @@ def load_pending_worklist() -> Optional[Any]:
     is deliberately distinguishable from a published-but-empty result (a real
     sweep that found nothing), which comes back as a payload with zero rows.
     """
-    adapter = _CACHE.adapter('pending')
-    if adapter is None:
-        return None
-    with adapter.lock:
-        if _PENDING_KEY not in adapter:
-            return None
-        return adapter[_PENDING_KEY]
+    return _load('pending', _PENDING_KEY)

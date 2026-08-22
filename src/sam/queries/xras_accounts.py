@@ -57,6 +57,7 @@ from sqlalchemy.orm import Session
 
 from sam.core.users import User
 from sam.integration.xras import XrasActionLog
+from sam.projects.projects import Project
 from sam.queries.xras_actions import XRAS_ACTION_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -747,6 +748,47 @@ def waiting_days(row: Dict[str, Any], *, today: Optional[date] = None
     # "0d". The cause is fixed where it belongs (compose sets TZ, as the chart
     # already does); this keeps the column honest if it ever recurs.
     return max(0, ((today or date.today()) - since).days)
+
+
+def stamp_project_existence(session: Session,
+                            rows: Sequence[Dict[str, Any]]) -> None:
+    """Stamp ``is_project`` onto every action, in place. **One query.**
+
+    A ``request_number`` is a projcode for Extension/Supplement/Adjustment and
+    a request token for New — and nothing in the row distinguishes them, since
+    the two are the same shape. The only way to know is to ask whether a
+    project by that name exists. Measured on a seeded stack: **30 of 41**
+    distinct numbers resolve, including four ``New`` actions, which is the
+    New-whose-projcode-already-exists case ``dispatch.select_service`` routes
+    to ``update``.
+
+    Applied by the CALLER, like :func:`stamp_waiting_days` and
+    :func:`enrich_worklist`, and for a sharper reason than either: this must
+    **not** go inside :func:`classify_accounts`, which Feed B also runs — from
+    the sweep, into a cache. A flag computed at sweep time and read an hour
+    later is a claim about the database that nothing rechecked. Feed B has no
+    use for it anyway: its cohort is `numbers - known`, so every row there is
+    by construction a number SAM has no project for.
+
+    Two states, not the three ``_annotate_project_existence`` gives the action
+    log. There, a projcode that fails to resolve means an action *already ran*
+    naming a project SAM does not have — worth an operator's attention, hence
+    the warning branch. Here the action has **not** completed; that is why the
+    account is missing. A number with no project yet is the expected case, so
+    there is no third state to draw.
+    """
+    actions = [a for row in rows for a in (row.get('actions') or ())]
+    for action in actions:
+        action['is_project'] = False
+
+    codes = {a['request_number'] for a in actions if a.get('request_number')}
+    if not codes:
+        return
+
+    known = {c for (c,) in session.query(Project.projcode)
+             .filter(Project.projcode.in_(sorted(codes))).all()}
+    for action in actions:
+        action['is_project'] = action.get('request_number') in known
 
 
 def stamp_waiting_days(rows: Sequence[Dict[str, Any]], *,

@@ -256,6 +256,37 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'projectDetailsModal', 'projectDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_event_form.html': [
         'auditDetailsModalBody'],
+    # The Remediations family. Every one of these is reached only from
+    # `xras.html`, the same single host page as the pending card above, and it
+    # includes partials/audit_details_modal.html — verified by grepping the
+    # routes in `xras_remediation_routes.py`, all of which render into that
+    # page's fragments and nowhere else.
+    #
+    # `xras_accounts_card.html` joins the list because the Accounts Needed tab
+    # now offers the same merge modal on a stuck placeholder — deliberately the
+    # same shell, so an operator meets one merge dialogue however they arrive.
+    #
+    # The three cards below also reach #userDetailsModal / #projectDetailsModal:
+    # a username or projcode the row has ALREADY resolved against SAM opens the
+    # shared entity modal, same as everywhere else in the app. Both shells come
+    # from base_allocations.html (:31 project, :33 user), which xras.html
+    # extends — so the single host page carries them.
+    'dashboards/allocations/partials/xras_accounts_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
+        'projectDetailsModal', 'projectDetailsModalBody',
+        'userDetailsModal', 'userDetailsModalBody'],
+    'dashboards/allocations/partials/xras_pending_requests_card.html': [
+        'userDetailsModal', 'userDetailsModalBody'],
+    'dashboards/allocations/partials/xras_remediations_card.html': [
+        'projectDetailsModal', 'projectDetailsModalBody'],
+    'dashboards/allocations/partials/xras_remediation_row.html': [
+        'auditDetailsModal', 'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_merge_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_action_form.html': [
+        'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_roles_form.html': [
+        'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_history_modal.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_table.html': [

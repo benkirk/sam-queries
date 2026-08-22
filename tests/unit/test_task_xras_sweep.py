@@ -24,12 +24,26 @@ from pathlib import Path
 import pytest
 
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import BusinessHourly, occurrence_key
+from scheduling.schedules import Hourly, occurrence_key
 from scheduling.tasks import xras_sweep as mod
 
 from factories import make_xras_opportunity_mapping
 
 pytestmark = pytest.mark.unit
+
+# ⚠️ One worker at a time for this file. The opportunity-mapping tests insert
+# rows under FIXED `opportunity_id` PKs — 535388 and the 999-series are
+# documented production measurements, not sequence values — and two xdist
+# workers inserting the same PK inside their savepoints deadlock; InnoDB's
+# deadlock rollback then destroys the savepoint ("SAVEPOINT sa_savepoint_1
+# does not exist"). Bites nearly every single-file parallel run; see
+# `serial_file_lock` in tests/conftest.py for why this is a lock and not
+# `--dist loadgroup`.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('xras_sweep_fixed_pks'):
+        yield
+
 
 NAME = 'xras_sweep'
 OCC = datetime(2033, 11, 16, 10, 30)      # naive UTC
@@ -65,11 +79,17 @@ class _StubClient:
     """A client whose enumeration is scripted, page by page."""
 
     def __init__(self, pages, *, fail_after=None, opportunities=(),
-                 open_opportunities=()):
+                 open_opportunities=(), extra_pages=None):
         self.pages = pages
         self.fail_after = fail_after
         self.opportunities = list(opportunities)
         self.open_opportunities = list(open_opportunities)
+        #: Per-status pages for the Remediations index passes. Empty by
+        #: default, which is the honest shape: a process with nothing awaiting
+        #: review returns nothing, and every pre-existing test here describes
+        #: only the Approved pass.
+        self.extra_pages = dict(extra_pages or {})
+        self.statuses_asked = []
         self.calls = 0
 
     def get_open_opportunities(self):
@@ -90,7 +110,10 @@ class _StubClient:
         return list(self.opportunities)
 
     def iter_request_pages(self, *, status=None, page_size=None, max_pages=None):
-        for index, page in enumerate(self.pages):
+        self.statuses_asked.append(status)
+        pages = (self.extra_pages.get(status, [])
+                 if status in mod.EXTRA_STATUSES else self.pages)
+        for index, page in enumerate(pages):
             if max_pages is not None and index >= max_pages:
                 return
             if self.fail_after is not None and index >= self.fail_after:
@@ -104,11 +127,12 @@ class _StubClient:
 def wire(monkeypatch):
     """Configure the API and swap in a stub client and person lookup."""
     def configure(pages=(), *, people=None, fail_after=None,
-                  open_opportunities=()):
+                  open_opportunities=(), extra_pages=None):
         monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
         monkeypatch.setenv('XRAS_API_KEY', 'k')
         client = _StubClient(list(pages), fail_after=fail_after,
-                             open_opportunities=open_opportunities)
+                             open_opportunities=open_opportunities,
+                             extra_pages=extra_pages)
         monkeypatch.setattr(
             'sam.integration.xras_api.XrasApiClient.from_environment',
             classmethod(lambda cls, config=None: client))
@@ -143,15 +167,21 @@ class TestRegistration:
         assert params == ['ctx'], (
             f'the registered callable takes {params}; a task body takes only ctx')
 
-    def test_it_runs_hourly_through_the_business_day(self):
+    def test_it_runs_hourly_around_the_clock(self):
         """The cadence IS the Feed-B tab's freshness — the tab renders what
         this publishes, so a nightly sweep would show an operator yesterday's
-        queue all day."""
+        queue all day, and a business-day one gave the first operator in on a
+        Monday a snapshot from Friday afternoon.
+
+        ⚠️ `Hourly`, not `BusinessHourly`: this task only refreshes a cache,
+        unlike its sibling `xras_notices`, which mails people and therefore
+        stays inside the business day. `Hourly` is UTC and accepts no `tz` —
+        which is the point, since a local-wall hourly schedule drops a slot
+        each fall and risks merging one each spring.
+        """
         schedule = TASKS[NAME].schedule
-        assert isinstance(schedule, BusinessHourly)
-        assert (schedule.minute, schedule.start_hour, schedule.end_hour) == (0, 8, 17)
-        assert schedule.weekdays == (0, 1, 2, 3, 4)
-        assert schedule.tz == 'America/Denver'
+        assert isinstance(schedule, Hourly)
+        assert schedule.minute == 0
 
     def test_it_needs_sam_and_not_status(self):
         assert set(TASKS[NAME].needs) == {'sam'}
@@ -880,6 +910,30 @@ class TestABrandNewOpportunityIsSeenBeforeAnyRequestExists:
     FALL_2026 = _opportunity(535388, 'Large Allocation (University) - Fall 2026',
                              'Large', 500023, 500022, extra_panels=(500032,))
 
+    @pytest.fixture(autouse=True)
+    def _unmapped(self, session):
+        """Guarantee 535388 is unmapped, instead of assuming the snapshot is.
+
+        ⚠️ **This class describes a BRAND-NEW opportunity, so every assertion
+        below depends on that id being absent — and the obfuscated snapshot is
+        not a fixed thing.** `xras_sweep` writes mapping rows itself
+        (`source='task:xras_sweep'`), so the dev database accumulates them, and
+        a regeneration carries whatever it had accumulated into CI.
+
+        That is exactly what happened on 2026-08-21: the snapshot went from 13
+        mapping rows to 43, 535388 among them, and all three tests here failed
+        in CI while passing locally against the older blob. The id stays real
+        because the measurement is the documentation — this fixture just stops
+        the test borrowing a precondition it does not control.
+
+        Deleted inside the per-test SAVEPOINT, so nothing leaks to other tests.
+        """
+        from sam.integration.xras import XrasOpportunityAllocationType
+
+        session.query(XrasOpportunityAllocationType).filter_by(
+            opportunity_id=535388).delete(synchronize_session=False)
+        session.flush()
+
     def test_it_is_mapped_with_no_requests_anywhere(self, ctx, wire, session):
         """No pages at all — nothing has ever been submitted against it."""
         from sam.integration.xras import SOURCE_SWEEP, XrasOpportunityAllocationType
@@ -971,3 +1025,255 @@ class TestTheCapTakesTheNewestFirst:
         assert session.get(XrasOpportunityAllocationType, 999999) is not None, \
             'the newly-posted opportunity was crowded out by the backfill'
         assert session.get(XrasOpportunityAllocationType, 999101) is None
+
+
+# ── the Remediations index (second cache key) ───────────────────────────
+
+def _pending_request(request_id, number, *, status='Approved',
+                     actions=(), username='ghost-user-1', reconciled=False):
+    return {
+        'requestId': request_id, 'requestNumber': number, 'endDate': None,
+        'requestStatus': status, 'requestType': 'New',
+        'opportunityId': 5, 'opportunity_name': 'Small',
+        'roles': [{'person': {'username': username, 'firstName': 'Ada',
+                              'lastName': 'Invented', 'isReconciled': reconciled},
+                   'roles': [{'roleId': 1, 'role': 'PI', 'roleTypeId': 13}]}],
+        'actions': [{'actionId': a, 'actionType': 'New', 'actionStatus': s}
+                    for (a, s) in actions],
+    }
+
+
+class TestTheRequestsIndex:
+    """The Remediations card's feed — a second key, same bucket, same run."""
+
+    def test_the_worklist_payload_shape_is_unchanged(self, ctx, wire):
+        """A refactor guard, NOT a compatibility pin.
+
+        The commit that added the index also moved `store_pending_worklist`
+        onto a shared helper and restructured this task's publish region, and
+        this asserts that pass left the worklist payload alone.
+
+        Nothing external consumes this shape — the sweep and the webapp ship in
+        one image — so **change this test freely when you mean to change the
+        payload**. It exists to make an accidental change loud, not to freeze
+        anything.
+        """
+        from sam.integration.xras_api.cache import load_pending_worklist
+        wire([[_request(1, 'NCAR0001')]])
+        mod.xras_sweep(ctx())
+        worklist = load_pending_worklist()
+        assert set(worklist) == {'generated_at', 'window_days', 'status',
+                                 'requests_seen', 'requests_in_window',
+                                 'budget_exhausted', 'pending_push',
+                                 'pending_push_sample', 'counts', 'rows'}
+
+    def test_it_publishes_a_second_key(self, ctx, wire):
+        from sam.integration.xras_api.cache import load_requests_index
+        wire([[_pending_request(1, 'NCAR0001')]])
+        mod.xras_sweep(ctx())
+        index = load_requests_index()
+        assert [r['request_number'] for r in index['rows']] == ['NCAR0001']
+
+    def test_the_extra_statuses_are_swept_too(self, ctx, wire):
+        from sam.integration.xras_api.cache import load_requests_index
+        wire([[_pending_request(1, 'NCAR0001')]],
+             extra_pages={'Submitted': [[_pending_request(2, 'NCAR0002',
+                                                          status='Submitted')]],
+                          'Under Review': [[_pending_request(3, 'NCAR0003',
+                                                             status='Under Review')]]})
+        mod.xras_sweep(ctx())
+        rows = load_requests_index()['rows']
+        assert {r['request_number'] for r in rows} == {'NCAR0001', 'NCAR0002',
+                                                       'NCAR0003'}
+
+    def test_the_status_env_var_governs_only_the_primary_pass(self, ctx, wire,
+                                                              monkeypatch):
+        """A typo'd chart value must not silently drop the remediation feed."""
+        monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_STATUS', 'Rejected')
+        client = wire([[_pending_request(1, 'NCAR0001', status='Rejected')]],
+                      extra_pages={'Submitted': [[_pending_request(
+                          2, 'NCAR0002', status='Submitted')]]})
+        mod.xras_sweep(ctx())
+        assert client.statuses_asked == ['Rejected', 'Submitted', 'Under Review']
+
+    def test_an_already_pushed_approved_request_is_excluded(self, ctx, wire,
+                                                            session):
+        """Its handoff happened; there is nothing here to remediate."""
+        from factories.projects import make_project
+
+        from sam.integration.xras_api.cache import load_requests_index
+        project = make_project(session)
+        wire([[_pending_request(1, project.projcode),
+               _pending_request(2, 'NCAR9999')]])
+        mod.xras_sweep(ctx())
+        numbers = {r['request_number'] for r in load_requests_index()['rows']}
+        assert project.projcode not in numbers
+        assert 'NCAR9999' in numbers
+
+    def test_a_submitted_request_is_kept_even_when_sam_knows_it(self, ctx, wire,
+                                                                session):
+        """Worth an operator's eye precisely because it is unexpected."""
+        from factories.projects import make_project
+
+        from sam.integration.xras_api.cache import load_requests_index
+        project = make_project(session)
+        wire([], extra_pages={'Submitted': [[_pending_request(
+            2, project.projcode, status='Submitted')]]})
+        mod.xras_sweep(ctx())
+        numbers = {r['request_number'] for r in load_requests_index()['rows']}
+        assert project.projcode in numbers
+
+    def test_the_index_ignores_the_period_of_performance_window(self, ctx, wire):
+        """⚠️ The stale ones are the point — a window would hide exactly them."""
+        from sam.integration.xras_api.cache import (load_pending_worklist,
+                                                    load_requests_index)
+        ancient = _pending_request(1, 'NCAR0001')
+        ancient['endDate'] = '2015-12-31'
+        wire([[ancient]])
+        detail = mod.xras_sweep(ctx()).detail
+
+        assert detail['requests_in_window'] == 0, 'the worklist drops it'
+        assert load_pending_worklist()['rows'] == []
+        assert [r['request_number'] for r in load_requests_index()['rows']] \
+            == ['NCAR0001'], 'the index keeps it'
+
+    def test_each_extra_status_reports_its_own_budget(self, ctx, wire,
+                                                      monkeypatch):
+        """One cohort outgrowing its cap must not read as the whole index
+        truncating — nor be hidden by another cohort that fitted."""
+        monkeypatch.setattr(mod, 'EXTRA_STATUS_MAX_PAGES', 1)
+        wire([], extra_pages={
+            'Submitted': [[_pending_request(2, 'NCAR0002', status='Submitted')],
+                          [_pending_request(3, 'NCAR0003', status='Submitted')]],
+            'Under Review': [],
+        })
+        extra = mod.xras_sweep(ctx()).detail['extra_statuses']
+        assert extra['Submitted']['budget_exhausted'] is True
+        assert extra['Under Review']['budget_exhausted'] is False
+
+    def test_an_extra_pass_outage_costs_that_status_only(self, ctx, wire,
+                                                         monkeypatch):
+        from sam.integration.xras_api.base import XrasSourceUnavailable
+
+        from sam.integration.xras_api.cache import load_requests_index
+        client = wire([[_pending_request(1, 'NCAR0001')]])
+
+        real = client.iter_request_pages
+
+        def flaky(*, status=None, **kw):
+            if status == 'Submitted':
+                raise XrasSourceUnavailable('down')
+            return real(status=status, **kw)
+
+        monkeypatch.setattr(client, 'iter_request_pages', flaky)
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['extra_statuses']['Submitted']['seen'] == 0
+        assert detail['unavailable_errors'] == 1
+        # The Approved half still published.
+        assert [r['request_number'] for r in load_requests_index()['rows']] \
+            == ['NCAR0001']
+
+    def test_the_entries_are_the_shared_builders_output(self, ctx, wire):
+        """The sweep has no private copy of this derivation."""
+        from sam.integration.xras_api.cache import load_requests_index
+        from sam.queries.xras_requests import request_index_entry
+
+        payload = _pending_request(1, 'NCAR0001', actions=((7, 'Approved'),))
+        wire([[payload]])
+        mod.xras_sweep(ctx())
+        assert load_requests_index()['rows'][0] == request_index_entry(
+            payload, pending_push=True)
+
+    def test_the_detail_carries_counts_not_rows(self, ctx, wire):
+        """`detail` is JSON truncated at 60 kB — the rows live in the cache."""
+        wire([[_pending_request(1, 'NCAR0001')]])
+        detail = mod.xras_sweep(ctx()).detail
+        assert detail['index_requests'] == 1
+        assert 'rows' not in detail['extra_statuses']
+        assert detail['index_publish_backend'] in ('redis', 'local', 'disabled')
+
+
+class TestAFailedIndexBuildDoesNotPublish:
+    """⚠️ ``[]`` is a real answer (nothing to remediate) and publishes; a
+    *failed* build must publish nothing, because replacing the last good
+    snapshot with ``[]`` renders the healthy empty state over a blind hour —
+    and the 24h TTL exists precisely to carry the good snapshot across it."""
+
+    def _seed_good_index(self):
+        from sam.integration.xras_api.cache import store_requests_index
+        store_requests_index({'generated_at': datetime(2033, 11, 16, 9, 0),
+                              'statuses': ['Approved'], 'extra_statuses': {},
+                              'rows': [{'request_number': 'NCAR0001'}]})
+
+    def test_a_projcode_lookup_failure_fails_the_build(self, ctx, wire):
+        """None, not [] — without the pending classification every entry
+        would be wrong."""
+        client = wire([])
+
+        class Boom:
+            def query(self, *args, **kwargs):
+                raise RuntimeError('db went away')
+
+        detail = {'unavailable_errors': 0, 'extra_statuses': {},
+                  'index_requests': 0}
+        result = mod._build_requests_index(
+            ctx(), client, Boom(), [_pending_request(1, 'NCAR0001')], detail)
+        assert result is None
+
+    def test_a_failed_build_keeps_the_previous_index(self, ctx, wire,
+                                                     monkeypatch):
+        from sam.integration.xras_api.cache import load_requests_index
+        wire([[_pending_request(1, 'NCAR0002')]])
+        self._seed_good_index()
+        monkeypatch.setattr(mod, '_build_requests_index',
+                            lambda *args, **kwargs: None)
+
+        detail = mod.xras_sweep(ctx()).detail
+
+        assert detail['index_published'] is False
+        assert detail['index_publish_backend'] == 'skipped'
+        assert detail['index_skipped'] == 'build failed'
+        assert [r['request_number'] for r in load_requests_index()['rows']] \
+            == ['NCAR0001'], 'the last good snapshot must survive'
+
+    def test_a_total_outage_keeps_the_previous_index(self, ctx, wire):
+        """Primary enumeration down, extras empty: nothing was read anywhere,
+        so an empty cohort is not evidence of an empty queue."""
+        from sam.integration.xras_api.cache import load_requests_index
+        wire([[_pending_request(1, 'NCAR0002')]], fail_after=0)
+        self._seed_good_index()
+
+        detail = mod.xras_sweep(ctx()).detail
+
+        assert detail['index_published'] is False
+        assert 'index_skipped' in detail
+        assert [r['request_number'] for r in load_requests_index()['rows']] \
+            == ['NCAR0001']
+
+    def test_a_genuinely_empty_index_still_publishes(self, ctx, wire):
+        """The healthy answer must keep publishing — this guard is for
+        failures, not for quiet weeks."""
+        from sam.integration.xras_api.cache import load_requests_index
+        self._seed_good_index()
+        wire([])
+        detail = mod.xras_sweep(ctx()).detail
+        assert 'index_skipped' not in detail
+        assert load_requests_index()['rows'] == []
+
+
+class TestAnOverlappingPrimaryStatusDoesNotDuplicate:
+    """`SAM_TASKS_XRAS_SWEEP_STATUS=all` re-reads the extras' cohorts in the
+    primary pass; without a dedupe the same request rendered twice, with two
+    Withdraw buttons — and the post-write patch rewrites only the first."""
+
+    def test_the_index_carries_each_request_once(self, ctx, wire, monkeypatch):
+        from sam.integration.xras_api.cache import load_requests_index
+        monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_STATUS', 'all')
+        submitted = _pending_request(2, 'NCAR0002', status='Submitted')
+        wire([[_pending_request(1, 'NCAR0001'), submitted]],
+             extra_pages={'Submitted': [[submitted]]})
+
+        mod.xras_sweep(ctx())
+
+        numbers = [r['request_number'] for r in load_requests_index()['rows']]
+        assert sorted(numbers) == ['NCAR0001', 'NCAR0002']

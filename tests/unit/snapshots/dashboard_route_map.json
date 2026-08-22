@@ -1540,6 +1540,20 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_merge",
+    "/allocations/xras_merge/<path:username>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_merge_form",
+    "/allocations/xras_merge_form/<path:username>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_notify",
     "/allocations/xras_notify/<int:project_id>",
     [
@@ -1575,6 +1589,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_remediations_fragment",
+    "/allocations/xras_remediations",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_restore",
     "/allocations/xras_restore/<int:project_id>",
     [
@@ -1582,8 +1603,57 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_resubmit",
+    "/allocations/xras_resubmit/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_resubmit_form",
+    "/allocations/xras_resubmit_form/<path:request_number>/<int:action_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_role_add",
+    "/allocations/xras_role_add/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_role_remove",
+    "/allocations/xras_role_remove/<path:request_number>/<int:role_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_roles_form",
+    "/allocations/xras_roles_form/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_window_fragment",
     "/allocations/xras_window_fragment",
+    [
+      "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_withdraw",
+    "/allocations/xras_withdraw/<path:request_number>/<int:action_id>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_withdraw_form",
+    "/allocations/xras_withdraw_form/<path:request_number>/<int:action_id>",
     [
       "GET"
     ]

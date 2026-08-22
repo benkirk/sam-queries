@@ -112,10 +112,18 @@ def test_the_request_is_a_column_and_a_chip(page):
 
 
 def test_the_row_icons_are_gone(page):
-    """Per-row glyphs repeated what the text already said. The two remaining
-    `fa-circle-info` marks sit on muted notices, not on rows."""
+    """Per-row glyphs repeated what the text already said — the `placeholder`
+    tell is a text badge for exactly that reason. The two remaining
+    `fa-circle-info` marks sit on muted notices, not on rows.
+
+    ⚠️ The chevron is the one deliberate exception, and it is not decoration:
+    it is the row's expand affordance, the house one (`.collapse-icon`), and
+    the only thing that announces the row can be opened at all. Excluded by
+    class rather than loosening the count, so a genuine glyph creeping back
+    onto a row still fails.
+    """
     card = _load(page)
-    assert card.locator('tbody i.fas').count() == 0
+    assert card.locator('tbody i.fas:not(.collapse-icon)').count() == 0
 
 
 def test_the_pending_requests_tab_states_are_distinct(page):
@@ -168,18 +176,25 @@ def test_a_chip_filters_without_a_page_load(page):
 
 
 def test_a_row_expands_to_its_actions(page):
-    """The toggle is on the <tr>, which is only safe because the row carries
-    no buttons — see dashboards/fragments/collapse.html."""
+    """⚠️ The toggle is on the row's CELLS, not the <tr>.
+
+    It used to be on the <tr>, which was safe only while the row carried no
+    buttons. The username is now a link when SAM has the account, and
+    Bootstrap's collapse data-api runs in the capture phase — an ancestor
+    toggle would fire before the link's own handler and flip the row open
+    behind the modal. See dashboards/fragments/collapse.html.
+    """
     card = _load(page)
     if _rows(card).count() == 0:
         pytest.skip('worklist is empty on this stack; nothing to expand')
 
     first = _rows(card).first
-    body_id = first.get_attribute('data-bs-target')
-    assert body_id, 'the row carries no collapse target'
+    trigger = first.locator('[data-bs-toggle="collapse"]').first
+    body_id = trigger.get_attribute('data-bs-target')
+    assert body_id, 'no cell in the row carries a collapse target'
     panel = page.locator(body_id)
     assert not panel.is_visible()
-    first.click()
+    trigger.click()
     page.wait_for_timeout(600)
     assert panel.is_visible(), 'the row did not expand'
     # The expansion lists the actions that named this username. Compared
@@ -200,3 +215,43 @@ def test_the_card_logs_no_console_errors(page):
         _rows(card).first.click()
         page.wait_for_timeout(600)
     assert not errors, f'console errors on the XRAS page: {errors}'
+
+
+class TestTheUsernameLink:
+    """A username SAM already knows opens the shared user modal.
+
+    ⚠️ Guarded on a link existing. Only `inactive` rows link — a `users` row
+    that exists and is deactivated — and on a fresh snapshot every row is
+    `absent` instead, which is the healthy shape. An empty stack must not be a
+    red build.
+    """
+
+    def test_it_opens_the_user_modal_without_expanding_the_row(self, page):
+        card = _load(page)
+        link = card.locator('a[data-bs-target="#userDetailsModal"]')
+        if link.count() == 0:
+            pytest.skip('no Reactivation row on this stack')
+
+        open_before = card.locator('tr.collapse.show').count()
+        link.first.click()
+        page.wait_for_timeout(1200)
+        assert page.locator('#userDetailsModal.show').count() == 1
+        # ⚠️ The capture-phase half: an ancestor toggle would have flipped the
+        # row open behind the modal. See fragments/collapse.html.
+        assert card.locator('tr.collapse.show').count() == open_before
+
+    def test_the_chevron_still_expands_the_row(self, page):
+        """The chevron kept its place at the start of the row and took its own
+        trigger, the username cell having none."""
+        card = _load(page)
+        rows = _rows(card)
+        if rows.count() == 0:
+            pytest.skip('no accounts needed on this stack')
+
+        icon = rows.first.locator('.collapse-icon')
+        assert icon.count() == 1
+        flat = icon.evaluate('e => getComputedStyle(e).transform')
+        icon.click()
+        page.wait_for_timeout(500)
+        assert card.locator('tr.collapse.show').count() >= 1
+        assert icon.evaluate('e => getComputedStyle(e).transform') != flat
