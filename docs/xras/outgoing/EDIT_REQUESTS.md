@@ -351,3 +351,54 @@ restore). All three throwaway requests re-verified pristine after both phases.
 
 **Forward plan:** see `docs/xras/outgoing/REQUEST_EDITOR.md` — the full-request
 editor, the `MANAGE_XRAS` vs new `ADMIN_XRAS` tiering, and the build sequencing.
+
+---
+
+## 8. Phase 0.75 findings — the B2 metadata surface (2026-08-22, COMPLETE)
+
+Ran to answer, before building **Part B2**: do the request/action **metadata**
+editors (attributes, action fields, FoS, grants, publications) authorize under
+our current key (`submit` + PI), and what is each one's wire shape? All probed
+live against throwaway **NCAR0798** (requestId 1179871, action 53819, PI `lam`);
+every write reversible, **NCAR0798 restored pristine** at the end.
+
+### Verdict: every B2 group we probed is PERMITTED under `submit` + PI.
+
+| Group | Endpoint(s) | Transport | Result |
+|---|---|---|---|
+| Request attributes | `PUT /v1/requests/<rid>/attributes` | **query params** | ✅ 200, verified (`shortTitle` None→'Probe [p]'→None) |
+| Action fields | `PUT /v1/requests/<rid>/actions/<aid>` | **query params** | ✅ 200, verified (`userComments` round-trip) |
+| Grants | `POST /grants` → `{grantId}`; `DELETE /grants/<grantId>` | **query params** | ✅ 200 both; created 176845, deleted, set restored |
+| Fields of science | `PUT /fos/<fosTypeId>`; `DELETE /fos/<fosTypeId>` | **query params** | ✅ 200; **requires `isPrimary`** (400 "isPrimary not specified" without it) |
+| Publications | `POST /publications` → `{publicationId}`; `DELETE /publications/<id>` | ⚠️ **JSON body** | ✅ 200 (created 105312, deleted); query params 400 "JSON parse error" |
+
+### Mechanics (fold into `XrasAdminClient` for B2)
+
+- **Same authorization as Part B**: `XA-CONTEXT: submit`, `XA-USER` = the PI
+  (`resolve_pi`). No admin context needed for any metadata write — these are
+  request/action level, not stage-scoped like amounts.
+- **Transport is query params for all but publications.** `PUT /attributes`,
+  `PUT /actions/<aid>`, `POST/DELETE /grants`, `PUT/DELETE /fos/<id>` all take
+  **params** (like amounts/dates). **`POST /publications` takes a JSON body** —
+  the single exception, so `_write` needs an optional `json=` alongside `params=`
+  (additive; today's callers pass neither a body).
+- **Sub-resource creates return their id** in `result`: `grantId`,
+  `publicationId` — captured for the audit row and the delete path, exactly like
+  `allocationDateId`.
+- **FoS needs `isPrimary`** on the PUT; it is a set-membership toggle keyed on
+  `fosTypeId` (no create/return-id).
+- **Verify-by-reread** works for all: attributes/action-fields compare the field
+  back; grants/publications confirm the id appears/disappears; FoS confirms the
+  `fosTypeId` is in/out of the set.
+
+### Not probed (deferred within B2)
+- `resource_attributes` / `opportunity_attributes` (per-action Q&A) — almost
+  certainly the same params shape, but unprobed; probe before shipping.
+- **Documents** (`POST /actions/<aid>/documents`) — needs a **file upload**
+  (multipart), a different transport and UX; deferred beyond B2 (a link/list is
+  read-only in Part A already).
+
+**Consequence for B2:** the metadata editors are buildable now under the
+existing key — no elevated-key blocker (unlike the Approved *stage*, Phase 0.5).
+Client verbs mirror Part B (params + verify-by-reread), plus a JSON-body path for
+publications and an `isPrimary` param for FoS.
