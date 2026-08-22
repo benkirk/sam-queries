@@ -107,6 +107,41 @@ def _publish(*payloads, pending=True):
         'rows': [request_index_entry(p, pending_push=pending) for p in payloads]})
 
 
+def _detail_payload(number='EXAM0001'):
+    """A reports/request_numbers-shaped payload with the rich detail sections.
+
+    Mirrors the live shape probed 2026-08-22: `resources[]` is a flat list, one
+    entry per (resource × stage), each self-describing (`displayResourceName`,
+    `resourceUnits`, `amount`, `type`).
+    """
+    payload = _payload(number)
+    payload.update({
+        'abstract': 'A study of atmospheric turbulence.',
+        'title': 'Turbulence at scale',
+        'shortTitle': 'Turbulence',
+        'fos': [{'fosTypeId': 500003, 'fosNum': '1', 'fosName': 'Atmospheric Science',
+                 'isPrimary': True}],
+        'grants': [{'grantId': 1, 'grantNumber': 'AGS-123', 'title': 'A grant',
+                    'piName': 'P Eye', 'beginDate': '2026-01-01'}],
+        'publicURL': 'https://xras.example.invalid/req/EXAM0001',
+    })
+    payload['actions'][0]['resources'] = [
+        {'resourceId': 530201, 'displayResourceName': 'Cheyenne',
+         'resourceUnits': 'Core-hours', 'amount': '555.0', 'comments': None,
+         'type': 'Requested'},
+        {'resourceId': 530201, 'displayResourceName': 'Cheyenne',
+         'resourceUnits': 'Core-hours', 'amount': '500.0', 'comments': None,
+         'type': 'Approved'},
+    ]
+    payload['actions'][0]['allocationDates'] = [
+        {'allocationDateId': 9, 'beginDate': '2026-01-01', 'endDate': '2026-12-31',
+         'type': 'Requested'}]
+    payload['actions'][0]['documents'] = [
+        {'documentId': 1, 'documentType': 'Supp_Info', 'title': 'Award Letter',
+         'filename': 'award.pdf', 'size': 44042}]
+    return payload
+
+
 def _reader(monkeypatch, payload=_payload(), person=None, candidates=()):
     """Swap in a scripted read client for every live lookup."""
     client = MagicMock()
@@ -135,6 +170,7 @@ class TestAccessControl:
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_roles_form/EXAM0001',
+        '/allocations/xras_request_detail/EXAM0001',
     ])
     def test_every_modal_is_gated(self, view_only_client, path):
         assert view_only_client.get(path).status_code == 403
@@ -619,6 +655,7 @@ class TestModalGets:
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
         '/allocations/xras_roles_form/EXAM0001',
+        '/allocations/xras_request_detail/EXAM0001',
     ])
     def test_an_outage_degrades_with_a_200(self, auth_client, armed,
                                            monkeypatch, path):
@@ -633,6 +670,72 @@ class TestModalGets:
         response = auth_client.get(path)
         assert response.status_code == 200
         assert 'not answering' in response.get_data(as_text=True)
+
+
+# ── the read-only detail modal (Part A) ─────────────────────────────────
+
+class TestRequestDetailModal:
+    """The read-only detail modal, and the surface the editors hang off.
+
+    Its data source is the live `reports/request_numbers` payload, which is
+    self-describing — resources carry their own name, units and stage — so the
+    modal renders those directly with no resource-key mapping.
+    """
+
+    def test_a_permitted_operator_gets_200(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        response = auth_client.get('/allocations/xras_request_detail/EXAM0001')
+        assert response.status_code == 200
+
+    def test_it_renders_resources_grouped_by_stage(self, auth_client, armed,
+                                                   monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'EXAM0001' in body
+        # The stage labels that make requested-vs-awarded legible.
+        assert 'Requested' in body and 'Approved' in body
+        # Self-describing resource name + units, straight from the payload.
+        assert 'Cheyenne' in body
+        assert 'Core-hours' in body
+
+    def test_it_renders_the_rich_sections(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'A study of atmospheric turbulence.' in body   # abstract
+        assert 'Atmospheric Science' in body                  # FoS
+        assert 'AGS-123' in body                              # grant
+        assert 'award.pdf' in body                            # document
+
+    def test_it_carries_the_oob_title(self, auth_client, armed, monkeypatch):
+        """The shared modal shell reads the title from an OOB swap."""
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'id="auditDetailsModalTitle"' in body
+        assert 'hx-swap-oob="true"' in body
+
+    def test_it_carries_the_shared_write_buttons(self, auth_client, armed,
+                                                 monkeypatch):
+        """Roster + actions come from the SHARED include, so the modal offers
+        the same verbs as the card row — here, Withdraw on an Approved action
+        and the roster's Roles editor entry point."""
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'Withdraw…' in body
+        assert 'Roles…' in body
+        # But NOT a Details… link back to itself.
+        assert 'Details…' not in body
+
+    def test_the_card_row_offers_a_details_link(self, auth_client, armed,
+                                                monkeypatch):
+        """A "Details…" entry point in the non-toggle SAM cell of the card."""
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '/allocations/xras_request_detail/EXAM0001' in body
+        assert 'Details…' in body
 
 
 # ── POST validation ─────────────────────────────────────────────────────

@@ -44,6 +44,7 @@ from sam.integration.xras_api import (
     xras_write_configured,
 )
 from sam.manage import xras_remediation as remediation
+from sam.queries.xras_requests import _as_date, request_index_entry
 from sam.schemas.forms import (
     XrasMergeForm,
     XrasRemediationReasonForm,
@@ -1065,3 +1066,120 @@ def xras_role_remove(request_number: str, role_id: int):
     response = current_app.make_response(render_template(_ROLES_FORM, **refreshed))
     response.headers['HX-Trigger'] = 'refreshXrasTab'
     return response
+
+
+# ---------------------------------------------------------------------------
+# read-only request detail (Part A) — the surface future editors hang off
+# ---------------------------------------------------------------------------
+
+_DETAIL_FORM = 'dashboards/allocations/partials/xras_request_detail.html'
+
+#: The XRAS "stage" model, in the order the modal shows it: what was asked for,
+#: what the panel recommended, what was awarded. Every ``resources[]`` entry in
+#: a ``reports/request_numbers`` payload carries one of these as its ``type``,
+#: and a resource appears once per stage — so grouping by stage is what makes
+#: requested-vs-awarded legible at a glance.
+_RESOURCE_STAGES = ('Requested', 'Recommended', 'Approved')
+
+
+def _detail_actions(payload):
+    """Per-action view model for the detail modal: resources grouped by stage.
+
+    Built in Python because Jinja's ``groupby`` cannot both preserve a fixed
+    stage order and keep a trailing bucket for any unexpected stage. Each stage
+    with no resources is dropped, so the template renders only what exists; an
+    unrecognised ``type`` lands in an ``Other`` bucket rather than vanishing.
+    """
+    actions = []
+    for action in payload.get('actions') or ():
+        if not isinstance(action, dict):
+            continue
+        buckets = {stage: [] for stage in _RESOURCE_STAGES}
+        other = []
+        for res in action.get('resources') or ():
+            if not isinstance(res, dict):
+                continue
+            stage = res.get('type')
+            (buckets[stage] if stage in buckets else other).append(res)
+        stages = [(stage, buckets[stage]) for stage in _RESOURCE_STAGES
+                  if buckets[stage]]
+        if other:
+            stages.append(('Other', other))
+        actions.append({
+            'action_id': action.get('actionId'),
+            'action_type': action.get('actionType'),
+            'action_status': action.get('actionStatus'),
+            'user_comments': action.get('userComments'),
+            'stages': stages,
+            # Dates arrive as raw ISO strings; parse to date objects here (the
+            # same parser the entry builder uses) so the template can fmt_date
+            # them — fmt_date raises on a str.
+            'dates': [{'begin': _as_date(d.get('beginDate')),
+                       'end': _as_date(d.get('endDate')),
+                       'type': d.get('type')}
+                      for d in (action.get('allocationDates') or ())
+                      if isinstance(d, dict)],
+            'documents': [d for d in (action.get('documents') or ())
+                          if isinstance(d, dict)],
+        })
+    return actions
+
+
+def _detail_grants(payload):
+    """Grants with their raw ISO dates parsed for ``fmt_date``."""
+    grants = []
+    for g in payload.get('grants') or ():
+        if not isinstance(g, dict):
+            continue
+        grants.append({**g,
+                       'begin': _as_date(g.get('beginDate')),
+                       'end': _as_date(g.get('endDate'))})
+    return grants
+
+
+@bp.route('/xras_request_detail/<path:request_number>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_request_detail(request_number: str):
+    """Modal body: the full read-only detail of one request.
+
+    The read-only companion to the write modals, and the surface the editors
+    (Part B/C) will hang off. Renders resources grouped by XRAS stage
+    (Requested / Recommended / Approved) so requested-vs-awarded is visible, the
+    rich request sections (abstract, FoS, grants, documents), and — via the
+    shared ``_xras_remediation_actions`` include — the same roster and write
+    buttons the card row offers, so the two can never drift.
+
+    Degrades with a **200** on an XRAS outage, like every modal GET here: htmx
+    will not swap a 4xx into an already-open modal.
+    """
+    try:
+        payload = _live_request(request_number)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras request detail: %s', exc)
+        return _degraded('Showing this request needs a live read from XRAS, '
+                         'and XRAS is not answering.')
+    if payload is None:
+        return htmx_modal_not_found('Request')
+
+    entry = _entry(request_number)
+    # Reproduces the exact `row` shape the shared include expects (roster +
+    # actions with can_withdraw/can_resubmit), so the modal's buttons are
+    # identical to the card's by construction. `pending_push` only feeds the
+    # card's SAM badge, which the include does not render — default it safely.
+    row = request_index_entry(
+        payload, pending_push=bool((entry or {}).get('pending_push', True)))
+    xa_user, is_pi, placeholder = _impersonation(entry, live=payload)
+
+    return render_template(
+        _DETAIL_FORM,
+        request_number=request_number,
+        payload=payload,
+        row=row,
+        detail_actions=_detail_actions(payload),
+        grants=_detail_grants(payload),
+        xa_user=xa_user,
+        xa_user_is_pi=is_pi,
+        xa_user_is_placeholder=placeholder,
+        write_enabled=xras_write_configured(),
+    )

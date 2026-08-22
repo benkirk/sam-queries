@@ -1,0 +1,185 @@
+{#
+  Read-only detail of one XRAS request, rendered into #auditDetailsModalBody.
+
+  Context: request_number, payload (a reports/request_numbers dict), row (a
+           request_index_entry dict for the shared include), detail_actions
+           (per-action stage-grouped resources + dates + docs), xa_user /
+           xa_user_is_pi / xa_user_is_placeholder, write_enabled.
+
+  The data source is `GET /v1/reports/request_numbers/<n>`, which is
+  self-describing: each resource carries `displayResourceName` + `resourceUnits`
+  + `type` (the stage), so no resource-key → SAM-resource mapping is needed here.
+
+  This is the read-only surface the editors (Part B/C) will hang off. The roster,
+  actions and write buttons come from the SHARED include so they can never drift
+  from the card row.
+#}
+<h5 id="auditDetailsModalTitle" class="modal-title" hx-swap-oob="true">
+    Request — {{ request_number }}
+</h5>
+
+{# ── header ─────────────────────────────────────────────────────────── #}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <span class="badge bg-body-secondary text-body-secondary border">
+        {{ payload.requestStatus or '—' }}
+    </span>
+    {% if payload.requestType %}
+    <span class="small text-muted">{{ payload.requestType }}</span>
+    {% endif %}
+    {% if payload.opportunity_name %}
+    <span class="small text-muted">·
+        {{ payload.opportunity_name }}
+        {%- if payload.opportunityId %} <span class="text-muted">#{{ payload.opportunityId }}</span>{% endif %}
+    </span>
+    {% endif %}
+    {% if row and row.submit_date %}
+    <span class="small text-muted">· submitted {{ row.submit_date | fmt_date }}</span>
+    {% endif %}
+    {% if payload.publicURL %}
+    <a class="small ms-auto" href="{{ payload.publicURL }}" target="_blank" rel="noopener">
+        Open in XRAS <i class="fas fa-arrow-up-right-from-square"></i>
+    </a>
+    {% endif %}
+</div>
+
+{% if payload.isDeleted %}
+<div class="alert alert-warning py-2 small">
+    XRAS marks this request <strong>deleted</strong>.
+</div>
+{% endif %}
+
+{# ── title / abstract ───────────────────────────────────────────────── #}
+{% if payload.title or payload.shortTitle %}
+<div class="mb-3">
+    {% if payload.title %}<div class="fw-semibold">{{ payload.title }}</div>{% endif %}
+    {% if payload.shortTitle and payload.shortTitle != payload.title %}
+    <div class="small text-muted">{{ payload.shortTitle }}</div>
+    {% endif %}
+</div>
+{% endif %}
+{% if payload.abstract %}
+<details class="mb-3">
+    <summary class="small text-uppercase text-muted">Abstract</summary>
+    <p class="small mt-2 mb-0" style="white-space: pre-wrap;">{{ payload.abstract }}</p>
+</details>
+{% endif %}
+
+{# ── resources, grouped by stage, per action ────────────────────────── #}
+{% for action in detail_actions %}
+<div class="mb-3">
+    <div class="small text-uppercase text-muted mb-1">
+        Action {{ action.action_id }}
+        {%- if action.action_type %} · {{ action.action_type }}{% endif %}
+        {%- if action.action_status %}
+        <span class="badge bg-body-secondary text-body-secondary border ms-1">{{ action.action_status }}</span>
+        {%- endif %}
+    </div>
+
+    {% if action.stages %}
+    <div class="row g-3">
+        {% for stage, resources in action.stages %}
+        <div class="col-md">
+            <div class="small fw-semibold mb-1">{{ stage }}</div>
+            <table class="table table-sm mb-0">
+                <tbody>
+                {% for res in resources %}
+                    <tr>
+                        <td>{{ res.displayResourceName or res.resourceName or ('resource ' ~ res.resourceId) }}</td>
+                        <td class="text-end text-nowrap">
+                            {% if res.amount is not none %}{{ res.amount | float | fmt_number }}{% else %}—{% endif %}
+                            <span class="text-muted small">{{ res.resourceUnits or '' }}</span>
+                        </td>
+                    </tr>
+                    {% if res.comments %}
+                    <tr><td colspan="2" class="small text-muted fst-italic pt-0">{{ res.comments }}</td></tr>
+                    {% endif %}
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="small text-muted">No resources on this action.</div>
+    {% endif %}
+
+    {% if action.dates %}
+    <div class="small mt-2">
+        <span class="text-uppercase text-muted">Allocation dates:</span>
+        {% for d in action.dates %}
+        <span class="ms-1">
+            {{ d.begin | fmt_date }} – {{ d.end | fmt_date }}
+            {%- if d.type %} <span class="text-muted">({{ d.type }})</span>{% endif %}
+        </span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if action.user_comments %}
+    <div class="small text-muted mt-2"><em>{{ action.user_comments }}</em></div>
+    {% endif %}
+
+    {% if action.documents %}
+    <div class="small mt-2">
+        <span class="text-uppercase text-muted">Documents:</span>
+        {% for doc in action.documents %}
+        <span class="ms-1">
+            {{ doc.title or doc.filename or 'document' }}
+            {%- if doc.filename %} <span class="text-muted">({{ doc.filename }}{% if doc.size %}, {{ doc.size | fmt_size }}{% endif %})</span>{% endif %}
+        </span>{% if not loop.last %};{% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+
+{# ── fields of science ──────────────────────────────────────────────── #}
+{% if payload.fos %}
+<div class="mb-3">
+    <div class="small text-uppercase text-muted mb-1">Fields of science</div>
+    <div class="d-flex flex-wrap gap-1">
+        {% for f in payload.fos %}
+        <span class="badge bg-body-secondary text-body-secondary border">
+            {{ f.fosName or f.fosAbbr or ('FoS ' ~ (f.fosNum or f.fosTypeId)) }}
+            {%- if f.isPrimary %} <i class="fas fa-star text-warning small" title="Primary"></i>{% endif %}
+        </span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# ── grants ─────────────────────────────────────────────────────────── #}
+{% if grants %}
+<div class="mb-3">
+    <div class="small text-uppercase text-muted mb-1">Grants</div>
+    <table class="table table-sm mb-0">
+        <tbody>
+        {% for g in grants %}
+            <tr>
+                <td class="font-monospace text-nowrap">{{ g.grantNumber or '—' }}</td>
+                <td>
+                    {{ g.title or '—' }}
+                    {%- if g.piName %}<div class="small text-muted">{{ g.piName }}</div>{% endif %}
+                </td>
+                <td class="text-nowrap small text-muted">
+                    {% if g.begin %}{{ g.begin | fmt_date }}{% endif %}
+                    {%- if g.end %} – {{ g.end | fmt_date }}{% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<hr>
+
+{# ── roster + actions + write buttons — SHARED with the card row ─────── #}
+{% if row %}
+{% set show_details = false %}
+{% include 'dashboards/allocations/partials/_xras_remediation_actions.html' %}
+{% endif %}
+
+<div class="d-flex justify-content-end mt-3">
+    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
+</div>

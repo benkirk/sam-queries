@@ -1,0 +1,174 @@
+{#
+  Shared roster / actions / write-button strip for one request.
+
+  Rendered in TWO places, which is the whole point of extracting it — the
+  expanded card row (`xras_remediation_row.html`) and the read-only detail modal
+  (`xras_request_detail.html`) must offer byte-identical remediation buttons, so
+  a verb added to one can never be missing from the other.
+
+  Context:
+    row            an index-entry dict (request_index_entry shape):
+                   request_number, pi.username, roster[], actions[]
+    write_enabled  XRAS_WRITE_ENABLED
+    show_details   optional; when true, render a "Details…" button that opens the
+                   read-only detail modal. False (the default) inside that modal
+                   itself, so it never offers a link back to itself.
+
+  ── THE OFFERS HERE ARE SNAPSHOT-DERIVED, NOT AUTHORITATIVE ──────────────
+  XRAS publishes the real answer to "what may I do to this action" in
+  `rules{allowedOperations}` on `GET /v1/requests/<id>`, and that route is 401
+  for our credential in every context. So `can_withdraw` / `can_resubmit` are
+  computed from the action's last-swept status: good enough to decide which
+  button to draw, never good enough to decide whether it may be pressed. Each
+  modal re-reads XRAS live, and the client verifies afterwards regardless.
+
+  Drawing a button XRAS then refuses is fine — it comes back as XRAS's own
+  refusal, in the modal. Hiding a button that would have worked is not.
+#}
+{% set disabled = 'disabled' if not write_enabled else '' %}
+{% set why_disabled = 'XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).' %}
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+    {% if show_details %}
+    {# Non-toggle context (inside the collapse body, never a trigger cell), so a
+       button here is safe — see test_collapse_trigger_rows.py. #}
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
+                               request_number=row.request_number) }}"
+            hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+            data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+        <i class="fas fa-file-lines"></i> Details…
+    </button>
+    {% endif %}
+
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            hx-get="{{ url_for('allocations_dashboard.xras_roles_form',
+                               request_number=row.request_number) }}"
+            hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+            data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+        <i class="fas fa-users"></i> Roles…
+    </button>
+
+    {# Zero new JS: `set-filter-submit` writes the request number into the
+       action log's own filter form and submits it. #}
+    <button type="button" class="btn btn-sm btn-outline-secondary"
+            data-action="set-filter-submit"
+            data-form-id="xras-filters"
+            data-field="request_number"
+            data-value="{{ row.request_number }}"
+            title="Filter the action log below to this request">
+        <i class="fas fa-list"></i> Show in action log
+    </button>
+
+    {% if row.pi.username %}
+    <span class="small text-muted align-self-center">
+        SAM acts as <code>{{ row.pi.username }}</code> (project lead) for
+        changes to this request.
+    </span>
+    {% else %}
+    <span class="small text-danger align-self-center">
+        No project lead on this request — XRAS will refuse changes to it.
+    </span>
+    {% endif %}
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="small text-uppercase text-muted mb-1">Roster</div>
+        <table class="table table-sm mb-0">
+            <tbody>
+            {# ⚠️ The roster is one row per ROLE — a person holding both PI and
+               User appears twice, and that is deliberate: role removal is keyed
+               on `role_id`, so collapsing to one row per person would lose the
+               identifier the remove button needs.
+
+               But **merge is a person-level operation**. Offered per row it
+               renders twice for one human, which reads as two different people
+               or two different merges when in fact either button does the same
+               single, irreversible thing. So the offer is shown once, on the
+               first row that names each username. Measured live on NCAR4262,
+               where one placeholder holds both roles. #}
+            {% set merge_offered = [] %}
+            {% for member in row.roster %}
+                <tr>
+                    <td class="font-monospace">{{ member.username }}</td>
+                    <td>{{ member.name or '—' }}</td>
+                    <td>{{ member.role_type or '—' }}</td>
+                    <td class="text-end">
+                        {% if member.placeholder and member.is_reconciled
+                              and member.username not in merge_offered %}
+                        {% set _ = merge_offered.append(member.username) %}
+                        {# ⚠️ The contradiction the merge fixup exists for.
+                           Reconciliation in XRAS IS a merge, so a reconciled
+                           placeholder that still exists was flagged without
+                           one — XRAS keeps sending the throwaway username and
+                           the handoff never completes. #}
+                        <button type="button" class="btn btn-sm btn-outline-danger" {{ disabled }}
+                                {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
+                                hx-get="{{ url_for('allocations_dashboard.xras_merge_form',
+                                                   username=member.username) }}"
+                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                            Resolve identity (merge in XRAS)…
+                        </button>
+                        {% elif member.placeholder
+                                and member.username not in merge_offered %}
+                        {% set _ = merge_offered.append(member.username) %}
+                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle"
+                              title="Genuinely unreconciled — XRAS cannot yet say who this is. The healthy path: create the account.">
+                            needs an account
+                        </span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td class="text-muted">No roster entries.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="small text-uppercase text-muted mb-1">Actions</div>
+        <table class="table table-sm mb-0">
+            <tbody>
+            {% for action in row.actions %}
+                <tr>
+                    <td class="font-monospace">{{ action.action_id }}</td>
+                    <td>{{ action.action_type or '—' }}</td>
+                    <td>
+                        <span class="badge bg-body-secondary text-body-secondary border">
+                            {{ action.action_status or '—' }}
+                        </span>
+                    </td>
+                    <td class="text-end">
+                        {% if action.can_withdraw %}
+                        <button type="button" class="btn btn-sm btn-outline-warning" {{ disabled }}
+                                {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
+                                hx-get="{{ url_for('allocations_dashboard.xras_withdraw_form',
+                                                   request_number=row.request_number,
+                                                   action_id=action.action_id) }}"
+                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                            Withdraw…
+                        </button>
+                        {% elif action.can_resubmit %}
+                        <button type="button" class="btn btn-sm btn-outline-primary" {{ disabled }}
+                                {% if not write_enabled %}title="{{ why_disabled }}"{% endif %}
+                                hx-get="{{ url_for('allocations_dashboard.xras_resubmit_form',
+                                                   request_number=row.request_number,
+                                                   action_id=action.action_id) }}"
+                                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                                data-bs-toggle="modal" data-bs-target="#auditDetailsModal">
+                            Re-submit…
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td class="text-muted">No actions on this request.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

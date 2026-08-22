@@ -277,9 +277,15 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_requests_card.html': [
         'userDetailsModal', 'userDetailsModalBody'],
+    # The card's summary row carries a "Details…" link into #auditDetailsModal
+    # (in the non-toggle SAM cell) alongside the #projectDetailsModal badge link.
     'dashboards/allocations/partials/xras_remediations_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],
-    'dashboards/allocations/partials/xras_remediation_row.html': [
+    # The shared roster/actions/button strip, included by both the expanded card
+    # row and the read-only detail modal — the reason the row itself no longer
+    # names these shells directly.
+    'dashboards/allocations/partials/_xras_remediation_actions.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_merge_form.html': [
         'auditDetailsModalBody'],
