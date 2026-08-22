@@ -1096,34 +1096,67 @@ _RESOURCE_STAGES = ('Requested', 'Recommended', 'Approved')
 
 
 def _detail_actions(payload):
-    """Per-action view model for the detail modal: resources grouped by stage.
+    """Per-action view model for the detail modal: a resource × stage matrix.
 
-    Built in Python because Jinja's ``groupby`` cannot both preserve a fixed
-    stage order and keep a trailing bucket for any unexpected stage. Each stage
-    with no resources is dropped, so the template renders only what exists; an
-    unrecognised ``type`` lands in an ``Other`` bucket rather than vanishing.
+    Resources are **pivoted** — one row per resource, one column per stage that
+    appears — so a resource present at several stages (the common case:
+    Requested + Approved) is a single row with a cell per stage, rather than the
+    same name repeated down three stacked stage lists. ``stages_present`` is the
+    ordered subset of stages actually seen (Requested / Recommended / Approved,
+    then a trailing ``Other`` for any unrecognised ``type``), so the template
+    renders only the columns that exist. ``units`` is carried once per row (the
+    same resource keeps its units across stages), which is what lets the stage
+    columns hold a bare number.
+
+    Built in Python because the pivot needs first-seen row order and a fixed
+    column order together, which Jinja's ``groupby`` cannot express.
     """
     actions = []
     for action in payload.get('actions') or ():
         if not isinstance(action, dict):
             continue
-        buckets = {stage: [] for stage in _RESOURCE_STAGES}
-        other = []
+        column_order = list(_RESOURCE_STAGES) + ['Other']
+        present = {stage: False for stage in column_order}
+        rows_by_key, row_order = {}, []
         for res in action.get('resources') or ():
             if not isinstance(res, dict):
                 continue
-            stage = res.get('type')
-            (buckets[stage] if stage in buckets else other).append(res)
-        stages = [(stage, buckets[stage]) for stage in _RESOURCE_STAGES
-                  if buckets[stage]]
-        if other:
-            stages.append(('Other', other))
+            raw = res.get('type')
+            stage = raw if raw in _RESOURCE_STAGES else 'Other'
+            rid = res.get('resourceId')
+            name = (res.get('displayResourceName') or res.get('resourceName')
+                    or (('resource ' + str(rid)) if rid is not None
+                        else 'resource'))
+            # Key on the resource-type id (unique per resource); fall back to
+            # the name only when a payload omits the id.
+            key = rid if rid is not None else name
+            row = rows_by_key.get(key)
+            if row is None:
+                row = {'resource_id': rid, 'name': name,
+                       'units': res.get('resourceUnits') or '', 'cells': {}}
+                rows_by_key[key] = row
+                row_order.append(key)
+            if not row['units']:
+                row['units'] = res.get('resourceUnits') or ''
+            row['cells'][stage] = {'amount': res.get('amount'),
+                                   'comments': res.get('comments')}
+            present[stage] = True
+        stages_present = [s for s in column_order if present[s]]
+        resource_rows = [rows_by_key[k] for k in row_order]
+        for row in resource_rows:
+            # Comments are rare and per (resource × stage); collect the
+            # non-empty ones so the template can surface them under the row.
+            row['comments'] = [(s, row['cells'][s]['comments'])
+                               for s in column_order
+                               if row['cells'].get(s)
+                               and row['cells'][s].get('comments')]
         actions.append({
             'action_id': action.get('actionId'),
             'action_type': action.get('actionType'),
             'action_status': action.get('actionStatus'),
             'user_comments': action.get('userComments'),
-            'stages': stages,
+            'stages_present': stages_present,
+            'resource_rows': resource_rows,
             # Dates arrive as raw ISO strings; parse to date objects here (the
             # same parser the entry builder uses) so the template can fmt_date
             # them — fmt_date raises on a str. `allocation_date_id` is carried

@@ -741,17 +741,26 @@ class TestRequestDetailModal:
         response = auth_client.get('/allocations/xras_request_detail/EXAM0001')
         assert response.status_code == 200
 
-    def test_it_renders_resources_grouped_by_stage(self, auth_client, armed,
-                                                   monkeypatch):
+    def test_it_pivots_resources_into_a_stage_matrix(self, auth_client, armed,
+                                                     monkeypatch):
+        """One row per resource, one column per stage present — a resource that
+        was requested and then awarded is a SINGLE row, not repeated down three
+        stage lists."""
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'EXAM0001' in body
-        # The stage labels that make requested-vs-awarded legible.
+        # The stage labels are the column headers that make requested-vs-awarded
+        # legible; the payload's Cheyenne has a Requested and an Approved line.
         assert 'Requested' in body and 'Approved' in body
-        # Self-describing resource name + units, straight from the payload.
+        # Rendered as a matrix — a "Resource" column header — with the
+        # self-describing name + units straight from the payload.
+        assert '>Resource</th>' in body
         assert 'Cheyenne' in body
         assert 'Core-hours' in body
+        # Both the requested (555) and awarded (500) amounts for that one
+        # resource are present (a single pivoted row, a cell per stage).
+        assert '555' in body and '500' in body
 
     def test_it_renders_the_rich_sections(self, auth_client, armed, monkeypatch):
         _reader(monkeypatch, payload=_detail_payload())

@@ -95,67 +95,94 @@
         {%- endif %}
     </div>
 
-    {% if action.stages %}
-    <div class="row g-3">
-        {% for stage, resources in action.stages %}
-        <div class="col-md">
-            <div class="small fw-semibold mb-1">{{ stage }}</div>
-            <table class="table table-sm mb-0">
-                <tbody>
-                {% for res in resources %}
-                    <tr>
-                        <td>{{ res.displayResourceName or res.resourceName or ('resource ' ~ res.resourceId) }}</td>
-                        <td class="text-end text-nowrap">
-                            {% if res.amount is not none %}{{ res.amount | float | fmt_number }}{% else %}—{% endif %}
-                            <span class="text-muted small">{{ res.resourceUnits or '' }}</span>
-                        </td>
-                        {# Editors: the Requested stage is live on our key; the
-                           Approved stage is fail-visible (locked until the
-                           elevated key lands); Recommended is read-only. #}
-                        <td class="text-end text-nowrap">
-                        {% if res.resourceId is not none and stage == 'Requested' %}
-                            <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}
-                                    {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+    {# Resources pivoted into a matrix: one row per resource, one column per
+       stage present. A resource requested and then awarded is a single row
+       (Requested | [Recommended] | Approved), which is far tighter than the
+       three stacked stage lists this replaced. Units live once in the resource
+       column so the stage columns hold a bare number.
+
+       Editors sit in the cell they act on: the Requested stage is live on our
+       key (pencil = edit, trash = remove); the Approved stage is fail-visible
+       (a lock until the elevated key lands); Recommended is read-only. #}
+    {% if action.resource_rows %}
+    <div class="table-responsive">
+    <table class="table table-sm align-middle mb-1">
+        <thead>
+            <tr>
+                <th class="small text-uppercase text-muted fw-normal">Resource</th>
+                {% for stage in action.stages_present %}
+                <th class="small text-uppercase text-muted fw-normal text-end">{{ stage }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in action.resource_rows %}
+            <tr>
+                <td>
+                    {{ r.name }}
+                    {% if r.units %}<span class="text-muted small d-block">{{ r.units }}</span>{% endif %}
+                </td>
+                {% for stage in action.stages_present %}
+                {% set cell = r.cells.get(stage) %}
+                <td class="text-end text-nowrap">
+                    {% if cell %}
+                    <span class="d-inline-flex align-items-center justify-content-end gap-2">
+                        <span>{% if cell.amount is not none %}{{ cell.amount | float | fmt_number }}{% else %}—{% endif %}</span>
+                        {% if r.resource_id is not none and stage == 'Requested' %}
+                        <span class="d-inline-flex gap-1">
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" {{ write_disabled }}
+                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Edit the requested amount…{% endif %}"
                                     hx-get="{{ url_for('allocations_dashboard.xras_resource_form',
                                                        request_number=request_number,
                                                        action_id=action.action_id,
-                                                       resource_id=res.resourceId) }}?stage=Requested"
-                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit…</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" {{ write_disabled }}
-                                    {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                                                       resource_id=r.resource_id) }}?stage=Requested"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                                <i class="fas fa-pencil"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" {{ write_disabled }}
+                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Remove the requested line{% endif %}"
                                     hx-post="{{ url_for('allocations_dashboard.xras_resource_remove',
                                                         request_number=request_number,
                                                         action_id=action.action_id,
-                                                        resource_id=res.resourceId) }}"
+                                                        resource_id=r.resource_id) }}"
                                     hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
-                                    hx-confirm="Remove the requested line for {{ res.displayResourceName or res.resourceName }} from {{ request_number }} in XRAS?"
+                                    hx-confirm="Remove the requested line for {{ r.name }} from {{ request_number }} in XRAS?"
                                     data-confirm-title="Remove requested resource"
-                                    data-confirm-ok="Remove" data-confirm-variant="danger">Remove</button>
-                        {% elif res.resourceId is not none and stage == 'Approved' %}
+                                    data-confirm-ok="Remove" data-confirm-variant="danger">
+                                <i class="fas fa-trash"></i></button>
+                        </span>
+                        {% elif r.resource_id is not none and stage == 'Approved' %}
                             {% if admin_context_available %}
-                            <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}
-                                    {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" {{ write_disabled }}
+                                    title="{% if not write_enabled %}{{ why_off }}{% else %}Edit the awarded amount…{% endif %}"
                                     hx-get="{{ url_for('allocations_dashboard.xras_resource_form',
                                                        request_number=request_number,
                                                        action_id=action.action_id,
-                                                       resource_id=res.resourceId) }}?stage=Approved"
-                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Edit award…</button>
+                                                       resource_id=r.resource_id) }}?stage=Approved"
+                                    hx-target="#auditDetailsModalBody" hx-swap="innerHTML">
+                                <i class="fas fa-pencil"></i></button>
                             {% else %}
-                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled
-                                    title="Editing the awarded amount needs an elevated XRAS key (admin/review context), which this deployment does not have yet.">
-                                Edit award… <i class="fas fa-lock"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" disabled
+                                    title="Edit award… — editing the awarded amount needs an elevated XRAS key (admin/review context), which this deployment does not have yet.">
+                                <i class="fas fa-lock"></i></button>
                             {% endif %}
                         {% endif %}
-                        </td>
-                    </tr>
-                    {% if res.comments %}
-                    <tr><td colspan="3" class="small text-muted fst-italic pt-0">{{ res.comments }}</td></tr>
+                    </span>
+                    {% else %}
+                    <span class="text-muted">—</span>
                     {% endif %}
+                </td>
                 {% endfor %}
-                </tbody>
-            </table>
-        </div>
+            </tr>
+            {% if r.comments %}
+            <tr>
+                <td colspan="{{ 1 + action.stages_present | length }}" class="small text-muted fst-italic pt-0">
+                    {% for stage, text in r.comments %}<div>{{ stage }}: {{ text }}</div>{% endfor %}
+                </td>
+            </tr>
+            {% endif %}
         {% endfor %}
+        </tbody>
+    </table>
     </div>
     {% else %}
     <div class="small text-muted">No resources on this action.</div>
