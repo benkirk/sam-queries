@@ -1423,6 +1423,11 @@ def xras_fragment():
         key=lambda r: (-r['count'], r['value']),
     )
 
+    # `configured` gates the Request # → detail-modal link: the modal needs a
+    # live outbound read, so a site with XRAS incoming-only degrades to the
+    # plain/project cell (see xras_table.html). The Result column is unaffected.
+    from sam.integration.xras_api import xras_api_configured
+
     return render_template(
         'dashboards/allocations/partials/xras_table.html',
         rows=rows, total=total,
@@ -1432,6 +1437,7 @@ def xras_fragment():
         target_id=_XRAS_FRAGMENT_TARGET,
         form_id=_XRAS_FORM_ID,
         sortable_columns=sorted(XRAS_ACTION_SORT_COLUMNS),
+        configured=xras_api_configured(),
     )
 
 
@@ -1834,6 +1840,8 @@ def xras_accounts_fragment():
     boolean about account state, not a personal detail, and it is the signal
     that tells an operator an item is about to close itself.
     """
+    from sam.integration.xras_api import xras_api_configured
+
     may_manage = has_permission(current_user, Permission.MANAGE_XRAS)
     window = _parse_activity_window(request.args)
     selected_classes = [c for c in request.args.getlist('classification') if c]
@@ -1915,6 +1923,9 @@ def xras_accounts_fragment():
         form_id=_ACCOUNTS_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_accounts_fragment'),
         target_id=_ACCOUNTS_TARGET,
+        # Gates the Request → detail-modal link (needs a live outbound read);
+        # incoming-only degrades to today's project/plain cell. See request_cell.
+        configured=xras_api_configured(),
     )
 
 

@@ -180,17 +180,32 @@
                 <tr>
                     <th style="width:9rem;">Request</th>
                     <th style="width:8rem;">Status</th>
-                    {# 99%, the idiom from xras_table.html's Errors column:
-                       one column declared far larger than the table takes all
-                       the slack, so the group header's overflow lands here
-                       instead of being shared out over the fixed ones. #}
-                    <th style="width:99%;">Project lead</th>
+                    {# The two person-name columns share the slack equally (50%
+                       each), so an Allocation-Manager name doesn't wrap while the
+                       lead column has room to spare. Same idiom as xras_table's
+                       Errors column, just split across both: the group header's
+                       `colspan` overflow lands on these two, not the fixed ones.
+                       "Project Admin" is SAM's language for the XRAS "Allocation
+                       Manager" role (ROLE_TYPES in admin_client.py); blank on the
+                       many requests that name no admin. #}
+                    <th style="width:50%;">Project lead</th>
+                    <th style="width:50%;">Project Admin</th>
                     <th class="text-nowrap" style="width:7rem;">Submitted</th>
                     <th class="text-nowrap" style="width:11rem;">Period</th>
                     <th class="text-end" style="width:11rem;">SAM</th>
                 </tr>
             </thead>
             {% for group in groups %}
+            {# The opportunity group is the collapsible layer now (default open).
+               Its header is one tbody carrying the toggle; the member rows live
+               in a sibling `collapse show` tbody keyed on the opportunity id
+               (loop.index when XRAS gives no id). Multiple <tbody> per table is
+               valid HTML and each keeps the thead's column model.
+
+               nav-view-persistence.js persists these `.collapse[id]` groups for
+               free (save on open, restore on load) and only ever calls .show(),
+               so a default-open group can never come back collapsed on reload. #}
+            {% set gid = 'xopp-' ~ (group.opportunity_id or loop.index) %}
             <tbody>
                 {# ⚠️ `table-subtle`, NEVER Bootstrap's `table-light`. The
                    stock class hardcodes `--bs-table-color: #000` on a light
@@ -199,8 +214,12 @@
                    token-driven replacement — byte-identical in light mode
                    (`--surface-tertiary` IS #f8f9fa) and correct in dark. See
                    the comment above `.table-subtle` in dashboard.css. #}
-                <tr class="table-subtle fw-semibold">
-                    <td colspan="6">
+                {# This header cell holds NO link, so the toggle is safe on the
+                   whole <tr> (unlike the request rows below, which open a
+                   modal) — see dashboards/fragments/collapse.html. #}
+                <tr class="table-subtle fw-semibold cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}>
+                    <td colspan="7">
+                        <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>
                         {{ group.name }}
                         {% if group.opportunity_id %}
                         <span class="text-muted fw-normal small">#{{ group.opportunity_id }}</span>
@@ -208,30 +227,25 @@
                         <span class="badge bg-secondary ms-1">{{ group.rows | length }}</span>
                     </td>
                 </tr>
+            </tbody>
+            <tbody id="{{ gid }}" class="collapse show">
                 {% for row in group.rows %}
-                {# ⚠️ Keyed on the numeric requestId, never the request number:
-                   Submitted numbers can be free text with spaces ('New
-                   University Large Request - Fall 2017 …' is live), which is
-                   an invalid HTML id and an unmatchable data-bs-target — the
-                   row could never expand. The builder guarantees request_id. #}
-                {% set rid = 'xrem-' ~ row.request_id %}
-                {# ⚠️ `collapse_toggle` emits ATTRIBUTES, not markup — it goes
-                   inside the tag, never in a cell. Used as content it renders
-                   its own attribute string as visible text.
-
-                   ⚠️ The toggle is on the five leading CELLS, not the <tr>,
-                   and it has to be: the SAM cell now holds a link. Bootstrap's
-                   collapse data-api runs in the CAPTURE phase, so a row-level
-                   toggle fires before any handler on the link — the project
-                   modal would open AND the row would flip open behind it, on
-                   every click. `data-stop-propagation` cannot help; capture
-                   descends document → row → link. See
-                   dashboards/fragments/collapse.html, and
-                   tests/unit/test_collapse_trigger_rows.py, which fails on a
-                   <button> inside a trigger <tr>. #}
                 <tr>
-                    <td class="font-monospace text-nowrap cursor-pointer" {{ collapse_toggle(rid) }}>
-                        <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>{{ row.request_number }}
+                    {# The request number opens the full read-only detail modal —
+                       the same view the per-request expansion used to hold, now
+                       the single opener. This cell is no longer a collapse
+                       trigger, so the modal link is safe (no capture-phase
+                       conflict; the old five-cell toggle split is gone with the
+                       expansion). A plain <a> with an inner `.font-monospace`,
+                       NOT `.btn` — `.btn` uppercases (dashboard.css). #}
+                    <td class="text-nowrap">
+                        <a href="#" class="text-decoration-none"
+                           title="Full request detail (read-only)"
+                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
+                           hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
+                                              request_number=row.request_number) }}"
+                           hx-target="#auditDetailsModalBody"
+                           hx-swap="innerHTML"><span class="font-monospace">{{ row.request_number }}</span></a>
                         {% if row.refreshed_at %}
                         {# The tell that this row was patched after a write
                            rather than swept — so an operator can see their own
@@ -240,14 +254,20 @@
                            title="Updated just now, after your change — newer than the sweep."></i>
                         {% endif %}
                     </td>
-                    <td class="cursor-pointer" {{ collapse_toggle(rid) }}>
+                    <td>
                         <span class="badge bg-body-secondary text-body-secondary border">
                             {{ row.status or '—' }}
                         </span>
                     </td>
-                    <td class="cursor-pointer" {{ collapse_toggle(rid) }}>{{ row.pi.name or row.pi.username or '—' }}</td>
-                    <td class="text-nowrap cursor-pointer" {{ collapse_toggle(rid) }}>{{ row.submit_date | fmt_date }}</td>
-                    <td class="small text-muted text-nowrap cursor-pointer" {{ collapse_toggle(rid) }}>
+                    <td>{{ row.pi.name or row.pi.username or '—' }}</td>
+                    {# `is defined`, not a bare access: this card renders the
+                       PUBLISHED snapshot, which may be one sweep behind the code
+                       — a row swept before `admin` existed has no such key, and
+                       a bare `row.admin.name` would 500 the whole card for the
+                       hour between a deploy and the next sweep. #}
+                    <td>{% if row.admin is defined and row.admin %}{{ row.admin.name or row.admin.username or '—' }}{% else %}—{% endif %}</td>
+                    <td class="text-nowrap">{{ row.submit_date | fmt_date }}</td>
+                    <td class="small text-muted text-nowrap">
                         {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}
                     </td>
                     {# One column, not two. The second was a full-width column
@@ -258,8 +278,9 @@
                        request stays open) and the only case worth a glance.
 
                        The flags belong beside the SAM state because they are
-                       read together: what is blocking this handoff. #}
-                    {# No `text-nowrap` here, unlike the date columns: the
+                       read together: what is blocking this handoff.
+
+                       No `text-nowrap` here, unlike the date columns: the
                        rare row carrying both a flag and the SAM badge would
                        otherwise set this column's width for all the others,
                        which mostly hold one short badge. Let that one row be
@@ -280,13 +301,9 @@
                            `requestNumber` against `Project.projcode`
                            (xras_sweep.py::_build_requests_index). The badge
                            already means "a SAM project exists"; linking it is
-                           the same claim, made clickable.
-
-                           The Request column is deliberately NOT the link,
-                           though it carries the same string. It holds the
-                           chevron, and an expand affordance sitting beside
-                           something that opens a modal instead would make one
-                           cell mean two things.
+                           the same claim, made clickable. This is the "Result"
+                           side — it keeps pointing at the SAM project, while
+                           the Request cell above opens the XRAS request.
 
                            Two states, not three (unlike xras_table.html's
                            request-number column): the flag is only as fresh as
@@ -313,24 +330,6 @@
                            hx-target="#projectDetailsModalBody"
                            hx-swap="innerHTML"><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">project</span></a>
                         {% endif %}
-                        {# ⚠️ In the SAM cell, NOT the Request cell — the latter
-                           carries `collapse_toggle` and Bootstrap's capture-phase
-                           data-api would expand the row before this link fired
-                           (test_collapse_trigger_rows.py). A plain `<a>`, not a
-                           `.btn`, for the same reason the `project` badge is:
-                           `.btn` uppercases in dashboard.css. #}
-                        <a href="#" class="text-decoration-none small ms-1"
-                           title="Full request detail (read-only)"
-                           data-bs-toggle="modal" data-bs-target="#auditDetailsModal"
-                           hx-get="{{ url_for('allocations_dashboard.xras_request_detail',
-                                              request_number=row.request_number) }}"
-                           hx-target="#auditDetailsModalBody"
-                           hx-swap="innerHTML">Details…</a>
-                    </td>
-                </tr>
-                <tr class="collapse" id="{{ rid }}">
-                    <td colspan="6" class="bg-body-tertiary">
-                        {% include 'dashboards/allocations/partials/xras_remediation_row.html' %}
                     </td>
                 </tr>
                 {% endfor %}

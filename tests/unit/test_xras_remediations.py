@@ -196,7 +196,6 @@ class TestAccessControl:
         '/allocations/xras_merge_form/ghost-user-abcde',
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
-        '/allocations/xras_roles_form/EXAM0001',
         '/allocations/xras_request_detail/EXAM0001',
         '/allocations/xras_resource_form/EXAM0001/7/530201',
         '/allocations/xras_dates_form/EXAM0001/7',
@@ -359,34 +358,42 @@ class TestTheFourEmptyStates:
 
 class TestRendering:
 
-    def test_a_published_row_renders_with_its_offers(self, auth_client, armed):
-        _publish(_payload())
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+    # The roster/action offers moved from the card's per-request expansion into
+    # the detail modal (the card row now just links to it), so these behaviours
+    # are asserted against the modal body — fed by a live read (`_reader`).
+    def test_the_modal_renders_the_offers(self, auth_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'EXAM0001' in body
         assert 'Withdraw…' in body
-        assert 'Resolve identity (merge in XRAS)…' in body
+        assert 'Resolve identity (merge)…' in body
 
     def test_the_lever_off_disables_rather_than_hides(self, auth_client,
                                                       configured, monkeypatch):
         """A control that vanishes teaches nobody that a switch exists."""
         monkeypatch.delenv('XRAS_WRITE_ENABLED', raising=False)
-        _publish(_payload())
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        _reader(monkeypatch, payload=_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Withdraw…' in body
         assert 'XRAS_WRITE_ENABLED' in body
         assert 'disabled' in body
 
-    def test_a_drafted_action_offers_resubmit_instead(self, auth_client, armed):
-        _publish(_payload(action_status='Incomplete'))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+    def test_a_drafted_action_offers_resubmit_instead(self, auth_client, armed,
+                                                       monkeypatch):
+        _reader(monkeypatch, payload=_payload(action_status='Incomplete'))
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Re-submit…' in body
         assert 'Withdraw…' not in body
 
     def test_an_unreconciled_placeholder_offers_no_merge(self, auth_client,
-                                                          armed):
+                                                         armed, monkeypatch):
         """That row means 'create the account' — the healthy path."""
-        _publish(_payload(reconciled=False))
-        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        _reader(monkeypatch, payload=_payload(reconciled=False))
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Resolve identity' not in body
         assert 'needs an account' in body
 
@@ -443,6 +450,29 @@ class TestRendering:
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '2 actions' in body
 
+    def test_the_project_admin_column_shows_the_allocation_manager(
+            self, auth_client, armed):
+        """SAM's "Project Admin" is the XRAS Allocation Manager (roleTypeId 14),
+        shown when the request names one."""
+        payload = _payload()
+        payload['roles'].append(
+            {'person': {'username': 'am-user', 'firstName': 'Al',
+                        'lastName': 'Manager', 'isReconciled': True},
+             'roles': [{'roleId': 3, 'role': 'Allocation Manager',
+                        'roleTypeId': 14}]})
+        _publish(payload)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'Project Admin' in body      # the column header
+        assert 'Al Manager' in body         # the resolved admin
+
+    def test_the_project_admin_column_is_blank_without_one(self, auth_client,
+                                                           armed):
+        """The base payload names no Allocation Manager — the cell is a dash,
+        and the header still renders."""
+        _publish(_payload())
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'Project Admin' in body
+
 
 # ── the project link ────────────────────────────────────────────────────
 
@@ -474,44 +504,53 @@ class TestTheSamBadgeLinksWhenTheProjectExists:
         assert 'no project' in body
         assert 'projectDetailsModal' not in body
 
-    def test_the_request_column_is_deliberately_not_the_link(self, auth_client,
-                                                             armed):
-        """It carries the same string, but it also carries the chevron. An
-        expand affordance beside something that opens a modal instead would
-        make one cell mean two things."""
+    def test_the_request_column_opens_the_detail_modal(self, auth_client, armed):
+        """The request number IS the XRAS request, so it opens the read-only
+        detail modal — even when a SAM project by that name exists (the SAM
+        cell keeps the project link). It is no longer a collapse trigger."""
         _publish(_payload('EXAM0001'), pending=False)
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        request_cell = body.split('font-monospace text-nowrap', 1)[1].split('</td>', 1)[0]
-        assert 'collapse-icon' in request_cell
-        assert 'projectDetailsModal' not in request_cell
+        assert '/allocations/xras_request_detail/EXAM0001' in body
+        assert 'data-bs-target="#auditDetailsModal"' in body
+        # The SAM cell still links the found project — Request vs Result.
+        assert '/user/project-details-modal/EXAM0001' in body
 
 
-class TestTheRowStillExpands:
-    """⚠️ The link forced the toggle off the `<tr>` — Bootstrap's data-api
-    runs in the capture phase, so an ancestor toggle fires before the link and
-    the row would flip open behind the modal on every click."""
+class TestTheOpportunityGroupCollapses:
+    """The per-request expansion was folded into the detail modal (the Request
+    cell opens it). The opportunity group is the collapsible layer now, default
+    open: its header row carries the toggle — it holds no link, so a row-level
+    toggle is safe — and the member rows live in a sibling `collapse show`
+    tbody keyed on the numeric opportunity id."""
 
-    def test_the_summary_row_no_longer_carries_the_toggle(self, auth_client,
-                                                          armed):
+    def test_the_group_header_is_the_toggle_default_open(self, auth_client,
+                                                         armed):
         _publish(_payload('EXAM0001'))
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert '<tr class="cursor-pointer" data-bs-toggle="collapse"' not in body
-        # Five of the six cells carry it instead; the SAM cell is the link's.
-        # ⚠️ Keyed on the numeric requestId, not the request number — see below.
-        assert body.count('data-bs-target="#xrem-900001"') == 5
+        assert 'data-bs-target="#xopp-5"' in body
+        assert 'aria-expanded="true"' in body
+        assert '<tbody id="xopp-5" class="collapse show">' in body
 
-    def test_the_collapse_id_is_numeric_even_for_free_text_numbers(
+    def test_the_per_request_expansion_is_gone(self, auth_client, armed):
+        """No `#xrem-<id>` collapse rows and no row include — the request row is
+        a single line that opens the modal, so the roster/actions expansion no
+        longer ships in the card (it lives in the modal)."""
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '#xrem-' not in body
+
+    def test_the_group_id_is_numeric_not_the_free_text_number(
             self, auth_client, armed):
         """Submitted numbers can be free text with spaces ('New University
-        Large Request - Fall 2017 …' is live). Interpolated raw into the id,
-        that is an unmatchable ``data-bs-target`` — the row could never
-        expand, and every remediation control lives inside it."""
+        Large Request - Fall 2017 …' is live) — an unmatchable id. The
+        collapsible layer is keyed on the numeric opportunity id, never the
+        request number."""
         payload = _payload('New University Large Request - Fall 2017 Zhong',
                            status='Submitted')
         _publish(payload)
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
-        assert 'data-bs-target="#xrem-900001"' in body
-        assert 'data-bs-target="#xrem-New' not in body
+        assert 'data-bs-target="#xopp-5"' in body
+        assert 'id="xopp-New' not in body
 
 
 # ── the search box ──────────────────────────────────────────────────────
@@ -667,23 +706,24 @@ class TestModalGets:
                              'roles': [{'roleId': 1, 'role': 'PI',
                                         'roleTypeId': 13}]}]
         _reader(monkeypatch, payload=payload)
-        for path in (f'/allocations/xras_withdraw_form/EXAM0001/7',
-                     f'/allocations/xras_roles_form/EXAM0001'):
-            body = auth_client.get(path).get_data(as_text=True)
-            assert 'placeholder identity' in body, path
+        body = auth_client.get(
+            '/allocations/xras_withdraw_form/EXAM0001/7').get_data(as_text=True)
+        assert 'placeholder identity' in body
 
     def test_a_real_role_holder_is_not_flagged(self, auth_client, armed,
                                                monkeypatch):
         _reader(monkeypatch)
         body = auth_client.get(
-            '/allocations/xras_roles_form/EXAM0001').get_data(as_text=True)
+            '/allocations/xras_withdraw_form/EXAM0001/7').get_data(as_text=True)
         assert 'placeholder identity' not in body
 
-    def test_the_roles_modal_renders_the_live_roster(self, auth_client, armed,
-                                                     monkeypatch):
+    def test_the_detail_modal_renders_the_live_roster(self, auth_client, armed,
+                                                      monkeypatch):
+        """The roster is inline in the detail modal now; the add-role select
+        carries XRAS's display vocabulary."""
         _reader(monkeypatch)
         body = auth_client.get(
-            '/allocations/xras_roles_form/EXAM0001').get_data(as_text=True)
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'ghost-user-abcde' in body
         assert 'Project Lead' in body, 'XRAS display vocabulary, not "PI"'
 
@@ -691,7 +731,6 @@ class TestModalGets:
         '/allocations/xras_merge_form/ghost-user-abcde',
         '/allocations/xras_withdraw_form/EXAM0001/7',
         '/allocations/xras_resubmit_form/EXAM0001/7',
-        '/allocations/xras_roles_form/EXAM0001',
         '/allocations/xras_request_detail/EXAM0001',
     ])
     def test_an_outage_degrades_with_a_200(self, auth_client, armed,
@@ -724,17 +763,26 @@ class TestRequestDetailModal:
         response = auth_client.get('/allocations/xras_request_detail/EXAM0001')
         assert response.status_code == 200
 
-    def test_it_renders_resources_grouped_by_stage(self, auth_client, armed,
-                                                   monkeypatch):
+    def test_it_pivots_resources_into_a_stage_matrix(self, auth_client, armed,
+                                                     monkeypatch):
+        """One row per resource, one column per stage present — a resource that
+        was requested and then awarded is a SINGLE row, not repeated down three
+        stage lists."""
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'EXAM0001' in body
-        # The stage labels that make requested-vs-awarded legible.
+        # The stage labels are the column headers that make requested-vs-awarded
+        # legible; the payload's Cheyenne has a Requested and an Approved line.
         assert 'Requested' in body and 'Approved' in body
-        # Self-describing resource name + units, straight from the payload.
+        # Rendered as a matrix — a "Resource" column header — with the
+        # self-describing name + units straight from the payload.
+        assert '>Resource</th>' in body
         assert 'Cheyenne' in body
         assert 'Core-hours' in body
+        # Both the requested (555) and awarded (500) amounts for that one
+        # resource are present (a single pivoted row, a cell per stage).
+        assert '555' in body and '500' in body
 
     def test_it_renders_the_rich_sections(self, auth_client, armed, monkeypatch):
         _reader(monkeypatch, payload=_detail_payload())
@@ -755,24 +803,28 @@ class TestRequestDetailModal:
 
     def test_it_carries_the_shared_write_buttons(self, auth_client, armed,
                                                  monkeypatch):
-        """Roster + actions come from the SHARED include, so the modal offers
-        the same verbs as the card row — here, Withdraw on an Approved action
-        and the roster's Roles editor entry point."""
+        """Roster + actions strip: Withdraw on an Approved action, and the
+        roster editor is inline in the modal (add + remove a role) rather than
+        a separate Roles… view."""
         _reader(monkeypatch, payload=_detail_payload())
         body = auth_client.get(
             '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
         assert 'Withdraw…' in body
-        assert 'Roles…' in body
-        # But NOT a Details… link back to itself.
+        # The inline roster editor: an add-role form and a per-role Remove.
+        assert 'Add XRAS username' in body
+        assert '/allocations/xras_role_remove/EXAM0001/' in body
+        # No separate Roles… entry point, and no Details… link back to itself.
+        assert 'Roles…' not in body
         assert 'Details…' not in body
 
-    def test_the_card_row_offers_a_details_link(self, auth_client, armed,
-                                                monkeypatch):
-        """A "Details…" entry point in the non-toggle SAM cell of the card."""
+    def test_the_card_row_links_the_request_to_the_detail_modal(
+            self, auth_client, armed):
+        """The Request number is the single entry point into the detail modal
+        now — the separate "Details…" link is gone."""
         _publish(_payload('EXAM0001'))
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '/allocations/xras_request_detail/EXAM0001' in body
-        assert 'Details…' in body
+        assert 'Details…' not in body
 
 
 # ── the request editor (Part B) ──────────────────────────────────────────

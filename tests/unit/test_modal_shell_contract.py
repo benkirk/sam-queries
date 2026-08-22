@@ -275,18 +275,25 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
+    # The Pending Requests tab's Request column now links each request number to
+    # the read-only detail modal when an outbound read is configured (else it
+    # degrades to plain text) — so it reaches #auditDetailsModal like its sibling
+    # cards, on top of the #userDetailsModal it already used.
     'dashboards/allocations/partials/xras_pending_requests_card.html': [
+        'auditDetailsModal', 'auditDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
-    # The card's summary row carries a "Details…" link into #auditDetailsModal
-    # (in the non-toggle SAM cell) alongside the #projectDetailsModal badge link.
+    # The card's Request cell links each request number to #auditDetailsModal
+    # (the single detail-modal opener) and the SAM cell keeps the
+    # #projectDetailsModal badge link.
     'dashboards/allocations/partials/xras_remediations_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
         'projectDetailsModal', 'projectDetailsModalBody'],
-    # The shared roster/actions/button strip, included by both the expanded card
-    # row and the read-only detail modal — the reason the row itself no longer
-    # names these shells directly.
+    # The shared roster/actions strip, included only by the read-only detail
+    # modal. Its controls swap #auditDetailsModalBody in place and carry NO
+    # data-bs-toggle="modal" — clicked inside the open modal that would hide it —
+    # so it references the body id alone, not the modal shell.
     'dashboards/allocations/partials/_xras_remediation_actions.html': [
-        'auditDetailsModal', 'auditDetailsModalBody'],
+        'auditDetailsModalBody'],
     # The read-only + editor detail modal and its two editor forms, all reached
     # only from xras.html (same host page as the card) and all rendering into
     # #auditDetailsModalBody. The detail modal's Requested-stage editors and the
@@ -306,8 +313,6 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     'dashboards/allocations/partials/xras_merge_form.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_action_form.html': [
-        'auditDetailsModalBody'],
-    'dashboards/allocations/partials/xras_roles_form.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_history_modal.html': [
         'auditDetailsModalBody'],

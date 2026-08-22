@@ -73,7 +73,6 @@ _REMEDIATION_TARGET = 'alloc-xras-remediations'
 _CARD = 'dashboards/allocations/partials/xras_remediations_card.html'
 _MERGE_FORM = 'dashboards/allocations/partials/xras_merge_form.html'
 _ACTION_FORM = 'dashboards/allocations/partials/xras_action_form.html'
-_ROLES_FORM = 'dashboards/allocations/partials/xras_roles_form.html'
 
 
 # ---------------------------------------------------------------------------
@@ -909,22 +908,6 @@ def _role_options():
     return [(r['name'], r['display']) for r in remediation.role_choices()]
 
 
-@bp.route('/xras_roles_form/<path:request_number>')
-@login_required
-@require_permission(Permission.MANAGE_XRAS)
-def xras_roles_form(request_number: str):
-    """Modal body: the live roster, with add and remove."""
-    try:
-        context = _roles_context(request_number)
-    except XrasSourceUnavailable as exc:
-        current_app.logger.warning('xras roles form: %s', exc)
-        return _degraded('Editing a roster needs a live read from XRAS, and '
-                         'XRAS is not answering.')
-    if context is None:
-        return htmx_modal_not_found('Request')
-    return render_template(_ROLES_FORM, **context)
-
-
 class _XrasRoleAddHandler(_XrasRemediationHandler):
     """Put one username on a request's roster.
 
@@ -935,7 +918,9 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
     """
 
     schema_cls = XrasRoleForm
-    template = _ROLES_FORM
+    # `on_success`/`render_errors` are both overridden below to re-render the
+    # whole detail modal (the roster editor is inline in it now), so the base's
+    # `template` renderer is never reached.
     success_message = 'Role added in XRAS.'
 
     def clean(self, data):
@@ -989,18 +974,23 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
         return self._finish(outcome, verb='The role change')
 
     def on_success(self, result):
-        """Re-render the roster in place; do not close the modal."""
-        context = _safe_roles_context(self.request_number)
-        context['flash'] = (f'Added {result.result.extra.get("username")} as '
-                            f'{result.result.extra.get("role_type")}.')
-        response = current_app.make_response(
-            render_template(_ROLES_FORM, **context))
-        # The card behind the modal still needs to know something changed.
-        response.headers['HX-Trigger'] = 'refreshXrasTab'
-        return response
+        """Re-render the detail modal in place with a flash; keep it open —
+        roster fixes come in batches and closing after each would cost clicks."""
+        return _render_detail(
+            self.request_number,
+            flash=(f'Added {result.result.extra.get("username")} as '
+                   f'{result.result.extra.get("role_type")}.'))
 
-    def context(self):
-        return _safe_roles_context(self.request_number)
+    def render_errors(self, errors, field_errors=None):
+        """The add-role form is inline in the detail modal, which carries no
+        per-field macros, so collapse every error into a top-of-modal alert."""
+        messages = list(errors or [])
+        for msgs in (field_errors or {}).values():
+            messages.extend(msgs)
+        return _render_detail(
+            self.request_number,
+            flash_error=' '.join(str(m) for m in messages)
+            or 'Could not add the role.')
 
 
 def _safe_roles_context(request_number):
@@ -1037,17 +1027,19 @@ def xras_role_remove(request_number: str, role_id: int):
     Keyed on ``role_id`` rather than username because one person can hold two
     roles on a request and only the id says which one goes.
     """
+    # The roster editor is inline in the detail modal, so every outcome
+    # re-renders that modal in place (with a flash), not a separate roles view.
     context = _safe_roles_context(request_number)
     if not context['xa_user'] or context['request_id'] is None:
-        context['flash_error'] = ('XRAS could not be read, so nothing was '
-                                  'changed.')
-        return render_template(_ROLES_FORM, **context)
+        return _render_detail(
+            request_number,
+            flash_error='XRAS could not be read, so nothing was changed.')
 
     target = next((r for r in context['roster'] if r.get('role_id') == role_id),
                   None)
     if target is None:
-        context['flash_error'] = 'That role is no longer on the roster.'
-        return render_template(_ROLES_FORM, **context)
+        return _render_detail(
+            request_number, flash_error='That role is no longer on the roster.')
 
     try:
         outcome = remediation.change_role(
@@ -1056,23 +1048,20 @@ def xras_role_remove(request_number: str, role_id: int):
             operator=current_user.username, xa_user=context['xa_user'],
             role_id=role_id)
     except XrasWriteNotConfigured:
-        context['flash_error'] = ('XRAS writes are switched off for this '
-                                  'deployment. Nothing was sent.')
-        return render_template(_ROLES_FORM, **context)
+        return _render_detail(
+            request_number,
+            flash_error='XRAS writes are switched off for this deployment. '
+                        'Nothing was sent.')
 
-    refreshed = _safe_roles_context(request_number)
     if outcome.status == 'verified':
-        refreshed['flash'] = (f"Removed {target.get('username')} "
-                              f"({target.get('role_type')}).")
-    else:
-        reason = outcome.error or 'XRAS did not confirm it'
-        refreshed['flash_error'] = (
-            f'Removal did not complete: {reason}. The attempt is recorded in '
-            'the remediation log.')
-
-    response = current_app.make_response(render_template(_ROLES_FORM, **refreshed))
-    response.headers['HX-Trigger'] = 'refreshXrasTab'
-    return response
+        return _render_detail(
+            request_number,
+            flash=f"Removed {target.get('username')} ({target.get('role_type')}).")
+    reason = outcome.error or 'XRAS did not confirm it'
+    return _render_detail(
+        request_number,
+        flash_error=f'Removal did not complete: {reason}. The attempt is '
+                    'recorded in the remediation log.')
 
 
 # ---------------------------------------------------------------------------
@@ -1096,34 +1085,67 @@ _RESOURCE_STAGES = ('Requested', 'Recommended', 'Approved')
 
 
 def _detail_actions(payload):
-    """Per-action view model for the detail modal: resources grouped by stage.
+    """Per-action view model for the detail modal: a resource × stage matrix.
 
-    Built in Python because Jinja's ``groupby`` cannot both preserve a fixed
-    stage order and keep a trailing bucket for any unexpected stage. Each stage
-    with no resources is dropped, so the template renders only what exists; an
-    unrecognised ``type`` lands in an ``Other`` bucket rather than vanishing.
+    Resources are **pivoted** — one row per resource, one column per stage that
+    appears — so a resource present at several stages (the common case:
+    Requested + Approved) is a single row with a cell per stage, rather than the
+    same name repeated down three stacked stage lists. ``stages_present`` is the
+    ordered subset of stages actually seen (Requested / Recommended / Approved,
+    then a trailing ``Other`` for any unrecognised ``type``), so the template
+    renders only the columns that exist. ``units`` is carried once per row (the
+    same resource keeps its units across stages), which is what lets the stage
+    columns hold a bare number.
+
+    Built in Python because the pivot needs first-seen row order and a fixed
+    column order together, which Jinja's ``groupby`` cannot express.
     """
     actions = []
     for action in payload.get('actions') or ():
         if not isinstance(action, dict):
             continue
-        buckets = {stage: [] for stage in _RESOURCE_STAGES}
-        other = []
+        column_order = list(_RESOURCE_STAGES) + ['Other']
+        present = {stage: False for stage in column_order}
+        rows_by_key, row_order = {}, []
         for res in action.get('resources') or ():
             if not isinstance(res, dict):
                 continue
-            stage = res.get('type')
-            (buckets[stage] if stage in buckets else other).append(res)
-        stages = [(stage, buckets[stage]) for stage in _RESOURCE_STAGES
-                  if buckets[stage]]
-        if other:
-            stages.append(('Other', other))
+            raw = res.get('type')
+            stage = raw if raw in _RESOURCE_STAGES else 'Other'
+            rid = res.get('resourceId')
+            name = (res.get('displayResourceName') or res.get('resourceName')
+                    or (('resource ' + str(rid)) if rid is not None
+                        else 'resource'))
+            # Key on the resource-type id (unique per resource); fall back to
+            # the name only when a payload omits the id.
+            key = rid if rid is not None else name
+            row = rows_by_key.get(key)
+            if row is None:
+                row = {'resource_id': rid, 'name': name,
+                       'units': res.get('resourceUnits') or '', 'cells': {}}
+                rows_by_key[key] = row
+                row_order.append(key)
+            if not row['units']:
+                row['units'] = res.get('resourceUnits') or ''
+            row['cells'][stage] = {'amount': res.get('amount'),
+                                   'comments': res.get('comments')}
+            present[stage] = True
+        stages_present = [s for s in column_order if present[s]]
+        resource_rows = [rows_by_key[k] for k in row_order]
+        for row in resource_rows:
+            # Comments are rare and per (resource × stage); collect the
+            # non-empty ones so the template can surface them under the row.
+            row['comments'] = [(s, row['cells'][s]['comments'])
+                               for s in column_order
+                               if row['cells'].get(s)
+                               and row['cells'][s].get('comments')]
         actions.append({
             'action_id': action.get('actionId'),
             'action_type': action.get('actionType'),
             'action_status': action.get('actionStatus'),
             'user_comments': action.get('userComments'),
-            'stages': stages,
+            'stages_present': stages_present,
+            'resource_rows': resource_rows,
             # Dates arrive as raw ISO strings; parse to date objects here (the
             # same parser the entry builder uses) so the template can fmt_date
             # them — fmt_date raises on a str. `allocation_date_id` is carried
@@ -1190,6 +1212,12 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         # them, and the routes 403 anyway.
         'is_xras_admin': has_permission(current_user, Permission.ADMIN_XRAS),
         'action_types': list(XRAS_ACTION_TYPES),
+        # The roster editor is inline in the modal now (no separate Roles form):
+        # `row.roster` already carries `role_id` (roster_from_payload), and these
+        # two feed the add-role control below it.
+        'role_options': _role_options(),
+        'role_add_url': url_for('allocations_dashboard.xras_role_add',
+                                request_number=request_number),
         'flash': flash,
         'flash_error': flash_error,
     }
@@ -1204,9 +1232,10 @@ def xras_request_detail(request_number: str):
     Renders resources grouped by XRAS stage (Requested / Recommended /
     Approved) so requested-vs-awarded is visible, the rich request sections
     (abstract, FoS, grants, documents), and — via the shared
-    ``_xras_remediation_actions`` include — the same roster and write buttons
-    the card row offers, so the two can never drift. The Requested-stage rows
-    carry the amount/date editors (Part B); the Approved editors render
+    ``_xras_remediation_actions`` include — the roster and write buttons. This
+    modal is the single opener the Remediations card's Request cell links to
+    (the old per-request expansion was folded into it). The Requested-stage
+    rows carry the amount/date editors (Part B); the Approved editors render
     fail-visible until the elevated key lands.
 
     Degrades with a **200** on an XRAS outage, like every modal GET here: htmx

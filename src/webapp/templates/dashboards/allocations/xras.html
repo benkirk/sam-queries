@@ -1,5 +1,6 @@
 {% extends 'dashboards/allocations/base_allocations.html' %}
 {% from 'dashboards/fragments/xras_filters.html' import xras_filters %}
+{% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 
 {% block title %}XRAS Action Log - SAM{% endblock %}
 
@@ -37,6 +38,23 @@
    form's. Both are needed and neither is redundant: the window moves all
    three panes, a chip moves only its own. Wiring just the window is the easy
    mistake, and it makes every chip on every tab silently inert. #}
+
+{# ── Section 1: Work Queue ─────────────────────────────────────────────────
+   The two logical halves of this page are wrapped in collapsible cards, each
+   default open. This one holds the tabbed worklists and the conditional
+   Remediations write surface; the header is the collapse toggle (title +
+   chevron ONLY — no interactive control, so Bootstrap's capture-phase collapse
+   data-api can't collapse the card when a tab or window pill inside is clicked).
+   nav-view-persistence.js persists the open/closed state by id and only ever
+   re-opens, so a default-open card never comes back collapsed on reload. #}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2 cursor-pointer" role="button"
+         {{ collapse_toggle('xras-section-workqueue', expanded=true) }}>
+        <i class="fas fa-chevron-right small text-muted collapse-icon"></i>
+        <strong>Work Queue</strong>
+    </div>
+    <div id="xras-section-workqueue" class="collapse show">
+        <div class="card-body">
 
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
     {# role="tablist" + an id is all nav-view-persistence.js needs to remember
@@ -159,6 +177,23 @@
      hx-swap="innerHTML"></div>
 {% endif %}
 
+        </div>{# .card-body #}
+    </div>{# #xras-section-workqueue #}
+</div>{# Work Queue card #}
+
+{# ── Section 2: XRAS Logs ──────────────────────────────────────────────────
+   The API action log and its filter sidebar. Own collapse toggle; runs off its
+   own #xras-filters form (not the shared window above), so collapsing either
+   card touches no wiring. #}
+<div class="card mb-3">
+    <div class="card-header d-flex align-items-center gap-2 cursor-pointer" role="button"
+         {{ collapse_toggle('xras-section-logs', expanded=true) }}>
+        <i class="fas fa-chevron-right small text-muted collapse-icon"></i>
+        <strong>XRAS Logs</strong>
+    </div>
+    <div id="xras-section-logs" class="collapse show">
+        <div class="card-body">
+
 <div class="filter-sidebar mb-3">
     {{ xras_filters(
         form_id='xras-filters',
@@ -185,6 +220,10 @@
         </div>
     </div>
 </div>
+
+        </div>{# .card-body #}
+    </div>{# #xras-section-logs #}
+</div>{# XRAS Logs card #}
 
 {% include 'dashboards/allocations/partials/audit_details_modal.html' %}
 

@@ -276,6 +276,33 @@ class TestRenderStates:
         assert 'New account' in body
 
 
+class TestTheRequestColumnLinksToTheDetailModal:
+    """The request number IS the XRAS request, so it opens the read-only detail
+    modal when an outbound read is configured — even when a SAM project by that
+    name exists. With XRAS incoming-only it degrades to today's cell (project
+    link / plain), so a site with no outgoing access stays fully usable."""
+
+    def test_it_links_to_the_detail_modal_when_configured(
+            self, auth_client, committed_worklist_action, monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        # Keep the best-effort enrichment off the network.
+        monkeypatch.setattr('sam.integration.xras_api.people.get_person',
+                            lambda username: None)
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'NCAR4227' in body
+        assert '/allocations/xras_request_detail/NCAR4227' in body
+
+    def test_it_degrades_without_the_outbound_api(
+            self, auth_client, committed_worklist_action, monkeypatch):
+        """Incoming-only: no detail-modal link — the page must stay usable."""
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'NCAR4227' in body
+        assert 'xras_request_detail' not in body
+
+
 class TestPiiGating:
     """The gate is in the route; the template checks are a second layer."""
 
