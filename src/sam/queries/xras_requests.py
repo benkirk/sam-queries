@@ -61,6 +61,12 @@ TERMINAL_ACTION_STATUSES = ('Rejected', 'Cancelled', 'Withdrawn')
 DRAFT_ACTION_STATUS = 'Incomplete'
 
 PI_ROLE_TYPE_ID = 13
+#: XRAS ``Allocation Manager`` — SAM's language for it is **Project Admin**.
+#: Kept here beside the PI id (same convention) rather than imported from
+#: admin_client's ``ROLE_TYPES`` (``RoleType(14, 'Allocation Manager',
+#: 'Project Admin')``), which is the write client and does not belong on the
+#: read path.
+ADMIN_ROLE_TYPE_ID = 14
 
 
 def _as_date(value: Any):
@@ -224,6 +230,14 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         'pi': {'username': resolve_pi(roster),
                'name': next((r['name'] for r in roster
                              if r.get('role_type_id') == PI_ROLE_TYPE_ID), None)},
+        # The Allocation Manager (SAM: "Project Admin"), when the request names
+        # one — often it does not, so both keys are None on those rows.
+        'admin': {'username': next((r['username'] for r in roster
+                                    if r.get('role_type_id') == ADMIN_ROLE_TYPE_ID),
+                                   None),
+                  'name': next((r['name'] for r in roster
+                                if r.get('role_type_id') == ADMIN_ROLE_TYPE_ID),
+                               None)},
         'roster': roster,
         'actions': actions_from_payload(payload),
         # The conjunction the merge fixup keys on, precomputed so the template

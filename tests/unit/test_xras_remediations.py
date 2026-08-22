@@ -450,6 +450,29 @@ class TestRendering:
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '2 actions' in body
 
+    def test_the_project_admin_column_shows_the_allocation_manager(
+            self, auth_client, armed):
+        """SAM's "Project Admin" is the XRAS Allocation Manager (roleTypeId 14),
+        shown when the request names one."""
+        payload = _payload()
+        payload['roles'].append(
+            {'person': {'username': 'am-user', 'firstName': 'Al',
+                        'lastName': 'Manager', 'isReconciled': True},
+             'roles': [{'roleId': 3, 'role': 'Allocation Manager',
+                        'roleTypeId': 14}]})
+        _publish(payload)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'Project Admin' in body      # the column header
+        assert 'Al Manager' in body         # the resolved admin
+
+    def test_the_project_admin_column_is_blank_without_one(self, auth_client,
+                                                           armed):
+        """The base payload names no Allocation Manager — the cell is a dash,
+        and the header still renders."""
+        _publish(_payload())
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'Project Admin' in body
+
 
 # ── the project link ────────────────────────────────────────────────────
 

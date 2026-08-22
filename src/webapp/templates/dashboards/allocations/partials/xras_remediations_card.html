@@ -185,6 +185,10 @@
                        the slack, so the group header's overflow lands here
                        instead of being shared out over the fixed ones. #}
                     <th style="width:99%;">Project lead</th>
+                    {# SAM's language for the XRAS "Allocation Manager" role —
+                       ROLE_TYPES in admin_client.py. Blank on the many requests
+                       that name no admin. #}
+                    <th style="width:12rem;">Project Admin</th>
                     <th class="text-nowrap" style="width:7rem;">Submitted</th>
                     <th class="text-nowrap" style="width:11rem;">Period</th>
                     <th class="text-end" style="width:11rem;">SAM</th>
@@ -213,7 +217,7 @@
                    whole <tr> (unlike the request rows below, which open a
                    modal) — see dashboards/fragments/collapse.html. #}
                 <tr class="table-subtle fw-semibold cursor-pointer" {{ collapse_toggle(gid, expanded=true) }}>
-                    <td colspan="6">
+                    <td colspan="7">
                         <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>
                         {{ group.name }}
                         {% if group.opportunity_id %}
@@ -255,6 +259,12 @@
                         </span>
                     </td>
                     <td>{{ row.pi.name or row.pi.username or '—' }}</td>
+                    {# `is defined`, not a bare access: this card renders the
+                       PUBLISHED snapshot, which may be one sweep behind the code
+                       — a row swept before `admin` existed has no such key, and
+                       a bare `row.admin.name` would 500 the whole card for the
+                       hour between a deploy and the next sweep. #}
+                    <td>{% if row.admin is defined and row.admin %}{{ row.admin.name or row.admin.username or '—' }}{% else %}—{% endif %}</td>
                     <td class="text-nowrap">{{ row.submit_date | fmt_date }}</td>
                     <td class="small text-muted text-nowrap">
                         {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}

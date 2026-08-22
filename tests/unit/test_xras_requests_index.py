@@ -65,6 +65,30 @@ class TestTheNestingTrap:
         assert resolve_pi(rows) is None
 
 
+class TestTheProjectAdmin:
+    """The Allocation Manager (SAM: "Project Admin") — resolved by id like the
+    PI, and often simply absent."""
+
+    def _with_admin(self):
+        payload = _payload()
+        payload['roles'].append(
+            {'person': {'username': 'admin-user', 'firstName': 'Al',
+                        'lastName': 'Manager', 'isReconciled': True},
+             'roles': [{'roleId': 2, 'role': 'Allocation Manager',
+                        'roleTypeId': 14}]})
+        return payload
+
+    def test_it_resolves_the_allocation_manager_by_id(self):
+        entry = request_index_entry(self._with_admin())
+        assert entry['admin']['username'] == 'admin-user'
+        assert entry['admin']['name']            # display name from the person
+
+    def test_no_admin_on_the_request_is_none_not_a_guess(self):
+        # The base payload names a PI and a User, never an Allocation Manager.
+        assert request_index_entry(_payload())['admin'] == {
+            'username': None, 'name': None}
+
+
 class TestNoPiiInTheSnapshot:
     """The payload has full person objects inline. The entry must not."""
 
