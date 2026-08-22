@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from scheduling.registry import TASKS, TaskContext
-from scheduling.schedules import BusinessHourly, occurrence_key
+from scheduling.schedules import Hourly, occurrence_key
 from scheduling.tasks import xras_sweep as mod
 
 from factories import make_xras_opportunity_mapping
@@ -153,15 +153,21 @@ class TestRegistration:
         assert params == ['ctx'], (
             f'the registered callable takes {params}; a task body takes only ctx')
 
-    def test_it_runs_hourly_through_the_business_day(self):
+    def test_it_runs_hourly_around_the_clock(self):
         """The cadence IS the Feed-B tab's freshness — the tab renders what
         this publishes, so a nightly sweep would show an operator yesterday's
-        queue all day."""
+        queue all day, and a business-day one gave the first operator in on a
+        Monday a snapshot from Friday afternoon.
+
+        ⚠️ `Hourly`, not `BusinessHourly`: this task only refreshes a cache,
+        unlike its sibling `xras_notices`, which mails people and therefore
+        stays inside the business day. `Hourly` is UTC and accepts no `tz` —
+        which is the point, since a local-wall hourly schedule drops a slot
+        each fall and risks merging one each spring.
+        """
         schedule = TASKS[NAME].schedule
-        assert isinstance(schedule, BusinessHourly)
-        assert (schedule.minute, schedule.start_hour, schedule.end_hour) == (0, 8, 17)
-        assert schedule.weekdays == (0, 1, 2, 3, 4)
-        assert schedule.tz == 'America/Denver'
+        assert isinstance(schedule, Hourly)
+        assert schedule.minute == 0
 
     def test_it_needs_sam_and_not_status(self):
         assert set(TASKS[NAME].needs) == {'sam'}

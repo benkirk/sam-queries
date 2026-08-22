@@ -1,6 +1,6 @@
 """``xras_sweep`` — enumerate XRAS nightly and diff it against SAM.
 
-Hourly 08:00-17:00 Mon-Fri Mountain. The first task that calls **out** to XRAS
+Hourly, around the clock. The first task that calls **out** to XRAS
 rather than reading only SAM's own tables, and the third declaring
 ``needs=('sam',)``.
 
@@ -60,20 +60,28 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from scheduling.registry import TaskResult, task
-from scheduling.schedules import BusinessHourly, to_local_naive
+from scheduling.schedules import DEFAULT_TZ, Hourly, to_local_naive
 
 #: Overnight on purpose: nothing here is time-critical, the enumeration is the
 #: heaviest outbound call SAM makes, and a warm people-cache at 03:30 is still
 #: warm for the first card render of the working day.
-#: Hourly through the business day, matching `xras_notices`. The Feed-B tab
-#: reads what this publishes, so the cadence IS the tab's freshness — a
-#: nightly sweep would show an operator yesterday's queue all day.
+#: Hourly, every hour of every day. The Feed-B tab reads what this publishes,
+#: so the cadence IS the tab's freshness — and unlike `xras_notices`, which
+#: mails people and therefore has no business waking at 03:00, this one only
+#: refreshes a cache. Restricting it to the business day bought nothing and
+#: cost the first operator in on a Monday a snapshot from Friday afternoon.
+#:
+#: `Hourly` is UTC and takes no `tz`, deliberately: every zone SAM cares about
+#: is a whole-hour offset, so `:00 UTC` and `:00 Mountain` are the same
+#: instants, and computing in UTC means DST can neither duplicate nor drop a
+#: slot. The naive-Mountain conversions below use `DEFAULT_TZ` directly, which
+#: is what `BusinessHourly(tz=...)` was supplying.
 #:
 #: `minute=0` for the same reason `xras_notices` uses it: the CronJob wakes at
 #: :07, so a :00 slot dispatches about seven minutes later where a :20 slot
 #: would wait for the next wake. Both tasks share the wake and run
 #: sequentially under `concurrencyPolicy: Forbid`; this one takes 60-90s.
-SCHEDULE = BusinessHourly(minute=0, tz='America/Denver')
+SCHEDULE = Hourly(minute=0)
 
 #: Pages of ``reports/requests`` per run, overridable via
 #: ``$SAM_TASKS_XRAS_SWEEP_MAX_PAGES``. At the default page size that is 5,000
@@ -442,7 +450,8 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
       # instead. The drift test asserts the inequality against values.yaml.
       expected_runtime=timedelta(minutes=20),
       # The 6h default. A missed slot costs little: the enumeration window is
-      # rolling, so the next run subsumes it. The one piece of state this now
+      # rolling, so the next run subsumes it — and now that the schedule runs
+      # around the clock, the next run is at most an hour away whenever it is. The one piece of state this now
       # writes — opportunity mapping rows — is insert-if-absent, so a skipped
       # slot delays a row rather than losing it.
       misfire_grace=timedelta(hours=6),
@@ -515,7 +524,7 @@ def xras_sweep(ctx) -> TaskResult:
     status = sweep_status()
     window = window_days()
     window_start = to_local_naive(
-        ctx.occurrence, ZoneInfo(SCHEDULE.tz)).date() - timedelta(days=window)
+        ctx.occurrence, ZoneInfo(DEFAULT_TZ)).date() - timedelta(days=window)
     detail['window_days'] = window
     detail['status'] = status or 'all'
 
@@ -680,7 +689,7 @@ def xras_sweep(ctx) -> TaskResult:
         # cache and read straight by a Jinja `fmt_date`, whereas the ledger's
         # `detail` beside it is JSON and must stay stringly-typed. The two
         # have different serialisation contracts and this is the seam.
-        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz)),
+        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
         'window_days': window,
         'status': detail['status'],
         'requests_seen': detail['requests_seen'],
@@ -704,7 +713,7 @@ def xras_sweep(ctx) -> TaskResult:
     # because the `worklist` value must keep its exact shape — an older webapp
     # reading a newer sweep sees what it expects and never asks for this one.
     index_backend = store_requests_index({
-        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(SCHEDULE.tz)),
+        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
         'statuses': [detail['status']] + list(EXTRA_STATUSES),
         'extra_statuses': detail['extra_statuses'],
         'rows': index_entries,
