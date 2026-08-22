@@ -169,13 +169,20 @@
                            `filter_by(username=...)` matches whatever case XRAS
                            sent — the same collation `classify_accounts` relies
                            on. See its comment on the case-insensitive key. #}
-                        <a href="#" class="text-decoration-none text-reset"
-                           title="View user details"
-                           data-bs-toggle="modal" data-bs-target="#userDetailsModal"
-                           hx-get="{{ url_for('admin_dashboard.user_card',
-                                              username=row.username) }}"
-                           hx-target="#userDetailsModalBody"
-                           hx-swap="innerHTML">{{ row.username }}</a>
+                        {# `btn btn-link` for the same reason as `request_cell`
+                           above: only the rare Reactivation row links, so a
+                           colour-inheriting link would be invisible among the
+                           New-account rows that do not. `.font-monospace`
+                           inside keeps the username lowercase — `.btn` would
+                           otherwise uppercase it and erase the convention that
+                           tells a username from a projcode at a glance. #}
+                        <button type="button" class="btn btn-link btn-entity p-0"
+                                title="View user details"
+                                data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+                                hx-get="{{ url_for('admin_dashboard.user_card',
+                                                   username=row.username) }}"
+                                hx-target="#userDetailsModalBody"
+                                hx-swap="innerHTML"><span class="font-monospace">{{ row.username }}</span></button>
                         {% endif %}
                         {% if row.placeholder %}
                         <span class="badge bg-body-secondary text-body-secondary border ms-1 fw-normal"

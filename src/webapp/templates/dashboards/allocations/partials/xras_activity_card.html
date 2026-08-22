@@ -96,11 +96,17 @@
                        Actions cells are deliberately NOT toggles. #}
                     {# nowrap: the chevron and the projcode are one unit. Without
                        it the inline-block button wraps below the icon as soon as
-                       the column is at all tight. #}
-                    <td style="white-space:nowrap;"
-                        {% if expandable %}class="cursor-pointer" {{ collapse_toggle(detail_id) }}{% endif %}>
+                       the column is at all tight.
+
+                       ⚠️ The toggle is on the CHEVRON, not on this cell. It was
+                       on the cell, which also holds the project-modal button —
+                       so Bootstrap's capture-phase data-api toggled the row on
+                       every projcode click, opening the modal with the row
+                       flapping open behind it. The other three cells still
+                       toggle wholesale; only this one cannot. #}
+                    <td style="white-space:nowrap;">
                         {% if expandable %}
-                        <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>
+                        <span class="cursor-pointer" {{ collapse_toggle(detail_id) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
                         {% endif %}
                         <button type="button" class="btn btn-link p-0 align-baseline"
                                 hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=r.projcode) }}"

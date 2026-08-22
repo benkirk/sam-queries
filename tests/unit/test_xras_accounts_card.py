@@ -153,6 +153,24 @@ class TestTheUsernameLinksWhenSamHasTheAccount:
         assert 'data-bs-target="#userDetailsModal"' in body
         assert 'hx-target="#userDetailsModalBody"' in body
 
+    def test_the_links_are_visibly_links(self, auth_client,
+                                         committed_worklist_action,
+                                         deactivated_worklist_user):
+        """⚠️ Not `text-decoration-none text-reset`, the compact-table idiom
+        from user_rows.html / contract_bits.html. That makes a link inherit
+        its cell's colour, which is right where every name in the column is
+        one. Here most rows do NOT link, so a colour-inheriting link was
+        indistinguishable from the plain text beside it — measured in a
+        browser, where UWIS0064 opened a modal and UAHV0010 did not and
+        nothing on screen said which.
+
+        `btn-entity` is the other half: `.btn` sets 1.25rem, so without it the
+        identifier rendered 20px among 14px neighbours.
+        """
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'btn btn-link btn-entity p-0' in body
+        assert 'text-decoration-none text-reset' not in body
+
 
 class TestTheRowStillExpands:
     """⚠️ The link forced the collapse toggle off the `<tr>`.

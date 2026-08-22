@@ -273,6 +273,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # extends — so the single host page carries them.
     'dashboards/allocations/partials/xras_accounts_card.html': [
         'auditDetailsModal', 'auditDetailsModalBody',
+        'projectDetailsModal', 'projectDetailsModalBody',
         'userDetailsModal', 'userDetailsModalBody'],
     'dashboards/allocations/partials/xras_pending_requests_card.html': [
         'userDetailsModal', 'userDetailsModalBody'],

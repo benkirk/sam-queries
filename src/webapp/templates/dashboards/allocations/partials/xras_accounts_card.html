@@ -1,5 +1,39 @@
 {% from 'dashboards/fragments/badges.html' import status_badge %}
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
+{#
+  One request number, linked when SAM has a project by that name.
+
+  A macro because it renders in TWO places on this card — the summary row's
+  Request column and the per-action table inside the expansion — and a
+  hand-repeated copy is how the two drift. `is_project` is stamped once per
+  card by `stamp_project_existence`; see its docstring for why there are two
+  states here and three on the action log.
+#}
+{% macro request_cell(number, is_project) -%}
+{%- if not number -%}<span class="text-muted">—</span>
+{%- elif is_project -%}
+{#- ⚠️ `btn btn-link`, NOT the `text-decoration-none text-reset` anchor used
+    by user_rows.html and contract_bits.html. That treatment makes a link
+    inherit its cell's colour, which is right where EVERY name in the column
+    is a link — the column itself is the affordance. Here most of these
+    numbers have no project, so a link that looked like its neighbours was
+    indistinguishable from them: UWIS0064 opened a modal and UAHV0010 did not,
+    and nothing on screen said which.
+
+    `.btn-link` gives `--text-link` and underlines on hover (dashboard.css).
+    The inner `.font-monospace` is load-bearing, not decoration: `.btn`
+    uppercases its label, and `.btn .font-monospace` is the carve-out that
+    stops it — written for exactly this, the entity quick-view links. -#}
+<button type="button" class="btn btn-link btn-entity p-0"
+        title="View project details"
+        data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+        hx-get="{{ url_for('user_dashboard.project_details_modal', projcode=number) }}"
+        hx-target="#projectDetailsModalBody"
+        hx-swap="innerHTML"><span class="font-monospace">{{ number }}</span></button>
+{%- else -%}
+<span title="No SAM project by this name yet — the expected state for a request whose handoff has not completed, which is why this account is still on the list">{{ number }}</span>
+{%- endif -%}
+{%- endmacro %}
 {% from 'dashboards/fragments/facet_chips.html' import facet_row %}
 {% from 'dashboards/fragments/xras_person_detail.html' import person_detail %}
 {#
@@ -185,13 +219,20 @@
                            `filter_by(username=...)` matches whatever case XRAS
                            sent — the same collation `classify_accounts` relies
                            on. See its comment on the case-insensitive key. #}
-                        <a href="#" class="text-decoration-none text-reset"
-                           title="View user details"
-                           data-bs-toggle="modal" data-bs-target="#userDetailsModal"
-                           hx-get="{{ url_for('admin_dashboard.user_card',
-                                              username=row.username) }}"
-                           hx-target="#userDetailsModalBody"
-                           hx-swap="innerHTML">{{ row.username }}</a>
+                        {# `btn btn-link` for the same reason as `request_cell`
+                           above: only the rare Reactivation row links, so a
+                           colour-inheriting link would be invisible among the
+                           New-account rows that do not. `.font-monospace`
+                           inside keeps the username lowercase — `.btn` would
+                           otherwise uppercase it and erase the convention that
+                           tells a username from a projcode at a glance. #}
+                        <button type="button" class="btn btn-link btn-entity p-0"
+                                title="View user details"
+                                data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+                                hx-get="{{ url_for('admin_dashboard.user_card',
+                                                   username=row.username) }}"
+                                hx-target="#userDetailsModalBody"
+                                hx-swap="innerHTML"><span class="font-monospace">{{ row.username }}</span></button>
                         {% endif %}
                         {% if row.placeholder %}
                         {# Text, not an icon: the placeholder shape is already
@@ -233,11 +274,22 @@
                     {# Which XRAS request needs this account. Its own column
                        at every permission level: it is the handle an operator
                        working a project's activation actually navigates by. #}
-                    <td class="font-monospace small cursor-pointer" {{ collapse_toggle(body_id) }}>
+                    {# ⚠️ No toggle: this cell links its request numbers, and a
+                       toggle on the cell fires in the capture phase before the
+                       link — the modal would open and the row would flip open
+                       behind it. Measured in the browser doing exactly that
+                       before the toggle came off. #}
+                    <td class="font-monospace small">
+                        {# Deduped on the number, so the link state has to come
+                           from the actions rather than the flattened list — any
+                           action carrying this number answers the same question,
+                           since `is_project` is a fact about the number. #}
                         {% set numbers = row.actions | map(attribute='request_number')
                                          | reject('none') | unique | list %}
                         {% for number in numbers[:2] %}
-                        {{ number }}{% if not loop.last %}, {% endif %}
+                        {%- set linked = row.actions | selectattr('request_number', 'equalto', number)
+                                                     | selectattr('is_project') | list | length > 0 -%}
+                        {{ request_cell(number, linked) }}{% if not loop.last %}, {% endif %}
                         {% endfor %}
                         {% if not numbers %}<span class="text-muted">—</span>{% endif %}
                         {% if numbers | length > 2 %}
@@ -338,7 +390,7 @@
                             <tbody>
                                 {% for action in row.actions %}
                                 <tr class="small">
-                                    <td class="font-monospace">{{ action.request_number or '—' }}</td>
+                                    <td class="font-monospace">{{ request_cell(action.request_number, action.is_project) }}</td>
                                     <td>{{ action.action_type or '—' }}</td>
                                     <td>{% if action.status %}{{ status_badge(action.status, tooltip=False) }}{% endif %}</td>
                                     <td>{{ action.received_time | fmt_date }}</td>

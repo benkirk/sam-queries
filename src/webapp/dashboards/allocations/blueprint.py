@@ -66,6 +66,7 @@ from sam.queries.xras_accounts import (
     CLASSIFICATION_INACTIVE,
     enrich_worklist,
     get_account_worklist,
+    stamp_project_existence,
     stamp_waiting_days,
     worklist_counts,
 )
@@ -1850,6 +1851,12 @@ def xras_accounts_fragment():
     # union is available where it is actually needed — `sam-admin xras
     # --accounts`, and whatever digest comes after it.
     stamp_waiting_days(rows)
+
+    # One query for the whole card, so the Request column can link the numbers
+    # SAM already has a project for. Feed A only — the sibling Feed-B route
+    # deliberately does not call this: its cohort is `numbers - known`, so
+    # every row there is a number with no project by construction.
+    stamp_project_existence(db.session, rows)
 
     # Enrichment is best-effort and never fatal: an outage or an unconfigured
     # deployment leaves `person` None and flags the batch, so the card degrades

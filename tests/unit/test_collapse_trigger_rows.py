@@ -54,6 +54,38 @@ _JINJA_SPAN = re.compile(r'{{.*?}}|{%.*?%}', re.S)
 
 _TR_OPEN = re.compile(r'<tr\b[^>]*>', re.S)
 
+# ⚠️ Moving the toggle off the <tr> and onto the cells does NOT make the row
+# safe — it makes the CELLS the thing that must not contain an action. A cell
+# carrying both a toggle and a link has exactly the original bug, one level
+# down, and the <tr>-only scan walked straight past it: two shipped instances
+# were found by clicking them in a browser, not by this file.
+#
+# `<span>` is in the list because it is the escape hatch the fix uses — a
+# chevron wrapped in its own trigger so the cell around it can hold a link —
+# and a span that grew an action would be the same mistake again.
+_CELL_OPEN = re.compile(r'<(td|th|span|div)\b[^>]*?>', re.S)
+
+# ⚠️ Deliberately broader than `_ACTION`, and the difference is the whole
+# reason this scan was worth adding. `_ACTION` matches an anchor only when it
+# carries a `btn` class, because it was written for the admin cards' Edit and
+# Delete controls. The entity-modal idiom — a projcode or username opening
+# `#projectDetailsModal` / `#userDetailsModal` — is a PLAIN `<a>` with
+# `text-decoration-none`, so `_ACTION` walked past every one of them. A first
+# draft of this test duly passed on a cell that had been measured in a browser
+# doing the exact thing it forbids.
+#
+# So: any `<a>` at all. A link that navigates away is no more welcome inside a
+# trigger than one that opens a modal — both leave the row toggling behind
+# whatever the click actually did.
+#
+# ⚠️ And, like `_ACTION`, it has to name MACROS as well as literal markup —
+# source cannot see what a macro expands to. `request_cell()` renders a
+# projcode as a modal link, and naming it here is not optional bookkeeping: a
+# first draft of this test passed on the very cell that had just been measured
+# in a browser opening a modal AND toggling its row, purely because the `<a>`
+# lived in the macro body instead of at the call site.
+_CELL_ACTION = re.compile(r'<button\b|<a\b|request_cell\(')
+
 # Either spelling of a trigger: the literal attribute, or the macro that emits
 # it (a macro call on the <tr> would be just as wrong, and is easy to write).
 _TRIGGER = re.compile(r'data-bs-toggle="collapse"|collapse_toggle\(')
@@ -98,6 +130,47 @@ def _trigger_rows():
             row = raw[m.end():end] if end != -1 else raw[m.end():]
             line = raw[:m.start()].count('\n') + 1
             yield str(path.relative_to(TEMPLATE_ROOT)), line, row
+
+
+def _trigger_cells():
+    """Yield (template, line, inner_html) for every collapse-trigger cell."""
+    for path in sorted(TEMPLATE_ROOT.rglob('*.html')):
+        raw = _JINJA_COMMENT.sub(
+            lambda m: re.sub(r'[^\n]', ' ', m.group(0)),
+            path.read_text(),
+        )
+        masked = _mask_jinja_gt(raw)
+        for m in _CELL_OPEN.finditer(masked):
+            if not _TRIGGER.search(m.group(0)):
+                continue
+            close = f'</{m.group(1)}>'
+            end = raw.find(close, m.end())
+            inner = raw[m.end():end] if end != -1 else raw[m.end():]
+            line = raw[:m.start()].count('\n') + 1
+            yield str(path.relative_to(TEMPLATE_ROOT)), line, inner
+
+
+def test_no_action_button_inside_a_collapse_trigger_cell():
+    """The same rule as below, applied to the fix for it.
+
+    Relocating a toggle from the <tr> to the cells is the prescribed remedy,
+    and it is only a remedy for the cells that do NOT hold an action. Put the
+    toggle on the cell holding the link and the click still toggles the row —
+    capture descends document → row → cell → link either way.
+    """
+    offenders = []
+    for template, line, inner in _trigger_cells():
+        hit = _CELL_ACTION.search(inner)
+        if hit:
+            offenders.append(f'{template}:{line} (contains {hit.group(0)!r})')
+
+    assert not offenders, (
+        'A collapse-trigger cell contains an action button or link, so '
+        'clicking it will also toggle the row. Drop the toggle from THAT cell '
+        '— its siblings can keep theirs — and if it held the chevron, wrap the '
+        'chevron in its own trigger span so the affordance still works.\n  '
+        + '\n  '.join(offenders)
+    )
 
 
 def test_no_action_button_inside_a_collapse_trigger_row():
