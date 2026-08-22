@@ -106,10 +106,18 @@ requires `admin` (TBD by Phase 0.5). Fields per the apidoc.
   **not** matched by any `ALL_*` aggregate (they match `view_`/`edit_`/`create_`/
   `delete_`), so it fails closed and must be granted explicitly — same property
   that protects `MANAGE_XRAS`.
-- Grant it explicitly in a bundle. Default: add to `_ALLOCATION_ADMIN` alongside
-  `MANAGE_XRAS` (so `nusd` holds both) **unless** the operator wants destructive
-  verbs held to a narrower set — flag as a one-line decision. `VIEW_XRAS ⊆
-  MANAGE_XRAS ⊆ (MANAGE_XRAS + ADMIN_XRAS)` conceptually.
+- **DECIDED (operator, 2026-08-22): `ADMIN_XRAS` rides with `SYSTEM_ADMIN`, NOT
+  `_ALLOCATION_ADMIN`.** Destructive XRAS lifecycle verbs are a system-admin
+  capability, not an allocation-admin one — so `MANAGE_XRAS` stays in
+  `_ALLOCATION_ADMIN` (nusd/csg keep the non-destructive editor, Part B) but
+  `ADMIN_XRAS` is granted only wherever `SYSTEM_ADMIN` is. Today that is the
+  `benkirk` full-perms override (`USER_PERMISSION_OVERRIDES`, `[p for p in
+  Permission]`), which picks up the new member for free; no group bundle holds
+  `SYSTEM_ADMIN` (it gates rate-limits, tasks-detail, notifications rows, config
+  writes). **Do NOT add `ADMIN_XRAS` to `_ALLOCATION_ADMIN`.** If a system-admin
+  group bundle is ever introduced, `ADMIN_XRAS` belongs there beside
+  `SYSTEM_ADMIN`. Conceptually: `VIEW_XRAS ⊆ MANAGE_XRAS` (allocation-admin) and
+  `ADMIN_XRAS` sits with `SYSTEM_ADMIN`, above it.
 - Routes: non-destructive editor routes use `@require_permission(Permission.MANAGE_XRAS)`;
   destructive routes use `@require_permission(Permission.ADMIN_XRAS)`. Buttons for
   destructive verbs render only when `has_permission(current_user, ADMIN_XRAS)`.
