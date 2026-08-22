@@ -66,7 +66,17 @@
     {% set merge_offered = [] %}
     {% for member in row.roster %}
         <tr>
-            <td class="font-monospace">{{ member.username }}</td>
+            {# Username opens the XRAS User modal in place — a plain hx-get into
+               this same modal body, NO data-bs-toggle (the modal is already
+               open; a toggle would hide it — the #464 bug). `request_number`
+               rides along so the user modal can offer a way back here. #}
+            <td class="font-monospace">
+                <a href="#" class="text-decoration-none"
+                   title="View this XRAS user"
+                   hx-get="{{ url_for('allocations_dashboard.xras_user_detail',
+                                      username=member.username) }}?request_number={{ row.request_number }}"
+                   hx-target="#auditDetailsModalBody" hx-swap="innerHTML">{{ member.username }}</a>
+            </td>
             <td>{{ member.name or '—' }}</td>
             <td>{{ member.role_type or '—' }}</td>
             <td class="text-end text-nowrap">

@@ -1736,6 +1736,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_user_detail",
+    "/allocations/xras_user_detail/<path:username>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_window_fragment",
     "/allocations/xras_window_fragment",
     [

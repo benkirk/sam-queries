@@ -298,6 +298,24 @@ class TestEndpoints:
         assert call.args[1].endswith('/v1/search/people')
         assert call.kwargs['params'] == {'q': 'Invented'}
 
+    def test_person_roles_hits_the_reports_username_route(self, monkeypatch):
+        payload = {'panels': [], 'requestRoles': []}
+        client = _client(monkeypatch, [_response(200, _envelope(payload))])
+        assert client.get_person_roles('Invented') == payload
+        url = client.session.request.call_args.args[1]
+        assert url.endswith('/v1/reports/username/Invented')
+
+    def test_person_roles_url_quotes_the_username(self, monkeypatch):
+        client = _client(monkeypatch, [_response(200, _envelope({}))])
+        client.get_person_roles('a b/c')
+        url = client.session.request.call_args.args[1]
+        assert url.endswith('/v1/reports/username/a%20b%2Fc')
+
+    def test_person_roles_404_reads_as_none(self, monkeypatch):
+        # A merged-away placeholder 404s here exactly as get_person does.
+        client = _client(monkeypatch, [_response(404, {})])
+        assert client.get_person_roles('gone-user-00001') is None
+
 
 class TestPagination:
     """Descending requestId, strictly-less-than, smallest id asks for the next."""

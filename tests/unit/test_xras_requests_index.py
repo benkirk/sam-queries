@@ -12,6 +12,7 @@ import pytest
 from sam.queries.xras_requests import (
     DRAFT_ACTION_STATUS,
     actions_from_payload,
+    person_roles_from_payload,
     request_index_entry,
     resolve_pi,
     roster_from_payload,
@@ -87,6 +88,69 @@ class TestTheProjectAdmin:
         # The base payload names a PI and a User, never an Allocation Manager.
         assert request_index_entry(_payload())['admin'] == {
             'username': None, 'name': None}
+
+
+class TestPersonRoles:
+    """``person_roles_from_payload`` shapes the ``reports/username`` feed the
+    XRAS User modal renders — grouped by role, keyed to the Request modal by
+    number, and carrying no ``requestStatus`` because the feed has none."""
+
+    def _payload(self, **over):
+        payload = {
+            'panels': [],
+            'requestRoles': [
+                {'roleName': 'Project Lead',
+                 'requests': [
+                     {'requestNumber': 'UCIR0072', 'requestId': 1446007,
+                      'requestTitle': 'CLaSH', 'actionType': 'New',
+                      'allocationType': 'Small',
+                      'opportunity': 'Small Allocation (University)',
+                      'beginDate': '2026-08-04', 'endDate': '2027-08-31',
+                      'pi': 'Baldwin, Jane', 'piUsername': 'janebaldwin'}]},
+                {'roleName': 'User',
+                 'requests': [
+                     {'requestNumber': 'NCAR0007', 'requestID': 42}]},
+            ],
+        }
+        payload.update(over)
+        return payload
+
+    def test_groups_are_preserved_and_role_labelled(self):
+        groups = person_roles_from_payload(self._payload())
+        assert [g['role_name'] for g in groups] == ['Project Lead', 'User']
+        assert groups[0]['requests'][0]['request_number'] == 'UCIR0072'
+
+    def test_it_takes_either_spelling_of_the_id(self):
+        # The feed spells it requestId in one place, requestID in another.
+        groups = person_roles_from_payload(self._payload())
+        assert groups[0]['requests'][0]['request_id'] == 1446007
+        assert groups[1]['requests'][0]['request_id'] == 42
+
+    def test_dates_are_parsed_for_fmt_date(self):
+        from datetime import date
+        req = person_roles_from_payload(self._payload())[0]['requests'][0]
+        assert req['begin_date'] == date(2026, 8, 4)
+        assert req['end_date'] == date(2027, 8, 31)
+
+    def test_a_request_without_a_number_is_dropped(self):
+        # The modal's only link key is the number; a row without one cannot
+        # support the Request link, so it costs the row, not the panel.
+        payload = self._payload(requestRoles=[
+            {'roleName': 'User', 'requests': [
+                {'requestId': 5},
+                {'requestNumber': 'NCAR0009', 'requestId': 6}]}])
+        rows = person_roles_from_payload(payload)[0]['requests']
+        assert [r['request_number'] for r in rows] == ['NCAR0009']
+
+    def test_a_group_with_no_usable_request_is_dropped(self):
+        payload = self._payload(requestRoles=[
+            {'roleName': 'User', 'requests': [{'requestId': 5}]}])
+        assert person_roles_from_payload(payload) == []
+
+    def test_a_malformed_payload_costs_the_panel_not_the_run(self):
+        assert person_roles_from_payload('not a dict') == []
+        assert person_roles_from_payload(None) == []
+        assert person_roles_from_payload({}) == []
 
 
 class TestNoPiiInTheSnapshot:

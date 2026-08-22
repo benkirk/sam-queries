@@ -303,6 +303,31 @@ class TestTheRequestColumnLinksToTheDetailModal:
         assert 'xras_request_detail' not in body
 
 
+class TestTheXrasIdentityLinksToTheUserModal:
+    """The XRAS-identity column is this row's XRAS-side identity, so it opens
+    the XRAS User modal — the mirror of col 1's SAM user link. Gated on the
+    same outgoing-configured switch as the Request column, so an incoming-only
+    site degrades to a plain badge and stays usable."""
+
+    def test_it_links_to_the_user_modal_when_configured(
+            self, auth_client, committed_worklist_action, monkeypatch):
+        monkeypatch.setenv('XRAS_OUTGOING_ENABLED', '1')
+        monkeypatch.setenv('XRAS_API_KEY', 'k')
+        monkeypatch.setattr('sam.integration.xras_api.people.get_person',
+                            lambda username: None)
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert '/allocations/xras_user_detail/placeholder38-user-00038' in body
+        assert 'data-bs-target="#auditDetailsModal"' in body
+
+    def test_it_degrades_without_the_outbound_api(
+            self, auth_client, committed_worklist_action, monkeypatch):
+        monkeypatch.delenv('XRAS_OUTGOING_ENABLED', raising=False)
+        monkeypatch.delenv('XRAS_API_KEY', raising=False)
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'placeholder38-user-00038' in body      # row still there
+        assert 'xras_user_detail' not in body          # but no modal offered
+
+
 class TestPiiGating:
     """The gate is in the route; the template checks are a second layer."""
 

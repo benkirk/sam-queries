@@ -300,6 +300,12 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # forms' Back/Save all target that body.
     'dashboards/allocations/partials/xras_request_detail.html': [
         'auditDetailsModalBody'],
+    # The XRAS User detail modal — the person-side analogue of the request
+    # detail. Swapped into the same body from a roster username (plain hx-get)
+    # or the Accounts-Needed card (data-bs-toggle from the closed modal); its
+    # Back link and its in-panel Request links target the body, no toggle.
+    'dashboards/allocations/partials/xras_user_detail.html': [
+        'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_resource_form.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_dates_form.html': [
