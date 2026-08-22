@@ -31,6 +31,20 @@ from factories import make_xras_opportunity_mapping
 
 pytestmark = pytest.mark.unit
 
+# ⚠️ One worker at a time for this file. The opportunity-mapping tests insert
+# rows under FIXED `opportunity_id` PKs — 535388 and the 999-series are
+# documented production measurements, not sequence values — and two xdist
+# workers inserting the same PK inside their savepoints deadlock; InnoDB's
+# deadlock rollback then destroys the savepoint ("SAVEPOINT sa_savepoint_1
+# does not exist"). Bites nearly every single-file parallel run; see
+# `serial_file_lock` in tests/conftest.py for why this is a lock and not
+# `--dist loadgroup`.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('xras_sweep_fixed_pks'):
+        yield
+
+
 NAME = 'xras_sweep'
 OCC = datetime(2033, 11, 16, 10, 30)      # naive UTC
 

@@ -919,3 +919,54 @@ def any_machine(session):
 def any_queue(session):
     from sam.resources.machines import Queue
     return _any_or_skip(session, Queue, "queues")
+
+
+# ---------------------------------------------------------------------------
+# Cross-worker file serialization
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def serial_file_lock(tmp_path_factory):
+    """A named cross-worker lock, for test files that write FIXED identifiers.
+
+    Some fixtures commit rows under hardcoded keys — a committed user with a
+    fixed username, an insert under a documented production PK. Two xdist
+    workers running such tests concurrently either collide on the unique key
+    at setup or deadlock, and InnoDB's deadlock rollback destroys the
+    per-test SAVEPOINT ("SAVEPOINT sa_savepoint_1 does not exist").
+    Whole-suite runs rarely hit it (the tests spread out over two minutes); a
+    single-file ``pytest tests/unit/test_x.py`` concentrates them and fails
+    almost every time.
+
+    Usage — an autouse fixture in the affected file::
+
+        @pytest.fixture(autouse=True)
+        def _one_worker_at_a_time(serial_file_lock):
+            with serial_file_lock('my_fixed_identifiers'):
+                yield
+
+    ⚠️ An ``fcntl`` lock rather than ``--dist loadgroup``, measured
+    2026-08-21: switching the suite to loadgroup made OTHER files' latent
+    deadlocks fire (``load``: 7,586 green; ``loadgroup``: failed twice, in
+    disk-admin / award-audit / contract-audit) — LoadGroupScheduling
+    schedules by scope, which reshuffles timing for every test in the suite.
+    The lock changes nothing outside the file that opts in.
+    """
+    import fcntl
+    from contextlib import contextmanager
+
+    @contextmanager
+    def acquire(name):
+        base = tmp_path_factory.getbasetemp()
+        # Under xdist each worker's basetemp is <shared>/popen-gwN; the
+        # parent is the run-wide directory every worker sees. Serial runs
+        # (-n 0) get the shared directory directly.
+        shared = base.parent if base.name.startswith('popen-') else base
+        with open(shared / f'{name}.lock', 'w') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+    return acquire

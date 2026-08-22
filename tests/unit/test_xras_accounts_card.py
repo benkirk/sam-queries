@@ -31,6 +31,19 @@ pytestmark = pytest.mark.unit
 URL = '/allocations/xras_accounts_fragment'
 
 
+# ⚠️ One worker at a time for this file. The committed fixtures below use
+# FIXED identifiers ('placeholder38-user-00038', NCAR4227) and real COMMITs —
+# required, because the routes read committed rows through `db.session` — so
+# two xdist workers running these tests concurrently either collide on the
+# unique username at setup, or one worker's committed user flips another's
+# `absent` classification mid-assertion. See `serial_file_lock` in
+# tests/conftest.py for why this is a lock and not `--dist loadgroup`.
+@pytest.fixture(autouse=True)
+def _one_worker_at_a_time(serial_file_lock):
+    with serial_file_lock('xras_accounts_committed_fixtures'):
+        yield
+
+
 @pytest.fixture
 def view_only_client(auth_client, monkeypatch):
     """`benkirk` minus MANAGE_XRAS.
