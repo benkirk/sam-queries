@@ -406,6 +406,16 @@ class TestAOneHundredIsNotSuccess:
 class TestMerge:
     """Destructive, user-agnostic, and fail-closed on both endpoints."""
 
+    def test_a_self_merge_is_refused_before_any_read(self, monkeypatch):
+        """XRAS matches usernames case-insensitively, so a case-variant of
+        the source is the same identity — and both fail-closed resolves would
+        pass (it exists), sending XRAS a self-merge with unknown effect."""
+        client = _client(monkeypatch, [])
+        with pytest.raises(XrasWriteRejected):
+            client.merge_person('placeholder-user-x', 'Placeholder-USER-X')
+        assert client.session.request.call_count == 0, \
+            'refused before any capture or write'
+
     def test_it_refuses_when_the_target_does_not_resolve(self, monkeypatch):
         """A typo would MINT an identity — the API creates on merge."""
         client = _client(monkeypatch, [

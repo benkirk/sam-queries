@@ -424,7 +424,21 @@ class TestTheRowStillExpands:
         body = auth_client.get(FRAGMENT).get_data(as_text=True)
         assert '<tr class="cursor-pointer" data-bs-toggle="collapse"' not in body
         # Five of the six cells carry it instead; the SAM cell is the link's.
-        assert body.count('data-bs-target="#xrem-EXAM0001"') == 5
+        # ⚠️ Keyed on the numeric requestId, not the request number — see below.
+        assert body.count('data-bs-target="#xrem-900001"') == 5
+
+    def test_the_collapse_id_is_numeric_even_for_free_text_numbers(
+            self, auth_client, armed):
+        """Submitted numbers can be free text with spaces ('New University
+        Large Request - Fall 2017 …' is live). Interpolated raw into the id,
+        that is an unmatchable ``data-bs-target`` — the row could never
+        expand, and every remediation control lives inside it."""
+        payload = _payload('New University Large Request - Fall 2017 Zhong',
+                           status='Submitted')
+        _publish(payload)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'data-bs-target="#xrem-900001"' in body
+        assert 'data-bs-target="#xrem-New' not in body
 
 
 # ── the search box ──────────────────────────────────────────────────────
@@ -702,3 +716,147 @@ class TestPostValidation:
         body = auth_client.post('/allocations/xras_resubmit/EXAM0001/7'
                                 ).get_data(as_text=True)
         assert 'switched off' in body
+
+
+# ── review fixes (PR #460 follow-up) ────────────────────────────────────
+
+class TestThePreflightDegradesHonestly:
+    """The resubmit modal's preflight has three non-happy paths, and each
+    must render — not 500, and not masquerade as a different failure."""
+
+    def _admin(self, monkeypatch, **script):
+        client = MagicMock(**script)
+        monkeypatch.setattr(
+            'sam.integration.xras_api.admin_client'
+            '.XrasAdminClient.from_environment',
+            classmethod(lambda cls, *a, **k: client))
+        return client
+
+    def test_a_role_less_roster_renders_the_unvalidated_note(
+            self, auth_client, armed, monkeypatch):
+        """No xa_user means no preflight ran — the guard skips seeding, and
+        an unseeded key was jinja2.Undefined, for which `is none` is False
+        and the next attribute access a 500 with an empty modal."""
+        payload = _payload()
+        payload['roles'] = []
+        _reader(monkeypatch, payload=payload)
+        response = auth_client.get('/allocations/xras_resubmit_form/EXAM0001/7')
+        assert response.status_code == 200
+        assert 'could not be asked to pre-check' in response.get_data(as_text=True)
+
+    def test_a_preflight_401_renders_the_refusal_not_an_outage(
+            self, auth_client, armed, monkeypatch):
+        """⚠️ XrasWriteRejected subclasses XrasSourceUnavailable, so the
+        outage catch used to swallow it — telling the operator to 'retry
+        later' about a refusal a retry can never fix."""
+        from sam.integration.xras_api.base import XrasWriteRejected
+
+        _reader(monkeypatch)
+        admin = self._admin(monkeypatch)
+        admin.validate_action.side_effect = XrasWriteRejected(
+            'pi-user holds no role on this request', status=401)
+
+        body = auth_client.get(
+            '/allocations/xras_resubmit_form/EXAM0001/7').get_data(as_text=True)
+        assert 'does not validate' in body
+        assert 'holds no role' in body
+        assert 'not answering' not in body
+
+
+class TestAPostDuringAnOutageDegradesInline:
+    """exception_map wraps perform() only; the live reads in clean() needed
+    their own wrap or an outage there was a 500 htmx never swaps."""
+
+    def test_a_withdraw_post_renders_the_outage_inline(self, auth_client,
+                                                       armed, monkeypatch):
+        client = _reader(monkeypatch)
+        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        response = auth_client.post('/allocations/xras_withdraw/EXAM0001/7',
+                                    data={'comment': 'stale award'})
+        assert response.status_code == 200
+        assert 'could not be reached' in response.get_data(as_text=True)
+
+    def test_a_role_add_post_renders_the_outage_inline(self, auth_client,
+                                                       armed, monkeypatch):
+        client = _reader(monkeypatch)
+        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        response = auth_client.post('/allocations/xras_role_add/EXAM0001',
+                                    data={'username': 'somebody',
+                                          'role_type': 'User'})
+        assert response.status_code == 200
+        assert 'could not be reached' in response.get_data(as_text=True)
+
+
+class TestARejectionCarriesXrasReasons:
+    """A 400 carries XRAS's own errors[] — the most actionable thing about a
+    rejection — and they must reach the operator, not only the audit row."""
+
+    def test_the_reasons_render_in_the_error_panel(self, auth_client, armed,
+                                                   monkeypatch):
+        from sam.integration.xras_api.base import XrasWriteRejected
+        from sam.manage import xras_remediation as remediation
+        from sam.manage.xras_remediation import RemediationOutcome
+
+        _reader(monkeypatch)
+        rejection = XrasWriteRejected(
+            'XRAS validation failed for action 7 as pi-user', status=400,
+            errors=['Budget exceeds the opportunity limit',
+                    'End date precedes the begin date'])
+        monkeypatch.setattr(
+            remediation, 'withdraw_action',
+            lambda *a, **k: RemediationOutcome(5, status='rejected',
+                                               error=str(rejection),
+                                               result=rejection))
+
+        body = auth_client.post('/allocations/xras_withdraw/EXAM0001/7',
+                                data={'comment': 'why'}).get_data(as_text=True)
+        assert 'XRAS refused this' in body
+        assert 'Budget exceeds the opportunity limit' in body
+        assert 'End date precedes the begin date' in body
+
+
+class TestTheMergeOverrideIsReachable:
+    """`required` on the candidate radios let native constraint validation
+    block the free-text override — the documented path for 'none of these is
+    right' — whenever at least one candidate rendered."""
+
+    def _form(self, auth_client, monkeypatch):
+        _reader(monkeypatch,
+                person={'username': 'ghost-user-abcde', 'firstName': 'G',
+                        'lastName': 'Host', 'email': 'g@example.invalid'},
+                candidates=[{'username': 'ghost', 'firstName': 'G',
+                             'lastName': 'Host',
+                             'email': 'g@example.invalid',
+                             'organization': 'Example U'}])
+        return auth_client.get(
+            '/allocations/xras_merge_form/ghost-user-abcde'
+        ).get_data(as_text=True)
+
+    def test_the_radios_are_not_marked_required(self, auth_client, armed,
+                                                monkeypatch):
+        import re
+        body = self._form(auth_client, monkeypatch)
+        radios = re.findall(r'<input[^>]*name="candidate"[^>]*>', body)
+        assert radios, 'the candidate radios must still render'
+        assert all('required' not in tag for tag in radios)
+
+    def test_no_radio_is_preselected(self, auth_client, armed, monkeypatch):
+        """The exactly-one guarantee moved to the schema; the no-default
+        guarantee stays in the template."""
+        import re
+        body = self._form(auth_client, monkeypatch)
+        radios = re.findall(r'<input[^>]*name="candidate"[^>]*>', body)
+        assert all('checked' not in tag for tag in radios)
+
+
+class TestSelfMergeIsRefusedCaseInsensitively:
+    """XRAS matches usernames case-insensitively, so a case-variant of the
+    source is the same identity and would be a self-merge."""
+
+    def test_a_case_variant_target_is_refused(self, auth_client, armed,
+                                              monkeypatch):
+        _reader(monkeypatch, person={'username': 'ghost-user-abcde'})
+        body = auth_client.post('/allocations/xras_merge/ghost-user-abcde',
+                                data={'target_username': 'Ghost-USER-Abcde'}
+                                ).get_data(as_text=True)
+        assert 'different account' in body

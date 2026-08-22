@@ -1,4 +1,4 @@
-"""``xras_sweep`` — enumerate XRAS nightly and diff it against SAM.
+"""``xras_sweep`` — enumerate XRAS hourly and diff it against SAM.
 
 Hourly, around the clock. The first task that calls **out** to XRAS
 rather than reading only SAM's own tables, and the third declaring
@@ -62,9 +62,6 @@ from zoneinfo import ZoneInfo
 from scheduling.registry import TaskResult, task
 from scheduling.schedules import DEFAULT_TZ, Hourly, to_local_naive
 
-#: Overnight on purpose: nothing here is time-critical, the enumeration is the
-#: heaviest outbound call SAM makes, and a warm people-cache at 03:30 is still
-#: warm for the first card render of the working day.
 #: Hourly, every hour of every day. The Feed-B tab reads what this publishes,
 #: so the cadence IS the tab's freshness — and unlike `xras_notices`, which
 #: mails people and therefore has no business waking at 03:00, this one only
@@ -249,6 +246,12 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
 def _build_requests_index(ctx, client, session, approved_payloads, detail):
     """Build the Remediations card's request index. Never raises.
 
+    Returns a list of entries, or **``None`` for "the build failed"** — which
+    the caller must treat differently from ``[]``: an empty list is a real
+    answer (nothing to remediate) and publishes, a failure must NOT publish,
+    because replacing the last good snapshot with ``[]`` renders the healthy
+    "nothing to remediate" state over what is actually a blind hour.
+
     **The cohort, and why it is not the worklist's.**
     ``(Approved AND not yet pushed) + every Submitted + every Under Review``,
     with **no period-of-performance window**. Each half of that is deliberate:
@@ -310,8 +313,11 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
         known = {code for (code,) in session.query(Project.projcode)
                  .filter(Project.projcode.in_(sorted(numbers))).all()}
     except Exception as exc:                            # noqa: BLE001
+        # None, not []: without the pending classification every entry would
+        # be wrong, and publishing an empty index over the last good one would
+        # render as "nothing to remediate" — see the docstring.
         ctx.logger.warning('xras_sweep: index projcode lookup failed: %s', exc)
-        return []
+        return None
     pending = numbers - known
 
     # Approved requests that HAVE been pushed drop out here; the extra statuses
@@ -321,13 +327,20 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
               if str(p.get('requestNumber') or '').strip() in pending]
     cohort.extend(p for p in extra_payloads if isinstance(p, dict))
 
-    entries = []
+    entries, indexed = [], set()
     for payload in cohort:
-        entry = request_index_entry(
-            payload,
-            pending_push=str(payload.get('requestNumber') or '').strip() in pending)
+        number = str(payload.get('requestNumber') or '').strip()
+        if number in indexed:
+            # A primary pass overridden to 'all' (or to one of the extra
+            # statuses) re-reads the extras' cohorts, and a duplicate row
+            # would carry a second Withdraw button — while the post-write
+            # patch rewrites only the first match. First copy wins; the
+            # primary copy comes first and carries the same classification.
+            continue
+        entry = request_index_entry(payload, pending_push=number in pending)
         if entry is not None:
             entries.append(entry)
+            indexed.add(number)
 
     entries.sort(key=lambda e: (str(e.get('opportunity_name') or ''),
                                 str(e.get('request_number') or '')))
@@ -530,6 +543,7 @@ def xras_sweep(ctx) -> TaskResult:
 
     # ── 1. enumerate ────────────────────────────────────────────────────
     payloads = []
+    enumeration_failed = False
     try:
         for page in client.iter_request_pages(status=status,
                                               page_size=PAGE_SIZE,
@@ -539,6 +553,7 @@ def xras_sweep(ctx) -> TaskResult:
     except XrasSourceUnavailable as exc:
         # Partial pages are still worth reporting: a diff over what we did
         # read is a subset of the truth, not a wrong answer.
+        enumeration_failed = True
         detail['unavailable_errors'] += 1
         ctx.logger.warning('xras_sweep: enumeration failed after %d page(s): %s',
                            detail['pages'], exc)
@@ -712,14 +727,32 @@ def xras_sweep(ctx) -> TaskResult:
     # The second key in the same bucket, written by the same run. Separate
     # because the `worklist` value must keep its exact shape — an older webapp
     # reading a newer sweep sees what it expects and never asks for this one.
-    index_backend = store_requests_index({
-        'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
-        'statuses': [detail['status']] + list(EXTRA_STATUSES),
-        'extra_statuses': detail['extra_statuses'],
-        'rows': index_entries,
-    })
-    detail['index_publish_backend'] = index_backend
-    detail['index_published'] = index_backend == 'redis'
+    #
+    # ⚠️ **A failed build must not publish.** `None` back from the builder, or
+    # an empty cohort produced by a total outage (nothing enumerated anywhere),
+    # is not "nothing to remediate" — but publishing it over the last good
+    # snapshot would render exactly that, and its 24h TTL would otherwise have
+    # carried the good one across the blind hour. A *genuinely* empty index
+    # still publishes: that IS the healthy answer.
+    extras_seen = sum(s.get('seen', 0)
+                      for s in detail['extra_statuses'].values())
+    if index_entries is None or (not index_entries and enumeration_failed
+                                 and extras_seen == 0):
+        detail['index_publish_backend'] = 'skipped'
+        detail['index_skipped'] = ('build failed' if index_entries is None
+                                   else 'nothing enumerated — total outage')
+        ctx.logger.warning(
+            'xras_sweep: index not published (%s); the card keeps the '
+            'previous snapshot', detail['index_skipped'])
+    else:
+        index_backend = store_requests_index({
+            'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
+            'statuses': [detail['status']] + list(EXTRA_STATUSES),
+            'extra_statuses': detail['extra_statuses'],
+            'rows': index_entries,
+        })
+        detail['index_publish_backend'] = index_backend
+        detail['index_published'] = index_backend == 'redis'
     if backend != 'redis':
         ctx.logger.warning(
             'xras_sweep: worklist went to the %s cache, so the dashboard tab '

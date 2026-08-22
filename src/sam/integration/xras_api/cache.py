@@ -43,13 +43,13 @@ _CACHE = BucketedTTLCache('xras_api', 'xras_api', {
     # reads it. The enumeration behind it is 21 pages and 60-90s, which no
     # htmx round-trip can afford, so the tab cannot compute this itself.
     #
-    # ⚠️ **TTL spans the overnight gap, on purpose.** The sweep runs on
-    # business hours (08:00-17:00 Mountain), so the longest interval between
-    # writes is 17:00 -> 08:00, about 15 hours. A TTL tuned to the *hourly*
-    # cadence would expire around 21:00 and leave the tab blank every morning
-    # until the first sweep of the day — the exact moment an operator looks.
-    # 24h covers the gap with room for a missed run; the data is only ever as
-    # stale as the last successful sweep, and the tab renders that timestamp.
+    # ⚠️ **TTL is 24x the sweep cadence, on purpose.** The sweep runs hourly,
+    # but a TTL tuned to that cadence would blank the tab after a couple of
+    # failed or skipped runs (an XRAS outage, the task disabled mid-incident)
+    # — and a failed index build deliberately publishes nothing, counting on
+    # the previous snapshot to carry. 24h rides out a full day of misses; the
+    # data is only ever as stale as the last successful sweep, and the tab
+    # renders that timestamp.
     'pending': BucketSpec(
         name='xras_pending',
         ttl_key='XRAS_PENDING_CACHE_TTL', ttl_default=86400,     # 1 day
@@ -190,10 +190,15 @@ def patch_requests_index(request_number: str, entry: Optional[Any]) -> bool:
     the 60-90s enumeration per click is not on the table. So the service
     re-fetches the one request it just changed and patches its entry here.
 
-    Read-modify-write under the adapter's lock. The lock matters more than it
-    looks: the bucket may be Redis shared across every webapp worker, and two
-    operators acting on different requests in the same second would otherwise
-    race to write back two whole payloads, one of which would lose an edit.
+    ⚠️ **Best-effort, last-write-wins — the read-modify-write is NOT atomic.**
+    The adapter's lock is honored, but on the Redis backend it is a documented
+    process-local no-op (``redis_ttl.py``), so two workers patching in the
+    same moment — or a patch racing the hourly sweep's publish — write back
+    two whole payloads and the second silently drops the first's edit. That
+    is accepted rather than engineered around: the write itself is already
+    verified and audited, a lost patch only makes one row lag until the next
+    sweep, and the operator population is a handful. If that trade ever stops
+    holding, the fix is a Redis-side compare-and-set, not a bigger lock.
 
     *entry* of ``None`` removes the row. Callers should prefer patching a row
     into its new state over dropping it — a row that vanishes on click reads as

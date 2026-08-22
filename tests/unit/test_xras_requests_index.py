@@ -146,3 +146,25 @@ class TestTheEntry:
 
     def test_refreshed_at_defaults_absent_so_the_tell_means_something(self):
         assert request_index_entry(_payload())['refreshed_at'] is None
+
+
+class TestAMalformedActionCostsItsRowNotTheCard:
+    """Every offer routes through ``url_for(..., action_id=<int>)``, so an
+    action carrying ``actionId: None`` cannot support a single button — and
+    letting it through was a ``BuildError`` that 500'd the whole fragment."""
+
+    def test_an_action_without_an_id_is_dropped(self):
+        payload = _payload(actions=[
+            {'actionId': None, 'actionType': 'New', 'actionStatus': 'Approved'},
+            {'actionType': 'New', 'actionStatus': 'Approved'},
+            {'actionId': 7, 'actionType': 'Supplement',
+             'actionStatus': 'Approved'},
+        ])
+        rows = actions_from_payload(payload)
+        assert [r['action_id'] for r in rows] == [7]
+
+    def test_the_request_itself_survives_its_malformed_action(self):
+        payload = _payload(actions=[{'actionStatus': 'Approved'}])
+        entry = request_index_entry(payload)
+        assert entry is not None
+        assert entry['actions'] == []

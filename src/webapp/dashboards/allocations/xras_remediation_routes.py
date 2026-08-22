@@ -388,7 +388,10 @@ class _XrasRemediationHandler(HtmxFormHandler):
         (XrasWriteNotConfigured,
          'XRAS writes are switched off for this deployment '
          '(XRAS_WRITE_ENABLED). Nothing was sent.'),
-        (XrasWriteRejected, lambda e: f'XRAS refused this: {e}'),
+        # A 400 carries XRAS's own errors[] — the single most actionable thing
+        # about a rejection, so it is rendered, not just audited.
+        (XrasWriteRejected, lambda e: 'XRAS refused this: {}{}'.format(
+            e, ' — ' + '; '.join(str(m) for m in e.errors) if e.errors else '')),
         (XrasSourceUnavailable,
          'XRAS could not be reached. If a write had already been sent it is '
          'recorded in the remediation log — check there before retrying.'),
@@ -412,7 +415,13 @@ class _XrasRemediationHandler(HtmxFormHandler):
     def _finish(self, outcome, *, verb):
         """Turn a service outcome into a response, or raise for the error map."""
         if outcome.status == 'rejected':
-            raise XrasWriteRejected(outcome.error or 'refused')
+            # The service parks the original exception on `result`, and its
+            # errors[] must survive the re-raise or the exception_map renders
+            # a refusal with none of XRAS's reasons in it.
+            raise XrasWriteRejected(
+                outcome.error or 'refused',
+                status=getattr(outcome.result, 'status', 0) or 0,
+                errors=getattr(outcome.result, 'errors', None))
         if outcome.status == 'error':
             raise XrasSourceUnavailable(outcome.error or 'unavailable')
         if outcome.status == 'unverified':
@@ -522,7 +531,10 @@ class _XrasMergeHandler(_XrasRemediationHandler):
 
     def clean(self, data):
         target = data['target_username']
-        if target == self.username:
+        # Casefolded: XRAS matches usernames case-insensitively (the people
+        # cache casefolds its keys for exactly this reason), so a case-variant
+        # of the source is the same identity and would be a self-merge.
+        if target.strip().casefold() == self.username.strip().casefold():
             raise FormError('The target must be a different account.')
 
         # ⚠️ **Fail closed.** The API documents merge as "merge a username into
@@ -623,6 +635,12 @@ def _action_context(request_number, action_id, *, mode):
         'xa_user_is_pi': is_pi,
         'xa_user_is_placeholder': xa_placeholder,
         'mode': mode,
+        # Always seeded, even for modes that never run a preflight: the
+        # template branches on `validation is none`, and a missing key is
+        # jinja2.Undefined — for which that test is False and the next
+        # attribute access raises. The resubmit route overwrites this when it
+        # actually preflights.
+        'validation': None,
         'write_enabled': xras_write_configured(),
     }
 
@@ -667,8 +685,15 @@ class _XrasWithdrawHandler(_XrasRemediationHandler):
     success_message = 'Withdrawn in XRAS.'
 
     def clean(self, data):
-        context = _action_context(self.request_number, self.action_id,
-                                  mode='withdraw')
+        # Wrapped like the get_person reads in the sibling handlers: the
+        # handler base maps exceptions only around perform(), so an outage
+        # escaping clean() would be a 500 htmx never swaps — an empty modal.
+        try:
+            context = _action_context(self.request_number, self.action_id,
+                                      mode='withdraw')
+        except XrasSourceUnavailable:
+            raise FormError('XRAS could not be reached, so nothing was '
+                            'withdrawn. Try again shortly.')
         if context is None or context['action'] is None:
             raise FormError('XRAS no longer lists this action.')
         if not context['xa_user']:
@@ -723,7 +748,7 @@ def _safe_action_context(request_number, action_id, *, mode):
         'request_number': request_number, 'request_id': None, 'action': None,
         'action_id': action_id, 'action_count': 0, 'request_status': None,
         'xa_user': None, 'xa_user_is_pi': False,
-        'xa_user_is_placeholder': False, 'mode': mode,
+        'xa_user_is_placeholder': False, 'mode': mode, 'validation': None,
         'write_enabled': xras_write_configured(),
     }
 
@@ -754,6 +779,17 @@ def xras_resubmit_form(request_number: str, action_id: int):
                 # button and an explanation — because a control that silently
                 # vanishes teaches nobody that a switch exists.
                 context['validation'] = None
+            except XrasWriteRejected as exc:
+                # ⚠️ Caught HERE, before the outer XrasSourceUnavailable (its
+                # parent class) swallows it as an outage. A 4xx is XRAS
+                # refusing deterministically — a 401 means the impersonated
+                # user holds no role — and telling the operator "XRAS is not
+                # answering, retry later" about a refusal a retry cannot fix
+                # is the misleading copy this branch exists to prevent. It
+                # renders through the template's failed-preflight branch,
+                # beside the user it was evaluated as.
+                context['validation'] = {'validation': 'rejected',
+                                         'errors': exc.errors or [str(exc)]}
     except XrasSourceUnavailable as exc:
         current_app.logger.warning('xras resubmit form: %s', exc)
         return _degraded('Re-submitting needs a live read of the request from '
@@ -803,8 +839,16 @@ def xras_resubmit(request_number: str, action_id: int):
                 'switched off for this deployment. Nothing was sent.</div>', 200)
 
     if outcome.status != 'verified':
+        from markupsafe import escape
+        reason = outcome.error or 'XRAS did not confirm it'
+        # A 400's errors[] ride on the parked exception — render them, they
+        # are the actionable part of a validation refusal. Escaped: this is a
+        # raw-string response, so Jinja's autoescape never sees it.
+        extra = getattr(outcome.result, 'errors', None)
+        if extra:
+            reason += ' — ' + '; '.join(str(m) for m in extra)
         return (f'<div class="alert alert-danger mb-0">Re-submission did not '
-                f'complete: {outcome.error or "XRAS did not confirm it"}. The '
+                f'complete: {escape(reason)}. The '
                 f'attempt is recorded in the remediation log.</div>', 200)
 
     detail = (f"Sent as {context['xa_user']}. It is now under review in XRAS.")
@@ -887,7 +931,14 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
     success_message = 'Role added in XRAS.'
 
     def clean(self, data):
-        context = _roles_context(self.request_number)
+        # Wrapped for the same reason as the withdraw handler's context read:
+        # exception_map covers perform() only, and an outage here must degrade
+        # to an inline error, not a 500 htmx will not swap.
+        try:
+            context = _roles_context(self.request_number)
+        except XrasSourceUnavailable:
+            raise FormError('XRAS could not be reached, so nothing was '
+                            'changed. Try again shortly.')
         if context is None:
             raise FormError('XRAS no longer lists this request.')
         if not context['xa_user']:

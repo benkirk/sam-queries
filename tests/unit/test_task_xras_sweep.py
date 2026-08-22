@@ -1177,3 +1177,89 @@ class TestTheRequestsIndex:
         assert detail['index_requests'] == 1
         assert 'rows' not in detail['extra_statuses']
         assert detail['index_publish_backend'] in ('redis', 'local', 'disabled')
+
+
+class TestAFailedIndexBuildDoesNotPublish:
+    """⚠️ ``[]`` is a real answer (nothing to remediate) and publishes; a
+    *failed* build must publish nothing, because replacing the last good
+    snapshot with ``[]`` renders the healthy empty state over a blind hour —
+    and the 24h TTL exists precisely to carry the good snapshot across it."""
+
+    def _seed_good_index(self):
+        from sam.integration.xras_api.cache import store_requests_index
+        store_requests_index({'generated_at': datetime(2033, 11, 16, 9, 0),
+                              'statuses': ['Approved'], 'extra_statuses': {},
+                              'rows': [{'request_number': 'NCAR0001'}]})
+
+    def test_a_projcode_lookup_failure_fails_the_build(self, ctx, wire):
+        """None, not [] — without the pending classification every entry
+        would be wrong."""
+        client = wire([])
+
+        class Boom:
+            def query(self, *args, **kwargs):
+                raise RuntimeError('db went away')
+
+        detail = {'unavailable_errors': 0, 'extra_statuses': {},
+                  'index_requests': 0}
+        result = mod._build_requests_index(
+            ctx(), client, Boom(), [_pending_request(1, 'NCAR0001')], detail)
+        assert result is None
+
+    def test_a_failed_build_keeps_the_previous_index(self, ctx, wire,
+                                                     monkeypatch):
+        from sam.integration.xras_api.cache import load_requests_index
+        wire([[_pending_request(1, 'NCAR0002')]])
+        self._seed_good_index()
+        monkeypatch.setattr(mod, '_build_requests_index',
+                            lambda *args, **kwargs: None)
+
+        detail = mod.xras_sweep(ctx()).detail
+
+        assert detail['index_published'] is False
+        assert detail['index_publish_backend'] == 'skipped'
+        assert detail['index_skipped'] == 'build failed'
+        assert [r['request_number'] for r in load_requests_index()['rows']] \
+            == ['NCAR0001'], 'the last good snapshot must survive'
+
+    def test_a_total_outage_keeps_the_previous_index(self, ctx, wire):
+        """Primary enumeration down, extras empty: nothing was read anywhere,
+        so an empty cohort is not evidence of an empty queue."""
+        from sam.integration.xras_api.cache import load_requests_index
+        wire([[_pending_request(1, 'NCAR0002')]], fail_after=0)
+        self._seed_good_index()
+
+        detail = mod.xras_sweep(ctx()).detail
+
+        assert detail['index_published'] is False
+        assert 'index_skipped' in detail
+        assert [r['request_number'] for r in load_requests_index()['rows']] \
+            == ['NCAR0001']
+
+    def test_a_genuinely_empty_index_still_publishes(self, ctx, wire):
+        """The healthy answer must keep publishing — this guard is for
+        failures, not for quiet weeks."""
+        from sam.integration.xras_api.cache import load_requests_index
+        self._seed_good_index()
+        wire([])
+        detail = mod.xras_sweep(ctx()).detail
+        assert 'index_skipped' not in detail
+        assert load_requests_index()['rows'] == []
+
+
+class TestAnOverlappingPrimaryStatusDoesNotDuplicate:
+    """`SAM_TASKS_XRAS_SWEEP_STATUS=all` re-reads the extras' cohorts in the
+    primary pass; without a dedupe the same request rendered twice, with two
+    Withdraw buttons — and the post-write patch rewrites only the first."""
+
+    def test_the_index_carries_each_request_once(self, ctx, wire, monkeypatch):
+        from sam.integration.xras_api.cache import load_requests_index
+        monkeypatch.setenv('SAM_TASKS_XRAS_SWEEP_STATUS', 'all')
+        submitted = _pending_request(2, 'NCAR0002', status='Submitted')
+        wire([[_pending_request(1, 'NCAR0001'), submitted]],
+             extra_pages={'Submitted': [[submitted]]})
+
+        mod.xras_sweep(ctx())
+
+        numbers = [r['request_number'] for r in load_requests_index()['rows']]
+        assert sorted(numbers) == ['NCAR0001', 'NCAR0002']

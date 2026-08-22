@@ -71,11 +71,15 @@
 
         {% for candidate in candidates %}
         <div class="form-check border rounded p-2 mb-1">
-            {# `required` on every radio, and NO `checked` on any of them, even
-               when there is only one: the browser then refuses to submit an
-               unmade choice, which is exactly the guarantee this needs. #}
+            {# NO `checked` on any radio, even when there is only one — the
+               choice must be made, never inherited. And NO `required`: native
+               constraint validation would block the free-text override below
+               (the browser insists a radio be picked, the schema refuses a
+               radio beside an override), making the documented "none of these
+               is right" path unreachable. The exactly-one guarantee lives in
+               XrasMergeForm._exactly_one_target, which renders a real error. #}
             <input class="form-check-input" type="radio" name="candidate"
-                   id="cand-{{ loop.index }}" value="{{ candidate.username }}" required>
+                   id="cand-{{ loop.index }}" value="{{ candidate.username }}">
             <label class="form-check-label w-100" for="cand-{{ loop.index }}">
                 <span class="font-monospace">{{ candidate.username }}</span>
                 {% if candidate.rank == 0 %}

@@ -156,6 +156,12 @@ def actions_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     for action in payload.get('actions') or ():
         if not isinstance(action, dict):
             continue
+        if action.get('actionId') is None:
+            # Same rule the entry itself follows for requestNumber/requestId:
+            # every offer routes through url_for(..., action_id=<int>), so an
+            # action with no id cannot support a single button — and a None
+            # here is a BuildError that costs the whole card, not the row.
+            continue
         status = _text(action.get('actionStatus'))
         rows.append({
             'action_id': action.get('actionId'),

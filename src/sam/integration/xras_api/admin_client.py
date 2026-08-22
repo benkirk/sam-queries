@@ -401,6 +401,15 @@ class XrasAdminClient:
         Verified by: *source* must stop resolving **and** *target* must still
         resolve. Either half alone is satisfiable by a no-op.
         """
+        # Casefolded: XRAS matches usernames case-insensitively, so a
+        # case-variant of the source is the same identity and this would be a
+        # self-merge with unknown effect. The route checks this too; both,
+        # because this client is also reachable from a shell.
+        if str(source).strip().casefold() == str(target).strip().casefold():
+            raise XrasWriteRejected(
+                f'merge source and target are the same identity ({source!r}); '
+                'refusing a self-merge', status=400)
+
         path = f'/v1/people/{quote(source, safe="")}/merge/{quote(target, safe="")}'
         # Both sheets are captured before the call: merge does not copy person
         # detail, and `residenceCountry` in particular exists nowhere else SAM

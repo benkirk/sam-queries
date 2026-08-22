@@ -209,7 +209,12 @@
                     </td>
                 </tr>
                 {% for row in group.rows %}
-                {% set rid = 'xrem-' ~ row.request_number %}
+                {# ⚠️ Keyed on the numeric requestId, never the request number:
+                   Submitted numbers can be free text with spaces ('New
+                   University Large Request - Fall 2017 …' is live), which is
+                   an invalid HTML id and an unmatchable data-bs-target — the
+                   row could never expand. The builder guarantees request_id. #}
+                {% set rid = 'xrem-' ~ row.request_id %}
                 {# ⚠️ `collapse_toggle` emits ATTRIBUTES, not markup — it goes
                    inside the tag, never in a cell. Used as content it renders
                    its own attribute string as visible text.

@@ -261,7 +261,11 @@ def merge_placeholder(session_factory, *, source_username, target_username,
         result = admin.merge_person(source_username, target_username)
     except XrasWriteRejected as exc:
         _close_event(session_factory, event_id, **_rejection_fields(exc))
-        return RemediationOutcome(event_id, status='rejected', error=str(exc))
+        # `result=exc` on every rejection path, uniformly: the route's error
+        # rendering reads `errors[]` off it, and a rejection that dropped the
+        # exception would render a refusal with none of XRAS's reasons.
+        return RemediationOutcome(event_id, status='rejected', error=str(exc),
+                                  result=exc)
     except XrasSourceUnavailable as exc:
         _close_event(session_factory, event_id, status='error',
                      outcome_reason=str(exc))
@@ -418,7 +422,8 @@ def change_role(session_factory, *, add, request_number, request_id, username,
                                        xa_user=xa_user)
     except XrasWriteRejected as exc:
         _close_event(session_factory, event_id, **_rejection_fields(exc))
-        return RemediationOutcome(event_id, status='rejected', error=str(exc))
+        return RemediationOutcome(event_id, status='rejected', error=str(exc),
+                                  result=exc)
     except XrasSourceUnavailable as exc:
         _close_event(session_factory, event_id, status='error',
                      outcome_reason=str(exc))
