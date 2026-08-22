@@ -26,7 +26,15 @@ from . import HtmxFormSchema
 
 __all__ = ['XrasMergeForm', 'XrasRemediationReasonForm', 'XrasRoleForm',
            'XrasResourceAmountForm', 'XrasActionDatesForm',
-           'XrasRequestAttributesForm', 'XrasActionFieldsForm']
+           'XrasRequestAttributesForm', 'XrasActionFieldsForm',
+           'XrasAddActionForm']
+
+#: The action types the NCAR process uses, for the add-action picker. A free
+#: text field would let a typo 400 (or worse, create a nonsense action), so the
+#: destructive add-action verb offers a closed list. Observed on the inbound
+#: corpus + the reports feed.
+XRAS_ACTION_TYPES = ('New', 'Supplement', 'Extension', 'Renewal',
+                     'Transfer', 'Adjustment')
 
 #: ``xras_remediation_event.comment`` is TEXT — 65,535 **bytes**, and utf8mb4
 #: spends up to 4 per character. A char-counted cap at the column width would
@@ -243,3 +251,18 @@ class XrasActionFieldsForm(HtmxFormSchema):
 
     user_comments = f.Str(load_default=None,
                           validate=v.Length(max=_LONGTEXT_MAX))
+
+
+class XrasAddActionForm(HtmxFormSchema):
+    """Add an action to a request (Part C, destructive). Closed action-type list."""
+
+    action_type = f.Str(required=True)
+
+    @post_load
+    def _check(self, data, **kwargs):
+        chosen = _clean(data.get('action_type'))
+        if chosen not in XRAS_ACTION_TYPES:
+            raise ValidationError({'action_type': [
+                f"Must be one of: {', '.join(XRAS_ACTION_TYPES)}."]})
+        data['action_type'] = chosen
+        return data

@@ -1002,3 +1002,126 @@ class XrasAdminClient:
             verify_detail=detail, write_error=error,
             extra={'request_number': request_number, 'action_id': action_id,
                    'fields': list(fields), 'context': context or XA_ADMIN_CONTEXT})
+
+    # ── destructive lifecycle (Tier A — ADMIN_XRAS only) ─────────────────
+    #
+    # ⚠️ These are **irreversible in XRAS** and were **NOT live-probed** — a
+    # delete cannot be tested without deleting something, and a renew/add-action
+    # pollutes the request. They are shipped fail-visible: a single attempt, a
+    # verifying read, and the same three-valued verdict as every verb above. If
+    # our key does not authorize one, XRAS answers 401 and the modal renders it.
+    # The route gates them on ADMIN_XRAS (effectively SYSTEM_ADMIN) and the write
+    # lever, and confirms with hx-confirm.
+
+    @staticmethod
+    def _identity(payload: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """A compact, low-PII snapshot of a request — what a delete destroys.
+
+        Enough to know *what* was removed (number, id, status, title, action
+        count) without dumping the roster's participant PII into the audit row.
+        """
+        if not isinstance(payload, dict):
+            return None
+        return {
+            'requestNumber': payload.get('requestNumber'),
+            'requestId': payload.get('requestId'),
+            'requestStatus': payload.get('requestStatus'),
+            'title': payload.get('title'),
+            'action_count': len(payload.get('actions') or ()),
+        }
+
+    def delete_request(self, request_id: int, *, request_number: str,
+                       xa_user: str,
+                       context: Optional[str] = None) -> XrasWriteResult:
+        """Delete a whole request. **Irreversible in XRAS.**
+
+        Verified by: the request no longer resolves through the reports family.
+        The pre-delete identity is captured for the audit row, because after
+        this there is nothing left to read.
+        """
+        path = f'/v1/requests/{int(request_id)}'
+        before = self._identity(self.reader.get_request_by_number(request_number))
+        status, _, message, error = self._write(
+            'DELETE', path, xa_user=xa_user, context=context)
+
+        try:
+            after = self.reader.get_request_by_number(request_number)
+            verified = after is None
+            detail = ('request no longer resolves' if verified
+                      else 'request still resolves')
+        except XrasSourceUnavailable as exc:
+            verified, detail = None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='delete_request', method='DELETE', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before=before, after=None, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number,
+                   'context': context or XA_ADMIN_CONTEXT})
+
+    def renew_request(self, request_id: int, *, request_number: str,
+                      xa_user: str,
+                      context: Optional[str] = None) -> XrasWriteResult:
+        """Spawn a renewal of a request.
+
+        Verified by: the POST returns a **new** ``requestId`` (a renewal is a
+        distinct request; the original stays). A 200 with no id read back is
+        left ``unverified`` — an operator confirms in XRAS.
+        """
+        path = f'/v1/requests/{int(request_id)}/renew'
+        status, result, message, error = self._write(
+            'POST', path, xa_user=xa_user, context=context)
+        new_id = result.get('requestId') if isinstance(result, dict) else None
+
+        if error:
+            verified, detail = None, f'renew errored: {error}'
+        elif new_id is not None:
+            verified = new_id != int(request_id)
+            detail = f'renewal spawned as requestId {new_id}'
+        else:
+            verified, detail = None, 'no new requestId returned; confirm in XRAS'
+
+        return XrasWriteResult(
+            operation='renew_request', method='POST', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before={'requestId': int(request_id)},
+            after={'renewalRequestId': new_id}, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'renewal_request_id': new_id,
+                   'context': context or XA_ADMIN_CONTEXT})
+
+    def add_action(self, request_id: int, action_type: str, *,
+                   request_number: str, xa_user: str,
+                   context: Optional[str] = None) -> XrasWriteResult:
+        """Add a new action to a request.
+
+        Verified by: a new action appears on the request (the returned
+        ``actionId`` is present, or the action count grew).
+        """
+        path = f'/v1/requests/{int(request_id)}/actions'
+        params = {'actionType': str(action_type)}
+        before_count = len(self._actions(request_number))
+        status, result, message, error = self._write(
+            'POST', path, params=params, xa_user=xa_user, context=context)
+        new_id = result.get('actionId') if isinstance(result, dict) else None
+
+        try:
+            after = self._actions(request_number)
+            verified = ((new_id is not None
+                         and any(a.get('actionId') == new_id for a in after))
+                        or len(after) > before_count)
+            detail = (f'action {new_id} added' if new_id is not None
+                      else f'action count {before_count} -> {len(after)}')
+        except XrasSourceUnavailable as exc:
+            verified, detail = None, f'verify read failed: {exc}'
+
+        return XrasWriteResult(
+            operation='add_action', method='POST', path=path,
+            xa_user=xa_user, http_status=status, message=message,
+            before={'action_count': before_count},
+            after={'action_id': new_id}, verified=verified,
+            verify_detail=detail, write_error=error,
+            extra={'request_number': request_number, 'action_id': new_id,
+                   'action_type': action_type,
+                   'context': context or XA_ADMIN_CONTEXT})

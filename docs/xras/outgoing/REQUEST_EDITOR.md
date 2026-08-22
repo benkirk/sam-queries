@@ -33,6 +33,15 @@
 > documents (multipart upload). `keywords`/`collaborators`/`grantTypeId`/
 > `actionType` excluded (unverifiable or too consequential).
 >
+> **Part C (ADMIN_XRAS destructive tier) is BUILT** on the same PR:
+> `delete_request` / `renew_request` / `add_action`, gated on the new
+> `ADMIN_XRAS` permission (rides with SYSTEM_ADMIN, §4), the write lever, and
+> `hx-confirm`. ⚠️ **Not live-probed** — a delete is irreversible and a
+> renew/add-action pollutes the request, so they ship **fail-visible**
+> (single-attempt + verify-by-reread; a 401 surfaces). The danger-zone buttons
+> render only for ADMIN_XRAS holders; a MANAGE_XRAS operator is 403'd. Only
+> B2b remains before the concluding docs pass.
+>
 > **Live writes:** operator sets `XRAS_WRITE_ENABLED=1`. Throwaway requests
 > approved for mutation: **NCAR0004, NCAR0099, NCAR0798** (all edits reversible;
 > restore originals). Touch no others.

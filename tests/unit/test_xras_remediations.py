@@ -58,6 +58,33 @@ def view_only_client(auth_client, monkeypatch):
     return auth_client
 
 
+@pytest.fixture
+def manage_not_admin_client(auth_client, monkeypatch):
+    """`benkirk` with MANAGE_XRAS but WITHOUT ADMIN_XRAS.
+
+    The Part C split: a full-editor operator must be refused the destructive
+    lifecycle. `view_only_client` cannot test this — it removes only
+    MANAGE_XRAS and so still holds ADMIN_XRAS.
+    """
+    from webapp.utils import rbac
+
+    real = rbac.get_user_permissions
+
+    def limited(user, *args, **kwargs):
+        return {p for p in real(user, *args, **kwargs)
+                if p != Permission.ADMIN_XRAS}
+
+    for module in (rbac,
+                   __import__('webapp.dashboards.allocations.blueprint',
+                              fromlist=['x']),
+                   __import__('webapp.dashboards.allocations'
+                              '.xras_remediation_routes', fromlist=['x'])):
+        if hasattr(module, 'get_user_permissions'):
+            monkeypatch.setattr(module, 'get_user_permissions', limited)
+    monkeypatch.setattr(rbac, 'get_user_permissions', limited)
+    return auth_client
+
+
 @pytest.fixture(autouse=True)
 def _cache(monkeypatch):
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
@@ -868,6 +895,68 @@ class TestTheEditors:
         body = auth_client.post(
             '/allocations/xras_attributes_edit/EXAM0001',
             data={'title': 'A new title'}).get_data(as_text=True)
+        assert 'switched off' in body
+
+
+# ── the destructive lifecycle (Part C, ADMIN_XRAS) ───────────────────────
+
+class TestPartCIsAdminOnly:
+    """The destructive verbs ride ABOVE MANAGE_XRAS: a full-editor operator is
+    refused them, and the buttons render only for an ADMIN_XRAS holder."""
+
+    DESTRUCTIVE = [
+        ('get', '/allocations/xras_add_action_form/EXAM0001'),
+        ('post', '/allocations/xras_request_delete/EXAM0001'),
+        ('post', '/allocations/xras_request_renew/EXAM0001'),
+        ('post', '/allocations/xras_add_action/EXAM0001'),
+    ]
+
+    @pytest.mark.parametrize('method,path', DESTRUCTIVE)
+    def test_a_manage_only_operator_is_forbidden(self, manage_not_admin_client,
+                                                 method, path):
+        resp = getattr(manage_not_admin_client, method)(path)
+        assert resp.status_code == 403
+
+    def test_the_danger_zone_renders_for_an_admin(self, auth_client, armed,
+                                                  monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras_request_delete/EXAM0001' in body
+        assert 'Destructive' in body
+
+    def test_the_danger_zone_is_hidden_from_a_manage_only_operator(
+            self, manage_not_admin_client, armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = manage_not_admin_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'xras_request_delete' not in body
+        assert 'Destructive' not in body
+
+    def test_the_add_action_form_renders_the_type_picker(self, auth_client,
+                                                        armed, monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.get(
+            '/allocations/xras_add_action_form/EXAM0001').get_data(as_text=True)
+        assert 'Add action — EXAM0001' in body
+        assert 'name="action_type"' in body
+        assert 'Supplement' in body
+
+    def test_an_unknown_action_type_is_rejected(self, auth_client, armed,
+                                               monkeypatch):
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.post(
+            '/allocations/xras_add_action/EXAM0001',
+            data={'action_type': 'Nonsense'}).get_data(as_text=True)
+        assert 'Must be one of' in body
+
+    def test_the_lever_off_refuses_a_delete(self, auth_client, configured,
+                                           monkeypatch):
+        """Belt and braces: the button is disabled AND the POST refuses."""
+        monkeypatch.delenv('XRAS_WRITE_ENABLED', raising=False)
+        _reader(monkeypatch, payload=_detail_payload())
+        body = auth_client.post(
+            '/allocations/xras_request_delete/EXAM0001').get_data(as_text=True)
         assert 'switched off' in body
 
 

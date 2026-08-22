@@ -591,6 +591,44 @@ class TestTheEditorOps:
         assert (row.operation, row.action_id) == ('update_action', 7)
         assert client.update_action.call_args.kwargs['userComments'] == 'hi'
 
+    def test_delete_request_records_and_patches_on_success(
+            self, factory, session, monkeypatch):
+        seen = []
+        monkeypatch.setattr(service, '_refresh_index_entry',
+                            lambda n, **kw: seen.append(n) or True)
+        client = MagicMock()
+        client.delete_request.return_value = _result(
+            'delete_request', verified=True,
+            before={'requestNumber': 'EXAM0001'}, after=None)
+        outcome = service.delete_request(
+            factory, request_number='EXAM0001', request_id=900001,
+            pi_username='pi-user', operator='benkirk', client=client)
+        assert outcome.status == 'verified'
+        assert seen == ['EXAM0001']   # the patch re-reads, finds nothing, drops it
+        assert session.get(XrasRemediationEvent,
+                           outcome.event_id).operation == 'delete_request'
+
+    def test_renew_and_add_action_record_their_operations(
+            self, factory, session, monkeypatch):
+        monkeypatch.setattr(service, '_refresh_index_entry', lambda n, **kw: True)
+        client = MagicMock()
+        client.renew_request.return_value = _result(
+            'renew_request', verified=True, before={}, after={})
+        client.add_action.return_value = _result(
+            'add_action', verified=True, before={}, after={})
+        ro = service.renew_request(
+            factory, request_number='EXAM0001', request_id=900001,
+            pi_username='pi-user', operator='benkirk', client=client)
+        ao = service.add_action(
+            factory, request_number='EXAM0001', request_id=900001,
+            action_type='Supplement', pi_username='pi-user', operator='benkirk',
+            client=client)
+        assert session.get(XrasRemediationEvent,
+                           ro.event_id).operation == 'renew_request'
+        assert session.get(XrasRemediationEvent,
+                           ao.event_id).operation == 'add_action'
+        assert client.add_action.call_args.args[1] == 'Supplement'
+
 
 # ── the read side ───────────────────────────────────────────────────────
 

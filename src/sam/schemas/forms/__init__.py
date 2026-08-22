@@ -246,6 +246,7 @@ from .xras_remediation import (
     XrasActionDatesForm,
     XrasRequestAttributesForm,
     XrasActionFieldsForm,
+    XrasAddActionForm,
 )
 # XRAS action ingest — plain marshmallow, deliberately NOT HtmxFormSchema
 # (JSON body with five nested arrays; see the module docstring).
@@ -343,6 +344,7 @@ __all__ = [
     'XrasActionDatesForm',
     'XrasRequestAttributesForm',
     'XrasActionFieldsForm',
+    'XrasAddActionForm',
     'XrasActionSchema',
     'XrasActionResourceSchema',
     'XrasActionRoleSchema',

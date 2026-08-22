@@ -454,6 +454,10 @@ XRAS_REMEDIATION_OPERATIONS = (
     # shortened from "request attributes" to fit VARCHAR(24) — the test guards it.
     'update_attributes',       # title/shortTitle/abstract
     'update_action',           # action fields (userComments)
+    # The destructive lifecycle (Part C, ADMIN_XRAS only). Irreversible in XRAS.
+    'delete_request',          # delete a whole request
+    'renew_request',           # spawn a renewal
+    'add_action',              # add an action to a request
 )
 
 #: ``xras_remediation_event.status``. Five values, and the distinctions matter:

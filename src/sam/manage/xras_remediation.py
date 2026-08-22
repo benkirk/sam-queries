@@ -593,3 +593,55 @@ def update_action(session_factory, *, request_number, request_id, action_id,
                          request_number=request_number, request_id=request_id,
                          action_id=action_id, comment=comment),
         request_number=request_number, client=client)
+
+
+# ── destructive lifecycle (Part C, ADMIN_XRAS only) ──────────────────────
+#
+# ⚠️ Irreversible in XRAS and NOT live-probed. Same audit-before-dispatch
+# discipline as every op — the record survives whether or not the destructive
+# call is confirmed. On a verified delete the request is patched OUT of the card
+# (`_refresh_index_entry` re-reads, finds nothing, drops the row).
+
+def delete_request(session_factory, *, request_number, request_id, pi_username,
+                   operator, comment=None, context=None,
+                   client=None) -> RemediationOutcome:
+    """Delete a whole request in XRAS. **Irreversible.**"""
+    return _editor_op(
+        'delete_request', session_factory,
+        lambda admin: admin.delete_request(
+            request_id, request_number=request_number, xa_user=pi_username,
+            context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         comment=comment),
+        request_number=request_number, client=client)
+
+
+def renew_request(session_factory, *, request_number, request_id, pi_username,
+                  operator, comment=None, context=None,
+                  client=None) -> RemediationOutcome:
+    """Spawn a renewal of a request in XRAS."""
+    return _editor_op(
+        'renew_request', session_factory,
+        lambda admin: admin.renew_request(
+            request_id, request_number=request_number, xa_user=pi_username,
+            context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         comment=comment),
+        request_number=request_number, client=client)
+
+
+def add_action(session_factory, *, request_number, request_id, action_type,
+               pi_username, operator, comment=None, context=None,
+               client=None) -> RemediationOutcome:
+    """Add an action to a request in XRAS."""
+    return _editor_op(
+        'add_action', session_factory,
+        lambda admin: admin.add_action(
+            request_id, action_type, request_number=request_number,
+            xa_user=pi_username, context=context),
+        open_fields=dict(created_by=operator, xa_user=pi_username,
+                         request_number=request_number, request_id=request_id,
+                         comment=comment),
+        request_number=request_number, client=client)

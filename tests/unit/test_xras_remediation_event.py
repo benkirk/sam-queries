@@ -41,7 +41,9 @@ class TestTheVocabularies:
             'update_resource_amount', 'remove_resource',
             'set_action_dates', 'update_action_dates', 'remove_action_dates',
             # The metadata editors (Part B2a).
-            'update_attributes', 'update_action'}
+            'update_attributes', 'update_action',
+            # The destructive lifecycle (Part C).
+            'delete_request', 'renew_request', 'add_action'}
 
     def test_every_operation_fits_the_column(self):
         """``operation`` is VARCHAR(24) — a longer verb truncates or errors."""

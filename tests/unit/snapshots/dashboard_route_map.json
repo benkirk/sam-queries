@@ -1519,6 +1519,20 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_add_action",
+    "/allocations/xras_add_action/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_add_action_form",
+    "/allocations/xras_add_action_form/<path:request_number>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_attributes_edit",
     "/allocations/xras_attributes_edit/<path:request_number>",
     [
@@ -1645,10 +1659,24 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_request_delete",
+    "/allocations/xras_request_delete/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_request_detail",
     "/allocations/xras_request_detail/<path:request_number>",
     [
       "GET"
+    ]
+  ],
+  [
+    "allocations_dashboard.xras_request_renew",
+    "/allocations/xras_request_renew/<path:request_number>",
+    [
+      "POST"
     ]
   ],
   [

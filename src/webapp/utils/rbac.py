@@ -168,8 +168,18 @@ class Permission(Enum):
     # MANAGE_XRAS is picked up by NO ``ALL_*`` aggregate (they match ``view_``/
     # ``edit_``/``create_``/``delete_`` prefixes on the *value*, and there is no
     # ALL_MANAGE), so it must be granted explicitly — see _ALLOCATION_ADMIN below.
+    #   ADMIN_XRAS   the DESTRUCTIVE lifecycle verbs — delete a whole request,
+    #                renew it, add an action. Irreversible in XRAS, so it rides
+    #                with SYSTEM_ADMIN, NOT ``_ALLOCATION_ADMIN``: a MANAGE_XRAS
+    #                operator gets the full non-destructive editor but never
+    #                these (operator decision 2026-08-22,
+    #                docs/xras/outgoing/REQUEST_EDITOR.md §4). Like MANAGE_XRAS the
+    #                ``admin_`` prefix is matched by no ALL_* aggregate, so it
+    #                fails closed and is held only where SYSTEM_ADMIN is — today
+    #                the full-admin override, and any future system-admin bundle.
     VIEW_XRAS = "view_xras"
     MANAGE_XRAS = "manage_xras"
+    ADMIN_XRAS = "admin_xras"
     SYSTEM_ADMIN = "system_admin"  # Full access to everything
 
 

@@ -49,16 +49,18 @@ from sam.queries.xras_requests import _as_date, request_index_entry
 from sam.schemas.forms import (
     XrasActionDatesForm,
     XrasActionFieldsForm,
+    XrasAddActionForm,
     XrasMergeForm,
     XrasRemediationReasonForm,
     XrasRequestAttributesForm,
     XrasResourceAmountForm,
     XrasRoleForm,
 )
+from sam.schemas.forms.xras_remediation import XRAS_ACTION_TYPES
 from webapp.extensions import db
 from webapp.utils.form_handler import FormError, HtmxFormHandler
 from webapp.utils.htmx import htmx_modal_not_found, htmx_success_message
-from webapp.utils.rbac import Permission, require_permission
+from webapp.utils.rbac import Permission, has_permission, require_permission
 
 from .blueprint import _XRAS_MODAL_TRIGGERS, _parse_activity_window, bp
 
@@ -1083,6 +1085,7 @@ _DATES_FORM = 'dashboards/allocations/partials/xras_dates_form.html'
 _ATTRIBUTES_FORM = 'dashboards/allocations/partials/xras_attributes_form.html'
 # ⚠️ NOT xras_action_form.html — that is the withdraw/re-submit form.
 _ACTION_FIELDS_FORM = 'dashboards/allocations/partials/xras_action_fields_form.html'
+_ADD_ACTION_FORM = 'dashboards/allocations/partials/xras_add_action_form.html'
 
 #: The XRAS "stage" model, in the order the modal shows it: what was asked for,
 #: what the panel recommended, what was awarded. Every ``resources[]`` entry in
@@ -1182,6 +1185,11 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         # Approved/Recommended editors render disabled until the elevated XRAS
         # key lands (Phase 0.5); this is the flip-point flag.
         'admin_context_available': xras_admin_context_available(),
+        # The destructive lifecycle buttons render only for ADMIN_XRAS holders
+        # (Part C) — effectively SYSTEM_ADMIN. A MANAGE_XRAS operator never sees
+        # them, and the routes 403 anyway.
+        'is_xras_admin': has_permission(current_user, Permission.ADMIN_XRAS),
+        'action_types': list(XRAS_ACTION_TYPES),
         'flash': flash,
         'flash_error': flash_error,
     }
@@ -1755,3 +1763,141 @@ class _XrasActionFieldsHandler(_XrasRemediationHandler):
 def xras_action_fields_edit(request_number: str, action_id: int):
     return _XrasActionFieldsHandler(
         request_number=request_number, action_id=action_id).handle()
+
+
+# ── the destructive lifecycle (Part C — ADMIN_XRAS only) ─────────────────
+#
+# ⚠️ Every route here is gated on ADMIN_XRAS (effectively SYSTEM_ADMIN), NOT
+# MANAGE_XRAS — a full-editor operator cannot reach them. The verbs are
+# irreversible in XRAS and were not live-probed; they are fail-visible.
+
+def _inline_alert(message, *, variant='warning'):
+    """A raw 200 alert for a bodiless destructive route (Jinja never sees it)."""
+    from markupsafe import escape
+    return (f'<div class="alert alert-{variant} mb-0">{escape(message)}</div>', 200)
+
+
+@bp.route('/xras_request_delete/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_request_delete(request_number: str):
+    """Delete a whole request in XRAS. **Irreversible.** Bodiless; hx-confirm.
+
+    On success the request is gone, so the modal cannot re-render it — it closes
+    and the card refreshes (the sweep patch drops the now-missing row).
+    """
+    try:
+        request_id, xa_user = _editor_target(request_number)
+    except FormError as exc:
+        return _inline_alert(str(exc))
+
+    try:
+        outcome = remediation.delete_request(
+            _session_factory(), request_number=request_number,
+            request_id=request_id, pi_username=xa_user,
+            operator=current_user.username)
+    except XrasWriteNotConfigured:
+        return _inline_alert('XRAS writes are switched off for this '
+                             'deployment. Nothing was sent.')
+
+    if outcome.status == 'verified':
+        return htmx_success_message(
+            _XRAS_MODAL_TRIGGERS, f'Deleted request {request_number} in XRAS.',
+            detail='It no longer exists in XRAS and drops off the card.')
+
+    reason = outcome.error or 'XRAS did not confirm it'
+    extra = getattr(outcome.result, 'errors', None)
+    if extra:
+        reason += ' — ' + '; '.join(str(m) for m in extra)
+    return _inline_alert(
+        f'Deletion did not complete: {reason}. The attempt is recorded in the '
+        'remediation log.', variant='danger')
+
+
+@bp.route('/xras_request_renew/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_request_renew(request_number: str):
+    """Spawn a renewal of a request. Bodiless; hx-confirm.
+
+    The original stays, so the detail modal re-renders with a note naming the
+    new renewal request.
+    """
+    try:
+        request_id, xa_user = _editor_target(request_number)
+    except FormError as exc:
+        return _render_detail(request_number, flash_error=str(exc))
+
+    try:
+        outcome = remediation.renew_request(
+            _session_factory(), request_number=request_number,
+            request_id=request_id, pi_username=xa_user,
+            operator=current_user.username)
+    except XrasWriteNotConfigured:
+        return _render_detail(request_number, flash_error='XRAS writes are '
+                              'switched off for this deployment. Nothing was sent.')
+
+    if outcome.status == 'verified':
+        new_id = getattr(outcome.result, 'extra', {}).get('renewal_request_id')
+        return _render_detail(
+            request_number,
+            flash=f'Renewal spawned in XRAS (requestId {new_id}).')
+    return _render_detail(request_number, flash_error=(
+        f'Renewal did not complete: {outcome.error or "XRAS did not confirm it"}. '
+        'Check XRAS — the attempt is recorded in the remediation log.'))
+
+
+def _safe_add_action_form_context(request_number):
+    return {
+        'request_number': request_number,
+        # (value, label) pairs for select_field — Jinja has no comprehension.
+        'action_type_options': [(t, t) for t in XRAS_ACTION_TYPES],
+        'write_enabled': xras_write_configured(),
+        'post_url': url_for('allocations_dashboard.xras_add_action',
+                            request_number=request_number),
+        'back_url': url_for('allocations_dashboard.xras_request_detail',
+                            request_number=request_number),
+    }
+
+
+@bp.route('/xras_add_action_form/<path:request_number>')
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_add_action_form(request_number: str):
+    """Modal body: pick an action type to add. ADMIN_XRAS only."""
+    return render_template(_ADD_ACTION_FORM,
+                           **_safe_add_action_form_context(request_number))
+
+
+class _XrasAddActionHandler(_XrasRemediationHandler):
+    """Add an action to a request. Destructive-adjacent — ADMIN_XRAS only."""
+
+    schema_cls = XrasAddActionForm
+    template = _ADD_ACTION_FORM
+    success_message = 'Action added in XRAS.'
+
+    def clean(self, data):
+        self._request_id, self._xa_user = _editor_target(self.request_number)
+        return data
+
+    def perform(self, data):
+        outcome = remediation.add_action(
+            _session_factory(), request_number=self.request_number,
+            request_id=self._request_id, action_type=data['action_type'],
+            pi_username=self._xa_user, operator=current_user.username)
+        return self._finish(outcome, verb='Adding the action')
+
+    def on_success(self, result):
+        return _render_detail(
+            self.request_number,
+            flash=f'Added a {result.result.extra.get("action_type")} action.')
+
+    def context(self):
+        return _safe_add_action_form_context(self.request_number)
+
+
+@bp.route('/xras_add_action/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.ADMIN_XRAS)
+def xras_add_action(request_number: str):
+    return _XrasAddActionHandler(request_number=request_number).handle()

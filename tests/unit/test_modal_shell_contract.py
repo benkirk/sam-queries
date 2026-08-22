@@ -301,6 +301,8 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_action_fields_form.html': [
         'auditDetailsModalBody'],
+    'dashboards/allocations/partials/xras_add_action_form.html': [
+        'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_merge_form.html': [
         'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_action_form.html': [

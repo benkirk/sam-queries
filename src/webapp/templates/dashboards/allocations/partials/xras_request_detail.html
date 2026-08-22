@@ -286,6 +286,40 @@
 {% include 'dashboards/allocations/partials/_xras_remediation_actions.html' %}
 {% endif %}
 
+{# ── danger zone — ADMIN_XRAS only (Part C) ─────────────────────────── #}
+{% if is_xras_admin %}
+<div class="card border-danger-subtle mt-3">
+    <div class="card-header bg-danger-subtle text-danger-emphasis py-1 small fw-semibold">
+        <i class="fas fa-triangle-exclamation"></i> Destructive — XRAS admin only
+    </div>
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+        <button type="button" class="btn btn-sm btn-outline-secondary" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-get="{{ url_for('allocations_dashboard.xras_add_action_form',
+                                   request_number=request_number) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML">Add action…</button>
+
+        <button type="button" class="btn btn-sm btn-outline-warning" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-post="{{ url_for('allocations_dashboard.xras_request_renew',
+                                    request_number=request_number) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                hx-confirm="Spawn a renewal of {{ request_number }} in XRAS?"
+                data-confirm-title="Renew request in XRAS"
+                data-confirm-ok="Renew" data-confirm-variant="warning">Renew…</button>
+
+        <button type="button" class="btn btn-sm btn-outline-danger ms-auto" {{ write_disabled }}
+                {% if not write_enabled %}title="{{ why_off }}"{% endif %}
+                hx-post="{{ url_for('allocations_dashboard.xras_request_delete',
+                                    request_number=request_number) }}"
+                hx-target="#auditDetailsModalBody" hx-swap="innerHTML"
+                hx-confirm="DELETE request {{ request_number }} from XRAS? This is IRREVERSIBLE — the request and its history are removed."
+                data-confirm-title="Delete request in XRAS"
+                data-confirm-ok="Delete permanently" data-confirm-variant="danger">Delete request…</button>
+    </div>
+</div>
+{% endif %}
+
 <div class="d-flex justify-content-end mt-3">
     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
 </div>

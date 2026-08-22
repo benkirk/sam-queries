@@ -755,6 +755,63 @@ class TestMetadataVerbs:
         assert kwargs['params'] == {'userComments': 'new'}
 
 
+class TestDestructiveVerbs:
+    """Part C — irreversible, not live-probed, fail-visible. Single attempt,
+    verify-by-reread."""
+
+    def test_delete_verifies_the_request_is_gone(self, monkeypatch):
+        before = _reports_with(resources=[])
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, None))  # after: gone
+        result = client.delete_request(900001, request_number='EXAM0001',
+                                       xa_user='pi-user')
+        assert result.verified is True
+        assert client.session.request.call_args[0][0] == 'DELETE'
+        assert client.session.request.call_args[0][1].endswith('/requests/900001')
+
+    def test_delete_that_still_resolves_is_unverified(self, monkeypatch):
+        before = _reports_with(resources=[])
+        client = _client(monkeypatch, [_response(200)],
+                         reader=_FakeReader(before, before))  # still there
+        result = client.delete_request(900001, request_number='EXAM0001',
+                                       xa_user='pi-user')
+        assert result.verified is False
+
+    def test_renew_verifies_a_new_request_id(self, monkeypatch):
+        client = _client(monkeypatch,
+                         [_response(200, {'requestId': 900002})],
+                         reader=_FakeReader(_reports_with(resources=[])))
+        result = client.renew_request(900001, request_number='EXAM0001',
+                                      xa_user='pi-user')
+        assert result.verified is True
+        assert result.extra['renewal_request_id'] == 900002
+        assert client.session.request.call_args[0][1].endswith(
+            '/requests/900001/renew')
+
+    def test_add_action_verifies_the_new_action_appears(self, monkeypatch):
+        before = _reports_with(resources=[])          # action 7
+        after = _reports_with(resources=[])
+        after['actions'].append({'actionId': 8, 'actionType': 'Supplement',
+                                 'actionStatus': 'Incomplete'})
+        client = _client(monkeypatch, [_response(200, {'actionId': 8})],
+                         reader=_FakeReader(before, after))
+        result = client.add_action(900001, 'Supplement',
+                                   request_number='EXAM0001', xa_user='pi-user')
+        assert result.verified is True
+        method, url = client.session.request.call_args[0]
+        _, kwargs = client.session.request.call_args
+        assert method == 'POST'
+        assert url.endswith('/requests/900001/actions')
+        assert kwargs['params'] == {'actionType': 'Supplement'}
+
+    def test_a_4xx_on_delete_raises(self, monkeypatch):
+        client = _client(monkeypatch, [_response(401)],
+                         reader=_FakeReader(_reports_with(resources=[])))
+        with pytest.raises(XrasWriteRejected):
+            client.delete_request(900001, request_number='EXAM0001',
+                                  xa_user='pi-user')
+
+
 class TestTheResultRecord:
     """What the audit row is built from."""
 
