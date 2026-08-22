@@ -1631,6 +1631,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_opportunity_detail",
+    "/allocations/xras_opportunity_detail/<int:opportunity_id>",
+    [
+      "GET"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_pending_fragment",
     "/allocations/xras_pending_fragment",
     [

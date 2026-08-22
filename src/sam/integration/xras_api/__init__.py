@@ -47,6 +47,11 @@ from sam.integration.xras_api.config import (
     xras_api_configured,
     xras_write_configured,
 )
+from sam.integration.xras_api.lookups import (
+    fos_name_map,
+    get_fos_types,
+    get_opportunity,
+)
 from sam.integration.xras_api.people import (
     get_person,
     get_resources,
@@ -65,6 +70,9 @@ __all__ = [
     'XrasWriteNotConfigured',
     'XrasWriteRejected',
     'XrasWriteResult',
+    'fos_name_map',
+    'get_fos_types',
+    'get_opportunity',
     'get_person',
     'get_resources',
     'invalidate_person',

@@ -40,6 +40,8 @@ from sam.integration.xras_api import (
     XrasSourceUnavailable,
     XrasWriteNotConfigured,
     XrasWriteRejected,
+    fos_name_map,
+    get_opportunity,
     xras_admin_context_available,
     xras_api_configured,
     xras_write_configured,
@@ -1209,6 +1211,12 @@ def _detail_context(request_number, *, flash=None, flash_error=None):
         'xa_user_is_pi': is_pi,
         'xa_user_is_placeholder': placeholder,
         'write_enabled': xras_write_configured(),
+        # Resolve the request's id-only fos[] to names. A reports payload spells
+        # fos as {fosTypeId, fosNum} with no name, so without this the modal
+        # renders "FoS 30". Best-effort (empty on outage) — a FoS name is a
+        # nicety, never worth failing the request view for. Cached a day.
+        'fos_names': fos_name_map(),
+        'configured': xras_api_configured(),
         # Approved/Recommended editors render disabled until the elevated XRAS
         # key lands (Phase 0.5); this is the flip-point flag.
         'admin_context_available': xras_admin_context_available(),
@@ -1359,6 +1367,64 @@ def xras_user_detail(username: str):
             'gone because it was merged into a real identity; the card will '
             'catch up on the next sweep.', title='Unknown XRAS user')
     return render_template(_USER_DETAIL_FORM, **context)
+
+
+# ---------------------------------------------------------------------------
+# read-only opportunity detail — the "what is this allocation call" modal
+# ---------------------------------------------------------------------------
+
+_OPPORTUNITY_DETAIL_FORM = \
+    'dashboards/allocations/partials/xras_opportunity_detail.html'
+
+
+def _opportunity_context(opportunity_id, *, back_request_number=None):
+    """The opportunity modal's context, or ``None`` if XRAS has no such id.
+
+    Read-only — an opportunity is an allocation call SAM never writes. Raises
+    :class:`XrasSourceUnavailable` on an outage; the caller degrades.
+    """
+    opportunity = get_opportunity(opportunity_id)
+    if opportunity is None:
+        return None
+    back_url = (url_for('allocations_dashboard.xras_request_detail',
+                        request_number=back_request_number)
+                if back_request_number else None)
+    return {
+        'opportunity_id': opportunity_id,
+        'opportunity': opportunity,
+        # Parsed here (like grants/dates) — the wire carries a raw ISO string
+        # and the template's fmt_date raises on a str.
+        'announcement_date': _as_date(opportunity.get('announcementDate')),
+        'back_url': back_url,
+        'back_request_number': back_request_number,
+        'configured': xras_api_configured(),
+    }
+
+
+@bp.route('/xras_opportunity_detail/<int:opportunity_id>')
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_opportunity_detail(opportunity_id: int):
+    """Modal body: the allocation opportunity behind a request's header.
+
+    Reached from the Remediations group header (``data-bs-toggle`` from the
+    closed modal) and the request detail header (a plain ``hx-get`` into the
+    open body, carrying ``request_number`` for a Back link). Read-only, so no
+    write lever — but it still degrades with a **200** on an outage, like every
+    modal GET here.
+    """
+    back = request.args.get('request_number') or None
+    try:
+        context = _opportunity_context(opportunity_id, back_request_number=back)
+    except XrasSourceUnavailable as exc:
+        current_app.logger.warning('xras opportunity detail: %s', exc)
+        return _degraded('Showing this opportunity needs a live read from '
+                         'XRAS, and XRAS is not answering.')
+    if context is None:
+        return _degraded(
+            f'XRAS has no opportunity #{opportunity_id}.',
+            title='Unknown opportunity')
+    return render_template(_OPPORTUNITY_DETAIL_FORM, **context)
 
 
 # ── the request editor (Part B): resource amounts & allocation dates ─────

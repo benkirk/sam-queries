@@ -270,6 +270,32 @@ class XrasApiClient:
             found.extend(_as_list(self._get(path)) or [])
         return found
 
+    def get_opportunity(self, opportunity_id) -> Optional[Dict[str, Any]]:
+        """One opportunity in full, or ``None`` — ``GET /v1/opportunities/:id``.
+
+        The single-id form, distinct from :meth:`get_opportunities` (the
+        ``/list/:ids`` batch the sweep uses to resolve allocation types). This
+        one backs the detail modal: it carries ``allocationTypeInfo`` (with the
+        human ``description``), ``opportunityType``, ``defaultAllocationAwardPeriod``,
+        ``announcementDate``, ``opportunityStates``, ``panels`` and
+        ``attributeSets`` — everything the modal shows and the ``reports``
+        enumeration's bare ``opportunityId``/``opportunity_name`` does not.
+        """
+        return _as_dict(self._get(f'/v1/opportunities/{int(opportunity_id)}'))
+
+    # ── vocabularies ────────────────────────────────────────────────────
+
+    def get_fos_types(self) -> Optional[List[Dict[str, Any]]]:
+        """The field-of-science catalog — ``GET /v1/types/fos``.
+
+        ~39 rows of ``{fosTypeId, fosName, fosAbbr, fosNum, fosTypeParentId,
+        isSelectable}``. The join the request modal needs: a
+        ``reports/request_numbers`` payload spells its ``fos[]`` as
+        **ids only** (``fosTypeId``/``fosNum``, no name), so without this the
+        modal can only render "FoS 30". Small and near-static — cached a day.
+        """
+        return _as_list(self._get('/v1/types/fos'))
+
     # ── requests (the Reports family) ───────────────────────────────────
 
     def get_request_by_number(self, request_number: str
