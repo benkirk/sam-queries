@@ -180,15 +180,16 @@
                 <tr>
                     <th style="width:9rem;">Request</th>
                     <th style="width:8rem;">Status</th>
-                    {# 99%, the idiom from xras_table.html's Errors column:
-                       one column declared far larger than the table takes all
-                       the slack, so the group header's overflow lands here
-                       instead of being shared out over the fixed ones. #}
-                    <th style="width:99%;">Project lead</th>
-                    {# SAM's language for the XRAS "Allocation Manager" role —
-                       ROLE_TYPES in admin_client.py. Blank on the many requests
-                       that name no admin. #}
-                    <th style="width:12rem;">Project Admin</th>
+                    {# The two person-name columns share the slack equally (50%
+                       each), so an Allocation-Manager name doesn't wrap while the
+                       lead column has room to spare. Same idiom as xras_table's
+                       Errors column, just split across both: the group header's
+                       `colspan` overflow lands on these two, not the fixed ones.
+                       "Project Admin" is SAM's language for the XRAS "Allocation
+                       Manager" role (ROLE_TYPES in admin_client.py); blank on the
+                       many requests that name no admin. #}
+                    <th style="width:50%;">Project lead</th>
+                    <th style="width:50%;">Project Admin</th>
                     <th class="text-nowrap" style="width:7rem;">Submitted</th>
                     <th class="text-nowrap" style="width:11rem;">Period</th>
                     <th class="text-end" style="width:11rem;">SAM</th>
