@@ -265,8 +265,19 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # `xras_accounts_card.html` joins the list because the Accounts Needed tab
     # now offers the same merge modal on a stuck placeholder — deliberately the
     # same shell, so an operator meets one merge dialogue however they arrive.
+    #
+    # The three cards below also reach #userDetailsModal / #projectDetailsModal:
+    # a username or projcode the row has ALREADY resolved against SAM opens the
+    # shared entity modal, same as everywhere else in the app. Both shells come
+    # from base_allocations.html (:31 project, :33 user), which xras.html
+    # extends — so the single host page carries them.
     'dashboards/allocations/partials/xras_accounts_card.html': [
-        'auditDetailsModal', 'auditDetailsModalBody'],
+        'auditDetailsModal', 'auditDetailsModalBody',
+        'userDetailsModal', 'userDetailsModalBody'],
+    'dashboards/allocations/partials/xras_pending_requests_card.html': [
+        'userDetailsModal', 'userDetailsModalBody'],
+    'dashboards/allocations/partials/xras_remediations_card.html': [
+        'projectDetailsModal', 'projectDetailsModalBody'],
     'dashboards/allocations/partials/xras_remediation_row.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/allocations/partials/xras_merge_form.html': [

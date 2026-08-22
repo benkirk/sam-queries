@@ -214,14 +214,18 @@
                    inside the tag, never in a cell. Used as content it renders
                    its own attribute string as visible text.
 
-                   No buttons on this summary row (they all live in the
-                   expansion below), so the toggle can sit on the <tr>. When a
-                   row does carry buttons it cannot: Bootstrap's collapse
-                   data-api runs in the CAPTURE phase, so the row toggles
-                   before any handler on the button runs. See
-                   dashboards/fragments/collapse.html. #}
-                <tr class="cursor-pointer" {{ collapse_toggle(rid) }}>
-                    <td class="font-monospace text-nowrap">
+                   ⚠️ The toggle is on the five leading CELLS, not the <tr>,
+                   and it has to be: the SAM cell now holds a link. Bootstrap's
+                   collapse data-api runs in the CAPTURE phase, so a row-level
+                   toggle fires before any handler on the link — the project
+                   modal would open AND the row would flip open behind it, on
+                   every click. `data-stop-propagation` cannot help; capture
+                   descends document → row → link. See
+                   dashboards/fragments/collapse.html, and
+                   tests/unit/test_collapse_trigger_rows.py, which fails on a
+                   <button> inside a trigger <tr>. #}
+                <tr>
+                    <td class="font-monospace text-nowrap cursor-pointer" {{ collapse_toggle(rid) }}>
                         <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>{{ row.request_number }}
                         {% if row.refreshed_at %}
                         {# The tell that this row was patched after a write
@@ -231,14 +235,14 @@
                            title="Updated just now, after your change — newer than the sweep."></i>
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="cursor-pointer" {{ collapse_toggle(rid) }}>
                         <span class="badge bg-body-secondary text-body-secondary border">
                             {{ row.status or '—' }}
                         </span>
                     </td>
-                    <td>{{ row.pi.name or row.pi.username or '—' }}</td>
-                    <td class="text-nowrap">{{ row.submit_date | fmt_date }}</td>
-                    <td class="small text-muted text-nowrap">
+                    <td class="cursor-pointer" {{ collapse_toggle(rid) }}>{{ row.pi.name or row.pi.username or '—' }}</td>
+                    <td class="text-nowrap cursor-pointer" {{ collapse_toggle(rid) }}>{{ row.submit_date | fmt_date }}</td>
+                    <td class="small text-muted text-nowrap cursor-pointer" {{ collapse_toggle(rid) }}>
                         {{ row.begin_date | fmt_date }} – {{ row.end_date | fmt_date }}
                     </td>
                     {# One column, not two. The second was a full-width column
@@ -265,10 +269,44 @@
                             placeholder roster
                         </span>
                         {% endif %}
+                        {# ⚠️ The badge IS the link, and only in the `project`
+                           branch — because `pending_push == False` is not a
+                           display choice, it is the sweep's set difference of
+                           `requestNumber` against `Project.projcode`
+                           (xras_sweep.py::_build_requests_index). The badge
+                           already means "a SAM project exists"; linking it is
+                           the same claim, made clickable.
+
+                           The Request column is deliberately NOT the link,
+                           though it carries the same string. It holds the
+                           chevron, and an expand affordance sitting beside
+                           something that opens a modal instead would make one
+                           cell mean two things.
+
+                           Two states, not three (unlike xras_table.html's
+                           request-number column): the flag is only as fresh as
+                           the last sweep, and the post-write patch copies the
+                           old value rather than re-deriving it —
+                           `_still_pending` defaults to True
+                           (sam/manage/xras_remediation.py). So a stale row can
+                           withhold a link it could have offered, but can never
+                           offer one to a project that is not there. That
+                           asymmetry is what makes a bare two-state guard safe. #}
                         {% if row.pending_push %}
                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">no project</span>
                         {% else %}
-                        <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">project</span>
+                        {# ⚠️ An <a>, NOT `btn btn-link`. The Unity button
+                           treatment uppercases (`.btn` in dashboard.css), which
+                           turned the badge into a shouted "PROJECT" — the same
+                           reason `.facet-chip` deliberately opts out of `.btn`.
+                           Seen in the browser, not reasoned about. #}
+                        <a href="#" class="text-decoration-none"
+                           title="View project details"
+                           data-bs-toggle="modal" data-bs-target="#projectDetailsModal"
+                           hx-get="{{ url_for('user_dashboard.project_details_modal',
+                                              projcode=row.request_number) }}"
+                           hx-target="#projectDetailsModalBody"
+                           hx-swap="innerHTML"><span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">project</span></a>
                         {% endif %}
                     </td>
                 </tr>

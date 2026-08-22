@@ -91,6 +91,100 @@ def committed_worklist_action(app):
         db.session.commit()
 
 
+@pytest.fixture
+def deactivated_worklist_user(app):
+    """A committed, INACTIVE `users` row for the worklist payload's username.
+
+    Committed for the same reason as the action row above — the route reads
+    through `db.session` on its own connection.
+
+    This is the `inactive` half of `classify_accounts`: a `users` row that
+    exists and is not active, which the card badges "Reactivation". Without it
+    the same username classifies `absent` ("New account"), so the two fixtures
+    together are the only way to exercise both branches of the link.
+    """
+    from webapp.extensions import db
+
+    from sam.core.users import User
+
+    with app.app_context():
+        user = User(username='placeholder38-user-00038',
+                    unix_uid=999_000_038, active=False, locked=False)
+        db.session.add(user)
+        db.session.commit()
+        user_id = user.user_id
+
+    yield user_id
+
+    with app.app_context():
+        db.session.query(User).filter(User.user_id == user_id).delete()
+        db.session.commit()
+
+
+class TestTheUsernameLinksWhenSamHasTheAccount:
+    """The username opens the shared `#userDetailsModal` — but only when there
+    is something behind it.
+
+    `classify_accounts` has already resolved every username on this card
+    against `users` (an ACTIVE user never reaches the card at all), so the link
+    costs no query: `absent` means no row exists, `inactive` means one does.
+    Gated on the same branch as the New-account / Reactivation badge, so the
+    two can never disagree.
+    """
+
+    def test_an_absent_username_is_not_a_link(self, auth_client,
+                                              committed_worklist_action):
+        """⚠️ The important direction. `absent` means `classify_accounts`
+        found no `users` row at all, so a link would open a modal about
+        nobody — an operator would read the empty body as a broken page
+        rather than as 'this account does not exist', which is the very
+        thing the row is telling them."""
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'placeholder38-user-00038' in body
+        assert 'New account' in body
+        assert 'userDetailsModal' not in body
+
+    def test_an_inactive_username_links_to_its_user_card(
+            self, auth_client, committed_worklist_action,
+            deactivated_worklist_user):
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert 'Reactivation' in body
+        assert '/admin/user/placeholder38-user-00038' in body
+        assert 'data-bs-target="#userDetailsModal"' in body
+        assert 'hx-target="#userDetailsModalBody"' in body
+
+
+class TestTheRowStillExpands:
+    """⚠️ The link forced the collapse toggle off the `<tr>`.
+
+    Bootstrap registers its data-api with `useCapture`, so a toggle on an
+    ancestor of the link fires FIRST — every click would open the modal and
+    flip the row open behind it. `tests/unit/test_collapse_trigger_rows.py`
+    is the static guard; these two assert the replacement actually works.
+    """
+
+    def test_the_summary_row_no_longer_carries_the_toggle(
+            self, auth_client, committed_worklist_action):
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert '<tr class="cursor-pointer" data-bs-toggle="collapse"' not in body
+
+        # The toggle did not vanish, it multiplied: the chevron's own span
+        # plus every cell except the one holding the link.
+        assert body.count('data-bs-target="#xras-acct-1"') >= 5, \
+            'the row lost its expand behaviour entirely' 
+
+    def test_the_chevron_sits_in_its_own_trigger(self, auth_client,
+                                                 committed_worklist_action):
+        """It stays at the START of the row — parked beside the next column's
+        badge it reads as that badge's icon — so it needs a trigger of its
+        own, the username cell having none."""
+        body = auth_client.get(URL).get_data(as_text=True)
+        assert ('<span class="cursor-pointer" data-bs-toggle="collapse"'
+                in body)
+        span = body.split('<span class="cursor-pointer" data-bs-toggle="collapse"', 1)[1]
+        assert 'collapse-icon' in span.split('</span>', 1)[0]
+
+
 class TestAccess:
 
     def test_it_requires_login(self, client):

@@ -371,6 +371,62 @@ class TestRendering:
         assert '2 actions' in body
 
 
+# ── the project link ────────────────────────────────────────────────────
+
+class TestTheSamBadgeLinksWhenTheProjectExists:
+    """`pending_push` is not a display choice — it is the sweep's set
+    difference of `requestNumber` against `Project.projcode`. So the badge
+    already asserts "a SAM project exists"; the link is that same claim, made
+    clickable, and costs no query.
+
+    Two states, not the action log's three. The flag is only as fresh as the
+    last sweep and the post-write patch copies it rather than re-deriving
+    (`_still_pending` defaults to True), so a stale row can withhold a link it
+    could have offered but can never offer one to a project that is not there.
+    """
+
+    def test_a_pushed_request_links_to_its_project(self, auth_client, armed):
+        _publish(_payload('EXAM0001'), pending=False)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '/user/project-details-modal/EXAM0001' in body
+        assert 'data-bs-target="#projectDetailsModal"' in body
+        assert 'hx-target="#projectDetailsModalBody"' in body
+
+    def test_a_pending_request_is_a_plain_badge(self, auth_client, armed):
+        """⚠️ The direction that matters. `pending_push` is exactly "SAM has
+        no project for this number" — the reason most rows are on this card at
+        all. A link would 404 the modal on the majority of the table."""
+        _publish(_payload('EXAM0001'), pending=True)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert 'no project' in body
+        assert 'projectDetailsModal' not in body
+
+    def test_the_request_column_is_deliberately_not_the_link(self, auth_client,
+                                                             armed):
+        """It carries the same string, but it also carries the chevron. An
+        expand affordance beside something that opens a modal instead would
+        make one cell mean two things."""
+        _publish(_payload('EXAM0001'), pending=False)
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        request_cell = body.split('font-monospace text-nowrap', 1)[1].split('</td>', 1)[0]
+        assert 'collapse-icon' in request_cell
+        assert 'projectDetailsModal' not in request_cell
+
+
+class TestTheRowStillExpands:
+    """⚠️ The link forced the toggle off the `<tr>` — Bootstrap's data-api
+    runs in the capture phase, so an ancestor toggle fires before the link and
+    the row would flip open behind the modal on every click."""
+
+    def test_the_summary_row_no_longer_carries_the_toggle(self, auth_client,
+                                                          armed):
+        _publish(_payload('EXAM0001'))
+        body = auth_client.get(FRAGMENT).get_data(as_text=True)
+        assert '<tr class="cursor-pointer" data-bs-toggle="collapse"' not in body
+        # Five of the six cells carry it instead; the SAM cell is the link's.
+        assert body.count('data-bs-target="#xrem-EXAM0001"') == 5
+
+
 # ── the search box ──────────────────────────────────────────────────────
 
 class TestSearch:

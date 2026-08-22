@@ -149,9 +149,50 @@
                 {% set body_id = 'xras-acct-' ~ loop.index %}
                 {# No buttons on this row, so the toggle can live on the <tr> —
                    see dashboards/fragments/collapse.html for when it cannot. #}
-                <tr class="cursor-pointer" {{ collapse_toggle(body_id) }}>
+                <tr>
                     <td class="font-monospace text-nowrap">
-                        <i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i>{{ row.username }}
+                        {# ⚠️ The toggle is on the CHEVRON, not on this cell —
+                           unlike its five siblings, which toggle wholesale.
+                           The cell holds a link, and Bootstrap's collapse
+                           data-api runs in the CAPTURE phase: a toggle on the
+                           cell (or on the <tr>, where it used to live) fires
+                           before the link's own handler, so every click would
+                           open the modal AND flip the row open behind it.
+
+                           The chevron stays here rather than moving to a cell
+                           that does toggle, because the affordance belongs at
+                           the START of the row — parked mid-row beside the
+                           next column's badge it reads as that badge's icon.
+                           Wrapping it in its own trigger keeps both: the mark
+                           where it belongs, and a click target that works.
+                           `.collapse-icon` still rotates, since it rotates off
+                           the `aria-expanded` on its ANCESTOR trigger, and the
+                           span is now that ancestor. #}
+                        <span class="cursor-pointer" {{ collapse_toggle(body_id) }}><i class="fas fa-chevron-right small text-muted me-1 collapse-icon"></i></span>
+                        {% if row.classification == 'absent' %}
+                        {# No SAM row to open. `classify_accounts` looked: this
+                           username matched no `users` row at all, which is the
+                           whole content of the "New account" badge beside it.
+                           Linking it would guarantee an empty modal. #}
+                        {{ row.username }}
+                        {% else %}
+                        {# `inactive` — a `users` row EXISTS and is not active,
+                           which is what "Reactivation" means. Gated on the same
+                           branch as that badge so the two can never disagree.
+
+                           The wire spelling is safe to pass: `users.username`
+                           is utf8mb3_general_ci, so the route's
+                           `filter_by(username=...)` matches whatever case XRAS
+                           sent — the same collation `classify_accounts` relies
+                           on. See its comment on the case-insensitive key. #}
+                        <a href="#" class="text-decoration-none text-reset"
+                           title="View user details"
+                           data-bs-toggle="modal" data-bs-target="#userDetailsModal"
+                           hx-get="{{ url_for('admin_dashboard.user_card',
+                                              username=row.username) }}"
+                           hx-target="#userDetailsModalBody"
+                           hx-swap="innerHTML">{{ row.username }}</a>
+                        {% endif %}
                         {% if row.placeholder %}
                         {# Text, not an icon: the placeholder shape is already
                            legible in the username itself, and a glyph beside it
@@ -161,7 +202,7 @@
                         {% endif %}
                     </td>
 
-                    <td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% if row.classification == 'absent' %}
                         <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">New account</span>
                         {% else %}
@@ -170,7 +211,7 @@
 
                     </td>
 
-                    <td>
+                    <td class="cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {# ⚠️ PI carries weight because a missing PI is the only
                            one that HARD-FAILS the handoff — `roster.py` reports
                            `PI %s is not in database` and the action 422s, while
@@ -192,7 +233,7 @@
                     {# Which XRAS request needs this account. Its own column
                        at every permission level: it is the handle an operator
                        working a project's activation actually navigates by. #}
-                    <td class="font-monospace small">
+                    <td class="font-monospace small cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% set numbers = row.actions | map(attribute='request_number')
                                          | reject('none') | unique | list %}
                         {% for number in numbers[:2] %}
@@ -205,7 +246,7 @@
                     </td>
 
                     {% if may_manage %}
-                    <td class="text-truncate" style="max-width:0;">
+                    <td class="text-truncate cursor-pointer" style="max-width:0;" {{ collapse_toggle(body_id) }}>
                         {% if row.person %}
                         {{ row.person.firstName }} {{ row.person.lastName }}
                         {% if row.person.organization %}
@@ -217,7 +258,7 @@
                     </td>
                     {% endif %}
 
-                    <td class="text-nowrap">
+                    <td class="text-nowrap cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {# ⚠️ This is XRAS-side IDENTITY state, not progress on
                            the row. Measured 9 of 9 on the local smoke: every
                            worklist row was reconciled in XRAS and every one
@@ -249,7 +290,7 @@
                         {% endif %}
                     </td>
 
-                    <td class="text-nowrap small text-muted">
+                    <td class="text-nowrap small text-muted cursor-pointer" {{ collapse_toggle(body_id) }}>
                         {% if row.waiting_days is none %}
                         <span class="text-muted" title="No dated provenance on this row">—</span>
                         {% else %}

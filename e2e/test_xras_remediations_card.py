@@ -152,6 +152,39 @@ class TestInteraction:
         assert card.locator('#xras-remediation-search').input_value() \
             == 'zzz-matches-nothing'
 
+    def test_the_project_badge_opens_the_modal_without_expanding_the_row(
+            self, page):
+        """⚠️ Both halves matter, and the second is the whole reason the
+        toggle moved off the `<tr>`. Bootstrap's collapse data-api runs in the
+        CAPTURE phase, so an ancestor toggle fires before the link's handler —
+        the modal would open AND the row would flip open behind it, on every
+        click, with no button-side guard able to stop it."""
+        card = _load(page)
+
+        # ⚠️ Widen the shared window first. A request SAM already has a project
+        # for is by definition one that got as far as a handoff, so it skews
+        # OLD — with the default lookback this test skipped on every stack,
+        # including the one it was written against, and proved nothing.
+        page.evaluate("""() => {
+            const f = document.querySelector('#xras-window-filters');
+            f.querySelector('[name=days]').value = '3650';
+            htmx.trigger(f, 'submit');
+        }""")
+        page.wait_for_timeout(2500)
+
+        link = card.locator('a[data-bs-target="#projectDetailsModal"]')
+        if link.count() == 0:
+            pytest.skip('no swept request has a SAM project on this stack')
+
+        row = link.first.locator('xpath=ancestor::tr[1]')
+        body = page.locator(f'#{row.get_attribute("id") or ""}')
+        expansions_open_before = card.locator('tr.collapse.show').count()
+
+        link.first.click()
+        page.wait_for_timeout(1200)
+        assert page.locator('#projectDetailsModal.show').count() == 1
+        assert card.locator('tr.collapse.show').count() == expansions_open_before
+
     def test_a_status_chip_filters_without_a_page_reload(self, page):
         card = _load(page)
         chips = card.locator('.facet-chip')
