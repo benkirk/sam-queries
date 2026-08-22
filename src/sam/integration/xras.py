@@ -431,8 +431,8 @@ class XrasActivationEvent(Base, SessionMixin):
 
 #: ``xras_remediation_event.operation`` vocabulary — the write verbs the XRAS
 #: credential actually holds, proven live (the first five 2026-08-21,
-#: ``docs/xras/outgoing/XRAS_WRITE_PROBES.md``; the request-editor five
-#: 2026-08-22, ``docs/xras/outgoing/EDIT_REQUESTS.md``). Validated in
+#: ``docs/xras/outgoing/XRAS_WRITE_PROBES.md``; the request-editor verbs
+#: 2026-08-22, see ``docs/xras/outgoing/REQUEST_EDITOR.md`` §3/§5). Validated in
 #: :meth:`XrasRemediationEvent.create` for the same reason
 #: :data:`XRAS_ACTIVATION_EVENT_TYPES` is: the column is a bare ``VARCHAR`` by
 #: design, so this tuple is the only thing between a typo and an audit row that

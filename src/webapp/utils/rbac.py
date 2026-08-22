@@ -173,7 +173,7 @@ class Permission(Enum):
     #                with SYSTEM_ADMIN, NOT ``_ALLOCATION_ADMIN``: a MANAGE_XRAS
     #                operator gets the full non-destructive editor but never
     #                these (operator decision 2026-08-22,
-    #                docs/xras/outgoing/REQUEST_EDITOR.md §4). Like MANAGE_XRAS the
+    #                docs/xras/outgoing/REQUEST_EDITOR.md §1). Like MANAGE_XRAS the
     #                ``admin_`` prefix is matched by no ALL_* aggregate, so it
     #                fails closed and is held only where SYSTEM_ADMIN is — today
     #                the full-admin override, and any future system-admin bundle.
