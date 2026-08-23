@@ -360,10 +360,11 @@ def mnemonic_internal_failed() -> str:
     """`MnemonicCodeExtractor:47` — **24% of legacy's XRAS failures** carry this one.
 
     The cause is data, not code: ``user_organization`` has been frozen since
-    2026-07-09 and the fuzzy match behind it is ``code LIKE '%name%'`` against a
-    ``varchar(3)`` column, which 150 of 171 active organizations cannot satisfy.
-    Surfacing it as a reviewable 422 is the point; fixing the data is not this
-    sprint's job.
+    2026-07-09, and the soft link is an exact casefolded match of
+    ``mnemonic_code.description`` to the organization name
+    (``MnemonicCode.build_lookup``), which 153 of 171 active organizations cannot
+    satisfy (legacy's ``code LIKE '%name%'`` measured 150). Surfacing it as a
+    reviewable 422 is the point; fixing the data is not this sprint's job.
     """
     return 'Could not determine Mnemonic code for internal PI via organization'
 

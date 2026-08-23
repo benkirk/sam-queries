@@ -139,14 +139,22 @@ SAM corresponding to name {resource_name}`. Both can appear for one action.
 
 ### 2. `Could not determine Mnemonic code for internal PI via organization`
 
-**24% of legacy's XRAS failures.** The lead's organization has no mnemonic soft link: the
-match is `code LIKE '%name%'` against a `varchar(3)` column, and **153 of 171 active
-organizations (89%)** cannot satisfy it. 80% of institutions are in the same state, which
-gives the external twin, `Could not determine Mnemonic code for external PI via
-institution`.
+**24% of legacy's XRAS failures.** The lead's organization has no mnemonic soft link.
+SAM matches `mnemonic_code.description` against `organization.name` — or `"Name, City"`
+then `"Name"` for institutions — by **exact, casefolded equality**
+(`MnemonicCode.build_lookup` / `resolve_for_*` in `sam/core/organizations.py`, reused by
+`resolve_mnemonic_code`). **153 of 171 active organizations (89%)** have no such row; 80%
+of institutions are in the same state, which gives the external twin, `Could not determine
+Mnemonic code for external PI via institution`. (Legacy's match was `code LIKE '%name%'`,
+and `errors.py` quotes that census — 150/171; same failure class, different remedy.)
 
-**Fix:** a data fix on the organization or institution. This would move `New`'s success
-rate more than any code change available to us.
+**Fix:** a data fix — a `mnemonic_code` row whose `description` equals the organization
+or institution name. Two constraints: `code` and `description` are both unique, so every
+new link needs its own unused 3-letter code; and an internal PI's organization comes from
+`user_organization`, which is frozen (4,563 active users have no current row) — those PIs
+have nothing to link. The admin Institutions card already offers the create modal on a
+miss (the warning badge, pre-filled); the Organizations card does not yet. This would move
+`New`'s success rate more than any code change available to us.
 
 Two neighbors from the same resolution path:
 `Could not produce affiliation data for PI {username}`, and
