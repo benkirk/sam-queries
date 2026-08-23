@@ -301,3 +301,46 @@ def load_pending_worklist() -> Optional[Any]:
     sweep that found nothing), which comes back as a payload with zero rows.
     """
     return _load('pending', _PENDING_KEY)
+
+
+def drop_pending_worklist_row(username: str) -> bool:
+    """Drop a username's row from the published Feed-B worklist. ``True`` if it
+    stuck.
+
+    WARNING: **Makes a merge visible in the same interaction.** The Pending Users
+    card renders the cached pending half, so a just-merged placeholder would
+    keep its "Pending request" row until the next hourly sweep — a row that
+    should have cleared on click. Matched on the casefolded username, the same
+    collation ``classify_accounts`` groups on.
+
+    Best-effort, last-write-wins, same as :func:`patch_requests_index`: the
+    adapter lock is a documented no-op on Redis, so a patch racing the sweep's
+    publish loses. Accepted — a lost drop only makes one row lag until the next
+    sweep. ``False`` means nothing to drop (no snapshot, or the username is not
+    in it), which is not an error.
+    """
+    adapter = _CACHE.adapter('pending')
+    if adapter is None:
+        return False
+    with adapter.lock:
+        if _PENDING_KEY not in adapter:
+            return False
+        payload = adapter[_PENDING_KEY]
+        if not isinstance(payload, dict) or not isinstance(payload.get('rows'), list):
+            return False
+
+        wanted = str(username).strip().casefold()
+        rows = payload['rows']
+        kept = [r for r in rows
+                if str((r or {}).get('username') or '').strip().casefold() != wanted]
+        if len(kept) == len(rows):
+            return False
+        payload['rows'] = kept
+
+        # Re-store rather than mutate in place — see patch_requests_index.
+        adapter.pop(_PENDING_KEY, None)
+        try:
+            adapter[_PENDING_KEY] = payload
+        except ValueError:
+            return False
+    return True
