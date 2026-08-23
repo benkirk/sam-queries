@@ -33,8 +33,8 @@
     <span class="badge bg-body-secondary text-body-secondary border fw-normal"
           title="XRAS was not asked, or does not say">identity unknown</span>
     {% elif stuck_placeholder %}
-    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle"
-          title="Identified but never merged — XRAS keeps sending this throwaway username, so the handoff cannot complete.">identified, not merged</span>
+    <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle"
+          title="Misidentified — XRAS flagged this placeholder as reconciled without merging it, so it keeps sending the throwaway username and the handoff cannot complete.">misidentified</span>
     {% elif is_reconciled %}
     <span class="badge bg-body-secondary text-body-secondary border fw-normal"
           title="XRAS has linked this username to a real identity. It does NOT mean a SAM account exists.">identified</span>
