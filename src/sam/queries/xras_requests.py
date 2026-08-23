@@ -48,7 +48,7 @@ from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
     PI_ROLE_TYPE_ID,
 )
-from sam.queries.xras_accounts import is_placeholder
+from sam.queries.xras_accounts import is_placeholder, iter_roster_entries
 
 #: Action fields carried into the entry. The states are what the card's
 #: withdraw/re-submit offers key on, since the authoritative legal-moves read
@@ -116,16 +116,11 @@ def roster_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     identifier the remove button needs.
     """
     rows: List[Dict[str, Any]] = []
-    for entry in payload.get('roles') or ():
-        if not isinstance(entry, dict):
-            continue
-        person = entry.get('person') if isinstance(entry.get('person'), dict) else {}
+    for person, roles in iter_roster_entries(payload):
         username = _text(person.get('username'))
         if not username:
             continue
-        for role in entry.get('roles') or ():
-            if not isinstance(role, dict):
-                continue
+        for role in roles:
             rows.append({
                 'role_id': role.get('roleId'),
                 'role_type_id': role.get('roleTypeId'),

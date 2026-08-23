@@ -50,8 +50,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import (Any, Callable, Dict, Iterable, List, Mapping, Optional,
-                    Sequence, Tuple)
+from typing import (Any, Callable, Dict, Iterable, Iterator, List, Mapping,
+                    Optional, Sequence, Tuple)
 
 from sqlalchemy.orm import Session
 
@@ -321,15 +321,40 @@ def _validate(session: Session, action, action_log_id
 
 # ── Feed B: the outbound enumeration ────────────────────────────────────
 
+def iter_roster_entries(
+        payload: dict) -> Iterator[Tuple[dict, List[dict]]]:
+    """Walk the outbound reports ``roles[]`` once: yield ``(person, roles)``.
+
+    The outgoing wire nests each ``roles[]`` entry as ``{person, roles[]}``,
+    where the inner entries carry ``role`` (not ``roleType``) and the person is
+    inline and complete — every ``/v1/people`` field including ``isReconciled``
+    and ``residenceCountry``, which is why a Feed-B row never needs a person
+    fetch. This is the ``roles[].roles[]`` flatten that the *modal* roster
+    (:func:`sam.queries.xras_requests.roster_from_payload`) and the *accounts*
+    aggregation (:func:`records_from_report_requests` below) both need; sharing
+    the traversal keeps their two shapes from drifting on the same trap.
+
+    ``person`` is always a dict (never ``None``); ``roles`` is filtered to dict
+    entries. Username normalization and empty-username skipping stay with each
+    caller — the modal roster and the accounts view do them differently, and
+    only the traversal is shared.
+    """
+    for entry in payload.get('roles') or ():
+        if not isinstance(entry, dict):
+            continue
+        person = entry.get('person')
+        if not isinstance(person, dict):
+            person = {}
+        roles = [r for r in (entry.get('roles') or ()) if isinstance(r, dict)]
+        yield person, roles
+
+
 def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]:
     """Feed B — rosters from ``GET /v1/reports/requests`` rows.
 
-    The outgoing wire nests differently from the incoming one:
-    ``roles[]`` entries are ``{person, roles[]}``, where the inner entries
-    carry ``role`` (not ``roleType``). Verified live, along with the fact that
-    the person object is **inline and complete** — every ``/v1/people`` field
-    including ``isReconciled`` and ``residenceCountry`` — which is why a
-    Feed-B row never needs a person fetch.
+    Built on the shared :func:`iter_roster_entries` traversal, aggregated to one
+    record per request with a per-username role set (a Feed-B row never needs a
+    person fetch — the person is inline).
     """
     records: List[RosterRecord] = []
     for payload in payloads or ():
@@ -341,19 +366,14 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
         flags: Dict[str, bool] = {}
         people: Dict[str, dict] = {}
 
-        for entry in payload.get('roles') or ():
-            if not isinstance(entry, dict):
-                continue
-            person = entry.get('person') if isinstance(entry.get('person'), dict) else {}
+        for person, role_entries in iter_roster_entries(payload):
             username = str(person.get('username') or '').strip()
             if not username:
                 continue
             if username not in usernames:
                 usernames.append(username)
                 people[username] = person
-            for role in entry.get('roles') or ():
-                if not isinstance(role, dict):
-                    continue
+            for role in role_entries:
                 name = str(role.get('role') or '').strip()
                 if name and name not in roles.setdefault(username, []):
                     roles[username].append(name)
