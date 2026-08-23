@@ -451,6 +451,37 @@ no `url_for` can reach: relative `url()` targets inside a stylesheet
   template may append `?`/`#` after `url_for('static')` (that one is a
   correctness bug — the URL already carries a query string).
 
+### 12. Comment Budget
+
+⚠️ **This section overrides the instinct to match surrounding comment
+density.** Much of `src/` is above budget and is being brought down; imitating
+it reproduces the problem. `src/cli` (~22% doc lines) is the house baseline,
+not the XRAS tree (~42%).
+
+| | budget |
+|---|---|
+| Module docstring | 10 lines |
+| Function/method docstring | 1 line, unless the signature is genuinely ambiguous |
+| `Args:`/`Returns:` | omit when annotated names already say it; keep `Raises:` when non-obvious |
+| In-body comment | 3 lines |
+| Config comment | the constraint and the legal values, nothing else |
+
+Anything longer is a design doc: put it in `docs/` and leave the constraint
+plus the path. **Always keep** a comment recording a real trap, a past
+production bug, or a non-obvious invariant — compress it, never delete it.
+
+Enforced by `tests/unit/test_docs.py` (spelling, markdown links, cited paths,
+changelog phrasing, doc length). Measured by `scripts/doc_ratio.py`. Full
+rules and the cleanup sprint: `docs/plans/DOC_SLIMMING.md`.
+
+❌ **DON'T** write changelog phrasing in a comment — `this used to be X`,
+   `we previously`. Say what is true now; history is in git.
+❌ **DON'T** put emoji or box-drawing separators in code or config comments.
+   Write `WARNING:`, `NOTE:`, `DO NOT`. Markdown is exempt — including this
+   file, whose ⚠️/❌/✅ markers are navigation.
+❌ **DON'T** use British spelling in prose. The gate reads comments,
+   docstrings and markdown only, so it never forces an identifier rename.
+
 ---
 
 ## Flask-Admin (`src/webapp/admin/`)
