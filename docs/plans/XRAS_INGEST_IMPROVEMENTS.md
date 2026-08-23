@@ -38,7 +38,7 @@ table, which several entries below promote from "shape + trigger" to a fuller de
 **XRAS → SAM must work without SAM → XRAS**, degraded but functional. Rather than
 re-arguing this per feature, every idea below carries a dependency tier:
 
-| Tier | Depends on | Degraded behaviour required |
+| Tier | Depends on | Degraded behavior required |
 |---|---|---|
 | **A** | nothing outbound — `xras_action_log`, stored payloads, SAM data | none needed; always works |
 | **B** | outgoing **reads** (`XRAS_OUTGOING_ENABLED`, the sweep, live GETs) | honest empty state, never a broken card — the four-empty-states idiom the Remediations card already set |
