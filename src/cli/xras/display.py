@@ -21,6 +21,16 @@ _STATUS_STYLE = {
     'rechecked':  'dim',
 }
 
+#: Short Source labels, same vocabulary as the Pending Users card badges.
+_SOURCE_LABELS = {'action_log': 'push', 'reports': 'pending'}
+
+
+def _sources(values) -> str:
+    """A row's provenance, received-push first."""
+    labels = [_SOURCE_LABELS.get(v, v) for v in values or ()]
+    labels.sort(key=lambda s: s != 'push')
+    return ', '.join(labels) or BLANK
+
 
 def _status(value) -> str:
     style = _STATUS_STYLE.get(value, 'white')
@@ -361,6 +371,7 @@ def display_account_worklist(ctx, payload) -> None:
     table.add_column('Username', style='cyan')
     table.add_column('Needs')
     table.add_column('Role', style='dim')
+    table.add_column('Source', style='dim')
     table.add_column('Requests', style='dim')
     table.add_column('XRAS identity')
     table.add_column('Waiting', justify='right')
@@ -382,6 +393,7 @@ def display_account_worklist(ctx, payload) -> None:
                       False: '[yellow]unidentified[/yellow]'}[row['is_reconciled']]
         waited = row.get('waiting_days')
         table.add_row(row['username'], needs, ', '.join(row['roles']),
+                      _sources(row.get('sources')),
                       truncate(', '.join(dict.fromkeys(numbers)), 40), reconciled,
                       BLANK if waited is None else f'{waited}d')
 

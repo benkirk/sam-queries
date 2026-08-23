@@ -193,45 +193,31 @@ class XrasCommand(BaseCommand):
         return EXIT_SUCCESS
 
     def _pending_worklist(self):
-        """Feed B, as ``xras_sweep`` last published it — or ``(None, False)``.
+        """Feed B, as ``xras_sweep`` last published it — via the query layer.
 
         WARNING: **This is why the CLI and the dashboard used to disagree.** The card
         reads the sweep's snapshot; ``--accounts`` only ever read the action
         log, so on a stack where XRAS had not yet repointed the card showed a
-        real queue and the CLI reported zero. Same question, two answers, and
-        nothing said which was partial.
+        real queue and the CLI reported zero. Both now read one helper,
+        :func:`~sam.queries.xras_accounts.load_pending_worklist_rows`.
 
-        Returns the rows and *whether we were able to look*, kept separate for
-        the reason ``live_checked`` exists on the mapping audit: an empty Feed B
+        Returns ``(rows_or_None, checked)`` for the builder — an empty Feed B
         and an unreadable one are different facts, and only the second means the
-        printed count is a subset.
-
-        Degrades rather than fails. A laptop with no ``CACHE_REDIS_URL`` gets
-        the Feed-A half and is told so — the same posture as an unconfigured
-        ``--validate-mapping``.
+        printed count is a subset — and prints the CLI's own stderr note when
+        that count is partial. ``unconfigured`` is silent, as before.
         """
-        from sam.integration.xras_api import xras_api_configured
+        from sam.queries.xras_accounts import load_pending_worklist_rows
 
-        if not xras_api_configured():
-            return None, False
-        try:
-            from sam.integration.xras_api.cache import load_pending_worklist
-
-            snapshot = load_pending_worklist()
-        except Exception as exc:                     # noqa: BLE001
-            # The cache backend is infrastructure, not a contract — a laptop
-            # without Redis raises from somewhere in the adapter stack rather
-            # than returning empty, and that must not take the report down.
+        feed = load_pending_worklist_rows()
+        if feed.reason == 'unreadable':
             self.ctx.stderr_console.print(
-                f'[yellow]Could not read the published worklist ({exc}); '
-                f'reporting posted actions only.[/yellow]')
-            return None, False
-        if snapshot is None:
+                '[yellow]Could not read the published worklist; '
+                'reporting posted actions only.[/yellow]')
+        elif feed.reason == 'no_snapshot':
             self.ctx.stderr_console.print(
                 '[yellow]No sweep has published a pending worklist yet; '
                 'reporting posted actions only.[/yellow]')
-            return None, False
-        return list(snapshot.get('rows') or []), True
+        return (feed.rows if feed.checked else None), feed.checked
 
     def _person(self, username) -> int:
         """Probe one username through ``GET /v1/people``.
