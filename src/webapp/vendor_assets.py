@@ -1,41 +1,28 @@
 """Single source of truth for third-party (vendored) assets.
 
-PRODUCTION_IMPROVEMENTS item 3 (vendor-asset registry), extended for CSP:
-every third-party asset the webapp loads lives here. As of the CSP work
-(2026-06) all assets are **vendored into static/vendor/ and committed to
-the repo** — no CDN origins remain, so the Content-Security-Policy
-(webapp/utils/csp.py) collapses to 'self'. Rationale: allowlisting
-mega-CDNs (jsdelivr/unpkg serve every npm package) lets an injected
-<script src> tag sidestep CSP entirely, and browser cache partitioning
-removed the shared-CDN caching benefit years ago.
+Every third-party asset the webapp loads is vendored into ``static/vendor/``
+and committed, so the CSP (``webapp/utils/csp.py``) collapses to ``'self'``.
+Allowlisting a mega-CDN would let an injected ``<script src>`` sidestep CSP
+entirely, and cache partitioning removed the shared-CDN benefit years ago.
 
-Each entry pins the sha384 of the served entry-point file. The hashes for
-the five formerly-CDN assets are the original published SRI values — the
-downloads were verified against them at vendoring time — and
-tests/unit/test_vendor_assets.py re-hashes the committed files so any
-tampering or accidental edit fails CI. Poppins (previously Google Fonts,
-per-UA CSS, no SRI possible) is now self-hosted woff2 + a hand-written
-@font-face sheet, closing the one un-pinned asset. Hashes were computed
-with:
+Each entry pins the sha384 of its entry-point file;
+``tests/unit/test_vendor_assets.py`` re-hashes the committed files, so tampering
+or an accidental edit fails CI. Compute with::
 
     openssl dgst -sha384 -binary <file> | openssl base64 -A
 
-Upgrading an asset: download the new version, verify against the
-publisher's SRI string where available, drop it in static/vendor/, update
-`path` + `sha384` here. Subresource files an entry pulls in by relative
-path (Font Awesome ../webfonts/, Poppins *.woff2) ride along in the same
-directory and are integrity-protected by git itself.
+Upgrading: download, verify against the publisher's SRI where available, drop
+it in ``static/vendor/``, update ``path`` + ``sha384`` together. Subresources
+pulled in by relative path (Font Awesome ``../webfonts/``, Poppins woff2) ride
+along in the same directory, integrity-protected by git itself.
 
-If a *future* asset must stay genuinely external, give its entry a full
-`url` + `integrity` + `crossorigin` instead of `path`, and — if it
-fetches further resources at runtime — a `csp_extra` dict mapping CSP
-directives to extra sources (e.g. {'font-src': 'https://...'}). The CSP
-builder derives the policy from this registry, so external origins flow
-into the header automatically; nothing else needs touching.
+An asset that must stay genuinely external gets ``url`` + ``integrity`` +
+``crossorigin`` instead of ``path``, plus a ``csp_extra`` dict if it fetches
+further resources at runtime. The CSP builder derives the policy from this
+registry, so external origins flow into the header automatically.
 
-Templates render these via the vendor_css()/vendor_js() macros in
-templates/fragments/vendor_assets.html; a context processor registered in
-run.py exposes `vendor_assets` to every template.
+Templates render these via the ``vendor_css()``/``vendor_js()`` macros; a
+context processor in ``run.py`` exposes ``vendor_assets`` to every template.
 """
 
 VENDOR_ASSETS = {

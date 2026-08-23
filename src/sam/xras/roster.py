@@ -1,55 +1,40 @@
-"""``roles[]``, read twice, with different rules — and the defect that produces.
+"""``roles[]``, read twice with different rules -- and the defect that produces.
 
-One array, two readings, and conflating them is the easiest way to get project
+One array, two readings; conflating them is the easiest way to get project
 membership wrong:
 
-============================  ============================================  =====================
-reading                       filter                                        result
-============================  ============================================  =====================
-**role assignment**           ``roleType`` must equal ``PI`` or             project **lead** /
-(``getUsernameByRoleType``)   ``Allocation Manager``, plus a date window     **admin**
-**roster**                    ``roleType`` is **never examined** — date      **every** entry
-(``getUsernames``)            window only                                    becomes a member
-============================  ============================================  =====================
+* **role assignment** (``getUsernameByRoleType``) -- ``roleType`` must equal
+  ``PI`` or ``Allocation Manager``, plus a date window. Yields lead / admin.
+* **roster** (``getUsernames``) -- ``roleType`` is NEVER examined, date window
+  only. Every entry becomes a member.
 
-``ActionRoleName`` has exactly two constants, ``PI("PI")`` and
-``ALLOCATION_MANAGER("Allocation Manager")`` — space-separated, case-sensitive, and a
-*different vocabulary* from the ``Pi`` / ``CoPi`` / ``AllocationManager`` keys of
-``GET /v1/requests/role/…``. So a ``Co-PI`` or a ``User`` is invisible to role
-assignment but **is still added to the project**. ``new_ncar4232_failed.json`` carries
-a ``User`` entry and is the corpus proof.
+``ActionRoleName`` has exactly two constants, space-separated and
+case-sensitive, and they are a *different vocabulary* from the ``Pi`` /
+``CoPi`` / ``AllocationManager`` keys of ``GET /v1/requests/role/...``. So a
+Co-PI or a User is invisible to role assignment but IS still added to the
+project.
 
-The end-date rule is **identical** on both readings. Only the begin-date rule differs,
-and it differs asymmetrically:
+The end-date rule is identical on both. Only the begin-date rule differs, and
+asymmetrically: the roster excludes a future-dated role strictly, while role
+assignment excludes it only while the action is ALSO still in the future (a
+triple conjunct). Once the action's begin date has passed, a future-dated role
+is accepted by role assignment and still excluded by the roster.
 
-.. code-block:: java
+That is **legacy defect 3**: such a person becomes project lead of a project
+they have no account on. Role assignment's exclusion is a strict subset of the
+roster's, so the disagreement can only run one way --
+:func:`role_assignment_disagreements` relies on that and a test asserts it.
+Both readings are ported separately and the disagreement is surfaced as a
+warning rather than silently repaired: it is a real data problem, and hiding it
+would remove the only evidence of it.
 
-    // roster
-    if (roleBeginDate.compareTo(actionDate) > 0) continue;        // strictly excluded
+WARNING: dates are compared AS STRINGS, never parsed. Java uses lexicographic
+``String.compareTo``, correct only because the wire is zero-padded
+``yyyy-MM-dd``; Python's comparison is identical over that alphabet. Parsing
+would add a failure mode (an unparseable date) that legacy does not have.
 
-    // role assignment
-    if (roleBeginDate > actionDate && currDate <= roleBeginDate && currDate <= actionDate)
-        continue;                                                 // excluded only if ALSO future
-
-The role-assignment rule is a triple conjunct, so a future-dated role is ignored *only
-while the action itself is also still in the future*. Once the action's begin date has
-passed, a future-dated role is **accepted** — while the roster still excludes it. That
-is **legacy defect 3**: such a person becomes project lead of a project they have no
-account on. Because role assignment's exclusion is a strict subset of the roster's, the
-disagreement can only ever run one way, which :func:`role_assignment_disagreements`
-relies on and a test asserts.
-
-Both are ported separately and the disagreement is surfaced as a warning rather than
-silently repaired — it is a real data problem, and hiding it would remove the only
-evidence anyone has of it.
-
-Dates are compared **as strings**, never parsed. Java uses lexicographic
-``String.compareTo``, which is correct only because the wire is zero-padded
-``yyyy-MM-dd``; Python's string comparison is identical over that alphabet. Parsing
-would introduce a second failure mode (an unparseable date) that legacy does not have.
-
-Verified against ``~/codes/sam`` at tag 2.0.3. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``
-§ *The roster*.
+Verified against ``~/codes/sam`` at tag 2.0.3. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *The roster*.
 """
 
 import logging
@@ -104,7 +89,7 @@ class Roster:
     byte-identical seven-line blocks — which doubled the query count for a roster:
     ten members cost twenty ``SELECT``s where ten would do.
 
-    ⚠️ ``members`` is positionally aligned with ``member_usernames`` and **may contain
+    WARNING: ``members`` is positionally aligned with ``member_usernames`` and **may contain
     ``None``** where a username matched no row. That is deliberate: a missing member
     has already been reported, so ``raise_if_any()`` stops the action before anything
     iterates it, and preserving the hole keeps the handlers' existing
@@ -124,7 +109,7 @@ class Roster:
 def _wire_str(value) -> str:
     """A wire string as Jackson would have produced it.
 
-    ⚠️ **The one divergence in this module, and it is systematic rather than local.**
+    WARNING: **The one divergence in this module, and it is systematic rather than local.**
     Every string field on ``XrasRole`` is declared ``= ""``, so Java distinguishes an
     *absent* key (``""``) from an explicit JSON ``null``. marshmallow's
     ``load_default=None`` gives ``None`` for both, and the distinction is not
@@ -153,7 +138,7 @@ def normalize_username(value) -> str:
     that decides *which row* gets looked up: skipping it would turn a resolvable user
     into ``Username %s is missing``.
 
-    ⚠️ Java's ``Character.isWhitespace`` and Python's ``str.isspace`` disagree on a
+    WARNING: Java's ``Character.isWhitespace`` and Python's ``str.isspace`` disagree on a
     handful of code points (U+00A0 most notably, whitespace to Python but not to Java).
     A username containing a non-breaking space is pathological enough that matching
     Java exactly here would cost more than it buys.
@@ -191,7 +176,7 @@ def roster_usernames(action) -> Tuple[str, ...]:
     would double every ``Username %s is missing`` before the accumulator collapsed it,
     and it makes the count meaningless to anyone reading it. Order is preserved.
 
-    ⚠️ ``AddUserToProjectActionCommandsFactory.create()`` fans this list out **per
+    WARNING: ``AddUserToProjectActionCommandsFactory.create()`` fans this list out **per
     ``resources[]`` entry**. With ``resources: []`` — *both* Extensions in the corpus —
     it produces **zero** add-user commands even though the roster is non-empty. The
     roster is computed and validated regardless; whether anything is done with it is
@@ -296,18 +281,18 @@ def _validate_user(lookup, username: str, errs: ActionErrors,
                    missing, inactive) -> Optional[User]:
     """Report *username* against the users table, and **return the row it fetched**.
 
-    ⚠️ ``User.is_active`` is ``active AND NOT locked``; Java's ``isActive()`` returns
+    WARNING: ``User.is_active`` is ``active AND NOT locked``; Java's ``isActive()`` returns
     ``active`` alone. The house rule (CLAUDE.md § 5) is to use the hybrid, and the
     divergence is unobservable: production has **zero** locked users out of 28,371. A
     locked account is one somebody has deliberately stopped; leading a new project with
     it would be wrong even if legacy allowed it.
 
-    ⚠️ **An inactive user is returned, not dropped.** It reported an error, so
+    WARNING: **An inactive user is returned, not dropped.** It reported an error, so
     ``raise_if_any()`` will stop the action before anything reads the row — but the
     handlers used to re-fetch unconditionally and would have got it, so returning it
-    keeps this a pure de-duplication of queries rather than a behaviour change.
+    keeps this a pure de-duplication of queries rather than a behavior change.
 
-    ⚠️ **Reporting is per occurrence, deliberately.** Called three times for one
+    WARNING: **Reporting is per occurrence, deliberately.** Called three times for one
     person in three roles, this reports three times — the strings differ per role
     (``PI %s is not in database`` vs ``Allocation Manager %s is not in database:␣`` vs
     ``Username %s is missing``) and ``ActionErrors`` deduplicates identical ones
@@ -328,7 +313,7 @@ def resolve_roster(session, action, errs: ActionErrors, *,
     Order matters only because the operator reads the 422 top to bottom;
     ``ProjectActionCommandFactoryBase`` validates the lead, then the admin, and
     ``AddUserToProjectActionCommandsFactory`` walks the roster separately. Reproduced
-    here as PI → Allocation Manager → members.
+    here as PI -> Allocation Manager -> members.
 
     Reports, in the vocabulary legacy uses:
 

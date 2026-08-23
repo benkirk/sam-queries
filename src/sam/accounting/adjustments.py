@@ -68,8 +68,8 @@ class ChargeAdjustment(Base):
         """Create a ChargeAdjustment; server applies sign from the type.
 
         The caller passes ``amount`` as a positive number. The sign is
-        applied here based on the type's name (Credits/Refunds → negative,
-        Debits/Reservations → positive). This guarantees the stored amount
+        applied here based on the type's name (Credits/Refunds -> negative,
+        Debits/Reservations -> positive). This guarantees the stored amount
         is correct regardless of UI input, matching the legacy Sign
         Enforcement pattern (see legacy_sam/doc/data_structures/
         charge_adjustments.md §2).

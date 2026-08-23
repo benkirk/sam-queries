@@ -13,7 +13,7 @@ three properties matter more than coverage breadth:
    enumeration) reach the same classifier through the same
    :class:`RosterRecord` seam, and must classify identically.
 
-⚠️ The in-tree fixtures are **scrubbed** — every username is rewritten to
+WARNING: The in-tree fixtures are **scrubbed** — every username is rewritten to
 ``user_<hex>`` or ``placeholder<NN>-user-<NNNNN>``. So "no ``users`` row" is
 trivially true for all of them, which proves the plumbing but not the
 predicate. The predicate itself is validated against the unscrubbed corpus
@@ -59,6 +59,21 @@ def _payload(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text())
 
 
+@pytest.fixture
+def no_committed_placeholder(serial_file_lock):
+    """Hold off `test_xras_accounts_card.py`'s committed fixture rows.
+
+    WARNING: that file COMMITs a real `users` row for PLACEHOLDER_USERNAME with
+    `active=False`, under this same lock name. Any assertion here that pins a
+    CLASSIFICATION for a username the JSON fixtures carry is a race against it:
+    while the row exists the classifier correctly answers `inactive`, and the
+    expected `absent` never appears. Asserting mere presence is safe and needs
+    no lock. Reproduce by inserting that row by hand and running these two.
+    """
+    with serial_file_lock('xras_accounts_committed_fixtures'):
+        yield
+
+
 def _pending_record(*usernames, submit_date='2026-07-14', **kwargs):
     """A Feed-B RosterRecord: no arrival of its own, only a ``submitDate``.
 
@@ -84,7 +99,7 @@ def _record(*usernames, roles=None, flags=None, people=None, **ref_kwargs):
         person_by_username=people or {})
 
 
-# ── the placeholder shape ───────────────────────────────────────────────
+# the placeholder shape
 
 class TestPlaceholderDetection:
 
@@ -101,7 +116,7 @@ class TestPlaceholderDetection:
         assert is_placeholder(username) is False
 
 
-# ── the classifier ──────────────────────────────────────────────────────
+# the classifier
 
 class TestClassification:
     """Current-state against ``users`` — never the action's status."""
@@ -213,17 +228,19 @@ class TestGrouping:
         assert counts['placeholder'] == 1
 
 
-# ── Feed A ──────────────────────────────────────────────────────────────
+# Feed A
 
 class TestFeedA:
     """Rosters out of ``xras_action_log.raw_payload``."""
 
-    #: ⚠️ Assertions here must be scoped to the rows the test itself created.
-    #: `tests/unit/test_xras_accounts_card.py` COMMITS an `xras_action_log`
-    #: row (its route reads through Flask-SQLAlchemy's own connection and only
-    #: sees committed rows), and xdist workers share one database — so a bare
-    #: `records_from_action_log(...) == []` is a race against that fixture,
-    #: not an assertion about this test's data.
+    #: WARNING: Assertions here must be scoped to the rows the test itself created.
+    #: `tests/unit/test_xras_accounts_card.py` COMMITS an `xras_action_log` row
+    #: AND a `users` row (its route reads through Flask-SQLAlchemy's own
+    #: connection and only sees committed rows), and xdist workers share one
+    #: database — so a bare `records_from_action_log(...) == []` is a race
+    #: against that fixture, not an assertion about this test's data. A test
+    #: pinning a classification for a fixture username needs
+    #: `no_committed_placeholder`.
 
     def _log_row(self, session, payload_name, **kwargs):
         from sam.integration.xras import XrasActionLog
@@ -237,7 +254,8 @@ class TestFeedA:
         session.flush()
         return row
 
-    def test_it_extracts_the_roster_and_classifies_it(self, session):
+    def test_it_extracts_the_roster_and_classifies_it(
+            self, session, no_committed_placeholder):
         self._log_row(session, PLACEHOLDER_FIXTURE, action_type='New',
                       request_number='NCAR4227')
         records = records_from_action_log(session, validate=False)
@@ -297,7 +315,7 @@ class TestFeedA:
         assert all(r['classification'] in ('absent', 'inactive') for r in rows)
 
 
-# ── Feed B ──────────────────────────────────────────────────────────────
+# Feed B
 
 REPORT_REQUEST = {
     'requestId': 1446994,
@@ -360,7 +378,7 @@ class TestFeedB:
         assert sorted(rows[0]['sources']) == ['action_log', 'reports']
 
 
-# ── enrichment ──────────────────────────────────────────────────────────
+# enrichment
 
 class TestEnrichment:
     """Injected, so the query layer stays offline-capable."""
@@ -376,7 +394,7 @@ class TestEnrichment:
         assert report['found'] == 1 and report['reconciled'] == 1
 
     def test_reconciled_is_not_a_closure(self, session):
-        """⚠️ The design document called `isReconciled` the closure signal.
+        """WARNING: The design document called `isReconciled` the closure signal.
         It is not: the local smoke measured **9 of 9** worklist rows reconciled
         in XRAS while every one still needed a SAM account created or
         reactivated. Reconciliation is XRAS linking a placeholder to a real
@@ -500,7 +518,8 @@ class TestItIsRegimeProof:
         rows = classify_accounts(session, records)
         assert PLACEHOLDER_USERNAME in {r['username'] for r in rows}
 
-    def test_the_same_roster_classifies_alike_in_every_regime(self, session):
+    def test_the_same_roster_classifies_alike_in_every_regime(
+            self, session, no_committed_placeholder):
         """Flip only the status; the answer must not move."""
         import json
         from datetime import datetime as dt
@@ -549,7 +568,7 @@ class TestItIsRegimeProof:
 
 
 class TestUsernameCaseFolding:
-    """⚠️ Found by the local smoke against real data; unreachable from fixtures.
+    """WARNING: Found by the local smoke against real data; unreachable from fixtures.
 
     `users.username` is `utf8mb3_general_ci` with a UNIQUE index, so MySQL
     treats `Jsmith` and `jsmith` as one account and the batch `IN` matches
@@ -595,7 +614,7 @@ class TestUsernameCaseFolding:
 class TestWaitingSince:
     """How long a row has been blocking something.
 
-    ⚠️ **Neither feed alone answers this**, which is the whole reason it is
+    WARNING: **Neither feed alone answers this**, which is the whole reason it is
     derived rather than read off a column. Feed A knows ``received_time`` —
     when XRAS pushed the action at us — and leaves ``submit_date`` null. Feed B
     is the exact inverse: a request that has not been pushed has no arrival,
@@ -625,7 +644,7 @@ class TestWaitingSince:
         assert rows[0]['waiting_since'] == date(2026, 7, 14)
 
     def test_a_negative_age_is_clamped_not_rendered(self, session):
-        """⚠️ Clock skew, not a fact about the queue.
+        """WARNING: Clock skew, not a fact about the queue.
 
         ``received_time`` is naive-Mountain from the app clock, so a process
         running in another zone stamps rows that read as the future — a
@@ -648,7 +667,7 @@ class TestWaitingSince:
         assert rows[0]['waiting_days'] is None
 
     def test_a_snapshot_written_by_older_code_is_backfilled(self, session):
-        """⚠️ The publisher and the reader can be on different code.
+        """WARNING: The publisher and the reader can be on different code.
 
         Feed B is read back from a snapshot ``xras_sweep`` wrote; mid-deploy the
         task is guaranteed to be older than the reader, and a cached snapshot
@@ -665,7 +684,7 @@ class TestWaitingSince:
 class TestMergeWorklists:
     """The union behind ``sam-admin xras --accounts``.
 
-    ⚠️ **Overlap is normal.** Feed A is precisely the actions that have
+    WARNING: **Overlap is normal.** Feed A is precisely the actions that have
     *posted*; Feed B is what XRAS approved and *may or may not* have posted. The
     same person legitimately appears in both, so this is a union on the
     casefolded username, not a concatenation.

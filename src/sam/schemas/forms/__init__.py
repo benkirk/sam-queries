@@ -80,7 +80,7 @@ class HtmxFormSchema(Schema):
 
         Example:
             {'description': ['Missing data for required field.']}
-            → ['Description: Missing data for required field.']
+            -> ['Description: Missing data for required field.']
         """
         out = []
         for field, msgs in messages.items():
@@ -102,7 +102,7 @@ class HtmxFormSchema(Schema):
 
         Example:
             {'amount': ['Not a valid number.'], '_schema': ['End before start.']}
-            → ({'amount': ['Not a valid number.']}, ['End before start.'])
+            -> ({'amount': ['Not a valid number.']}, ['End before start.'])
         """
         field_errors, form_level = {}, []
         for field, msgs in messages.items():

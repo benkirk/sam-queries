@@ -5,7 +5,7 @@ Same scope as the CRUD characterization files: validation-error
 re-render, domain-error (FormError/FK) paths, and auth — no happy-path
 writes (routes commit through Flask-SQLAlchemy's `db.session`). Every
 error-path assertion here exercises the full handler lifecycle:
-form_input → load → clean → render_errors with the route's own context.
+form_input -> load -> clean -> render_errors with the route's own context.
 """
 
 import pytest

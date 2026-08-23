@@ -8,7 +8,7 @@ bodies that were all the same four lines:
     fragment_url = url_for('<this endpoint>', <url_param>=url_arg)
     return _render_<panel>(ctx, fragment_url, mode=…, scope_for=…, **panel_kwargs)
 
-This turns that into two small tables. Modelled on the ``CrudSpec`` /
+This turns that into two small tables. Modeled on the ``CrudSpec`` /
 ``register_crud`` pair in ``dashboards/admin/crud.py``, and it carries the
 same hard rule:
 

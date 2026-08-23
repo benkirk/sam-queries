@@ -10,7 +10,7 @@ Neither is expressible as a return value. :class:`~scheduling.registry.TaskResul
 has no failed state — it has `succeeded` and `partial` — so the only way to
 make the run red is to raise.
 
-⚠️ Do not reach for ``partial_failures`` instead. It means "some sent", and
+WARNING: Do not reach for ``partial_failures`` instead. It means "some sent", and
 in both cases below the count is exactly zero; an operator reading `partial`
 would go looking for the ones that got through.
 """

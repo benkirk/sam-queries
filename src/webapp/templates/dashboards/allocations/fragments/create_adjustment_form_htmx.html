@@ -9,10 +9,10 @@
     errors  — list of validation/creation error messages
     form    — request.form from the previous POST (on re-render) or {}
 
-  Flow: user picks type (intent text swaps) → picks project via
-  search-as-you-type (fk_search_field + fk-picker.js stores project_id) →
+  Flow: user picks type (intent text swaps) -> picks project via
+  search-as-you-type (fk_search_field + fk-picker.js stores project_id) ->
   fk:selected event triggers a refresh of the Resource select with options
-  filtered to the project's active HPC/DAV accounts → user picks resource,
+  filtered to the project's active HPC/DAV accounts -> user picks resource,
   enters positive amount (sign applied server-side), optional comment.
 #}
 
@@ -24,7 +24,7 @@
     errors=errors
 ) %}
 
-        {# ── Type ──────────────────────────────────────────────────────── #}
+        {# Type #}
         <div class="mb-3">
             <label for="adjustmentType" class="form-label">
                 Type <span class="text-danger">*</span>
@@ -79,7 +79,7 @@
             {% endfor %}
         </div>
 
-        {# ── Project (search-as-you-type FK picker) ──────────────────── #}
+        {# Project (search-as-you-type FK picker) #}
         {{ fk_search_field('project_id', 'Project',
                            search_url=url_for('allocations_dashboard.htmx_project_search_for_adjustment'),
                            required=True,
@@ -87,7 +87,7 @@
                            badge_class='bg-secondary text-light py-1 px-2 font-monospace',
                            id_prefix='createAdjProject') }}
 
-        {# ── Resource ─────────────────────────────────────────────────── #}
+        {# Resource #}
         {# Re-populates on fk:selected (and clears back to placeholder on
            fk:cleared). Both events bubble from fk-picker.js. The hidden
            project_id input (id=createAdjProject_id) is hx-included so
@@ -107,14 +107,14 @@
             </select>
         </div>
 
-        {# ── Amount ──────────────────────────────────────────────────── #}
+        {# Amount #}
         {{ number_field('amount', 'Amount',
                         required=True, min=0.01, step='any',
                         placeholder='e.g. 100',
                         id='adjustmentAmount',
                         help='Enter a positive number. The sign is applied automatically by type — Credits and Refunds reduce the account\'s used total; Debits and Reservations increase it.') }}
 
-        {# ── Comment ─────────────────────────────────────────────────── #}
+        {# Comment #}
         {{ textarea_field('comment', 'Comment', rows=2,
                           placeholder='Reason for this adjustment (e.g. ticket #, system event)…',
                           id='adjustmentComment') }}

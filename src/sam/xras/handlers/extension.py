@@ -9,7 +9,7 @@ roster member — none of ``Missing title``, ``Missing pi role`` or ``Username %
 missing`` can be emitted by an Extension. Worth stating because the corpus makes it
 look otherwise: both Extensions carry a populated ``roles[]`` array that nothing reads.
 
-⚠️ **``resources[]`` is ignored entirely.** Legacy walks the project's *accounts*, not
+WARNING: **``resources[]`` is ignored entirely.** Legacy walks the project's *accounts*, not
 the requested resources, taking one allocation from each. Both corpus Extensions send
 ``resources: []`` and both extended real allocations, which is only possible because
 the array is never consulted. A handler that iterated ``resources[]`` would be a no-op
@@ -18,9 +18,9 @@ and the audit row would say ``processed``.
 
 The shape
 ---------
-Assemble → check once → execute. Every account is examined and every problem reported
+Assemble -> check once -> execute. Every account is examined and every problem reported
 before anything is written; one un-extendable account aborts the whole action at
-``raise_if_any()``. That is legacy's behaviour and it is the reason the 422 is worth
+``raise_if_any()``. That is legacy's behavior and it is the reason the 422 is worth
 reading: an operator sees all of it at once.
 
 Verified against ``~/codes/sam`` at tag 2.0.3
@@ -47,7 +47,7 @@ __all__ = ['ExtensionHandler', 'handle_extension', 'EXTENSION_COMMENT']
 
 #: ``transaction_comment`` on every row this handler writes.
 #:
-#: ⚠️ **A Java class name, reproduced on purpose.** Legacy builds it as
+#: WARNING: **A Java class name, reproduced on purpose.** Legacy builds it as
 #: ``action.getClass().getSimpleName() + " Extension Request"``, so the string in the
 #: database is an implementation detail that leaked years ago and then became the
 #: thing operators grep for. Production holds **1,553** rows of this exact spelling and
@@ -104,7 +104,7 @@ class ExtensionHandler(ActionHandler):
             ))
 
     def result(self, **overrides) -> DispatchResult:
-        """⚠️ The log below fires **after** the commit, and must keep doing so.
+        """WARNING: The log below fires **after** the commit, and must keep doing so.
 
         It reports that a successful action changed nothing. Moving it into
         ``execute()`` would fire it before the transaction closed, so a run that then

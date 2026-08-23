@@ -1,7 +1,7 @@
 """Integration tests for `--format json` on sam-search and sam-admin.
 
 Drive the Click CLIs end-to-end with `CliRunner`, asserting:
-  - exit codes match the rich-mode behaviour
+  - exit codes match the rich-mode behavior
   - stdout is valid JSON (parses with `json.loads`)
   - the envelope has a `kind` field plus the documented top-level keys
   - progress bars (UserAbandonedCommand etc.) don't corrupt stdout

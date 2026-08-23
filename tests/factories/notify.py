@@ -4,7 +4,7 @@ Delegates to the model's own ``create()`` (the pattern in
 ``tests/factories/xras.py:103-119``), so validation the production path
 performs is not bypassed by the test path.
 
-⚠️ **Synthetic keys derive from the DB-assigned PK, never a process-local
+WARNING: **Synthetic keys derive from the DB-assigned PK, never a process-local
 counter.** Under xdist, workers share one database; a module-level counter
 gives worker gw0 and worker gw1 the same ``dedup_key``, and a suppression
 test then passes or fails depending on which worker got there first. Same

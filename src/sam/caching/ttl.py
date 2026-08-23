@@ -28,7 +28,7 @@ class TTLCacheAdapter(CacheBase):
         self._cache: TTLCache = TTLCache(maxsize=maxsize, ttl=ttl)
         self._lock = threading.RLock()
 
-    # ── thin operations the wrapping query function uses directly ────────
+    # thin operations the wrapping query function uses directly
 
     @property
     def lock(self) -> threading.RLock:
@@ -54,7 +54,7 @@ class TTLCacheAdapter(CacheBase):
     def ttl(self) -> float:
         return self._cache.ttl
 
-    # ── CacheBase ───────────────────────────────────────────────────────
+    # CacheBase
 
     def info(self) -> dict:
         with self._lock:

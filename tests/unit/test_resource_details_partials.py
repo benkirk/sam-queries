@@ -33,7 +33,7 @@ def _mock_user_breakdown(monkeypatch):
             'start': start, 'end': end, 'username': username,
         }
         # Mirror the shape get_user_queue_breakdown_for_project returns
-        # filtered to one user: a single dict with nested queues→dates.
+        # filtered to one user: a single dict with nested queues->dates.
         if username:
             # Multi-queue user — exercises the template's branching path
             # that emits queue / date sub-rows. Single_triple users
@@ -381,7 +381,7 @@ class TestResourceDetailsAccessControl:
         assert resp.status_code == 403
 
     def test_authorized_user_is_not_forbidden(self, auth_client, active_project):
-        # benkirk holds VIEW_PROJECTS system-wide → the decorator admits.
+        # benkirk holds VIEW_PROJECTS system-wide -> the decorator admits.
         # 200 when the resource resolves, else a friendly redirect for a
         # missing/mismatched resource — but never 401/403.
         resp = auth_client.get(

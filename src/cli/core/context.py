@@ -40,7 +40,7 @@ class Context:
         #
         # This block used to re-read the same six MAIL_* vars off os.getenv
         # with the same defaults as src/config.py:31-37 — a SECOND source of
-        # truth, which is why the CLI never honoured a SAMConfig change (and
+        # truth, which is why the CLI never honored a SAMConfig change (and
         # why MAIL_USE_TLS could be flipped in one place and stay false in the
         # other). sam.notify.NotifyConfig replaces both and reads Flask config
         # or the environment, so the CLI and the webapp cannot disagree.
@@ -99,7 +99,7 @@ class Context:
         ``SAMConfig.validate()`` stays in the callbacks — it is cheap, needs no
         socket, and catching a misconfiguration early is still worth it.
 
-        ⚠️ **This is the CLI-facing accessor and it calls ``sys.exit``. Never
+        WARNING: **This is the CLI-facing accessor and it calls ``sys.exit``. Never
         hand it to the task runner.** ``scheduling.runner._execute`` catches
         ``Exception``, not ``BaseException`` — deliberately, so a pod's
         ``activeDeadlineSeconds`` kill leaves the ledger row ``running`` for the

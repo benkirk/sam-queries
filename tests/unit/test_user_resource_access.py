@@ -4,12 +4,12 @@ reconcile_project_access (sam.manage).
 
 Each test builds a fresh isolated graph (Layer-2 factories) so it does not
 depend on snapshot membership:
-  - make_project()                     → fresh Project + fresh lead User
-  - make_account(project=, resource=)  → Account.create() seeds the lead
-  - make_allocation(account=)          → currently-active allocation so the
+  - make_project()                     -> fresh Project + fresh lead User
+  - make_account(project=, resource=)  -> Account.create() seeds the lead
+  - make_allocation(account=)          -> currently-active allocation so the
                                          resource counts as "active" for
                                          get_user_inaccessible_resources()
-  - make_user()                        → fresh User, unambiguously off-project
+  - make_user()                        -> fresh User, unambiguously off-project
 """
 from datetime import datetime, timedelta
 
@@ -193,7 +193,7 @@ class TestGetMembersAccessStatus:
         assert row['is_lead'] is True
 
     def test_active_only_denominator(self, session):
-        # r2's account has no active allocation → excluded when active_only,
+        # r2's account has no active allocation -> excluded when active_only,
         # included when active_only=False.
         project = make_project(session)
         r1 = make_resource(session)

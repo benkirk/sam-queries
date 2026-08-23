@@ -16,7 +16,7 @@ Note on `autoRenewing`:
     This field appears in the legacy output but is NOT stored in the SAM
     database — no table has an auto_renewing or auto_renewal column.
     All observed production values are `false`.  We hardcode False here to
-    match legacy behaviour rather than omit the field.
+    match legacy behavior rather than omit the field.
 """
 
 from datetime import date

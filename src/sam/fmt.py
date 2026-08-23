@@ -1,33 +1,19 @@
 """Centralized display formatting for SAM.
 
-All number, percentage, date, and size formatting should go through these
-functions so that output style can be controlled from one place.
+All number, percentage, date and size formatting goes through here so output
+style is controlled from one place::
 
-Module-level defaults are seeded from SAMConfig / env-vars at import time
-and can be overridden once at application / CLI startup via configure().
-Each public function also accepts per-call keyword overrides.
+    fmt.number(68_567_808)   # '68.6M'      fmt.pct(0.4)     # '0.4%'
+    fmt.size(1_234_567_890)  # '1.15 GiB'   fmt.date_str(dt) # '2024-10-01'
 
-Env vars
---------
-SAM_RAW_OUTPUT=1    Skip compact notation; emit bare comma-separated integers.
-SAM_SIG_FIGS=3      Significant figures for compact number / size display.
+Defaults are seeded from SAMConfig / env at import and can be overridden once
+at startup via ``configure()``; every public function also takes per-call
+keyword overrides. ``SAM_RAW_OUTPUT=1`` skips compact notation entirely,
+``SAM_SIG_FIGS`` sets significant figures.
 
-Quick reference
----------------
-    from sam import fmt
-
-    fmt.number(68_567_808)          # '68.6M'
-    fmt.number(68_567_808, raw=True)# '68,567,808'
-    fmt.pct(0.4)                    # '0.4%'
-    fmt.date_str(some_dt)           # '2024-10-01'
-    fmt.size(1_234_567_890_123)     # '1.12 TiB'
-
-    # Jinja2 (call once in create_app)
-    fmt.register_jinja_filters(app)
-    # → {{ value | fmt_number }}  {{ value | fmt_pct }}  etc.
-
-    # matplotlib
-    ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+``register_jinja_filters(app)`` exposes these as ``{{ x | fmt_number }}`` etc;
+``mpl_number_formatter()`` is the matplotlib tick formatter. Filter table:
+CLAUDE.md, *Display Formatting*.
 """
 import math
 import os
@@ -38,7 +24,7 @@ from zoneinfo import ZoneInfo
 from config import SAMConfig
 
 
-# ── Display timezone for naive-UTC datetimes ────────────────────────────────
+# Display timezone for naive-UTC datetimes
 #
 # Database / collector convention is naive-UTC (CLAUDE.md).  When rendering
 # datetimes for human eyes, convert to the configured display TZ.  Default
@@ -97,7 +83,7 @@ def naive_local_to_utc(
         dt = dt.replace(tzinfo=tz)
     return dt.astimezone(_UTC).replace(tzinfo=None)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# Constants
 
 # Numbers ≤ this are shown exactly with thousands separators ("99,999").
 # Numbers > this use compact notation ("100K", "1.23M", …).
@@ -125,7 +111,7 @@ _SI_UNITS = [
     (1,                     'B'),
 ]
 
-# ── Module-level config (seeded from env at import time) ──────────────────────
+# Module-level config (seeded from env at import time)
 
 _raw:        bool  = SAMConfig.SAM_RAW_OUTPUT
 _sig_figs:   int   = SAMConfig.SAM_SIG_FIGS
@@ -158,17 +144,17 @@ def configure(
         _size_units = _IEC_UNITS
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────────
+# Internal helpers
 
 def _compact(x: float, sig_figs: int) -> str:
     """Return compact notation for |x| > COMPACT_THRESHOLD.
 
     Examples (sig_figs=3):
-        68_567_808  →  '68.6M'
-        18_275_655  →  '18.3M'
-         1_234_567  →  '1.23M'
-           123_456  →  '123K'
-           100_001  →  '100K'
+        68_567_808  ->  '68.6M'
+        18_275_655  ->  '18.3M'
+         1_234_567  ->  '1.23M'
+           123_456  ->  '123K'
+           100_001  ->  '100K'
     """
     abs_x = abs(x)
     for threshold, suffix in [
@@ -187,7 +173,7 @@ def _compact(x: float, sig_figs: int) -> str:
     return f"{x:,.0f}"
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# Public API
 
 def round_to_sig_figs(
     x:        Optional[Union[int, float]],
@@ -200,15 +186,15 @@ def round_to_sig_figs(
     Returns a float suitable for storage or further math.
 
     Args:
-        x:        Value to round.  None → None.
+        x:        Value to round.  None -> None.
         sig_figs: Significant figures.  Default: SAM_SIG_FIGS.
 
     Examples (sig_figs=3):
-        round_to_sig_figs(458_896_000)  → 459_000_000.0
-        round_to_sig_figs(1_500_750)    → 1_500_000.0
-        round_to_sig_figs(33_350)       → 33_400.0
-        round_to_sig_figs(0)            → 0.0
-        round_to_sig_figs(None)         → None
+        round_to_sig_figs(458_896_000)  -> 459_000_000.0
+        round_to_sig_figs(1_500_750)    -> 1_500_000.0
+        round_to_sig_figs(33_350)       -> 33_400.0
+        round_to_sig_figs(0)            -> 0.0
+        round_to_sig_figs(None)         -> None
     """
     if x is None:
         return None
@@ -234,18 +220,18 @@ def number(
     ("68.6M", "1.23B") unless raw mode is active.
 
     Args:
-        x:        Value to format.  None → null.
+        x:        Value to format.  None -> null.
         sig_figs: Significant figures for compact display.  Default: SAM_SIG_FIGS.
         raw:      If True, always emit exact comma-separated integer.
         null:     Placeholder returned for None values.
 
     Examples:
-        number(2)               → '2'
-        number(99_999)          → '99,999'
-        number(100_001)         → '100K'
-        number(68_567_808)      → '68.6M'
-        number(68_567_808, raw=True) → '68,567,808'
-        number(None)            → '—'
+        number(2)               -> '2'
+        number(99_999)          -> '99,999'
+        number(100_001)         -> '100K'
+        number(68_567_808)      -> '68.6M'
+        number(68_567_808, raw=True) -> '68,567,808'
+        number(None)            -> '—'
     """
     if x is None:
         return null
@@ -271,15 +257,15 @@ def hours(
     ``0.02`` rather than collapsing to ``0`` under fmt.number().
 
     Args:
-        seconds:  Duration in seconds.  None → null.
+        seconds:  Duration in seconds.  None -> null.
         decimals: Fractional digits to keep.  Default 2.
         null:     Placeholder returned for None values.
 
     Examples:
-        hours(77)       → '0.02'
-        hours(3600)     → '1.00'
-        hours(86_400)   → '24.00'
-        hours(None)     → '—'
+        hours(77)       -> '0.02'
+        hours(3600)     -> '1.00'
+        hours(86_400)   -> '24.00'
+        hours(None)     -> '—'
     """
     if seconds is None:
         return null
@@ -298,16 +284,16 @@ def ago(
     status-dashboard stale-data banner ("No status updates in {age}").
 
     Args:
-        delta: Elapsed time as a datetime.timedelta.  None → null.
+        delta: Elapsed time as a datetime.timedelta.  None -> null.
         null:  Placeholder returned for None values.
 
     Examples:
-        ago(timedelta(seconds=30))   → 'less than a minute'
-        ago(timedelta(minutes=18))   → '18 minutes'
-        ago(timedelta(minutes=75))   → '75 minutes'
-        ago(timedelta(hours=29))     → '29 hours'
-        ago(timedelta(days=3))       → '3 days'
-        ago(None)                    → '—'
+        ago(timedelta(seconds=30))   -> 'less than a minute'
+        ago(timedelta(minutes=18))   -> '18 minutes'
+        ago(timedelta(minutes=75))   -> '75 minutes'
+        ago(timedelta(hours=29))     -> '29 hours'
+        ago(timedelta(days=3))       -> '3 days'
+        ago(None)                    -> '—'
     """
     if delta is None:
         return null
@@ -338,17 +324,17 @@ def factor(
     multiplication sign signals "multiplier" rather than "count".
 
     Args:
-        x:        Multiplier value.  None → null.
+        x:        Multiplier value.  None -> null.
         decimals: Fractional digits to keep.  Default 2 (matches the
                   hpc-usage-queries plugin's ``qos_factor`` ``.2f`` spec).
         null:     Placeholder returned for None values.
 
     Examples:
-        factor(0.7)   → '×0.70'
-        factor(1.5)   → '×1.50'
-        factor(1.0)   → '×1.00'
-        factor(0.0)   → '×0.00'
-        factor(None)  → '—'
+        factor(0.7)   -> '×0.70'
+        factor(1.5)   -> '×1.50'
+        factor(1.0)   -> '×1.00'
+        factor(0.0)   -> '×0.00'
+        factor(None)  -> '—'
     """
     if x is None:
         return null
@@ -371,10 +357,10 @@ def pct(
         null:     Placeholder returned for None values.
 
     Examples:
-        pct(0.4)          → '0.4%'
-        pct(100.0)        → '100.0%'
-        pct(33.333, decimals=2) → '33.33%'
-        pct(None)         → '—'
+        pct(0.4)          -> '0.4%'
+        pct(100.0)        -> '100.0%'
+        pct(33.333, decimals=2) -> '33.33%'
+        pct(None)         -> '—'
     """
     if x is None:
         return null
@@ -393,14 +379,14 @@ def date_str(
     """Format a date or datetime object.
 
     Args:
-        d:    Date or datetime.  None → null.
+        d:    Date or datetime.  None -> null.
         fmt:  strftime format string.  Default: ISO date '%Y-%m-%d'.
         null: Placeholder returned for None values.
 
     Examples:
-        date_str(datetime(2024, 10, 1))  → '2024-10-01'
-        date_str(None)                   → '—'
-        date_str(dt, fmt='%b %Y')        → 'Oct 2024'
+        date_str(datetime(2024, 10, 1))  -> '2024-10-01'
+        date_str(None)                   -> '—'
+        date_str(dt, fmt='%b %Y')        -> 'Oct 2024'
     """
     if d is None:
         return null
@@ -419,17 +405,17 @@ def size(
     Call configure(size_units='si') once at startup to switch to SI (TB/PB/…).
 
     Args:
-        x_bytes:  Size in bytes.  None → null.
+        x_bytes:  Size in bytes.  None -> null.
         sig_figs: Significant figures.  Default: SAM_SIG_FIGS.
         raw:      If True, emit bare integer byte count.
         null:     Placeholder returned for None values.
 
     Examples (IEC, sig_figs=3):
-        size(512)                → '512 B'
-        size(1_536)              → '1.50 KiB'
-        size(1_073_741_824)      → '1.00 GiB'
-        size(1_234_567_890_123)  → '1.12 TiB'
-        size(None)               → '—'
+        size(512)                -> '512 B'
+        size(1_536)              -> '1.50 KiB'
+        size(1_073_741_824)      -> '1.00 GiB'
+        size(1_234_567_890_123)  -> '1.12 TiB'
+        size(None)               -> '—'
     """
     if x_bytes is None:
         return null
@@ -449,7 +435,7 @@ def size(
     return f"0 {_size_units[-1][1]}"
 
 
-# ── Framework integration ─────────────────────────────────────────────────────
+# Framework integration
 
 def register_jinja_filters(target) -> None:
     """Register fmt_* Jinja2 filters on a Flask app **or** a bare Environment.
@@ -473,8 +459,8 @@ def register_jinja_filters(target) -> None:
                       {{ value | fmt_date(fmt='%b %Y') }}
         fmt_size    — {{ value | fmt_size }}
         fmt_hours   — {{ seconds | fmt_hours }}
-        fmt_factor  — {{ multiplier | fmt_factor }}   → '×0.70'
-        fmt_ago     — {{ timedelta | fmt_ago }}       → '29 hours'
+        fmt_factor  — {{ multiplier | fmt_factor }}   -> '×0.70'
+        fmt_ago     — {{ timedelta | fmt_ago }}       -> '29 hours'
     """
     env = getattr(target, 'jinja_env', target)
 
@@ -616,11 +602,11 @@ def _date_formatter_cls():
             `format_ticks` rather than `__call__` because the vocabulary is a
             property of the row, not of any one tick: the band comes from the
             spacing between ticks, and "context changed" is only answerable
-            with the neighbours in hand.
+            with the neighbors in hand.
 
             This is also what makes it correct where `ConciseDateFormatter` is
             not — that one derives its offset label from the LAST tick, so a
-            window showing Jul 26-31 gets labelled `2026-Aug`.
+            window showing Jul 26-31 gets labeled `2026-Aug`.
             """
 
             def format_ticks(self, values):
@@ -629,7 +615,7 @@ def _date_formatter_cls():
 
             def __call__(self, x, pos=None):
                 # Single-value path (cursor readout, `format_data_short`).
-                # No neighbours, so no context to suppress.
+                # No neighbors, so no context to suppress.
                 return f'{num2date(x).replace(tzinfo=None):%Y-%m-%d %H:%M}'
 
         _DATE_FORMATTER_CLS = _SpanDateFormatter

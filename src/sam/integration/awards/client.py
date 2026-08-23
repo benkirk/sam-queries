@@ -1,6 +1,6 @@
 """Shared HTTP transport for award providers.
 
-Modelled on ``collectors/lib/api_client.py``: one persistent
+Modeled on ``collectors/lib/api_client.py``: one persistent
 ``requests.Session`` (connection reuse matters — a lookup can issue up to
 three requests), an explicit timeout on every call, three attempts with
 ``2 ** attempt`` backoff, and **no retry on 4xx** — a 404 is an answer,
@@ -43,7 +43,7 @@ class AwardHttpClient:
         self.session.headers.update({'User-Agent': user_agent,
                                      'Accept': 'application/json'})
 
-    # ── internals ───────────────────────────────────────────────────────
+    # internals
 
     def _request(self, method: str, url: str, *,
                  json_body: Optional[Mapping[str, Any]] = None,
@@ -95,7 +95,7 @@ class AwardHttpClient:
         raise AwardSourceUnavailable(
             f'{url} unreachable after {self.max_retries} attempts: {last_error}')
 
-    # ── public ──────────────────────────────────────────────────────────
+    # public
 
     def get_json(self, url: str, *,
                  params: Optional[Mapping[str, Any]] = None) -> Optional[Any]:

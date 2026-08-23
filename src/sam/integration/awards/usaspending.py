@@ -83,7 +83,7 @@ def award_id_candidates(contract_number: str) -> List[str]:
 
 
 def _parse_date(raw: Optional[str]):
-    """USAspending serialises dates as ``YYYY-MM-DD``."""
+    """USAspending serializes dates as ``YYYY-MM-DD``."""
     if not raw:
         return None
     try:
@@ -123,7 +123,7 @@ class UsaSpendingProvider(AwardProvider):
             DETAIL_URL.format(generated_internal_id=internal_id)) or {}
         return self._to_record(hit, detail, internal_id)
 
-    # ── search ──────────────────────────────────────────────────────────
+    # search
 
     def _resolve(self, contract_number: str) -> Optional[Mapping[str, Any]]:
         """Find the award row, escalating through the three lookup shapes."""
@@ -188,7 +188,7 @@ class UsaSpendingProvider(AwardProvider):
                     records.append(record)
         return records
 
-    # ── mapping ─────────────────────────────────────────────────────────
+    # mapping
 
     @staticmethod
     def _to_record(hit: Mapping[str, Any], detail: Mapping[str, Any],

@@ -320,7 +320,7 @@ class TestDiskCapacityInDashboardData:
     """
 
     def _build_disk_graph(self, session, *, allocated_tib: float):
-        """User → Project → DISK Account+Allocation. Returns (project, account, lead)."""
+        """User -> Project -> DISK Account+Allocation. Returns (project, account, lead)."""
         from sam import ResourceType
         rt = session.query(ResourceType).filter_by(resource_type='DISK').first()
         if rt is None:
@@ -605,7 +605,7 @@ class TestDiskCapacityInGetDetailedAllocationUsage:
         usage = project.get_detailed_allocation_usage()
         hpc = usage[resource.resource_name]
         assert hpc['resource_type'] == 'HPC'
-        # Fresh allocation, no charges → used == 0, percent_used == 0,
+        # Fresh allocation, no charges -> used == 0, percent_used == 0,
         # and the helper must NOT inject `activity_date` for HPC rows.
         assert hpc['used'] == 0.0
         assert hpc['percent_used'] == 0.0
@@ -620,7 +620,7 @@ class TestDiskCapacityInAllocationSummary:
         """Hang a fresh DISK account+allocation+snapshot off an existing
         snapshot project so the AllocationType/Panel/Facility joins in
         get_allocation_summary() resolve. The query inner-joins
-        Project → AllocationType → Panel → Facility, so a bare
+        Project -> AllocationType -> Panel -> Facility, so a bare
         make_project() (no allocation_type wiring) yields zero rows."""
         from datetime import date as _date
         from sam import ResourceType

@@ -105,7 +105,7 @@ def action_log(app, monkeypatch):
     if minted:
         with app.app_context(), Session(db.engine) as session:
             # DESCENDING id, one PK-targeted DELETE each — NOT a single
-            # `IN (...)`, which is what this used to be.
+            # `IN (...)`.
             #
             # `source_action_id` is a self-FK, so once a test replays an action the
             # minted set contains both a parent and its child. A single statement

@@ -1,42 +1,34 @@
-"""Turning wire fields into SAM rows: allocation type, area of interest, mnemonic,
-contract.
+"""Turning wire fields into SAM rows: allocation type, area of interest,
+mnemonic, contract.
 
-Four independent lookups that every project-shaped handler needs, extracted here
-because legacy extracts them here too — and because each one is a place where a
-plausible reading of the payload gives the wrong answer.
+Four independent lookups every project-shaped handler needs, each a place where
+a plausible reading of the payload gives the wrong answer.
 
-The contract they all share
----------------------------
-**They report; they do not raise.** ``ProjectActionCommandFactoryBase`` catches
-``AttributeExtractionException`` from the area-of-interest (`:79-81`), allocation-type
-(`:103-105`) and mnemonic (`:115-117`) extractors and funnels ``e.getMessage()`` into
-the observer, so an unresolvable mnemonic and a missing title arrive in the *same*
-422. Every function below takes an :class:`~sam.xras.errors.ActionErrors`, reports
-into it, and returns ``None`` — never raises for a data problem.
+Three shared contracts:
 
-**They return ORM rows, not ids or names.** Legacy returns an ``Integer`` id from the
-allocation-type extractor and a ``String`` name from the area-of-interest one, because
-its downstream commands re-resolve them. Ours have no such commands, so returning the
-row is both cheaper and harder to misuse — and the allocation-type row carries the
-panel, which ``getAuthAtPanelMeeting()`` needs.
+**They report; they do not raise.** Legacy funnels every extraction failure
+into one observer, so an unresolvable mnemonic and a missing title arrive in
+the SAME 422. Every function takes an
+:class:`~sam.xras.errors.ActionErrors`, reports into it, and returns ``None``.
 
-**They are pure where they can be.** :func:`select_allocation_type_parms` takes no
-session: the eleven-strategy chain is string matching, and the database is consulted
-only to turn the resulting pair into a row. That split is what lets the strategy
+**They return ORM rows, not ids or names.** Legacy returns an id or a string
+because its downstream commands re-resolve them; ours have none, so the row is
+cheaper and harder to misuse -- and the allocation-type row carries the panel,
+which ``getAuthAtPanelMeeting()`` needs.
+
+**They are pure where they can be.** :func:`select_allocation_type_parms` takes
+no session: the eleven-strategy chain is string matching, and the database is
+consulted only to turn the pair into a row. That is what lets the strategy
 order be tested against the corpus without a database.
 
-Where the traps are
--------------------
-Each function's docstring carries its own; the two that would silently produce wrong
-data are worth naming up front:
+Two traps would silently produce wrong data:
 
-1. ``fosNum`` is an ``area_of_interest_id``, **not** an ``fos_aoi.fos_id``. See
-   :func:`resolve_area_of_interest`.
-2. A ``(panel, type)`` pair must be resolved to an id **at runtime**. ``Small`` and
-   ``Education`` each name two different ``allocation_type`` rows.
+1. ``fosNum`` is an ``area_of_interest_id``, NOT an ``fos_aoi.fos_id``.
+2. A ``(panel, type)`` pair must be resolved to an id AT RUNTIME -- ``Small``
+   and ``Education`` each name two different ``allocation_type`` rows.
 
-Verified against ``~/codes/sam`` at tag 2.0.3. Design notes and the production
-measurements behind them: ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
+Verified against ``~/codes/sam`` at tag 2.0.3. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
 """
 
 import re
@@ -87,7 +79,7 @@ class SelectionParms:
 
 #: ``AllocationType`` enum, verbatim, in declaration order.
 #:
-#: ⚠️ **Not** in *strategy* order — the chain order is :data:`_STRATEGIES` below, and
+#: WARNING: **Not** in *strategy* order — the chain order is :data:`_STRATEGIES` below, and
 #: the two differ (``NSC`` is 6th here, 2nd there). This mapping exists only to give
 #: :func:`_lookup_by_type_name` its keys, exactly as Java's ``NAME_MAP`` does.
 _ALLOCATION_TYPES: Dict[str, SelectionParms] = {
@@ -114,7 +106,7 @@ _BY_TYPE_NAME: Dict[str, SelectionParms] = {
 
 #: ``CSLStrategy.CSLPREFIX``. The empty left branch of the alternation is deliberate
 #: and load-bearing: "CSL alone, **or** CSL followed by a non-word character and
-#: anything". ⚠️ ``XRAS_REIMPLEMENTATION.md`` § 3.2 renders this with a backslash
+#: anything". WARNING: ``XRAS_REIMPLEMENTATION.md`` § 3.2 renders this with a backslash
 #: before the pipe, which reads as a literal ``|`` and matches nothing real —
 #: transcribing the doc rather than the source breaks CSL detection outright.
 #: Java's ``Matcher.matches()`` is a full match, hence ``fullmatch`` at the call site.
@@ -126,9 +118,9 @@ _EXTERNAL_PATTERN = re.compile(r'(.* )?External( .*)?')
 
 
 def _clean(value: Optional[str]) -> Optional[str]:
-    """Normalise a wire string to "a value" or ``None``.
+    """Normalize a wire string to "a value" or ``None``.
 
-    ⚠️ **A declared divergence, and the only one in this module that changes which
+    WARNING: **A declared divergence, and the only one in this module that changes which
     branch runs.** Jackson gives ``XrasAction.allocationType`` a default of ``""``,
     so Java can tell an *absent* key (``""``) from an explicit JSON ``null`` (Java
     ``null``) — and it behaves differently on each: ``""`` takes the exact-lookup
@@ -136,7 +128,7 @@ def _clean(value: Optional[str]) -> Optional[str]:
     ``opportunityName`` branch that detects Discover/Explore ACCESS.
 
     marshmallow gives both ``None`` (``load_default=None``), so the distinction is not
-    recoverable here. We take the ``null`` behaviour for both, which is the strictly
+    recoverable here. We take the ``null`` behavior for both, which is the strictly
     more capable one: the ``""`` path Java would have taken always resolves to nothing
     and falls straight through. The only payloads affected are ACCESS-instance ones
     that omit the key entirely, where legacy fails to resolve a type at all.
@@ -155,7 +147,7 @@ def _lookup_by_type_name(name: Optional[str]) -> Optional[SelectionParms]:
 def _access_strategy(action) -> Optional[SelectionParms]:
     """`ACCESSStrategy` — strategy 1, and the one that short-circuits the other ten.
 
-    ⚠️ When the payload carries an ``allocationType`` this is an **exact lookup by SAM
+    WARNING: When the payload carries an ``allocationType`` this is an **exact lookup by SAM
     type name**, not an ACCESS test. So a wire ``allocationType: 'Small'`` resolves
     here, to ``('UNIV USS', 'Small')``, and strategies 2–11 never run. ``'Large'`` does
     **not** — the ``LARGE`` member's type name is ``'CHAP'`` — so it falls through to
@@ -168,7 +160,7 @@ def _access_strategy(action) -> Optional[SelectionParms]:
     5 ``'Data Analysis'``, 4 ``'Educational'``). § 3.2's "may return null and fall
     through" covers only half of it.
 
-    ⚠️ The corpus reaches **5 of the 11 strategies**, and growing it 8 → 41 did not
+    WARNING: The corpus reaches **5 of the 11 strategies**, and growing it 8 -> 41 did not
     move that number at all — so it is a measurement, not a small sample. The other six
     see no traffic at this site and are pinned only by unit tests. See
     ``tests/unit/test_xras_extractors.py::test_five_distinct_strategies_are_exercised``.
@@ -221,7 +213,7 @@ def _large_strategy(action) -> Optional[SelectionParms]:
     """`LargeStrategy` — where ``allocationType: 'Large'`` actually resolves, having
     missed the exact lookup in strategy 1.
 
-    ⚠️ Java dereferences both fields unguarded here and would ``NullPointerException``
+    WARNING: Java dereferences both fields unguarded here and would ``NullPointerException``
     on an explicit JSON ``null``; the POJO defaults of ``""`` are all that keep it
     standing. We guard, because our schema admits ``None``.
     """
@@ -243,7 +235,7 @@ def _opportunity_contains(action, *markers: str) -> bool:
 
 def _small_non_nsf_strategy(action) -> Optional[SelectionParms]:
     """`SmallNonNSFStrategy` — note ``'unsponsored'`` is lowercase in the source while
-    its two neighbours are title-cased, and the test is case-sensitive."""
+    its two neighbors are title-cased, and the test is case-sensitive."""
     if _opportunity_contains(action, 'no NSF award', 'unsponsored', 'Exploratory Allocation'):
         return _ALLOCATION_TYPES['SMALL_NON_NSF']
     return None
@@ -289,7 +281,7 @@ def _asd_ncar_strategy(action) -> Optional[SelectionParms]:
 
 
 #: ``AllocationTypeIdExtractor.SELECTION_PARM_STRATEGY``, in order. First non-``None``
-#: wins (``FirstSuccessfulStrategy``). The order is the behaviour — ``SmallNonNSF``
+#: wins (``FirstSuccessfulStrategy``). The order is the behavior — ``SmallNonNSF``
 #: before ``SmallNSF``, and ``ACCESS`` first because its exact-lookup branch is what
 #: lets a payload name its type outright.
 _STRATEGIES = (
@@ -335,12 +327,12 @@ def select_allocation_type_mapped(session, action) -> Optional[SelectionParms]:
     contain. The chain is pure and sessionless by construction (see the module
     docstring); a database read belongs here.
 
-    ⚠️ **Both consumers must use this, not the pure form.**
+    WARNING: **Both consumers must use this, not the pure form.**
     :func:`resolve_allocation_type` sets ``project.allocation_type_id``, but
     ``handlers/_allocations.auth_at_panel_meeting`` independently re-derives the
     pair to set ``auth_at_panel_mtg`` on **allocation_transaction** rows. Wiring
     only one of them would let a project's type come from the map while its
-    transactions' panel-authorisation flag came from the ladder — inconsistent
+    transactions' panel-authorization flag came from the ladder — inconsistent
     rows, written, silently.
 
     Three ways to miss, all of them falling through rather than raising: no
@@ -367,7 +359,7 @@ def select_allocation_type_mapped(session, action) -> Optional[SelectionParms]:
 def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[AllocationType]:
     """The ``allocation_type`` row this action's project belongs to.
 
-    ⚠️ **Resolved by the ``(panel, type)`` pair, never by type name alone.** ``Small``
+    WARNING: **Resolved by the ``(panel, type)`` pair, never by type name alone.** ``Small``
     names two rows (``UNIV USS`` id 8 and ``UW`` id 3) and so does ``Education``
     (``UNIV USS`` id 9, inactive, and ``UW`` id 18). A name-keyed lookup would put
     university-panel projects on the Wyoming panel roughly at random.
@@ -376,7 +368,7 @@ def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[All
     house rule against hardcoding lookup-table PKs. Legacy's ``findByPanelAndType``
     applies no ``active`` filter and neither does this — all twelve pairs the strategy
     chain can produce are active today, and filtering would turn a data change into a
-    silent behaviour change.
+    silent behavior change.
 
     The pair comes from :func:`select_allocation_type_mapped`, which prefers the
     ``opportunityId`` map and falls back to the ladder — so with an empty table this
@@ -427,7 +419,7 @@ def primary_fos_num(action) -> Optional[str]:
 def resolve_area_of_interest(session, action, errs: ActionErrors) -> Optional[AreaOfInterest]:
     """The ``area_of_interest`` row named by the primary field of science.
 
-    ⚠️ **``fosNum`` is an ``area_of_interest_id``, not an ``fos_aoi.fos_id``.** Legacy
+    WARNING: **``fosNum`` is an ``area_of_interest_id``, not an ``fos_aoi.fos_id``.** Legacy
     calls ``areaOfInterestRepository.findOne(fosInt)``, which is a Spring Data
     *primary-key* lookup — the ``fos_aoi`` mapping table is not on this path at all.
     It cannot be: its ``fos_id`` values are five-digit AMIE/XSEDE codes (``10202``,
@@ -441,7 +433,7 @@ def resolve_area_of_interest(session, action, errs: ActionErrors) -> Optional[Ar
     prefixed forms, which ``int(…, 0)`` reproduces closely enough that no real payload
     can tell them apart.
 
-    ⚠️ **That fallback is by name, and the names are not byte-equal.** At eight payloads
+    WARNING: **That fallback is by name, and the names are not byte-equal.** At eight payloads
     the ``fosName`` XRAS sends was the SAM ``area_of_interest`` string *verbatim*; at 41
     it is 90 exact, 2 differing in one letter's case (``fosNum`` 39 —
     ``'Ecological studies'`` here, ``'Ecological Studies'`` on the wire), 0 differing in
@@ -511,7 +503,7 @@ def _organization_parentage(org: Optional[Organization]) -> List[Organization]:
 def _lab_level_organization(parentage: List[Organization]) -> Optional[Organization]:
     """``UserLabStrategy.getBestOrgAtLabLevelOrHigher()``.
 
-    The list runs deepest → root, so index ``len - 3`` is the level-3 org — "lab
+    The list runs deepest -> root, so index ``len - 3`` is the level-3 org — "lab
     level" at NCAR. A user shallower than that gets their own organization.
     """
     if not parentage:
@@ -541,19 +533,19 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     itself, which is what the extractor tests do and why the parameter is optional
     rather than required.
 
-    ⚠️ ``None`` is a **resolved** answer meaning "no such user", and still reports. The
+    WARNING: ``None`` is a **resolved** answer meaning "no such user", and still reports. The
     sentinel is what distinguishes it from "not looked up yet"; a plain
     ``pi=None`` default would silently turn every existing caller into the
     no-such-user arm.
 
     Three routes, in legacy's order:
 
-    1. ``opportunityName`` starts with ``'NCAR '`` → the **lab** strategy: walk the
+    1. ``opportunityName`` starts with ``'NCAR '`` -> the **lab** strategy: walk the
        PI's organization parentage to level 3 and match that. Note this catches the
        NSC opportunity prefix (``'NCAR - NSC Allocation Request'``) as well as the
        NCAR ASD one.
-    2. The PI has an institution → match ``"Name, City"``, then ``"Name"``.
-    3. Otherwise → match the PI's organization name.
+    2. The PI has an institution -> match ``"Name, City"``, then ``"Name"``.
+    3. Otherwise -> match the PI's organization name.
 
     ``MnemonicCode.build_lookup`` + ``resolve_for_*`` are the existing ports of
     ``UserInstitutionStrategy`` / ``UserOrganizationStrategy``; this reuses them so the
@@ -567,7 +559,7 @@ def resolve_mnemonic_code(session, action, errs: ActionErrors, *,
     both true and the string an operator already knows: a lab is an organization, and a
     projcode cannot be minted without a code.
 
-    ⚠️ ``ProjectActionCommandFactoryBase:110`` short-circuits on
+    WARNING: ``ProjectActionCommandFactoryBase:110`` short-circuits on
     ``action.getMnemonicCode()`` before calling any of this. On the XRAS path that is
     dead: ``XrasAction.getMnemonicCode()`` is a hardcoded ``return null``. It is the
     AMIE actions, which share the base class, that supply one. Nothing to port.
@@ -636,8 +628,8 @@ _CORE_NUMBER_PATTERN = re.compile(r'^(.*[^0-9])?([0-9]{6,})[^0-9]*$')
 def extract_core_number(grant_number: str) -> str:
     """The ≥6-digit core of an award number, or the input trimmed.
 
-    ``'NSF-2146709'`` → ``'2146709'``; ``'AGS-2524858'`` → ``'2524858'``;
-    ``'USDA Prime Award No. 2013-67003-20652'`` → ``'20652'`` is *not* what happens —
+    ``'NSF-2146709'`` -> ``'2146709'``; ``'AGS-2524858'`` -> ``'2524858'``;
+    ``'USDA Prime Award No. 2013-67003-20652'`` -> ``'20652'`` is *not* what happens —
     ``20652`` is five digits, so the pattern's last ≥6-digit run is ``67003``… also
     five. That string matches nothing and comes back trimmed, whole. Pure string work,
     no database.
@@ -683,8 +675,8 @@ def resolve_contract(session, grant_number: Optional[str],
        (whitespace-insensitive, since operators have stored ``'OCE- 1419584'``). This
        is strictly better than legacy and can never be wrong: if the payload names a
        contract SAM holds verbatim, that is the contract.
-    2. Otherwise the core-number suffix match. Exactly one row → that row.
-    3. A tie → report it, naming the candidates, instead of raising. The operator gets
+    2. Otherwise the core-number suffix match. Exactly one row -> that row.
+    3. A tie -> report it, naming the candidates, instead of raising. The operator gets
        an actionable 422 where legacy gave them a 500 and an email about a
        ``NonUniqueResultException``.
 

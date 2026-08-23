@@ -29,7 +29,7 @@ def _sentinel_chart(monkeypatch):
     it is the only thing asserting that this route calls the chart the way the
     chart expects. When the ``layout`` axis was threaded through, this fixture
     failed loudly — and again when ``theme`` was, in PR 4. That is the
-    behaviour worth keeping: a ``**kwargs`` double would have swallowed both
+    behavior worth keeping: a ``**kwargs`` double would have swallowed both
     and left the route free to stop forwarding either.
     """
     captured = {'metric': None, 'layout': None, 'theme': None}

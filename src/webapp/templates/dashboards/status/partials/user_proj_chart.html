@@ -72,7 +72,7 @@
             <div class="btn-group btn-group-sm" role="group" aria-label="Metric">
                 {# GPUs is data-driven: only shown when this scope+window
                    actually had GPU activity. The route clamps metric=gpus
-                   → cores when has_gpus is false, so a stale URL stays valid. #}
+                   -> cores when has_gpus is false, so a stale URL stays valid. #}
                 {% set _metric_options = [('jobs', 'Jobs'), ('cores', 'Cores')] %}
                 {% if has_gpus %}{% set _metric_options = _metric_options + [('gpus', 'GPUs')] %}{% endif %}
                 {% set _metric_options = _metric_options + [('nodes', 'Nodes')] %}

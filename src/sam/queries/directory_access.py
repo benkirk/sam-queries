@@ -1,44 +1,29 @@
-"""
-Directory Access query functions for SAM.
+"""Directory Access query functions.
 
-Provides group_populator() and user_populator() that reproduce the output of
-the legacy Java `GET /protected/admin/sysacct/directoryaccess` endpoint.
+``group_populator()`` and ``user_populator()`` reproduce the legacy Java
+``GET /protected/admin/sysacct/directoryaccess``, organized by access branch
+(hpc, hpc-data, hpc-dev) into ``unixGroups`` and ``unixAccounts``.
 
-The data is organized by access branch (hpc, hpc-data, hpc-dev) and includes:
-  - unixGroups: project-based groups + explicit adhoc groups + global "ncar" group
-  - unixAccounts: per-user details (uid, gid, home dir, shell, gecos)
+Group sources, in legacy pipeline order:
 
-Group sources (in order of the legacy pipeline):
-  1. Implicit project groups: active projects with allocations within grace period,
-     linked to access branches via account → resource → access_branch_resource.
-     These member rows — and only these — establish the branch's *account set*,
-     the usernames that get a unixAccounts entry.
-  2. Explicit adhoc groups: AdhocGroup entries whose tags match access branch names.
-     The groups themselves are created unconditionally, but each
-     AdhocSystemAccountEntry is admitted **only if that username is already in
-     the branch's account set** — the dependent-account gate. See below.
-  3. Global "ncar" group (gid=1000): the branch's account set, verbatim
+1. **Implicit project groups** -- active projects with allocations within the
+   grace period, linked to branches via account -> resource ->
+   access_branch_resource. These rows, and only these, establish the branch's
+   *account set*: the usernames that get a ``unixAccounts`` entry.
+2. **Explicit adhoc groups** -- created unconditionally, but each
+   ``AdhocSystemAccountEntry`` is admitted only if that username is already in
+   the account set.
+3. **Global "ncar" group** (gid 1000) -- the account set, verbatim.
 
-The dependent-account gate (step 2) reproduces legacy
-``SystemDirectory.flatLoadDependentAccount()``::
+WARNING: step 2's gate reproduces ``SystemDirectory.flatLoadDependentAccount()``
+and is load-bearing. Without it, a service account listed in an adhoc group but
+holding no project membership (``tomcat`` in ``sage``) is emitted as a group
+member with no ``unixAccounts`` entry -- a dangling reference for the
+downstream LDAP provisioner. "ncar" is injected BEFORE the adhoc stage for the
+same reason, so adhoc membership cannot leak into it.
 
-    void flatLoadDependentAccount(String branch, String group, String username) {
-        SystemAccount required = SystemAccount.create(branch, username);
-        if (accounts.contains(required)) {          // <-- the gate
-            flatLoadGroup(branch, group, username);
-        }
-    }
-
-Without it, a service account that is listed in an adhoc group but has no
-project membership (e.g. ``tomcat`` in ``sage``) is emitted as a group member
-with no corresponding unixAccounts entry — a dangling reference for the
-downstream LDAP provisioner. Legacy injects "ncar" *before* the adhoc stage
-for the same reason, so adhoc membership can never leak into it either.
-
-Constants matching legacy Java Constants.java:
-  ACCESS_GRACE_PERIOD = 90  days
-  DEFAULT_COMMON_GROUP = 'ncar'       (was GLOBAL_LDAP_GROUP)
-  DEFAULT_COMMON_GROUP_GID = 1000     (was GLOBAL_LDAP_GROUP_UNIX_GID)
+Constants match legacy ``Constants.java``: grace period 90 days, common group
+``ncar``, gid 1000.
 """
 
 from typing import Dict, List, Optional, Set, Tuple
@@ -257,7 +242,7 @@ def group_populator(
         grp['usernames'].add(username)
         branch_accounts.setdefault(branch_name, set()).add(username)
 
-    # --- 2. Explicit adhoc groups (tags → access branch) ---
+    # --- 2. Explicit adhoc groups (tags -> access branch) ---
     rows = session.execute(_SQL_ADHOC_GROUPS, params).fetchall()
     for branch_name, group_name, gid in rows:
         b = branches.setdefault(branch_name, {'groups': {}})
@@ -292,7 +277,7 @@ def group_populator(
         ncar_grp['gid'] = DEFAULT_COMMON_GROUP_GID
         ncar_grp['usernames'].update(accounts)
 
-    # --- 4. Symmetric username → groups index ---
+    # --- 4. Symmetric username -> groups index ---
     # Invert the groups dict so callers can quickly look up a user's memberships.
     for branch_name, branch_data in branches.items():
         user_groups: Dict[str, List[Dict]] = {}

@@ -1,6 +1,6 @@
 """Four reasons an action parks, and the two columns that now tell them apart.
 
-⚠️ **This file used to document a gap; it now proves the fix.** Every scenario here
+WARNING: **This file used to document a gap; it now proves the fix.** Every scenario here
 once asserted that the row could *not* answer "why did this park", which was the
 evidence behind the ``service`` / ``outcome_reason`` verdict in
 ``docs/xras/incoming/implemented/XRAS_STRESS_AND_SCHEMA.md``. The columns landed, so the assertions are
@@ -62,7 +62,7 @@ def test_park_unknown_action_type(xras_client, action_log, dispatching, scenario
                                   snapshot_project):
     """``Date Adjustment`` — a real wire type with no serviceable, from real bytes.
 
-    ⚠️ The project must **exist**, or this collapses into ``test_park_no_service``:
+    WARNING: The project must **exist**, or this collapses into ``test_park_no_service``:
     with a nonexistent project every type falls off the selector chain, so the row
     would be identical for the wrong reason. ``snapshot_project`` is a committed row,
     which is what the route's own session can see.
@@ -95,7 +95,7 @@ def test_park_disabled_type(xras_client, action_log, dispatching, scenario, app,
                             snapshot_project):
     """The same shape, parked for a completely different reason.
 
-    ⚠️ The project must **exist**, or ``select_service`` returns ``None`` before the
+    WARNING: The project must **exist**, or ``select_service`` returns ``None`` before the
     allowlist is ever consulted and this silently becomes the previous scenario.
     That is the failure mode this whole file is about, reappearing one level up: two
     causes, one indistinguishable outcome — except here it would be two *tests*
@@ -122,7 +122,7 @@ def test_a_disabled_park_and_an_unmatched_park_are_distinguishable(
         xras_client, action_log, dispatching, app, snapshot_project):
     """The former evidence, now the acceptance test.
 
-    ⚠️ This assertion is **inverted from what it was**. It used to read
+    WARNING: This assertion is **inverted from what it was**. It used to read
     ``unmatched == disabled``, and passing it was the problem: the equality was the
     proof that four parking causes produced one indistinguishable row, and it is
     what the ``service`` / ``outcome_reason`` verdict rested on. The columns landed,

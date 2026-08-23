@@ -7,7 +7,7 @@ and terminates the dispatcher rather than failing one task.
 
 `open_sam()` is the same connect without that policy. These tests pin both
 halves — the raising one because the task runner depends on it, and the exiting
-one because every existing subcommand's behaviour must be unchanged by the split.
+one because every existing subcommand's behavior must be unchanged by the split.
 """
 
 from io import StringIO
@@ -73,7 +73,7 @@ class TestOpenSam:
 
 
 class TestRequireSam:
-    """Unchanged behaviour: the red message and exit 1, exactly as before."""
+    """Unchanged behavior: the red message and exit 1, exactly as before."""
 
     def test_exits_1_on_failure(self, ctx, monkeypatch):
         _fail_to_connect(monkeypatch)

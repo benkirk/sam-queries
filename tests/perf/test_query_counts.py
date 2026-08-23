@@ -191,7 +191,7 @@ def test_get_detailed_allocation_usage(session, count_queries, perf_active_proje
 def test_get_allocation_summary_with_usage_all_resources(session, count_queries):
     """Query count for allocation summary with usage across ALL active resources.
 
-    The catastrophic Issue 1 (52,923 queries → 42) only manifests when
+    The catastrophic Issue 1 (52,923 queries -> 42) only manifests when
     fetching ALL resources at once — the single-resource test above would
     not catch a regression in the batch bulk-fetch machinery.
     """
@@ -251,7 +251,7 @@ def test_get_institutions_with_members_include_projects(session, count_queries):
     """Query count for the admin Institutions tab fanout path.
 
     Exercises the worst-case eager-load chain:
-        Institution → UserInstitution → User → (led_projects ∪ admin_projects)
+        Institution -> UserInstitution -> User -> (led_projects ∪ admin_projects)
     plus joinedload(Institution.state_prov.country).
 
     A regression here — e.g. a missing selectinload or a new lazy access

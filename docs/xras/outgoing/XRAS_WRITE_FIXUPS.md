@@ -15,7 +15,7 @@ deliberately left closed.
 > `_get`, and `tests/unit/test_xras_api_client.py` pins that no
 > post/put/patch/delete callable exists on the class. Building any of this means
 > a **new** client with its own credential and its own review
-> ([`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](PROJECT_AND_ACCOUNT_LIFECYCLE.md) § 4),
+> ([`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../PROJECT_AND_ACCOUNT_LIFECYCLE.md) § 4),
 > never a relaxation of that one.
 
 ---
@@ -286,7 +286,7 @@ row is (placeholder AND is_reconciled)
 | | |
 |---|---|
 | [`XRAS_OUTGOING_QUERIES.md`](XRAS_OUTGOING_QUERIES.md) | The read-side worklist and the full readable/closed API surface. § 4.7 first recorded the write surface this document exercises |
-| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](PROJECT_AND_ACCOUNT_LIFECYCLE.md) | § 2 *SAM never creates users*; § 4 the write-direction ground rule and the two follow-ons (this is the first) |
+| [`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../PROJECT_AND_ACCOUNT_LIFECYCLE.md) | § 2 *SAM never creates users*; § 4 the write-direction ground rule and the two follow-ons (this is the first) |
 | `src/sam/queries/xras_accounts.py` | `classify_accounts`, `enrich_worklist`, the trigger fields (`placeholder`, `is_reconciled`) |
 | `src/webapp/dashboards/allocations/xras/card_routes.py` | `xras_accounts_fragment` — the PII gate and `may_manage` pattern the control extends |
 | `src/webapp/templates/dashboards/allocations/partials/xras_accounts_card.html` | The card; the "placeholder ≠ unreconciled" badge nuance to build on |
@@ -309,7 +309,7 @@ wanted as test data.
 finding from the 2026-08-20 session.** The body above fixes a *person* (a
 mis-flagged placeholder). This addendum is about closing a *request* — the
 "closing abandoned requests" follow-on named in
-[`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](PROJECT_AND_ACCOUNT_LIFECYCLE.md) § 4 — using
+[`PROJECT_AND_ACCOUNT_LIFECYCLE.md`](../PROJECT_AND_ACCOUNT_LIFECYCLE.md) § 4 — using
 the one write primitive the credential holds for it: **action withdrawal**. It
 shares the write client, credential, and audit table (§ 6), so it is worth
 building alongside the merge fixup, but it is a distinct operator action on a

@@ -43,7 +43,7 @@
     document.addEventListener('input',  dispatch('data-action-input'));
     document.addEventListener('submit', dispatch('data-action-submit'));
 
-    /* ── Reveal a freshly-loaded card without scrolling past its header ──
+    /* Reveal a freshly-loaded card without scrolling past its header
      *
      * Two things made the old `scrollIntoView({block: 'start'})` land in
      * the middle of the card:
@@ -74,7 +74,7 @@
         });
     };
 
-    /* ── Generic built-ins ── */
+    /* Generic built-ins */
 
     /* Clickable rows/elements that just navigate
      * (replaces onclick="window.location='...'"). */
@@ -104,7 +104,7 @@
         }
     });
 
-    /* Generalisation of the above for every other detail modal: the target
+    /* Generalization of the above for every other detail modal: the target
      * shell is named by data-modal-id, content still comes from the
      * element's own hx-get. Needed for the same reason — a link inside an
      * already-open modal (a contract on a project card shown in

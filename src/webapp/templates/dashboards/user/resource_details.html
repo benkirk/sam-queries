@@ -131,7 +131,7 @@
         </thead>
         {% if breakdown %}
         {% if span_days > 45 %}
-        {# ── 3-level: Month → Day → User/Queue ── #}
+        {# 3-level: Month -> Day -> User/Queue #}
         {% for month_key, month_days in breakdown | groupby('month') | reverse %}
         {% set mid = table_id ~ '-m' ~ month_key | replace('-', '') %}
         {% set m_jobs = month_days | sum(attribute='jobs') %}
@@ -184,7 +184,7 @@
         </tbody>
         {% endfor %}
         {% else %}
-        {# ── 2-level: Day → User/Queue (≤45 days) ── #}
+        {# 2-level: Day -> User/Queue (≤45 days) #}
         {% for day in breakdown %}
         {% set did = table_id ~ '-' ~ day.date | replace('-', '') %}
         <tbody>
@@ -228,7 +228,7 @@
 </div>
 {% endmacro %}
 
-{# ── Page content ──────────────────────────────────────────────────────────── #}
+{# Page content #}
 
 {% block breadcrumbs %}
 {% from 'dashboards/fragments/breadcrumbs.html' import breadcrumbs %}
@@ -432,7 +432,7 @@
 </div>
 {% endif %}
 
-{# ── Usage card: History | By User ────────────────────────────────────────
+{# Usage card: History | By User
    One card for one question asked two ways — *when* the resource was used
    and *by whom* — sharing a single time window.
 
@@ -580,7 +580,7 @@ tab-pane fade{{ ' show active' if key == usage_tab }}
 
 <!-- Job History Card — per-job drill + aggregation tabs from the
      hpc-usage-queries plugin. Only for resources that map onto a plugin
-     machine (Derecho/Derecho GPU → derecho, Casper → casper). Collapsed
+     machine (Derecho/Derecho GPU -> derecho, Casper -> casper). Collapsed
      by default: the tabs' queries are the most expensive on this page,
      so nothing fires until the user opens the card (the first tab's
      hx-trigger binds to shown.bs.collapse — see

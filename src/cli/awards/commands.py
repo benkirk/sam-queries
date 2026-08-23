@@ -163,7 +163,7 @@ class AwardPatternSearchCommand(BaseContractCommand):
         return EXIT_ERROR if errors else EXIT_NOT_FOUND
 
     def _known_numbers(self, records) -> dict:
-        """Which of these award numbers SAM already has, by normalised number.
+        """Which of these award numbers SAM already has, by normalized number.
 
         This is the same protection ``_ContractCreateHandler.clean`` gives
         when the operator submits a duplicate number, surfaced before they

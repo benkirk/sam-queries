@@ -3,13 +3,13 @@
 The sibling of ``test_layout_transport.py``, and deliberately the simpler of
 the two. Both axes exist for the same reason: a rendering mode the server must
 know *before* it renders, because charts are matplotlib SVGs with baked-in
-colours that no stylesheet can retheme.
+colors that no stylesheet can retheme.
 
 **One channel, not two.** ``layout-axis.js`` writes a cookie *and* injects
 ``?layout=`` into every htmx request, because a viewport is discovered
 client-side after the server has already answered. A theme is never
 discovered — it is declared by a click that then reloads, so the cookie and
-the browser can never disagree. ``?theme=`` is honoured for hand-debugging but
+the browser can never disagree. ``?theme=`` is honored for hand-debugging but
 nothing sets it, which is why there is no ``configRequest`` half to this file.
 
 The payoff is that the theme is correct in the **first byte of HTML**: there is
@@ -264,15 +264,15 @@ class TestThemeToggleJs:
             'expected a one-year Max-Age expressed legibly')
 
     def test_reloads_after_flipping(self, js):
-        """16 charts are server-rendered SVG with baked colours. Without the
+        """16 charts are server-rendered SVG with baked colors. Without the
         reload they stay stale — a light chart on a dark page, which is worse
         than the reload it avoids."""
         assert 'location.reload()' in js
 
     def test_writes_the_cookie_before_reloading(self, js):
-        """Order is the whole behaviour: reload first and the server has not
-        been told yet, so the page comes back in the OLD theme and the toggle
-        looks broken."""
+        """Order is the whole behavior: reload first and the server has not
+        been told yet, so the page comes back in the previous theme and the
+        toggle looks broken."""
         assert js.index('writeCookie(next)') < js.index('location.reload()')
 
     def test_sets_the_attribute_before_reloading(self, js):

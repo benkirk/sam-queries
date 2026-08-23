@@ -2,7 +2,7 @@
 {% from 'dashboards/fragments/collapse.html' import collapse_toggle %}
 {#
   Admin: Facility Card Body (lazy-loaded into the Facilities tab pane)
-  Unified hierarchical view: Facilities (collapsible) → Panels → Allocation Types (nested table).
+  Unified hierarchical view: Facilities (collapsible) -> Panels -> Allocation Types (nested table).
   Active-only filtering is applied server-side via ?active_only=1 query param.
 #}
 <div class="card-body p-0" id="facilities-pane">
@@ -22,7 +22,7 @@
             {% for f in facilities %}
             {% set visible_panels = (f.panels | selectattr('active') if active_only else f.panels) | sort(attribute='panel_name') %}
 
-            {# ── Facility row (the four leading cells are collapse triggers) ──
+            {# Facility row (the four leading cells are collapse triggers)
                The toggle sits on the cells, not the <tr>: a row-level trigger
                would also fire when the Edit/Delete buttons are clicked, and
                nothing on the button can stop it (Bootstrap's data-api runs in
@@ -60,7 +60,7 @@
                 </tr>
             </tbody>
 
-            {# ── Panels + embedded Allocation Types (collapsed by default) ── #}
+            {# Panels + embedded Allocation Types (collapsed by default) #}
             <tbody class="collapse" id="facility-panels-{{ f.facility_id }}">
                 {% for p in visible_panels %}
                 {% set visible_ats = (p.allocation_types | selectattr('active') if active_only else p.allocation_types) | sort(attribute='allocation_type') %}

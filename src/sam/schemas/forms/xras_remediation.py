@@ -6,7 +6,7 @@ and its empty-string dropping are exactly what is wanted. (Not to be confused
 with :mod:`sam.schemas.forms.xras`, the JSON load schemas for the *inbound*
 action endpoint, which deliberately use a different base.)
 
-⚠️ **What these schemas do NOT do.** They do not check that a username exists
+WARNING: **What these schemas do NOT do.** They do not check that a username exists
 in XRAS, that a role-holder may act, or that an action is in a withdrawable
 state. Every one of those is a live remote read, and a schema that pretended to
 answer them from a form body would be answering from stale hope. The handlers
@@ -60,7 +60,7 @@ class XrasMergeForm(HtmxFormSchema):
     email or organization, an override is a human asserting something the
     search could not.
 
-    ⚠️ There is deliberately **no default when several candidates match.** The
+    WARNING: There is deliberately **no default when several candidates match.** The
     measured case is two real identities for one human, differing only by email
     and organization (a university address and an NCAR-staff one); a name-based
     guess picks arbitrarily, and merge deletes the loser's roles into the
@@ -135,7 +135,7 @@ class XrasRoleForm(HtmxFormSchema):
     (integer id in one, string name in the other) and a second copy here is how
     they would drift. The **name** is what this route takes.
 
-    ⚠️ An unknown username does not fail — XRAS would *create* that identity,
+    WARNING: An unknown username does not fail — XRAS would *create* that identity,
     with ``isReconciled`` defaulting true, which is the exact mechanism that
     mints the stuck placeholders this card exists to clean up. The handler
     therefore resolves the username against XRAS before writing; the schema

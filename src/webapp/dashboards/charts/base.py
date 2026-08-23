@@ -1,37 +1,32 @@
-"""`BaseChart` — the figure lifecycle, and `chart_view` — the cache binder.
+"""`BaseChart` -- the figure lifecycle, and `chart_view` -- the cache binder.
 
-Shaped after `webapp/utils/form_handler.py:HtmxFormHandler`: one concrete base
-with documented hooks and no abstract parent. Three levels total —
-`BaseChart` -> family -> concrete — because a fourth (abstract / matplotlib)
-would own about thirty lines and shield nothing: `figsize`, `ax.pie`,
-`stackplot`, `bbox_to_anchor` and `Artist.set_url` are matplotlib-shaped all
-the way to the leaf. The migration seam is bought with module boundaries
-instead — `links.py` and `series.py` import no matplotlib, enforced by test.
-
-## The lifecycle
+Shaped after `HtmxFormHandler`: one concrete base with documented hooks and no
+abstract parent. Three levels (`BaseChart` -> family -> concrete), because a
+fourth abstract/matplotlib layer would own about thirty lines and shield
+nothing -- `figsize`, `ax.pie`, `stackplot` and `Artist.set_url` are
+matplotlib-shaped all the way to the leaf. The migration seam is bought with
+module boundaries instead: `links.py` and `series.py` import no matplotlib,
+enforced by test.
 
     render(layout, theme)
-        self.layout/self.theme    resolved, for hooks that run pre-draw
-        prepare()                 raw payload -> plot-ready state on self
-        is_empty()  -> empty_state()      short-circuit
-        make_figure(layout)       plt.subplots(figsize=layout.figsize)
-        apply_tick_fontsize()     layout.base_fontsize on every Axes
-        draw(axes, ...)           REQUIRED — the family draws the marks
-        decorate(axes, ...)       labels, ticks, grid, scale, theme chrome
-        add_legend(axes, ...)     placement from layout, colours from theme
-        finish(fig, axes, ...)    autofmt_xdate, xlim, annotations
-        apply_chrome(...)         theme.text/spine onto every chrome artist
-        to_svg(fig)               the single savefig/close chokepoint
+        prepare()            raw payload -> plot-ready state on self
+        is_empty() -> empty_state()          short-circuit
+        make_figure(layout)  plt.subplots(figsize=layout.figsize)
+        apply_tick_fontsize()
+        draw(axes, ...)      REQUIRED -- the family draws the marks
+        decorate(axes, ...)  labels, ticks, grid, scale
+        add_legend(axes, ...)
+        finish(fig, axes, ...)
+        apply_chrome(...)    theme colors onto every chrome artist
+        to_svg(fig)          the single savefig/close chokepoint
 
 Hooks default to no-ops, so a leaf implements only what differs. State goes on
-`self` rather than through a threaded model object, matching the handler
-idiom — the alternative is passing a five-field tuple through seven methods.
+`self` rather than a threaded model object, matching the handler idiom.
 
-`BaseChart` must **not** swallow exceptions. Callers own that today and do it
-inconsistently: `disk_scans/routes.py` wraps its chart call (incidentally —
-the `try` is really around the data fetch) while `jobs/routes.py` closes its
-`try` immediately before calling. Catching here would silently turn the
-disk-scans error card into a blank one.
+WARNING: `BaseChart` must NOT swallow exceptions. Callers own that and do it
+inconsistently -- `disk_scans/routes.py` wraps its call while `jobs/routes.py`
+does not -- so catching here would silently turn the disk-scans error card into
+a blank one.
 """
 
 import functools
@@ -152,7 +147,7 @@ class BaseChart:
         """Labels, ticks, scale, grid, and theme chrome."""
 
     def add_legend(self, axes, layout, theme):
-        """Placement comes from `layout`, colours from `theme`."""
+        """Placement comes from `layout`, colors from `theme`."""
 
     def finish(self, fig, axes, layout, theme):
         """Anything needing the figure — autofmt_xdate, xlim, annotations."""
@@ -228,10 +223,9 @@ class BaseChart:
         the same as omitting it.
 
         The layout wins where it states a size, and defers where it does not —
-        the rule `legend_fontsize` already used. This used to read
-        `layout.is_mobile`, which was a boolean asked of a vocabulary that now
-        has three values; expressing it as None-means-defer means a new
-        profile needs no new branch here.
+        the rule `legend_fontsize` uses. Express it as None-means-defer rather
+        than a boolean like `layout.is_mobile`: the vocabulary has three values,
+        and None-means-defer lets a new profile need no new branch here.
         """
         size = layout.axis_label_fontsize or self.axis_label_fontsize
         return {'fontsize': size} if size is not None else {}
@@ -280,7 +274,7 @@ class BaseChart:
 
         **What it deliberately does not touch: `ax.texts`.** Those are the
         artists a chart placed itself, and every one of them already carries a
-        colour chosen for a reason no theme should overrule — the pie's
+        color chosen for a reason no theme should overrule — the pie's
         percentage labels take theirs from the *wedge* luminance
         (`autopct_color_for`), and the pace chart's "today" marker takes
         theirs from `theme.accent`. Blanket-setting them would paint white

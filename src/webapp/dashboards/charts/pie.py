@@ -153,7 +153,7 @@ class PieChart(BaseChart):
             colors=self.colors,
             pctdistance=self.pctdistance,
         )
-        # Percent labels take their colour from the WEDGE's luminance, not the
+        # Percent labels take their color from the WEDGE's luminance, not the
         # page — already correct in both themes, so no theme argument.
         for at, wedge_color in zip(autotexts, self.colors):
             at.set_color(autopct_color_for(wedge_color))

@@ -7,7 +7,7 @@
   view to bounce through; the Actions table sits below it rather than competing
   for half the width.
 
-  ⚠️ **No `data-bs-toggle="modal"` on any control here.** Every button lives
+  WARNING: **No `data-bs-toggle="modal"` on any control here.** Every button lives
   INSIDE the already-open `#auditDetailsModal` and swaps `#auditDetailsModalBody`
   in place. A `data-bs-toggle="modal"` would fire Bootstrap's toggle on the open
   modal and HIDE it — which read as "the button does nothing" while the content
@@ -21,7 +21,7 @@
     role_options   (wire-name, display) pairs for the add-role select
     role_add_url   POST target for the add-role form
 
-  ── THE OFFERS HERE ARE SNAPSHOT-DERIVED, NOT AUTHORITATIVE ──────────────
+ THE OFFERS HERE ARE SNAPSHOT-DERIVED, NOT AUTHORITATIVE
   XRAS publishes the real answer to "what may I do to this action" in
   `rules{allowedOperations}` on `GET /v1/requests/<id>`, and that route is 401
   for our credential in every context. So `can_withdraw` / `can_resubmit` are
@@ -48,11 +48,11 @@
     {% endif %}
 </div>
 
-{# ── Roster (full width, editable inline) ───────────────────────────────── #}
+{# Roster (full width, editable inline) #}
 <div class="small text-uppercase text-muted mb-1">Roster</div>
 <table class="table table-sm align-middle mb-2">
     <tbody>
-    {# ⚠️ The roster is one row per ROLE — a person holding both PI and User
+    {# WARNING: The roster is one row per ROLE — a person holding both PI and User
        appears twice, and that is deliberate: role removal is keyed on
        `role_id`, so collapsing to one row per person would lose the identifier
        the Remove button needs.
@@ -83,7 +83,7 @@
                 {% if member.placeholder and member.is_reconciled
                       and member.username not in merge_offered %}
                 {% set _ = merge_offered.append(member.username) %}
-                {# ⚠️ The contradiction the merge fixup exists for. Reconciliation
+                {# WARNING: The contradiction the merge fixup exists for. Reconciliation
                    in XRAS IS a merge, so a reconciled placeholder that still
                    exists was flagged without one — XRAS keeps sending the
                    throwaway username and the handoff never completes. #}
@@ -155,7 +155,7 @@
     </div>
 </form>
 
-{# ── Actions (full width, below the roster) ─────────────────────────────── #}
+{# Actions (full width, below the roster) #}
 <div class="small text-uppercase text-muted mb-1">Actions</div>
 <table class="table table-sm align-middle mb-0">
     <tbody>

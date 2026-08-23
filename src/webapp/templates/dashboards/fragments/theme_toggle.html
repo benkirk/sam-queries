@@ -5,7 +5,7 @@
   offcanvas drawer (both in dashboards/base.html), and auth/login.html — which
   is a separate <html> shell and would otherwise be easy to forget.
 
-  Behaviour lives in static/js/theme-toggle.js, keyed off the
+  Behavior lives in static/js/theme-toggle.js, keyed off the
   `data-theme-toggle` attribute rather than an id, precisely so more than one
   copy can be on the page at once. That script also keeps every copy's icon,
   title and aria-pressed in sync, so this macro only has to render a sensible
@@ -17,7 +17,7 @@
 
   Args:
     theme:   'light' | 'dark' — the CURRENT theme.
-    labelled: show a text label beside the icon (drawer / login), or icon-only
+    labeled: show a text label beside the icon (drawer / login), or icon-only
               (desktop navbar, where space is tight).
     classes: extra classes for the control.
 #}

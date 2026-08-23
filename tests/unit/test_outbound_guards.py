@@ -26,7 +26,7 @@ class TestTheXrasCredentialsArePinnedFailClosed:
     """Layer one: the suite must not inherit a usable credential at all."""
 
     def test_no_api_key_reaches_the_suite(self):
-        """⚠️ `.env` supplies a real one; `pytest_configure` occupies the name
+        """WARNING: `.env` supplies a real one; `pytest_configure` occupies the name
         first, and `load_dotenv(override=False)` then skips it."""
         assert os.environ.get('XRAS_API_KEY') == ''
 
@@ -86,7 +86,7 @@ class TestNoRealOutboundHttp:
             requests.get('http://127.0.0.1:9/nothing-listens-here', timeout=1)
 
     def test_the_established_mocking_idiom_still_works(self, monkeypatch):
-        """⚠️ Load-bearing: every XRAS test patches the transport on the
+        """WARNING: Load-bearing: every XRAS test patches the transport on the
         *instance*, which shadows the guard on the class. If this broke, the
         guard would have made the suite untestable rather than safe."""
         from unittest.mock import MagicMock

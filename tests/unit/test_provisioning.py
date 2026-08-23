@@ -34,8 +34,8 @@ def _project(projcode, unix_gid, users):
 
 @pytest.fixture
 def nss(monkeypatch):
-    """In-memory NSS. Populate `.passwd` (name→pw) and `.groups` (gid→gr);
-    `.grouplist` maps username→set(gids). Missing lookups raise KeyError like
+    """In-memory NSS. Populate `.passwd` (name->pw) and `.groups` (gid->gr);
+    `.grouplist` maps username->set(gids). Missing lookups raise KeyError like
     the real modules, exercising the module's swallowing logic."""
     state = types.SimpleNamespace(passwd={}, groups={}, grouplist={})
 
@@ -199,7 +199,7 @@ def test_project_ghost_member(nss):
 
 
 def test_project_name_lookup_fallback(nss):
-    # gid unresolvable, but projcode names a real group → found by name.
+    # gid unresolvable, but projcode names a real group -> found by name.
     members = [_user('a', 1)]
     nss.passwd['a'] = _pw(1, 500)
     nss.grouplist['a'] = {70000}

@@ -31,7 +31,7 @@ from sam.integration.xras_api.config import XrasApiConfig, xras_api_configured
 pytestmark = pytest.mark.unit
 
 
-# ── canned payloads ─────────────────────────────────────────────────────
+# canned payloads
 # Shapes copied from the live API; identities invented. If XRAS renames a
 # field, the probe script catches it against production and these break here.
 
@@ -107,7 +107,7 @@ def _reset_xras_cache(monkeypatch):
     xras_cache._CACHE.reset_for_tests(disabled=False)
 
 
-# ── configuration ───────────────────────────────────────────────────────
+# configuration
 
 class TestConfiguration:
     """Fail-closed, and both halves of the predicate matter."""
@@ -165,7 +165,7 @@ class TestConfiguration:
         assert not any('key' == k or k.endswith('_key') for k in summary)
 
 
-# ── the write surface must not exist ────────────────────────────────────
+# the write surface must not exist
 
 class TestItIsStructurallyReadOnly:
     """The same credential can create requests and merge people (§ 4.7).
@@ -196,7 +196,7 @@ class TestItIsStructurallyReadOnly:
             assert verb not in client_source, f'{verb} appears in the client'
 
 
-# ── transport ───────────────────────────────────────────────────────────
+# transport
 
 class TestTransport:
     """Retry policy: a 4xx is an answer, a 5xx is worth another attempt."""
@@ -260,7 +260,7 @@ class TestTransport:
         assert client.session.request.call_args.kwargs['timeout'] == 10
 
 
-# ── envelope and endpoint shapes ────────────────────────────────────────
+# envelope and endpoint shapes
 
 class TestEndpoints:
 
@@ -397,7 +397,7 @@ class TestPagination:
         assert params == {'limit': 200, 'status': 'Approved'}
 
 
-# ── caching ─────────────────────────────────────────────────────────────
+# caching
 
 class TestCaching:
 
@@ -554,7 +554,7 @@ class TestResourceKeys:
 class TestOpportunityResolution:
     """`GET /v1/opportunities/list/:ids` — the one outbound call the mapping needs.
 
-    ⚠️ Required, not incidental: a live `reports/requests` row carries
+    WARNING: Required, not incidental: a live `reports/requests` row carries
     `opportunityId` and `opportunity_name` and nothing else — no
     `allocationTypeId`, no panels — so the sweep cannot derive a mapping from the
     enumeration it already has.
@@ -598,8 +598,8 @@ class TestOpportunityResolution:
 
     def test_an_empty_id_list_makes_no_request(self, monkeypatch):
         """`/v1/opportunities/list/` with an empty segment is a different route
-        that answers 404 — so not asking is the correct behaviour, not an
-        optimisation."""
+        that answers 404 — so not asking is the correct behavior, not an
+        optimization."""
         client = _client(monkeypatch, [])
         assert client.get_opportunities([]) == []
         assert client.session.request.call_count == 0

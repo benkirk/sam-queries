@@ -96,7 +96,7 @@ permission grant is not enough — it must be the key.
   one line per resource per stage, so `(action, resourceId, stage)` is unambiguous.
 - **Sub-resource creates return their id** in `result` (`allocationDateId`,
   `grantId`, `publicationId`) — captured for the audit row and the delete path.
-- **XRAS normalises trailing whitespace** on stored text (a 1020-char abstract read
+- **XRAS normalizes trailing whitespace** on stored text (a 1020-char abstract read
   back at 1019, identically via params and a body). Verify-by-reread therefore
   compares **whitespace-stripped**, or a good long-text write reports `unverified`.
 - **FoS** needs `isPrimary` on the `PUT`; it is a set-membership toggle on

@@ -19,21 +19,21 @@ set -a; source "$ENV_FILE"; set +a
 
 echo "Creating k8s secrets in namespace: $NAMESPACE"
 
-# STATUS DB credentials → samuel-db-credentials
+# STATUS DB credentials -> samuel-db-credentials
 kubectl create secret generic samuel-db-credentials \
   --namespace="$NAMESPACE" \
   --from-literal=username="${STATUS_DB_USERNAME:-root}" \
   --from-literal=password="${STATUS_DB_PASSWORD:-root}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# SAM DB credentials → samuel-sam-db-credentials
+# SAM DB credentials -> samuel-sam-db-credentials
 kubectl create secret generic samuel-sam-db-credentials \
   --namespace="$NAMESPACE" \
   --from-literal=username="${SAM_DB_USERNAME}" \
   --from-literal=password="${SAM_DB_PASSWORD}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# JupyterHub API token → samuel-jh-credentials
+# JupyterHub API token -> samuel-jh-credentials
 kubectl create secret generic samuel-jh-credentials \
   --namespace="$NAMESPACE" \
   --from-literal=token="${JUPYTERHUB_API_TOKEN}" \

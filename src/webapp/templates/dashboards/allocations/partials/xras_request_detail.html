@@ -8,7 +8,7 @@
 
   The data source is `GET /v1/reports/request_numbers/<n>`, which is
   self-describing: each resource carries `displayResourceName` + `resourceUnits`
-  + `type` (the stage), so no resource-key → SAM-resource mapping is needed here.
+  + `type` (the stage), so no resource-key -> SAM-resource mapping is needed here.
 
   This is the read-only surface the editors (Part B/C) will hang off. The roster,
   actions and write buttons come from the SHARED include so they can never drift
@@ -29,7 +29,7 @@
 {% set write_disabled = 'disabled' if not write_enabled else '' %}
 {% set why_off = 'XRAS writes are switched off for this deployment (XRAS_WRITE_ENABLED).' %}
 
-{# ── header ─────────────────────────────────────────────────────────── #}
+{# header #}
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <span class="badge bg-body-secondary text-body-secondary border">
         {{ payload.requestStatus or '—' }}
@@ -69,7 +69,7 @@
 </div>
 {% endif %}
 
-{# ── title / abstract ───────────────────────────────────────────────── #}
+{# title / abstract #}
 <div class="d-flex align-items-start gap-2 mb-3">
     <div class="flex-grow-1">
         {% if payload.title %}<div class="fw-semibold">{{ payload.title }}</div>{% endif %}
@@ -93,7 +93,7 @@
 </details>
 {% endif %}
 
-{# ── resources, grouped by stage, per action ────────────────────────── #}
+{# resources, grouped by stage, per action #}
 {% for action in detail_actions %}
 <div class="mb-3">
     <div class="small text-uppercase text-muted mb-1">
@@ -275,7 +275,7 @@
 </div>
 {% endfor %}
 
-{# ── fields of science ──────────────────────────────────────────────── #}
+{# fields of science #}
 {% if payload.fos %}
 <div class="mb-3">
     <div class="small text-uppercase text-muted mb-1">Fields of science</div>
@@ -292,7 +292,7 @@
 </div>
 {% endif %}
 
-{# ── grants ─────────────────────────────────────────────────────────── #}
+{# grants #}
 {% if grants %}
 <div class="mb-3">
     <div class="small text-uppercase text-muted mb-1">Grants</div>
@@ -318,12 +318,12 @@
 
 <hr>
 
-{# ── roster + actions + write buttons ───────────────────────────────── #}
+{# roster + actions + write buttons #}
 {% if row %}
 {% include 'dashboards/allocations/partials/_xras_remediation_actions.html' %}
 {% endif %}
 
-{# ── danger zone — ADMIN_XRAS only (Part C) ─────────────────────────── #}
+{# danger zone — ADMIN_XRAS only (Part C) #}
 {% if is_xras_admin %}
 <div class="card border-danger-subtle mt-3">
     <div class="card-header bg-danger-subtle text-danger-emphasis py-1 small fw-semibold">

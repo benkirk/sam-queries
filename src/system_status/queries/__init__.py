@@ -248,7 +248,7 @@ def get_latest_queue_status(session: Session, system: str, queue_name: str) -> O
 
 
 def get_queue_last_seen(session: Session, system: str) -> Dict[str, datetime]:
-    """Map queue name → most recent ``queue_status`` tick for one system.
+    """Map queue name -> most recent ``queue_status`` tick for one system.
 
     A queue appears in ``queue_status`` only while jobs sit in it, so this
     answers "when did this queue last hold jobs?" — the full history is
@@ -270,7 +270,7 @@ def get_queue_last_seen(session: Session, system: str) -> Dict[str, datetime]:
 
 
 def get_queue_definitions(session: Session, system: str) -> Dict[str, Dict[str, Any]]:
-    """Map queue name → PBS roster facts for one system.
+    """Map queue name -> PBS roster facts for one system.
 
     Reads the ``queue_type`` / ``last_defined_at`` columns maintained on the
     ``queues`` lookup by ``lookups.update_queue_definitions``. Only queues

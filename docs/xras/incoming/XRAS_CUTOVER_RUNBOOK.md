@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS xras_opportunity_allocation_type (
 ```
 
 Then the nine known opportunities, seeded with **the pair the ladder already
-produces** — which is what makes the map a drop-in rather than a behaviour change.
+produces** — which is what makes the map a drop-in rather than a behavior change.
 
 ⚠️ Connect with a **utf8mb4 client charset**: 530902's name carries an em-dash.
 ⚠️ Ids are resolved by name at runtime, never pinned — and the row count is the
@@ -431,7 +431,7 @@ Nothing here depends on a test instance, and nobody should arrive on the day won
 whether one was set up.
 
 **Noted for future us.** If a later XRAS-facing change wants a rehearsal — the GET
-serialiser work in the paragraph above is the obvious candidate, since it deliberately
+serializer work in the paragraph above is the obvious candidate, since it deliberately
 moves response bytes — this offer is the way to get one, and it costs a
 conversation rather than a code change.
 

@@ -196,7 +196,7 @@ class TestQueueCleanupCommit:
 
     def test_empty_selection_changes_nothing(self, auth_client, session,
                                              snapshot_resource_id):
-        """No checkboxes ticked → re-rendered preview, no queues expired."""
+        """No checkboxes ticked -> re-rendered preview, no queues expired."""
         from sam.resources.machines import Queue
 
         before = session.query(Queue).filter(
@@ -465,7 +465,7 @@ class TestResourcesCardQueueButtons:
         assert 'Cleanup' in html
         assert 'queue-cleanup-form' in html
 
-    # The collapse-trigger-row guard that used to live here rendered only
-    # /admin/htmx/resources, so it could not see the same bug when it landed in
-    # the contracts card (issue #356). It now scans the whole template tree
-    # statically — see tests/unit/test_collapse_trigger_rows.py.
+    # The collapse-trigger-row guard is deliberately NOT here. Rendering only
+    # /admin/htmx/resources cannot see the same bug in the contracts card
+    # (issue #356), so it scans the whole template tree statically instead —
+    # see tests/unit/test_collapse_trigger_rows.py.

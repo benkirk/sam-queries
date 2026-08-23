@@ -28,7 +28,7 @@ document.body.addEventListener('htmx:sendError', function() {
     }
 });
 
-// ── Generic success/info toast (fired server-side via HX-Trigger: showToast) ──
+// Generic success/info toast (fired server-side via HX-Trigger: showToast)
 // Payload: {message: '…', variant: 'success'|'info'|'warning'|'danger'}.
 // Rides the same HX-Trigger channel used for closeActiveModal / reload*Card, so
 // every form funnelling through utils/htmx.py gets feedback with no route edits.
@@ -41,7 +41,7 @@ document.body.addEventListener('showToast', function (evt) {
     bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 3500 }).show();
 });
 
-// ── Focus the first invalid field after a server-validated re-render ──────────
+// Focus the first invalid field after a server-validated re-render
 // Forms are `novalidate` (htmx submits past native HTML5 checks so the server is
 // the single source of truth). Native validation used to auto-focus the bad
 // field; replicate that here. After any swap whose new content carries a
@@ -56,7 +56,7 @@ document.body.addEventListener('htmx:afterSettle', function(evt) {
     firstInvalid.scrollIntoView({block: 'center', behavior: 'smooth'});
 });
 
-// ── Stacked modal z-index ───────────────────────────────────────────────────
+// Stacked modal z-index
 // Bootstrap 5 doesn't stack z-indexes across separate Modal instances: a second
 // modal opens at the same z-index as the first, and its backdrop (appended last
 // to <body>) paints over it. Bump the newly-shown modal and its backdrop above
@@ -88,7 +88,7 @@ document.body.addEventListener('hidden.bs.modal', function() {
     }
 });
 
-// ── Modal management via HX-Trigger ──────────────────────────────────────────
+// Modal management via HX-Trigger
 
 // Close any currently visible Bootstrap modal
 document.body.addEventListener('closeActiveModal', function() {
@@ -189,7 +189,7 @@ document.body.addEventListener('reloadUserCard', function(evt) {
     }
 });
 
-// ── Styled confirmation modal ────────────────────────────────────────────────
+// Styled confirmation modal
 // Replaces the browser-native confirm() dialog that HTMX uses for hx-confirm.
 // Opens a singleton Bootstrap modal (rendered in dashboards/base.html via the
 // confirm_modal macro) and routes the user's answer back to HTMX.

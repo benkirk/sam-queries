@@ -7,7 +7,7 @@ Two things live here that nothing covered before:
    (``test_xras_dashboard.py`` :: ``TestDefaultWindowUpperBound``). Its
    absent-vs-empty rule is what the window control has to submit *around*, so
    it is pinned here first: these tests are the proof that swapping the bare
-   date pair for the band control changed no behaviour.
+   date pair for the band control changed no behavior.
 
 2. ``AUDIT_AGE_BANDS`` and the span arithmetic behind that control — in
    particular the one coupling that would silently degrade the whole thing to
@@ -105,7 +105,7 @@ class TestAuditAgeBands:
             == (0, hi)
 
     def test_the_default_window_is_a_whole_span(self):
-        """⚠️ The tripwire for a four-way coupling. Band 1's upper bound (30) is
+        """WARNING: The tripwire for a four-way coupling. Band 1's upper bound (30) is
         the same 30 as `timedelta(days=30)` in `_parse_audit_filters`,
         `_parse_xras_filters`, `_audit_page_context` and `xras()`. Move any one
         of them and every first load renders the custom state instead of a
@@ -128,7 +128,7 @@ class TestAuditAgeBands:
     def test_an_empty_string_bound_is_not_a_missing_one(self):
         """`bands_for` tests `after is None`, not falsiness. Handing it a raw
         '' off the query string renders the custom state for what is actually
-        the open-ended band — which is why _window_control_context normalises
+        the open-ended band — which is why _window_control_context normalizes
         with `or None`."""
         end = ANCHOR.strftime('%Y-%m-%d')
         assert age_bands.bands_for(AUDIT_AGE_BANDS, ANCHOR, None, end) \

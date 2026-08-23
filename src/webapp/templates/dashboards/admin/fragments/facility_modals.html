@@ -5,7 +5,7 @@
   Create modals: loaded lazily when a create button is clicked.
 #}
 
-{# ════════════════════════════════════════════════════════ CREATE MODALS #}
+{# CREATE MODALS #}
 
 {# Facility/Panel/AllocationType create routes gate on CREATE_FACILITIES
    (facilities_routes.py CrudSpec), not CREATE_RESOURCES. No bundle holds
@@ -22,7 +22,7 @@
                   icon='plus', container_id='createAllocationTypeFormContainer') }}
 {% endif %}
 
-{# ══════════════════════════════════════════════════════════ EDIT MODALS #}
+{# EDIT MODALS #}
 
 {{ modal_scaffold('editFacilityModal', 'Edit Facility',
                   icon='building', container_id='editFacilityFormContainer', variant='edit') }}

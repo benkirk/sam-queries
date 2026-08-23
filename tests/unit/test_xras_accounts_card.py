@@ -31,7 +31,7 @@ pytestmark = pytest.mark.unit
 URL = '/allocations/xras_accounts_fragment'
 
 
-# ⚠️ One worker at a time for this file. The committed fixtures below use
+# WARNING: One worker at a time for this file. The committed fixtures below use
 # FIXED identifiers ('placeholder38-user-00038', NCAR4227) and real COMMITs —
 # required, because the routes read committed rows through `db.session` — so
 # two xdist workers running these tests concurrently either collide on the
@@ -147,7 +147,7 @@ class TestTheUsernameLinksWhenSamHasTheAccount:
 
     def test_an_absent_username_is_not_a_link(self, auth_client,
                                               committed_worklist_action):
-        """⚠️ The important direction. `absent` means `classify_accounts`
+        """WARNING: The important direction. `absent` means `classify_accounts`
         found no `users` row at all, so a link would open a modal about
         nobody — an operator would read the empty body as a broken page
         rather than as 'this account does not exist', which is the very
@@ -169,16 +169,16 @@ class TestTheUsernameLinksWhenSamHasTheAccount:
     def test_the_links_are_visibly_links(self, auth_client,
                                          committed_worklist_action,
                                          deactivated_worklist_user):
-        """⚠️ Not `text-decoration-none text-reset`, the compact-table idiom
+        """WARNING: Not `text-decoration-none text-reset`, the compact-table idiom
         from user_rows.html / contract_bits.html. That makes a link inherit
-        its cell's colour, which is right where every name in the column is
-        one. Here most rows do NOT link, so a colour-inheriting link was
+        its cell's color, which is right where every name in the column is
+        one. Here most rows do NOT link, so a color-inheriting link was
         indistinguishable from the plain text beside it — measured in a
         browser, where UWIS0064 opened a modal and UAHV0010 did not and
         nothing on screen said which.
 
         `btn-entity` is the other half: `.btn` sets 1.25rem, so without it the
-        identifier rendered 20px among 14px neighbours.
+        identifier rendered 20px among 14px neighbors.
         """
         body = auth_client.get(URL).get_data(as_text=True)
         assert 'btn btn-link btn-entity p-0' in body
@@ -186,7 +186,7 @@ class TestTheUsernameLinksWhenSamHasTheAccount:
 
 
 class TestTheRowStillExpands:
-    """⚠️ The link forced the collapse toggle off the `<tr>`.
+    """WARNING: The link forced the collapse toggle off the `<tr>`.
 
     Bootstrap registers its data-api with `useCapture`, so a toggle on an
     ancestor of the link fires FIRST — every click would open the modal and
@@ -382,7 +382,7 @@ class TestFacets:
 
     def test_the_labels_do_not_tell_an_operator_to_do_what_SAM_cannot(
             self, auth_client):
-        """⚠️ The remedies are somebody else's work, and the card must not
+        """WARNING: The remedies are somebody else's work, and the card must not
         imply otherwise.
 
         There is no INSERT into ``users`` anywhere in this repo, ``User`` alone
@@ -433,7 +433,7 @@ class TestFacets:
 
 
 class TestTheHeaderDoesNotConflateTwoFacts:
-    """⚠️ Caught by the local smoke, and only visible in a browser.
+    """WARNING: Caught by the local smoke, and only visible in a browser.
 
     A *placeholder* is a username shape (`<name>-user-<token>`) XRAS mints for
     someone with no site account. *Reconciliation* is whether XRAS has since
@@ -451,7 +451,7 @@ class TestTheHeaderDoesNotConflateTwoFacts:
 
 
 class TestTheWindowNeverHidesSilently:
-    """⚠️ On the Feed-B tab an OLDER unpushed request is usually the MORE
+    """WARNING: On the Feed-B tab an OLDER unpushed request is usually the MORE
     urgent one — a request submitted six months ago that still has no SAM
     project is the worst case there. A recency filter that quietly dropped it
     would invert the priority the tab exists to surface.
@@ -511,7 +511,7 @@ class TestTheWindowNeverHidesSilently:
 
 
 class TestBothTabsShowTheSameDetail:
-    """⚠️ Feed B had already diverged: it rendered name and organization only,
+    """WARNING: Feed B had already diverged: it rendered name and organization only,
     so an operator who found a row there still had to go elsewhere for the
     email and country needed to actually create the account.
 

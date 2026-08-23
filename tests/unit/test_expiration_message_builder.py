@@ -1,6 +1,6 @@
 """`sam.queries.expiration_notices` — the ladder, and the key it mints.
 
-`test_expiration_notices.py` covers the builder's *behaviour* end-to-end
+`test_expiration_notices.py` covers the builder's *behavior* end-to-end
 through the CLI command, and passed unmodified across the extraction — that
 is the proof the move was pure. This module covers the surface the extraction
 ADDED: the `Milestone` band type, the rung label in the dedup key, and the
@@ -59,7 +59,7 @@ def _build(expiring, milestone=None, **kwargs):
         expiring[1], milestone=milestone or MILESTONES[0], **kwargs)
 
 
-# ── The band type ────────────────────────────────────────────────────────────
+# The band type
 
 class TestMilestone:
 
@@ -112,7 +112,7 @@ class TestTheShippedLadder:
         assert len(set(labels)) == len(labels)
 
 
-# ── The key ──────────────────────────────────────────────────────────────────
+# The key
 
 class TestTheDedupKey:
 
@@ -121,8 +121,8 @@ class TestTheDedupKey:
             'expiration:SCSG0001:2026-09-30:expiring:pi@x.edu'
 
     def test_the_legacy_format_is_the_same_key_without_the_label(self):
-        """What every manual CLI run wrote before this change. The task
-        checks both, so the overlap cohort is not notified twice."""
+        """The pre-rung-label form still sitting in `notification_log`. The
+        task checks both, so the overlap cohort is not notified twice."""
         assert legacy_dedup_key('SCSG0001', '2026-09-30', 'pi@x.edu') == \
             'expiration:SCSG0001:2026-09-30:pi@x.edu'
 

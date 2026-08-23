@@ -1,32 +1,26 @@
-"""Supplement — 15% of traffic, 100% successful, and Extension's mirror image.
+"""Supplement -- 15% of traffic, 100% successful, and Extension's mirror image.
 
 Where Extension ignores ``resources[]`` and walks accounts, this walks
-``resources[]`` and ignores everything else. Per requested resource:
+``resources[]`` and ignores everything else. Per requested resource: no
+allocation -> add one; amount > 0 -> supplement; otherwise silently dropped.
 
-.. code-block:: java
+WARNING: ``awardedAmount`` is the INCREMENT, not the new total. ``SUPPLEMENT``
+replays as ``addAmount(transaction_amount)``. This is the most consequential
+porting semantic in the sprint: reading it as an absolute would overwrite a
+multi-million-hour allocation with a quarter-million-hour supplement, silently,
+and the resulting number would look entirely plausible.
 
-    if (allocation == null)                       return buildAddAllocationCommand(resource);
-    else if (getTransactionAmount(resource) > 0)  return buildSupplementAllocationCommand(...);
-    return null;                                   // <= 0 silently dropped
+The lookup is a plain scan over ALL accounts, active or not, matching on
+resource name case-insensitively. Note the asymmetry with Extension, which
+filters accounts hard: a supplement lands on an account whose resource is
+decommissioned, where an extension would skip it.
 
-⚠️ **``awardedAmount`` is the INCREMENT, not the new total.** ``SUPPLEMENT`` replays
-as ``addAmount(transaction_amount)``. This is the single most consequential porting
-semantic in the sprint: reading it as an absolute would overwrite a multi-million-hour
-allocation with a quarter-million-hour supplement, silently, and the resulting number
-would look entirely plausible.
-
-The lookup is ``Project.getAccount(name)`` — a plain scan over **all** accounts,
-active or not, matching on resource name case-insensitively. Note the asymmetry with
-Extension, which filters accounts hard. A supplement therefore lands on an account
-whose resource is decommissioned, where an extension would skip it.
-
-Like Extension, this assembler composes only its own factory: no title, PI or roster
-validation. Unlike Extension, it can also *create* an allocation, and the create branch
+Like Extension it composes only its own factory -- no title, PI or roster
+validation. Unlike Extension it can also CREATE an allocation, and that branch
 uses **today** plus a derived end date rather than the action's own dates.
 
-Verified against ``~/codes/sam`` at tag 2.0.3
-(``SupplementProjectAllocationActionCommandsFactory``, ``Allocation.supplement``).
-See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Supplement*.
+Verified against ``~/codes/sam`` at tag 2.0.3. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *Supplement*.
 """
 
 import logging
@@ -61,7 +55,7 @@ class SupplementHandler(ActionHandler):
         if self.project is None:                     # pragma: no cover - dispatcher checked
             return
 
-        # ⚠️ During assembly, deliberately — see ActionHandler's docstring.
+        # WARNING: During assembly, deliberately — see ActionHandler's docstring.
         self.panel_authorised = auth_at_panel_meeting(self.session, self.action)
 
         for wire_resource in self.get('resources') or ():

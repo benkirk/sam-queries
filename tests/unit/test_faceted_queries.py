@@ -8,7 +8,7 @@ would be testing the notifications wiring, which
 
 The import-graph class at the bottom is the gate that keeps the package's
 central claim — "imports only SQLAlchemy" — true rather than merely written
-down. Modelled on `test_notify_import_graph.py`.
+down. Modeled on `test_notify_import_graph.py`.
 """
 
 import os

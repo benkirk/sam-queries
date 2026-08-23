@@ -1,49 +1,26 @@
 /* Tell the server which theme to render.
  *
- * The sibling of layout-axis.js, and deliberately the simpler of the two.
- * Both exist because a rendering mode has to be known *server-side*: charts
- * are matplotlib SVGs with baked-in colours, cached in Redis, so no stylesheet
- * can retheme them after the fact.
+ * Charts are matplotlib SVGs with baked-in colors, cached in Redis, so no
+ * stylesheet can retheme them after the fact -- the mode has to be known
+ * server-side. Design: docs/plans/implemented/DARK_MODE.md.
  *
- * ## One channel, not two
+ * ONE channel, unlike layout-axis.js, which needs two. A viewport is
+ * *discovered* client-side after the server has answered; a theme is
+ * *declared*, by the click below, which then reloads. Cookie and browser can
+ * never disagree, so an htmx parameter would only split the chart and
+ * rendered-HTML cache key spaces on a value that cannot vary. (`read_theme()`
+ * still honors `?theme=dark` for hand-debugging; nothing here sets it.)
  *
- * layout-axis.js writes a cookie AND injects `?layout=` into every htmx
- * request, because a viewport is *discovered* client-side after the server has
- * already answered — the first page a visitor loads is rendered before the
- * cookie exists.
+ * No pre-paint bootstrap is needed: the server renders `data-bs-theme` onto
+ * <html> from the cookie, so the first byte is already correct. That is what
+ * makes this flash-free by construction rather than by racing the paint.
  *
- * A theme is never discovered. It is *declared*, by the click below, which
- * then reloads. The cookie and the browser can therefore never disagree, so
- * there is nothing for an htmx parameter to correct. Adding one would split
- * the chart and rendered-HTML cache key spaces on a value that cannot vary.
- *
- * (`read_theme()` still honours `?theme=dark` so it can be driven by hand for
- * debugging. Nothing here ever sets it.)
- *
- * ## Why this file does not set the theme before first paint
- *
- * It doesn't have to. The server already rendered `data-bs-theme` onto <html>
- * from the cookie, so the very first byte of HTML is correct. That is what
- * makes this design flash-free *by construction* rather than by racing the
- * paint — and it is why the nonce-free CSP (utils/csp.py: five routes cache
- * rendered HTML in Redis, so a per-request nonce goes stale on a cache hit)
- * never binds here. The classic inline `<head>` bootstrap script that reads
- * localStorage is not available to us, and we do not need it.
- *
- * ## Why the click reloads the page
- *
- * Steps 1-2 below flip the cookie and the attribute, so the CSS retheme is
- * instant. But there are 16 server-rendered charts across the dashboards whose
- * colours are baked into their SVG bytes. The alternatives to a reload are to
- * leave them stale until the next navigation (a light chart on a dark page is
- * worse than a brief reload) or to hunt down and re-issue every chart
- * fragment's htmx request (fragile, and it re-derives knowledge
- * nav-view-persistence.js already owns). A reload re-renders everything
- * server-side in one pass, in the correct theme, from warm Redis entries after
- * the first user through.
- *
- * Steps 1-2 still run first so the reload paints the NEW theme rather than
- * flashing the old one on the way out.
+ * The click reloads because 16 server-rendered charts have their colors baked
+ * into their SVG bytes. Leaving them stale is worse than a brief reload, and
+ * re-issuing every chart fragment's htmx request would re-derive knowledge
+ * nav-view-persistence.js already owns. Steps 1-2 flip the cookie and the
+ * attribute first, so the reload paints the NEW theme rather than flashing the
+ * old one on the way out.
  */
 (function () {
     'use strict';

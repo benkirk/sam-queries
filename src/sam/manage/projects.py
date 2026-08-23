@@ -47,7 +47,7 @@ def deactivate_projects(
     NOTE: This function does NOT commit. The caller is responsible — normally by
     wrapping it in ``management_transaction(session)``.
 
-    ⚠️ **A scheduled task must do NEITHER.** ``scheduling.runner`` owns the
+    WARNING: **A scheduled task must do NEITHER.** ``scheduling.runner`` owns the
     transaction: it commits via ``ctx.close_sessions(commit=True)`` and rolls
     back when ``ctx.dry_run``. A commit anywhere inside a task body — including
     one smuggled in by ``management_transaction`` — makes ``--dry-run`` write.

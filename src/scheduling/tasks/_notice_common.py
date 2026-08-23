@@ -61,7 +61,7 @@ def drop_already_notified(
         ) -> Tuple[List, int]:
     """Remove messages a previous run or an operator already delivered.
 
-    ⚠️ **Permanent, and NOT redundant with ``Notifier``'s own dedup.** The
+    WARNING: **Permanent, and NOT redundant with ``Notifier``'s own dedup.** The
     framework would also suppress these — by *recording a ``suppressed`` row for
     each one* into `notification_log`, the same table the admin Notifications
     card, its facet chips and the last-notified badge all read. Dropping them

@@ -173,8 +173,8 @@ legitimate removals.
 
 **4A. One project, and the user should simply be re-added.**
 Use *Project → Members → Add Member* in the web UI. Since #368 this correctly
-creates a fresh open row even when a stale end-dated row exists (it used to be a
-silent no-op, which is how the index case went unnoticed). Leaves a visible gap
+creates a fresh open row even when a stale end-dated row exists. On anything
+before #368 it is a silent no-op, which is how the index case went unnoticed. Leaves a visible gap
 in membership history — fine for a genuine re-join, wrong for undoing an
 erroneous close.
 

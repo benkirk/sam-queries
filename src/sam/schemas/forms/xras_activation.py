@@ -1,6 +1,6 @@
 """HTMX form schemas for the XRAS pending-activation worklist.
 
-⚠️ **Not the same family as :mod:`sam.schemas.forms.xras`.** That module holds the
+WARNING: **Not the same family as :mod:`sam.schemas.forms.xras`.** That module holds the
 plain-``marshmallow`` load schemas for the ``POST /api/xras/v1/actions`` JSON body,
 and its docstring explains at length why they are deliberately *not*
 ``HtmxFormSchema`` subclasses — the base is ``ImmutableMultiDict``-shaped, its
@@ -8,7 +8,7 @@ empty-string dropping is data loss for a JSON body, and its pre-load will not
 recurse into five nested arrays.
 
 These are the opposite: snake_case ``request.form`` posts from the operator card,
-where every one of those behaviours is exactly what is wanted. Two families with
+where every one of those behaviors is exactly what is wanted. Two families with
 opposite base classes and opposite empty-string semantics do not belong behind one
 module name, which is why this is its own file.
 

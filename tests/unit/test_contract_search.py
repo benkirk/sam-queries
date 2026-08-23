@@ -8,7 +8,7 @@ per-test unique token woven into the contract number and title.
 The wildcard cases are the load-bearing ones: `search_by_pattern` deliberately
 diverges from both `_apply_filter` (which falls back to exact equality) and
 `sam-search user --search` (whose advertised wildcard support is a lie). If
-that behaviour regresses, the CLI's `--help` becomes wrong too.
+that behavior regresses, the CLI's `--help` becomes wrong too.
 """
 
 from datetime import datetime, timedelta

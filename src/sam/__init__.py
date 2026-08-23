@@ -205,7 +205,7 @@ from .integration.xras_views import (
 
 # Notification delivery ledger.
 #
-# ⚠️ This costs an import of `sam.notify`, whose __init__ therefore imports
+# WARNING: This costs an import of `sam.notify`, whose __init__ therefore imports
 # ONLY sam.notify.base eagerly and defers the rest via PEP 562 __getattr__.
 # Eager imports there would put jinja2, three transports and sam.fmt into the
 # import graph of every ORM consumer — and sam.fmt imports the top-level

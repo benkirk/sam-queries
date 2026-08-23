@@ -1,44 +1,26 @@
 """Server-side chart rendering.
 
-Every chart is a `BaseChart` subclass bound to its cache by `chart_view`,
-which reads `cache_name` / `cache_maxsize` off the class and composes the two
-render axes into the cache key. Callers pass normal Python objects; hashing
-and caching are handled internally.
+Every chart is a `BaseChart` subclass bound to its cache by `chart_view`, which
+reads `cache_name` / `cache_maxsize` off the class and composes the layout and
+theme axes into the cache key. Callers pass normal Python objects.
 
-    charts/
-      __init__.py     this facade: bindings, re-exports, __all__
-      base.py         BaseChart lifecycle + chart_view (the cache binder)
-      theme.py        fonts, rcParams, the Unity palettes, Theme
-      layout.py       Layout — the geometry axis
-      links.py        drill targets                     [no matplotlib]
-      series.py       stacked-band normalization        [no matplotlib]
-      jobs_metrics.py plugin-envelope accessors         [no matplotlib]
-      pie.py stacked.py histogram.py dualpanel.py pace.py    the families
+Adding a chart: subclass the closest family, set `cache_name`,
+`cache_maxsize`, `empty_message` and `LAYOUTS`; implement `cache_key` as a
+**staticmethod over the raw constructor arguments** so a cache hit never
+constructs the chart; bind it below with `chart_view(...)`, add it to
+`__all__`, and add a case to `tests/unit/chart_samples.py` (a gate requires
+one). A row drill needs only the row attribute declared at the chart -- no
+JavaScript change; the attribute travels in the href.
 
-## Adding chart #17
+WARNING: cache names are Redis key prefixes, and the ORDER of the `chart_view`
+calls below is the row order on the admin Caching card.
+`tests/unit/test_chart_cache_registry.py` pins both.
 
-1. Subclass the closest family (or `BaseChart` directly — see `pace.py` for
-   when that is the right call).
-2. Set `cache_name`, `cache_maxsize`, `empty_message`, `LAYOUTS`.
-3. Implement `cache_key` as a **staticmethod over the raw constructor
-   arguments**, so a cache hit never constructs the chart or runs `prepare()`.
-4. Bind it here with `chart_view(...)` and add its name to `__all__`.
-5. Add a case to `tests/unit/chart_samples.py` — a gate asserts every public
-   generator has one.
-
-If it drills into a table row, declare the row attribute at the chart
-(`links.RowDrill('data-...')`). **No JavaScript change is needed**; the
-attribute travels in the href.
-
-## Two things to know before editing
-
-**Cache names are Redis key prefixes** (`caching/redis_chart.py`), and the
-order of the `chart_view` calls below is the order rows appear on the admin
-Caching card. `tests/unit/test_chart_cache_registry.py` pins both.
-
-**Cache keys hash input data, not rendering code.** After a deploy, warm Redis
-entries serve old-code SVGs until the 600 s TTL expires. Run
+WARNING: cache keys hash input data, not rendering code, so after a deploy warm
+Redis entries serve old-code SVGs until the 600 s TTL expires. Run
 `sam-admin cache --refresh --category chart` when a change is user-visible.
+
+Module layout and the family hierarchy: CLAUDE.md, *Charts*.
 """
 
 from webapp.dashboards.charts import (  # noqa: F401

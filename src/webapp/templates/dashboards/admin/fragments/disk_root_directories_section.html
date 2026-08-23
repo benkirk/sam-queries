@@ -43,7 +43,7 @@
         {% if disk_resources_with_roots %}
         {% for r in disk_resources_with_roots %}
         {% set _total_roots.n = _total_roots.n + r.root_directories|length %}
-        {# ── Resource row (clickable trigger) ── #}
+        {# Resource row (clickable trigger) #}
         <tbody>
             <tr class="cursor-pointer table-subtle fw-semibold"
                 data-bs-toggle="collapse"
@@ -59,7 +59,7 @@
                 </td>
             </tr>
         </tbody>
-        {# ── Root-directory child rows (collapsed by default) ── #}
+        {# Root-directory child rows (collapsed by default) #}
         <tbody class="collapse" id="disk-root-res-{{ r.resource_id }}">
             {% if r.root_directories %}
             {% for dr in r.root_directories|sort(attribute='root_directory') %}

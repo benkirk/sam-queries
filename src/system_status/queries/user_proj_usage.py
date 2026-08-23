@@ -1,39 +1,28 @@
-"""
-Time-integrated consumption from ``user_proj_queue_status`` spans.
+"""Time-integrated consumption from ``user_proj_queue_status`` spans.
 
-The sibling ``user_proj_queues`` module exposes instantaneous /
-time-series views of the per-user / per-project / per-queue rollup
-table. This module integrates those spans over a window into
-core-hours / GPU-hours / node-hours by ``(user, project, queue)``.
+Integrates the per-user / per-project / per-queue spans over a window into
+core-hours / GPU-hours / node-hours. (The sibling ``user_proj_queues`` module
+exposes the instantaneous and time-series views of the same table.)
 
 Two complications drive the design:
 
-1. **Tick interval is not a constant 5 minutes** — collectors stall,
-   reschedule, get reconfigured. ``dt`` is derived per-tick from the
-   actual delta between successive observed timestamps in the parent
-   ``DerechoStatus`` / ``CasperStatus`` table (the canonical record of
-   "the collector ran at this moment", regardless of whether any user
-   had jobs).
-2. **Each row is a span, not a snapshot** — a single ``(user, project,
-   queue)`` row covers every tick from ``timestamp`` (first_seen) to
-   ``last_seen`` inclusive at constant counters (the ingest coalescer
-   collapses identical ticks into one span). When the tuple disappears
-   from the queue, its row is left alone — ``last_seen`` records the
-   final tick of the run.
+1. **Tick interval is not a constant 5 minutes** -- collectors stall,
+   reschedule, get reconfigured. ``dt`` is derived per-tick from the actual
+   delta between successive timestamps in the parent ``DerechoStatus`` /
+   ``CasperStatus`` table, the canonical record of "the collector ran",
+   regardless of whether any user had jobs.
+2. **Each row is a span, not a snapshot** -- one row covers every tick from
+   ``timestamp`` (first_seen) to ``last_seen`` inclusive at constant counters.
+   When the tuple leaves the queue the row is left alone; ``last_seen`` records
+   the final tick.
 
-Integration is **left-step** (rectangle rule): a span at ticks
-``[t_i .. t_j]`` with ``cores_allocated = X`` contributes
-``X * Σ_{k=i}^{j} (t_{k+1} - t_k)`` core-seconds — equivalently
-``X * (cum_dt[j+1] - cum_dt[i])`` using a cumulative-sum prefix array,
-which collapses a per-row integral to O(1). The last tick in the
-window has ``dt = 0`` so closed spans never over-count.
+Integration is LEFT-STEP (rectangle rule), computed as
+``X * (cum_dt[j+1] - cum_dt[i])`` off a cumulative-sum prefix array, which
+collapses a per-row integral to O(1). The last tick in the window has ``dt = 0``
+so closed spans never over-count.
 
-Spans make this query dramatically smaller than the per-tick era: each
-span is one row regardless of how many ticks it covers. Year-scale
-queries that previously scanned ~36M snapshot rows now scan however
-many spans the workload churn produced. The chunking infrastructure is
-preserved for spans that straddle chunk boundaries, with a
-``seen_ids`` set deduplicating spans seen in multiple chunks.
+Chunking is preserved for spans straddling chunk boundaries, with a ``seen_ids``
+set deduplicating spans seen in more than one chunk.
 """
 
 from datetime import datetime, timedelta

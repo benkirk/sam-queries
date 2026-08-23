@@ -2,8 +2,8 @@
 plus the user-card rendering gate.
 
 Motivating case: `krasting` is an active, unlocked user whose only
-`user_institution` row ended 2026-07-03. The card used to render it as his
-current institution because it iterated the relationship unfiltered.
+`user_institution` row ended 2026-07-03. Iterating the relationship unfiltered
+renders that as his current institution.
 
 Model-layer tests build a fresh affiliation graph with factories (Layer 2).
 The HTTP tests follow the house convention (auth/render smoke only) and rely

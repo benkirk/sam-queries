@@ -8,7 +8,7 @@ Covers two layers:
 
 2. ``routes`` — the three HTMX fragment endpoints (directories, entities,
    access-history): disabled banner (not 404), 404 on unknown projcode,
-   param whitelisting, fileset→subpath plumbing, and the enabled happy
+   param whitelisting, fileset->subpath plumbing, and the enabled happy
    path. The service layer is monkeypatched so these stay independent of
    real project-directory data and the fs-scans backend.
 
@@ -63,10 +63,10 @@ def _disable_fs_scans_cache():
     affected by the process-wide adapter singleton.
     """
     from webapp.disk_scans import cache as _c
-    # A stored None per bucket means "initialised but disabled".
+    # A stored None per bucket means "initialized but disabled".
     _c._CACHE.reset_for_tests()
     yield
-    # disabled=False → drop the memo so buckets re-init on next use
+    # disabled=False -> drop the memo so buckets re-init on next use
     _c._CACHE.reset_for_tests(disabled=False)
 
 
@@ -175,7 +175,7 @@ def test_scoped_unknown_subpath_yields_no_query(monkeypatch):
 
 
 def test_scoped_drops_unwarmed_collections(monkeypatch):
-    """Collections not in the warmed set are dropped → no results."""
+    """Collections not in the warmed set are dropped -> no results."""
     cap = {}
     svc = _wire_service(
         monkeypatch,
@@ -270,7 +270,7 @@ _RES = 'Campaign_Store'
 # -- directories ------------------------------------------------------------
 
 def test_directories_disabled_banner(auth_client, active_project):
-    """Plugin off → 200 with the 'unavailable' alert, not a 404."""
+    """Plugin off -> 200 with the 'unavailable' alert, not a 404."""
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}/directories?resource={_RES}'
     )
@@ -409,7 +409,7 @@ def test_entities_owner_renders(app, auth_client, active_project, monkeypatch):
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
     assert 'benkirk' in body
-    assert 'By group' in body          # the owner↔group toggle is present
+    assert 'By group' in body          # the owner<->group toggle is present
 
 
 def test_entities_group_renders(app, auth_client, active_project, monkeypatch):
@@ -510,7 +510,7 @@ def test_access_history_renders_svg(app, auth_client, active_project, monkeypatc
     assert 'alice' in body                # username resolved via username_map
     assert 'bob' in body
     assert 'data-bs-toggle="collapse"' in body   # bucket rows are expandable
-    # Chart bar → row drill-down wiring (svg-chart-links.js #sam/row/data-ah-bucket/ branch):
+    # Chart bar -> row drill-down wiring (svg-chart-links.js #sam/row/data-ah-bucket/ branch):
     # buckets with owners get an SVG anchor and a matching row lookup attr.
     assert '#sam/row/data-ah-bucket/0' in body            # bar anchor for the first owned bucket
     assert 'data-ah-bucket="0"' in body   # row the anchor expands
@@ -681,9 +681,9 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     assert '<svg' in body                 # matplotlib SVG rendered
     assert '100 GiB+' in body             # file-size bucket label in the table
     assert 'fasullo' in body              # per-user breakdown resolved
-    assert '#sam/row/data-ah-bucket/0' in body            # bar→row drill-down anchor (shared scheme)
+    assert '#sam/row/data-ah-bucket/0' in body            # bar->row drill-down anchor (shared scheme)
     assert 'data-ah-bucket="0"' in body
-    # Data ↔ Files metric pill present (file-sizes only) and defaults to Data.
+    # Data <-> Files metric pill present (file-sizes only) and defaults to Data.
     assert 'metric=files' in body
     assert 'Top users by data' in body
     # Log-scale switch present and off by default.
@@ -701,8 +701,8 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
     assert '<svg' in body2
     assert 'Top users by files' in body2   # per-user table re-sorted by metric
 
-    # Log scale on → still renders (solid bars), switch reflects checked state,
-    # and the bar→row drill-down anchor survives.
+    # Log scale on -> still renders (solid bars), switch reflects checked state,
+    # and the bar->row drill-down anchor survives.
     resp3 = auth_client.get(
         f'/dashboards/user/disk-scans/{active_project.projcode}'
         f'/file-sizes?resource={_RES}&log=1'
@@ -715,7 +715,7 @@ def test_file_sizes_renders_svg(app, auth_client, active_project, monkeypatch):
 
 
 def test_fragment_missing_resource_is_graceful(app, auth_client, active_project, monkeypatch):
-    """No ?resource= → treated like disabled (no unscoped query)."""
+    """No ?resource= -> treated like disabled (no unscoped query)."""
     from webapp.disk_scans import service
     from webapp.disk_scans import scope as scope_mod
     _enable_fs_scans(app, monkeypatch)
@@ -761,15 +761,15 @@ def test_cached_scan_hit_miss_and_scan_date_invalidation(monkeypatch):
     assert r1 == r2 == [{'v': 1}]
     assert calls['n'] == 1                               # 2nd call served from cache
 
-    # Different opts (a future filter selection) → distinct key → recompute.
+    # Different opts (a future filter selection) -> distinct key -> recompute.
     c.cached_scan('directories', q, ['mmm'], ['/mmm'], {'sort_by': 'files', 'limit': 50}, compute)
     assert calls['n'] == 2
 
-    # Different query type, same scope → its own entry.
+    # Different query type, same scope -> its own entry.
     c.cached_scan('owner', q, ['mmm'], ['/mmm'], {'limit': 50}, compute)
     assert calls['n'] == 3
 
-    # A new weekly scan (later date) → key changes → recompute (auto-invalidation).
+    # A new weekly scan (later date) -> key changes -> recompute (auto-invalidation).
     q2 = _FakeQ('2026-06-21T00:00:00')
     c.cached_scan('directories', q2, ['mmm'], ['/mmm'], opts, compute)
     assert calls['n'] == 4
@@ -909,10 +909,10 @@ def test_atime_band_bounds_maps_bands_to_dates():
 
     scan = datetime(2026, 6, 1)
     bounds = _atime_band_bounds(scan, ['< 1 Month', '7+ Years'])
-    # Band 0: ages [0, 30) days → before = scan, after = scan - 30 days.
+    # Band 0: ages [0, 30) days -> before = scan, after = scan - 30 days.
     assert bounds['< 1 Month']['accessed_before'] == '2026-06-01'
     assert bounds['< 1 Month']['accessed_after'] == '2026-05-02'
-    # Oldest band: open-ended → no after bound, before = scan - 2555 days.
+    # Oldest band: open-ended -> no after bound, before = scan - 2555 days.
     assert bounds['7+ Years']['accessed_after'] is None
     assert bounds['7+ Years']['accessed_before'] == (
         (scan - timedelta(days=2555)).strftime('%Y-%m-%d'))
@@ -1156,9 +1156,9 @@ def test_collections_for_resource_maps_via_database(monkeypatch):
     })
     assert ext.collections_for_resource('Campaign_Store') == ['cisl', 'mmm']
     assert ext.collections_for_resource('Destor') == ['gdex']
-    # Unmapped resource → no database → no collections (never unscoped).
+    # Unmapped resource -> no database -> no collections (never unscoped).
     assert ext.collections_for_resource('Nope') == []
-    # Mapped but unwarmed database → [].
+    # Mapped but unwarmed database -> [].
     monkeypatch.setattr(ext, 'get_databases', lambda app=None: {})
     assert ext.collections_for_resource('Campaign_Store') == []
 
@@ -1173,7 +1173,7 @@ def test_database_for_resource_reads_config_map(app, monkeypatch):
         assert sess.database_for_resource('Campaign_Store') == 'campaign'
         assert sess.database_for_resource('Destor') == 'destor'
         assert sess.database_for_resource('Unknown') is None
-    # No app context → None (lets service helpers resolve unconditionally).
+    # No app context -> None (lets service helpers resolve unconditionally).
     assert sess.database_for_resource('Campaign_Store') is None
 
 
@@ -1183,7 +1183,7 @@ def test_database_for_resource_reads_config_map(app, monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_scan_directories_threads_resource_database(monkeypatch):
-    """The resource's database (Destor → destor) reaches FsScanQueries."""
+    """The resource's database (Destor -> destor) reaches FsScanQueries."""
     cap = {}
     svc = _wire_service(
         monkeypatch,
@@ -1211,7 +1211,7 @@ def test_scan_directories_resource_threads_database(monkeypatch):
 
 
 def test_cached_scan_database_is_in_key(monkeypatch):
-    """Same scope + opts but a different database → distinct cache entries, so a
+    """Same scope + opts but a different database -> distinct cache entries, so a
     collection name shared across databases can't collide."""
     from webapp.disk_scans import cache as c
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)
@@ -1226,9 +1226,9 @@ def test_cached_scan_database_is_in_key(monkeypatch):
     opts = {'limit': 50}
     r1 = c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='campaign')
     r2 = c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='destor')
-    assert r1 == [{'v': 1}] and r2 == [{'v': 2}]      # different db → recompute
+    assert r1 == [{'v': 1}] and r2 == [{'v': 2}]      # different db -> recompute
     assert calls['n'] == 2
-    # Same (db, scope, opts) repeats → served from cache.
+    # Same (db, scope, opts) repeats -> served from cache.
     c.cached_scan('owner', q, ['gdex'], ['/gdex'], opts, compute, database='destor')
     assert calls['n'] == 2
 
@@ -1257,7 +1257,7 @@ class _WarmEngine:
 
 def test_init_fs_scans_warms_each_database_separately(app, monkeypatch):
     """init_fs_scans discovers + warms each configured database independently,
-    keys state by database, and wires resource → database → collections."""
+    keys state by database, and wires resource -> database -> collections."""
     from webapp import disk_scans
     from webapp.disk_scans import session as sess
 
@@ -1284,7 +1284,7 @@ def test_init_fs_scans_warms_each_database_separately(app, monkeypatch):
         assert dbs['campaign']['collections'] == ['cisl', 'mmm']
         assert dbs['destor']['collections'] == ['gdex']
         assert sess.is_enabled(app) is True
-        # resource → database → collections, end to end
+        # resource -> database -> collections, end to end
         assert sess.collections_for_resource('Campaign_Store', app) == ['cisl', 'mmm']
         assert sess.collections_for_resource('Destor', app) == ['gdex']
         # union view spans both databases
@@ -1536,7 +1536,7 @@ def test_directories_dirs_column_hidden_when_uniformly_zero(
         'max_atime_nr': None, 'owner_uid': 1, 'owner_gid': 1, 'filesystem': 'cisl',
     }])
 
-    # Non-recursive drill-down view: single row, dir_count_r 0 → column folded
+    # Non-recursive drill-down view: single row, dir_count_r 0 -> column folded
     # even though leaves_only is NOT set.
     base = (f'/dashboards/user/disk-scans/{active_project.projcode}'
             f'/directories?resource={_RES}&recursive=0')
@@ -1601,7 +1601,7 @@ def test_resource_page_403_without_perm(non_admin_client):
 
 
 def test_resource_fragment_200_with_perm(auth_client):
-    """benkirk holds VIEW_ALL_FILESYSTEM_DATA → 200 (plugin off → banner)."""
+    """benkirk holds VIEW_ALL_FILESYSTEM_DATA -> 200 (plugin off -> banner)."""
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/resource/{_RES}/directories'
     )
@@ -1632,7 +1632,7 @@ def test_resource_entities_drilldown_targets_resource_fragment(app, auth_client,
     body = resp.get_data(as_text=True)
     assert 'data-bs-toggle="collapse"' in body          # drill chevron present
     assert 'owner_uid=4242' in body                      # carries the uid
-    assert f'/disk-scans/resource/{_RES}/directories' in body   # → resource fragment
+    assert f'/disk-scans/resource/{_RES}/directories' in body   # -> resource fragment
 
 
 @pytest.mark.parametrize('endpoint', ['entities', 'access-history', 'file-sizes'])
@@ -1645,7 +1645,7 @@ def test_resource_card_fragments_403_without_perm(non_admin_client, endpoint):
 
 @pytest.mark.parametrize('endpoint', ['entities', 'access-history', 'file-sizes'])
 def test_resource_card_fragments_200_with_perm(auth_client, endpoint):
-    """benkirk holds VIEW_ALL_FILESYSTEM_DATA → 200 (plugin off → banner)."""
+    """benkirk holds VIEW_ALL_FILESYSTEM_DATA -> 200 (plugin off -> banner)."""
     resp = auth_client.get(
         f'/dashboards/user/disk-scans/resource/{_RES}/{endpoint}'
     )
@@ -1698,7 +1698,7 @@ def test_scoped_descent_into_subdir(monkeypatch):
 
 
 def test_scoped_out_of_scope_subpath_empty(monkeypatch):
-    """A subpath neither ancestor nor descendant of a project prefix → []."""
+    """A subpath neither ancestor nor descendant of a project prefix -> []."""
     cap = {}
     svc = _wire_service(
         monkeypatch,
@@ -1835,7 +1835,7 @@ class TestDiskEntityPie:
         from webapp.dashboards.charts import _pie_cumulative_keep
         assert _pie_cumulative_keep([90, 5, 3, 2]) == 1   # one dominant slice
         assert _pie_cumulative_keep([1] * 20) == 9        # hard cap (palette = 10)
-        assert _pie_cumulative_keep([5, 4, 3]) == 3       # all fit → no "Other"
+        assert _pie_cumulative_keep([5, 4, 3]) == 3       # all fit -> no "Other"
         assert _pie_cumulative_keep([0, 0]) == 2          # zero total, no crash
 
     def test_owner_wedges_clickable_other_inert(self):
@@ -1927,7 +1927,7 @@ def test_user_distribution_pins_owner_ignoring_query(
 
     def fake(scope, kind, **kw):
         captured.update(kw)
-        return None      # falsy → no chart generation; the call is what we check
+        return None      # falsy -> no chart generation; the call is what we check
     monkeypatch.setattr(service, 'scan_distribution', fake)
 
     resp = auth_client.get(
@@ -1950,7 +1950,7 @@ def test_user_routes_reachable_without_view_all(non_admin_client, endpoint):
 
 
 def test_user_directories_no_identity_empty_state(app, auth_client, monkeypatch):
-    """Account with no unix_uid → info message, and NO scan is run (an absent
+    """Account with no unix_uid -> info message, and NO scan is run (an absent
     owner filter would otherwise scan the whole resource)."""
     from types import SimpleNamespace
     from webapp.disk_scans import service, routes
@@ -1999,7 +1999,7 @@ def test_user_explore_hides_owner_picker(auth_client, session):
 # ---------------------------------------------------------------------------
 
 def test_my_data_page_shown(auth_client, monkeypatch):
-    """benkirk has a unix_uid → My Data tab link + one subtab per warmed
+    """benkirk has a unix_uid -> My Data tab link + one subtab per warmed
     resource on the /user/data page."""
     monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                         lambda app=None: ['Campaign_Store'])
@@ -2014,7 +2014,7 @@ def test_my_data_page_shown(auth_client, monkeypatch):
 
 
 def test_my_data_page_hidden_when_no_resources(auth_client, monkeypatch):
-    """Plugin off / no warmed resource → no My Data tab link even with a
+    """Plugin off / no warmed resource -> no My Data tab link even with a
     unix_uid, and the page itself 404s."""
     monkeypatch.setattr('webapp.disk_scans.service.scan_capable_resources',
                         lambda app=None: [])
@@ -2055,7 +2055,7 @@ def _render_distribution_partial(app, owners):
 
 
 def test_single_owner_band_drills_straight_to_directories(app):
-    """One owner → no per-user table; the band row drills to their directories."""
+    """One owner -> no per-user table; the band row drills to their directories."""
     body = _render_distribution_partial(app, {7: {'data': 100, 'files': 10}})
     assert 'owner_uid=7' in body                       # directory drill present
     assert 'Top users by' not in body                  # per-user table skipped
@@ -2064,7 +2064,7 @@ def test_single_owner_band_drills_straight_to_directories(app):
 
 
 def test_multi_owner_band_keeps_per_user_table(app):
-    """Two+ owners → the per-user aggregation table is retained."""
+    """Two+ owners -> the per-user aggregation table is retained."""
     body = _render_distribution_partial(
         app, {7: {'data': 60, 'files': 6}, 8: {'data': 40, 'files': 4}})
     assert 'Top users by' in body                       # per-user table kept
@@ -2076,7 +2076,7 @@ def test_multi_owner_band_keeps_per_user_table(app):
 def test_single_owner_band_without_window_keeps_table(app):
     """The shortcut only applies when there's a drill window. A lone owner in a
     window-less band keeps the per-user table (listed, but not drillable) —
-    behaviour unchanged from before the shortcut."""
+    behavior unchanged from before the shortcut."""
     from flask import render_template
     hist = {
         'bucket_labels': ['unknown'],

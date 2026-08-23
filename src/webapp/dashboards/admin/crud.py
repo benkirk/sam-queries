@@ -15,8 +15,8 @@ delete (retire-by-end_date), and the panel-session edit (ORM cross-field
 check) are examples that stay hand-written next to their specs.
 
 Behavioral contract preserved from the hand-written routes:
-  * edit-form GET for a missing id → warning div at 200 (htmx swaps it
-    into the modal body); POST/DELETE for a missing id → 404
+  * edit-form GET for a missing id -> warning div at 200 (htmx swaps it
+    into the modal body); POST/DELETE for a missing id -> 404
     (`htmx_not_found`).
   * POST bodies delegate to `handle_htmx_form_post` — schema validation,
     `management_transaction`, inline field errors, HX-Trigger success.
@@ -67,7 +67,7 @@ class CrudSpec:
     delete_permission: Optional[Permission] = None
     after_commit: Optional[Callable] = None   # result -> None, post-commit hook
     actions: tuple = ('edit', 'create', 'delete')
-    endpoint_base: Optional[str] = None   # default: slug with '-' → '_'
+    endpoint_base: Optional[str] = None   # default: slug with '-' -> '_'
     noun: Optional[str] = None    # error-message noun; default name.lower()
     edit_template: Optional[str] = None   # default derived from endpoint_base
     create_template: Optional[str] = None

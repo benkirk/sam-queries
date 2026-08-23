@@ -36,7 +36,7 @@ class TestAdaptJobstatsRow:
     """Classification matrix for derecho / casper jobs."""
 
     def test_zero_total_returns_none(self):
-        """Zero CPU + zero GPU hours → silently skipped (returns None)."""
+        """Zero CPU + zero GPU hours -> silently skipped (returns None)."""
         assert adapt_jobstats_row(_row(), "derecho") is None
         assert adapt_jobstats_row(_row(), "casper") is None
 
@@ -65,9 +65,9 @@ class TestAdaptJobstatsRow:
         assert result == ("Derecho GPU", "derecho-gpu", 100.0, 200.0)
 
     def test_derecho_anomalous_gpu_below_threshold_classifies_as_cpu(self):
-        """Tiny GPU touch on a big CPU job → CPU resource (the comment in
+        """Tiny GPU touch on a big CPU job -> CPU resource (the comment in
         adapt_jobstats_row calls this out as the explicit guard)."""
-        # 1M cpu-h + 10 gpu-h → gpu_fraction = 1e-5, well below 1% threshold
+        # 1M cpu-h + 10 gpu-h -> gpu_fraction = 1e-5, well below 1% threshold
         result = adapt_jobstats_row(
             _row(cpu_hours=1_000_000.0, gpu_hours=10.0,
                  cpu_charges=999.0, gpu_charges=1.0),
@@ -78,7 +78,7 @@ class TestAdaptJobstatsRow:
         assert resource_name == "Derecho"
 
     def test_derecho_gpu_at_exact_threshold_classifies_as_gpu(self):
-        """gpu_fraction == GPU_FRACTION_THRESHOLD → GPU (>= comparison)."""
+        """gpu_fraction == GPU_FRACTION_THRESHOLD -> GPU (>= comparison)."""
         # Pick numbers where gpu_h / (cpu_h + gpu_h) == GPU_FRACTION_THRESHOLD exactly.
         gpu_h = GPU_FRACTION_THRESHOLD * 100.0
         cpu_h = 100.0 - gpu_h
@@ -116,7 +116,7 @@ class TestVisQueueCpuOnly:
     """
 
     def test_vis_derecho_gpu_only_classifies_as_cpu_with_zero_charges(self):
-        """Pure-GPU vis row → after zeroing, total drops to 0 → skipped."""
+        """Pure-GPU vis row -> after zeroing, total drops to 0 -> skipped."""
         result = adapt_jobstats_row(
             _row(queue="vis", gpu_hours=100.0, gpu_charges=200.0),
             "derecho",
@@ -124,7 +124,7 @@ class TestVisQueueCpuOnly:
         assert result is None
 
     def test_vis_derecho_mixed_charges_only_cpu(self):
-        """Mixed CPU/GPU vis row → Derecho CPU resource, GPU dropped.
+        """Mixed CPU/GPU vis row -> Derecho CPU resource, GPU dropped.
 
         gpu_fraction would be 80/130 ≈ 0.62 — well above the threshold —
         so without the vis rule this would misroute to Derecho GPU.

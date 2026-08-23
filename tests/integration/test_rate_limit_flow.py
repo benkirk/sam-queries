@@ -19,7 +19,7 @@ import pytest
 from webapp.limiter import limiter as facade
 
 
-# ── Test enablement ────────────────────────────────────────────────────
+# Test enablement
 
 
 @pytest.fixture
@@ -60,7 +60,7 @@ def _clear_memory_storage():
         inner.clear()
 
 
-# ── /auth/login POST per-IP throttle ──────────────────────────────────
+# /auth/login POST per-IP throttle
 
 
 def test_login_post_429s_after_five_attempts(client, app, enabled_limiter):
@@ -69,7 +69,7 @@ def test_login_post_429s_after_five_attempts(client, app, enabled_limiter):
         resp = client.post('/auth/login', data={
             'username': 'nope', 'password': 'nope',
         })
-        # 200 (bad creds → re-render) or 302 (redirect on success) — never 429 yet.
+        # 200 (bad creds -> re-render) or 302 (redirect on success) — never 429 yet.
         assert resp.status_code != 429
     resp = client.post('/auth/login', data={'username': 'nope', 'password': 'nope'})
     assert resp.status_code == 429
@@ -79,7 +79,7 @@ def test_oidc_callback_uses_auth_login_tier(client, app, enabled_limiter):
     """/auth/oidc/callback throttles at RATELIMIT_AUTH_LOGIN (5/min), the
     auth-attempt tier, not the looser anon tier [PR295 P2-4]."""
     for _ in range(5):
-        # No oauth extension under TestingConfig → flash + 302 to login;
+        # No oauth extension under TestingConfig -> flash + 302 to login;
         # the limiter still counts the hit.
         resp = client.get('/auth/oidc/callback')
         assert resp.status_code != 429
@@ -87,7 +87,7 @@ def test_oidc_callback_uses_auth_login_tier(client, app, enabled_limiter):
     assert resp.status_code == 429
 
 
-# ── AUTHED default applies globally ────────────────────────────────────
+# AUTHED default applies globally
 
 
 def test_authed_default_eventually_429s(auth_client, app, enabled_limiter,
@@ -110,7 +110,7 @@ def test_authed_default_eventually_429s(auth_client, app, enabled_limiter,
     assert saw_429, "expected a 429 after exceeding RATELIMIT_AUTHED"
 
 
-# ── M2M tier inside @api_key_required ────────────────────────────────
+# M2M tier inside @api_key_required
 
 
 def test_m2m_limit_fires_on_api_key_routes(api_key_client, app,
@@ -129,7 +129,7 @@ def test_m2m_limit_fires_on_api_key_routes(api_key_client, app,
     assert saw_429, "expected a 429 after exceeding RATELIMIT_M2M"
 
 
-# ── Health probes exempt ──────────────────────────────────────────────
+# Health probes exempt
 
 
 @pytest.mark.parametrize('path', ['/api/v1/health/', '/api/v1/health/live',
@@ -145,7 +145,7 @@ def test_health_endpoints_never_429(client, app, enabled_limiter,
         )
 
 
-# ── Unblock action ────────────────────────────────────────────────────
+# Unblock action
 
 
 def test_unblock_clears_bucket_and_allows_next_request(client, auth_client,
@@ -154,7 +154,7 @@ def test_unblock_clears_bucket_and_allows_next_request(client, auth_client,
     """Block an IP, call unblock, verify the next request succeeds.
 
     Uses `client` (unauthenticated) to generate the block on /auth/login
-    POST, then uses `auth_client` (benkirk → SYSTEM_ADMIN) to POST the
+    POST, then uses `auth_client` (benkirk -> SYSTEM_ADMIN) to POST the
     unblock; finally `client` retries the original request and expects
     something other than 429.
     """

@@ -1,41 +1,27 @@
-"""GET-only HTTP client for the XRAS Allocations API (``https://api.xras.org/v1/…``).
+"""GET-only HTTP client for the XRAS Allocations API (``https://api.xras.org/v1/...``).
 
-Direction of travel
--------------------
-Everything under ``src/sam/xras/`` and ``src/webapp/api/xras/`` is XRAS → SAM
-(they push actions, they pull our GETs). This module is the **opposite**
-direction: SAM calling out to XRAS. See ``docs/xras/outgoing/`` for the probe
-results this is built on.
+The opposite direction from everything under ``src/sam/xras/`` and
+``src/webapp/api/xras/``: this is SAM calling OUT. See ``docs/xras/outgoing/``.
 
-Transport semantics are copied from ``sam.integration.awards.client``: one
-persistent ``requests.Session``, an explicit timeout on every call, three
-attempts with ``2 ** attempt`` backoff, and **no retry on 4xx** — a 404 is an
-answer, not a failure to answer.
+Transport semantics copy ``sam.integration.awards.client``: one persistent
+``requests.Session``, explicit timeout, three attempts with ``2 ** attempt``
+backoff, and no retry on 4xx -- a 404 is an answer, not a failure to answer.
 
-Why there is no ``post``
-------------------------
-The documented XRAS API is far more write-capable than this client is, and
-our key holds at least some of it: creating and deleting requests, submitting
-and withdrawing actions, adding and removing roles, **merging one person into
-another**, updating resources. None of that may ever be reachable from SAM
-code. So GET-only is **structural, not conventional**: the sole transport
+WARNING: GET-only is STRUCTURAL, not conventional. The documented API is far
+more write-capable than this client, and our key holds at least some of it:
+creating and deleting requests, submitting and withdrawing actions, adding and
+removing roles, **merging one person into another**. The sole transport
 primitive is :meth:`_get`, there is no generic verb method, and
 ``tests/unit/test_xras_api_client.py`` pins that no post/put/patch/delete
 callable exists on the class.
 
-Two headers worth knowing
--------------------------
-``XA-CONTEXT`` is **hardcoded** to ``report``. It is not a knob: the Reports
-family (``/v1/reports/*``), which is the entire reason this client is useful,
-answers *only* under ``report`` and 401s under ``submit`` — while everything
-else we read answers under ``report`` too. One context, read-only semantics.
+``XA-CONTEXT`` is hardcoded to ``report`` and is not a knob: the Reports family,
+the entire reason this client is useful, answers only under ``report`` and 401s
+under ``submit``. ``XA-USER`` is required on every call but scopes nothing
+outside ``/v1/requests``; reports return process-wide data whatever it says.
 
-``XA-USER`` is required on every call but scopes nothing outside
-``/v1/requests``; the reports endpoints return process-wide data whatever it
-says. Per-user impersonation is not needed anywhere in this design.
-
-Every JSON response wraps its payload in a ``{"message": ..., "result": ...}``
-envelope, unwrapped centrally in :meth:`_get`.
+Every JSON response wraps its payload in ``{"message":..., "result":...}``,
+unwrapped centrally in :meth:`_get`.
 """
 
 from __future__ import annotations
@@ -215,7 +201,7 @@ class XrasApiClient(_XrasTransport):
     only read verbs — there is deliberately no write primitive here (see the
     module docstring and ``tests/unit/test_xras_api_client.py``). The base's
     default :meth:`_client_error` — raising :class:`XrasSourceUnavailable` — is
-    exactly the read behaviour, so this class does not override it.
+    exactly the read behavior, so this class does not override it.
     """
 
     #: See the module docstring: the Reports family answers only under
@@ -239,7 +225,7 @@ class XrasApiClient(_XrasTransport):
                 '(needs XRAS_OUTGOING_ENABLED=1 and XRAS_API_KEY)')
         return cls(resolved)
 
-    # ── people ──────────────────────────────────────────────────────────
+    # people
 
     def get_person(self, username: str) -> Optional[Dict[str, Any]]:
         """One person from the global XRAS directory, or ``None`` if unknown.
@@ -249,7 +235,7 @@ class XrasApiClient(_XrasTransport):
         ``isReconciled``. Researchers resolve here under their ARC placeholder
         username (``<name>-user-<token>``) whether or not they are reconciled.
 
-        ⚠️ ``isReconciled`` says XRAS has linked this username to a real
+        WARNING: ``isReconciled`` says XRAS has linked this username to a real
         identity — **not** that SAM has an account. Measured 9 of 9 on the
         local smoke: every worklist row was reconciled and every one still
         needed an account created or reactivated. See
@@ -276,7 +262,7 @@ class XrasApiClient(_XrasTransport):
         return _as_dict(
             self._get(f'/v1/reports/username/{quote(str(username), safe="")}'))
 
-    # ── resources ───────────────────────────────────────────────────────
+    # resources
 
     def get_resources(self) -> Optional[List[Dict[str, Any]]]:
         """The process's resource catalog, including ``resourceRepositoryKey``.
@@ -288,12 +274,12 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_list(self._get('/v1/resources'))
 
-    # ── opportunities ───────────────────────────────────────────────────
+    # opportunities
 
     def get_open_opportunities(self) -> List[Dict[str, Any]]:
         """Every **currently open** opportunity, in full.
 
-        ⚠️ **This is the only way to see an opportunity nobody has submitted
+        WARNING: **This is the only way to see an opportunity nobody has submitted
         against yet**, and that is the whole reason it exists. The sweep's other
         source of opportunity ids is ``reports/requests``, which by construction
         cannot mention an opportunity with no requests — so a brand-new one is
@@ -357,7 +343,7 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_dict(self._get(f'/v1/opportunities/{int(opportunity_id)}'))
 
-    # ── vocabularies ────────────────────────────────────────────────────
+    # vocabularies
 
     def get_fos_types(self) -> Optional[List[Dict[str, Any]]]:
         """The field-of-science catalog — ``GET /v1/types/fos``.
@@ -370,7 +356,7 @@ class XrasApiClient(_XrasTransport):
         """
         return _as_list(self._get('/v1/types/fos'))
 
-    # ── requests (the Reports family) ───────────────────────────────────
+    # requests (the Reports family)
 
     def get_request_by_number(self, request_number: str
                               ) -> Optional[Dict[str, Any]]:
@@ -455,7 +441,7 @@ class XrasApiClient(_XrasTransport):
                     yield row
 
 
-# ── envelope helpers ────────────────────────────────────────────────────
+# envelope helpers
 
 def _unwrap(body: Any) -> Any:
     """Strip the ``{"message": ..., "result": ...}`` envelope.

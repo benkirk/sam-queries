@@ -20,7 +20,7 @@
 
 <div class="d-flex flex-column gap-3">
 
-  {# ═══════════════════════════════ Organizations (NCAR-facility only) ══ #}
+  {# Organizations (NCAR-facility only) #}
   {% if allows_org_links %}
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
@@ -37,7 +37,7 @@
     </div>
     <div class="card-body p-0">
 
-      {# ── Add form (hidden by default) ── #}
+      {# Add form (hidden by default) #}
       <div id="addOrgForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_organization', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
@@ -64,7 +64,7 @@
         </form>
       </div>
 
-      {# ── Table of active organizations ── #}
+      {# Table of active organizations #}
       {% if active_organizations %}
       <table class="table table-sm table-hover mb-0">
         <thead class="table-subtle">
@@ -111,7 +111,7 @@
   </div>
   {% endif %}
 
-  {# ═══════════════════════════════════════════════════ Contracts ══════ #}
+  {# Contracts #}
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
@@ -127,7 +127,7 @@
     </div>
     <div class="card-body p-0">
 
-      {# ── Add form (hidden by default) ── #}
+      {# Add form (hidden by default) #}
       <div id="addContractForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_contract', projcode=project.projcode) }}"
               hx-target="#linkedElementsContainer"
@@ -154,7 +154,7 @@
         </form>
       </div>
 
-      {# ── Table of contracts ── #}
+      {# Table of contracts #}
       {% if contracts %}
       <table class="table table-sm table-hover mb-0">
         <thead class="table-subtle">
@@ -219,7 +219,7 @@
     </div>
   </div>
 
-  {# ═══════════════════════════════════════════════ Directories ════════ #}
+  {# Directories #}
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center py-2">
       <span class="fw-semibold">
@@ -235,7 +235,7 @@
     </div>
     <div class="card-body p-0">
 
-      {# ── Add form (hidden by default) ── #}
+      {# Add form (hidden by default) #}
       <div id="addDirForm" style="display:none;" class="p-3 border-bottom bg-body-tertiary">
         {% if disk_roots %}
         <form hx-post="{{ url_for('admin_dashboard.htmx_add_project_directory', projcode=project.projcode) }}"
@@ -286,7 +286,7 @@
         {% endif %}
       </div>
 
-      {# ── Table of active directories ── #}
+      {# Table of active directories #}
       {% if active_directories %}
       <table class="table table-sm table-hover mb-0">
         <thead class="table-subtle">

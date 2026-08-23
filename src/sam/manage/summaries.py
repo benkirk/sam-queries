@@ -521,7 +521,7 @@ def upsert_disk_charge(
     charge: float,
 ) -> Tuple[DiskCharge, str]:
     """Insert or update a DiskCharge row keyed on disk_activity_id
-    (UNIQUE → 1:1 with DiskActivity).
+    (UNIQUE -> 1:1 with DiskActivity).
     """
     existing = session.query(DiskCharge).filter(
         DiskCharge.disk_activity_id == disk_activity_id,

@@ -6,7 +6,7 @@
 
   A sibling of `audit_filters.html` rather than an extension of it. The two share
   the panel chrome verbatim — same .filter-sidebar-* header, same collapse
-  behaviour, same "Clear filters" reset, same control styling — but not a single
+  behavior, same "Clear filters" reset, same control styling — but not a single
   field: audit_filters offers Project / Responsible user / Resources / Facilities,
   none of which an XRAS action has. An action arrives before we know its facility,
   and a malformed body has no project at all.
@@ -34,7 +34,7 @@
                      neither is optional and why there is no fallback branch.
     layout         - 'mobile' | 'tablet' | 'desktop', from read_layout()
 
-  ⚠️ This page carries a SECOND form with start_date/end_date: the hidden
+  WARNING: This page carries a SECOND form with start_date/end_date: the hidden
   #xras-activity-filters (allocations/xras.html), whose pair is emitted by
   window_pills inside the pending-activity fragment and bound with `form=`.
   The pair below is nested in THIS form and carries no `form=`, so the two

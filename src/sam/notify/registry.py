@@ -1,4 +1,4 @@
-"""Transport name → factory.
+"""Transport name -> factory.
 
 A dict rather than entry points or import-by-string: the set is three, they
 all ship in this package, and a typo in ``NOTIFY_TRANSPORT`` should fail with

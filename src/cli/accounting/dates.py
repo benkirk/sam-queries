@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 
 
 def _parse_last_spec(spec: str) -> int:
-    """Parse --last spec: '3d' or '3' → 3."""
+    """Parse --last spec: '3d' or '3' -> 3."""
     s = spec.strip().lower().rstrip('d')
     try:
         n = int(s)

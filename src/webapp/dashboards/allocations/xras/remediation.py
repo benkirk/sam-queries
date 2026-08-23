@@ -1,33 +1,28 @@
-"""XRAS Remediations — the operator write surface on Allocations → XRAS.
+"""XRAS Remediations -- the operator write surface on Allocations -> XRAS.
 
-A scoped **subset** of the external XRAS admin dashboard, never a replacement:
+A scoped SUBSET of the external XRAS admin dashboard, never a replacement:
 resolve an erroneously-reconciled placeholder by merge, withdraw a stale or
 in-flight submission, re-submit, and fix a roster. `MANAGE_XRAS` only,
 conditional on the outgoing write lever, never automated.
 
-Its own module in the ``allocations/xras/`` package, on the dashboard's shared
-``bp``, registered for its route side effects by ``xras/__init__.py``.
+Three things a reader coming from the sibling cards must know:
 
-Three things a reader coming from the sibling cards must know
-------------------------------------------------------------
 **1. These routes write to a system SAM does not own, and the write is done
-before the response is.** Nothing here is undone by an exception, a rollback,
-or a browser closing. The service layer (``sam.manage.xras_remediation``)
-commits its audit row on a private session *before* dispatching, precisely so
-the record survives everything the request does not.
+before the response is.** Nothing here is undone by an exception, a rollback, or
+a browser closing. ``sam.manage.xras_remediation`` commits its audit row on a
+private session BEFORE dispatching, precisely so the record survives everything
+the request does not.
 
 **2. ``perform()`` opens ``management_transaction`` and writes nothing to it.**
-The handler base wraps every ``perform()`` that way, and these handlers do
-their persistence on the service's own connections. So each POST holds an idle
-SAM transaction across an HTTP call to ``api.xras.org``. That is accepted
-rather than engineered around: the alternative is a second handler base whose
-only difference is the missing wrapper, and the calls are single-attempt with a
-10 s timeout.
+The handler base wraps every ``perform()`` that way; these handlers persist on
+the service's own connections. So each POST holds an idle SAM transaction across
+an HTTP call to ``api.xras.org``. Accepted rather than engineered around -- the
+alternative is a second handler base differing only in the missing wrapper, and
+the calls are single-attempt with a 10 s timeout.
 
-**3. Every modal GET degrades with a 200, not a 4xx.** Remediation needs live
-reads — a roster, a person, a preflight — and htmx will not swap a 4xx body
-into an already-open modal, so an XRAS outage rendered as an error status is an
-empty modal with no explanation. The degraded body says what happened instead.
+**3. Every modal GET degrades with a 200, not a 4xx.** htmx will not swap a 4xx
+body into an already-open modal, so an XRAS outage rendered as an error status
+is an empty modal with no explanation. The degraded body says what happened.
 """
 
 from __future__ import annotations
@@ -352,7 +347,7 @@ class _XrasRemediationHandler(HtmxFormHandler):
         if outcome.status == 'error':
             raise XrasSourceUnavailable(outcome.error or 'unavailable')
         if outcome.status == 'unverified':
-            # ⚠️ Not an error and not a success. XRAS answered, the re-read did
+            # WARNING: Not an error and not a success. XRAS answered, the re-read did
             # not confirm it, and an operator has to go and look — so this must
             # not render as a green tick.
             raise FormError(
@@ -369,7 +364,7 @@ class _XrasRemediationHandler(HtmxFormHandler):
 def _merge_candidates(person, *, source_username):
     """Real XRAS identities this placeholder might be, best first.
 
-    Searched by **email first, then surname**, and ranked email → organization →
+    Searched by **email first, then surname**, and ranked email -> organization ->
     name. That order is the whole safety property, measured on real data: one
     human had two live identities differing only in email and organization (a
     university address and an NCAR-staff one), and a name match picks between
@@ -464,7 +459,7 @@ class _XrasMergeHandler(_XrasRemediationHandler):
         if target.strip().casefold() == self.username.strip().casefold():
             raise FormError('The target must be a different account.')
 
-        # ⚠️ **Fail closed.** The API documents merge as "merge a username into
+        # WARNING: **Fail closed.** The API documents merge as "merge a username into
         # an existing/new username" — a typo does not fail, it CREATES an
         # identity and hands it the placeholder's roles. So the target is
         # resolved server-side before anything is sent, whichever field named
@@ -686,7 +681,7 @@ def _safe_action_context(request_number, action_id, *, mode):
 def xras_resubmit_form(request_number: str, action_id: int):
     """Modal body: the inverse of withdraw, with its preflight rendered first.
 
-    ⚠️ The preflight verdict is a function of **who** we impersonate, not only
+    WARNING: The preflight verdict is a function of **who** we impersonate, not only
     of the action — measured: the same action validated as the PI and failed as
     the Allocation Manager. So the verdict is always rendered next to the user
     it was evaluated as, and a failure disables the button rather than hiding
@@ -707,7 +702,7 @@ def xras_resubmit_form(request_number: str, action_id: int):
                 # vanishes teaches nobody that a switch exists.
                 context['validation'] = None
             except XrasWriteRejected as exc:
-                # ⚠️ Caught HERE, before the outer XrasSourceUnavailable (its
+                # WARNING: Caught HERE, before the outer XrasSourceUnavailable (its
                 # parent class) swallows it as an outage. A 4xx is XRAS
                 # refusing deterministically — a 401 means the impersonated
                 # user holds no role — and telling the operator "XRAS is not
@@ -849,7 +844,7 @@ class _XrasRoleAddHandler(_XrasRemediationHandler):
             raise FormError('This request has no role-holder for SAM to act '
                             'as, so XRAS would refuse the change.')
 
-        # ⚠️ **Resolve the username first.** The add route accepts optional
+        # WARNING: **Resolve the username first.** The add route accepts optional
         # person parameters that XRAS uses to CREATE an unknown user, with
         # `isReconciled` defaulting true — the exact mechanism that mints the
         # stuck placeholders this card exists to clean up. SAM never sends
@@ -978,13 +973,13 @@ def xras_role_remove(request_number: str, role_id: int):
 _RESOURCE_FORM = 'dashboards/allocations/partials/xras_resource_form.html'
 _DATES_FORM = 'dashboards/allocations/partials/xras_dates_form.html'
 _ATTRIBUTES_FORM = 'dashboards/allocations/partials/xras_attributes_form.html'
-# ⚠️ NOT xras_action_form.html — that is the withdraw/re-submit form.
+# WARNING: NOT xras_action_form.html — that is the withdraw/re-submit form.
 _ACTION_FIELDS_FORM = 'dashboards/allocations/partials/xras_action_fields_form.html'
 _ADD_ACTION_FORM = 'dashboards/allocations/partials/xras_add_action_form.html'
 
 
 
-# ── the request editor (Part B): resource amounts & allocation dates ─────
+# the request editor (Part B): resource amounts & allocation dates
 
 def _editor_target(request_number):
     """``(request_id, xa_user)`` for a write, or raise :class:`FormError`.
@@ -1316,7 +1311,7 @@ def xras_dates_remove(request_number: str, action_id: int,
         'The attempt is recorded in the remediation log.'))
 
 
-# ── the request editor (Part B2a): request attributes & action fields ────
+# the request editor (Part B2a): request attributes & action fields
 
 def _attributes_form_context(request_number):
     """Context for the request-attributes editor, or ``None`` if the request is gone."""
@@ -1380,7 +1375,7 @@ class _XrasAttributesHandler(_XrasRemediationHandler):
         return data
 
     def perform(self, data):
-        # snake_case → wire; blanked short_title/abstract clear the field.
+        # snake_case -> wire; blanked short_title/abstract clear the field.
         fields = {
             'title': data['title'],
             'shortTitle': data.get('short_title') or '',
@@ -1505,9 +1500,9 @@ def xras_action_fields_edit(request_number: str, action_id: int):
         request_number=request_number, action_id=action_id).handle()
 
 
-# ── the destructive lifecycle (Part C — ADMIN_XRAS only) ─────────────────
+# the destructive lifecycle (Part C — ADMIN_XRAS only)
 #
-# ⚠️ Every route here is gated on ADMIN_XRAS (effectively SYSTEM_ADMIN), NOT
+# WARNING: Every route here is gated on ADMIN_XRAS (effectively SYSTEM_ADMIN), NOT
 # MANAGE_XRAS — a full-editor operator cannot reach them. The verbs are
 # irreversible in XRAS and were not live-probed; they are fail-visible.
 

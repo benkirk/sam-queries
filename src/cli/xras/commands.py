@@ -48,12 +48,11 @@ class XrasCommand(BaseCommand):
     def _validate_mapping(self) -> int:
         """Report the state of ``xras_resource_repository_key_resource``.
 
-        ⚠️ **An unmapped active resource is NOT a failure**, and this used to say
-        otherwise. Not every internal resource is offered for allocation through
-        XRAS, so most of the unmapped ones have no mapping *by design* — 11 of them,
-        stably, across snapshot refreshes. Exiting non-zero on that made the command
-        unusable as the deploy gate its own docstring claimed it could be: it would
-        have failed every time, forever.
+        WARNING: **An unmapped active resource is NOT a failure.** Not every
+        internal resource is offered for allocation through XRAS, so most unmapped
+        ones have no mapping *by design* — 11 of them, stably, across snapshot
+        refreshes. Exiting non-zero on that would make the command unusable as a
+        deploy gate: it would fail every time, forever.
 
         What it is instead: a **diagnostic**. If a resource that *should* be
         allocatable through XRAS appears in the unmapped list, that is the data fix
@@ -94,7 +93,7 @@ class XrasCommand(BaseCommand):
         try:
             return resource_repository_keys()
         except XrasSourceUnavailable as exc:
-            # ⚠️ stderr, not stdout. This is a diagnostic about the run, not
+            # WARNING: stderr, not stdout. This is a diagnostic about the run, not
             # part of the report — printed to stdout it lands *inside* the
             # `--format json` envelope and breaks every consumer piping to jq.
             self.ctx.stderr_console.print(
@@ -146,7 +145,7 @@ class XrasCommand(BaseCommand):
         :meth:`_live_keys`: the operator wants the strongest check available and
         the unconfigured case must degrade rather than fail.
 
-        ⚠️ **Open ones only** (``GET /v1/opportunities``), which is the right
+        WARNING: **Open ones only** (``GET /v1/opportunities``), which is the right
         scope rather than a limitation. ``reports/requests`` cannot mention an
         opportunity nobody has submitted against — and that is precisely the one
         this check exists for, because it is the one an imminent action would
@@ -196,7 +195,7 @@ class XrasCommand(BaseCommand):
     def _pending_worklist(self):
         """Feed B, as ``xras_sweep`` last published it — or ``(None, False)``.
 
-        ⚠️ **This is why the CLI and the dashboard used to disagree.** The card
+        WARNING: **This is why the CLI and the dashboard used to disagree.** The card
         reads the sweep's snapshot; ``--accounts`` only ever read the action
         log, so on a stack where XRAS had not yet repointed the card showed a
         real queue and the CLI reported zero. Same question, two answers, and
@@ -347,7 +346,7 @@ class XrasCommand(BaseCommand):
     # -- helpers ----------------------------------------------------------
 
     def _filters(self, status, action_type, request_number, last):
-        """Normalise CLI options into query kwargs.
+        """Normalize CLI options into query kwargs.
 
         ``--last`` wins over nothing: with no window given the command shows all
         time rather than a silent default. The dashboard defaults to 30 days

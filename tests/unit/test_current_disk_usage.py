@@ -30,7 +30,7 @@ def _disk_account(session):
 
 
 def _seed_summary(session, account, user, *, activity_date, bytes_, ty=1.0, files=10):
-    # FK: disk_charge_summary.activity_date → disk_charge_summary_status.activity_date.
+    # FK: disk_charge_summary.activity_date -> disk_charge_summary_status.activity_date.
     # Ensure the parent status row exists before inserting the child summary.
     if session.get(DiskChargeSummaryStatus, activity_date) is None:
         session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=False))
@@ -110,7 +110,7 @@ class TestMarkSnapshotCurrent:
 class TestAccountCurrentDiskUsage:
 
     def test_returns_latest_snapshot_not_sum(self, session):
-        """Two snapshots, only the later marked current → answer is the
+        """Two snapshots, only the later marked current -> answer is the
         later snapshot's bytes, NOT the sum."""
         user, project, account = _disk_account(session)
         d1 = next_date("disk_snap")
@@ -140,7 +140,7 @@ class TestAccountCurrentDiskUsage:
         assert usage.bytes == 3 * 1024 ** 4
 
     def test_returns_none_for_non_disk_resource(self, session):
-        """Account whose resource_type is not DISK → None."""
+        """Account whose resource_type is not DISK -> None."""
         user = make_user(session)
         project = make_project(session, lead=user)
         rt = make_resource_type(session, resource_type=f"HPC-{next_seq('rt')}")

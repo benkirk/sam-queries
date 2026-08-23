@@ -31,7 +31,7 @@ SRC = Path(__file__).resolve().parents[2] / 'src'
 def _run(body: str, *, path_shadow: bool = False) -> subprocess.CompletedProcess:
     """Execute `body` in a fresh interpreter that can see `src/`.
 
-    ⚠️ `FLASK_ACTIVE` is stripped from the child's environment. pytest sets it
+    WARNING: `FLASK_ACTIVE` is stripped from the child's environment. pytest sets it
     in `pytest_configure` (it must be set before `system_status.base` is
     imported), and a subprocess would inherit it — under which `sam.base`
     binds to Flask-SQLAlchemy and importing `sam` pulls in flask, and

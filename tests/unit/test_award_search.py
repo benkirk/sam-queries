@@ -96,7 +96,7 @@ def _reset_award_cache(monkeypatch):
     halves are load-bearing, and clearing ``_adapters`` alone is **not** enough:
 
     * ``reset_for_tests()`` pins every bucket off, so a test sees a real compute
-      rather than a neighbour's cached value. Every ``TestSearchAwards`` case
+      rather than a neighbor's cached value. Every ``TestSearchAwards`` case
       searches the same term, so they all share the key
       ``('NSF Awards API', 'q', 10)``.
     * ``CACHE_REDIS_URL`` is dropped because CI runs pytest *inside* the compose
@@ -105,7 +105,7 @@ def _reset_award_cache(monkeypatch):
       intact and values leak across tests — and worse, xdist workers share one
       Redis, so no amount of per-test cleanup is race-free.
 
-    The two cache-behaviour tests below re-enable explicitly by clearing
+    The two cache-behavior tests below re-enable explicitly by clearing
     ``_adapters``.
     """
     monkeypatch.delenv('CACHE_REDIS_URL', raising=False)

@@ -22,7 +22,7 @@ Modules:
     statistics: Statistics and reporting
     directory_access: LDAP directory access (unix groups + accounts by access branch)
     project_access: LDAP project group status (by access branch)
-    fstree_access: PBS fairshare tree (Facility → AllocationType → Project → Resource)
+    fstree_access: PBS fairshare tree (Facility -> AllocationType -> Project -> Resource)
 """
 
 # Lookups

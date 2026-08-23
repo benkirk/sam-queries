@@ -218,7 +218,7 @@ class TestFilters:
 
 class TestSorting:
     def test_unknown_sort_key_raises(self, session):
-        """Defence in depth: the route whitelists too, but a raw column name
+        """Defense in depth: the route whitelists too, but a raw column name
         must never reach order_by."""
         with pytest.raises(ValueError, match='Unknown sort_by'):
             get_recent_xras_actions(session, sort_by='raw_payload')
@@ -307,9 +307,9 @@ class TestSummary:
     def test_every_status_appears_even_at_zero(self, session):
         """An absent bucket reads as "not measured" rather than "none".
 
-        ⚠️ ``>=``, not ``==``. The five are a **floor**: this function deliberately
+        WARNING: ``>=``, not ``==``. The five are a **floor**: this function deliberately
         keeps any status outside the vocabulary rather than dropping it, so a superset
-        is correct behaviour, not a leak to assert against.
+        is correct behavior, not a leak to assert against.
 
         It is also not a hypothetical here. ``test_xras_dashboard.py``'s
         ``committed_odd_status_action`` fixture writes a ``pending`` row on its own
@@ -583,8 +583,7 @@ class TestActivityTags:
         something they cannot action.
 
         The example is `transfer`, which is now the ONLY service left out of
-        XRAS_SERVICE_KINDS. It used to be `adjust` as well — the rule has not
-        changed, only the sole surviving instance of it. (A real Transfer
+        XRAS_SERVICE_KINDS, and the only one. (A real Transfer
         parks as `manual` and so never reaches this table at all; what is
         under test is the mapping, not the status.)
         """
@@ -902,7 +901,7 @@ class TestNotifyRecipients:
         assert people[0]['name'] == 'Benjamin Kirk'
 
     def test_a_middle_name_only_user_is_greeted_by_surname(self, session):
-        """⚠️ The `or full_name` behind `display_name` does NOT rescue this.
+        """WARNING: The `or full_name` behind `display_name` does NOT rescue this.
 
         `display_name` returns 'Kirk' — truthy — so the fallback never fires,
         and a user with a middle name but no first name is greeted by surname
@@ -1002,13 +1001,13 @@ class TestActionTypeAliases:
     def test_a_non_aliased_type_is_unaffected(self, session):
         """The widening must not leak across types.
 
-        ⚠️ Scoped to the two rows this test created, not asserted as equality
+        WARNING: Scoped to the two rows this test created, not asserted as equality
         over every ``New`` row in the table. ``xras_action_log`` is shared:
         `tests/unit/test_xras_accounts_card.py` COMMITS a row (its route reads
         through Flask-SQLAlchemy's own connection and only sees committed
         rows), and xdist workers share one database — so an exact-equality
         assertion here fails intermittently on somebody else's fixture rather
-        than on the behaviour under test.
+        than on the behavior under test.
         """
         _action(session, action_type='Adjustment', request_number='UWIS0064')
         _action(session, action_type='New', request_number='NCAR4253')

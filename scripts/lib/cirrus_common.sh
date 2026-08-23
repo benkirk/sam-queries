@@ -46,7 +46,7 @@ TASKS_MAX_SILENCE_S=4200
 # the issued cert. INGRESS_HOSTS is every name the ingress answers for — primary
 # plus helm webapp.tls.extraHosts — all covered by the one multi-SAN TLS_SECRET.
 # Keep both in lockstep with helm/values.yaml. Scripts that address the app by a
-# single canonical name use INGRESS_HOST; scripts that verify edge behaviour
+# single canonical name use INGRESS_HOST; scripts that verify edge behavior
 # should iterate INGRESS_HOSTS so an alias can't silently regress.
 INGRESS_HOST="samuel.k8s.ucar.edu"
 INGRESS_HOSTS=("samuel.k8s.ucar.edu" "sam.hpc.ucar.edu")

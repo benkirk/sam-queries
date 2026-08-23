@@ -38,7 +38,7 @@ _CACHE = BucketedTTLCache('awards', 'awards', {
 })
 
 #: Test seam, matching the fs-scans / jobs idiom: ``_adapters`` IS the
-#: cache's memo dict, so clearing it re-initialises the cache.
+#: cache's memo dict, so clearing it re-initializes the cache.
 _adapters = _CACHE._adapters
 
 
@@ -50,7 +50,7 @@ def cached_lookup(provider_name: str, contract_number: str,
     award" (``None``) — an ``AwardSourceUnavailable`` propagates out of
     *compute* before the store, so a transient outage is never remembered.
 
-    The number is normalised into the key for the same reason
+    The number is normalized into the key for the same reason
     :func:`cached_search` casefolds its term: ``'ags-1852977'`` and
     ``'AGS-1852977'`` are one award, and without this they would occupy two
     entries in an 8-day bucket.

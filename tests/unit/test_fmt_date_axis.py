@@ -63,7 +63,7 @@ class TestContextAppearsOnlyWhenItChanges:
         assert _lines(got[0])[1] == '2026'
 
     def test_year_reappears_at_the_boundary(self):
-        # The pace chart is always a window centred on today, so it crosses a
+        # The pace chart is always a window centerd on today, so it crosses a
         # year boundary for half of every year.
         got = fmt._label_ticks(
             [datetime(2026, 10, 1) + timedelta(days=61 * i) for i in range(6)])
@@ -129,7 +129,7 @@ class TestMplDateTicks:
                                            'Jul 28', 'Jul 29']
 
     def test_single_value_call_is_self_describing(self):
-        """The `__call__` path has no neighbours, so nothing may be
+        """The `__call__` path has no neighbors, so nothing may be
         suppressed — it feeds cursor readouts, not the axis."""
         from matplotlib.dates import date2num
         _loc, fmtr = fmt.mpl_date_ticks()
@@ -167,7 +167,7 @@ class TestCompactDateLabels:
     def test_unparsable_grain_degrades_to_the_raw_strings(self):
         """Week and quarter grains, or anything the plugin someday spells
         differently. A half-converted axis is worse than a consistent ISO
-        one — and a chart must not raise on a label it does not recognise."""
+        one — and a chart must not raise on a label it does not recognize."""
         raw = ['2026-W12', '2026-W13']
         assert fmt.compact_date_labels(raw) == raw
 

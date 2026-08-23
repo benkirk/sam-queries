@@ -38,13 +38,13 @@ _AH_TOP_SEGMENTS = 10
 
 
 def bucket_segments(owners, metric='data'):
-    """Per-bucket stacked-bar segments, bottom → top.
+    """Per-bucket stacked-bar segments, bottom -> top.
 
     Returns a list of segment values (in *metric* units — ``'data'`` bytes or
     ``'files'`` counts) ordered as the long-tail "other" aggregate (if any)
     followed by the top-``_AH_TOP_SEGMENTS`` owners ascending — so the largest
     owner sits at the top of the bar. Empty list when the bucket has no owners
-    (→ drawn as a single flat bar).
+    (-> drawn as a single flat bar).
     """
     if not owners:
         return []
@@ -82,7 +82,7 @@ class CategoricalStackChart(BaseChart):
         raise NotImplementedError
 
     def bucket_segments(self, bucket) -> list:
-        """Stack segments bottom → top, or [] for a flat bar."""
+        """Stack segments bottom -> top, or [] for a flat bar."""
         raise NotImplementedError
 
     def bucket_is_clickable(self, bucket) -> bool:
@@ -310,8 +310,8 @@ class JobsHistogram(CategoricalStackChart):
         return self.log_y or not self._has_owners
 
     def flat_bar_color(self, i):
-        # Without owners the whole chart is one series in the primary colour
-        # (UNITY_PALETTE_10[0], the historical flat chart's colour — NOT the
+        # Without owners the whole chart is one series in the primary color
+        # (UNITY_PALETTE_10[0], the historical flat chart's color — NOT the
         # stack palette's first entry, which is gold); with owners it keeps
         # the per-band palette its stack would have used.
         # `band_colors` is already lifted for the theme; the bare fallback is

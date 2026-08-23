@@ -1,6 +1,6 @@
 """``cleanup_status_snapshots`` — prune old `system_status` rows nightly.
 
-⚠️ **A task computes from ``ctx.occurrence``, never from the wall clock.**
+WARNING: **A task computes from ``ctx.occurrence``, never from the wall clock.**
 That is what makes a run dispatched five hours late produce exactly the same
 result as a punctual one, which is in turn what makes the whole scheme
 deterministic and re-runnable. It is the single easiest thing for a task author

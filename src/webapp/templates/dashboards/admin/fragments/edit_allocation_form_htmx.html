@@ -42,7 +42,7 @@
     errors=errors
 ) %}
 
-  {# ── Inherited allocation warning + break-inheritance collapse ──── #}
+  {# Inherited allocation warning + break-inheritance collapse #}
   {% if allocation.is_inheriting %}
   {# Hidden input BEFORE the collapse so JS getElementById always finds it #}
   <input type="hidden" id="break_inheritance" name="break_inheritance" value="false">
@@ -110,7 +110,7 @@
   </div>
   {% endif %}
 
-  {# ── Section A: Shared-pool notice (linked children) ──────────────── #}
+  {# Section A: Shared-pool notice (linked children) #}
   {% if allocation.children %}
   {%- set live_children = allocation.children | selectattr('deleted', 'equalto', False) | list -%}
   <div class="alert alert-info py-2 mb-2">
@@ -122,7 +122,7 @@
   </div>
   {% endif %}
 
-  {# ── Section B: Carve-out summary (frontier decomposition) ─────────── #}
+  {# Section B: Carve-out summary (frontier decomposition) #}
   {# frontier.carve_total sums the standalone carve-out allocations on the  #}
   {# direct frontier — the same numbers as the allocation tree and the      #}
   {# allocate-down modal. Do NOT use allocation.children — shared copies.   #}
@@ -147,7 +147,7 @@
   {% endif %}
   {% endif %}
 
-  {# ── Section C: Unlinked descendants button ──────────────────────── #}
+  {# Section C: Unlinked descendants button #}
   {# Counts descendants with NO allocation for this resource at all.    #}
   {# Detached children (have allocation but not in .children) excluded. #}
   {% if unlinked_descendants_count is defined and unlinked_descendants_count > 0 %}
@@ -169,7 +169,7 @@
   </div>
   {% endif %}
 
-  {# ── Section E: Relink to parent (Case 1b — standalone child w/ parent) ── #}
+  {# Section E: Relink to parent (Case 1b — standalone child w/ parent) #}
   {# Only shown when the child's project has a parent project with a compatible #}
   {# (overlapping, non-inheriting) allocation for the same resource. Relinking  #}
   {# mirrors parent amount/start/end so the result is functionally identical to #}
@@ -201,7 +201,7 @@
     </div>
   </div>
 
-  {# ── Section D: Standalone allocation note (Case 1) ──────────────── #}
+  {# Section D: Standalone allocation note (Case 1) #}
   {# Suppressed when Section E shows — a relink candidate is more actionable. #}
   {% elif not allocation.is_inheriting and not allocation.children %}
   <div class="alert alert-secondary py-1 mb-3 small">
@@ -211,7 +211,7 @@
   </div>
   {% endif %}
 
-  {# ── Read-only context ────────────────────────────────────────── #}
+  {# Read-only context #}
   <div class="row mb-3 text-muted small">
     <div class="col-md-6">
       <strong>Project:</strong> {{ projcode }}
@@ -229,10 +229,10 @@
     </div>
   </div>
 
-  {# ── Editable fields (disabled if inheriting; inline onchange JS in the
+  {# Editable fields (disabled if inheriting; inline onchange JS in the
        break-inheritance collapse toggles the `disabled` attribute on
        #editAllocAmount / #editAllocStart / #editAllocEnd — those IDs are
-       preserved via explicit `id=` args below so the JS keeps working). ── #}
+       preserved via explicit `id=` args below so the JS keeps working). #}
   {% set disabled = allocation.is_inheriting %}
   {% set _amount_help = '<span class="number-preview text-primary fw-semibold"></span>'
                        ~ ('<span class="text-muted"> Edit parent allocation to change this.</span>' if disabled else '') %}

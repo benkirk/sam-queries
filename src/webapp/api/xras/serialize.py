@@ -22,7 +22,7 @@ Endpoints 1-2 (``/people``, ``/people/{username}``) return bare payloads;
 endpoints 3-6 wrap in ``{"message": ..., "result": ...}``. That asymmetry comes
 from the Java controllers — ``IdentityServiceController`` returns the DTO raw
 while the others ``return new ResponseWrapper(response)``. Rather than two code
-paths, the envelope is a keyword argument, so re-standardising the outliers later
+paths, the envelope is a keyword argument, so re-standardizing the outliers later
 is deleting one argument.
 
 Null handling is per-DTO

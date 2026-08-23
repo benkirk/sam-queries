@@ -42,7 +42,7 @@ def test_both_metrics_render_svg():
 
 
 def test_bytes_and_files_render_differently():
-    """Same data, different metric → different SVG (and distinct cache keys,
+    """Same data, different metric -> different SVG (and distinct cache keys,
     so the two variants never collide in the LRU)."""
     svg_bytes = generate_disk_usage_stacked_area(_timeseries(), metric='bytes')
     svg_files = generate_disk_usage_stacked_area(_timeseries(), metric='files')

@@ -371,7 +371,7 @@ def make_allocation(
     """Build and flush a fresh Allocation, auto-building an Account if needed.
 
     Delegates to `Allocation.create()`, which validates `amount > 0` and
-    creates the Account → Project → Resource graph as needed.
+    creates the Account -> Project -> Resource graph as needed.
     """
     if account is None:
         account = make_account(session)

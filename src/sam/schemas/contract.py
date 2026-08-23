@@ -1,47 +1,19 @@
-"""
-Contract schemas for API serialization.
+"""Contract schemas for API serialization.
 
-Provides one level today:
-- ContractSummarySchema: Minimal fields for nested references
-
-Only the Summary tier exists because nothing yet needs more: there is no
-``/api/v1/contracts/`` endpoint, and the webapp's contract card renders from
+Only ``ContractSummarySchema`` exists, because nothing yet needs more: there is
+no ``/api/v1/contracts/`` endpoint, and the webapp's contract card renders from
 ORM objects via ``get_contract_detail``. Add List/Full tiers when an endpoint
-actually needs them rather than speculatively.
+needs them, not speculatively.
 
-**This schema changed a public API response shape.**
-``ProjectSchema.get_contracts`` used to emit hand-padded f-strings and now
-returns these structured objects, so ``GET /api/v1/projects/<projcode>``
-went from a list of ``f"{source} {number:<20} {title}"`` strings::
+``ProjectSchema.get_contracts`` emits these structured objects, so
+``GET /api/v1/projects/<projcode>`` returns ``contracts`` as a list of objects
+rather than hand-padded strings. This is also the CLI's primary contract
+serializer -- ``sam-search contracts``, ``sam-search awards`` and
+``sam-admin contracts --validate`` all build their envelopes from it via
+``cli.contracts.builders``.
 
-    "contracts": ["NSF AGS-1852977          The Management and Operation of …"]
-
-to a list of objects carrying the fields below (``contract_id``,
-``contract_number``, ``title``, ``contract_source``, ``start_date``,
-``end_date``, ``is_active``, ``url``, ``pi_username``, ``monitor_username``,
-``nsf_program``)::
-
-    "contracts": [{"contract_number": "AGS-1852977", "contract_source": "NSF",
-                   "title": "…", "is_active": true, …}]
-
-Shipped together in #403. (An earlier draft of this docstring called the
-repoint a deferred follow-up; it was not deferred, and saying so misled
-readers into believing the response shape was unchanged.)
-
-Beyond the API, this is also the CLI's primary serializer — ``sam-search
-contracts``, ``sam-search awards`` and ``sam-admin contracts --validate`` all
-build their JSON envelopes from it via ``cli.contracts.builders``.
-
-Usage:
-    from sam.schemas import ContractSummarySchema
-
-    # Nested reference (minimal)
-    summary_data = ContractSummarySchema().dump(contract)
-    summaries = ContractSummarySchema(many=True).dump(contracts)
-
-Note this dumps fine outside a Flask application context — ``BaseSchema.Meta.
-sqla_session`` is only consulted by ``load()``, never by ``dump()`` — which is
-what lets ``sam-admin contracts --validate`` use it.
+It dumps fine outside a Flask application context: ``BaseSchema.Meta.sqla_session``
+is consulted by ``load()``, never by ``dump()``.
 """
 
 from marshmallow import fields

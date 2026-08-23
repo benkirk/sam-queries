@@ -9,7 +9,7 @@ both cases.
 
 The `--recheck` path is deliberately NOT exercised end-to-end here: it builds a
 full Flask app to get an application context (see `XrasCommand._replay` for why
-that is the right call rather than a second write path). Its behaviour is covered
+that is the right call rather than a second write path). Its behavior is covered
 at `tests/api/test_xras_access.py::TestReplay`; what is tested here is the
 option plumbing around it.
 """
@@ -204,7 +204,7 @@ class TestWindowParsing:
         assert XrasCommand._parse_days(value) == expected_days
 
 
-# ── the account worklist, person lookup, and the two-sided mapping audit ──
+# the account worklist, person lookup, and the two-sided mapping audit
 
 class TestAccountsMode:
     """``--accounts``: who must exist in SAM before a handoff works."""
@@ -216,7 +216,7 @@ class TestAccountsMode:
         assert result.exit_code == EXIT_SUCCESS
 
     def test_the_json_envelope_carries_the_expected_kind(self, runner, cli_session):
-        # ⚠️ `result.stdout`, not `result.output` — the latter merges stderr,
+        # WARNING: `result.stdout`, not `result.output` — the latter merges stderr,
         # and the whole point of the split below is that a degradation notice
         # must not land inside the envelope.
         result = runner.invoke(cli, ['--format', 'json', 'xras', '--accounts'])
@@ -233,7 +233,7 @@ class TestAccountsMode:
 
     def test_a_degradation_notice_never_lands_inside_the_json(
             self, runner, cli_session, monkeypatch):
-        """⚠️ Regression: `ctx.console` is **stdout**.
+        """WARNING: Regression: `ctx.console` is **stdout**.
 
         Every "could not reach X, reporting the local half" notice on this
         command used to print there, which put prose ahead of the envelope and
@@ -259,7 +259,7 @@ class TestAccountsMode:
         dashboard showed a real queue, because it only ever read the action log
         and the card reads the sweep's published snapshot.
 
-        ⚠️ Overlap between the feeds is normal — Feed A is precisely what has
+        WARNING: Overlap between the feeds is normal — Feed A is precisely what has
         POSTED, Feed B what XRAS approved and may or may not have sent — so
         this is a union on the casefolded username, not a concatenation.
         """
@@ -553,7 +553,7 @@ class TestOpportunityAudit:
         ``Educational`` — the same type id as Classroom — while SAM means
         ``Small (No NSF award)``. It changes the answer, so a human decides.
 
-        ⚠️ Reported with **both** derivations, so the row explains itself
+        WARNING: Reported with **both** derivations, so the row explains itself
         without a second query. That is what makes it actionable rather than
         merely alarming.
         """
@@ -589,7 +589,7 @@ class TestOpportunityAudit:
 
     def test_the_proposal_covers_only_unmapped_opportunities(
             self, runner, cli_session, monkeypatch, session):
-        """⚠️ The rule that keeps the ``review`` bucket meaningful.
+        """WARNING: The rule that keeps the ``review`` bucket meaningful.
 
         Two rows in production are ``source='manual'`` *because* the two
         derivations disagree and a human settled it. Run the proposal over

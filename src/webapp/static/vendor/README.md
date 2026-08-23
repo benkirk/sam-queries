@@ -42,8 +42,8 @@ hashed (their integrity rests on git history), but CI does assert they are prese
 ## How integrity is enforced
 
 Each registry entry pins the `sha384` of its entry-point file. For the five
-formerly-CDN assets these are the *original publisher SRI values*; the downloads were
-verified against them at vendoring time. Because the files are now served locally, the
+five assets vendored from a CDN these are the *original publisher SRI values*; the
+downloads were verified against them at vendoring time. Because the files are now served locally, the
 browser no longer performs an SRI check — instead
 `tests/unit/test_vendor_assets.py` re-computes the sha384 of every committed file and
 fails CI on any mismatch. So the `path` and `sha384` of an entry must always be updated

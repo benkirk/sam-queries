@@ -1,22 +1,22 @@
 """Read-side queries over ``task_run``.
 
-The webapp's view of the scheduled-task ledger: the Admin → Configuration
+The webapp's view of the scheduled-task ledger: the Admin -> Configuration
 card's counts, and the run-history page's table plus its facet chips.
 
 Built on :mod:`querykit` — the count / page / facet skeleton and the
 self-exclusion rule live there; the ``_filters`` body below is this table's
 own.
 
-⚠️ **The clock.** ``task_run`` timestamps are naive **UTC**, like everything
+WARNING: **The clock.** ``task_run`` timestamps are naive **UTC**, like everything
 else on this bind. ``sam/queries/notifications.py`` — the module this one is
-modelled on — computes its windows with ``datetime.now()`` because
+modeled on — computes its windows with ``datetime.now()`` because
 ``notification_log`` lives in SAM MySQL and is naive-**Mountain**. Copying
-that import verbatim would shift every count here by 6–7 hours: exactly the
-bug ``SCHEDULED_TASKS.md`` § 3.1 found in the old cleanup script, in exactly
+that import verbatim would shift every count here by 6-7 hours: exactly the
+bug ``SCHEDULED_TASKS.md`` § 3.1 records against the cleanup script, in exactly
 the same way. Every window in this module goes through
 :func:`system_status.timeutil.utcnow_naive`.
 
-Returns ORM rows rather than dicts, unlike its neighbours in this package
+Returns ORM rows rather than dicts, unlike its neighbors in this package
 (``user_proj_queues`` shapes rows for templates). That is the facade's shape,
 inherited from the notifications page it mirrors; the detail modal needs the
 row's own columns and there is no CLI consumer to keep in step.
@@ -81,7 +81,7 @@ def summarize_task_runs(session: Session, *,
                         window_hours: int = DEFAULT_WINDOW_HOURS,
                         stale_lease_seconds: Optional[int] = None
                         ) -> Dict[str, Any]:
-    """Counts for the Admin → Configuration card.
+    """Counts for the Admin -> Configuration card.
 
     One grouped query for the states, plus one scalar for the stale counter —
     not one query per row on the card.
@@ -211,7 +211,7 @@ def _filters(*, since: Optional[datetime] = None,
     """The WHERE terms shared by the table, the count and the facets.
 
     One builder so a filter added to the table cannot be forgotten in the
-    facet rollups — which would show counts the table does not honour.
+    facet rollups — which would show counts the table does not honor.
     """
     conditions = []
     if since is not None:

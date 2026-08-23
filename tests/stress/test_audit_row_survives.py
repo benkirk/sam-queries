@@ -45,7 +45,7 @@ def _resources(count, first_key=990_000, bad_amount=False):
 
 
 def _compact(payload):
-    """Serialise the way a broker would, not the way ``json.dumps`` defaults to.
+    """Serialize the way a broker would, not the way ``json.dumps`` defaults to.
 
     ``json.dumps``'s default ``', '``/``': '`` separators add ~40% to a
     resource-heavy body, which is enough to make the payload overflow first and mask
@@ -58,7 +58,7 @@ def test_oversize_error_messages(xras_client, action_log, dispatching, scenario,
                                  committing_route):
     """1,000 resources on a **New**, each with an unmapped key *and* a bad amount.
 
-    ⚠️ The action type matters, and finding out why was the useful part.
+    WARNING: The action type matters, and finding out why was the useful part.
 
     ``resourceRepositoryKey`` is a long field name, so one unmapped key costs about as
     many bytes in the body as the message it produces — measured **1.00x** on the
@@ -108,7 +108,7 @@ def test_oversize_error_messages(xras_client, action_log, dispatching, scenario,
     # send an operator hunting for errors that were never written down.
     assert 'truncated' in stored.lower()
 
-    # ⚠️ The 422 BODY is not truncated. It is the wire contract XRAS administrators
+    # WARNING: The 422 BODY is not truncated. It is the wire contract XRAS administrators
     # read, and the accumulated list is the entire point of it — only the stored copy
     # is bounded.
     returned = json.loads(resp.data)['result']['errors']
@@ -166,7 +166,7 @@ def test_oversize_raw_payload(xras_client, action_log, scenario):
     stored = row['raw_payload']
     assert len(stored.encode()) <= TEXT_LIMIT
 
-    # ⚠️ A truncated payload is **not replayable**, and the stored bytes say so rather
+    # WARNING: A truncated payload is **not replayable**, and the stored bytes say so rather
     # than looking like a normal capture. Replay reads them back through the schema;
     # truncated JSON would fail to parse, which is at least loud — but an operator
     # deciding whether to click Replay deserves to know first.
@@ -223,9 +223,9 @@ ASTRAL = '\U0001F30A'          # 🌊 WATER WAVE
 
 
 def _raw_utf8(payload):
-    """Serialise the way the broker does: **raw UTF-8, not ``\\uXXXX`` escapes.**
+    """Serialize the way the broker does: **raw UTF-8, not ``\\uXXXX`` escapes.**
 
-    ⚠️ This is the whole test, and getting it wrong makes the scenario vacuous.
+    WARNING: This is the whole test, and getting it wrong makes the scenario vacuous.
     ``json.dumps`` defaults to ``ensure_ascii=True``, which turns the emoji into the
     ASCII sequence ``\\ud83c\\udf0a`` — a body that is pure ASCII, stores fine in
     utf8mb3, and proves nothing. The first draft of this test did exactly that and
@@ -248,7 +248,7 @@ def test_astral_unicode_payload(xras_client, action_log, scenario):
     under ``STRICT_TRANS_TABLES`` — confirmed on in production — and `_record` has no
     ``try``/``except``, so both lose the row and answer 500.
 
-    ⚠️ Not contrived. ``raw_payload`` is the XRAS body **verbatim**, so it carries
+    WARNING: Not contrived. ``raw_payload`` is the XRAS body **verbatim**, so it carries
     whatever a PI typed into a title or an abstract, and ``error_messages`` interpolates
     those same values back out. An emoji in a project title is an ordinary thing.
 
@@ -268,7 +268,7 @@ def test_astral_unicode_payload(xras_client, action_log, scenario):
     assert row['status'] == scenario['expect']
     # The row exists AND the character round-tripped — a guard that stored `?` or
     # U+FFFD here would pass a "did it survive" check while corrupting the one
-    # artefact an operator replays from.
+    # artifact an operator replays from.
     assert ASTRAL in row['raw_payload']
 
 
@@ -297,7 +297,7 @@ def test_astral_unicode_identifier(xras_client, action_log, scenario):
     assert resp.status_code == scenario['http']
     row = action_log.one()
     assert row['status'] == scenario['expect']
-    # Sanitised, not dropped: the row still says an action type arrived and roughly
+    # Sanitized, not dropped: the row still says an action type arrived and roughly
     # what it was.
     assert row['action_type'] is not None
     assert ASTRAL not in row['action_type']

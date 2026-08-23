@@ -12,7 +12,7 @@ confidence from the actions tests.
 
 Both columns are checked here, and they are guarded by different mechanisms — which is
 the point of testing them together. ``raw_payload`` is utf8mb4 and survives by **charset**;
-``outcome_reason`` is utf8mb3 and survives by ``_fit``'s **sanitising**. A change to
+``outcome_reason`` is utf8mb3 and survives by ``_fit``'s **sanitizing**. A change to
 either one alone leaves this file half-red.
 """
 
@@ -27,7 +27,7 @@ pytestmark = pytest.mark.stress
 def test_unmapped_path_oversize_body(xras_client, action_log, scenario):
     """A body far past the column, POSTed to a path we do not implement.
 
-    ⚠️ Unlike ``test_oversize_raw_payload``, nothing here refuses the request first.
+    WARNING: Unlike ``test_oversize_raw_payload``, nothing here refuses the request first.
     ``post_action`` checks the length and answers 422; ``unmapped_path`` records
     unconditionally, so ``_fit_payload`` is the *only* thing between a 16 MB body and a
     lost row. Worth its own test for exactly that reason.
@@ -56,7 +56,7 @@ def test_unmapped_path_astral(xras_client, action_log, scenario):
 
     Exercises the two guards against each other. The path is echoed into
     ``outcome_reason`` — ``varchar(255)``, still utf8mb3, so it survives only because
-    ``_fit`` sanitises. The body lands in ``raw_payload`` — utf8mb4, so it survives
+    ``_fit`` sanitizes. The body lands in ``raw_payload`` — utf8mb4, so it survives
     intact. Before either guard, this lost the row and answered 500.
     """
     resp = xras_client.post(f'/api/xras/v1/things/{ASTRAL}',
@@ -67,7 +67,7 @@ def test_unmapped_path_astral(xras_client, action_log, scenario):
     row = action_log.one()
     assert row['status'] == scenario['expect']
 
-    # utf8mb3 column, sanitised: the row survives and still names the path.
+    # utf8mb3 column, sanitized: the row survives and still names the path.
     assert row['outcome_reason'] is not None
     assert ASTRAL not in row['outcome_reason']
     assert row['outcome_reason'].startswith('POST /api/xras/v1/things/')

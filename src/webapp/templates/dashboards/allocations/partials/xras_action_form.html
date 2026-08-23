@@ -17,7 +17,7 @@
 </h5>
 
 {% if withdrawing %}
-{# ⚠️ The word "withdraw" sounds lighter than what this does, and an operator
+{# WARNING: The word "withdraw" sounds lighter than what this does, and an operator
    reaching for it is usually thinking "close this stale request". Say plainly
    that it de-approves and rewrites history, and that a multi-action request
    does not close this way. #}
@@ -74,7 +74,7 @@
             </span>
             {% endif %}
             {% if xa_user_is_placeholder %}
-            {# ⚠️ The role-holder SAM impersonates is itself an unmerged ARC
+            {# WARNING: The role-holder SAM impersonates is itself an unmerged ARC
                placeholder. XRAS authorizes it — the placeholder really does
                hold the role — but the operator is acting as a throwaway
                identity that a merge on this card would delete. Worth seeing;
@@ -92,7 +92,7 @@
 </div>
 
 {% if not withdrawing %}
-{# ⚠️ The preflight verdict is a function of WHO we impersonate, not only of
+{# WARNING: The preflight verdict is a function of WHO we impersonate, not only of
    the action: the same action has been measured validating as the project lead
    and failing as the allocation manager. So it is always shown next to the
    user it was evaluated as, and a failure disables the button rather than

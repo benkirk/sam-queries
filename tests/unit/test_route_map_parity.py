@@ -5,7 +5,7 @@ the registered surface — every ``(endpoint, rule, methods)`` triple — is
 untouched, so template ``url_for`` calls and htmx attributes keep working:
 
 1. the form-layer OO refactor (handler classes, the CRUD registrar), and
-2. the fs-scans ↔ job-history consolidation, which moves the two
+2. the fs-scans <-> job-history consolidation, which moves the two
    navigators' 37 fragment routes onto a shared ``ModeSpec``/``PanelSpec``
    registrar (``docs/plans/implemented/FS_SCANS_JOBS_CONSOLIDATION.md``).
 

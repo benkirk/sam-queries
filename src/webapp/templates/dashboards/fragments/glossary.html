@@ -13,7 +13,7 @@
 #}
 
 
-{# ── Rolling consumption rate (popover) ── #}
+{# Rolling consumption rate (popover) #}
 {% macro g_rolling_rate() -%}
 Charges over the last 30/90 days compared with the <em>prorated steady-state
 rate</em> — the pace needed to spend exactly the allocation over its period.
@@ -25,7 +25,7 @@ rate</em> — the pace needed to spend exactly the allocation over its period.
 rate crosses it.
 {%- endmacro %}
 
-{# ── Consumption-rate limit (popover) ── #}
+{# Consumption-rate limit (popover) #}
 {% macro g_threshold_limit(window=None) -%}
 Sets a <strong>hard limit</strong> on a project's resource consumption rate.
 Exceeding this threshold prevents the system from scheduling new jobs until
@@ -43,7 +43,7 @@ total pool consumption; the lighter inner segment (and "(N yours)") is this
 project's own contribution.
 {%- endmacro %}
 
-{# ── Allocation trees: shared / standalone / carve-out / unallocated ──
+{# Allocation trees: shared / standalone / carve-out / unallocated
    One vocabulary for the admin Allocations tab and its forms. A "shared"
    allocation is linked to its parent (a pool copy); a "standalone" one has
    its own amount; a standalone sub-project allocation with a distinct
@@ -111,7 +111,7 @@ reference, not a threshold.
 {%- endmacro %}
 
 
-{# ── Units (tooltips) ── #}
+{# Units (tooltips) #}
 {% macro g_au() -%}
 Allocation Units — the charged cost of compute, weighted by job size, node type
 and queue. Drawn down from your allocated total.
@@ -143,7 +143,7 @@ allocations are charged.
 {%- endmacro %}
 
 
-{# ── Transaction & adjustment types (popover) ── #}
+{# Transaction & adjustment types (popover) #}
 {% macro g_txn_types() -%}
 {# Popover HTML collapses source newlines, so use explicit <br>&bull; per item
    (matches g_rolling_rate) rather than '·' separators, which otherwise wrap
@@ -155,7 +155,7 @@ allocations are charged.
 <br>&bull; <strong>ADJUSTMENT</strong> — manual correction to the balance.
 {%- endmacro %}
 
-{# ── Scheduler / queue states (popover) ── #}
+{# Scheduler / queue states (popover) #}
 {% macro g_queue_states() -%}
 Counts below split each of Jobs, Cores and GPUs by scheduler state:
 <br>&bull; <strong>Running</strong> — currently executing
@@ -187,7 +187,7 @@ charging (e.g. a refund or a usage reclassification). "On shared account from
 another project.
 {%- endmacro %}
 
-{# ── Former institution / organization affiliations on the user card ── #}
+{# Former institution / organization affiliations on the user card #}
 {% macro g_former_affiliations() -%}
 Affiliations whose date range has closed &mdash; the person was linked to this
 institution or organization, but that link has <strong>ended</strong>.
@@ -195,7 +195,7 @@ institution or organization, but that link has <strong>ended</strong>.
 kept for history, newest first.
 {%- endmacro %}
 
-{# ── Contract currency on the project card (popover) ── #}
+{# Contract currency on the project card (popover) #}
 {% macro g_contract_status() -%}
 Every contract ever linked to this project is listed, current ones first &mdash;
 an expired grant is still the project's funding provenance.
@@ -206,7 +206,7 @@ deactivated: unlinking the last project sets its end date to that moment.
 the contract is <strong>future-dated</strong> and not yet in effect.
 {%- endmacro %}
 
-{# ── Former project associations on the user card (popover) ── #}
+{# Former project associations on the user card (popover) #}
 {% macro g_former_projects() -%}
 Projects this user is linked to but that no longer count as active:
 <br>&bull; <span class="badge bg-secondary">solid</span> — the <strong>project

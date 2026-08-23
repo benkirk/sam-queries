@@ -32,7 +32,7 @@ DEFAULT_WINDOW_HOURS = 24
 #: it reached *a* mailbox, which is what a staging run is for — and matches
 #: `_DELIVERED_STATUSES` in ``sam.queries.xras_activation``, deliberately:
 #: two "was this delivered" answers that disagreed would put a green badge on
-#: one card and a grey one on another for the same row.
+#: one card and a gray one on another for the same row.
 DELIVERED_STATUSES = ('sent', 'redirected')
 
 
@@ -96,7 +96,7 @@ def summarize_notifications(session: Session, *,
                             since: Optional[datetime] = None,
                             window_hours: int = DEFAULT_WINDOW_HOURS,
                             queued_stale_seconds: int = 300) -> Dict[str, Any]:
-    """Counts for the Admin → Configuration card.
+    """Counts for the Admin -> Configuration card.
 
     **One grouped query for the statuses**, plus one scalar for the stuck
     counter — not one query per row on the card.
@@ -203,7 +203,7 @@ def facet_notifications(session: Session, dimension: str,
                         **filters) -> Dict[str, int]:
     """Counts for one facet dimension, **excluding that dimension's filter**.
 
-    ⚠️ Self-exclusion is the whole point, and the same discipline
+    WARNING: Self-exclusion is the whole point, and the same discipline
     ``xras_fragment`` keeps. Scope a dimension by itself and every unselected
     value drops to zero the moment one is picked — the chips stop being
     switchers and become dead ends. So asking for the ``status`` facet drops
@@ -225,7 +225,7 @@ def _filters(*, since: Optional[datetime] = None,
     """The WHERE terms shared by the table, the count and the facets.
 
     One builder so a filter added to the table cannot be forgotten in the
-    facet rollups — which would show counts the table does not honour.
+    facet rollups — which would show counts the table does not honor.
     """
     conditions = []
     if since is not None:

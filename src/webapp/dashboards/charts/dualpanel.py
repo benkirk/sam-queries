@@ -1,7 +1,7 @@
 """Two-axes time-series charts for the status dashboard.
 
 `nodetype_history` and `queue_history` are the only charts in the app using
-`subplots(2, 1, sharex=True)`. They share a skeleton — empty guard, UTC→local
+`subplots(2, 1, sharex=True)`. They share a skeleton — empty guard, UTC->local
 timestamp conversion, an upper panel, a conditional lower panel, a framed
 legend on each, `autofmt_xdate` — and differ only in what they plot.
 
@@ -23,7 +23,7 @@ from webapp.dashboards.charts.theme import (
 
 
 def _to_display_tz(naive_utc_ts):
-    """Naive-UTC → naive-local for matplotlib axis rendering.  Strips tzinfo
+    """Naive-UTC -> naive-local for matplotlib axis rendering.  Strips tzinfo
     after conversion so the existing naive-datetime plotting path is
     unchanged (matplotlib renders the local-clock values directly)."""
     return fmt.to_local_dt(naive_utc_ts).replace(tzinfo=None)
@@ -125,9 +125,9 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
 
     def draw(self, axes, layout, theme):
         ax1, ax2 = axes
-        # Series colours through the theme: only ncar-blue actually moves (it
+        # Series colors through the theme: only ncar-blue actually moves (it
         # is 2.27:1 on the dark card), but resolving all of them one way keeps
-        # the next colour added here from being the exception.
+        # the next color added here from being the exception.
         vermilion, blue, sky, teal = theme.data_colors(
             [UNITY_NCAR_VERMILION, UNITY_NCAR_BLUE, UNITY_NCAR_SKY,
              UNITY_NCAR_TEAL])
@@ -157,9 +157,9 @@ class NodetypeHistoryChart(DualPanelTimeSeriesChart):
         ax1.set_ylabel('Number of Nodes', fontsize=layout.base_fontsize)
         ax1.set_ylim([0, None])
         ax1.yaxis.set_major_formatter(fmt.mpl_number_formatter())
-        # Normalized: this panel used the literal 'grey' rather than the
+        # Normalized: this panel used the literal 'gray' rather than the
         # themed gray-light every other chart uses. Undocumented, and the one
-        # grid colour a dark theme could not have swapped.
+        # grid color a dark theme could not have swapped.
         self.apply_grid(ax1, theme)
 
         ax2.set_ylabel('Utilization', fontsize=layout.base_fontsize)

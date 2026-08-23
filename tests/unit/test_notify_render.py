@@ -104,9 +104,9 @@ class TestContextAndFilters:
     ])
     def test_sam_fmt_filters_are_registered_on_the_standalone_env(
             self, renderer, filter_name):
-        """register_jinja_filters wrote app.jinja_env, so a bare Environment
-        used to get none of these. That is what put a hardcoded
-        'core-hours' in commands.py:349 for every resource type."""
+        """register_jinja_filters writes app.jinja_env, so a bare Environment
+        gets none of these unless they are registered on it — which is what put
+        a hardcoded 'core-hours' in commands.py:349 for every resource type."""
         assert filter_name in renderer.env.filters
 
     def test_alloc_unit_actually_works_in_a_notify_template(self, tmp_path):

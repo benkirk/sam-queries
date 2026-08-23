@@ -25,7 +25,7 @@ pytestmark = pytest.mark.unit
 
 
 def _ensure_status(session, activity_date):
-    """FK: disk_charge_summary.activity_date → disk_charge_summary_status.
+    """FK: disk_charge_summary.activity_date -> disk_charge_summary_status.
     Materialize the parent row before inserting the child summary."""
     if session.get(DiskChargeSummaryStatus, activity_date) is None:
         session.add(DiskChargeSummaryStatus(activity_date=activity_date, current=False))
@@ -94,7 +94,7 @@ class TestAllocationDiskCurrentFields:
         assert str(out['current_snapshot_date']).startswith(snap_date.isoformat())
 
     def test_non_disk_resource_has_null_current_fields(self, session):
-        """HPC resource → all current_* fields are null (None)."""
+        """HPC resource -> all current_* fields are null (None)."""
         user = make_user(session)
         project = make_project(session, lead=user)
         rt = make_resource_type(session, resource_type=f"HPC-{next_seq('rt')}")
@@ -111,13 +111,13 @@ class TestAllocationDiskCurrentFields:
         assert out['current_snapshot_date'] is None
 
     def test_disk_allocation_no_snapshots_returns_null(self, session):
-        """Disk resource but no disk_charge_summary rows → null current_*."""
+        """Disk resource but no disk_charge_summary rows -> null current_*."""
         user, project, account, alloc = _disk_alloc(session, amount_tib=10.0)
         # Don't seed any rows.
         schema = AllocationWithUsageSchema()
         schema.context = {'account': account, 'session': session}
         out = schema.dump(alloc)
-        # current_disk_usage returns None when there's no row → fields null.
+        # current_disk_usage returns None when there's no row -> fields null.
         assert out['current_used_bytes'] is None
         assert out['current_used_tib'] is None
         assert out['current_pct_used'] is None

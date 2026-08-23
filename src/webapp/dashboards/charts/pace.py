@@ -37,7 +37,7 @@ from webapp.dashboards.charts.theme import (
 )
 
 _PACE_TODAY_LINE_COLOR = matplotlib.colors.to_rgba(UNITY_NCAR_NAVY, 0.7)
-_PACE_RATE_SCALE = 365  # internal per-day rates → per-year axis
+_PACE_RATE_SCALE = 365  # internal per-day rates -> per-year axis
 
 OTHER_KEY = '__other__'
 
@@ -75,12 +75,12 @@ def pace_bands(allocations: List[Dict], active_at: datetime,
         amount = float(a.get('total_amount') or 0.0)
         used = float(a.get('total_used') or 0.0)
 
-        # past region: S → min(active_at, E); height = used / elapsed
+        # past region: S -> min(active_at, E); height = used / elapsed
         past_end = min(active_at, e)
         past_days = max((past_end - s).days, 0)
         past_rate = (used / past_days) if past_days > 0 else 0.0
 
-        # future region: max(active_at, S) → E; height = remaining / remaining
+        # future region: max(active_at, S) -> E; height = remaining / remaining
         future_start = max(active_at, s)
         future_days = max((e - future_start).days, 0)
         future_rate = ((amount - used) / future_days) if future_days > 0 else 0.0
@@ -277,7 +277,7 @@ class PaceChart(BaseChart):
         `pace_bands`), so a 361-element daily array is mostly repeated values.
         Subset to:
           - chart endpoints (so axis bounds stay correct),
-          - today_idx and today_idx-1 (the past→future step is the most
+          - today_idx and today_idx-1 (the past->future step is the most
             prominent visual feature; keeping both anchors a vertical edge),
           - every transition index i where any band's rate flips between
             day i-1 and day i, plus i-1 itself (the predecessor preserves the
@@ -340,7 +340,7 @@ class PaceChart(BaseChart):
     def add_legend(self, ax, layout, theme):
         # Deduplicated: one handle per top-N projcode + one Other. The number
         # next to each project tracks the active sort_by. For rate sorts,
-        # scale per-day → per-year so the number matches the axis units, and
+        # scale per-day -> per-year so the number matches the axis units, and
         # tag with "/yr" to keep that explicit.
         if self.sort_by == 'size':
             def _fmt(v):

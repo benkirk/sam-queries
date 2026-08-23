@@ -53,7 +53,7 @@
         </thead>
         {% if institution_types_grouped %}
         {% for it, insts in institution_types_grouped %}
-        {# ── Institution Type row (every cell but Actions is the trigger) ──
+        {# Institution Type row (every cell but Actions is the trigger)
            The toggle cannot live on the <tr>: it would fire on the Edit button
            too, and no button-side guard can prevent that (Bootstrap's data-api
            runs in the capture phase). See dashboards/fragments/collapse.html. #}
@@ -82,7 +82,7 @@
                 </td>
             </tr>
         </tbody>
-        {# ── Institution child rows (collapsed by default) ── #}
+        {# Institution child rows (collapsed by default) #}
         <tbody class="collapse" id="inst-type-{{ it.institution_type_id }}">
             {% for inst in insts %}
             {% set sp = inst.state_prov %}
@@ -93,7 +93,7 @@
             {% set _visible_users = _users if not active_users_projects else _users | selectattr(1) | list %}
             {% set _visible_projects = _projects if not active_users_projects else _projects | selectattr(1) | list %}
             {% set _expandable = show_users_projects and (_visible_users or _visible_projects) %}
-            {# ── Institution row — clickable when U&P are shown and non-empty ── #}
+            {# Institution row — clickable when U&P are shown and non-empty #}
             <tr class="table-secondary{% if _expandable %} cursor-pointer inst-expand-trigger{% endif %}"
                 {% if _expandable %}data-inst-target="inst-users-{{ inst.institution_id }}"{% endif %}>
                 <td class="ps-4">
@@ -150,7 +150,7 @@
                         permission=Permission.EDIT_ORG_METADATA) }}
                 </td>
             </tr>
-            {# ── Users / Projects sub-row (only when U&P are shown) ── #}
+            {# Users / Projects sub-row (only when U&P are shown) #}
             {% if _expandable %}
             <tr id="inst-users-{{ inst.institution_id }}" style="display: none;">
                 <td colspan="{{ ncols }}" class="ps-5 pt-1 pb-2">

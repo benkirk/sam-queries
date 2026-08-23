@@ -230,7 +230,7 @@ class TestExpirationNoticeStatus:
     def test_redirected_counts_as_delivered(self, session):
         """It reached *a* mailbox, which is what a staging run is for — and
         it must agree with xras_activation's answer, or the same row gets a
-        green badge on one card and a grey one on another."""
+        green badge on one card and a gray one on another."""
         make_notification_log(session, status='redirected', kind='expiration',
                               projcode='RRRR0001', recipient='r@x.edu')
         assert get_expiration_notice_status(

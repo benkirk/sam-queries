@@ -1,4 +1,4 @@
-{# ── Filesystem Scans card (shared, mode-parameterized) ─────────────────
+{# Filesystem Scans card (shared, mode-parameterized)
    The Large directories / User-group counts / Access-history + File-sizes
    tab strip, each lazy-loading its disk_scans.* fragment via hx-get. Shared
    by the project disk resource-details page (mode='project') and the Status
@@ -20,7 +20,7 @@
 
    In resource mode project/scope/fileset are absent; the fragment templates
    treat them as optional and suppress the per-user drill-downs (which need a
-   projcode) — the whole-FS drill path is Large Directories → unscoped explorer.
+   projcode) — the whole-FS drill path is Large Directories -> unscoped explorer.
 
    Panels with selectors declare them on both ends (nav-view-persistence.js):
    on the tab button, which requests the panel, so a stored choice is

@@ -48,7 +48,7 @@ def _active_facilities():
     )
 
 
-# ── Facility Card ──────────────────────────────────────────────────────────
+# Facility Card
 
 
 @bp.route('/htmx/facilities')
@@ -75,7 +75,7 @@ def htmx_facilities_card():
     )
 
 
-# ── Panel Session Edit (bespoke: cross-field check needs the ORM object) ───
+# Panel Session Edit (bespoke: cross-field check needs the ORM object)
 # (panel session create/delete intentionally omitted — PanelSession has
 #  date-range semantics and no active flag; manage via edit only)
 
@@ -145,7 +145,7 @@ def htmx_panel_session_edit(panel_session_id):
     return htmx_success_message(_FACILITY_TRIGGERS, 'Saved successfully.')
 
 
-# ── Allocation Type create-form context ────────────────────────────────────
+# Allocation Type create-form context
 
 
 def _alloc_type_create_context():
@@ -169,7 +169,7 @@ def _alloc_type_create_context():
     }
 
 
-# ── CRUD quintets — generated from specs ───────────────────────────────────
+# CRUD quintets — generated from specs
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are
 # identical to the hand-written routes these replace (pinned by

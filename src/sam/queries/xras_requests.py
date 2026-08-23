@@ -1,42 +1,27 @@
-"""One request, shaped for the Remediations card — **the single derivation**.
+"""One request, shaped for the Remediations card -- the single derivation.
 
-Why this module exists at all
------------------------------
-Two things build these entries and they must agree byte for byte:
+Two things build these entries and must agree byte for byte: ``xras_sweep``
+builds ~100 an hour from a paginated ``GET /v1/reports/requests`` and publishes
+them to the ``xras_pending`` bucket, and ``sam.manage.xras_remediation``
+re-fetches ONE request after a verified write and patches its entry back into
+that same payload so the operator sees their click immediately. Different dicts
+would render a patched row differently from its neighbors, visible only in
+production and only on the row somebody just acted on. Hence one function, no
+private copy.
 
-1. ``xras_sweep`` builds ~100 of them once an hour from a paginated
-   ``GET /v1/reports/requests`` enumeration, and publishes the lot to the
-   ``xras_pending`` cache bucket;
-2. after every verified write, ``sam.manage.xras_remediation`` re-fetches **one**
-   request and patches its entry back into that same published payload, so the
-   operator sees the effect of their click immediately instead of waiting up to
-   an hour for the next sweep.
+Two measured spelling traps in the ``reports/requests`` payload:
 
-If those two produced even slightly different dicts, a patched row would render
-differently from its neighbours — different keys missing, a role list shaped
-another way — and the difference would show up only in production, only on the
-row somebody had just acted on. So the derivation is a function, called by both,
-and the sweep has no private copy.
-
-The input shape
----------------
-A ``reports/requests`` payload. Two spelling traps live in it, both measured:
-
-* ``opportunity_name`` is **snake_case** here while the inbound action wire
+* ``opportunity_name`` is **snake_case** here, while the inbound action wire
   spells the sibling field ``opportunityName``. Both are read, in that order.
-* ``roles[]`` entries are ``{person, roles[]}`` — a person plus a *list* of role
-  records — and the inner records spell the role ``role``, not ``roleType``.
-  Reading ``roleType`` off the outer object returns ``None``, silently.
+* ``roles[]`` entries are ``{person, roles[]}`` -- a person plus a *list* of
+  role records -- and the inner records spell it ``role``, not ``roleType``.
+  Reading ``roleType`` off the outer object returns None, silently.
 
-What is deliberately absent
----------------------------
-**Full person dicts.** The roster carries a username, a display name and two
-flags, and nothing else. The payload has complete person objects inline —
-email, phone, ``residenceCountry`` — and putting them in a cache the fragment
-renders from would move PII across the ``MANAGE_XRAS`` line that the sibling
-cards enforce at render time. What the card needs to *decide* something
-(placeholder, reconciled) is a flag; what it needs to *show* a human is fetched
-live, inside a permission-gated route.
+Full person dicts are deliberately absent. The payload carries email, phone and
+``residenceCountry`` inline; putting those in a cache the fragment renders from
+would move PII across the ``MANAGE_XRAS`` line the sibling cards enforce at
+render time. What the card needs to *decide* is a flag; what it needs to *show*
+is fetched live inside a permission-gated route.
 """
 
 from __future__ import annotations
@@ -71,7 +56,7 @@ DRAFT_ACTION_STATUS = 'Incomplete'
 
 
 def _as_date(value: Any):
-    """XRAS date → ``date``, or ``None``.
+    """XRAS date -> ``date``, or ``None``.
 
     Parsed here rather than left as a string because the entry is **pickled
     into a cache and read straight by a Jinja ``fmt_date``**, which needs a
@@ -128,7 +113,7 @@ def roster_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
                 'username': username,
                 'name': _display_name(person),
                 'placeholder': is_placeholder(username),
-                # ⚠️ Reconciled means XRAS linked this username to a real
+                # WARNING: Reconciled means XRAS linked this username to a real
                 # identity — NOT that SAM has an account. A placeholder that is
                 # *also* reconciled is the contradiction the merge fixup exists
                 # for: reconciliation in XRAS is a merge, and a merged
@@ -245,7 +230,7 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
 
 
 def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Flatten a ``reports/username/<username>`` payload to role-labelled rows.
+    """Flatten a ``reports/username/<username>`` payload to role-labeled rows.
 
     The feed groups a person's requests by role name
     (``{requestRoles: [{roleName, requests[]}]}``); this preserves that

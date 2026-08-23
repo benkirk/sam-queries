@@ -55,7 +55,7 @@ def _all_resource_types():
     return db.session.query(ResourceType).order_by(ResourceType.resource_type).all()
 
 
-# ── Resource Management Card ───────────────────────────────────────────────
+# Resource Management Card
 
 
 @bp.route('/htmx/resources')
@@ -143,7 +143,7 @@ def htmx_resources_card():
     )
 
 
-# ── Resource Delete (bespoke: decommission by date, not active flag) ───────
+# Resource Delete (bespoke: decommission by date, not active flag)
 # (resource edit/create are generated from _RESOURCE_CRUD_SPECS below)
 
 
@@ -167,7 +167,7 @@ def htmx_resource_delete(resource_id):
     return ''
 
 
-# ── Per-resource Facility Fair-Share Override ──────────────────────────────
+# Per-resource Facility Fair-Share Override
 # A row in `facility_resource` overrides the facility default fair-share for a
 # single resource (COALESCE(fr…, f…) in sam/queries/fstree_access.py). "Set"
 # upserts the row; "Unset" deletes it so the facility default re-emerges.
@@ -243,7 +243,7 @@ def htmx_facility_resource_unset(resource_id, facility_id):
     return htmx_success_message(_RESOURCES_TRIGGERS, 'Override removed.')
 
 
-# ── Machine Delete (bespoke: decommission by date, not active flag) ────────
+# Machine Delete (bespoke: decommission by date, not active flag)
 # (resource-type / machine edit+create are generated from
 #  _RESOURCE_CRUD_SPECS below)
 
@@ -266,7 +266,7 @@ def htmx_machine_delete(machine_id):
     return ''
 
 
-# ── Queue Create ───────────────────────────────────────────────────────────
+# Queue Create
 
 
 @bp.route('/htmx/queue-create-form')
@@ -305,7 +305,7 @@ def htmx_queue_create():
     )
 
 
-# ── Queue Edit ─────────────────────────────────────────────────────────────
+# Queue Edit
 
 
 @bp.route('/htmx/queue-edit-form/<int:queue_id>')
@@ -370,7 +370,7 @@ def htmx_queue_edit(queue_id):
     return _EditQueueHandler(queue=queue).handle()
 
 
-# ── Queue Delete ───────────────────────────────────────────────────────────
+# Queue Delete
 
 
 @bp.route('/htmx/queue-delete/<int:queue_id>', methods=['DELETE'])
@@ -394,9 +394,9 @@ def htmx_queue_delete(queue_id):
     return ''
 
 
-# ── Queue Cleanup ──────────────────────────────────────────────────────────
+# Queue Cleanup
 #
-# Three-step form → preview → commit, mirroring the project-directory bulk
+# Three-step form -> preview -> commit, mirroring the project-directory bulk
 # deactivation in projects_routes.py. One deliberate difference: the commit
 # step acts on the admin's edited checkbox selection rather than re-running
 # the query, so unticking a queue in the preview actually spares it.
@@ -414,7 +414,7 @@ def _annotate_pbs_activity(candidates, resource, days):
     SAM charging data is blind to routing queues and charging-exempt work,
     so a queue can look dead while PBS is actively serving it. Two status
     signals fill that gap, both matched by queue name against the system
-    derived from the resource ('Derecho GPU' → 'derecho'):
+    derived from the resource ('Derecho GPU' -> 'derecho'):
 
     * ``queue_status`` — a queue appears there only while jobs sit in it,
       giving "last held jobs at tick X".
@@ -439,7 +439,7 @@ def _annotate_pbs_activity(candidates, resource, days):
         last_seen = get_queue_last_seen(db.session, system_name)
         defined = get_queue_definitions(db.session, system_name)
     except Exception:
-        last_seen, defined = {}, {}     # status DB unavailable → SAM-only view
+        last_seen, defined = {}, {}     # status DB unavailable -> SAM-only view
 
     cutoff = utcnow_naive() - timedelta(days=days)
     for c in candidates:
@@ -537,7 +537,7 @@ def htmx_queue_cleanup(resource_id):
     # disqualifies a candidate, so the admin's selection remains valid.
     pbs_data_available = _annotate_pbs_activity(candidates, resource, days)
 
-    # Honour the admin's selection, but only over queues that are still
+    # Honor the admin's selection, but only over queues that are still
     # candidates — a submitted id that no longer qualifies (or never did) is
     # dropped rather than trusted.
     selected_ids = set(form_data['queue_ids'])
@@ -576,7 +576,7 @@ def htmx_queue_cleanup(resource_id):
     )
 
 
-# ── Search helpers ─────────────────────────────────────────────────────────
+# Search helpers
 # Note: user search is handled by the unified admin_dashboard.htmx_search_users
 # endpoint (admin/blueprint.py) with context='fk'.
 
@@ -788,7 +788,7 @@ def htmx_admin_disk_root_delete(dr_id):
     return htmx_success_message({'reloadResourcesCard': {}}, 'Root directory deleted.')
 
 
-# ── CRUD routes — generated from specs ─────────────────────────────────────
+# CRUD routes — generated from specs
 #
 # Endpoints, URL rules, templates, permissions, and not-found messages are
 # identical to the hand-written routes these replace (pinned by

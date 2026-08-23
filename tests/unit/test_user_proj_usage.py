@@ -92,7 +92,7 @@ def _make_upq(session, parent, *, system, queue, user, project,
 # ---------------------------------------------------------------------------
 
 def test_empty_window_returns_empty(status_session):
-    """No parent ticks in [start, end] → no integration possible."""
+    """No parent ticks in [start, end] -> no integration possible."""
     out = get_user_proj_usage(
         status_session,
         system='derecho',
@@ -103,7 +103,7 @@ def test_empty_window_returns_empty(status_session):
 
 
 def test_single_tick_returns_empty(status_session):
-    """One parent tick → no successor → no interval to integrate over."""
+    """One parent tick -> no successor -> no interval to integrate over."""
     t0 = datetime(2026, 5, 4, 12, 0, 0)
     parent = _make_derecho(status_session, t0)
     _make_upq(status_session, parent, system='derecho', queue='main',
@@ -193,13 +193,13 @@ def test_sparse_tuple_appears_disappears_reappears(status_session):
     for that interval, so it contributes nothing.
 
     Tick layout (5 min spacing):
-      t0 (64) ──5min──> t1 (absent) ──5min──> t2 (64) ──5min──> t3 (last)
+      t0 (64) 5min > t1 (absent) 5min > t2 (64) 5min > t3 (last)
 
     Left-step integration:
       t0: 64 × 5min = 320 core-min
-      t1: absent → 0
+      t1: absent -> 0
       t2: 64 × 5min = 320 core-min
-      t3: no successor → 0
+      t3: no successor -> 0
     Total = 640 core-min = 10.667 core-hours
     """
     t0 = datetime(2026, 5, 4, 12, 0, 0)
@@ -299,9 +299,9 @@ def test_reconciliation_against_queue_status(status_session):
     )
 
     # Hand-computed expected core-hours per tick interval (left-step):
-    #   interval 0 (t0→t1, 5 min): 96 cores × 5/60 = 8.0
-    #   interval 1 (t1→t2, 5 min): 64 cores × 5/60 = 5.333
-    #   interval 2 (t2→t3, 5 min): 144 cores × 5/60 = 12.0
+    #   interval 0 (t0->t1, 5 min): 96 cores × 5/60 = 8.0
+    #   interval 1 (t1->t2, 5 min): 64 cores × 5/60 = 5.333
+    #   interval 2 (t2->t3, 5 min): 144 cores × 5/60 = 12.0
     #   interval 3 (last tick): 0 (no successor)
     expected_total_core_hours = (96 + 64 + 144) * 300.0 / 3600.0
     summed = sum(r['core_hours'] for r in out)
@@ -478,7 +478,7 @@ def test_chunk_size_is_invariant(status_session):
     """The aggregator must yield identical results regardless of
     chunk_days — different values just trade memory for query count."""
     t0 = datetime(2026, 5, 1, 0, 0, 0)
-    # Span 4 days at 6-hour spacing → forces ≥4 chunks at chunk_days=1.
+    # Span 4 days at 6-hour spacing -> forces ≥4 chunks at chunk_days=1.
     ticks = [t0 + timedelta(hours=6 * i) for i in range(17)]
     parents = [_make_derecho(status_session, t) for t in ticks]
     for i, p in enumerate(parents):
@@ -550,7 +550,7 @@ def test_span_integrates_correctly_across_ticks(status_session):
     _make_derecho(status_session, t3)
 
     # One span covering t0..t2 (last_seen=t2). Three tick intervals
-    # contribute: t0→t1 (300s), t1→t2 (300s), t2→t3 (300s) = 900s.
+    # contribute: t0->t1 (300s), t1->t2 (300s), t2->t3 (300s) = 900s.
     _make_upq(status_session, p0, system='derecho', queue='main',
               user='benkirk', project='SCSG0001',
               cores=120, last_seen=t2)
@@ -581,7 +581,7 @@ def test_overlapping_window_clips_span(status_session):
     status_session.flush()
 
     # Window [t3..t6]: ticks at t3,t4,t5,t6. Three intervals of 300s
-    # contribute (t6→t7 isn't included because end_date is t6).
+    # contribute (t6->t7 isn't included because end_date is t6).
     out = get_user_proj_usage(
         status_session, system='derecho',
         start_date=ticks[3], end_date=ticks[6],

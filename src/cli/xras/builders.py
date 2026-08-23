@@ -84,10 +84,10 @@ def build_summary(session, *, filters: Dict[str, Any]) -> Dict[str, Any]:
         # than "none" — AND deliberately keeps any status outside the vocabulary,
         # because that is a bug worth surfacing rather than a filter miss.
         #
-        # ⚠️ This used to be `{s: ... for s in XRAS_ACTION_STATUSES}`, which
-        # re-applied the zero-fill (already done) and silently dropped the stray.
-        # `total` counted it either way, so the envelope reported a total that did
-        # not reconcile with the sum of its own buckets.
+        # WARNING: do NOT rewrite this as `{s: ... for s in XRAS_ACTION_STATUSES}`.
+        # That re-applies the zero-fill (already done) and silently drops the stray,
+        # while `total` counts it either way — so the envelope reports a total that
+        # does not reconcile with the sum of its own buckets.
         'by_status':  summary['by_status'],
         'by_type':    summary['by_type'],
     }
@@ -126,7 +126,7 @@ def build_mapping_report(session, *, xras_keys=None) -> dict:
     """The ``xras_resource_mapping`` envelope.
 
     The audit itself is :func:`sam.queries.xras_actions.audit_resource_mapping` —
-    builders are ORM→dict extractors, not query modules, and the webapp should be
+    builders are ORM->dict extractors, not query modules, and the webapp should be
     able to reach the same answer without importing the CLI.
 
     *xras_keys* is the live catalog when one could be fetched, making the report
@@ -145,7 +145,7 @@ def build_opportunity_report(session, *, opportunities=None) -> dict:
     are shared with ``xras_sweep``, so the CLI and the task cannot drift into two
     opinions about the same opportunity.
 
-    ⚠️ **The proposal runs over the UNMAPPED subset only**, exactly as
+    WARNING: **The proposal runs over the UNMAPPED subset only**, exactly as
     ``_map_new_opportunities`` does in the sweep. Run over everything and the two
     permanent ``manual`` rows — the ones where XRAS is wrong about SAM and a human
     said so — reappear in ``review`` on every invocation, which is how an operator
@@ -180,7 +180,7 @@ def build_account_worklist(session, *, since=None, until=None,
     and a consumer diffing two runs needs to tell them apart.
 
     *pending_rows* is the Feed-B worklist ``xras_sweep`` published, injected by
-    the caller. ⚠️ ``pending_checked`` is the same distinction ``live_checked``
+    the caller. WARNING: ``pending_checked`` is the same distinction ``live_checked``
     draws on the mapping audit and is the reason it is a separate flag rather
     than ``pending_rows is not None``: a consumer must be able to tell "Feed B
     is empty" from "we could not read Feed B", because the second one means the

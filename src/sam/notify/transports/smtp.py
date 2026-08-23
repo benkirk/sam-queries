@@ -104,7 +104,7 @@ class SmtpTransport(Transport):
                       rendered: RenderedMessage) -> MIMEMultipart | MIMEText:
         """Build the MIME object.
 
-        ⚠️ **No ``Bcc`` header is ever set.** ``NOTIFY_BCC`` goes into the
+        WARNING: **No ``Bcc`` header is ever set.** ``NOTIFY_BCC`` goes into the
         envelope recipient list (:meth:`envelope_recipients`) and nowhere
         else. ``smtplib.send_message`` would strip a ``Bcc`` header for us,
         but this transport passes ``to_addrs`` explicitly, and under that

@@ -61,10 +61,10 @@ def _text_content(inner: str) -> str:
 def _collapse_runs(items):
     """Drop consecutive duplicates, preserving order.
 
-    The palette contract is the *sequence* of colours (including the
+    The palette contract is the *sequence* of colors (including the
     deliberately reversed one on the user/proj stacked area). Every glyph group
-    restates the text colour, so without this the fill list is hundreds of
-    repetitions of the same chrome colour and the data colours are invisible in
+    restates the text color, so without this the fill list is hundreds of
+    repetitions of the same chrome color and the data colors are invisible in
     a diff.
     """
     out = []

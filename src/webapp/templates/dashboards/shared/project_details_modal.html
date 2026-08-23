@@ -1,5 +1,5 @@
 {# Project Details Modal — body filled via HTMX GET /project-details-modal/<projcode>
-   Triggered by buttons / SVG anchors with hx-get → #projectDetailsModalBody. #}
+   Triggered by buttons / SVG anchors with hx-get -> #projectDetailsModalBody. #}
 <div class="modal fade" id="projectDetailsModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-xl modal-fullscreen-sm-down" role="document">
         <div class="modal-content">
@@ -18,7 +18,7 @@
     </div>
 </div>
 
-{# The modal body (user/partials/project_details_modal.html → project_card's
+{# The modal body (user/partials/project_details_modal.html -> project_card's
    render_project_resources) renders per-allocation edit pencils that target
    #editAllocationModal / #editAllocationFormContainer. Those live in the
    fragment below, so include it here — otherwise the pencils are a silent

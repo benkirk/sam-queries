@@ -1,6 +1,6 @@
 """Read-only runtime-configuration inspection helpers.
 
-Used by the Admin → Configuration tab to surface webapp state for
+Used by the Admin -> Configuration tab to surface webapp state for
 sysadmins.
 
 Design notes:
@@ -31,7 +31,7 @@ from sqlalchemy import text
 
 # Per-pid cache so a fresh worker doesn't re-parse /proc on every request.
 # Module-level dict survives forks (correctly: each forked worker gets its
-# own copy); keyed by os.getpid() so it's resilient to the master initialising
+# own copy); keyed by os.getpid() so it's resilient to the master initializing
 # this dict before forking.
 _worker_started_by_pid: Dict[int, datetime] = {}
 
@@ -151,17 +151,13 @@ def classify_connection_error(error: Optional[str]) -> Optional[Dict[str, str]]:
     return {'class': 'unknown', 'hint': None}
 
 
-# ---------------------------------------------------------------------------
-# ORM ↔ database schema drift
-# ---------------------------------------------------------------------------
+# ORM <-> database schema drift.
 #
-# Why this exists: on 2026-08-10 a production DDL change dropped 8 columns the
-# ORM still selected, and every page 500'd with MySQL 1054 for ~20 minutes
-# while /api/v1/health/ reported 200 healthy the whole time — because a
-# `SELECT 1` ping cannot see a column that stopped existing.
-#
-# One INFORMATION_SCHEMA query covers every mapped model, so this catches the
-# whole bug class rather than the four tables someone thought to probe.
+# On 2026-08-10 a production DDL change dropped 8 columns the ORM still
+# selected: every page 500'd with MySQL 1054 for ~20 minutes while
+# /api/v1/health/ reported 200 the whole time, because a `SELECT 1` ping cannot
+# see a column that stopped existing. One INFORMATION_SCHEMA query covers every
+# mapped model, catching the bug class rather than the tables someone probes.
 
 # (expires_at_monotonic, result). Module-level, so each gunicorn worker keeps
 # its own memo; a warm entry inherited across a fork is at most _TTL stale.
@@ -325,18 +321,11 @@ def _uptime(start_time: Optional[datetime]) -> Optional[str]:
     return f"{minutes}m"
 
 
-# ---------------------------------------------------------------------------
-# Worker / pod runtime probes
-# ---------------------------------------------------------------------------
-#
-# These read the worker's own /proc + /sys/fs/cgroup files only. No
-# subprocess, no other-pod visibility, no privileged ops. Every probe
-# returns None on macOS dev or any host without the relevant procfs/cgroup
-# entries — so the Flask dev server (`docker compose up webdev`) and a
-# bare-metal host both render the card without raising.
-#
-# cgroup v2 only (single hierarchy at /sys/fs/cgroup/<file>). Modern k8s
-# and Docker Desktop default to v2; v1 hosts will silently report None.
+# Worker / pod runtime probes: the worker's own /proc and /sys/fs/cgroup files
+# only -- no subprocess, no other-pod visibility, no privileged ops. Every probe
+# returns None on macOS dev or any host without those entries, so the Flask dev
+# server and a bare-metal host both render the card. cgroup v2 only; v1 hosts
+# silently report None.
 
 def _worker_start_time() -> datetime:
     """Best-effort worker process start time, cached per pid.
@@ -385,7 +374,7 @@ def _proc_rss_bytes() -> Optional[int]:
         with open('/proc/self/status') as f:
             for line in f:
                 if line.startswith('VmRSS:'):
-                    return int(line.split()[1]) * 1024  # kB → bytes
+                    return int(line.split()[1]) * 1024  # kB -> bytes
     except OSError:
         pass
     return None
@@ -424,7 +413,7 @@ def _cgroup_cpu_limit() -> Optional[float]:
 
 
 def gather_server_info() -> Dict[str, Any]:
-    """Worker-scoped runtime snapshot for the Admin → Server Information card.
+    """Worker-scoped runtime snapshot for the Admin -> Server Information card.
 
     Cheap to call (a handful of file reads). Safe to expose without auth
     headers other than the existing VIEW_SYSTEM_CONFIG gate — there are no
@@ -542,18 +531,16 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
     for machine, engine in (jh_state.get('engines') or {}).items():
         databases.append(_health_row(f'job_history ({machine})', engine))
 
-    # fs-scans plugin. Collections are *schemas* within one CNPG database per
-    # disk resource (campaign → Campaign_Store today; desc1 → Destor later),
-    # so we render ONE health row per database — keeping the card compact and
-    # naturally extensible — and hang per-collection scan-date freshness off
-    # each. Registered on app.extensions by webapp.disk_scans.init_fs_scans;
-    # absent / empty when the plugin is disabled, in which case no rows appear.
+    # fs-scans collections are *schemas* within one CNPG database per disk
+    # resource, so this renders ONE health row per database with per-collection
+    # scan-date freshness hung off it. Registered on app.extensions by
+    # webapp.disk_scans.init_fs_scans; empty when the plugin is disabled.
     fs_state = app.extensions.get('fs_scans') or {}
     fs_databases = fs_state.get('databases') or {}
     if fs_databases:
         fs_mod = fs_state.get('module')
-        # One health row per backing CNPG database (campaign → Campaign_Store,
-        # desc1 → Destor); the warmed state is already grouped by database.
+        # One health row per backing CNPG database (campaign -> Campaign_Store,
+        # desc1 -> Destor); the warmed state is already grouped by database.
         for dbname, db_state in sorted(fs_databases.items()):
             engines = db_state.get('engines') or {}
             if not engines:
@@ -639,18 +626,15 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'active_blocks_count': 0,
         }
 
-    # --- Notifications (sam.notify config + notification_log counts)
+    # Notifications. Config comes from NotifyConfig.summary(), which never
+    # returns MAIL_PASSWORD, so this module's masking rule holds by construction
+    # rather than by the template remembering.
     #
-    # Config comes from NotifyConfig.summary(), which never returns
-    # MAIL_PASSWORD — the masking rule this whole module exists for holds by
-    # construction rather than by the template remembering.
-    #
-    # ⚠️ NO ADDRESSES. The card is VIEW_SYSTEM_CONFIG; every row of the
-    # activity log names a real person's email and is SYSTEM_ADMIN. The one
-    # deliberate exception is `redirect_to`, which is an operator-configured
-    # sink rather than a subject's address, and hiding it would defeat the
-    # line's purpose — a staging box quietly swallowing mail is exactly what
-    # it exists to surface.
+    # WARNING: NO ADDRESSES. This card is VIEW_SYSTEM_CONFIG while every
+    # activity-log row names a real person's email and is SYSTEM_ADMIN. The one
+    # exception is `redirect_to`, an operator-configured sink rather than a
+    # subject's address -- hiding it would defeat the line's purpose, since a
+    # staging box quietly swallowing mail is what it exists to surface.
     try:
         from sam.notify import NotifyConfig
         from sam.queries.notifications import summarize_notifications
@@ -662,14 +646,13 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             queued_stale_seconds=notify_config.queued_stale_seconds))
     except Exception:
         # The table may not exist yet (it awaits a DBA in production), and a
-        # config card that 500s is worse than one that says "unavailable".
+        # config card that 500s is worse than one saying "unavailable".
         #
-        # Roll back first. The failure above came from a *statement*, which leaves
-        # SQLAlchemy's transaction marked as needing rollback — so without this any
-        # later use of `db.session` in the same request raises PendingRollbackError
-        # rather than the error it would have raised on its own. No caller does DB
-        # work after this block today, which is exactly why the trap is worth
-        # closing now instead of when someone adds one.
+        # Roll back FIRST: the failure came from a statement, which marks the
+        # transaction as needing rollback, so any later `db.session` use in the
+        # request would raise PendingRollbackError instead of its own error. No
+        # caller does DB work after this block today -- which is why the trap is
+        # worth closing before someone adds one.
         try:
             db.session.rollback()
         except Exception:                    # pragma: no cover - defensive
@@ -687,12 +670,10 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
             'window_hours': None,
         }
 
-    # --- Scheduled tasks (registry + SAM_TASKS_DISABLED + task_run counts)
-    #
-    # No addresses and no PII: task rows carry task names, states and pod
-    # names. `runner_id` is a pod name and `detail` can hold a traceback
-    # naming hosts and paths, which is why the per-row detail modal sits a
-    # tier above this card — but neither reaches here.
+    # Scheduled tasks: registry + SAM_TASKS_DISABLED + task_run counts. No
+    # addresses and no PII. `runner_id` is a pod name and `detail` can hold a
+    # traceback naming hosts and paths, which is why the per-row detail modal
+    # sits a tier above this card -- but neither reaches here.
     try:
         from scheduling.registry import TASKS
         from scheduling.runner import disabled_tasks
@@ -717,15 +698,10 @@ def gather_runtime_state(app, db) -> Dict[str, Any]:
         }
         scheduled_tasks_block.update(summarize_task_runs(db.session))
     except Exception:
-        # `task_run` does not exist until Alembic 0006 is applied, and it is
-        # NOT applied on staging or production yet — so this card will render
-        # before its table exists. A Configuration tab that 500s is worse
-        # than one that says "unavailable".
-        #
-        # Roll back first, for the reason spelled out in the notifications
-        # block above: the failure came from a statement, and without this any
-        # later `db.session` use in the request raises PendingRollbackError
-        # instead of its own error.
+        # `task_run` does not exist until Alembic 0006 is applied, which staging
+        # and production have not had, so this card renders before its table
+        # exists. Roll back first, for the reason spelled out in the
+        # notifications block above.
         try:
             db.session.rollback()
         except Exception:                    # pragma: no cover - defensive

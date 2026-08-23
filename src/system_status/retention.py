@@ -1,40 +1,31 @@
-"""Retention policy for `system_status` snapshot tables — the one knob.
+"""Retention policy for `system_status` snapshot tables -- the one knob.
 
 Every consumer reads :data:`DEFAULT_RETENTION_DAYS` from here: the
 ``scripts/cleanup_status_data.py`` argparse default, :func:`cleanup_old_data`'s
-own signature, and the ``cleanup_status_snapshots`` scheduled task. There is
-deliberately no second constant anywhere else.
+signature, and the ``cleanup_status_snapshots`` task. There is deliberately no
+second constant anywhere else, and the policy is deliberately not inlined in
+that script -- three commits, no tests, nothing scheduling it, so it is
+evidence about the tables rather than a specification.
 
-This module replaces the policy that used to live inline in
-``scripts/cleanup_status_data.py``. That script was a hastily written, rarely
-run utility — three commits, no tests, and nothing in the tree ever scheduled
-it — so it was read as *evidence about the tables* rather than as a
-specification. ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 3.1 records the five
-decisions that produced what is here; the four that changed behaviour are:
+Four things it gets wrong that this does not
+(``docs/plans/implemented/SCHEDULED_TASKS.md`` section 3.1 records all five):
 
-1. **The cutoff is naive UTC.** The script used ``datetime.now()``, which is
-   local, against ``timestamp`` columns that are naive **UTC**
-   (``system_status.base.StatusTimestampMixin``). On a Denver host that pruned
+1. **The cutoff is naive UTC.** ``datetime.now()`` is local, against
+   ``timestamp`` columns that are naive UTC -- on a Denver host that pruned
    6-7 hours early, every run. See :func:`utcnow_naive`.
 2. **Snapshot tables only.** ``system_outages`` and ``resource_reservations``
-   are curated, human-authored incident records, not samples. The script
-   pruned them in the same transaction as the snapshots, on two inconsistent
-   and unexamined predicates. They are now out of scope: a scheduled job does
-   not delete hand-written history.
-3. **Spans are pruned explicitly.** ``user_proj_queue_status`` was absent from
-   the script's table list entirely — it was reaped only transitively, by
-   ``ondelete='CASCADE'`` from ``derecho_status`` / ``casper_status``. That
-   semantic is kept ("spans that *started* in the pruned window go"), because
-   ``timestamp`` is the span's first_seen, but it is now an explicit DELETE.
-   See :data:`SNAPSHOT_TABLES` for why that matters.
-4. **A return value instead of ``print``.** The task needs counts; an operator
-   needs a log line. The script's entire body was ``print``.
+   are curated, human-authored incident records. A scheduled job does not
+   delete hand-written history.
+3. **Spans are pruned explicitly.** ``user_proj_queue_status`` was reaped only
+   transitively via ``ondelete='CASCADE'``. The semantic is kept -- spans that
+   *started* in the window go, since ``timestamp`` is first_seen -- but as an
+   explicit DELETE. See :data:`SNAPSHOT_TABLES`.
+4. **A return value instead of ``print``.** The task needs counts.
 
-The default is one year, deliberately conservative. A never-pruned production
+The default is one year, deliberately conservative: a never-pruned production
 database would otherwise meet its first automated run as a single multi-year
-``DELETE`` against ``csg-postgres``; at a year, only data already older than a
-year is in scope, so that hazard never arises and narrowing later is a
-one-line ``values.yaml`` change reviewable on its own.
+DELETE against ``csg-postgres``. Narrowing later is a one-line ``values.yaml``
+change reviewable on its own.
 """
 
 from __future__ import annotations
@@ -86,7 +77,7 @@ DEFAULT_CHUNK_SIZE = 10_000
 #: but the test tier is SQLite, which does **not** enforce foreign keys unless
 #: ``PRAGMA foreign_keys=ON`` is set (nothing in this repo sets it), and a bulk
 #: ``query.delete()`` bypasses SQLAlchemy's ORM-level cascade too. Relying on
-#: CASCADE would mean the behaviour under test and the behaviour in production
+#: CASCADE would mean the behavior under test and the behavior in production
 #: were different mechanisms.
 #:
 #: ``UserProjQueueStatus`` is here even though the old script omitted it. Its

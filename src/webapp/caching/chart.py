@@ -58,7 +58,7 @@ class ChartCache(CacheBase):
                     self._data.popitem(last=False)
                 self._data[key] = value
 
-    # ── functools.lru_cache-compatible accessors (existing-caller surface) ──
+    # functools.lru_cache-compatible accessors (existing-caller surface)
 
     def cache_info(self) -> _CacheInfo:
         with self._lock:
@@ -79,7 +79,7 @@ class ChartCache(CacheBase):
         with self._lock:
             return sum(len(v) for v in self._data.values())
 
-    # ── CacheBase ───────────────────────────────────────────────────────
+    # CacheBase
 
     def info(self) -> dict:
         with self._lock:

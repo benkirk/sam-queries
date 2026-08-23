@@ -1,34 +1,28 @@
-"""``TaskRun`` — the scheduled-task ledger.
+"""``TaskRun`` -- the scheduled-task ledger.
 
 One row per (task, occurrence). The UNIQUE constraint on
 ``(task_name, occurrence_key)`` is simultaneously the dedup key and the
 mutual-exclusion lock: whoever wins the INSERT owns the slot.
 
-**Why this table lives in `system_status` and not SAM MySQL.** Since 2026-08-10
-`hpc-writer` can create tables in `sam` directly, and `notification_log` set
-the precedent of a framework table living there — so this was a real choice,
-made for three reasons in order of weight:
+It lives in `system_status` rather than SAM MySQL deliberately, for three
+reasons in order of weight:
 
 1. **The test tier.** `system_status` tables are created by
    ``db.create_all(bind_key='system_status')`` against a per-worker SQLite
    tempfile, so a new table exists in CI the moment the model does. A new SAM
    table only reaches CI after ``make bootstrap`` regenerates the LFS test-DB
-   blob and someone recommits it — a path that has silently half-failed
-   before. The ledger is the most test-heavy component in this design
-   (competing claims, stale reclaim, prune), so putting it where tests are
-   free is decisive.
-2. **Free schema coverage.** ``tests/integration/test_alembic_migrations.py``
-   already asserts ``upgrade head == StatusBase.metadata`` and a
-   ``head -> base -> head`` round trip; ``0006`` inherits both with no new
-   test. SAM has no in-repo migration path at all.
-3. **Failure isolation.** With the ledger in Postgres, a SAM MySQL outage
-   cannot take down `system_status` retention.
+   blob and someone recommits it -- a path that has silently half-failed
+   before. The ledger is the most test-heavy component here.
+2. **Free schema coverage.** ``test_alembic_migrations.py`` already asserts
+   ``upgrade head == StatusBase.metadata`` and a round trip. SAM has no in-repo
+   migration path at all.
+3. **Failure isolation.** A SAM MySQL outage cannot take down `system_status`
+   retention.
 
-The honest cost is two ledgers in two databases — this and
-``notification_log``. Tolerable, because they want no foreign key between them
-anyway.
+The cost is two ledgers in two databases, this and ``notification_log`` --
+tolerable, since they want no foreign key between them anyway.
 
-See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 4.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` section 4.
 """
 
 from sqlalchemy import Column, DateTime, Index, Integer, SmallInteger, String, Text, UniqueConstraint

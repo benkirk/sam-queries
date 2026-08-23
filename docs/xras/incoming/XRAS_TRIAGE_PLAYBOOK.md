@@ -122,8 +122,7 @@ groups, and the fourth is the live one:
 | `dangling_keys` | A mapping row whose resource does not exist. **Broken** |
 | `xras_only_keys` | A key XRAS offers that SAM cannot resolve. **This is the one that breaks an award** |
 
-⚠️ **It exits non-zero on TWO of those now, not one** — `dangling_keys` *or*
-`xras_only_keys`. An earlier revision of this page said dangling was the only one.
+⚠️ **It exits non-zero on TWO of those** — `dangling_keys` *or* `xras_only_keys`.
 
 ⚠️ **A one-sided report is not a clean report.** The XRAS half is auto-detected: with no
 `XRAS_OUTGOING_ENABLED=1` + `XRAS_API_KEY` it silently reports the local half, and with an
@@ -149,7 +148,7 @@ institution`.
 **Fix:** a data fix on the organization or institution. This would move `New`'s success
 rate more than any code change available to us.
 
-Two neighbours from the same resolution path:
+Two neighbors from the same resolution path:
 `Could not produce affiliation data for PI {username}`, and
 `Unable to determine allocation type from action data` / `No AllocationType for
 SelectionParms{panel='…', type='…'}` (the odd rendering is Java's `toString()`,
@@ -167,9 +166,9 @@ own failure is silent and is in § 3.9.
 Unreconciled ARC placeholder identities — the username on the award has never been
 reconciled to a SAM user.
 
-**Fix: work the *Accounts Needed* tab, or `sam-admin xras --accounts`.** This used to say
-"identity reconciliation", which is a category rather than a loop. #458 turned it into a
-worklist, and it is the highest-value surface on this page:
+**Fix: work the *Accounts Needed* tab, or `sam-admin xras --accounts`.** Not "identity
+reconciliation" — that is a category, not a loop. #458 made it a worklist, and it is the
+highest-value surface on this page:
 
 - **Two classifications, each with its remedy:** `absent` → **Create**, `inactive` →
   **Reactivate**. Account creation is manual; the worklist tells you *who*, *why*, and —
@@ -410,7 +409,7 @@ Two rows were overtaken by #458/#459 and are marked so; the rest stand unchanged
 | Resource-key 422s recur across **different** keys | A mapping *writer* on `sam-admin xras` (today it is a hand INSERT). Must print the parity warning — closing a mapping moves GET bytes. ⚠️ **Narrowed:** the *detection* half shipped with #458's two-sided `--validate-mapping`, which exits non-zero when XRAS offers a key SAM cannot resolve. You now learn about this before an award does |
 | Mnemonic failures dominate the `New` failure bucket | A bulk organization-mnemonic linker, plus a report of which orgs would unblock the most awards. This is the highest-leverage data fix available |
 | Operators repeatedly fix a row, re-check it green, and wait on ACCESS | **A re-apply path.** Explicitly deferred in `recheck.py`; it needs an idempotency key enforced on `action_id` *first*, because 4 of the 6 handlers double-apply — Supplement and Adjustment are additive, and a re-applied successful `New` routes to `update` and supplements the allocation it just created. Do not build the second half before the first |
-| You reach for `--status unmapped` and cannot | Derive the CLI `click.Choice` from `XRAS_ACTION_STATUSES` rather than restating it, and give `unmapped` a style in `src/cli/xras/display.py`. One line each; both are restatements of a vocabulary that already exists in one place. ⚠️ Still both unbuilt — and #458 edited a *neighbouring* `click.Choice` on the same command without noticing this one |
+| You reach for `--status unmapped` and cannot | Derive the CLI `click.Choice` from `XRAS_ACTION_STATUSES` rather than restating it, and give `unmapped` a style in `src/cli/xras/display.py`. One line each; both are restatements of a vocabulary that already exists in one place. ⚠️ Still both unbuilt — and #458 edited a *neighboring* `click.Choice` on the same command without noticing this one |
 | Polling the dashboard stops being enough | A digest of `failed` / `manual` / `unmapped` rows. ⚠️ A new entry in `src/scheduling/tasks/` goes live on the next hourly wake unless `SAM_TASKS_DISABLED` names it in the **same** change — the registry is code-side, the list is chart-side, and nothing couples them but the reviewer. `xras_sweep` is **not** this: it digests the *outbound* enumeration and mails nobody. Its arrival did make that warning load-bearing, though — three tasks are live now, not one |
 
 **Removed from this table:** *"a withheld opportunity mapping needs a decision"* — built,

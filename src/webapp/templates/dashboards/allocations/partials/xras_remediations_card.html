@@ -12,12 +12,12 @@
     *_values / selected_*  facet state
     form_id, fragment_url, target_id
 
-  ── EVERY BUTTON HERE WRITES TO PRODUCTION XRAS ──────────────────────────
+ EVERY BUTTON HERE WRITES TO PRODUCTION XRAS
   This is a scoped subset of the external XRAS admin dashboard, not a
   replacement for it. Merging deletes an account. Withdrawing de-approves an
   award and rewrites its history. Neither is undone by closing the tab.
 
-  ── FOUR EMPTY STATES, AND THEY MEAN DIFFERENT THINGS ────────────────────
+ FOUR EMPTY STATES, AND THEY MEAN DIFFERENT THINGS
   The third is the subtle one: a sweep has published the account worklist but
   not this index, which is exactly the window between deploying this feature
   and the first sweep that carries it. Reporting that as "nothing to
@@ -29,7 +29,7 @@
         <strong>XRAS Remediations</strong>
         {% if snapshot %}
         <span class="badge bg-secondary">{{ total | fmt_number }} request(s)</span>
-        {# ⚠️ "N of M" whenever the window hides rows, never a bare N — and on
+        {# WARNING: "N of M" whenever the window hides rows, never a bare N — and on
            THIS card the hidden ones skew urgent. A 2015 approval nobody ever
            pushed is the row most worth closing, and it is the first thing any
            recency filter drops. #}
@@ -105,7 +105,7 @@
             </div>
         </div>
 
-        {# ⚠️ The controls render whenever anything was swept — NOT only when
+        {# WARNING: The controls render whenever anything was swept — NOT only when
            rows survive. Inside the old `{% if groups %}` they vanished at the
            moment they emptied the card, leaving copy that said "clear the
            chips" above a card with no chips on it and no way back. #}
@@ -148,7 +148,7 @@
         </div>
 
         {% if not groups %}
-        {# ⚠️ "No matches" would be a misleading thing to say here. The shared
+        {# WARNING: "No matches" would be a misleading thing to say here. The shared
            window defaults to a recent lookback, and on THIS card the rows it
            hides are the ones most worth acting on — a request approved years
            ago and never pushed is precisely a remediation. So when the filter
@@ -167,7 +167,7 @@
            decoration here: every row on this table is a click target, and
            without the hover tint the only cue is the cursor. #}
         <table class="table table-sm table-hover align-middle mb-0">
-            {# ⚠️ Widths are load-bearing, not tidiness. Auto layout has to
+            {# WARNING: Widths are load-bearing, not tidiness. Auto layout has to
                find room for the opportunity-name group header, which is a
                `colspan` cell — so its width demand is distributed across all
                the columns, and the ones holding short fixed-width strings
@@ -207,14 +207,14 @@
                so a default-open group can never come back collapsed on reload. #}
             {% set gid = 'xopp-' ~ (group.opportunity_id or loop.index) %}
             <tbody>
-                {# ⚠️ `table-subtle`, NEVER Bootstrap's `table-light`. The
+                {# WARNING: `table-subtle`, NEVER Bootstrap's `table-light`. The
                    stock class hardcodes `--bs-table-color: #000` on a light
                    tint, so in dark mode it paints a light stripe with black
                    text across a dark table. `.table-subtle` is SAM's
                    token-driven replacement — byte-identical in light mode
                    (`--surface-tertiary` IS #f8f9fa) and correct in dark. See
                    the comment above `.table-subtle` in dashboard.css. #}
-                {# ⚠️ The opportunity NAME now opens the opportunity modal when
+                {# WARNING: The opportunity NAME now opens the opportunity modal when
                    outgoing XRAS is configured, so the toggle can no longer live
                    on the <tr> (or on this cell): Bootstrap's collapse data-api
                    runs in the capture phase, so a click on the link would fire
@@ -243,10 +243,9 @@
                 {% for row in group.rows %}
                 <tr>
                     {# The request number opens the full read-only detail modal —
-                       the same view the per-request expansion used to hold, now
-                       the single opener. This cell is no longer a collapse
+                       the single opener for it. This cell is not a collapse
                        trigger, so the modal link is safe (no capture-phase
-                       conflict; the old five-cell toggle split is gone with the
+                       conflict, and no five-cell toggle split, which went with the
                        expansion). A plain <a> with an inner `.font-monospace`,
                        NOT `.btn` — `.btn` uppercases (dashboard.css). #}
                     <td class="text-nowrap">
@@ -306,7 +305,7 @@
                             placeholder roster
                         </span>
                         {% endif %}
-                        {# ⚠️ The badge IS the link, and only in the `project`
+                        {# WARNING: The badge IS the link, and only in the `project`
                            branch — because `pending_push == False` is not a
                            display choice, it is the sweep's set difference of
                            `requestNumber` against `Project.projcode`
@@ -328,7 +327,7 @@
                         {% if row.pending_push %}
                         <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">no project</span>
                         {% else %}
-                        {# ⚠️ An <a>, NOT `btn btn-link`. The Unity button
+                        {# WARNING: An <a>, NOT `btn btn-link`. The Unity button
                            treatment uppercases (`.btn` in dashboard.css), which
                            turned the badge into a shouted "PROJECT" — the same
                            reason `.facet-chip` deliberately opts out of `.btn`.

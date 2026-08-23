@@ -100,7 +100,7 @@ def _search_contracts(q, active_only):
     """Search box behind /admin/contracts.
 
     Unlike the FK-picker sibling ``_search_contracts_for_project``, this one
-    **honours** ``active_only`` — that one has no checkbox, this one does.
+    **honors** ``active_only`` — that one has no checkbox, this one does.
     The checkbox defaults off: only 368 of 2,225 contracts are currently
     active, so an active-only default would hide 83% of the data behind a
     control most operators would not think to clear.
@@ -132,7 +132,7 @@ register_typeahead(
 )
 
 
-# ── Contract detail card ──────────────────────────────────────────────────
+# Contract detail card
 #
 # Same shape as user_card / project_card / group_card in blueprint.py, but it
 # lives here with the rest of the contract surface. Two hosts swap the same
@@ -199,7 +199,7 @@ def nsf_program_contracts(nsf_program_id):
     )
 
 
-# ── Contract Create (bespoke: award prefill + FK/uniqueness checks) ───────
+# Contract Create (bespoke: award prefill + FK/uniqueness checks)
 #
 # The generated CrudSpec create closure calls Model.create() directly with no
 # hook, so it can express neither the FK-existence checks the monitor/program
@@ -316,7 +316,7 @@ def htmx_contract_create_form():
     have to sequence itself against the htmx response.
 
     A seeded form opens in lookup mode and auto-fires the existing award
-    lookup (``seeded=True`` → ``hx-trigger="load"`` on the Fetch button), so
+    lookup (``seeded=True`` -> ``hx-trigger="load"`` on the Fetch button), so
     one click yields a full prefill **including Monitor and program**, which
     the search result itself structurally cannot carry.
     """
@@ -675,7 +675,7 @@ def htmx_contract_create():
     return _ContractCreateHandler().handle()
 
 
-# ── Contract Delete (bespoke: retires by end_date, not active flag) ────────
+# Contract Delete (bespoke: retires by end_date, not active flag)
 
 
 @bp.route('/htmx/contract-delete/<int:contract_id>', methods=['DELETE'])
@@ -698,7 +698,7 @@ def htmx_contract_delete(contract_id):
 
 
 
-# ── CRUD quintets — generated from specs ───────────────────────────────────
+# CRUD quintets — generated from specs
 #
 # Endpoints, URL rules, templates and not-found messages are unchanged by the
 # split from orgs_routes (pinned by the route-map parity snapshot). The

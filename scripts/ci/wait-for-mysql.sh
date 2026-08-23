@@ -49,7 +49,7 @@ LOG_INTERVAL="${LOG_INTERVAL:-6}"
 
 label="${COMPOSE_SERVICE:-${MYSQL_HOST}:${MYSQL_PORT}}"
 
-# ── Phase 1: TCP connectivity ────────────────────────────────────────
+# Phase 1: TCP connectivity
 
 echo "=== Waiting for MySQL TCP on ${MYSQL_HOST}:${MYSQL_PORT} ==="
 
@@ -91,7 +91,7 @@ if [ "${tcp_ok}" != "true" ]; then
     exit 1
 fi
 
-# ── Phase 2: Database verification ───────────────────────────────────
+# Phase 2: Database verification
 
 if [ -z "${MYSQL_DB}" ]; then
     echo "  (MYSQL_DB not set — skipping database verification)"

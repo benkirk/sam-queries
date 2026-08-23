@@ -15,7 +15,7 @@ module**: :data:`SCENARIOS` names the builder each test exercises,
 account for every public builder in :mod:`sam.xras.errors`. Add a string without a
 scenario and that test fails; delete a handler branch and its scenario fails.
 
-⚠️ **Synthetic payloads validate handler branches, never the wire contract.** They
+WARNING: **Synthetic payloads validate handler branches, never the wire contract.** They
 encode our reading of the protocol, so they cannot falsify it — real payloads did that
 in Sprint A, and only real payloads can. Nothing here is evidence the schema is right.
 See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Follow-on*.
@@ -35,7 +35,7 @@ from xras_helpers import committing  # noqa: F401  — pytest resolves it by nam
 pytestmark = pytest.mark.unit
 
 
-#: builder name → the test method that produces it. Checked against the module.
+#: builder name -> the test method that produces it. Checked against the module.
 SCENARIOS = {
     'missing_title': 'blank requestTitle on a New',
     'missing_pi_role': 'roles[] carrying no PI',
@@ -67,7 +67,7 @@ SCENARIOS = {
     'adjustment_would_go_negative': 'a negative Adjustment larger than the balance',
 }
 
-#: builder name → why no handler can emit it. Each one is a decision, not a gap.
+#: builder name -> why no handler can emit it. Each one is a decision, not a gap.
 UNREACHABLE = {
     'no_resource_for_name':
         'The ROSTER path\'s resource lookup. Legacy fans the roster out per '
@@ -337,7 +337,7 @@ class TestClassificationStrings:
         """All eleven strategies decline: no ``allocationType``, and an
         ``opportunityName`` matching no marker.
 
-        ⚠️ The title matters as much as the opportunity name, which is easy to forget.
+        WARNING: The title matters as much as the opportunity name, which is easy to forget.
         ``ExternalStrategy`` full-matches ``(.* )?External( .*)?`` against
         ``requestTitle`` too, so a title merely *mentioning* the word "External"
         resolves the whole action to ``External Projects`` — this test originally
@@ -384,7 +384,7 @@ class TestResourceAndAmountStrings:
     def test_three_resources_missing_an_amount_still_report_once(
             self, committing, session, linked_pi):
         """The accumulator's dedup, in the place most likely to be got wrong — and the
-        one behaviour only a synthetic payload can demonstrate."""
+        one behavior only a synthetic payload can demonstrate."""
         from factories import make_resource
         from sam.integration.xras import XrasResourceRepositoryKeyResource
         resources = []
@@ -520,7 +520,7 @@ class TestContractStrings:
 
 
 class TestAccumulationAcrossCategories:
-    """The whole point of assemble → check once: an operator fixes a request in one
+    """The whole point of assemble -> check once: an operator fixes a request in one
     pass rather than five."""
 
     def test_seven_distinct_problems_arrive_in_one_422(self, committing, session):

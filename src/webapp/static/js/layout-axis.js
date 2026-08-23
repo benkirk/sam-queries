@@ -1,43 +1,24 @@
 /* Tell the server which chart layout to render.
  *
- * Charts are matplotlib SVGs rendered server-side at a fixed figure size and
- * then scaled by CSS. That works on a desktop and fails on a phone: measured
- * at 390px, the status dashboard's 18x10in figure renders at 0.224 scale,
- * putting its 9-11pt labels at roughly 2px. No stylesheet fixes that — the
- * server has to render a different figure, so it has to know the viewport.
+ * Charts are matplotlib SVGs rendered server-side at a fixed figure size, so
+ * the server has to know the viewport -- no stylesheet can fix a 9pt label
+ * scaled to 2px on a phone. Measurements: docs/plans/implemented/MOBILE_CHARTS.md.
  *
- * ## Two channels, because charts arrive two ways
+ * TWO channels, and both are required. A cookie, read by every route, AND an
+ * htmx parameter on every fragment request:
  *
- * A cookie, read by every route, and an htmx parameter on every fragment
- * request. Neither alone is enough:
+ *   - 9 of the 18 chart call sites render in a full-page GET, so
+ *     `htmx:configRequest` never fires for them;
+ *   - the cookie cannot be set before the page that sets it. CSP here is
+ *     nonce-free by design (utils/csp.py), which rules out an inline head
+ *     script, so this file runs at end of body -- after the server already
+ *     chose a layout.
  *
- *   - 9 of the 18 chart call sites render inside a full-page GET — the three
- *     status history pages and the four pies on /allocations/projects. No
- *     htmx request exists for those, so `htmx:configRequest` never fires.
- *   - The cookie cannot be set before the page that sets it. CSP here is
- *     nonce-free by design (four routes cache rendered HTML in Redis, so a
- *     per-request nonce goes stale on a cache hit — see utils/csp.py), which
- *     rules out the classic inline head script. This file is external, so it
- *     runs at end of body, i.e. after the server already chose a layout.
+ * Cost of that: a first-ever visit on a phone gets desktop-sized charts on one
+ * page. They fit; they are merely small.
  *
- * Together they cover both: fragments are correct on the very first paint
- * because `hx-trigger="load"` fires after this listener registers, and full
- * pages are correct from the second navigation onward. A first-ever visit on
- * a phone or tablet sees desktop-sized charts on one page. They still fit —
- * nothing overflows at 390px — they are merely small, which is the status quo.
- *
- * PR 3 (app-wide dark mode) wants the same carrier for `theme`, with the
- * added constraint that a theme flash is visible where a chart size is not.
- * Keep the cookie shape reusable.
- *
- * ## No re-render on resize
- *
- * There is deliberately no `matchMedia` change listener. Rotating a phone
- * keeps the charts already on screen until the next fetch or navigation.
- * A viewport-driven re-fetch would be a new pathway — the only precedent in
- * this app, the job-history period pills, is click-driven — and a drag-resize
- * across the breakpoint would fire a burst of chart renders, each of which is
- * a matplotlib figure.
+ * There is deliberately NO `matchMedia` change listener. A drag-resize across
+ * the breakpoint would fire a burst of chart renders, each a matplotlib figure.
  */
 (function () {
     'use strict';

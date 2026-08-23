@@ -1,54 +1,24 @@
 """TTL cache for the job-history aggregation queries.
 
-Unlike fs-scans (weekly refreshes → content-addressed scan-date keys),
-job data appends continuously — there is no freshness signature to key
-on, so this is a plain TTL cache. Two buckets share the mechanism,
-picked by whether the requested window can still change:
+Unlike fs-scans, job data appends continuously -- there is no freshness
+signature to key on, so this is a plain TTL cache. Two buckets, picked by
+whether the requested window can still change: ``historical`` (window ends
+before today) and ``recent`` (touches today, or unbounded). Historical caps at
+30 minutes rather than hours because records keep arriving for closed windows.
 
-  * ``historical`` (``jobs``) — the window's ``end`` date is strictly
-    before today, so its aggregation is *nearly* immutable. Not entirely:
-    job records keep arriving for windows already closed, which is why
-    this caps out at 30 minutes rather than hours.
-  * ``recent`` (``jobs_recent``) — the window touches today (or has no
-    end bound), so new jobs keep landing in it. Short TTL keeps the
-    staleness window at ~15 minutes.
+WARNING: the chart SVG caches (``webapp.caching.chart_cached``) are NOT the
+freshness lever they look like -- their keys are content hashes of the plotted
+data, so a stale entry can only be served for data that has not changed. These
+TTLs are the only thing deciding how fresh a panel is.
 
-Note the chart SVG caches (``webapp.caching.chart_cached``) are NOT the
-freshness lever they look like: their keys are content hashes of the data
-being plotted, so a stale entry can only be served for data that has not
-changed. These TTLs are the only thing that decides how fresh a panel is.
+Only aggregations go through here (~0.5-0.6 s warm per month-window, on every
+card tab). Paged search and counts stay uncached: cheaper, highly
+parameterized, and users expect row-level freshness.
 
-Only the aggregations (histograms, usage-by rollups) go through here —
-they cost ~0.5-0.6 s warm per month-window against the plugin PG and
-back every card tab. Paged search + counts stay uncached: they're
-cheaper, highly parameterized, and users expect row-level freshness.
-
-Backend, lazy init and the get/compute/store dance all come from
-:class:`sam.caching.BucketedTTLCache` (shared with ``disk_scans/cache.py``
-and ``sam.queries.usage_cache``): Redis-backed adapter shared across
-gunicorn workers when ``CACHE_REDIS_URL`` is set, per-worker in-process TTL
-cache otherwise. Registered with the ``webapp.caching`` facade (category
-``jobs``) so it appears in Admin → Configuration and clears via the same
-surfaces. All that is left here is the cache key.
-
-Config (Flask app.config or env; 0 disables the corresponding bucket):
-  JOBS_CACHE_TTL          — historical TTL seconds (default 1800 = 30 min)
-  JOBS_CACHE_SIZE         — historical max LRU entries (default 512)
-  JOBS_RECENT_CACHE_TTL   — recent TTL seconds (default 900 = 15 min)
-  JOBS_RECENT_CACHE_SIZE  — recent max LRU entries (default 512)
-
-The sizes are set for the explorer, which fans out far more distinct keys
-than the cards ever did: per filter combination, up to 8 histogram
-dimensions x 2 owner axes, plus 2 usage rollups x 3 sort orders — roughly
-22 entries. (Under Redis eviction is instance-global ``allkeys-lru`` and
-maxsize is advisory; the sizes are load-bearing for the in-process
-fallback used in local dev and any Redis-less deploy.)
-
-Key shape (hashable tuple):
-  (query_type, machine, sorted(normalized opts))
-``opts`` carries every parameter that shapes the result — the flat
-filter set plus dimension/limit — normalized so dates and lists hash
-stably.
+Mechanism, backend and facade registration come from
+:class:`sam.caching.BucketedTTLCache`, shared with ``disk_scans/cache.py``.
+Sizes are load-bearing only for the in-process fallback -- under Redis,
+eviction is instance-global and maxsize is advisory.
 """
 
 from __future__ import annotations
@@ -79,7 +49,7 @@ _CACHE = BucketedTTLCache('jobs', 'jobs', {
 })
 
 #: Test seams. ``_BUCKETS`` enumerates the bucket keys; ``_adapters`` IS the
-#: cache's memo dict (same object), so a test that clears it re-initialises
+#: cache's memo dict (same object), so a test that clears it re-initializes
 #: this cache — the pre-existing idiom, preserved through the extraction.
 _BUCKETS = _CACHE.buckets
 _adapters = _CACHE._adapters
@@ -95,7 +65,7 @@ def bucket_for_window(end: Optional[date]) -> str:
 
     ``historical`` only when the window is provably closed: an explicit
     ``end`` strictly before today. An open end (None) or a window that
-    touches today keeps collecting jobs → ``recent``.
+    touches today keeps collecting jobs -> ``recent``.
     """
     if end is not None and end < date.today():
         return 'historical'

@@ -11,7 +11,7 @@ from .lookups import System, QueueDef, UserDef, ProjectCodeDef
 class UserProjQueueStatus(StatusBase, StatusSnapshotMixin,
                           QueueRollupMetricsMixin, SessionMixin):
     """
-    Per-user / per-project / per-queue rollup spans (formerly per-tick snapshots).
+    Per-user / per-project / per-queue rollup spans.
 
     Each row is a **span of unchanging counts** for a single
     ``(user, project_code, queue)`` tuple. The ``timestamp`` column is the

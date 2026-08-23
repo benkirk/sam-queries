@@ -128,7 +128,7 @@ class TestTheTwoPhaseWrite:
         assert event.after_state == '{"source": null}'
 
     def test_completion_can_write_the_before_capture(self, session):
-        """⚠️ It arrives at COMPLETION, not creation — the client makes the
+        """WARNING: It arrives at COMPLETION, not creation — the client makes the
         capture during the call, so the `attempted` row cannot carry it."""
         event = make_xras_remediation_event(session)
         assert event.before_state is None
@@ -186,7 +186,7 @@ class TestColumnWidths:
     """Sized against live data, not against the sibling table."""
 
     def test_request_number_is_wider_than_the_action_log(self):
-        """⚠️ XRAS's requestNumber is not always a projcode.
+        """WARNING: XRAS's requestNumber is not always a projcode.
 
         Measured on the live remediation cohort: one Submitted request carries
         `'New University Large Request - Fall 2017 UCUD0005 Zhong'` — 55

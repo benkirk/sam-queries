@@ -3,7 +3,7 @@
   One scheduled-task run, in full — the modal body behind the table's
   magnifying glass.
 
-  ⚠️  SYSTEM_ADMIN, one tier above the table. `runner_id` is a pod name and
+  WARNING: SYSTEM_ADMIN, one tier above the table. `runner_id` is a pod name and
   `detail` can hold a traceback naming hosts, paths and connection strings.
   The gate is on the ROUTE, not here.
 
@@ -39,7 +39,7 @@
         {% endif %}
     </dd>
 
-    {# All three are naive UTC, like every timestamp on this bind. Labelled
+    {# All three are naive UTC, like every timestamp on this bind. Labeled
        rather than converted, because an operator correlating with
        `kubectl logs` needs the same clock the pod wrote. #}
     <dt class="col-sm-3">Claimed</dt>

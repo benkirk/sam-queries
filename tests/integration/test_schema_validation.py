@@ -1,4 +1,4 @@
-"""Schema validation tests — ORM ↔ MySQL schema alignment.
+"""Schema validation tests — ORM <-> MySQL schema alignment.
 
 Ported verbatim from tests/integration/test_schema_validation.py as the
 first integration port into new_tests/. These assertions are structural
@@ -55,7 +55,7 @@ IGNORED_DB_INDEXES = {
 # IGNORED_FK_DRIFT — keep the two in sync when adding entries.
 
 # ORM-declared FKs that intentionally have no DB-level constraint.
-# Keyed by (table_name, frozenset(columns)) → reason.
+# Keyed by (table_name, frozenset(columns)) -> reason.
 IGNORED_ORM_FK_DRIFT = {
     # Self-FK drives Organization.parent / .children nested-set relationship.
     # Prod doesn't enforce the FK at the DB level (cycles in the tree during
@@ -72,9 +72,9 @@ IGNORED_ORM_FK_DRIFT = {
 }
 
 # DB-side FKs whose ON DELETE / ON UPDATE rules are non-default.
-# Keyed by (table_name, constraint_name) → (delete_rule, update_rule, reason).
+# Keyed by (table_name, constraint_name) -> (delete_rule, update_rule, reason).
 # Seed: every FK in the test container whose action pair isn't ('NO ACTION',
-# 'NO ACTION'). Default MySQL behaviour ('RESTRICT' / 'NO ACTION') is treated
+# 'NO ACTION'). Default MySQL behavior ('RESTRICT' / 'NO ACTION') is treated
 # as the implicit baseline and not allowlisted.
 #
 # When an ORM model eventually adds matching ondelete=/onupdate= to its
@@ -111,7 +111,7 @@ _DEFAULT_FK_ACTIONS = {None, 'NO ACTION', 'RESTRICT'}
 # ============================================================================
 
 # Maps SQLAlchemy column types to acceptable MySQL types.
-# Accounts for SQLAlchemy's automatic type mapping (e.g. Boolean → BIT(1)).
+# Accounts for SQLAlchemy's automatic type mapping (e.g. Boolean -> BIT(1)).
 TYPE_MAPPINGS = {
     'Integer':    ['INT', 'INTEGER', 'TINYINT', 'SMALLINT', 'MEDIUMINT', 'BIGINT'],
     'BigInteger': ['BIGINT'],
@@ -163,7 +163,7 @@ def get_table_type(session, table_name):
 
 
 def normalize_type(db_type):
-    """'VARCHAR(255)' → 'VARCHAR'. Strips size and sign."""
+    """'VARCHAR(255)' -> 'VARCHAR'. Strips size and sign."""
     base = db_type.split('(')[0].upper()
     base = base.replace(' UNSIGNED', '').replace(' SIGNED', '')
     return base.strip()
@@ -175,7 +175,7 @@ def get_orm_type_name(column):
 
 
 def _is_acceptable_mismatch(mismatch_str):
-    """Known-good MySQL ↔ SQLAlchemy type pairings we don't flag."""
+    """Known-good MySQL <-> SQLAlchemy type pairings we don't flag."""
     acceptable = [
         'ORM=String → DB=CHAR',
         'ORM=Integer → DB=TINYINT',
@@ -343,7 +343,7 @@ class TestSchemaAlignment:
         the expected (delete_rule, update_rule, reason).
 
         ORM models currently don't declare ondelete=/onupdate= on any
-        ForeignKey, so this is a one-direction guard: DB → allowlist.
+        ForeignKey, so this is a one-direction guard: DB -> allowlist.
         Once a model adds matching ondelete=/onupdate=, drop its
         allowlist entry and this test will start verifying the ORM
         declaration tracks the DB.
@@ -474,11 +474,11 @@ UTF8MB4_COLUMNS = {
 class TestCharsetSplit:
     """The utf8mb3/utf8mb4 split, asserted rather than remembered.
 
-    ⚠️ **This is the only automated record of the split that runs by default.**
+    WARNING: **This is the only automated record of the split that runs by default.**
     SQLAlchemy does not encode collation on these models, so the ORM cannot carry
-    it; the `initdb.d/zz-9*.sql` files that used to be its written source were
-    retired once production and the committed snapshot both had the tables. The
-    stress tier proves the *behaviour* (an emoji survives a POST) but is gated off
+    it, and there is no longer a written source for it in `initdb.d/zz-9*.sql` —
+    those were retired once production and the committed snapshot both had the tables. The
+    stress tier proves the *behavior* (an emoji survives a POST) but is gated off
     the default run, so without this the split could silently vanish from a
     regenerated snapshot and nothing would notice until an audit row went missing
     in production.

@@ -33,7 +33,7 @@ class NotificationLog(Base, SessionMixin):
     **Append-only, with exactly one permitted transition.** A retry is a *new*
     row sharing the same :attr:`dedup_key`, never an edit — the discipline
     ``XrasActivationEvent`` keeps. The sole exception is
-    ``queued → sent | failed`` via :meth:`resolve`, which is this row's own
+    ``queued -> sent | failed`` via :meth:`resolve`, which is this row's own
     outcome rather than a state overwrite. That is what makes the table
     outbox-ready: a drain can be added later with no DDL and no caller change.
 
@@ -101,7 +101,7 @@ class NotificationLog(Base, SessionMixin):
 
     entity_type = Column(String(32))
     entity_id = Column(Integer)
-    #: Denormalized. ⚠️ utf8mb3 in MySQL is load-bearing — it is compared
+    #: Denormalized. WARNING: utf8mb3 in MySQL is load-bearing — it is compared
     #: against ``project.projcode``; see the DDL header.
     projcode = Column(String(30))
 

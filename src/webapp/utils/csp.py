@@ -29,7 +29,7 @@ from urllib.parse import urlsplit
 
 SELF = "'self'"
 
-#: registry `kind` → directives an external asset's origin must appear in.
+#: registry `kind` -> directives an external asset's origin must appear in.
 #: css assets feed font-src too: stylesheets pull webfonts from their own
 #: origin by relative path (Font Awesome ../webfonts/).
 _KIND_DIRECTIVES = {
@@ -39,7 +39,7 @@ _KIND_DIRECTIVES = {
 
 
 def _origin(url):
-    """scheme://host of a URL: https://cdn.example.net/pkg/x.js → https://cdn.example.net"""
+    """scheme://host of a URL: https://cdn.example.net/pkg/x.js -> https://cdn.example.net"""
     parts = urlsplit(url)
     return f'{parts.scheme}://{parts.netloc}'
 

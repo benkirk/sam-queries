@@ -617,7 +617,7 @@ else
         echo "  --- https://${edge_host}/ ---"
         HDR_URL="https://${edge_host}/"
         # -D - dumps response headers; we read the first response (security headers
-        # ride every response incl. the unauthenticated 302 → /status, so no -L).
+        # ride every response incl. the unauthenticated 302 -> /status, so no -L).
         # NOTE: no --insecure. A cert that doesn't name this host must fail the
         # fetch here rather than silently passing the header checks.
         if ! HDRS=$(curl -sS -m 15 -D - -o /dev/null "$HDR_URL" 2>/dev/null); then

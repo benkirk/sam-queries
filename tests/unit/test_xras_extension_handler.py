@@ -121,12 +121,12 @@ class TestAccountIsActive:
         assert not account_is_active(account, datetime.now())
 
     def test_a_recently_created_account_is_not_excluded_by_clock_skew(self, session):
-        """⚠️ The conjunct legacy has and this port drops, and the reason why.
+        """WARNING: The conjunct legacy has and this port drops, and the reason why.
 
         ``account.creation_time`` comes from ``server_default=CURRENT_TIMESTAMP``, so
         it resolves in the **MySQL server's** timezone — UTC in the dev and CI
         containers — while ``now`` is naive-Mountain. Measured against this very
-        container: ``NOW()`` is six hours ahead of ``datetime.now()``. Honouring
+        container: ``NOW()`` is six hours ahead of ``datetime.now()``. Honoring
         ``!creationTime.after(now)`` would therefore skip every account created in the
         last six hours, so an Extension posted shortly after a New would report
         ``processed`` having written nothing.
@@ -137,7 +137,7 @@ class TestAccountIsActive:
         from factories import make_account
         account = make_account(session)
 
-        # ⚠️ The skew is a property of the *environment*, not of the code, so it
+        # WARNING: The skew is a property of the *environment*, not of the code, so it
         # cannot be asserted unconditionally. `account.creation_time` comes from
         # MySQL's `NOW()` (UTC in these containers); `datetime.now()` is the app
         # clock. On a naive-Mountain laptop those differ by six hours and the
@@ -544,7 +544,7 @@ class TestTheAllocationSubtree:
         assert parent.end_date == datetime(2027, 1, 31, 23, 59, 59)
 
     def test_an_inheriting_allocation_is_detached_with_an_audit_row(self, committing):
-        """⚠️ Declared divergence. Legacy's ``disinherit()`` severs the parent link in
+        """WARNING: Declared divergence. Legacy's ``disinherit()`` severs the parent link in
         memory and writes nothing — production holds **zero** DETACH rows against 2,390
         inheriting allocations. SAM's audit trail is the product."""
         session = committing
@@ -560,7 +560,7 @@ class TestTheAllocationSubtree:
                                   comment='x')
 
         assert child.parent_allocation_id is None
-        # ⚠️ DETACH is an *intent*, not a column value: LEGACY_TYPE_MAP writes it as
+        # WARNING: DETACH is an *intent*, not a column value: LEGACY_TYPE_MAP writes it as
         # transaction_type='ADJUSTMENT' with a '[DETACH]' comment tag, because legacy
         # SAM's Java enum throws on anything outside its five strings.
         detaches = [t for t in txns_for(session, child)

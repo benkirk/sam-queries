@@ -190,15 +190,15 @@ class TestFactor:
 class TestRoundToSigFigs:
 
     def test_large_value_plan_example(self):
-        # 688M × 0.667 = 458,896,000 → 459,000,000 at 3 sig figs
+        # 688M × 0.667 = 458,896,000 -> 459,000,000 at 3 sig figs
         assert round_to_sig_figs(458_896_000) == 459_000_000.0
 
     def test_million_scale(self):
-        # 2.25M × 0.667 = 1,500,750 → 1,500,000 at 3 sig figs
+        # 2.25M × 0.667 = 1,500,750 -> 1,500,000 at 3 sig figs
         assert round_to_sig_figs(1_500_750) == 1_500_000.0
 
     def test_rounds_up(self):
-        # 33,350 → 33,400 at 3 sig figs (banker's rounding: 3.335 → 3.34? no,
+        # 33,350 -> 33,400 at 3 sig figs (banker's rounding: 3.335 -> 3.34? no,
         # Python round() is banker's for .5 exact, but 33_350 in IEEE float
         # is exact; at 3 sig figs we round the last kept digit)
         assert round_to_sig_figs(33_350) == 33_400.0
@@ -383,32 +383,32 @@ class TestConfigure:
 
 
 class TestNaiveLocalToUTC:
-    """Operator-entered naive datetimes → naive-UTC for storage."""
+    """Operator-entered naive datetimes -> naive-UTC for storage."""
 
     def test_none_passes_through(self):
         assert naive_local_to_utc(None) is None
 
     def test_browser_eastern_summer_to_utc(self):
-        # 2026-07-15 14:30 EDT (UTC-4) → 18:30 UTC
+        # 2026-07-15 14:30 EDT (UTC-4) -> 18:30 UTC
         dt = datetime(2026, 7, 15, 14, 30)
         utc = naive_local_to_utc(dt, 'America/New_York')
         assert utc == datetime(2026, 7, 15, 18, 30)
         assert utc.tzinfo is None
 
     def test_browser_mountain_summer_to_utc(self):
-        # 2026-07-15 14:30 MDT (UTC-6) → 20:30 UTC
+        # 2026-07-15 14:30 MDT (UTC-6) -> 20:30 UTC
         dt = datetime(2026, 7, 15, 14, 30)
         utc = naive_local_to_utc(dt, 'America/Denver')
         assert utc == datetime(2026, 7, 15, 20, 30)
 
     def test_browser_mountain_winter_to_utc(self):
-        # 2026-01-15 14:30 MST (UTC-7) → 21:30 UTC — DST off
+        # 2026-01-15 14:30 MST (UTC-7) -> 21:30 UTC — DST off
         dt = datetime(2026, 1, 15, 14, 30)
         utc = naive_local_to_utc(dt, 'America/Denver')
         assert utc == datetime(2026, 1, 15, 21, 30)
 
     def test_missing_tz_falls_back_to_display(self):
-        # No tz_name → uses STATUS_DISPLAY_TZ default (America/Denver).
+        # No tz_name -> uses STATUS_DISPLAY_TZ default (America/Denver).
         dt = datetime(2026, 7, 15, 14, 30)
         assert naive_local_to_utc(dt) == naive_local_to_utc(dt, 'America/Denver')
 

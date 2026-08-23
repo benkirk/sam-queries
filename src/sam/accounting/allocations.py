@@ -168,7 +168,7 @@ class Allocation(Base, TimestampMixin, SoftDeleteMixin, SessionMixin):
     ) -> 'Allocation':
         """Create a new allocation for a project + resource pair.
 
-        Gets or creates the Account linking project ↔ resource, then
+        Gets or creates the Account linking project <-> resource, then
         instantiates and flushes the Allocation.
 
         Does NOT log an audit transaction — callers that need an audit trail
@@ -279,7 +279,7 @@ class AllocationTransactionType(enum.StrEnum):
        the only values legacy SAM's Java enum will accept in the
        ``transaction_type`` column. Anything else throws on the Java side.
 
-    ``log_allocation_transaction`` translates intent → DB string via
+    ``log_allocation_transaction`` translates intent -> DB string via
     ``LEGACY_TYPE_MAP`` on write, and prepends a ``[TAG]`` to
     ``transaction_comment`` so the original intent is recoverable via
     ``parse_intent()``. See ``LEGACY_TRANSACTION_TYPES`` for the closed
@@ -287,7 +287,7 @@ class AllocationTransactionType(enum.StrEnum):
 
     .. note:: **Transitional design — retire when legacy SAM is decommissioned.**
 
-       This intent → legacy-string mapping (``LEGACY_TYPE_MAP``,
+       This intent -> legacy-string mapping (``LEGACY_TYPE_MAP``,
        ``intent_filter``, ``parse_intent``, the ``[TAG]`` comment
        convention) exists solely so the new Python implementation can
        coexist with legacy SAM's Java enum validator on shared MySQL
@@ -296,7 +296,7 @@ class AllocationTransactionType(enum.StrEnum):
        ``intent_filter``, store the Python intent strings directly in
        ``transaction_type``, and stop emitting ``[TAG]`` prefixes. A
        one-shot data migration can rewrite existing rows
-       (``ADJUSTMENT`` + ``[DELETE]`` → ``DELETE``, etc.) using the same
+       (``ADJUSTMENT`` + ``[DELETE]`` -> ``DELETE``, etc.) using the same
        ``parse_intent`` logic before deleting the helper.
     """
     # Python-side intents (translated to legacy strings on write)
@@ -323,7 +323,7 @@ LEGACY_TRANSACTION_TYPES = frozenset({
 })
 
 
-#: Maps Python-side intent → ``(db_string, optional_comment_tag)``.
+#: Maps Python-side intent -> ``(db_string, optional_comment_tag)``.
 #:
 #: The tag — when present — is prepended to ``transaction_comment`` as
 #: ``[TAG] <comment>`` so we can recover the high-level intent without
@@ -364,8 +364,8 @@ def parse_intent(txn: 'AllocationTransaction') -> AllocationTransactionType:
 
     Reads ``transaction_type`` + the optional ``[TAG]`` prefix on
     ``transaction_comment``. Untagged rows return the intent that
-    naturally corresponds to the DB string (e.g. ADJUSTMENT → EDIT,
-    since EDIT is the canonical Python-side name; NEW → CREATE).
+    naturally corresponds to the DB string (e.g. ADJUSTMENT -> EDIT,
+    since EDIT is the canonical Python-side name; NEW -> CREATE).
 
     Returns the original ``AllocationTransactionType`` even for rows
     written before B3 landed (those are still legacy strings, so the
@@ -383,7 +383,7 @@ def parse_intent(txn: 'AllocationTransaction') -> AllocationTransactionType:
             except KeyError:
                 pass
 
-    # Untagged: map DB string → canonical Python intent
+    # Untagged: map DB string -> canonical Python intent
     _DB_TO_INTENT = {
         "NEW":        AllocationTransactionType.CREATE,
         "ADJUSTMENT": AllocationTransactionType.EDIT,
@@ -397,7 +397,7 @@ def parse_intent(txn: 'AllocationTransaction') -> AllocationTransactionType:
 def intent_filter(intent: AllocationTransactionType):
     """Build a SQLAlchemy filter expression matching rows of a given intent.
 
-    Translates Python-side intent → legacy DB string + optional ``[TAG]``
+    Translates Python-side intent -> legacy DB string + optional ``[TAG]``
     comment prefix. For tagged intents (RENEW, DELETE, DETACH, LINK) the
     expression matches both the DB string AND the leading ``[TAG]`` in
     the comment. For untagged intents whose DB string also serves a

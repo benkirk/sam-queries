@@ -8,10 +8,10 @@ are invisible to the function-level tests in ``test_query_counts.py``.
 
 Each test mirrors one of the profiling scripts in ``utils/profiling/``:
 
-    test_user_dashboard_route       ← profile_user_dashboard.py  (Issues 5, 6)
-    test_allocations_index_route    ← profile_allocations.py     (always-on usage, Issue 1)
-    test_admin_orgs_card_route      ← profile_admin_orgs.py      (Issue 7)
-    test_fstree_api_route           ← production 5min cache       (expensive API)
+    test_user_dashboard_route       <- profile_user_dashboard.py  (Issues 5, 6)
+    test_allocations_index_route    <- profile_allocations.py     (always-on usage, Issue 1)
+    test_admin_orgs_card_route      <- profile_admin_orgs.py      (Issue 7)
+    test_fstree_api_route           <- production 5min cache       (expensive API)
 
 Run::
 
@@ -88,7 +88,7 @@ def test_admin_orgs_card_route(auth_client, route_count_queries):
     """Full-stack query count for the organizations card fragment.
 
     Catches cascade-suppression regressions (Issue 7) — lazy loads
-    during template rendering of the deep Organization → Institution →
+    during template rendering of the deep Organization -> Institution ->
     User relationship tree.
     """
     baseline = get_baseline("admin_orgs_card_route")
@@ -141,7 +141,7 @@ def test_admin_institutions_users_projects_route(auth_client, route_count_querie
     """Full-stack query count for the Institutions tab with U&P fanout enabled.
 
     ``show_users_projects=1`` enables the 4-level eager-load chain
-    (Institution → UserInstitution → User → led_projects ∪ admin_projects)
+    (Institution -> UserInstitution -> User -> led_projects ∪ admin_projects)
     and the per-institution chip-building loop that iterates every user's
     project relationships.  A template or route change that accesses an
     un-eager-loaded attribute here becomes a per-user N+1 across the
@@ -174,7 +174,7 @@ def test_fstree_api_route(auth_client, route_count_queries):
 
     This endpoint is cached for 5 minutes in production because it's
     expensive — builds the complete fairshare tree and serializes the
-    nested facility → allocationType → project → resource → user
+    nested facility -> allocationType -> project -> resource -> user
     structure to JSON.  Lazy loads during jsonify() traversal would
     be invisible to the function-level ``test_get_fstree_data``.
     """

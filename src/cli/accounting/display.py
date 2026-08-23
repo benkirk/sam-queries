@@ -229,7 +229,7 @@ def display_charge_summary_table(ctx: Context, rows: list, start_date, end_date)
 
 
 def _fmt_factor(x) -> str:
-    """Format a QoS charge multiplier compactly (1.0 → '1', 1.5 → '1.5')."""
+    """Format a QoS charge multiplier compactly (1.0 -> '1', 1.5 -> '1.5')."""
     if x is None:
         return '—'
     return f"{x:g}"
@@ -436,7 +436,7 @@ def display_quota_reconcile_plan(
       unmapped:            QuotaEntry
 
     ``path_exists`` is provided when ``--verify-paths`` was requested —
-    a mapping of absolute path → presence bool. When None, the FS column
+    a mapping of absolute path -> presence bool. When None, the FS column
     is omitted entirely from the Orphaned / Unmapped tables.
     """
     show_fs = path_exists is not None

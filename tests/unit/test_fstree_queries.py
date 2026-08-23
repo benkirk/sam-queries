@@ -486,7 +486,7 @@ class TestThresholdData:
 
 
 # ============================================================================
-# Parent → child status propagation
+# Parent -> child status propagation
 # ============================================================================
 
 
@@ -698,7 +698,7 @@ class TestFacilityResourceOverride:
         default = facility.fair_share_percentage
         sentinel = 3.5 if default != 3.5 else 6.5
 
-        # Set an override → the facility node reports the override value.
+        # Set an override -> the facility node reports the override value.
         FacilityResource.set_override(
             session,
             facility_id=facility.facility_id,
@@ -707,7 +707,7 @@ class TestFacilityResourceOverride:
         )
         assert self._facility_fsp(session, resource_name, facility_name) == sentinel
 
-        # Unset the override → the facility default re-emerges via COALESCE.
+        # Unset the override -> the facility default re-emerges via COALESCE.
         removed = FacilityResource.clear_override(
             session,
             facility_id=facility.facility_id,

@@ -70,7 +70,7 @@ def load_fixture(name):
 def wire_resource(key, amount='250000', comments=None):
     """One ``resources[]`` entry, as XRAS actually sends it.
 
-    ⚠️ ``resourceRepositoryKey``. **Not** ``key`` — no XRAS payload has ever carried
+    WARNING: ``resourceRepositoryKey``. **Not** ``key`` — no XRAS payload has ever carried
     a field by that name, and this helper claiming otherwise is how the handlers came
     to read one for a sprint. ``tests/unit/test_xras_wire_vocabulary.py`` now proves
     every field the handlers read is one a schema declares, from both directions.
@@ -90,7 +90,7 @@ def txns_for(session, allocation):
 
 @pytest.fixture
 def committing(session, monkeypatch):
-    """Neutralise ``management_transaction``'s commit for handler tests.
+    """Neutralize ``management_transaction``'s commit for handler tests.
 
     The handler commits by design — it is the write boundary. But the suite's
     per-test isolation is a SAVEPOINT on this connection, and a real ``COMMIT`` would
@@ -98,14 +98,14 @@ def committing(session, monkeypatch):
     manager to flush instead keeps every assertion true (the rows exist, and are
     visible on this session) while leaving the rollback intact.
 
-    ⚠️ **One patch point.** This used to name a handler module, and every test that
+    WARNING: **One patch point.** This used to name a handler module, and every test that
     drove more than one handler had to patch five of them — a missed one commits for
     real while the assertions still pass, which is the silent version of this failure
     and has already leaked rows once. ``management_transaction`` is imported only by
     ``sam.xras.handlers.base``, and ``tests/unit/test_xras_transaction_seam.py``
     enforces that by scanning module globals at runtime.
 
-    ⚠️ It is also **one definition** now. Seven copies of a fixture whose entire job
+    WARNING: It is also **one definition** now. Seven copies of a fixture whose entire job
     is preventing silent database corruption is seven chances for one to drift.
     """
     import sam.xras.handlers.base as base
@@ -183,7 +183,7 @@ def xras_keys(monkeypatch):
 def xras_client(client, xras_keys):
     """Unauthenticated test client with the XRAS key map installed.
 
-    ⚠️ Import ``xras_keys`` alongside this one. pytest resolves a fixture's own
+    WARNING: Import ``xras_keys`` alongside this one. pytest resolves a fixture's own
     dependencies by name in the *requesting* module's namespace, so importing
     ``xras_client`` alone raises ``fixture 'xras_keys' not found`` — at setup, not
     at import, so it surfaces as an error in every test rather than a bad import.

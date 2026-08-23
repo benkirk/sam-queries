@@ -198,7 +198,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # The delivery log's per-row detail button opens the shared audit modal.
     # Loaded only into dashboards/admin/notifications.html, which includes
     # partials/audit_details_modal.html itself — same arrangement as the XRAS
-    # action log, which is the page this one is modelled on.
+    # action log, which is the page this one is modeled on.
     'dashboards/admin/fragments/notifications_log.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/organization_card.html': [
@@ -209,7 +209,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'editAllocationModal'],
     # Only ever loaded by dashboards/admin/scheduled_tasks.html, which includes
     # partials/audit_details_modal.html itself — same arrangement as the
-    # notification delivery log above, the page this one is modelled on.
+    # notification delivery log above, the page this one is modeled on.
     'dashboards/admin/fragments/scheduled_tasks_log.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/project_directories_card.html': [
@@ -476,8 +476,8 @@ def test_project_modal_pages_ship_the_allocation_modal(auth_client, url):
 
 def test_edit_project_page_ships_one_of_each(auth_client, active_project):
     """/admin/project/<projcode>/edit assembles its own modal set (it extends
-    dashboards/base, not base_admin) — it used to carry an inline copy of the
-    edit-allocation modal alongside the shared include."""
+    dashboards/base, not base_admin), so it is the page most likely to grow an
+    inline copy of the edit-allocation modal beside the shared include."""
     resp = auth_client.get(f'/admin/project/{active_project.projcode}/edit')
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
@@ -493,7 +493,7 @@ def test_project_details_fragment_targets_resolve(auth_client, active_project):
     The static check above works on template source; this walks the real
     runtime chain — GET the page, GET the htmx fragment that fills the modal
     body, and confirm every shell the fragment reaches for is actually there.
-    This is precisely what silently failed before PR #378.
+    That runtime chain is precisely what PR #378 found silently broken.
     """
     page = auth_client.get('/status/derecho')
     assert page.status_code == 200

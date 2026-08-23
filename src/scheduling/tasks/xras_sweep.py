@@ -5,7 +5,7 @@ rather than reading only SAM's own tables, and the third declaring
 ``needs=('sam',)``.
 
 It is also the first task that **publishes to the dashboard**. The Feed-B tab
-on Allocations → XRAS renders what this writes to the ``xras_pending`` cache
+on Allocations -> XRAS renders what this writes to the ``xras_pending`` cache
 bucket, because the enumeration behind it (21 pages, 60-90s) is far outside
 what an htmx round-trip can afford. The cadence here is therefore the tab's
 freshness, which is why this runs hourly rather than nightly.
@@ -27,18 +27,18 @@ NCAR process, so this task reaches three things the card cannot:
    sides are already in hand.
 3. **Identity detail** — re-fetching ``/v1/people`` for everyone currently on
    the worklist refreshes ``isReconciled`` and leaves a warm cache for the
-   morning's first card render. ⚠️ Reconciliation is **not** a closure: it
+   morning's first card render. WARNING: Reconciliation is **not** a closure: it
    means XRAS has linked the username to a real identity, not that SAM has an
    account. A row leaves the worklist when its ``users`` row exists and is
    active, which classification already checks on every render — for free.
 
-⚠️ **Ships switched off.** ``SAM_TASKS_DISABLED`` is *fail-open*: registering
+WARNING: **Ships switched off.** ``SAM_TASKS_DISABLED`` is *fail-open*: registering
 a task here puts it into production live on the next hourly wake unless its
 name is added to ``helm/values.yaml`` in the **same change**. The registry is
 code-side, the list is chart-side, and nothing couples them but the reviewer —
 so ``test_task_xras_sweep.py`` greps ``values.yaml`` for the name.
 
-⚠️ **Unconfigured is a skip, not a raise.** Unlike the notice tasks, whose
+WARNING: **Unconfigured is a skip, not a raise.** Unlike the notice tasks, whose
 guards raise because a chart mistake that mails nobody must not report
 success, this task *reading* nothing is a legitimate state — it is the shipped
 one. The ledger row carrying ``skipped: true`` is the record.
@@ -96,7 +96,7 @@ PAGE_SIZE = 200
 #: The sweep's window, in days back from the slot — the Feed-B analogue of the
 #: worklist card's 7D/30D/90D pills.
 #:
-#: ⚠️ **Without a window the sweep is meaningless, and the smoke measured it.**
+#: WARNING: **Without a window the sweep is meaningless, and the smoke measured it.**
 #: Unfiltered, the enumeration returns every Approved request the NCAR process
 #: has ever held — 4,088 of them — and classifying that whole corpus reported
 #: **2,180 "accounts needed", 2,149 of them merely inactive**. Those are not
@@ -111,7 +111,7 @@ PAGE_SIZE = 200
 #: produce one.
 DEFAULT_WINDOW_DAYS = 90
 
-#: ⚠️ Requests to enumerate. ``Approved`` is the default because it is the
+#: WARNING: Requests to enumerate. ``Approved`` is the default because it is the
 #: only status that produces a handoff — but the full filter vocabulary is
 #: reachable (``Submitted``, ``Under Review``, ``Incomplete``, ``Rejected``),
 #: and ``all`` drops the filter entirely, so a sweep can surface the pipeline
@@ -352,7 +352,7 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
                            *, known=()) -> None:
     """Map the opportunities XRAS and the ladder agree about; report the rest.
 
-    ⚠️ **The only write this task performs**, and the only one it may perform.
+    WARNING: **The only write this task performs**, and the only one it may perform.
     Everything else here is a read published to a cache bucket.
 
     Why writing at all does not break the design's central promise: ingestion
@@ -371,7 +371,7 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
     tests share it rather than reimplementing it; this function is only budget,
     persistence and reporting.
 
-    ⚠️ **Must stay above the ``@task`` decorator.** A module-level function
+    WARNING: **Must stay above the ``@task`` decorator.** A module-level function
     defined between ``@task(...)`` and ``def xras_sweep`` gets registered as the
     task body — silently, since the name is a decorator argument. It fails only
     at dispatch. ``test_the_decorator_is_bound_to_the_task_body`` is the guard.
@@ -407,7 +407,7 @@ def _map_new_opportunities(ctx, session, client, unmapped_ids, detail,
     budget = map_max()
     agreed = proposal['agree']
     if len(agreed) > budget:
-        # ⚠️ **Newest first when the cap bites**, not lowest id first.
+        # WARNING: **Newest first when the cap bites**, not lowest id first.
         # `opportunity_id` ascends with time, and the rows worth having soonest
         # are the ones an imminent action might reference — a newly-posted
         # opportunity is the entire reason this feature exists. A historical
@@ -541,7 +541,7 @@ def xras_sweep(ctx) -> TaskResult:
     detail['window_days'] = window
     detail['status'] = status or 'all'
 
-    # ── 1. enumerate ────────────────────────────────────────────────────
+    # 1. enumerate
     payloads = []
     enumeration_failed = False
     try:
@@ -561,7 +561,7 @@ def xras_sweep(ctx) -> TaskResult:
     detail['requests_seen'] = len(payloads)
     detail['budget_exhausted'] = detail['pages'] >= page_budget
 
-    # ⚠️ Kept **before** the window filter below, for the Remediations index.
+    # WARNING: Kept **before** the window filter below, for the Remediations index.
     # The two feeds want opposite things from the same enumeration: the account
     # worklist wants only live periods of performance, while remediation is
     # about requests that went stale — a 2015 approval nobody ever pushed is
@@ -569,7 +569,7 @@ def xras_sweep(ctx) -> TaskResult:
     # exactly those. Same read, two cohorts, no second enumeration.
     unwindowed = list(payloads)
 
-    # ── 1b. drop what had already ended when the window opened ──────────
+    # 1b. drop what had already ended when the window opened
     #
     # Both counts are reported: `requests_seen` says how much was read,
     # `requests_in_window` how much was work. Reporting only the second would
@@ -578,13 +578,13 @@ def xras_sweep(ctx) -> TaskResult:
                 if overlaps_window(p, window_start=window_start)]
     detail['requests_in_window'] = len(payloads)
 
-    # ── 1c. opportunities SAM cannot resolve to an allocation type ──────
+    # 1c. opportunities SAM cannot resolve to an allocation type
     #
     # Free: every `reports/requests` payload already carries `opportunityId`,
     # so this costs no round trips — which is the whole reason it lives here
     # rather than behind a `/v1/opportunities` fetch.
     #
-    # ⚠️ The reports payload spells it **snake_case** `opportunity_name`,
+    # WARNING: The reports payload spells it **snake_case** `opportunity_name`,
     # while the inbound action wire spells the sibling field
     # `opportunityName`. Only the id is read here, but the two vocabularies
     # meeting in one task is exactly the shape of bug that cost this repo a
@@ -598,7 +598,7 @@ def xras_sweep(ctx) -> TaskResult:
     seen_ids = {int(oid) for p in payloads
                 if (oid := p.get('opportunityId')) is not None}
 
-    # ⚠️ **Requests cannot mention an opportunity that has none**, so the
+    # WARNING: **Requests cannot mention an opportunity that has none**, so the
     # enumeration above is blind to a brand-new one until its first request is
     # *approved* — which can be weeks after it is posted, and is precisely the
     # lead time this map exists to buy. The open list closes that gap for one
@@ -631,7 +631,7 @@ def xras_sweep(ctx) -> TaskResult:
             _map_new_opportunities(ctx, session, client, audit['unmapped_ids'],
                                    detail, known=open_payloads)
 
-    # ── 2. dropped / pending pushes ─────────────────────────────────────
+    # 2. dropped / pending pushes
     numbers = {str(p.get('requestNumber')).strip() for p in payloads
                if p.get('requestNumber')}
     pending_set: set = set()
@@ -643,9 +643,9 @@ def xras_sweep(ctx) -> TaskResult:
         detail['pending_push'] = len(pending)
         detail['pending_push_sample'] = pending[:_MAX_REPORTED]
 
-    # ── 3. classify the rosters of what has NOT been pushed ─────────────
+    # 3. classify the rosters of what has NOT been pushed
     #
-    # ⚠️ **Only the pending set, and this is the difference between a queue
+    # WARNING: **Only the pending set, and this is the difference between a queue
     # and a census.** Measured against the live process, 90-day window:
     #
     #     every Approved request, no window   2,180 accounts "needed"
@@ -668,7 +668,7 @@ def xras_sweep(ctx) -> TaskResult:
     detail['accounts'] = worklist_counts(enumerated)
     detail['accounts_sample'] = [r['username'] for r in enumerated][:_MAX_REPORTED]
 
-    # ── 4. warm the person cache for the card's morning renders ────────
+    # 4. warm the person cache for the card's morning renders
     #
     # Feed A only: Feed B carried its person objects inline, so re-fetching
     # them would be a round trip for something already in hand.
@@ -684,17 +684,17 @@ def xras_sweep(ctx) -> TaskResult:
             break
         detail['people_refreshed'] += 1
         if person and person.get('isReconciled'):
-            # ⚠️ NOT a closure. XRAS having linked this username to a real
+            # WARNING: NOT a closure. XRAS having linked this username to a real
             # identity says nothing about whether SAM has a usable row — the
             # smoke measured 9 of 9 worklist rows reconciled and still needing
             # work. It is reported because it says the account can be created
             # from real detail, not because anything closed.
             detail['reconciled'] += 1
 
-    # ── 4b. the Remediations index ──────────────────────────────────────
+    # 4b. the Remediations index
     index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
 
-    # ── 5. publish for the dashboard ────────────────────────────────────
+    # 5. publish for the dashboard
     #
     # Send first, record second — the ledger row must not claim a snapshot the
     # tab cannot read. A disabled bucket is not an error: the findings are
@@ -703,7 +703,7 @@ def xras_sweep(ctx) -> TaskResult:
         # A datetime, not an ISO string: this payload is pickled into the
         # cache and read straight by a Jinja `fmt_date`, whereas the ledger's
         # `detail` beside it is JSON and must stay stringly-typed. The two
-        # have different serialisation contracts and this is the seam.
+        # have different serialization contracts and this is the seam.
         'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
         'window_days': window,
         'status': detail['status'],
@@ -716,7 +716,7 @@ def xras_sweep(ctx) -> TaskResult:
         'rows': enumerated,
     })
 
-    # ⚠️ `published` means "the dashboard can read this", NOT "a write
+    # WARNING: `published` means "the dashboard can read this", NOT "a write
     # returned". The bucket falls back to a per-worker in-process cache when
     # CACHE_REDIS_URL is unset or Redis is unreachable, and this task runs in a
     # ONE-SHOT pod — so a process-local write succeeds and then dies with the
@@ -728,7 +728,7 @@ def xras_sweep(ctx) -> TaskResult:
     # because the `worklist` value must keep its exact shape — an older webapp
     # reading a newer sweep sees what it expects and never asks for this one.
     #
-    # ⚠️ **A failed build must not publish.** `None` back from the builder, or
+    # WARNING: **A failed build must not publish.** `None` back from the builder, or
     # an empty cohort produced by a total outage (nothing enumerated anywhere),
     # is not "nothing to remediate" — but publishing it over the last good
     # snapshot would render exactly that, and its 24h TTL would otherwise have

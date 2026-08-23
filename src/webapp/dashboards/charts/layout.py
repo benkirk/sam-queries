@@ -1,52 +1,21 @@
-"""`Layout` — the geometry axis.
+"""`Layout` -- the geometry axis.
 
-Charts are rendered server-side at a fixed figure size and then scaled by CSS.
-That works on a desktop and fails badly on a phone: measured on the running
-app at 390px, the status dashboard's (18,10) chart renders at **0.224 scale**,
-putting its 9-11pt labels at roughly **2px on screen**. No stylesheet can fix
-that — the only fix is to re-render at a different figure size and font size,
-which means the server has to know the layout. That is what this axis is for.
+Charts render server-side at a fixed figure size and are then scaled by CSS,
+so a phone gets 9-11pt labels at ~2px. No stylesheet fixes that; the server
+has to know the layout and re-render.
 
-## What the mobile pass changed here
+Mobile figures are declared explicitly per family, NOT derived by preserving
+the desktop aspect ratio -- an 18:5 ratio at phone width leaves the plot under
+an inch tall once the legend moves underneath. Size them so the tight-bbox
+intrinsic width lands near 350pt (phones) or 730pt (tablets).
 
-PR 1 shipped this module with `mobile` defined but unrequested, and said of
-`MOBILE_DEFAULTS`: *"a starting point chosen to be legible, not a tuned design
-— treat them as the thing that pass revises."* This is that revision.
+A tablet layout is **desktop with a smaller figure**, not a large phone -- see
+`TABLET_DEFAULTS`. The band is 768px to 1199.98px. The lower edge is forced
+(where `mobile` ends); the upper was measured, not chosen: desktop's smallest
+label lands at 8.1px at 1024 and 9.7px at 1200. Extending to `xxl` would hand
+every 1280 laptop a figure sized for a 640px card.
 
-Two of the six fields — `legend_placement` and `max_legend_entries` — were
-declared and read by nothing; `base_fontsize` reached two charts of fifteen,
-`max_ticks` one, `label_rotation` two. All six are now consumed by every
-family that has the concept.
-
-The aspect-preserving `mobile_figsize` default is gone. Preserving an 18:5
-ratio at phone width gives a 4.5in x 1.25in strip, and once the legend moves
-underneath, the plot itself is under an inch tall. **Mobile figures are
-declared explicitly per family**, sized so the tight-bbox intrinsic width
-lands near 350pt — roughly 1:1 with a phone viewport once card padding is off,
-which is what puts a 9pt label on screen at ~9px instead of ~2px.
-
-## The tablet profile
-
-The mobile pass gave phones a figure and left tablets in the desktop band,
-where an 18in figure is squeezed into ~640px. Measured on the running app,
-that put the status dashboard's smallest label at **6.0px at a 768 viewport**
-— worse than the same chart on a phone, which is the defect this profile
-exists to close.
-
-The band is Bootstrap `md` to just under `xl`: **768px to 1199.98px**. The
-lower edge is forced (it is where `mobile` ends). The upper edge was measured
-rather than chosen: on these pages the chart's container is the viewport less
-144px, so desktop's smallest label lands at 8.1px at 1024, 9.7px at 1200 and
-10.4px at 1280. Desktop stops being the problem somewhere around 1110-1200,
-and 1200 is the breakpoint there. Extending the band to `xxl` instead would
-hand every 1280 laptop a figure sized for a 640px card.
-
-A tablet layout is **desktop with a smaller figure**, not a large phone —
-see `TABLET_DEFAULTS`. The figures are sized so the tight bbox lands near
-730pt, which is what keeps a 9-11pt label at ~9px on the narrow edge of the
-band. It grows to ~15px at the wide edge, because the band spans a 1.7x range
-of container widths and the chart fills whatever it is given; the phone band
-spans 2.2x and ships with the same property.
+Measurements: docs/plans/implemented/{MOBILE_CHARTS,TABLET_CHARTS}.md.
 """
 
 from dataclasses import dataclass, fields, replace
@@ -67,7 +36,7 @@ class Layout:
     #: no-op and today's output is reproduced byte for byte.
     base_fontsize: int
 
-    #: 'right' — outside the axes, vertically centred (today's placement).
+    #: 'right' — outside the axes, vertically centerd (today's placement).
     #: 'below' — under the axes, for narrow viewports.
     #: 'none'  — suppress entirely.
     legend_placement: str
@@ -75,7 +44,7 @@ class Layout:
     #: Cap on legend entries, or None for no cap. A 20-entry legend is
     #: unreadable on a phone and steals the space the plot needs.
     #:
-    #: Charts honour this at whichever point keeps the picture *honest*, which
+    #: Charts honor this at whichever point keeps the picture *honest*, which
     #: is not the same point for every family: a pie caps its slices (capping
     #: only the legend would leave unlabelled wedges), the pace chart and the
     #: histogram clamp the "top N" they were already computing, and the
@@ -156,16 +125,15 @@ def profile(figsize, mobile_figsize, tablet_figsize, *, base_fontsize=11,
     rendering exactly — they are read straight off the existing
     `plt.subplots(figsize=...)` call and the tick/rotation constants around
     it. Non-desktop overrides go in the `mobile` / `tablet` dicts, never as
-    bare keywords: an earlier version collected them with `**kwargs`, which
-    meant a name that happened to match a desktop parameter was silently
-    applied to desktop instead. `legend_placement='right'` on the pies read as
-    a mobile override and configured desktop, where it was already the
-    default, so it did nothing at all and looked like it worked.
+    bare keywords. Collecting them with `**kwargs` instead applies any name
+    matching a desktop parameter to desktop, silently: `legend_placement='right'`
+    on the pies reads as a mobile override, configures desktop where it is
+    already the default, and so does nothing at all while looking like it worked.
 
-    Both non-desktop figsizes are **required and positional**. `mobile_figsize`
-    used to default to the desktop aspect ratio at 4.5in wide, which sounds
-    reasonable and is not: 18:5 becomes a 4.5 x 1.25in strip, and a strip with
-    its legend moved underneath has well under an inch of plot left.
+    Both non-desktop figsizes are **required and positional**. Defaulting
+    `mobile_figsize` to the desktop aspect ratio at 4.5in wide sounds reasonable
+    and is not: 18:5 becomes a 4.5 x 1.25in strip, and a strip with its legend
+    moved underneath has well under an inch of plot left.
     `tablet_figsize` is positional for the same reason — the tight bbox is a
     function of the legend contents, so it can only be measured, never derived
     — and because a family that genuinely wants desktop's figure (the pies do)
@@ -198,7 +166,7 @@ def profile(figsize, mobile_figsize, tablet_figsize, *, base_fontsize=11,
 
 
 def resolve_layout(layouts, layout) -> Layout:
-    """Accept a `Layout`, a name, or None → the family's desktop profile.
+    """Accept a `Layout`, a name, or None -> the family's desktop profile.
 
     Lenient like `jobs/routes.py:_parse_period`: an unknown name means "no
     override", never an error. These are htmx fragments, and a stale

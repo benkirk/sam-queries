@@ -1,77 +1,32 @@
-"""Re-check — answer *"would this action succeed if XRAS posted it now?"*
+"""Re-check -- would this action succeed if XRAS posted it now?
 
-The question this exists for. A post fails 422 because the PI's organization will not
-resolve, or the contract is not found. We fix the data. Then what? **XRAS owns the
-retry** — the resend comes from their side — so the only thing we control is whether
-that resend will land. Without this, we find out by asking them to re-send and
-watching. With it, we know first:
+A post fails 422 because the PI's organization will not resolve, or the
+contract is not found. XRAS owns the retry, so the only thing we control is
+whether their resend will land. This answers that before we ask.
 
-    post fails 422  →  fix the data here  →  re-check  →  green?  →  ask XRAS to resend
-                                                      ↘  red? → the error list says what is still missing
+Each re-check writes a NEW row pointing at the original via
+``source_action_id``; the original is never stamped, because its status IS the
+audit record. "Has this been re-checked" derives from the ``replays``
+relationship being non-empty.
 
-The result is a **new row** pointing at the original via ``source_action_id``, never an
-edit of the original. Legacy's equivalent is ``XRASPostBean`` — paste the JSON back into
-a PrimeFaces form — which persists nothing, so it leaves no trace of what was tried,
-by whom, or what came back.
+The stored bytes are re-submitted verbatim -- ``raw_payload`` is ``Text`` and
+byte-exact because MySQL ``JSON`` normalizes key order and collapses
+duplicates. Re-checking a re-serialization would check a different request.
 
-Three decisions, each with a tempting wrong answer.
+WARNING: this validates and NEVER applies, and that is structural, not
+configured: ``dispatch_action(..., validate_only=True)`` returns before
+``management_transaction`` is opened. Do not couple it to
+``XRAS_ACTIONS_CAPTURE_ONLY`` -- that would make the flag arming production
+ingestion the same flag arming this button. Applying a stored payload would
+double-apply on four of the six handlers: Supplement and Adjustment are
+additive, and a re-applied successful New routes to Update (the project now
+exists) and supplements the allocation it just created. There is no
+idempotency key -- ``actionId`` is a column nothing enforces or consults.
 
-**1. The stored bytes are re-submitted verbatim.**
-``raw_payload`` is ``Text`` and byte-exact on purpose — MySQL ``JSON`` was rejected
-precisely because it normalizes key order and collapses duplicates (see the
-``XrasActionLog`` docstring for the measurements). Re-checking a *re-serialization*
-would quietly make it a different request from the one that arrived.
-
-**2. The original row is never stamped.**
-Setting the parent's status would destroy the parent's own outcome, which *is* the
-audit record. "Has this been re-checked" is derived from the ``replays`` relationship
-being non-empty; the relationship is already first-class, so nothing is denormalized.
-
-**3. It validates but NEVER applies — and that is structural, not configured.**
-
-``dispatch_action(..., validate_only=True)`` returns before ``management_transaction``
-is ever opened (``sam/xras/handlers/base.py``). No config can change that, which is the
-property worth having: at cutover ``XRAS_ACTIONS_CAPTURE_ONLY`` flips off, and nothing
-about this surface changes.
-
-⚠️ **This reverses a Sprint B decision, and the premise is what changed.** That version
-tied re-checking to ``XRAS_ACTIONS_CAPTURE_ONLY`` and argued: *"The kill switch stays the
-single safety interlock. A second override would mean two things to reason about and one
-of them would eventually be wrong."* Correct while nothing dispatched at all. With
-handlers live the conclusion inverts — coupling them means **the flag that turns on
-production ingestion is the same flag that arms this button**.
-
-**Applying a stored payload would double-apply on four of the six handlers.**
-Supplement and Adjustment are additive by definition, so re-applying a 250,000-hour
-supplement makes it 500,000. Worse, re-applying a successful **New** does not re-create
-the project — it now exists, so ``(New, exists)`` routes to **Update**, which supplements
-the allocation it just created. Only Extension is near-idempotent, and only because of
-its equal-end-date skip. There is also no idempotency key to prevent it: ``actionId`` is
-a column, but nothing enforces uniqueness on it and nothing consults it before applying.
-
-**What it checks, and why that is the interesting half.** ``_parse_action`` proves the
-payload still fits the wire schema — but almost no real failure is a schema failure.
-The ones operators chase are reported by the handler's ``assemble()``: organization and
-mnemonic resolution, contract lookup, allocation type, roster, resource mapping. Those
-run here, and a payload that would still be rejected raises exactly as it would live,
-carrying the same ordered error list.
-
-Outcomes reuse the ingest vocabulary, so a re-check row reads like the ingest row it
-would have been:
-
-===============  =========================================================
-``rechecked``    would succeed now
-``failed``       would still fail — ``error_messages`` says why
-``manual``       nothing would run (no service, disabled type, or Transfer)
-===============  =========================================================
-
-⚠️ **Re-checking a ``processed`` row is meaningless**, which is why the UI does not
-offer it there: that action already changed the data it would run against, so a
-successful New now routes to Update and the answer describes a different action.
-
-If a production *remediation* path is ever wanted — actually re-applying — it needs an
-idempotency key and an agreement with ACCESS about who owns resend. That is a
-conversation, not a flag.
+Outcomes reuse the ingest vocabulary: ``rechecked`` would succeed now,
+``failed`` would still fail (``error_messages`` says why), ``manual`` would run
+nothing. Re-checking a ``processed`` row is meaningless -- that action already
+changed the data it would run against -- so the UI does not offer it.
 """
 
 from typing import NamedTuple
@@ -107,14 +62,14 @@ class Recheck(NamedTuple):
 #: ``tests/api/test_xras_access.py``'s ``action_log`` fixture captures audit rows by
 #: monkeypatching ``actions._record`` — a name-bound copy would sail straight past
 #: it and leak committed rows into the shared xdist database. Every call below goes
-#: through the module attribute so the patch is honoured.
+#: through the module attribute so the patch is honored.
 from . import actions
 
 
 def _enabled():
     """The ``XRAS_ACTIONS_ENABLED`` triage lever, read the same way ingest reads it.
 
-    A re-check honours it deliberately: if a type is parked by config, "nothing would
+    A re-check honors it deliberately: if a type is parked by config, "nothing would
     run" is the true answer to *"would this succeed if posted now?"* — and an operator
     who has forgotten the lever is set is exactly who needs telling.
     """
@@ -173,9 +128,9 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
     # able to *fail*, and fail the same way. A payload harvested months ago against
     # an older schema is precisely the case worth catching.
     #
-    # ⚠️ This used to be a hand-copied duplicate of that ladder, and the copy had
-    # already drifted: it never passed `action_id`, so every replayed row stored NULL
-    # in the duplicate-detection column. Call the shared one; do not re-inline it.
+    # WARNING: call the shared ladder; do NOT re-inline it. A hand-copied duplicate
+    # here drifts — one silently stopped passing `action_id`, so every replayed row
+    # stored NULL in the duplicate-detection column.
     action, audit = actions._parse_action(raw_payload)
     if action is None:
         # Never reached a handler: the stored bytes no longer parse, or no longer
@@ -219,7 +174,7 @@ def recheck_action(log_id, *, actor) -> 'Recheck':
         db.session.rollback()
 
     if result.status == 'rechecked':
-        # ⚠️ `projcode_result` stays NULL, deliberately. It means "the project this
+        # WARNING: `projcode_result` stays NULL, deliberately. It means "the project this
         # action produced", and a re-check produces nothing. Worse, on the New path
         # the handler's `projcode` is the *request token* (`NCAR4253`), not a
         # projcode — writing it here would put a non-projcode into the column that

@@ -45,7 +45,7 @@ from ._shared import _XRAS_MODAL_TRIGGERS
 # /api/v1/ or /api/xras/v1/ surface is added; webapp/api/xras/ stays the
 # legacy-compat inbound blueprint it is.
 #
-# ⚠️ Every one of these writes runs INSIDE management_transaction, which is the
+# WARNING: Every one of these writes runs INSIDE management_transaction, which is the
 # OPPOSITE of what webapp/api/xras/recheck.py does one screen away — see the
 # docstrings below for why, because the difference is deliberate and a reader
 # who has just read recheck.py will expect the other answer.
@@ -128,8 +128,7 @@ def xras_notify_form(project_id: int):
     ``?action_id=`` names *which* outcome to report, which is what lets a
     Supplement be notified separately from the New before it. It is a query
     param rather than a second path segment deliberately: absent means "the
-    newest action", which is exactly the old behaviour, so no URL changed and
-    no route-map entry moved.
+    newest action", so the bare URL keeps working and no route-map entry moved.
     """
     project = _load_pending_project(project_id)
     if project is None:
@@ -283,7 +282,7 @@ def xras_notify(project_id: int):
 def xras_activate(project_id: int):
     """Activate a pending XRAS project in one click.
 
-    ⚠️ **Double-gated.** ``project.active`` is a GOVERNANCE_FIELD, and
+    WARNING: **Double-gated.** ``project.active`` is a GOVERNANCE_FIELD, and
     ``MANAGE_XRAS`` alone must not be enough to flip it.
     ``can_edit_project_governance`` is the single definition of who may — flat
     ``EDIT_PROJECTS`` with **no** steward override, so a project lead cannot.

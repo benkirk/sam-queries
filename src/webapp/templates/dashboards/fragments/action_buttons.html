@@ -36,7 +36,7 @@
           permission=Permission.EDIT_PROJECT_MEMBERS,
           project=project) }}
 
-  ⚠️ stop_propagation=True does NOT work against a Bootstrap collapse
+  WARNING: stop_propagation=True does NOT work against a Bootstrap collapse
   trigger, despite what this note used to claim. Bootstrap registers its
   data-api handlers with `EventHandler.on(document, ...)`, which passes the
   delegation flag as `addEventListener`'s `useCapture` argument, so they run

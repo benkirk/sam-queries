@@ -37,7 +37,7 @@ class RedisChartCache(CacheBase):
         # Recorded for legacy cache_info() consumers; not enforced.
         self._maxsize = None
 
-    # ── helpers ──────────────────────────────────────────────────────────
+    # helpers
 
     def _entry_key(self, key: str) -> bytes:
         return self._key_prefix + key.encode()
@@ -45,7 +45,7 @@ class RedisChartCache(CacheBase):
     def _scan_entries(self):
         return self._client.scan_iter(match=self._key_prefix + b'*', count=200)
 
-    # ── ChartCache API surface ───────────────────────────────────────────
+    # ChartCache API surface
 
     def get(self, key: str) -> Optional[str]:
         raw = self._client.get(self._entry_key(key))
@@ -95,7 +95,7 @@ class RedisChartCache(CacheBase):
         except redis.RedisError:
             return 0
 
-    # ── CacheBase ───────────────────────────────────────────────────────
+    # CacheBase
 
     def info(self) -> dict:
         return {
@@ -121,7 +121,7 @@ class RedisChartCache(CacheBase):
             pass
         return n
 
-    # ── internals ───────────────────────────────────────────────────────
+    # internals
 
     def _count_entries(self) -> int:
         try:

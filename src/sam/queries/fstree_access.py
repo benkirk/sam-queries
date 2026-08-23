@@ -1,65 +1,29 @@
-"""
-FairShare Tree query functions for SAM.
+"""FairShare Tree query functions.
 
-Provides get_fstree_data() which reproduces the output of the legacy Java
-`GET /api/protected/admin/ssg/fairShareTree/v3/<Resource>` endpoint.
+``get_fstree_data()`` reproduces the legacy Java
+``/api/protected/admin/ssg/fairShareTree/v3/<Resource>``. The tree is
+Facility -> AllocationType -> Project -> Resource, consumed by the PBS
+scheduler to build fairshare vertices and by LDAP tooling.
 
-The data is organized as a hierarchical tree:
-  fairShareTree → Facility → AllocationType → Project → Resource
+Built from three queries: a JOIN-based skeleton (projects with a current
+active allocation), a targeted lifecycle query for the minority with none
+("Expired", "No Account" -- these carry zeroes and omit the date keys), and a
+bulk user roster. Charges roll up via ``Project.batch_get_subtree_charges()``.
 
-with per-node fairshare percentages and, at the Resource level,
-allocation balances, charge usage (including MPTT subtree rollup),
-accountStatus, and active user rosters.
+``accountStatus`` matches ``DefaultAccountStatusCalculator.java``: No Account,
+Expired, Overspent, Exceed Two Thresholds, Exceed One Threshold, Normal. A
+non-Normal parent status cascades pre-order to children on the same resource.
 
-This data is consumed by the PBS batch scheduler to build job
-fairshare trees and by LDAP tooling for account provisioning.
+WARNING: amounts are reported RAW, never deduplicated, and this module
+deliberately does NOT classify trees. NCAR runs two tree conventions and in
+both the root's ``allocationAmount`` is the subtree total -- a shared pool is
+carried at full value by every member, a subdivided award has children carving
+out of the root's total. PBS compares shares only among siblings, so raw
+amounts plus ``parentProject`` are sufficient and correct in both. That rests
+on one invariant -- a parent's amount covers any child not sharing its pool --
+which ``sam-admin project --audit-trees`` enforces.
 
-Design notes
-------------
-Query 1 (skeleton): fast JOIN-based query returning only projects with a current
-  active allocation on an HPC/DAV resource.  Covers the Normal/Overspent/Threshold
-  status cases.
-
-Query 2 (lifecycle): targeted query for projects in the AllocationType tree that
-  have no current active allocation — produces "Expired" (account exists, past
-  allocation) and "No Account" (no account on this resource type) rows.  These are
-  the minority; they carry allocationAmount=0, adjustedUsage=0, no users, and
-  omit the startDate/endDate keys (no current allocation window to report).
-
-Query 3 (users): bulk active-user roster per account.
-
-Charges via Project.batch_get_subtree_charges() (VALUES CTE, MPTT rollup).
-
-accountStatus semantics (matching DefaultAccountStatusCalculator.java):
-  1. "No Account"           — project in tree but no account on this resource
-  2. "Expired"              — account exists, no current active allocation (has prior)
-  3. "Overspent"            — adjustedUsage > allocationAmount
-  4. "Exceed Two Thresholds"— both N-day windows exceeded
-  5. "Exceed One Threshold" — one N-day window exceeded
-  6. "Normal"               — default
-
-Parent → child status propagation (pre-order): if a parent's accountStatus is
-non-Normal, that status cascades to all children on the same resource.
-
-Project trees
--------------
-Each project entry carries ``parentProject`` — its direct parent's projcode
-(``None`` for roots and standalone projects), from SAM's project hierarchy
-(``project.parent_id``).  This lets a consumer reconstruct the tree; the PBS
-fairshare tool mirrors it into nested scheduler vertices.
-
-Amounts are reported **raw**, never deduplicated: NCAR runs two tree
-conventions and in both the root's ``allocationAmount`` is the subtree total
-(a shared pool is carried at full value by every member; a subdivided award
-has children carving out of the root's total).  Since PBS compares shares only
-among siblings, raw amounts + the hierarchy are sufficient and correct — a
-pool's members compare equal to each other, a subdivided award's children
-compare proportionally, and the root's own amount sets the subtree's weight
-against its peers.  So this module deliberately does **not** classify trees.
-
-That correctness rests on one data invariant — a parent's amount covers any
-child that isn't sharing its pool — which ``sam-admin project --audit-trees``
-enforces.
+Response shape: ``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 """
 
 import re
@@ -85,7 +49,7 @@ from sam.queries.rolling_usage import (
 #
 # Key columns added vs original:
 #   • p.tree_root/tree_left/tree_right — MPTT for subtree charge rollup
-#   • p.parent_id                      — parent → child status propagation
+#   • p.parent_id                      — parent -> child status propagation
 #   • a.first_threshold/second_threshold — N-day threshold percentages
 _SQL_FSTREE_SKELETON = text("""
     SELECT
@@ -287,8 +251,8 @@ def _alloc_type_name(facility_code: str, allocation_type: str) -> str:
 
         name = facilityCode + "_" + allocationTypeDTO.getType().replaceAll("\\W", "")
 
-    Example: code="C", type="CSL"              → "C_CSL"
-             code="N", type="Director Reserve" → "N_DirectorReserve"
+    Example: code="C", type="CSL"              -> "C_CSL"
+             code="N", type="Director Reserve" -> "N_DirectorReserve"
     """
     cleaned = re.sub(r'\W', '', allocation_type)
     return f'{facility_code}_{cleaned}'
@@ -321,8 +285,8 @@ def _compute_status(
     Args:
         adjusted_usage:    Total charges + adjustments (subtree rollup).
         allocation_amount: Current active allocation amount.
-        first_threshold:   30-day threshold % from account.first_threshold (None → skip).
-        second_threshold:  90-day threshold % from account.second_threshold (None → skip).
+        first_threshold:   30-day threshold % from account.first_threshold (None -> skip).
+        second_threshold:  90-day threshold % from account.second_threshold (None -> skip).
         alloc_start:       Allocation start_date.
         alloc_end:         Allocation end_date (None for open-ended).
         window_charges_30: Charges in last 30 days (0.0 when no threshold).
@@ -331,7 +295,7 @@ def _compute_status(
     if allocation_amount is None:
         return 'Normal'
 
-    # Priority 1: Overspent (includes alloc=0 with any usage, matching legacy behaviour)
+    # Priority 1: Overspent (includes alloc=0 with any usage, matching legacy behavior)
     if adjusted_usage > allocation_amount:
         return 'Overspent'
 
@@ -420,7 +384,7 @@ def _compute_threshold_data(
 # _query_window_charges and _query_window_subtree_charges are imported from
 # sam.queries.rolling_usage (see import at top of file).  They live there so
 # that get_project_rolling_usage() can share the same SQL helpers without
-# duplicating code.  The fstree behaviour is 100% unchanged.
+# duplicating code.  The fstree behavior is 100% unchanged.
 
 
 # ---------------------------------------------------------------------------
@@ -560,7 +524,7 @@ def get_fstree_data(
         for row in lifecycle_rows:
             pid_to_projcode[row.project_id] = row.projcode
 
-    # Resolve parent_id → parent projcode only once *both* row sets have
+    # Resolve parent_id -> parent projcode only once *both* row sets have
     # populated pid_to_projcode: neither query is ordered by tree depth, so
     # resolving inline would miss any parent that happens to come later.
     # A parent_id absent from the payload (inactive, or no account on this
@@ -573,12 +537,12 @@ def get_fstree_data(
     # ------------------------------------------------------------------
     # Charges — hybrid approach matching allocations.py:
     #
-    # Non-leaf projects (~28) → batch_get_subtree_charges(): MPTT rollup
+    # Non-leaf projects (~28) -> batch_get_subtree_charges(): MPTT rollup
     #   that includes descendant charges.  With only ~28 non-leaf entries,
     #   the (resource_type, start_date, end_date) grouping yields ~28 date
-    #   groups → ~56 SQL queries (fast).
+    #   groups -> ~56 SQL queries (fast).
     #
-    # Leaf projects (~1,455) → batch_get_account_charges(): VALUES CTE that
+    # Leaf projects (~1,455) -> batch_get_account_charges(): VALUES CTE that
     #   embeds all date ranges in ~5 queries (~0.9s).  Correct for leaves
     #   since their subtree == self.
     #
@@ -602,7 +566,7 @@ def get_fstree_data(
             Project.batch_get_account_charges(session, account_infos, include_adjustments=True)
         )
 
-    # charge_map: account_id → adjusted_usage (float)
+    # charge_map: account_id -> adjusted_usage (float)
     charge_map: Dict[int, float] = {}
     for account_id, data in raw_charges.items():
         charge_map[account_id] = sum(data['charges_by_type'].values()) + data['adjustment']
@@ -612,7 +576,7 @@ def get_fstree_data(
     #
     # Non-leaf threshold accounts (roots of an allocation tree) require MPTT
     # subtree rollup so that descendant project charges are included, matching
-    # the behaviour of batch_get_subtree_charges() used for adjustedUsage.
+    # the behavior of batch_get_subtree_charges() used for adjustedUsage.
     # ------------------------------------------------------------------
     subtree_acct_map: Dict[int, Dict] = {info['account_id']: info for info in subtree_infos}
     threshold_leaf_ids = [aid for aid in threshold_accounts if aid not in subtree_acct_map]
@@ -645,7 +609,7 @@ def get_fstree_data(
             'uid':      row.unix_uid,
         })
 
-    # Fetch users for Expired accounts (no date filter — matches legacy behaviour)
+    # Fetch users for Expired accounts (no date filter — matches legacy behavior)
     expired_acct_ids = [
         row.account_id for row in lifecycle_rows
         if row.lifecycle_status == 'Expired' and row.account_id is not None
@@ -752,7 +716,7 @@ def get_fstree_data(
             }
 
     # ------------------------------------------------------------------
-    # Parent → child status propagation (pre-order per resource)
+    # Parent -> child status propagation (pre-order per resource)
     # ------------------------------------------------------------------
     _NON_NORMAL = {'Overspent', 'Exceed Two Thresholds', 'Exceed One Threshold'}
 
@@ -826,8 +790,8 @@ def _remap_fstree_by_project(fstree_data: Dict) -> Dict:
     """
     Remap the fstree dict (from get_fstree_data) into a project-keyed structure.
 
-    Input:  fairShareTree → Facility → AllocationType → Project → Resources
-    Output: projectFairShareData → projects[projcode] → Resources
+    Input:  fairShareTree -> Facility -> AllocationType -> Project -> Resources
+    Output: projectFairShareData -> projects[projcode] -> Resources
 
     Each project entry includes its facility and allocation-type context so
     callers don't need to traverse the full tree.  The resources list is
@@ -858,8 +822,8 @@ def _remap_fstree_by_user(fstree_data: Dict) -> Dict:
     """
     Remap the fstree dict (from get_fstree_data) into a user-keyed structure.
 
-    Input:  fairShareTree → Facility → AllocationType → Project → Resources → Users
-    Output: userFairShareData → users[username] → projects[projcode] → Resources
+    Input:  fairShareTree -> Facility -> AllocationType -> Project -> Resources -> Users
+    Output: userFairShareData -> users[username] -> projects[projcode] -> Resources
 
     A user appears under a project/resource only when they are listed in that
     resource's ``users`` roster.  The per-resource dict omits the ``users``
@@ -917,7 +881,7 @@ def get_project_fsdata(
 
     Calls get_fstree_data() internally then remaps the result so callers can
     look up any project directly by projcode without traversing the full
-    Facility → AllocationType → Project hierarchy.
+    Facility -> AllocationType -> Project hierarchy.
 
     Args:
         session:       SQLAlchemy session.

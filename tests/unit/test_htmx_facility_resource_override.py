@@ -144,7 +144,7 @@ class TestUnsetRoute:
 
     def test_unset_absent_pair_is_ok(self, auth_client, hpc_resource, any_facility):
         # No override exists for this (resource, facility) in the snapshot's
-        # default state → clear_override is a no-op but the route still
+        # default state -> clear_override is a no-op but the route still
         # succeeds and fires reloadResourcesCard.
         resp = auth_client.delete(
             _unset_url(hpc_resource.resource_id, any_facility.facility_id)

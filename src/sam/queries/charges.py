@@ -507,7 +507,7 @@ def get_charges_by_projcode(
     roll up subtree totals themselves by traversing the tree structure.
 
     Returns:
-        Dict mapping projcode → total_charges for the period/resource.
+        Dict mapping projcode -> total_charges for the period/resource.
     """
     rows = query_comp_charge_summaries(
         session, start_date, end_date, projcode=projcodes, resource=resource
@@ -534,8 +534,8 @@ def get_user_summary_for_project(
     :func:`get_user_queue_breakdown_for_project` when the analyst expands a
     row. The two count fields let the template branch:
 
-    - ``queue_count == 1 AND date_count == 1`` → render inline (no expand).
-    - otherwise → render expandable row with htmx ``hx-get`` placeholder.
+    - ``queue_count == 1 AND date_count == 1`` -> render inline (no expand).
+    - otherwise -> render expandable row with htmx ``hx-get`` placeholder.
 
     The aggregation runs in SQL (``COUNT(DISTINCT queue)`` /
     ``COUNT(DISTINCT activity_date)``) so a project with thousands of
@@ -808,7 +808,7 @@ def get_daily_user_usage_for_project(
           'dates':  [date, ...],                            # ascending
           'series': [
               {'label': 'Others',  'values': [num, ...]},   # first (bottom)
-              {'label': <username>, 'values': [num, ...]},  # lowest→highest rank
+              {'label': <username>, 'values': [num, ...]},  # lowest->highest rank
               ...
           ],
         }

@@ -73,8 +73,8 @@ class TestItRecords:
         """Legacy's ``/v1/roles`` is ``@PostMapping``, so a DELETE 404s there silently.
 
         The ACCESS spec documents ``DELETE /v1/roles/…`` for revocations that legacy
-        never implemented. If XRAS ever starts sending one we now learn it from a row
-        rather than from someone asking why a co-PI is still on a project.
+        never implemented. If XRAS ever starts sending one, a row records it, rather
+        than someone asking why a co-PI is still on a project.
         """
         resp = xras_client.delete('/api/xras/v1/roles/ABC1234/pi/someone',
                                   headers=_auth())

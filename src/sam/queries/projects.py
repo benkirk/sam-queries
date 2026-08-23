@@ -40,7 +40,7 @@ def search_projects_by_code_or_title(
     active status and/or a facility allowlist.
 
     ``facility_names`` — when supplied, results are restricted to
-    projects whose ``allocation_type → panel → facility`` chain resolves
+    projects whose ``allocation_type -> panel -> facility`` chain resolves
     to one of the listed facility names. Projects with a broken chain
     (orphans) are excluded, matching the facility-scoped RBAC rule
     that only unscoped system holders may reach orphan projects.

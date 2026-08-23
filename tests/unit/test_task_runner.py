@@ -414,7 +414,7 @@ class TestDryRun:
         assert out['counts'] == {'would_claim': 1}
 
     def test_the_body_runs_so_the_preview_is_real(self, ledger):
-        """⚠️ This assertion is INVERTED from what it used to be.
+        """WARNING: This assertion is INVERTED from what it used to be.
 
         It previously read ``assert calls == [], 'dry run must not execute the
         body either'`` — which made `ctx.dry_run` a constant False, since

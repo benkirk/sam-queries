@@ -2,7 +2,7 @@
 
 Both the write client (:mod:`sam.integration.xras_api.admin_client`) and the
 read-side report parsing (:mod:`sam.queries.xras_requests`) need the numeric
-role-type ids and the id↔name↔display mapping. Before this module they were
+role-type ids and the id<->name<->display mapping. Before this module they were
 stated twice: the write client owned the authoritative :data:`ROLE_TYPES`
 table, and the read path re-hardcoded ``PI_ROLE_TYPE_ID = 13`` /
 ``ADMIN_ROLE_TYPE_ID = 14`` with a comment explaining it would not import from
