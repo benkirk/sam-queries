@@ -27,7 +27,7 @@ is fetched live inside a permission-gated route.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from sam.integration.xras_api.vocabulary import (
     ADMIN_ROLE_TYPE_ID,
@@ -137,8 +137,14 @@ def resolve_pi(roster: List[Dict[str, Any]]) -> Optional[str]:
     return None
 
 
-def actions_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Actions, snake-cased, with the two offer flags precomputed."""
+def actions_from_payload(payload: Dict[str, Any],
+                         preflights: Optional[Mapping[Any, dict]] = None
+                         ) -> List[Dict[str, Any]]:
+    """Actions, snake-cased, with the two offer flags precomputed.
+
+    ``preflights`` maps ``actionId`` to a ``verdict_to_dict`` result; when given,
+    each action gains a ``preflight`` cell (``None`` for an action nobody checked).
+    """
     rows: List[Dict[str, Any]] = []
     for action in payload.get('actions') or ():
         if not isinstance(action, dict):
@@ -162,12 +168,31 @@ def actions_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             'can_withdraw': bool(status) and status != DRAFT_ACTION_STATUS
                             and status not in TERMINAL_ACTION_STATUSES,
             'can_resubmit': status == DRAFT_ACTION_STATUS,
+            'preflight': (preflights or {}).get(action.get('actionId')),
         })
     return rows
 
 
+#: Roll-up precedence, worst first — the badge shows the most urgent verdict on
+#: any of a request's candidate actions.
+_ROLLUP_ORDER = ('failed', 'manual', 'unchecked', 'rechecked')
+
+
+def _preflight_rollup(preflights: Optional[Mapping[Any, dict]]) -> Optional[str]:
+    """The worst verdict across a request's actions, or ``None`` if none checked."""
+    if not preflights:
+        return None
+    statuses = {v.get('status') for v in preflights.values() if v}
+    for status in _ROLLUP_ORDER:
+        if status in statuses:
+            return status
+    return None
+
+
 def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
-                        refreshed_at: Any = None) -> Optional[Dict[str, Any]]:
+                        refreshed_at: Any = None,
+                        preflights: Optional[Mapping[Any, dict]] = None
+                        ) -> Optional[Dict[str, Any]]:
     """Build one Remediations-card entry. ``None`` for an unusable payload.
 
     Args:
@@ -180,6 +205,10 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
         refreshed_at: set only by the post-write patch. Its presence is what
                       makes an entry render its "updated since the sweep" tell,
                       so the operator can see which row they just changed.
+        preflights:   ``actionId`` -> ``verdict_to_dict`` result, stamped onto
+                      each action's ``preflight`` cell. Same reasoning as
+                      ``pending_push``: the sweep resolves the whole batch, a
+                      patch resolves one.
 
     Returning ``None`` rather than raising: the sweep builds ~100 of these from
     a paginated remote enumeration, and one malformed row must cost that row,
@@ -220,7 +249,10 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
                                 if r.get('role_type_id') == ADMIN_ROLE_TYPE_ID),
                                None)},
         'roster': roster,
-        'actions': actions_from_payload(payload),
+        'actions': actions_from_payload(payload, preflights),
+        # Worst candidate verdict, precomputed for the card's roll-up badge:
+        # would fail > would park (manual) > unchecked > would land.
+        'preflight_rollup': _preflight_rollup(preflights),
         # The conjunction the merge fixup keys on, precomputed so the template
         # does not have to express it — see the roster comment.
         'has_stuck_placeholder': any(r['placeholder'] and r['is_reconciled']

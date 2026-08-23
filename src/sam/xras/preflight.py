@@ -22,7 +22,8 @@ from typing import (Any, Dict, Iterator, Mapping, Optional, Tuple)
 logger = logging.getLogger(__name__)
 
 __all__ = ['Synthesis', 'Verdict', 'iter_candidate_actions',
-           'synthesize_action', 'preflight_action', 'infer_applied']
+           'synthesize_action', 'preflight_action', 'infer_applied',
+           'verdict_to_dict']
 
 #: Award trail, best first — the stage whose amounts/dates the push would carry.
 _STAGE_ORDER: Tuple[str, ...] = ('Approved', 'Recommended', 'Requested')
@@ -324,6 +325,11 @@ def preflight_action(session, report_payload: dict, action: dict, *,
         logger.warning('preflight: select_service failed for %s (%s)', action_id, exc)
         return _verdict('unchecked')
 
+    # A SAVEPOINT, NOT session.rollback(): the sweep runs this on its own
+    # session while an uncommitted opportunity-mapping write is pending, and a
+    # full rollback would discard it. validate_only writes nothing, but assembly
+    # queries, and containing it in a nested transaction keeps the outer one intact.
+    savepoint = session.begin_nested()
     try:
         result = dispatch_action(session, synthesis.action,
                                  enabled=enabled, validate_only=True)
@@ -333,15 +339,33 @@ def preflight_action(session, report_payload: dict, action: dict, *,
         logger.warning('preflight: dispatch raised for action %s (%s)', action_id, exc)
         return _verdict('unchecked', service=service)
     finally:
-        # Belt and braces: nothing writes on this path, but a stray flush must not
-        # ride the caller's session into the next action.
-        session.rollback()
+        if savepoint.is_active:
+            savepoint.rollback()
 
     if result.status == 'manual':
         return _verdict('manual', service=result.service or service,
                         messages=(result.reason,) if result.reason else ())
     return _verdict('rechecked', would_succeed=True, service=result.service or service,
                     warnings=result.warnings, resolved=result.resolved)
+
+
+def verdict_to_dict(verdict: Verdict) -> dict:
+    """The display shape stamped into a snapshot — one function so the sweep and
+    the post-write re-check patch produce byte-identical rows (two-consumers)."""
+    return {
+        'status': verdict.status,
+        'would_succeed': verdict.would_succeed,
+        'messages': list(verdict.messages),
+        'gaps': list(verdict.gaps),
+        'service': verdict.service,
+        'stage': verdict.stage,
+        'action_status': verdict.action_status,
+        'request_status': verdict.request_status,
+        'push_state': verdict.push_state,
+        'push_detail': verdict.push_detail,
+        'resolved': verdict.resolved,
+        'checked_at': verdict.checked_at.isoformat(),
+    }
 
 
 def _resolve_push_state(session, synthesis: Synthesis, service: Optional[str],
