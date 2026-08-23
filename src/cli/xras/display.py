@@ -43,6 +43,40 @@ def _timestamp(value) -> str:
     return BLANK if value is None else fmt.date_str(value, fmt='%Y-%m-%d %H:%M:%S')
 
 
+_READINESS_STYLE = {'failed': '[red]would fail[/red]',
+                    'manual': '[yellow]would park[/yellow]',
+                    'unchecked': '[dim]unchecked[/dim]',
+                    'rechecked': '[green]would land[/green]',
+                    None: '[dim]—[/dim]'}
+
+
+def display_readiness(ctx, payload) -> None:
+    """Push-readiness board: the sweep's per-request preflight, worst first."""
+    rows = payload['requests']
+    if not rows:
+        ctx.console.print('No swept requests carry a pre-flight verdict yet.',
+                          style='yellow')
+        return
+    table = Table(title=f"XRAS push-readiness ({payload['total']} request(s))",
+                  show_lines=False, header_style='bold')
+    table.add_column('Request #', no_wrap=True)
+    table.add_column('Readiness', no_wrap=True)
+    table.add_column('Status', no_wrap=True)
+    table.add_column('PI', no_wrap=True)
+    table.add_column('Opportunity', overflow='fold')
+    table.add_column('First reason', overflow='fold')
+    for r in rows:
+        table.add_row(
+            text(r['request_number']),
+            _READINESS_STYLE.get(r['rollup'], text(r['rollup'])),
+            text(r['status']),
+            text(r['pi']),
+            text(r['opportunity_name']),
+            f"[red]{truncate(r['messages'][0], 60)}[/red]" if r['messages'] else BLANK,
+        )
+    ctx.console.print(table)
+
+
 def display_action_list(ctx, payload) -> None:
     """Table of recent actions."""
     actions = payload['actions']

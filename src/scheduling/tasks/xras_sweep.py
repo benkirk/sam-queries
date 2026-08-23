@@ -362,6 +362,37 @@ def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
     return by_number, numbers
 
 
+def _apply_worklist_preflights(enumerated, index_entries) -> None:
+    """Stamp each Feed-B worklist action with its request's roll-up verdict.
+
+    The index already carries a per-action verdict; a Feed-B worklist row is
+    request-keyed, so it takes the worst verdict across that request's actions.
+    A Feed-A row (posted, already had ``_validate``) is left alone.
+    """
+    from sam.queries.xras_requests import _preflight_rollup
+
+    rollup: dict = {}
+    for entry in index_entries or ():
+        number = entry.get('request_number')
+        verdicts = {a['action_id']: a['preflight'] for a in entry.get('actions', ())
+                    if a.get('preflight')}
+        status = _preflight_rollup(verdicts)
+        if not status:
+            continue
+        worst = next(v for v in verdicts.values() if v['status'] == status)
+        rollup[number] = worst
+
+    for row in enumerated or ():
+        for action in row.get('actions', ()):
+            if action.get('source') != 'reports' or action.get('preflight_status'):
+                continue
+            worst = rollup.get(action.get('request_number'))
+            if worst:
+                action['would_succeed'] = worst['would_succeed']
+                action['preflight_status'] = worst['status']
+                action['reject_messages'] = list(worst['messages'])
+
+
 def _build_requests_index(ctx, client, session, approved_payloads, detail):
     """Build the Remediations card's request index. Never raises.
 
@@ -827,6 +858,11 @@ def xras_sweep(ctx) -> TaskResult:
 
     # 4b. the Remediations index
     index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
+
+    # 4c. fill the Pending Users tab's Pre-flight column for Feed-B rows from the
+    # per-request roll-up the index just computed. The worklist's pending
+    # requests are a subset of the index cohort, so no second preflight is run.
+    _apply_worklist_preflights(enumerated, index_entries)
 
     # 5. publish for the dashboard
     #

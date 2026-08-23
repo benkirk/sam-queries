@@ -229,6 +229,7 @@ class TestAccessControl:
         '/allocations/xras_dates_remove/EXAM0001/7/9',
         '/allocations/xras_attributes_edit/EXAM0001',
         '/allocations/xras_action_fields_edit/EXAM0001/7',
+        '/allocations/xras_recheck_request/EXAM0001',
     ])
     def test_every_write_is_gated(self, view_only_client, path):
         assert view_only_client.post(path).status_code == 403
@@ -244,6 +245,51 @@ class TestAccessControl:
         body = auth_client.get('/allocations/xras').get_data(as_text=True)
         assert 'alloc-xras-remediations' in body
         assert 'xras-remediation-filters' in body
+
+
+class TestRecheckNow:
+    """The request-scoped, never-writes re-check that patches the snapshot."""
+
+    def test_it_patches_the_snapshot_with_fresh_verdicts(self, auth_client,
+                                                          configured, monkeypatch):
+        _publish(_payload('EXAM0001'))
+        _reader(monkeypatch, payload=_detail_payload('EXAM0001'))
+        resp = auth_client.post('/allocations/xras_recheck_request/EXAM0001')
+        assert resp.status_code == 200
+        assert 'refreshXrasTab' in resp.headers.get('HX-Trigger', '')
+        entry = next(r for r in xras_cache.load_requests_index()['rows']
+                     if r['request_number'] == 'EXAM0001')
+        assert entry['refreshed_at'] is not None
+        assert entry['actions'][0]['preflight'] is not None
+
+    def test_it_degrades_200_when_xras_is_unreachable(self, auth_client,
+                                                      configured, monkeypatch):
+        client = _reader(monkeypatch)
+        client.get_request_by_number.side_effect = XrasSourceUnavailable('down')
+        resp = auth_client.post('/allocations/xras_recheck_request/EXAM0001')
+        # 200, not 4xx: htmx will not swap a 4xx into the open modal.
+        assert resp.status_code == 200
+        assert 'could not be reached' in resp.get_data(as_text=True)
+
+    def test_the_modal_renders_the_preflight_section_from_the_snapshot(
+            self, auth_client, configured, monkeypatch):
+        payload = _detail_payload('EXAM0001')
+        verdict = {'status': 'failed', 'would_succeed': False,
+                   'messages': ['PI ghost is not in database'], 'gaps': [],
+                   'service': 'supplement', 'stage': 'Approved',
+                   'action_status': 'Approved', 'request_status': 'Approved',
+                   'push_state': 'pending', 'push_detail': None, 'resolved': None,
+                   'checked_at': '2026-08-23T09:00:00'}
+        xras_cache.store_requests_index({
+            'generated_at': datetime.now(),
+            'statuses': ['Approved'], 'extra_statuses': {},
+            'rows': [request_index_entry(payload, pending_push=True,
+                                         preflights={7: verdict})]})
+        _reader(monkeypatch, payload=payload)
+        body = auth_client.get(
+            '/allocations/xras_request_detail/EXAM0001').get_data(as_text=True)
+        assert 'SAM pre-flight' in body
+        assert 'PI ghost is not in database' in body
 
 
 class TestItIsACardNotATab:

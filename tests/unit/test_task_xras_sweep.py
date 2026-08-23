@@ -1246,6 +1246,18 @@ class TestPreflightInTheSweep:
         assert project.projcode in rows
         assert rows[project.projcode]['pending_push'] is False
 
+    def test_the_pending_users_worklist_rows_get_the_preflight(self, ctx, wire):
+        """The Feed-B fill: a pending-request roster action carries the verdict."""
+        from sam.integration.xras_api.cache import load_pending_worklist
+        wire([[_pending_request(1, 'NCAR0001', actions=((7, 'Approved'),),
+                                username='ghost-user-1')]])
+        mod.xras_sweep(ctx())
+        rows = load_pending_worklist()['rows']
+        actions = [a for r in rows for a in r['actions']
+                   if a['request_number'] == 'NCAR0001']
+        assert actions, 'the pending roster produced no worklist row'
+        assert all(a['preflight_status'] is not None for a in actions)
+
     def test_a_raising_preflight_costs_one_row_not_the_run(self, ctx, wire,
                                                            monkeypatch):
         from sam.integration.xras_api.cache import load_requests_index

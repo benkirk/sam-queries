@@ -680,6 +680,8 @@ def cache(ctx: Context, refresh: bool, category, base_url):
               help='[check] Report the opportunityId -> allocation-type map')
 @click.option('--accounts', is_flag=True,
               help='[worklist] Accounts to create or reactivate before a handoff')
+@click.option('--readiness', is_flag=True,
+              help='[board] Would each swept request land if pushed now? (from the sweep snapshot)')
 @click.option('--enrich', is_flag=True,
               help='[worklist] Add XRAS person detail (requires --accounts and the API)')
 @click.option('--person', type=str, default=None,
@@ -699,7 +701,7 @@ def cache(ctx: Context, refresh: bool, category, base_url):
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed information')
 @pass_context
 def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mapping,
-         validate_opportunities, accounts, enrich, person,
+         validate_opportunities, accounts, readiness, enrich, person,
          status, action_type, request_number, last, limit, verbose):
     """Inspect and re-check the XRAS action log.
 
@@ -715,6 +717,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       --summary    counts by status, and by status x action type
       --recheck ID would this action succeed now? (applies nothing)
       --accounts   who must be created or reactivated before a handoff works
+      --readiness  would each swept request land if XRAS pushed it now?
       --person U   one username in the XRAS directory
       --validate-mapping  which resources XRAS and SAM can name each other's
       --validate-opportunities  which XRAS opportunities resolve to a SAM type
@@ -760,6 +763,8 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
       sam-admin xras --validate-opportunities
       sam-admin xras --accounts
       sam-admin xras --accounts --enrich --last 30d
+      sam-admin xras --readiness
+      sam-admin --format json xras --readiness | jq .requests
       sam-admin xras --person somebody-user-00042
       sam-admin xras --recheck 42
       sam-admin --format json xras --summary | jq .by_status
@@ -792,6 +797,7 @@ def xras(ctx: Context, action_id, show_payload, recheck, summary, validate_mappi
         validate_mapping=validate_mapping,
         validate_opportunities=validate_opportunities,
         accounts=accounts,
+        readiness=readiness,
         enrich=enrich,
         person=person,
         status=status,

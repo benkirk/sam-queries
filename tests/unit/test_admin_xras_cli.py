@@ -87,6 +87,39 @@ class TestListMode:
         assert json.loads(result.output)['filters']['start_date'] is None
 
 
+class TestReadinessMode:
+    def test_empty_board_exits_zero(self, runner, cli_session, monkeypatch):
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: None)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--readiness'])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload['kind'] == 'xras_readiness'
+        assert payload['total'] == 0
+
+    def test_the_board_sorts_red_before_green(self, runner, cli_session,
+                                              monkeypatch):
+        snapshot = {'generated_at': '2026-08-23', 'rows': [
+            {'request_number': 'GREEN0001', 'preflight_rollup': 'rechecked',
+             'status': 'Approved', 'opportunity_name': 'Large',
+             'pi': {'username': 'q'}, 'pending_push': False,
+             'actions': [{'action_id': 2, 'preflight': {'status': 'rechecked',
+                                                        'messages': []}}]},
+            {'request_number': 'RED0001', 'preflight_rollup': 'failed',
+             'status': 'Approved', 'opportunity_name': 'Small',
+             'pi': {'username': 'p'}, 'pending_push': True,
+             'actions': [{'action_id': 1, 'preflight': {
+                 'status': 'failed', 'messages': ['PI x is not in database']}}]},
+        ]}
+        monkeypatch.setattr('sam.integration.xras_api.cache.load_requests_index',
+                            lambda: snapshot)
+        result = runner.invoke(cli, ['--format', 'json', 'xras', '--readiness'])
+        assert result.exit_code == 0
+        rows = json.loads(result.output)['requests']
+        assert [r['request_number'] for r in rows] == ['RED0001', 'GREEN0001']
+        assert rows[0]['messages'] == ['PI x is not in database']
+
+
 class TestSummaryMode:
     def test_summary_json_lists_every_status_including_zero(self, runner,
                                                             cli_session):

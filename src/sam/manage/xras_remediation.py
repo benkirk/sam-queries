@@ -208,6 +208,98 @@ def _refresh_index_entry(request_number: str, *, reader=None) -> bool:
         return False
 
 
+def recheck_readiness(request_number: str, *, session, reader=None) -> dict:
+    """Re-run the never-writes preflight for one request and patch its snapshot.
+
+    Read-only against XRAS (report context) and never-writes against SAM — no
+    audit row, unlike the write ops. Returns ``{available, patched, counts}``;
+    ``available`` is False when the read client is unavailable, so the route can
+    degrade with a 200. Never raises.
+    """
+    from datetime import datetime
+
+    from sam.integration.xras import XrasActionLog
+    from sam.integration.xras_api.cache import patch_requests_index
+    from sam.integration.xras_api.client import XrasApiClient
+    from sam.queries.xras_requests import request_index_entry
+    from sam.xras.preflight import (iter_candidate_actions, preflight_action,
+                                    verdict_to_dict)
+
+    counts = {'rechecked': 0, 'failed': 0, 'manual': 0, 'unchecked': 0}
+    try:
+        reader = reader or XrasApiClient.from_environment()
+        payload = reader.get_request_by_number(request_number)
+    except Exception as exc:                            # noqa: BLE001
+        logger.warning('xras recheck: could not read %s (%s)', request_number, exc)
+        return {'available': False, 'patched': False, 'counts': counts}
+
+    if payload is None:
+        patch_requests_index(request_number, None)
+        return {'available': True, 'patched': True, 'counts': counts}
+
+    # No lookback: the operator asked about this one request, so check every
+    # candidate action it carries.
+    candidates = list(iter_candidate_actions(payload, since=None))
+    action_ids = {a.get('actionId') for a in candidates if a.get('actionId') is not None}
+    log_seen = {}
+    try:
+        for row in (session.query(XrasActionLog)
+                    .filter(XrasActionLog.action_id.in_(action_ids)).all()):
+            log_seen[row.action_id] = {
+                'status': row.status,
+                'received_time': (row.received_time.isoformat()
+                                  if row.received_time else None),
+                'log_id': row.xras_action_log_id}
+    except Exception as exc:                            # noqa: BLE001
+        logger.warning('xras recheck: log_seen lookup failed (%s)', exc)
+
+    resource_keys, opportunities = _preflight_maps(reader, payload)
+
+    verdicts = {}
+    for action in candidates:
+        try:
+            verdict = preflight_action(session, payload, action,
+                                       resource_keys=resource_keys,
+                                       opportunities=opportunities, enabled=None,
+                                       log_seen=log_seen)
+        except Exception as exc:                        # noqa: BLE001
+            counts['unchecked'] += 1
+            logger.warning('xras recheck: preflight raised (%s)', exc)
+            continue
+        counts[verdict.status] = counts.get(verdict.status, 0) + 1
+        if verdict.action_id is not None:
+            verdicts[verdict.action_id] = verdict_to_dict(verdict)
+
+    entry = request_index_entry(payload, pending_push=_still_pending(request_number),
+                                refreshed_at=datetime.now(), preflights=verdicts)
+    patched = bool(entry) and patch_requests_index(request_number, entry)
+    return {'available': True, 'patched': patched, 'counts': counts}
+
+
+def _preflight_maps(reader, payload):
+    """``(resource_keys, opportunities)`` for one request's preflight. Guarded."""
+    resource_keys = None
+    try:
+        catalog = reader.get_resources()
+        resource_keys = {}
+        for r in catalog or ():
+            if isinstance(r, dict) and r.get('resourceId') is not None \
+                    and r.get('resourceRepositoryKey') is not None:
+                resource_keys[int(r['resourceId'])] = int(r['resourceRepositoryKey'])
+    except Exception:                                   # noqa: BLE001
+        resource_keys = None
+
+    opportunities = None
+    opp_id = payload.get('opportunityId')
+    try:
+        found = reader.get_opportunities([opp_id]) if opp_id is not None else []
+        opportunities = {o['opportunityId']: o for o in (found or ())
+                         if isinstance(o, dict) and o.get('opportunityId') is not None}
+    except Exception:                                   # noqa: BLE001
+        opportunities = None
+    return resource_keys, opportunities
+
+
 def _still_pending(request_number: str) -> bool:
     """Does SAM still lack a project for this request number?
 

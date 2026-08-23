@@ -238,6 +238,45 @@ def _account_row(row) -> dict:
     }
 
 
+#: Verdict order for the readiness board — most urgent first.
+_READINESS_RANK = {'failed': 0, 'manual': 1, 'unchecked': 2, 'rechecked': 3,
+                   None: 4}
+
+
+def build_readiness(snapshot) -> dict:
+    """The ``xras_readiness`` envelope — the sweep's per-request preflight roll-up.
+
+    Reads the published requests-index snapshot (no network). Rows are sorted
+    red -> amber -> green; an empty board is a successful, empty report.
+    """
+    rows = []
+    for entry in (snapshot or {}).get('rows', ()) if snapshot else ():
+        verdicts = [a.get('preflight') for a in entry.get('actions', ())
+                    if a.get('preflight')]
+        counts = {}
+        for v in verdicts:
+            counts[v['status']] = counts.get(v['status'], 0) + 1
+        rows.append({
+            'request_number': entry.get('request_number'),
+            'rollup': entry.get('preflight_rollup'),
+            'status': entry.get('status'),
+            'opportunity_name': entry.get('opportunity_name'),
+            'pi': (entry.get('pi') or {}).get('username'),
+            'pending_push': entry.get('pending_push'),
+            'counts': counts,
+            'messages': sorted({m for v in verdicts if v['status'] == 'failed'
+                                for m in v.get('messages', ())}),
+        })
+    rows.sort(key=lambda r: (_READINESS_RANK.get(r['rollup'], 4),
+                             str(r['request_number'])))
+    return {
+        'kind': 'xras_readiness',
+        'generated_at': (snapshot or {}).get('generated_at') if snapshot else None,
+        'total': len(rows),
+        'requests': rows,
+    }
+
+
 def build_person_report(username, person) -> dict:
     """The ``xras_person`` envelope — a direct ``/v1/people`` probe.
 

@@ -18,7 +18,7 @@ class XrasCommand(BaseCommand):
 
     def execute(self, *, action_id=None, recheck=None, summary=False,
                 validate_mapping=False, validate_opportunities=False,
-                accounts=False, person=None,
+                accounts=False, readiness=False, person=None,
                 enrich=False,
                 status=(), action_type=(), request_number=None, last=None,
                 show_payload=False, limit=50, **_) -> int:
@@ -31,6 +31,8 @@ class XrasCommand(BaseCommand):
                 return self._validate_opportunities()
             if person is not None:
                 return self._person(person)
+            if readiness:
+                return self._readiness()
             if accounts:
                 return self._accounts(filters, enrich)
             if recheck is not None:
@@ -190,6 +192,21 @@ class XrasCommand(BaseCommand):
             output_json(payload)
         else:
             display.display_account_worklist(self.ctx, payload)
+        return EXIT_SUCCESS
+
+    def _readiness(self) -> int:
+        """The push-readiness board, from the sweep's published snapshot (no network).
+
+        An empty board exits 0 — a successful, empty report, not a miss (the sweep
+        may simply have found no candidate action in its lookback).
+        """
+        from sam.integration.xras_api.cache import load_requests_index
+
+        payload = builders.build_readiness(load_requests_index())
+        if self.ctx.output_format == 'json':
+            output_json(payload)
+        else:
+            display.display_readiness(self.ctx, payload)
         return EXIT_SUCCESS
 
     def _pending_worklist(self):
