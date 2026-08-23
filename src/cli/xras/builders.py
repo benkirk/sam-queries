@@ -277,6 +277,16 @@ def build_readiness(snapshot) -> dict:
     }
 
 
+def build_mnemonic_report(session, snapshot) -> dict:
+    """The ``xras_mnemonic_report`` envelope — orgs to link, ranked by unblock impact.
+
+    Reads the sweep's published snapshot (no network) and resolves each failing PI's
+    org against the DB, so it needs a session — unlike the pure `build_readiness`.
+    """
+    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
+    return mnemonic_unblock_report(session, snapshot)
+
+
 def build_person_report(username, person) -> dict:
     """The ``xras_person`` envelope — a direct ``/v1/people`` probe.
 

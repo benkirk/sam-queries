@@ -77,6 +77,36 @@ def display_readiness(ctx, payload) -> None:
     ctx.console.print(table)
 
 
+def display_mnemonic_report(ctx, payload) -> None:
+    """The orgs/institutions to link, ranked by how many failing pushes each unblocks."""
+    targets = payload['targets']
+    if not targets and not payload['unresolved']:
+        ctx.console.print('No failing push cites a missing organization mnemonic.',
+                          style='yellow')
+        return
+    if targets:
+        table = Table(
+            title=f"Mnemonic links to create ({len(targets)}), "
+                  f"ranked by pushes unblocked",
+            show_lines=False, header_style='bold')
+        table.add_column('Organization / Institution', overflow='fold')
+        table.add_column('Type', no_wrap=True)
+        table.add_column('Unblocks', justify='right', no_wrap=True)
+        table.add_column('Sample requests', overflow='fold')
+        for t in targets:
+            table.add_row(text(t['name']), t['family'], str(t['unblock_count']),
+                          ', '.join(t['sample']))
+        ctx.console.print(table)
+    if payload['unresolved']:
+        # Not fixable by minting a code — these PIs have no current affiliation.
+        pis = sorted({u['pi'] for u in payload['unresolved'] if u['pi']})
+        ctx.console.print(
+            f"[yellow]{len(payload['unresolved'])} action(s) blocked by "
+            f"{len(pis)} PI(s) with no current affiliation[/yellow] "
+            f"(need a user_organization row, not a mnemonic): "
+            f"{', '.join(pis) or '—'}")
+
+
 def display_action_list(ctx, payload) -> None:
     """Table of recent actions."""
     actions = payload['actions']
