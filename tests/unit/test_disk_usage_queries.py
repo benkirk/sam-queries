@@ -133,7 +133,7 @@ class TestDiskUsageTimeseries:
             session, account_ids=[account.account_id], top_n=10,
         )
         assert out['dates'] == [snap]
-        # Stack-friendly order: Others first (bottom of stack, grey),
+        # Stack-friendly order: Others first (bottom of stack, gray),
         # then named users smallest → largest.
         names = [s['username'] for s in out['series']]
         assert names[0] == 'Others'

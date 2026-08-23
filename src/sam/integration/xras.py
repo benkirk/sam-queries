@@ -170,8 +170,8 @@ class XrasActionLog(Base):
        record of what arrived — so the one row we most need to write is the one
        ``JSON`` refuses.
     2. **``JSON`` is not byte-preserving, and this column is defined as the body
-       verbatim, before parsing.** MySQL parses to a normalised binary form and
-       re-serialises on read: it re-sorts keys by length-then-bytewise, inserts
+       verbatim, before parsing.** MySQL parses to a normalized binary form and
+       re-serializes on read: it re-sorts keys by length-then-bytewise, inserts
        whitespace, and *silently collapses duplicate keys*. Round-tripping a real
        payload reordered all 23 top-level keys and grew it 2,213 → 2,375 bytes.
        That destroys the audit record's fidelity, its value as a replay source,

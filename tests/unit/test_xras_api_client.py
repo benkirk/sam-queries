@@ -598,8 +598,8 @@ class TestOpportunityResolution:
 
     def test_an_empty_id_list_makes_no_request(self, monkeypatch):
         """`/v1/opportunities/list/` with an empty segment is a different route
-        that answers 404 — so not asking is the correct behaviour, not an
-        optimisation."""
+        that answers 404 — so not asking is the correct behavior, not an
+        optimization."""
         client = _client(monkeypatch, [])
         assert client.get_opportunities([]) == []
         assert client.session.request.call_count == 0

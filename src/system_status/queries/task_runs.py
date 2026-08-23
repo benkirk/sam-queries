@@ -9,14 +9,14 @@ own.
 
 ⚠️ **The clock.** ``task_run`` timestamps are naive **UTC**, like everything
 else on this bind. ``sam/queries/notifications.py`` — the module this one is
-modelled on — computes its windows with ``datetime.now()`` because
+modeled on — computes its windows with ``datetime.now()`` because
 ``notification_log`` lives in SAM MySQL and is naive-**Mountain**. Copying
 that import verbatim would shift every count here by 6–7 hours: exactly the
 bug ``SCHEDULED_TASKS.md`` § 3.1 found in the old cleanup script, in exactly
 the same way. Every window in this module goes through
 :func:`system_status.timeutil.utcnow_naive`.
 
-Returns ORM rows rather than dicts, unlike its neighbours in this package
+Returns ORM rows rather than dicts, unlike its neighbors in this package
 (``user_proj_queues`` shapes rows for templates). That is the facade's shape,
 inherited from the notifications page it mirrors; the detail modal needs the
 row's own columns and there is no CLI consumer to keep in step.
@@ -211,7 +211,7 @@ def _filters(*, since: Optional[datetime] = None,
     """The WHERE terms shared by the table, the count and the facets.
 
     One builder so a filter added to the table cannot be forgotten in the
-    facet rollups — which would show counts the table does not honour.
+    facet rollups — which would show counts the table does not honor.
     """
     conditions = []
     if since is not None:

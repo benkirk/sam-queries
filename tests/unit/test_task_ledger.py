@@ -51,7 +51,7 @@ def ledger(status_engine):
     `claim()` resolves a race by letting the loser's INSERT raise
     `IntegrityError` and rolling back — if both callers shared one session
     that rollback would discard the *winner's* row too, and the tests would
-    assert the opposite of production behaviour. On Postgres it is worse
+    assert the opposite of production behavior. On Postgres it is worse
     still: the aborted transaction poisons the connection for everything
     after it, which is exactly why the real ledger takes a `session_factory`.
 

@@ -214,7 +214,7 @@ def _still_pending(request_number: str) -> bool:
     Read straight from the published snapshot rather than the database: the
     entry being patched is replacing one the sweep produced, and this flag is
     the sweep's own set-difference. Re-deriving it from a fresh DB query would
-    make a patched row disagree with its neighbours the moment a project is
+    make a patched row disagree with its neighbors the moment a project is
     created between two sweeps — which is exactly the drift the shared builder
     exists to prevent. Defaults to ``True``: a row on this card is there
     because its handoff has not happened.

@@ -1,6 +1,6 @@
 """`sam.queries.expiration_notices` — the ladder, and the key it mints.
 
-`test_expiration_notices.py` covers the builder's *behaviour* end-to-end
+`test_expiration_notices.py` covers the builder's *behavior* end-to-end
 through the CLI command, and passed unmodified across the extraction — that
 is the proof the move was pure. This module covers the surface the extraction
 ADDED: the `Milestone` band type, the rung label in the dedup key, and the

@@ -801,7 +801,7 @@ class TestUsageCacheModule:
         with patch.object(buckets, '_config_int', side_effect=lambda k, d: 0):
             cache = uc.get_cache_adapter()
         assert cache is None
-        # A stored None means "initialised but disabled" — so the zero-config
+        # A stored None means "initialized but disabled" — so the zero-config
         # read happens once, not on every call.
         assert uc._CACHE._adapters['default'] is None
 

@@ -335,7 +335,7 @@ def renew_project_allocations(
 
         # Scale + round to SAM_SIG_FIGS (allocations are human-defined at
         # ~3 sig figs). Guarded so scale=1.0 renewals stay byte-identical
-        # to pre-scale behaviour.
+        # to pre-scale behavior.
         scaled_root_amount = source_root.amount * scale
         if scale != 1.0:
             scaled_root_amount = round_to_sig_figs(scaled_root_amount)

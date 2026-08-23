@@ -466,7 +466,7 @@ class TestTheOldMailerIsGone:
 
     def test_the_cli_context_no_longer_carries_mail_config(self):
         """It was a SECOND source of truth for the same six MAIL_* vars,
-        which is why the CLI never honoured a SAMConfig change."""
+        which is why the CLI never honored a SAMConfig change."""
         ctx = Context()
         for attribute in ('mail_server', 'mail_port', 'mail_use_tls',
                           'mail_username', 'mail_password', 'mail_from'):

@@ -198,7 +198,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
     # The delivery log's per-row detail button opens the shared audit modal.
     # Loaded only into dashboards/admin/notifications.html, which includes
     # partials/audit_details_modal.html itself — same arrangement as the XRAS
-    # action log, which is the page this one is modelled on.
+    # action log, which is the page this one is modeled on.
     'dashboards/admin/fragments/notifications_log.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/organization_card.html': [
@@ -209,7 +209,7 @@ HTMX_FRAGMENT_SHELL_DEPS = {
         'editAllocationModal'],
     # Only ever loaded by dashboards/admin/scheduled_tasks.html, which includes
     # partials/audit_details_modal.html itself — same arrangement as the
-    # notification delivery log above, the page this one is modelled on.
+    # notification delivery log above, the page this one is modeled on.
     'dashboards/admin/fragments/scheduled_tasks_log.html': [
         'auditDetailsModal', 'auditDetailsModalBody'],
     'dashboards/admin/fragments/project_directories_card.html': [

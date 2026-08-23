@@ -72,7 +72,7 @@ SAM_XRAS_PASS       #   no fallback: the SAM_LEGACY_* account cannot reach /api/
 APIs and skips `xras` with a message on stderr.
 
 > ⚠️ The XRAS credential carries `ROLE_XRAS`, and that security chain makes no
-> method distinction — the same secret authorises `POST /api/xras/v1/actions`
+> method distinction — the same secret authorizes `POST /api/xras/v1/actions`
 > against **production**. Treat it as a write credential.
 
 These are typically loaded from the shared `.env`:

@@ -170,7 +170,7 @@ def build(args):
     elif args.adjustment:
         # ⚠️ The ONLY action type whose amounts may be negative, and the only
         # reason `xras_adjustment` needs its own wording — see
-        # `sam/xras/handlers/adjustment.py`, which exists to honour the sign
+        # `sam/xras/handlers/adjustment.py`, which exists to honor the sign
         # that legacy's copy-pasted `> 0` gate silently dropped.
         #
         # `--amount` is signed and applies to Derecho; Casper takes a tenth of

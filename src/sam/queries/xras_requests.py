@@ -13,7 +13,7 @@ Two things build these entries and they must agree byte for byte:
    an hour for the next sweep.
 
 If those two produced even slightly different dicts, a patched row would render
-differently from its neighbours — different keys missing, a role list shaped
+differently from its neighbors — different keys missing, a role list shaped
 another way — and the difference would show up only in production, only on the
 row somebody had just acted on. So the derivation is a function, called by both,
 and the sweep has no private copy.
@@ -245,7 +245,7 @@ def request_index_entry(payload: Dict[str, Any], *, pending_push: bool = False,
 
 
 def person_roles_from_payload(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Flatten a ``reports/username/<username>`` payload to role-labelled rows.
+    """Flatten a ``reports/username/<username>`` payload to role-labeled rows.
 
     The feed groups a person's requests by role name
     (``{requestRoles: [{roleName, requests[]}]}``); this preserves that

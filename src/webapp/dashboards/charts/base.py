@@ -18,7 +18,7 @@ instead — `links.py` and `series.py` import no matplotlib, enforced by test.
         apply_tick_fontsize()     layout.base_fontsize on every Axes
         draw(axes, ...)           REQUIRED — the family draws the marks
         decorate(axes, ...)       labels, ticks, grid, scale, theme chrome
-        add_legend(axes, ...)     placement from layout, colours from theme
+        add_legend(axes, ...)     placement from layout, colors from theme
         finish(fig, axes, ...)    autofmt_xdate, xlim, annotations
         apply_chrome(...)         theme.text/spine onto every chrome artist
         to_svg(fig)               the single savefig/close chokepoint
@@ -152,7 +152,7 @@ class BaseChart:
         """Labels, ticks, scale, grid, and theme chrome."""
 
     def add_legend(self, axes, layout, theme):
-        """Placement comes from `layout`, colours from `theme`."""
+        """Placement comes from `layout`, colors from `theme`."""
 
     def finish(self, fig, axes, layout, theme):
         """Anything needing the figure — autofmt_xdate, xlim, annotations."""
@@ -280,7 +280,7 @@ class BaseChart:
 
         **What it deliberately does not touch: `ax.texts`.** Those are the
         artists a chart placed itself, and every one of them already carries a
-        colour chosen for a reason no theme should overrule — the pie's
+        color chosen for a reason no theme should overrule — the pie's
         percentage labels take theirs from the *wedge* luminance
         (`autopct_color_for`), and the pace chart's "today" marker takes
         theirs from `theme.accent`. Blanket-setting them would paint white

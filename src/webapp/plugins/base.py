@@ -56,8 +56,8 @@ class PluginExtension:
         """Load the plugin and warm its engines. Called once from ``create_app``.
 
         Always leaves a state dict on ``app.extensions`` — even on failure, so
-        the accessors below never have to distinguish "not initialised" from
-        "initialised but disabled". ``enabled`` is set by :meth:`_warm`.
+        the accessors below never have to distinguish "not initialized" from
+        "initialized but disabled". ``enabled`` is set by :meth:`_warm`.
         """
         state: Dict[str, Any] = {'module': None, 'enabled': False}
         self._init_state(state)

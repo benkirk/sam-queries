@@ -4,7 +4,7 @@ The two readings share an end-date rule and differ on the begin-date rule, and t
 difference is not symmetric: role assignment's exclusion is the roster's conjoined with
 two further conditions, so it excludes a strict subset. That asymmetry is legacy defect
 3 — a person can be made project lead while being excluded from the project's own
-roster — and :class:`TestDefectThree` asserts both the behaviour and the one-directional
+roster — and :class:`TestDefectThree` asserts both the behavior and the one-directional
 shape of it, rather than trusting the argument.
 
 ``adjustment_uwis0064_manual.json`` is the live case in the corpus. Every role on it
@@ -299,7 +299,7 @@ class TestUsernameNormalization:
 
     def test_non_latin_characters_are_dropped_entirely(self):
         """NFD leaves them undecomposed and outside the ASCII window, so they vanish —
-        legacy's behaviour, and the reason a non-Latin username cannot resolve."""
+        legacy's behavior, and the reason a non-Latin username cannot resolve."""
         assert normalize_username('用户alice') == 'alice'
 
 

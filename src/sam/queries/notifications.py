@@ -32,7 +32,7 @@ DEFAULT_WINDOW_HOURS = 24
 #: it reached *a* mailbox, which is what a staging run is for — and matches
 #: `_DELIVERED_STATUSES` in ``sam.queries.xras_activation``, deliberately:
 #: two "was this delivered" answers that disagreed would put a green badge on
-#: one card and a grey one on another for the same row.
+#: one card and a gray one on another for the same row.
 DELIVERED_STATUSES = ('sent', 'redirected')
 
 
@@ -225,7 +225,7 @@ def _filters(*, since: Optional[datetime] = None,
     """The WHERE terms shared by the table, the count and the facets.
 
     One builder so a filter added to the table cannot be forgotten in the
-    facet rollups — which would show counts the table does not honour.
+    facet rollups — which would show counts the table does not honor.
     """
     conditions = []
     if since is not None:

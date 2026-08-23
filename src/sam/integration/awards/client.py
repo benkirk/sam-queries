@@ -1,6 +1,6 @@
 """Shared HTTP transport for award providers.
 
-Modelled on ``collectors/lib/api_client.py``: one persistent
+Modeled on ``collectors/lib/api_client.py``: one persistent
 ``requests.Session`` (connection reuse matters — a lookup can issue up to
 three requests), an explicit timeout on every call, three attempts with
 ``2 ** attempt`` backoff, and **no retry on 4xx** — a 404 is an answer,

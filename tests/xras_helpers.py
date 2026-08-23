@@ -90,7 +90,7 @@ def txns_for(session, allocation):
 
 @pytest.fixture
 def committing(session, monkeypatch):
-    """Neutralise ``management_transaction``'s commit for handler tests.
+    """Neutralize ``management_transaction``'s commit for handler tests.
 
     The handler commits by design — it is the write boundary. But the suite's
     per-test isolation is a SAVEPOINT on this connection, and a real ``COMMIT`` would

@@ -166,7 +166,7 @@ XRAS_REQUEST_TOKEN_EXAMPLE = 'NCAR4253'
 
 #: URL-facing sort key -> column. Mirrors ``ALLOCATION_TRANSACTION_SORT_COLUMNS``
 #: in ``queries/allocations.py``: the dashboard whitelists ``sort_by`` against this
-#: dict's keys and the query re-validates below (defence in depth — a raw column
+#: dict's keys and the query re-validates below (defense in depth — a raw column
 #: name must never reach ``order_by``).
 XRAS_ACTION_SORT_COLUMNS = {
     'received_time': XrasActionLog.received_time,

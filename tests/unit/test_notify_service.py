@@ -436,7 +436,7 @@ class TestFailureIsNeverAnException:
 class TestKindValidationRaises:
 
     def test_an_unknown_kind_raises_rather_than_recording(self, renderer):
-        """A bad kind is a programmer error, not an outcome. Recording it
+        """A bad kind is a programr error, not an outcome. Recording it
         would put a row in the ledger that no facet chip can ever match."""
         bad = Message(kind='nope', recipient=Recipient('a@x.edu'), subject='s')
         with pytest.raises(ValueError, match='unknown notification kind'):

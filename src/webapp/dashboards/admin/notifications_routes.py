@@ -102,7 +102,7 @@ def notifications_log():
     total = count_recent_notifications(db.session, **filters)
 
     # Self-excluding rollups: each dimension's chips ignore its OWN filter
-    # while honouring every other one. See facet_notifications.
+    # while honoring every other one. See facet_notifications.
     status_counts = facet_notifications(db.session, 'status', **filters)
     kind_counts = facet_notifications(db.session, 'kind', **filters)
     channel_counts = facet_notifications(db.session, 'channel', **filters)

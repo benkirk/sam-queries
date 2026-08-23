@@ -22,7 +22,7 @@ dropped:
    the agency's person is not a SAM user (314 of 387 monitors exist purely as
    contract contacts).  It is reported as a hint carrying the raw name/email,
    matching the create form's suggest-don't-impose stance.
-3. Contract numbers are normalised before comparison.  ``NsfAwardProvider``
+3. Contract numbers are normalized before comparison.  ``NsfAwardProvider``
    rebuilds the number as ``{divAbbr}-{award_id}``, so a raw compare flags
    every hand-entered ``OCE- 1419584`` / ``AGS - 2410913`` as divergent.
 4. ``url`` is **never** compared.  NSF emits the modern ``show-award?AWD_ID=``
@@ -95,7 +95,7 @@ def _compare_scalars(contract, record) -> List[Dict]:
         'end_date':        _as_date(record.end_date),
         'nsf_program':     _normalize_text(record.program_name),
     }
-    # Report the raw stored/received values, compare the normalised ones.
+    # Report the raw stored/received values, compare the normalized ones.
     raw_sam = {
         'contract_number': contract.contract_number,
         'title':           contract.title,

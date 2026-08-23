@@ -534,7 +534,7 @@ def test_timeline_uncharged_band_keeps_jobs_but_loses_its_bar_link():
 
 def test_timeline_legend_identical_across_bands():
     """The plugin ranks owners once over the window; the series builder must
-    preserve that, or colours would shift bar to bar."""
+    preserve that, or colors would shift bar to bar."""
     # A tail beyond the top-N, so an 'Others' band exists to sit at the base.
     owners = {'alice': [6, 0, 3], 'bob': [2, 0, 1]}
     labels, series = _jobs_timeseries_series(_ts(owners=owners), 'jobs')

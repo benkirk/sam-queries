@@ -537,7 +537,7 @@ def htmx_queue_cleanup(resource_id):
     # disqualifies a candidate, so the admin's selection remains valid.
     pbs_data_available = _annotate_pbs_activity(candidates, resource, days)
 
-    # Honour the admin's selection, but only over queues that are still
+    # Honor the admin's selection, but only over queues that are still
     # candidates — a submitted id that no longer qualifies (or never did) is
     # dropped rather than trusted.
     selected_ids = set(form_data['queue_ids'])

@@ -151,14 +151,14 @@ class StackedSeriesChart(BaseChart):
         self.apply_grid(ax, theme)
 
     def legend_entries(self, layout):
-        """`[(band, colour), ...]` in legend order, capped for the layout.
+        """`[(band, color), ...]` in legend order, capped for the layout.
 
         Reversed so the legend reads top-to-bottom matching the visual stack.
 
-        When the cap bites, the trailing inert band — "Others", the grey
+        When the cap bites, the trailing inert band — "Others", the gray
         aggregate that sits at the bottom of every stack — is *kept* and the
         smallest named bands are dropped instead. Dropping "Others" would
-        leave a visible grey band with nothing in the legend explaining it,
+        leave a visible gray band with nothing in the legend explaining it,
         which is worse than dropping a sliver that is already hard to see.
         Every band is still drawn either way; only the legend is capped.
         """
@@ -262,7 +262,7 @@ class UsageTrendStackedChart(StackedSeriesChart):
 
     Every segment of a given day carries the same day drill, so a click
     anywhere in that day's stack expands the day — preserving the flat chart's
-    behaviour. Named legend entries expand that user's Usage-by-User row.
+    behavior. Named legend entries expand that user's Usage-by-User row.
     """
 
     cache_name = 'usage_timeseries_stacked'
@@ -366,11 +366,11 @@ class UserProjAreaChart(StackedSeriesChart):
     The one chart that walks its palette **backwards**. Its series arrive
     ``[Others, lowest-rank, …, highest-rank]`` so Others sits at the bottom of
     the visual stack; walking forward would hand the LOWEST-rank entry the
-    warmest colour, backwards from the pace chart's convention. `reverse=True`
+    warmest color, backwards from the pace chart's convention. `reverse=True`
     gives the largest visual band (highest rank, top of the stack)
     `UNITY_STACK_20[0]` — gold.
 
-    20 distinct colours, not 10, so Top-15 + Others has no colour reuse.
+    20 distinct colors, not 10, so Top-15 + Others has no color reuse.
     """
 
     cache_name = 'user_proj_stacked_area'

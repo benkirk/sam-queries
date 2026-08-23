@@ -5,16 +5,16 @@ import-time and global: registering the server-side Poppins TTFs with
 matplotlib's font manager, and applying the rcParams that give every chart the
 editorial flat look. Nothing else in the package may rely on import order.
 
-**Data colours vs chrome colours.** The ``UNITY_*`` palettes below encode data
+**Data colors vs chrome colors.** The ``UNITY_*`` palettes below encode data
 — a wedge, a stack band, a bar — and are theme-invariant in *hue*: a project
-keeps its colour whether the page is light or dark. Everything a `Theme`
+keeps its color whether the page is light or dark. Everything a `Theme`
 carries is *chrome*: text, spines, grid, edges, the shading blend target. That
 split is what lets a dark theme be a mechanical swap rather than a redesign.
 
 The one place the split leaks is `Theme.data_color`, and it is a leak the
 chart-architecture plan predicted (Appendix B, "needs a design decision, not a
-mechanical swap"): three of the ten pie colours are brand *darks*, and a dark
-fill on a dark card is not a colour choice, it is an invisible wedge. See
+mechanical swap"): three of the ten pie colors are brand *darks*, and a dark
+fill on a dark card is not a color choice, it is an invisible wedge. See
 `lift_for_contrast` for what is done about it and why hue survives.
 """
 
@@ -57,7 +57,7 @@ if _FONT_DIR.exists():
     for _ttf in _FONT_DIR.glob('*.ttf'):
         matplotlib.font_manager.fontManager.addfont(str(_ttf))
 
-# Chrome colours here are the LIGHT theme's values, duplicated as literals
+# Chrome colors here are the LIGHT theme's values, duplicated as literals
 # because the named constants are defined below. `Theme.LIGHT` restates them,
 # and `test_theme.py` asserts the two agree — so a dark theme never has to
 # fight a stale global. See `Theme` for why per-request theming must NOT go
@@ -97,7 +97,7 @@ plt.rcParams.update({
     #   - 40-77% smaller SVGs, which is Redis memory (chart entries are the
     #     bulk of it) and page weight on every dashboard.
     #   - chart text becomes selectable, searchable and screen-readable.
-    #   - label colour becomes a real CSS-addressable property, which is what
+    #   - label color becomes a real CSS-addressable property, which is what
     #     dark mode will need.
     #   - the font-weight request reaches the browser, so `axes.labelweight:
     #     600` picks vendored Poppins SemiBold rather than matplotlib's
@@ -210,7 +210,7 @@ UNITY_STACK_10 = (
 
 @dataclass(frozen=True)
 class Theme:
-    """Chrome colours for one rendering of a chart.
+    """Chrome colors for one rendering of a chart.
 
     Threaded explicitly through `draw`/`decorate`/`add_legend` and applied
     per-artist. It deliberately does NOT go through rcParams:
@@ -220,7 +220,7 @@ class Theme:
       runs `gthread` with 4 threads (containers/webapp/gunicorn_config.py),
       so two concurrent requests rendering light and dark would interleave and
       cross-contaminate.
-    - **Serialising renders behind a lock** would kill concurrency on a pool
+    - **Serializing renders behind a lock** would kill concurrency on a pool
       explicitly tuned for I/O overlap.
     - **Rendering both themes and letting CSS choose** doubles render cost and
       cache size for a feature most users will use one of.
@@ -244,7 +244,7 @@ class Theme:
     shade_toward: str    # `shade_family` blend target
     accent: str          # the pace chart's "today" marker
 
-    #: The colour actually behind the figure. Every chart is saved with
+    #: The color actually behind the figure. Every chart is saved with
     #: ``transparent=True``, so the "background" of a chart is whichever card
     #: the SVG is inlined into — `--surface-card` in `static/css/variables.css`.
     #: Distinct from `shade_toward` despite sharing a value in both themes:
@@ -253,14 +253,14 @@ class Theme:
     surface: str
 
     #: Minimum contrast a data fill must reach against `surface`, or None to
-    #: leave data colours exactly as the palette declares them. See
+    #: leave data colors exactly as the palette declares them. See
     #: `lift_for_contrast`.
     min_data_contrast: float | None
 
     #: Fill for the inert aggregate band — the "Others" / "Other (N projects)"
     #: remainder every family collapses its tail into.
     #:
-    #: A *role*, not a colour, and the reason it needs one is that its job is
+    #: A *role*, not a color, and the reason it needs one is that its job is
     #: to **recede**. `--ncar-gray-light` recedes against a white card (1.90:1)
     #: and shouts against a dark one (7.97:1), where it is routinely the
     #: largest band on the chart — so on dark it became the loudest thing in
@@ -282,10 +282,10 @@ class Theme:
     def is_dark(self) -> bool:
         return self.name == 'dark'
 
-    # --- data colours ------------------------------------------------------
+    # --- data colors ------------------------------------------------------
 
     def data_color(self, color):
-        """One palette colour, made legible against this theme's `surface`.
+        """One palette color, made legible against this theme's `surface`.
 
         Identity — the *same object* — whenever `min_data_contrast` is None,
         which is how `Theme.LIGHT` guarantees byte-identical output rather
@@ -315,24 +315,24 @@ Theme.LIGHT = Theme(
     shade_toward='#ffffff',
     accent=UNITY_NCAR_NAVY,
     surface='#ffffff',
-    # **None, not 3.0.** Four of the palette's warm colours (gold at 1.43:1,
+    # **None, not 3.0.** Four of the palette's warm colors (gold at 1.43:1,
     # yellow-33 at 1.30:1, orange and sky at 2.06:1) have never cleared 3:1
     # against a white card and are not defects — a gold wedge outlined by its
-    # neighbours reads fine, and "fixing" them would darken the brand palette
+    # neighbors reads fine, and "fixing" them would darken the brand palette
     # on every existing page. The floor exists for the dark surface, where
-    # the failing colours are *text-dark navies* rather than brand yellows.
+    # the failing colors are *text-dark navies* rather than brand yellows.
     min_data_contrast=None,
     area_alpha=0.85,
     muted_data=UNITY_NCAR_GRAY_LIGHT,
 )
 
-# The dark rendering. Chrome values were chosen in PR 1; the two data-colour
+# The dark rendering. Chrome values were chosen in PR 1; the two data-color
 # decisions PR 1 deferred are answered by `min_data_contrast` and
 # `area_alpha` above.
 #:
 # `surface` is `--surface-card` from `static/css/variables.css`, and
 # `test_dark_card_matches_chart_blend_target` fails if the two drift — a
-# chart blending toward a card colour the card no longer has produces a halo
+# chart blending toward a card color the card no longer has produces a halo
 # that no test other than that one would see.
 Theme.DARK = Theme(
     name='dark',
@@ -353,7 +353,7 @@ Theme.DARK = Theme(
     area_alpha=1.0,
     # 1.77:1 against `surface`, mirroring the 1.90:1 `--ncar-gray-light` has
     # against a white card. Deliberately not `grid` (2.00:1) despite the
-    # family resemblance — a data band the exact colour of the gridlines
+    # family resemblance — a data band the exact color of the gridlines
     # reads as a rendering fault.
     muted_data='#434d59',
 )
@@ -374,14 +374,14 @@ def resolve_theme(theme) -> Theme:
 
 
 # ---------------------------------------------------------------------------
-# Colour helpers
+# Color helpers
 # ---------------------------------------------------------------------------
 
 def relative_luminance(color) -> float:
-    """WCAG 2.1 relative luminance of any matplotlib colour.
+    """WCAG 2.1 relative luminance of any matplotlib color.
 
-    The same formula `e2e/test_dark_mode.py` runs in the browser, so a colour
-    this module lifts and a colour Playwright measures are judged identically.
+    The same formula `e2e/test_dark_mode.py` runs in the browser, so a color
+    this module lifts and a color Playwright measures are judged identically.
     """
     def channel(c):
         return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
@@ -391,7 +391,7 @@ def relative_luminance(color) -> float:
 
 
 def contrast_ratio(a, b) -> float:
-    """WCAG 2.1 contrast ratio between two colours, ignoring alpha."""
+    """WCAG 2.1 contrast ratio between two colors, ignoring alpha."""
     la, lb = relative_luminance(a), relative_luminance(b)
     return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 
@@ -400,12 +400,12 @@ def lift_for_contrast(color, surface, min_ratio: float):
     """*color*, tinted toward white just far enough to clear *min_ratio*.
 
     Returned unchanged (identity) when it already clears, which is the common
-    case: on the dark card this touches 3 of the 10 pie colours, 1 of the 10
-    stack colours and 3 of the 20 — the brand *darks*, `#011837` at 1.17:1 and
-    `#00357a` at 1.29:1, which are text colours pressed into service as fills.
+    case: on the dark card this touches 3 of the 10 pie colors, 1 of the 10
+    stack colors and 3 of the 20 — the brand *darks*, `#011837` at 1.17:1 and
+    `#00357a` at 1.29:1, which are text colors pressed into service as fills.
 
     **Why tint toward white rather than raise HSL lightness.** Both restore
-    contrast; only one keeps the palette usable. The three failing pie colours
+    contrast; only one keeps the palette usable. The three failing pie colors
     are all blues, and lifting each to exactly 3:1 by lightness converges them
     on `#0469f0` / `#0068ef` / `#0069eb` — three names for one blue, in a
     palette whose entire job is telling ten things apart. Tinting lands them
@@ -445,7 +445,7 @@ def autopct_color_for(color) -> str:
     correct for free once `Theme.data_color` lifts a wedge, because a lifted
     wedge is a lighter wedge and this flips to space-blue on its own.
 
-    Accepts any matplotlib colour rather than only a hex string, because a
+    Accepts any matplotlib color rather than only a hex string, because a
     lifted wedge arrives as an RGBA tuple.
     """
     r, g, b = matplotlib.colors.to_rgb(color)
@@ -460,7 +460,7 @@ def shade_family(base_hex, n, lightest=0.66, toward='#ffffff'):
     is the palest, the top (largest) owner the boldest base color.
 
     ``toward`` is the blend target — `Theme.shade_toward`. On a dark page the
-    pale end has to move toward the page colour, not white, or the "palest"
+    pale end has to move toward the page color, not white, or the "palest"
     segment becomes the loudest thing in the chart.
     """
     base = np.array(matplotlib.colors.to_rgb(base_hex))
@@ -497,7 +497,7 @@ def scale_bytes(peak, floor='GiB'):
 
     - ``floor='TiB'`` (disk-usage timeseries) — PiB or TiB only. A sub-TiB
       series renders as a fractional TiB axis (0.004 TiB), which is the
-      current behaviour and is deliberate: that chart's readers think in TiB.
+      current behavior and is deliberate: that chart's readers think in TiB.
     - ``floor='GiB'`` (distribution histogram) — PiB / TiB / GiB.
     """
     floor_idx = [unit for _div, unit in _LADDER].index(floor)

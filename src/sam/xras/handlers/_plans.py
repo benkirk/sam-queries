@@ -52,7 +52,7 @@ __all__ = [
 class PlannedCreate:
     """Create a new allocation for *resource*.
 
-    ``panel_authorised`` rides on the record rather than being read off the handler,
+    ``panel_authorized`` rides on the record rather than being read off the handler,
     and that is load-bearing: Update decides it **per resource** (only its ADD branch
     marks), so a handler-level read would mark rows the plan said not to.
     """
@@ -79,7 +79,7 @@ class PlannedSupplement:
 class PlannedAdjust:
     """Apply a signed correction to an existing allocation.
 
-    ⚠️ Carries **no** ``panel_authorised`` field, deliberately.
+    ⚠️ Carries **no** ``panel_authorized`` field, deliberately.
     ``buildAdjustAllocationCommand`` never sets ``auth_at_panel_mtg`` where the
     supplement one does, and ``log_integration_transaction`` writes the column only
     when the value is not ``None`` — so the absence of the field here is what keeps

@@ -52,7 +52,7 @@ def _by_key(*kinds: NotificationKind) -> Dict[str, NotificationKind]:
     return {kind.key: kind for kind in kinds}
 
 
-#: Every kind the system can send. A key not in here is a programmer error and
+#: Every kind the system can send. A key not in here is a programr error and
 #: :class:`~sam.notify.service.Notifier` raises on it — the column is a bare
 #: ``VARCHAR``, so this dict is the only thing between a typo and a ledger row
 #: that no facet chip will ever match.

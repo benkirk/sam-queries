@@ -134,7 +134,7 @@ def test_renderers_forward_the_axis_they_are_given(mod_name, axis):
     """A renderer that delegates to something axis-aware must pass it on.
 
     This is the one hop nothing else can check. The registrar resolves
-    ``read_layout()`` / ``read_theme()`` once and the chart layer honours
+    ``read_layout()`` / ``read_theme()`` once and the chart layer honors
     whatever it is given, so a renderer that accepts the argument and then
     calls its delegate without it fails *silently* — the fragment renders, at
     desktop or in light, forever. That is exactly what happened to the three
@@ -220,7 +220,7 @@ class TestCacheKeyPartitionsByLayout:
         assert a == b
 
     def test_query_string_still_partitions(self, app):
-        """Pre-existing behaviour, kept."""
+        """Pre-existing behavior, kept."""
         assert (self._key(app, query_string={'resources': 'Derecho'})
                 != self._key(app))
 
@@ -272,7 +272,7 @@ class TestLayoutAxisJs:
 
     def test_selects_the_narrowest_matching_band(self, js):
         """Below 768 both queries match, so the order of the tests is the
-        whole behaviour: mobile must be asked first or a phone gets the tablet
+        whole behavior: mobile must be asked first or a phone gets the tablet
         figure. Asserted positionally because there is no JS test runner."""
         assert js.index('MOBILE_QUERY).matches') < js.index('TABLET_QUERY).matches')
 

@@ -601,7 +601,7 @@ Jinja2 filters are registered in `create_app()` — use them in every template.
 | Hours / charge factors / relative time | `fmt_hours`, `fmt_factor`, `fmt_ago` | `fmt.hours(x)`, … |
 | UTC→local, allocation units | `to_local_dt`, `alloc_unit` | — |
 
-**Key behaviours**
+**Key behaviors**
 - Numbers ≤ 100,000 → exact with commas (`34,283`); above → compact (`68.6M`)
 - `None` → `'—'` by default for all filters
 - `fmt_pct(decimals=N)`, `fmt_date(fmt='%b %Y')`, `fmt_number(raw=True)` overrides
@@ -619,7 +619,7 @@ One mailer, three consumers: `sam-admin project --upcoming-expirations
 --notify`, the webapp's XRAS activation Notify button, and the weekly
 `expiration_notices` scheduled task (below). Design and measurements:
 `docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`,
-`docs/plans/EXPIRATION_NOTICES.md`.
+`docs/plans/implemented/EXPIRATION_NOTICES.md`.
 
 ```python
 from sam.notify import Message, Notifier, Recipient
@@ -646,7 +646,7 @@ makes `smtplib.SMTP` raise so no test can open a socket whatever its config.
 | **Templates** | `src/sam/notify/templates/`, resolved `{base}-{facility}` → `{base}-UNIV` → `{base}`. Text selects the variant and HTML follows it — never resolved independently, or a WNA recipient gets UNIV HTML. |
 | **Visibility** | Admin → Configuration → Notifications (`VIEW_SYSTEM_CONFIG`, counts only) → `Details »` (`SYSTEM_ADMIN`, rows name real addresses). |
 
-**Batch knobs** (both default to today's behaviour; `send()`-of-one pays for
+**Batch knobs** (both default to today's behavior; `send()`-of-one pays for
 neither):
 
 | | |
@@ -802,7 +802,7 @@ Design + measurements: `docs/plans/implemented/MOBILE_CHARTS.md`,
 ### The `theme` axis (light / dark)
 
 The second render axis, and the reason dark mode needs a *server-side* carrier
-at all: charts are matplotlib SVGs with colours baked into the bytes, so no
+at all: charts are matplotlib SVGs with colors baked into the bytes, so no
 stylesheet can retheme them. Transport mirrors `layout` — `read_theme()` in
 `utils/htmx.py`, composed into both `chart_view`'s key and
 `user_aware_cache_key` — but uses **one channel, the cookie**: a viewport is
@@ -811,7 +811,7 @@ that reloads, so cookie and browser can never disagree.
 
 | | |
 |---|---|
-| **Chrome** | `Theme` carries text/spine/grid/edges/legend-face/accent. `BaseChart.apply_chrome()` applies them after `finish()`. It must **not** touch `ax.texts` — those artists set their own colour for a reason (pie autopct reads the *wedge*, the pace marker reads `theme.accent`). |
+| **Chrome** | `Theme` carries text/spine/grid/edges/legend-face/accent. `BaseChart.apply_chrome()` applies them after `finish()`. It must **not** touch `ax.texts` — those artists set their own color for a reason (pie autopct reads the *wedge*, the pace marker reads `theme.accent`). |
 | **Data** | The `UNITY_*` palettes are invariant in **hue** only. `Theme.data_color()` tints a fill toward white until it clears `min_data_contrast` (3:1) against `Theme.surface`; `Theme.LIGHT` sets it `None` and returns the identical object, which is what makes light byte-identical. |
 | **Roles** | `Theme.muted_data` is the inert "Others" band and must **bypass** the lift — its job is to recede, and lifting it undoes that. `Theme.area_alpha` is 0.85 light / 1.0 dark because figures are transparent and composite against the card. |
 | **Surface** | `Theme.DARK.surface` == `--surface-card` == `#1b2733`, pinned by `test_dark_card_matches_chart_blend_target`. |
@@ -837,7 +837,7 @@ Design + rationale: `docs/plans/implemented/DARK_MODE.md` § *PR 4 as built*.
 
 One scheme, `#sam/<action>/<segments>`, percent-encoded, built by `links.py`:
 
-| Form | Behaviour |
+| Form | Behavior |
 |---|---|
 | `#sam/row/<attr>/<value>` | expand the row carrying `<attr>="<value>"`, scoped to the clicked chart's tab pane |
 | `#sam/day/<iso>` | Historical Usage day row (handles month-then-day nesting) |
@@ -873,7 +873,7 @@ a row drill — row drills resolve within the clicked chart's pane.
    zips bands against patches by position, and a capped legend is no longer
    `reversed(bands)`. The fingerprint proves href *strings*, not the artists
    carrying them, so a misaligned drill looks green.
-❌ **DON'T** put a theme-dependent colour in `ax.text()` without setting it
+❌ **DON'T** put a theme-dependent color in `ax.text()` without setting it
    explicitly — `apply_chrome` skips `ax.texts` by design, so it will render in
    whatever the light rcParams baked in.
 ✅ **DO** regenerate the fingerprint snapshot in the *same commit* as an

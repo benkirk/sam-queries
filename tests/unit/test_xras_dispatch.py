@@ -330,9 +330,9 @@ class TestDateAdjustmentParks:
     types SAM does not service*. Four samples arrived in one forward, so it is not
     rare.
 
-    **Parking is the correct behaviour and matches legacy exactly.** Legacy has no
+    **Parking is the correct behavior and matches legacy exactly.** Legacy has no
     ``DateAdjustProjectActionService``; every one of these four produced a
-    manual-fallback email and a bare 200. Servicing it would be new behaviour
+    manual-fallback email and a bare 200. Servicing it would be new behavior
     introduced under a cutover with no observation window.
     """
 
@@ -347,7 +347,7 @@ class TestDateAdjustmentParks:
 
         It is in ``XRAS_ACTION_TYPES`` so the XRAS tab offers it as a filter chip
         before the first row exists. It has no ``select_service`` arm because legacy
-        has no serviceable for it, and inventing one would be new behaviour under a
+        has no serviceable for it, and inventing one would be new behavior under a
         cutover with no observation window.
 
         If a future change adds a dispatch arm, this test fails and asks for the
@@ -416,7 +416,7 @@ class TestOneActionIdSpansAFailureAndItsRetry:
        project existed — not a broker retry loop.
 
        ⚠️ An earlier version of this docstring called it *"the only direct evidence we
-       hold on broker retry behaviour"*. That was written before Steve's reply and is
+       hold on broker retry behavior"*. That was written before Steve's reply and is
        wrong in the direction that mattered: it implied an automatic retry, which is
        the loop the runbook feared. There is no such loop. The observation itself
        stands — same id, two bodies, two services.
@@ -625,7 +625,7 @@ class TestTransferIsDeliberatelyManual:
 
     Registering a handler that returns ``manual`` is not the same as leaving the
     service unbuilt: the reason lands on the audit row, so an operator triaging the
-    parked action learns it was recognised and intentionally deferred rather than
+    parked action learns it was recognized and intentionally deferred rather than
     guessing whether something is broken.
     """
 

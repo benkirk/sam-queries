@@ -107,14 +107,14 @@ class Recheck(NamedTuple):
 #: ``tests/api/test_xras_access.py``'s ``action_log`` fixture captures audit rows by
 #: monkeypatching ``actions._record`` — a name-bound copy would sail straight past
 #: it and leak committed rows into the shared xdist database. Every call below goes
-#: through the module attribute so the patch is honoured.
+#: through the module attribute so the patch is honored.
 from . import actions
 
 
 def _enabled():
     """The ``XRAS_ACTIONS_ENABLED`` triage lever, read the same way ingest reads it.
 
-    A re-check honours it deliberately: if a type is parked by config, "nothing would
+    A re-check honors it deliberately: if a type is parked by config, "nothing would
     run" is the true answer to *"would this succeed if posted now?"* — and an operator
     who has forgotten the lever is set is exactly who needs telling.
     """

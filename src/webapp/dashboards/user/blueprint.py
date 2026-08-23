@@ -923,7 +923,7 @@ def resource_details_usage_chart(project):
     # Stacked-by-user variant: each daily bar is segmented by the top-10
     # users over the whole window + "Others", ranked by the displayed metric.
     # Falls back to the flat single-series bars when the period has <= 1 user
-    # (a 1-colour stack is pointless and the By User pane is hidden there
+    # (a 1-color stack is pointless and the By User pane is hidden there
     # too) or for non-compute resources, where comp_charge_summary yields no
     # per-user rows.
     scope_projcodes = resolve_scope_projcodes(project, ctx.scope)

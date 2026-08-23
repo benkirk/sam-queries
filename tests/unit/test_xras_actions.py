@@ -107,7 +107,7 @@ def test_no_empty_strings_in_the_corpus(name):
 
     The design conclusion is unchanged and the emphasis is still right: ``null`` is
     the wire's way of saying absent, and no field SAM *reads* has ever arrived ``""``.
-    But "never" was too strong, and the Java ``= ""`` initialisers evidently can fire.
+    But "never" was too strong, and the Java ``= ""`` initializers evidently can fire.
     Pinning the exception rather than deleting the test keeps the guard: a new empty
     string in a field that matters still turns this red.
     """

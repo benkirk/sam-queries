@@ -14,13 +14,13 @@ together before using either:
   case-insensitively over **all** accounts. Supplement, Adjustment and Update use it.
 
 So a Supplement lands on an account whose resource is decommissioned, where an Extension
-would skip it. That is legacy's behaviour on both sides. Until this module existed the
+would skip it. That is legacy's behavior on both sides. Until this module existed the
 separation-by-file was doing part of the work of keeping them apart; now the warning has
 to.
 
 ⚠️ **``auth_at_panel_mtg`` reaches a row two different ways**, and the difference is why
 an Adjustment silently lost the flag for a whole sprint. A CREATE row is marked *after
-the fact* by :func:`mark_panel_authorised`; a SUPPLEMENT row carries it as a parameter
+the fact* by :func:`mark_panel_authorized`; a SUPPLEMENT row carries it as a parameter
 into ``supplement_allocation``. One concept, two mechanisms, and no compiler to tell you
 which one applies.
 """
@@ -54,7 +54,7 @@ __all__ = [
     'create_window_from_action_dates',
 ]
 
-#: ``AllocationTypeIdExtractor``'s two panel-authorised types. ``getAuthAtPanelMeeting()``
+#: ``AllocationTypeIdExtractor``'s two panel-authorized types. ``getAuthAtPanelMeeting()``
 #: is ``true`` iff the resolved type is one of these.
 _PANEL_AUTHORISED = frozenset({'CSL', 'CHAP'})
 
@@ -101,7 +101,7 @@ def account_is_active(account, now: datetime) -> bool:
     skew, in the direction that makes every account created in the last six hours look
     like it was created in the future.
 
-    The conjunct can only ever *exclude*, so honouring it under skew means an Extension
+    The conjunct can only ever *exclude*, so honoring it under skew means an Extension
     posted shortly after a New silently skips the account it should extend, reports
     ``processed``, and writes nothing. Dropping it is a no-op in any deployment where
     the two clocks agree — which is the intent — and removes the failure mode where
@@ -206,7 +206,7 @@ def clamp_start_to_commission(resource, start: datetime) -> datetime:
     :mod:`sam.xras.errors`) as an ``IllegalStateException``, which is not observer-
     reported and so becomes a 500 in legacy.
 
-    This is new behaviour with no precedent elsewhere in this repo, so it is isolated
+    This is new behavior with no precedent elsewhere in this repo, so it is isolated
     here rather than pushed into ``create_allocation`` — the operator-facing allocation
     flows should keep rejecting a bad start rather than quietly moving it.
     """
@@ -243,7 +243,7 @@ def auth_at_panel_meeting(session, action) -> bool:
     ``auth_at_panel_mtg`` flag came from the ladder — inconsistent rows, written,
     silently. The second arm needs no such change: it reads the type already stored
     on the project, which the mapped resolver is what wrote. Pointing it at the map
-    would change behaviour for payloads that omit ``allocationType`` entirely, which
+    would change behavior for payloads that omit ``allocationType`` entirely, which
     is a different question from this one.
     """
     if get_field(action, 'allocationType'):
@@ -281,13 +281,13 @@ def create_window_from_project_history(
         errs: ActionErrors) -> Optional[Tuple[datetime, datetime]]:
     """Create-branch dates for **Supplement and Adjustment**: today + project history.
 
-    Returns ``(start, end)`` with *end* already normalised to 23:59:59, or ``None``
+    Returns ``(start, end)`` with *end* already normalized to 23:59:59, or ``None``
     having reported ``All contract and allocation end dates are null or past for
     project [%s]``.
 
     ⚠️ One of **two** create policies, and they must not converge — see
     :func:`create_window_from_action_dates` for the other. This one never reads the
-    action's own ``actionBeginDate``/``actionEndDate``, which is legacy's behaviour and
+    action's own ``actionBeginDate``/``actionEndDate``, which is legacy's behavior and
     is kept bug-for-bug (100% of Supplement traffic succeeds under it).
 
     Named rather than inlined because it *was* inlined, twice, and the thirty-line

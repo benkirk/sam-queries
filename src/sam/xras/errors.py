@@ -32,7 +32,7 @@ Legacy assembles the entire command list first, reporting every problem it finds
 into a ``LinkedHashSet`` on ``ProcessingAction``, then raises **once** with the
 whole list (``AbstractServiceableProjectActionService.addOrUpdate``). Nothing is
 written unless assembly was clean. That is what lets an operator fix a request in
-one pass instead of five, and it is the behaviour `ActionErrors` exists to provide.
+one pass instead of five, and it is the behavior `ActionErrors` exists to provide.
 
 A ``LinkedHashSet`` is insertion-ordered **and deduplicating**, and both halves
 matter:

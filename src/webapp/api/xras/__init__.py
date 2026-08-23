@@ -93,7 +93,7 @@ def _translate_xa_headers():
 
     Rule 3 is the subtle one: supplying only one XA header strips it without
     synthesizing anything, so the request arrives unauthenticated and 401s. That
-    is legacy behaviour and the case worth testing.
+    is legacy behavior and the case worth testing.
 
     Werkzeug exposes ``request.headers`` as an immutable view over the WSGI
     environ, so the rewrite happens on ``request.environ`` — which is what

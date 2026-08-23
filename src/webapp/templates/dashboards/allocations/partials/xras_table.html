@@ -113,7 +113,7 @@
                         {% if r.request_is_project or r.request_is_token %}
                         <strong>{{ r.request_number }}</strong>
                         {% else %}
-                        {# Not a project and not a recognised token: still let the
+                        {# Not a project and not a recognized token: still let the
                            operator look — the modal degrades gracefully if XRAS
                            has no such request — but keep the warning cue. #}
                         <span class="text-warning-emphasis"

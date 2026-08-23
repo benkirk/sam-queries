@@ -47,7 +47,7 @@ PERSON_FIELDS = (
 #:
 #: - The `phone` expression looks like a priority ranking but is not one. The
 #:   `MIN(CASE ...)` is used only as a null test — `ANY_VALUE(p.phone_number)`
-#:   then returns an arbitrary phone row. Legacy behaviour, reproduced.
+#:   then returns an arbitrary phone row. Legacy behavior, reproduced.
 #: - `login_type_id = 1` is the only filter. There is deliberately no
 #:   active/deleted predicate, so `/people` publishes every user who ever
 #:   existed (22k of 28k are inactive). See section 7 of the plan doc.
@@ -130,7 +130,7 @@ class _OrgNameFixup:
 
     An **unknown acronym maps to `None`**, which drops the `organization` key
     from the response entirely (`PersonDTO` is `NON_NULL`). That is legacy
-    behaviour, and it is why this returns `Optional[str]` rather than falling
+    behavior, and it is why this returns `Optional[str]` rather than falling
     back to the input.
     """
 
@@ -239,7 +239,7 @@ def get_person(session: Session, username: str) -> Optional[Dict[str, Any]]:
 #
 # The ORDER BYs below are not cosmetic — they are the array order of the
 # response, and `ORDER BY end_date` additionally decides which request is
-# labelled "New". See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` section 2.3.
+# labeled "New". See `docs/xras/incoming/XRAS_REIMPLEMENTATION.md` section 2.3.
 #
 # Each carries a primary-key tiebreaker that legacy does not have. Legacy's
 # `ORDER BY al.start_date DESC` is not a total order — one production project

@@ -26,10 +26,10 @@
 {%- elif is_project -%}
 {#- Incoming-only fallback. ⚠️ `btn btn-link`, NOT the `text-decoration-none
     text-reset` anchor used by user_rows.html and contract_bits.html. That
-    treatment makes a link inherit its cell's colour, which is right where
+    treatment makes a link inherit its cell's color, which is right where
     EVERY name in the column is a link — the column itself is the affordance.
     Here most of these numbers have no project, so a link that looked like its
-    neighbours was indistinguishable from them: UWIS0064 opened a modal and
+    neighbors was indistinguishable from them: UWIS0064 opened a modal and
     UAHV0010 did not, and nothing on screen said which.
 
     `.btn-link` gives `--text-link` and underlines on hover (dashboard.css).
@@ -233,7 +233,7 @@
                            on. See its comment on the case-insensitive key. #}
                         {# `btn btn-link` for the same reason as `request_cell`
                            above: only the rare Reactivation row links, so a
-                           colour-inheriting link would be invisible among the
+                           color-inheriting link would be invisible among the
                            New-account rows that do not. `.font-monospace`
                            inside keeps the username lowercase — `.btn` would
                            otherwise uppercase it and erase the convention that

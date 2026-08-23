@@ -310,8 +310,8 @@ class JobsHistogram(CategoricalStackChart):
         return self.log_y or not self._has_owners
 
     def flat_bar_color(self, i):
-        # Without owners the whole chart is one series in the primary colour
-        # (UNITY_PALETTE_10[0], the historical flat chart's colour — NOT the
+        # Without owners the whole chart is one series in the primary color
+        # (UNITY_PALETTE_10[0], the historical flat chart's color — NOT the
         # stack palette's first entry, which is gold); with owners it keeps
         # the per-band palette its stack would have used.
         # `band_colors` is already lifted for the theme; the bare fallback is

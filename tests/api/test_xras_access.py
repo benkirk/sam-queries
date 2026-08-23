@@ -548,7 +548,7 @@ def _payload(name):
 def no_handlers():
     """Empty the dispatcher's handler registry for the duration of one test.
 
-    Needed by any capture-off test that is *not* about a handler's behaviour. A
+    Needed by any capture-off test that is *not* about a handler's behavior. A
     registered handler writes through ``management_transaction``, which **commits** —
     on the route's own connection, outside the suite's per-test SAVEPOINT — so it would
     leak rows into the shared xdist database. House convention (CLAUDE.md § Testing)
@@ -1009,7 +1009,7 @@ class TestDispatchArms:
     def test_a_processed_action_still_answers_exactly_OK(
             self, xras_client, action_log, dispatching):
         """The half that must NOT move. ``'OK'`` on success is legacy's byte-exact
-        success body, and the parked split is not a licence to redesign it."""
+        success body, and the parked split is not a license to redesign it."""
         dispatching.register('extend', lambda s, a, *, validate_only=False: dispatching.DispatchResult(
             status='processed', service='extend', projcode='UCUB0166'))
 
@@ -1119,7 +1119,7 @@ class TestRecheck:
     """``webapp.api.xras.recheck.recheck_action`` — the operator's re-check path.
 
     Exercised at the function level rather than through the dashboard route: the
-    route is a five-line wrapper whose interesting behaviour is the permission
+    route is a five-line wrapper whose interesting behavior is the permission
     gate (covered in ``tests/unit/test_xras_dashboard.py``), while everything that
     can actually go wrong lives here.
 
@@ -1174,7 +1174,7 @@ class TestRecheck:
 
     def test_recheck_preserves_the_payload_byte_for_byte(
             self, app, xras_client, action_log):
-        """``raw_payload`` is byte-exact on purpose — a re-serialisation would
+        """``raw_payload`` is byte-exact on purpose — a re-serialization would
         silently make the replay a different request from the one that arrived."""
         from webapp.api.xras.recheck import recheck_action
 
@@ -1428,7 +1428,7 @@ class TestRecheck:
 
     def test_a_recheck_of_a_parked_type_reports_that_nothing_would_run(
             self, app, xras_client, action_log, dispatching_recheck):
-        """`XRAS_ACTIONS_ENABLED` is honoured: if the type is parked by config,
+        """`XRAS_ACTIONS_ENABLED` is honored: if the type is parked by config,
         "nothing would run" is the true answer — and the operator who forgot the
         lever is set is exactly who needs telling."""
         from webapp.api.xras.recheck import recheck_action

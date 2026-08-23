@@ -87,7 +87,7 @@ def create_app(*, config_overrides: dict | None = None):
     # point Flask-SQLAlchemy at the mysql-test container via SAM_TEST_DB_URL,
     # and conftest.py never reads `SAM_DB_USERNAME` etc.). Production
     # callers pass no overrides and see the original validate-on-startup
-    # behaviour — fail fast if the runtime env is missing required vars.
+    # behavior — fail fast if the runtime env is missing required vars.
     cfg = get_webapp_config()
     if config_overrides is None:
         cfg.validate()

@@ -3,7 +3,7 @@
 Charts mark clickable artists with ``Artist.set_url()``, which makes
 matplotlib's SVG backend wrap them in ``<a xlink:href="...">``. The href is a
 **sentinel**, never a route the browser should follow: ``svg-chart-links.js``
-intercepts the click and dispatches the matching in-page behaviour.
+intercepts the click and dispatches the matching in-page behavior.
 
 **No matplotlib import here, by design.** This module and ``series.py`` are the
 two the chart layer could reuse under a different rendering backend, and a test

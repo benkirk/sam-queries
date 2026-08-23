@@ -10,7 +10,7 @@ operator state on top of it: what happened recently, what an operator has done a
 each outcome, who would be notified, and the provenance link back to the action that
 prompted it.
 
-The centrepiece is :func:`get_xras_activity`, which is keyed on the **action**. It
+The centerpiece is :func:`get_xras_activity`, which is keyed on the **action**. It
 replaced a project-keyed worklist filtered on ``~Project.is_active``; see its
 docstring for the three operator-visible bugs that key caused.
 
@@ -453,7 +453,7 @@ def get_xras_pending_recipients(
                 # `display_name` first: it is (nickname or first) + last, so a
                 # PI greeted by mail gets "Ben Kirk" rather than the
                 # middle-name-carrying "Benjamin Shelton Kirk" that `full_name`
-                # produces. Everywhere else in the UI honours the nickname; a
+                # produces. Everywhere else in the UI honors the nickname; a
                 # notice addressed to someone should read the way their
                 # colleagues address them.
                 #

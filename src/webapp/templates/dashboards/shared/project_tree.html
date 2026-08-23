@@ -3,7 +3,7 @@
   ===================================
   Renders a recursive project hierarchy tree using Jinja2's recursive for-loop.
 
-  Usage (simple name-only tree — original tree_fragment behaviour):
+  Usage (simple name-only tree — original tree_fragment behavior):
     {% from 'dashboards/shared/project_tree.html' import render_project_tree with context %}
     <ul class="tree-list">
       {{ render_project_tree([root], current_projcode=projcode, can_view=can_view,

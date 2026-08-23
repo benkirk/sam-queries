@@ -156,7 +156,7 @@ def extend_account_allocation(
     """Push one allocation and its child subtree out to ``new_end``. Strict.
 
     The XRAS/legacy-faithful extend. Three things distinguish it from its
-    neighbours in this module and on the model, and each one is load-bearing:
+    neighbors in this module and on the model, and each one is load-bearing:
 
     **1. It is strict where the operator flow is forgiving.**
     ``extend_project_allocations`` skips a source whose ``end_date`` is null or
@@ -194,7 +194,7 @@ def extend_account_allocation(
     Args:
         session: SQLAlchemy session.
         allocation: the allocation to extend. Its whole child subtree comes too.
-        new_end: the new end date. Normalised to 23:59:59 by the column
+        new_end: the new end date. Normalized to 23:59:59 by the column
             validator, so callers may pass either convention.
         comment: ``transaction_comment`` for every row written. The XRAS caller
             passes ``'XrasAction Extension Request'`` — see the handler for why

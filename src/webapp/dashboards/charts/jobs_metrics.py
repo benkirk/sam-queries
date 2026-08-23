@@ -77,7 +77,7 @@ def jobs_timeseries_series(ts, metric):
     read the same way.
 
     The plugin hands owners back in **global rank order, identical in every
-    band**, so a name keeps its colour and its position across the whole
+    band**, so a name keeps its color and its position across the whole
     axis. That is the property a stacked time series needs and the reason
     ``jobs_timeseries`` ranks once over the window rather than per band.
     Owners are reversed here so the largest lands on top of the stack, and

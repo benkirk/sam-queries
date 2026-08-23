@@ -67,7 +67,7 @@ class Layout:
     #: no-op and today's output is reproduced byte for byte.
     base_fontsize: int
 
-    #: 'right' — outside the axes, vertically centred (today's placement).
+    #: 'right' — outside the axes, vertically centerd (today's placement).
     #: 'below' — under the axes, for narrow viewports.
     #: 'none'  — suppress entirely.
     legend_placement: str
@@ -75,7 +75,7 @@ class Layout:
     #: Cap on legend entries, or None for no cap. A 20-entry legend is
     #: unreadable on a phone and steals the space the plot needs.
     #:
-    #: Charts honour this at whichever point keeps the picture *honest*, which
+    #: Charts honor this at whichever point keeps the picture *honest*, which
     #: is not the same point for every family: a pie caps its slices (capping
     #: only the legend would leave unlabelled wedges), the pace chart and the
     #: histogram clamp the "top N" they were already computing, and the

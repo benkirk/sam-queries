@@ -45,7 +45,7 @@ def _fresh_bucketed_caches(*, disabled=False):
     """Drop every bucketed cache's memoised adapters, restoring them after.
 
     These caches are module-level singletons shared across the whole test
-    session, so a test that forces them to (re)initialise against fakeredis
+    session, so a test that forces them to (re)initialize against fakeredis
     has to hand back what it found or it poisons every later test.
     """
     from webapp.caching import caching

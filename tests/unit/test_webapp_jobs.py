@@ -3747,7 +3747,7 @@ def test_roundtrip_params_normalize_days_to_a_plain_start(app):
 
 
 def test_panel_filters_default_window_follows_days(app, monkeypatch):
-    """The explorer honours the pill the card handed over in its link."""
+    """The explorer honors the pill the card handed over in its link."""
     _install_mock_plugin(app, monkeypatch)
     from webapp.jobs import routes
 
@@ -4438,7 +4438,7 @@ def test_lens_is_independent_of_window_persistence(
 @pytest.mark.parametrize('query,expected', [
     ('group_by=project', 'project'),
     ('group_by=user', 'user'),
-    ('owners_by=account', 'project'),   # the plugin's spelling, still honoured
+    ('owners_by=account', 'project'),   # the plugin's spelling, still honored
     ('owners_by=user', 'user'),
     ('group_by=nonsense', 'user'),
     ('', 'user'),
@@ -4703,7 +4703,7 @@ def test_a_bar_drill_now_shows_in_the_panel(
         app, auth_client, active_project, monkeypatch):
     """Regression: a wait/elapsed/memory histogram bar drill writes the
     PLUGIN-native param (min_eligible_secs), which the query has always
-    honoured — but the panel's own box rendered empty, so the viewer saw a
+    honored — but the panel's own box rendered empty, so the viewer saw a
     filtered table with no visible filter and no way to clear it without going
     back to the chart."""
     import re

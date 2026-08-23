@@ -794,7 +794,7 @@ def get_carveout_frontier(session: Session, allocation: Allocation) -> 'Carveout
     and open (uncovered) branches, and compute its unallocated residual.
 
     Classification uses :func:`sam.queries.tree_audit.is_pool_member` — the
-    single pool-vs-carve judgement site.  A frontier allocation linked to some
+    single pool-vs-carve judgment site.  A frontier allocation linked to some
     *other* parent allocation (dirty data) is treated as a pool member: it
     mirrors another pool, counting it here would double-count, and it can
     never be a bump target (``update_allocation`` rejects inheriting rows).

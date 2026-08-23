@@ -1,6 +1,6 @@
 """Base configuration for SAM CLI tools and webapp.
 
-All env-var reading for the two databases and mail is centralised here.
+All env-var reading for the two databases and mail is centralized here.
 sam.session / system_status.session continue to work unchanged; they read
 the same vars at import time for connection-string building.
 """

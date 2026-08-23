@@ -451,7 +451,7 @@ def jobs_timeseries(
     """Cached per-period activity series (plugin envelope, verbatim).
 
     The time axis none of the distribution panels offer, and the only
-    per-period plugin query that honours the filter set — ``usage_history``
+    per-period plugin query that honors the filter set — ``usage_history``
     / ``jobs_by_entity_period`` / ``daily_summary_report`` all take dates
     only, so a chart on those would ignore queue / size / exit-status
     filters while sitting above a table that respects them.
@@ -460,7 +460,7 @@ def jobs_timeseries(
     ``opts`` so granularities never alias. Unlike ``jobs_histogram``, the
     owner top-N is ranked **once over the whole window** and every band
     carries the same keys in the same order — a stacked chart assigns
-    colours once and trusts a series never to move or vanish mid-axis.
+    colors once and trusts a series never to move or vanish mid-axis.
 
     Bands replay through ``start``/``end`` rather than
     ``min_param``/``max_param``: the window filters *are* this dimension.

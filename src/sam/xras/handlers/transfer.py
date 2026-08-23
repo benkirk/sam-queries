@@ -36,7 +36,7 @@ What happens instead
 The dispatcher selects ``transfer``, this handler returns ``manual``, and the audit row
 records *why*. That is the same outcome an unserviceable action gets from legacy — a
 human applies it — except that legacy leaves no trace, and this leaves a row saying the
-action was recognised, deliberately not applied, and by whose decision.
+action was recognized, deliberately not applied, and by whose decision.
 
 ⚠️ **If Transfer traffic ever appears, this is the thing to notice.** The
 ``xras_action_log`` query for it is ``status='manual' AND action_type='Transfer'``.

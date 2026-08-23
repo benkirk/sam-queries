@@ -147,7 +147,7 @@ def readiness():
 def db_pool():
     """Connection pool statistics for all configured DB engines.
 
-    Returns pool size, utilisation, overflow, and a health assessment
+    Returns pool size, utilization, overflow, and a health assessment
     for each configured engine bind. Includes the hpc-usage-queries
     plugin engines (``job_history:<machine>``) when the plugin is loaded.
     Each entry includes an ``error_detail`` classifier when the engine

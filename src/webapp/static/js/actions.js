@@ -104,7 +104,7 @@
         }
     });
 
-    /* Generalisation of the above for every other detail modal: the target
+    /* Generalization of the above for every other detail modal: the target
      * shell is named by data-modal-id, content still comes from the
      * element's own hx-get. Needed for the same reason — a link inside an
      * already-open modal (a contract on a project card shown in

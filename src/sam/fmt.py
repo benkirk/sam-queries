@@ -616,11 +616,11 @@ def _date_formatter_cls():
             `format_ticks` rather than `__call__` because the vocabulary is a
             property of the row, not of any one tick: the band comes from the
             spacing between ticks, and "context changed" is only answerable
-            with the neighbours in hand.
+            with the neighbors in hand.
 
             This is also what makes it correct where `ConciseDateFormatter` is
             not — that one derives its offset label from the LAST tick, so a
-            window showing Jul 26-31 gets labelled `2026-Aug`.
+            window showing Jul 26-31 gets labeled `2026-Aug`.
             """
 
             def format_ticks(self, values):
@@ -629,7 +629,7 @@ def _date_formatter_cls():
 
             def __call__(self, x, pos=None):
                 # Single-value path (cursor readout, `format_data_short`).
-                # No neighbours, so no context to suppress.
+                # No neighbors, so no context to suppress.
                 return f'{num2date(x).replace(tzinfo=None):%Y-%m-%d %H:%M}'
 
         _DATE_FORMATTER_CLS = _SpanDateFormatter

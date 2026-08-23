@@ -119,7 +119,7 @@ def _payload(number='EXAM0001', *, status='Approved', action_status='Approved',
             'requestStatus': status, 'requestType': 'New',
             'opportunityId': 5, 'opportunity_name': 'Small Allocation',
             # Inside the shared window's default lookback unless a test says
-            # otherwise — the window's behaviour is its own set of tests below.
+            # otherwise — the window's behavior is its own set of tests below.
             'submitDate': submit_date or datetime.now().strftime('%Y-%m-%dT00:00:00Z'),
             'roles': roles,
             'actions': [{'actionId': 7, 'actionType': 'Supplement',
@@ -371,7 +371,7 @@ class TestTheFourEmptyStates:
 class TestRendering:
 
     # The roster/action offers moved from the card's per-request expansion into
-    # the detail modal (the card row now just links to it), so these behaviours
+    # the detail modal (the card row now just links to it), so these behaviors
     # are asserted against the modal body — fed by a live read (`_reader`).
     def test_the_modal_renders_the_offers(self, auth_client, armed, monkeypatch):
         _reader(monkeypatch, payload=_payload())

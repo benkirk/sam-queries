@@ -1,4 +1,4 @@
-"""The `layout` axis as behaviour, not as a snapshot.
+"""The `layout` axis as behavior, not as a snapshot.
 
 `test_chart_fingerprints` pins what mobile renders *today*; regenerating it is
 a one-line command, so on its own it records the tuning rather than defending
@@ -330,7 +330,7 @@ def test_link_legend_ordered_flag_skips_the_reverse():
 
 
 def test_others_band_survives_the_legend_cap():
-    """Dropping "Others" would leave a visible grey band with nothing in the
+    """Dropping "Others" would leave a visible gray band with nothing in the
     legend explaining it — worse than dropping a sliver already hard to see."""
     from webapp.dashboards.charts.series import Series
 

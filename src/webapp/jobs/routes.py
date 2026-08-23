@@ -727,7 +727,7 @@ def _parse_period(span_days: int) -> str:
     """``?period=`` for the timeline, clamped to what the window affords.
 
     An explicit choice wins **only while it fits**: a stale 'day' arriving
-    from localStorage against a 5-year window must not be honoured. Lenient
+    from localStorage against a 5-year window must not be honored. Lenient
     like ``_parse_metric`` — unknown values mean "no override", never a 400.
     """
     raw = (request.args.get('period') or '').strip()
@@ -763,7 +763,7 @@ def _parse_group_by() -> str:
     status dashboard's queue-load chart uses, which is what lets the
     choice ride the shared view-preference bucket and mean the same thing
     on both. ``owners_by=user|account`` (the plugin's own vocabulary, and
-    what this pill emitted before) is still honoured so in-flight links
+    what this pill emitted before) is still honored so in-flight links
     and bookmarks keep working. Anything else falls back to 'user'.
     """
     raw = (request.args.get('group_by') or '').strip()
@@ -1496,7 +1496,7 @@ def _panel_filters(machine: str) -> dict:
         'max_gpus':  _parse_int_arg('max_gpus'),
         # Fall back to the plugin-native spelling. A histogram bar drill writes
         # min_eligible_secs / min_elapsed / min_reqmem, which _parse_job_filters
-        # honours — but until this fallback the panel's own box rendered EMPTY,
+        # honors — but until this fallback the panel's own box rendered EMPTY,
         # so the viewer saw a filtered table with no visible filter and no way
         # to widen or clear it without going back to the chart.
         'min_wait_hours': _shown('min_wait_hours', 'min_eligible_secs', _SECS_PER_HOUR),
@@ -1539,7 +1539,7 @@ def _parse_active_tab() -> str:
 # with a name glob; `machine`, `target_id` and `projcode` are the macro's
 # to supply. `account` is deliberately absent: it narrows the per-job
 # table but not the aggregations, so baking it in would hide the By
-# Project tab while its neighbours still counted every project.
+# Project tab while its neighbors still counted every project.
 _EXPLORER_PANEL_KEYS = (
     'start', 'end', 'user', 'queue', 'qos', 'exit_status', 'name',
     'min_nodes', 'max_nodes', 'min_cpus', 'max_cpus', 'min_gpus', 'max_gpus',

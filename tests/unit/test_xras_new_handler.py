@@ -61,7 +61,7 @@ def _stub_gid_pool(monkeypatch):
 
     In production this is a non-issue: one webapp process, one action at a time. It is
     only the parallel suite that creates the contention, so the pool is stubbed here and
-    its real behaviour stays covered by ``tests/unit/test_gid_allocation.py``. These
+    its real behavior stays covered by ``tests/unit/test_gid_allocation.py``. These
     tests are about the handler's ordering, not about GID allocation.
     """
     import itertools
@@ -263,7 +263,7 @@ class TestTheOrderCannotBeRearranged:
 
 
 class TestCommissionDateClamping:
-    """New behaviour with no precedent in this repo, so it is isolated in the handler
+    """New behavior with no precedent in this repo, so it is isolated in the handler
     rather than pushed into ``create_allocation``."""
 
     def test_an_early_start_is_clamped_forward_silently(self, session):
@@ -455,17 +455,17 @@ class TestContracts:
 
 
 class TestPanelAuthorisation:
-    """New marks its CREATE rows when the resolved type is panel-authorised.
+    """New marks its CREATE rows when the resolved type is panel-authorized.
 
     ⚠️ **This was untested until the plan records landed**, on the handler with the
     highest production failure rate. Every other New test uses the default
-    ``allocationType='Small'``, which is not panel-authorised, so the flag was
+    ``allocationType='Small'``, which is not panel-authorized, so the flag was
     ``False`` either way and nothing could tell a correct implementation from one
     that never set it — exactly the blind spot that hid the Adjustment bug for a
     sprint.
 
     It caught a real ordering hazard immediately: ``PlannedCreate`` captures the flag
-    at construction, so computing ``panel_authorised`` *after* ``_plan_allocations()``
+    at construction, so computing ``panel_authorized`` *after* ``_plan_allocations()``
     — which is where it used to sit, harmlessly, because the old loop read it at
     execute time — would have stamped every row with the ``False`` from ``__init__``.
     """
@@ -500,7 +500,7 @@ class TestPanelAuthorisation:
 
 
 class TestTheRosterIsNotFetchedTwice:
-    """A regression guard on the double fetch, not a micro-optimisation.
+    """A regression guard on the double fetch, not a micro-optimization.
 
     ``resolve_roster`` looks every username up in order to validate it, and this
     handler used to throw those rows away and query again from the usernames — a

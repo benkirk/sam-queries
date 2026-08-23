@@ -36,7 +36,7 @@ ROLE_SEGMENTS = {
     'allocation_manager': 'AllocationManager',
 }
 
-#: `dates/requests` serialises `java.util.Date` with no date module configured,
+#: `dates/requests` serializes `java.util.Date` with no date module configured,
 #: so Jackson emits epoch millis. The values are DATE columns read by a JVM in
 #: the server's zone, i.e. **local midnight** — verified on four samples, all of
 #: which land exactly on 00:00 America/Denver. A fixed -6 offset would drift by

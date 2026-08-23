@@ -9,7 +9,7 @@ must behave identically under ``sam-admin`` and under the webapp.
 It also collapses a duplication. ``MAIL_*`` had **two** sources of truth:
 ``src/config.py:31-37`` (``SAMConfig``, inherited into ``app.config`` via
 ``SAMWebappConfig``) and ``src/cli/core/context.py``, which re-read the same
-six vars off ``os.getenv`` with the same defaults and so never honoured a
+six vars off ``os.getenv`` with the same defaults and so never honored a
 ``SAMConfig`` change. ``NotifyConfig`` replaces both.
 
 See ``docs/plans/implemented/NOTIFICATION_FRAMEWORK.md`` § 2.

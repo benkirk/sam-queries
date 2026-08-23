@@ -4,7 +4,7 @@ permitted transition.
 These run against the raw test session, so rows are built directly and rolled
 back by the per-test SAVEPOINT.
 
-The behaviour under test is mostly *refusal*: the columns are bare VARCHARs by
+The behavior under test is mostly *refusal*: the columns are bare VARCHARs by
 design (an ENUM change is a DBA ticket where a string is not), so
 ``create()``/``resolve()` are the only thing between a typo and a row that no
 facet chip will ever match.

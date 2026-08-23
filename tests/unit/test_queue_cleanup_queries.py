@@ -4,7 +4,7 @@ Every test builds its own Resource + Queue graph via Layer-2 factories, so
 results are exact counts rather than "at least one" assertions and are immune
 to snapshot refreshes.
 
-The behaviours that matter:
+The behaviors that matter:
   * charged inside the window   → not a candidate
   * charged before the window   → candidate, pre-selected
   * never charged               → candidate, NOT pre-selected (may be routing)

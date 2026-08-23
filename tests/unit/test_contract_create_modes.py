@@ -5,7 +5,7 @@ Two layers, per the house convention (docs/TESTING.md):
 * **Model layer** — the writes. ``Contract.create`` / ``Contract.update``
   now carry the monitor and NSF program, and ``update`` distinguishes
   "leave alone" from "set NULL".
-* **HTTP layer** — auth, validation, and render behaviour of the bespoke
+* **HTTP layer** — auth, validation, and render behavior of the bespoke
   create routes plus the award-lookup endpoint. Route handlers use
   Flask-SQLAlchemy's ``db.session``, which only sees committed snapshot
   rows, so happy-path creates are not exercised here.
@@ -311,7 +311,7 @@ class TestCreateForm:
         nothing in the DOM posts — `_contract_create_context` synthesises it.
         `HtmxFormHandler.render_errors` therefore has to let `context()`'s
         `form` win over the raw `request.form`, which carries no `_display`
-        keys. Pins the behaviour that used to require a local override.
+        keys. Pins the behavior that used to require a local override.
         """
         resp = auth_client.post(CREATE_URL, data={
             'contract_number': any_contract.contract_number,   # duplicate

@@ -45,7 +45,7 @@ def _resources(count, first_key=990_000, bad_amount=False):
 
 
 def _compact(payload):
-    """Serialise the way a broker would, not the way ``json.dumps`` defaults to.
+    """Serialize the way a broker would, not the way ``json.dumps`` defaults to.
 
     ``json.dumps``'s default ``', '``/``': '`` separators add ~40% to a
     resource-heavy body, which is enough to make the payload overflow first and mask
@@ -223,7 +223,7 @@ ASTRAL = '\U0001F30A'          # 🌊 WATER WAVE
 
 
 def _raw_utf8(payload):
-    """Serialise the way the broker does: **raw UTF-8, not ``\\uXXXX`` escapes.**
+    """Serialize the way the broker does: **raw UTF-8, not ``\\uXXXX`` escapes.**
 
     ⚠️ This is the whole test, and getting it wrong makes the scenario vacuous.
     ``json.dumps`` defaults to ``ensure_ascii=True``, which turns the emoji into the
@@ -268,7 +268,7 @@ def test_astral_unicode_payload(xras_client, action_log, scenario):
     assert row['status'] == scenario['expect']
     # The row exists AND the character round-tripped — a guard that stored `?` or
     # U+FFFD here would pass a "did it survive" check while corrupting the one
-    # artefact an operator replays from.
+    # artifact an operator replays from.
     assert ASTRAL in row['raw_payload']
 
 
@@ -297,7 +297,7 @@ def test_astral_unicode_identifier(xras_client, action_log, scenario):
     assert resp.status_code == scenario['http']
     row = action_log.one()
     assert row['status'] == scenario['expect']
-    # Sanitised, not dropped: the row still says an action type arrived and roughly
+    # Sanitized, not dropped: the row still says an action type arrived and roughly
     # what it was.
     assert row['action_type'] is not None
     assert ASTRAL not in row['action_type']

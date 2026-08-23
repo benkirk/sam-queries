@@ -131,7 +131,7 @@ def xras_fragment():
     )
     total = count_recent_xras_actions(db.session, **filters)
     # Facet counts, computed with SELF-EXCLUSION: each dimension's rollup omits
-    # its OWN filter while honouring every other one.
+    # its OWN filter while honoring every other one.
     #
     # This is what makes the chips switchers rather than dead ends. Scoping a
     # dimension by itself drives every unselected value to zero the moment one is

@@ -1179,7 +1179,7 @@ def get_allocation_summary_with_usage(
         # under projcode-grouping), `get_subtree_disk_capacity` walks
         # `project.get_descendants()` on the row's resource and sums
         # snapshot bytes. Multi-project rows fall back to summing
-        # per-account snapshots (legacy behaviour) — capacity-aware
+        # per-account snapshots (legacy behavior) — capacity-aware
         # de-duplication across overlapping subtrees in TOTAL-style
         # aggregates is a known limitation.
         all_disk = bool(item_allocations) and all(

@@ -10,7 +10,7 @@ This module replaces the policy that used to live inline in
 run utility — three commits, no tests, and nothing in the tree ever scheduled
 it — so it was read as *evidence about the tables* rather than as a
 specification. ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 3.1 records the five
-decisions that produced what is here; the four that changed behaviour are:
+decisions that produced what is here; the four that changed behavior are:
 
 1. **The cutoff is naive UTC.** The script used ``datetime.now()``, which is
    local, against ``timestamp`` columns that are naive **UTC**
@@ -86,7 +86,7 @@ DEFAULT_CHUNK_SIZE = 10_000
 #: but the test tier is SQLite, which does **not** enforce foreign keys unless
 #: ``PRAGMA foreign_keys=ON`` is set (nothing in this repo sets it), and a bulk
 #: ``query.delete()`` bypasses SQLAlchemy's ORM-level cascade too. Relying on
-#: CASCADE would mean the behaviour under test and the behaviour in production
+#: CASCADE would mean the behavior under test and the behavior in production
 #: were different mechanisms.
 #:
 #: ``UserProjQueueStatus`` is here even though the old script omitted it. Its

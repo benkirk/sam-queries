@@ -220,7 +220,7 @@ def scan_entity_summary(scope, kind: str, *,
             r[spec['name_key']] = names.get(r.get(spec['id_field']))
         return rows
 
-    # cache key tolerates an unscoped (None) prefix list — normalise to [].
+    # cache key tolerates an unscoped (None) prefix list — normalize to [].
     return cached_scan(kind, q, collections, path_prefixes or [],
                        {'limit': limit}, _compute, database=scope.database)
 
@@ -321,7 +321,7 @@ def scan_directories(
     }
     rows = cached_scan(
         'directories', q, collections,
-        # cache key tolerates an unscoped (None) prefix list — normalise to [].
+        # cache key tolerates an unscoped (None) prefix list — normalize to [].
         path_prefixes or [], opts,
         database=database,
         compute=lambda: q.list_directories(

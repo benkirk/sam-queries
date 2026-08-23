@@ -703,7 +703,7 @@ def xras_sweep(ctx) -> TaskResult:
         # A datetime, not an ISO string: this payload is pickled into the
         # cache and read straight by a Jinja `fmt_date`, whereas the ledger's
         # `detail` beside it is JSON and must stay stringly-typed. The two
-        # have different serialisation contracts and this is the seam.
+        # have different serialization contracts and this is the seam.
         'generated_at': to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)),
         'window_days': window,
         'status': detail['status'],

@@ -70,7 +70,7 @@ def nsf_award_id(contract_number: Optional[str]) -> Optional[str]:
 
 
 def _parse_date(raw: Optional[str]):
-    """NSF serialises dates as ``MM/DD/YYYY``. Return a ``date`` or ``None``."""
+    """NSF serializes dates as ``MM/DD/YYYY``. Return a ``date`` or ``None``."""
     if not raw:
         return None
     try:
@@ -149,7 +149,7 @@ class NsfAwardProvider(AwardProvider):
     def _to_record(award: Mapping[str, Any], award_id: str) -> AwardRecord:
         # NSF returns the division abbreviation separately; SAM stores the
         # two joined ("AGS-1852977") for 2,109 of 2,162 NSF contracts, so
-        # rebuilding it also normalises the operator's stray whitespace.
+        # rebuilding it also normalizes the operator's stray whitespace.
         div = _clean(award.get('divAbbr'))
         number = f'{div}-{award_id}' if div else award_id
 

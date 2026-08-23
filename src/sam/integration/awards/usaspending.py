@@ -83,7 +83,7 @@ def award_id_candidates(contract_number: str) -> List[str]:
 
 
 def _parse_date(raw: Optional[str]):
-    """USAspending serialises dates as ``YYYY-MM-DD``."""
+    """USAspending serializes dates as ``YYYY-MM-DD``."""
     if not raw:
         return None
     try:

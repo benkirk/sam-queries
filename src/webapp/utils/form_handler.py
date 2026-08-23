@@ -235,7 +235,7 @@ class HtmxFormHandler:
 
 class FlattenedFieldErrors:
     """Mixin for handlers whose template has no per-field form_fields.html
-    macros: fold field errors into the top alert panel (labelled, matching
+    macros: fold field errors into the top alert panel (labeled, matching
     the legacy ``flatten_errors`` presentation) so they stay visible.
     """
 

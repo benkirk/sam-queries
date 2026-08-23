@@ -1,6 +1,6 @@
 """Click wiring for `sam-admin tasks` — modes, guards, envelopes, exit codes.
 
-Modelled on `test_admin_xras_cli.py`. The distinctive things asserted here are
+Modeled on `test_admin_xras_cli.py`. The distinctive things asserted here are
 the two places this command deliberately departs from its siblings:
 
 * it must work with **no SAM MySQL connection at all**, because its ledger is

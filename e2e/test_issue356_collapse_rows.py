@@ -9,7 +9,7 @@ the button. Nothing the button does (``data-stop-propagation`` included) can
 prevent it; the fix is to move the toggle onto the non-action ``<td>``s.
 
 ``tests/unit/test_collapse_trigger_rows.py`` proves the *markup* no longer puts
-a trigger on a row that holds a button. Only a browser proves the *behaviour*,
+a trigger on a row that holds a button. Only a browser proves the *behavior*,
 and the issue's acceptance criterion is written as one::
 
     { rowExpandedAfterEditClick: false, modalShown: true }
@@ -18,7 +18,7 @@ Both halves matter, hence two tests per card: the pencil must not expand the
 row, **and** the ordinary cells must still expand it. A fix that killed the
 expander outright would satisfy the first on its own.
 
-Sibling of ``test_pr378_regressions.py`` — a named-issue behavioural module,
+Sibling of ``test_pr378_regressions.py`` — a named-issue behavioral module,
 as opposed to the console and legibility sweeps.
 """
 import pytest

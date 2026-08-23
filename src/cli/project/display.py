@@ -550,7 +550,7 @@ def notification_progress(ctx: Context, total: int,
 
 
 def display_notification_results(ctx: Context, results: list, total_projects: int):
-    """Summarise a send.
+    """Summarize a send.
 
     Args:
         ctx: Context object

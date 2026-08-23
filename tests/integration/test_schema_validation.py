@@ -74,7 +74,7 @@ IGNORED_ORM_FK_DRIFT = {
 # DB-side FKs whose ON DELETE / ON UPDATE rules are non-default.
 # Keyed by (table_name, constraint_name) → (delete_rule, update_rule, reason).
 # Seed: every FK in the test container whose action pair isn't ('NO ACTION',
-# 'NO ACTION'). Default MySQL behaviour ('RESTRICT' / 'NO ACTION') is treated
+# 'NO ACTION'). Default MySQL behavior ('RESTRICT' / 'NO ACTION') is treated
 # as the implicit baseline and not allowlisted.
 #
 # When an ORM model eventually adds matching ondelete=/onupdate= to its
@@ -478,7 +478,7 @@ class TestCharsetSplit:
     SQLAlchemy does not encode collation on these models, so the ORM cannot carry
     it; the `initdb.d/zz-9*.sql` files that used to be its written source were
     retired once production and the committed snapshot both had the tables. The
-    stress tier proves the *behaviour* (an emoji survives a POST) but is gated off
+    stress tier proves the *behavior* (an emoji survives a POST) but is gated off
     the default run, so without this the split could silently vanish from a
     regenerated snapshot and nothing would notice until an audit row went missing
     in production.

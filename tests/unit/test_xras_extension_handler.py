@@ -126,7 +126,7 @@ class TestAccountIsActive:
         ``account.creation_time`` comes from ``server_default=CURRENT_TIMESTAMP``, so
         it resolves in the **MySQL server's** timezone — UTC in the dev and CI
         containers — while ``now`` is naive-Mountain. Measured against this very
-        container: ``NOW()`` is six hours ahead of ``datetime.now()``. Honouring
+        container: ``NOW()`` is six hours ahead of ``datetime.now()``. Honoring
         ``!creationTime.after(now)`` would therefore skip every account created in the
         last six hours, so an Extension posted shortly after a New would report
         ``processed`` having written nothing.

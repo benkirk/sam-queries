@@ -6,7 +6,7 @@ Legacy assembles the entire command list first, reporting every problem it finds
 ``LinkedHashSet``, then raises **once** with the whole list
 (``AbstractServiceableProjectActionService.addOrUpdate``). Nothing is written unless
 assembly was clean. That is what lets an operator fix a request in one pass instead of
-five, and it is the single most important behavioural property of this package.
+five, and it is the single most important behavioral property of this package.
 
 Sprint C stated that contract in three docstrings and then re-implemented it six times.
 :meth:`ActionHandler.run` is the same contract expressed once, so handler seven cannot
@@ -27,7 +27,7 @@ The one transaction seam
 and ``tests/unit/test_xras_transaction_seam.py`` enforces that by scanning module
 globals at runtime.
 
-The reason is a failure that has already happened. Handler tests neutralise the commit
+The reason is a failure that has already happened. Handler tests neutralize the commit
 by monkeypatching the name in the handler's module globals; the suite's per-test
 isolation is a SAVEPOINT, and a real ``COMMIT`` releases it and leaks rows into the
 shared xdist database. While five modules each held their own binding, every such test
@@ -37,10 +37,10 @@ assertions pass, and the damage shows up in someone else's test run.
 What subclasses get
 -------------------
 State that used to be threaded through tuples and re-derived per call site: the
-projcode, the project it names, the panel-authorisation flag, the error accumulator.
+projcode, the project it names, the panel-authorization flag, the error accumulator.
 ``Project.get_by_projcode`` was resolved three times per Supplement action; now once.
 
-⚠️ **``panel_authorised`` is a plain attribute, not a lazy property, and that is
+⚠️ **``panel_authorized`` is a plain attribute, not a lazy property, and that is
 load-bearing.** It must be assigned during :meth:`assemble`, because
 :func:`~sam.xras.handlers._allocations.auth_at_panel_meeting`'s second arm reads
 ``project.allocation_type`` — a column Update *writes*, through ``project.update()``,
@@ -93,7 +93,7 @@ class ActionHandler(ABC):
         #: roster/role split; carried onto the result and logged by the route.
         self.warnings: Tuple[str, ...] = ()
 
-        #: Whether the resolved allocation type is panel-authorised (CSL or CHAP).
+        #: Whether the resolved allocation type is panel-authorized (CSL or CHAP).
         #: ⚠️ Assign this in :meth:`assemble`, never later — see the module docstring.
         self.panel_authorised: bool = False
 
@@ -205,7 +205,7 @@ class ActionHandler(ABC):
         *project* is explicit rather than taken from :attr:`project`, because the New
         handler passes the project it has just created inside the transaction.
 
-        *panel_authorised* is explicit rather than read from :attr:`panel_authorised`
+        *panel_authorized* is explicit rather than read from :attr:`panel_authorized`
         for a sharper reason: Update decides it **per resource** (only the ADD branch
         marks), so an implicit read would mark rows the plan said not to.
 

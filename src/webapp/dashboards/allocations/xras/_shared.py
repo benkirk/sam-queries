@@ -160,7 +160,7 @@ def _parse_xras_filters(request_args):
     """Parse filter + sort + pagination params for the XRAS fragment.
 
     Deliberately a sibling of ``_parse_audit_filters`` rather than a
-    generalisation of it. The sort/page halves are identical by convention (that
+    generalization of it. The sort/page halves are identical by convention (that
     is what makes the shared ``sort_link`` / ``pagination`` macros work) and now
     come from the shared ``read_sort`` / ``read_page``; the filter halves have
     nothing in common — projcode/resource/username/facility versus

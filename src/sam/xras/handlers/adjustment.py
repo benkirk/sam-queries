@@ -13,12 +13,12 @@ entire existence:
 
 So this is the only handler in the sprint that will begin servicing traffic a human has
 always handled, with **no production outcome to diff against**. Everything below is
-reasoned from the source rather than confirmed against behaviour, and that is worth
+reasoned from the source rather than confirmed against behavior, and that is worth
 knowing when reading it.
 
 Three consequences:
 
-* **Negatives are honoured.** Removing the ``> 0`` gate is the point of the handler.
+* **Negatives are honored.** Removing the ``> 0`` gate is the point of the handler.
   Nothing depends on it, because nothing has ever run.
 * **A negative that would take the allocation below zero is rejected.** Legacy has no
   such guard — ``verifyValidateState`` checks only the end date — but legacy also never
@@ -78,7 +78,7 @@ class AdjustmentHandler(ActionHandler):
         two differ in three places and a shared function with three flags reads worse
         than two functions that each say what they do"*. The count was wrong (four,
         not three) and so was the conclusion: the duplicated thirty lines are where
-        the panel-authorisation flag went missing for an entire sprint. What actually
+        the panel-authorization flag went missing for an entire sprint. What actually
         needed naming was the shared **create policy**, not the whole planner.
         """
         self.planned: List[object] = []
@@ -113,7 +113,7 @@ class AdjustmentHandler(ActionHandler):
                     #
                     # ⚠️ This guard is Adjustment's alone. Supplement has no equivalent
                     # and must not gain one here — that would turn a Supplement crash
-                    # into a 422, which is a behaviour change nobody asked for.
+                    # into a 422, which is a behavior change nobody asked for.
                     self.errors.report(e.adjustment_would_go_negative(
                         resource.resource_name, 0.0, amount))
                     continue

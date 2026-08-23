@@ -384,7 +384,7 @@ class TestResourceAndAmountStrings:
     def test_three_resources_missing_an_amount_still_report_once(
             self, committing, session, linked_pi):
         """The accumulator's dedup, in the place most likely to be got wrong — and the
-        one behaviour only a synthetic payload can demonstrate."""
+        one behavior only a synthetic payload can demonstrate."""
         from factories import make_resource
         from sam.integration.xras import XrasResourceRepositoryKeyResource
         resources = []

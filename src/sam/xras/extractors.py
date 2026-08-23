@@ -126,7 +126,7 @@ _EXTERNAL_PATTERN = re.compile(r'(.* )?External( .*)?')
 
 
 def _clean(value: Optional[str]) -> Optional[str]:
-    """Normalise a wire string to "a value" or ``None``.
+    """Normalize a wire string to "a value" or ``None``.
 
     ⚠️ **A declared divergence, and the only one in this module that changes which
     branch runs.** Jackson gives ``XrasAction.allocationType`` a default of ``""``,
@@ -136,7 +136,7 @@ def _clean(value: Optional[str]) -> Optional[str]:
     ``opportunityName`` branch that detects Discover/Explore ACCESS.
 
     marshmallow gives both ``None`` (``load_default=None``), so the distinction is not
-    recoverable here. We take the ``null`` behaviour for both, which is the strictly
+    recoverable here. We take the ``null`` behavior for both, which is the strictly
     more capable one: the ``""`` path Java would have taken always resolves to nothing
     and falls straight through. The only payloads affected are ACCESS-instance ones
     that omit the key entirely, where legacy fails to resolve a type at all.
@@ -243,7 +243,7 @@ def _opportunity_contains(action, *markers: str) -> bool:
 
 def _small_non_nsf_strategy(action) -> Optional[SelectionParms]:
     """`SmallNonNSFStrategy` — note ``'unsponsored'`` is lowercase in the source while
-    its two neighbours are title-cased, and the test is case-sensitive."""
+    its two neighbors are title-cased, and the test is case-sensitive."""
     if _opportunity_contains(action, 'no NSF award', 'unsponsored', 'Exploratory Allocation'):
         return _ALLOCATION_TYPES['SMALL_NON_NSF']
     return None
@@ -289,7 +289,7 @@ def _asd_ncar_strategy(action) -> Optional[SelectionParms]:
 
 
 #: ``AllocationTypeIdExtractor.SELECTION_PARM_STRATEGY``, in order. First non-``None``
-#: wins (``FirstSuccessfulStrategy``). The order is the behaviour — ``SmallNonNSF``
+#: wins (``FirstSuccessfulStrategy``). The order is the behavior — ``SmallNonNSF``
 #: before ``SmallNSF``, and ``ACCESS`` first because its exact-lookup branch is what
 #: lets a payload name its type outright.
 _STRATEGIES = (
@@ -340,7 +340,7 @@ def select_allocation_type_mapped(session, action) -> Optional[SelectionParms]:
     ``handlers/_allocations.auth_at_panel_meeting`` independently re-derives the
     pair to set ``auth_at_panel_mtg`` on **allocation_transaction** rows. Wiring
     only one of them would let a project's type come from the map while its
-    transactions' panel-authorisation flag came from the ladder — inconsistent
+    transactions' panel-authorization flag came from the ladder — inconsistent
     rows, written, silently.
 
     Three ways to miss, all of them falling through rather than raising: no
@@ -376,7 +376,7 @@ def resolve_allocation_type(session, action, errs: ActionErrors) -> Optional[All
     house rule against hardcoding lookup-table PKs. Legacy's ``findByPanelAndType``
     applies no ``active`` filter and neither does this — all twelve pairs the strategy
     chain can produce are active today, and filtering would turn a data change into a
-    silent behaviour change.
+    silent behavior change.
 
     The pair comes from :func:`select_allocation_type_mapped`, which prefers the
     ``opportunityId`` map and falls back to the ladder — so with an empty table this

@@ -1,4 +1,4 @@
-"""BucketedTTLCache — one lazily-initialised TTL cache with named buckets.
+"""BucketedTTLCache — one lazily-initialized TTL cache with named buckets.
 
 Three call sites grew the same ~120-line skeleton independently
 (``sam.queries.usage_cache``, ``webapp.disk_scans.cache``,
@@ -75,7 +75,7 @@ class BucketedTTLCache:
     """A named family of TTL cache buckets sharing one backend policy.
 
     Adapters are built on first use and memoised; a stored ``None`` means
-    "initialised but disabled by config", so a disabled bucket costs one
+    "initialized but disabled by config", so a disabled bucket costs one
     config read for the process lifetime rather than one per call.
     """
 
@@ -101,7 +101,7 @@ class BucketedTTLCache:
     # ── Adapters ────────────────────────────────────────────────────────
 
     def adapter(self, bucket: str) -> Optional[CacheBase]:
-        """Return the shared adapter for *bucket*, initialising on first call.
+        """Return the shared adapter for *bucket*, initializing on first call.
 
         ``None`` when the bucket is disabled by config (TTL or size == 0).
         Prefers a ``RedisTTLAdapter`` so all gunicorn workers share one cache;
@@ -165,7 +165,7 @@ class BucketedTTLCache:
         module docstring).
 
         The compute runs OUTSIDE the adapter lock: these are multi-second
-        plugin queries, and holding the lock across one would serialise every
+        plugin queries, and holding the lock across one would serialize every
         other reader of the bucket.
         """
         adapter = self.adapter(bucket)
@@ -236,7 +236,7 @@ class BucketedTTLCache:
 
         ``disabled=True`` (the default) pins all buckets off, so a test
         exercising a service function sees real computes instead of a
-        neighbour test's cached value. ``disabled=False`` drops the memo so
+        neighbor test's cached value. ``disabled=False`` drops the memo so
         the next call re-reads config — used by tests that flip TTL/size
         config and expect it to take effect.
 

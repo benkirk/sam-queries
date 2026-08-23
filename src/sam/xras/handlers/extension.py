@@ -20,7 +20,7 @@ The shape
 ---------
 Assemble → check once → execute. Every account is examined and every problem reported
 before anything is written; one un-extendable account aborts the whole action at
-``raise_if_any()``. That is legacy's behaviour and it is the reason the 422 is worth
+``raise_if_any()``. That is legacy's behavior and it is the reason the 422 is worth
 reading: an operator sees all of it at once.
 
 Verified against ``~/codes/sam`` at tag 2.0.3

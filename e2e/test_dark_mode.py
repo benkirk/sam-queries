@@ -253,14 +253,14 @@ _CHART_TEXT_COLOURS_JS = """
 def test_chart_text_is_legible(page, base_url, page_url, theme):
     """Chart ink, which is the one surface CSS cannot reach.
 
-    Charts are matplotlib SVGs with colours baked in at render time, so no
+    Charts are matplotlib SVGs with colors baked in at render time, so no
     stylesheet can retheme them — the server has to know the theme, which is
     the whole reason `sam_theme` is a cookie rather than `localStorage`. Before
     the chart layer applied `Theme`, every label on every chart carried
     `fill="rgb(1,24,55)"` against the `#1b2733` card: **1.3:1**, on pages that
     had already been eyeballed and called fine.
 
-    That is the third time in this migration the same defect — brand colour
+    That is the third time in this migration the same defect — brand color
     used as foreground — was found by measurement after screenshots missed it
     (see DARK_MODE.md Appendix E), which is why it is asserted rather than
     reviewed.
@@ -311,12 +311,12 @@ def test_chart_text_is_legible(page, base_url, page_url, theme):
 #: Leaf text only (no element child carrying text of its own), so a card is
 #: measured at its labels rather than reported once per ancestor for the same
 #: glyphs. Backgrounds composite up the ancestor chain exactly as
-#: `_EFFECTIVE_COLOURS_JS` does — an element with `background: transparent`
+#: `_EFFECTIVE_COLORS_JS` does — an element with `background: transparent`
 #: inside a card is read against the card.
 #:
 #: Ancestor `opacity` is deliberately NOT folded in: a faded row is a design
 #: choice, and applying it would make every `.opacity-50` inactive row a
-#: failure. This measures the colours, not the fade.
+#: failure. This measures the colors, not the fade.
 _DARK_SWEEP_JS = """
 () => {
   const parse = (s) => {
@@ -420,7 +420,7 @@ def test_no_unreadable_text_in_dark_mode(page, base_url):
 
     The failure mode this catches is the one that keeps recurring: a surface
     Bootstrap owns and does not retheme (`.table-*` contextual classes,
-    `.bg-white`), or a colour literal inlined into a template where no
+    `.bg-white`), or a color literal inlined into a template where no
     stylesheet can reach it. Both render light-on-light and both are invisible
     in a diff.
 

@@ -8,7 +8,7 @@ rows — happens behind this class.
 **The guard order is the design.** Each guard is cheaper and more final than
 the one after it:
 
-1. an unknown ``kind`` **raises** — that is a programmer error, not an
+1. an unknown ``kind`` **raises** — that is a programr error, not an
    outcome, and it must not be recordable;
 2. ``NOTIFY_ENABLED`` off → ``suppressed``, without rendering;
 3. already sent under this ``dedup_key`` → ``suppressed``;

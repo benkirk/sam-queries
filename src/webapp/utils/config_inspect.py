@@ -31,7 +31,7 @@ from sqlalchemy import text
 
 # Per-pid cache so a fresh worker doesn't re-parse /proc on every request.
 # Module-level dict survives forks (correctly: each forked worker gets its
-# own copy); keyed by os.getpid() so it's resilient to the master initialising
+# own copy); keyed by os.getpid() so it's resilient to the master initializing
 # this dict before forking.
 _worker_started_by_pid: Dict[int, datetime] = {}
 

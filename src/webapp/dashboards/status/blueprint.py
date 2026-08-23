@@ -602,7 +602,7 @@ def htmx_user_proj_chart_system(system):
     """Render the user/project chart summed across all queues for ``system``.
 
     Used by the chart card on the system landing page (Derecho /
-    Casper tabs of the status dashboard). Same selector behaviour as
+    Casper tabs of the status dashboard). Same selector behavior as
     the per-queue endpoint, but the aggregator filters on system_id
     rather than queue_id. Visible to any logged-in user; legend
     click-through is gated separately in ``_render_user_proj_chart``

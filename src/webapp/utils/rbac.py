@@ -263,7 +263,7 @@ _ALLOCATION_ADMIN: Set[Permission] = (
         Permission.DELETE_CONTRACTS,
         Permission.IMPERSONATE_USERS,
         # XRAS payloads + replay. Explicit because no ALL_* aggregate matches a
-        # ``manage_`` prefix — which is the behaviour we want: an integration-admin
+        # ``manage_`` prefix — which is the behavior we want: an integration-admin
         # capability should not be swept in by a naming coincidence. This tier is
         # where it belongs: NUSD fields the XRAS failure mail from hdt@ucar.edu
         # today, and XRAS actions are allocation provisioning by another name.

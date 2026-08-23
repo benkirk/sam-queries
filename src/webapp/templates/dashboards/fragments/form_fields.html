@@ -413,7 +413,7 @@
 {%- set _has_value = (_form_id is not none and _form_id != '') -%}
 {# wrapper_class='' for pickers embedded in a horizontal align-items-end
    filter row — the stacked-form mb-3 makes the cell taller than its
-   siblings there, floating the label above the neighbouring columns'.
+   siblings there, floating the label above the neighboring columns'.
    (A CSS override can't do it: Bootstrap utility margins are !important.) #}
 <div class="{{ wrapper_class }} fk-picker">
     {{ _label(name, label, required=required, optional_text=optional_text, id=_search_id, label_class=label_class) }}

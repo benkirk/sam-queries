@@ -331,7 +331,7 @@ def _compute_status(
     if allocation_amount is None:
         return 'Normal'
 
-    # Priority 1: Overspent (includes alloc=0 with any usage, matching legacy behaviour)
+    # Priority 1: Overspent (includes alloc=0 with any usage, matching legacy behavior)
     if adjusted_usage > allocation_amount:
         return 'Overspent'
 
@@ -420,7 +420,7 @@ def _compute_threshold_data(
 # _query_window_charges and _query_window_subtree_charges are imported from
 # sam.queries.rolling_usage (see import at top of file).  They live there so
 # that get_project_rolling_usage() can share the same SQL helpers without
-# duplicating code.  The fstree behaviour is 100% unchanged.
+# duplicating code.  The fstree behavior is 100% unchanged.
 
 
 # ---------------------------------------------------------------------------
@@ -612,7 +612,7 @@ def get_fstree_data(
     #
     # Non-leaf threshold accounts (roots of an allocation tree) require MPTT
     # subtree rollup so that descendant project charges are included, matching
-    # the behaviour of batch_get_subtree_charges() used for adjustedUsage.
+    # the behavior of batch_get_subtree_charges() used for adjustedUsage.
     # ------------------------------------------------------------------
     subtree_acct_map: Dict[int, Dict] = {info['account_id']: info for info in subtree_infos}
     threshold_leaf_ids = [aid for aid in threshold_accounts if aid not in subtree_acct_map]
@@ -645,7 +645,7 @@ def get_fstree_data(
             'uid':      row.unix_uid,
         })
 
-    # Fetch users for Expired accounts (no date filter — matches legacy behaviour)
+    # Fetch users for Expired accounts (no date filter — matches legacy behavior)
     expired_acct_ids = [
         row.account_id for row in lifecycle_rows
         if row.lifecycle_status == 'Expired' and row.account_id is not None

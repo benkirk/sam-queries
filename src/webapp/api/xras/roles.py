@@ -44,7 +44,7 @@ it receives is built by ``ValidationException.errorsToString()`` and always look
 ``(invalidValue)`` suffix defeat every pattern — **every** validation failure falls to the
 ``else`` and answers **400** carrying that raw string. ``RoleServiceImplTest`` is green
 only because it ``@Mock``s ``getMessage()`` to return the bare sentence, bypassing the real
-assembly; it documents intent, not behaviour.
+assembly; it documents intent, not behavior.
 
 So there is no deployed contract worth reproducing, and no client to break — which leaves
 picking codes that are actually right:
@@ -129,7 +129,7 @@ def set_user_role(request_number, role, username):
         _reject(f'role {role} does not exist', 404)
 
     if current_app.config.get('XRAS_ACTIONS_CAPTURE_ONLY', True):
-        # The same interlock `POST /actions` honours, and the reason this endpoint is not
+        # The same interlock `POST /actions` honors, and the reason this endpoint is not
         # simply "the write, plus auth": while legacy is still the system of record,
         # applying the change here would fight it. The role check above is this route's
         # equivalent of schema validation and still runs; the lookup and the write are its

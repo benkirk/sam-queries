@@ -215,7 +215,7 @@ class XrasApiClient(_XrasTransport):
     only read verbs — there is deliberately no write primitive here (see the
     module docstring and ``tests/unit/test_xras_api_client.py``). The base's
     default :meth:`_client_error` — raising :class:`XrasSourceUnavailable` — is
-    exactly the read behaviour, so this class does not override it.
+    exactly the read behavior, so this class does not override it.
     """
 
     #: See the module docstring: the Reports family answers only under

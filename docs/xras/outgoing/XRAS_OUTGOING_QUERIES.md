@@ -80,7 +80,7 @@ The worklist has real content waiting.
    absent from the roster — and a missing PI still fails the handoff.
 3. **Config follows `sam/notify/config.py`**, i.e. `XrasApiConfig` with
    `from_environment()` reading Flask-config-then-environment, rather than the
-   `from_env(env=None)` sketched in § 7.1. Same behaviour, the repo's idiom,
+   `from_env(env=None)` sketched in § 7.1. Same behavior, the repo's idiom,
    and it brings a secret-free `summary()` along for the configuration card.
 
 ### Still open

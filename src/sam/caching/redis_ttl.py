@@ -115,7 +115,7 @@ class RedisTTLAdapter(CacheBase):
     # ── CacheBase ───────────────────────────────────────────────────────
 
     def _scan_keys(self):
-        # SCAN avoids the O(N) blocking behaviour of KEYS.
+        # SCAN avoids the O(N) blocking behavior of KEYS.
         return self._client.scan_iter(match=f'{self._prefix}*', count=200)
 
     def info(self) -> dict:

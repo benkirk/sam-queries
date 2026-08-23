@@ -107,7 +107,7 @@ class TestTransactionAmount:
         assert list(errs) == ['Could not convert awarded amount "1e9x"  to float']
 
     def test_three_resources_missing_an_amount_report_once(self):
-        """The accumulator behaviour most likely to be got wrong, in the place it
+        """The accumulator behavior most likely to be got wrong, in the place it
         actually fires."""
         errs = ActionErrors()
         for _ in range(3):

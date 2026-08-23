@@ -476,7 +476,7 @@ class TestRenewScaling:
     def test_standalone_default_scale_is_identity(
         self, session, standalone_project, derecho, acting_user,
     ):
-        """scales=None is byte-identical to pre-scale behaviour."""
+        """scales=None is byte-identical to pre-scale behavior."""
         source = _seed_standalone_source(session, standalone_project, derecho)
         created = renew_project_allocations(
             session,

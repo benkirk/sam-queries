@@ -178,7 +178,7 @@ class TestTheHandlersReadFieldsThatExist:
         snake_case (``opportunity_name``). Two vocabularies for one concept, meeting
         inside one feature. A misspelling here would not raise — ``get_field``
         returns ``None`` — it would silently disable the map on every action and
-        fall back to the ladder, which is exactly the behaviour that looks correct.
+        fall back to the ladder, which is exactly the behavior that looks correct.
         """
         read = fields_read_by_handlers()
         assert 'opportunityId' in read, (
@@ -212,7 +212,7 @@ class TestTheCorpusAgrees:
 
 
 class TestASchemaLoadedPayloadResolvesItsResources:
-    """The behavioural half — the vocabulary check proves the name, this proves the
+    """The behavioral half — the vocabulary check proves the name, this proves the
     plumbing.
 
     Loads a **real** payload through the **real** schema, rather than hand-building

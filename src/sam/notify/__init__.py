@@ -34,7 +34,7 @@ Imports are **lazy** (PEP 562)
 Only :mod:`sam.notify.base` is imported eagerly. Everything else — the
 renderer, the transports, the service — loads on first attribute access.
 
-This is not micro-optimisation. ``sam/__init__.py`` exports
+This is not micro-optimization. ``sam/__init__.py`` exports
 :class:`~sam.notify.models.NotificationLog`, and importing *any* submodule
 runs this file first. Eager imports here therefore put ``jinja2``, three
 transports and ``sam.fmt`` into the import graph of **every** consumer of the
@@ -42,7 +42,7 @@ ORM — the CLI, every test, every script — and ``sam.fmt`` in turn imports th
 top-level ``config`` module. Under ``python3 ./src/webapp/run.py`` that lands
 ``sam.fmt`` first in the chain, where ``config`` is shadowed by
 ``webapp/config.py`` (``sys.path[0]`` is the script's own directory) and
-startup dies with a confusing partially-initialised-module ``ImportError``.
+startup dies with a confusing partially-initialized-module ``ImportError``.
 
 The rule this encodes: **the ORM must be importable without the mailer.**
 

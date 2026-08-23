@@ -2,7 +2,7 @@
  *
  * The sibling of layout-axis.js, and deliberately the simpler of the two.
  * Both exist because a rendering mode has to be known *server-side*: charts
- * are matplotlib SVGs with baked-in colours, cached in Redis, so no stylesheet
+ * are matplotlib SVGs with baked-in colors, cached in Redis, so no stylesheet
  * can retheme them after the fact.
  *
  * ## One channel, not two
@@ -17,7 +17,7 @@
  * there is nothing for an htmx parameter to correct. Adding one would split
  * the chart and rendered-HTML cache key spaces on a value that cannot vary.
  *
- * (`read_theme()` still honours `?theme=dark` so it can be driven by hand for
+ * (`read_theme()` still honors `?theme=dark` so it can be driven by hand for
  * debugging. Nothing here ever sets it.)
  *
  * ## Why this file does not set the theme before first paint
@@ -34,7 +34,7 @@
  *
  * Steps 1-2 below flip the cookie and the attribute, so the CSS retheme is
  * instant. But there are 16 server-rendered charts across the dashboards whose
- * colours are baked into their SVG bytes. The alternatives to a reload are to
+ * colors are baked into their SVG bytes. The alternatives to a reload are to
  * leave them stale until the next navigation (a light chart on a dark page is
  * worse than a brief reload) or to hunt down and re-issue every chart
  * fragment's htmx request (fragile, and it re-derives knowledge

@@ -13,7 +13,7 @@ not against the Java POJOs alone. The tolerances below are measured, and each on
 load-bearing:
 
 1. **Absent scalars arrive as JSON ``null``, essentially never ``""``.** XRAS always
-   sends the key, so the Java ``private String x = ""`` initialisers hardly ever fire
+   sends the key, so the Java ``private String x = ""`` initializers hardly ever fire
    on real traffic. Hence ``allow_none=True`` almost everywhere; ``load_default`` is
    the defensive belt.
 
@@ -22,7 +22,7 @@ load-bearing:
    empty-string handling. At 41 payloads and ~2,000 scalars there is exactly **one**:
    ``grants[].subAwardNumber`` in ``supplement_ucit0011_ok.json``, a field declared
    here and read by nothing. So the design conclusion stands and no field SAM *reads*
-   has ever arrived ``""`` — but "never" was too strong, and those initialisers
+   has ever arrived ``""`` — but "never" was too strong, and those initializers
    evidently can fire. Pinned by
    ``tests/unit/test_xras_actions.py::KNOWN_EMPTY_STRINGS``, which still fails on a
    second one.
@@ -47,11 +47,11 @@ load-bearing:
    Observed ``false`` in every sampled role but one, and ``true`` in that one
    (``new_uwis0071_existing_ok.json``, on the incoming NCAR username of a PI who
    changed institution mid-request). Never null and never a string, so the *coercion*
-   is still defensive even though both values now occur. Do not generalise it.
+   is still defensive even though both values now occur. Do not generalize it.
 
 ⚠️  ``isReconciled`` and ``isAccountToBeCreated`` are **inert** in legacy: parsed and
 never read by any business logic. Parse them — they are contract — but do not wire
-them to behaviour without deciding to. In particular ``isReconciled`` is XRAS's view
+them to behavior without deciding to. In particular ``isReconciled`` is XRAS's view
 of *its own* reconciliation and arrives ``true`` even for the unreconciled ARC
 placeholder identities that SAM cannot find, which is 55% of production failures. A
 handler that trusted it would be wrong.

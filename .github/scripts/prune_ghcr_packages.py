@@ -120,7 +120,7 @@ def prune_package(pkg: str, owner: str, keep_sha_count: int,
                     deleted += 1
             continue
 
-        # Defensive default: anything we don't explicitly recognise stays.
+        # Defensive default: anything we don't explicitly recognize stays.
         print(f"Keeping  {v_id} (unknown tags: {tags})")
 
     return deleted

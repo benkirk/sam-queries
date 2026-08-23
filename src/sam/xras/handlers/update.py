@@ -184,7 +184,7 @@ class UpdateHandler(ActionHandler):
         """The per-resource decision. Returns a list of ``(kind, …)`` tuples, in order.
 
         A single resource can emit **three** commands — see the module docstring's
-        table. Panel authorisation is decided per step, not per action: only the ADD
+        table. Panel authorization is decided per step, not per action: only the ADD
         and SUPPLEMENT arms carry it.
         """
         start, end = self.start, self.end

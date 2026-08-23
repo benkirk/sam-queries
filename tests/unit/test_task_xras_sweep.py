@@ -343,7 +343,7 @@ class TestTheWindow:
         assert detail['status'] == 'Approved'
 
 
-# ── behaviour ────────────────────────────────────────────────────────────
+# ── behavior ────────────────────────────────────────────────────────────
 
 class TestUnconfigured:
     """The shipped state, and a *skip* rather than a raise."""

@@ -63,7 +63,7 @@ def _disable_fs_scans_cache():
     affected by the process-wide adapter singleton.
     """
     from webapp.disk_scans import cache as _c
-    # A stored None per bucket means "initialised but disabled".
+    # A stored None per bucket means "initialized but disabled".
     _c._CACHE.reset_for_tests()
     yield
     # disabled=False → drop the memo so buckets re-init on next use
@@ -2076,7 +2076,7 @@ def test_multi_owner_band_keeps_per_user_table(app):
 def test_single_owner_band_without_window_keeps_table(app):
     """The shortcut only applies when there's a drill window. A lone owner in a
     window-less band keeps the per-user table (listed, but not drillable) —
-    behaviour unchanged from before the shortcut."""
+    behavior unchanged from before the shortcut."""
     from flask import render_template
     hist = {
         'bucket_labels': ['unknown'],

@@ -79,7 +79,7 @@ _CACHE = BucketedTTLCache('jobs', 'jobs', {
 })
 
 #: Test seams. ``_BUCKETS`` enumerates the bucket keys; ``_adapters`` IS the
-#: cache's memo dict (same object), so a test that clears it re-initialises
+#: cache's memo dict (same object), so a test that clears it re-initializes
 #: this cache — the pre-existing idiom, preserved through the extraction.
 _BUCKETS = _CACHE.buckets
 _adapters = _CACHE._adapters

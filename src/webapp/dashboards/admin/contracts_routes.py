@@ -100,7 +100,7 @@ def _search_contracts(q, active_only):
     """Search box behind /admin/contracts.
 
     Unlike the FK-picker sibling ``_search_contracts_for_project``, this one
-    **honours** ``active_only`` — that one has no checkbox, this one does.
+    **honors** ``active_only`` — that one has no checkbox, this one does.
     The checkbox defaults off: only 368 of 2,225 contracts are currently
     active, so an active-only default would hide 83% of the data behind a
     control most operators would not think to clear.

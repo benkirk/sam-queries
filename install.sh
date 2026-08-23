@@ -81,7 +81,7 @@ done
 # through to the legacy clone path because BASH_SOURCE[0] in piped
 # mode points at /dev/fd/* or is empty — `[[ -f … ]]` rejects it.
 # Any explicit -d/-r/-b also disables in-place detection (the user
-# has signalled they want a specific clone target).
+# has signaled they want a specific clone target).
 IN_PLACE=""
 if [[ -z "${EXPLICIT_DIR}" && -z "${EXPLICIT_REPO}" && -z "${EXPLICIT_BRANCH}" ]]; then
     SCRIPT_PATH="${BASH_SOURCE[0]:-}"
@@ -106,8 +106,8 @@ fi
 # Helpers
 # --------------------------------------------
 
-# Colour helpers — only emit ANSI escapes when stdout is a TTY and `tput`
-# is available with a colour-capable terminfo entry. Falls back to empty
+# Color helpers — only emit ANSI escapes when stdout is a TTY and `tput`
+# is available with a color-capable terminfo entry. Falls back to empty
 # strings otherwise, so `curl … | bash`, log redirects, and dumb terminals
 # all see plain ASCII. Wrapped in a parameter-expansion guard so this is
 # safe under both `set -u` (interactive) and the relaxed piped mode above.

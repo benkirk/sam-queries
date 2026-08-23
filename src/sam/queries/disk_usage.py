@@ -349,7 +349,7 @@ def get_disk_usage_timeseries_by_user(
     series has the same length as ``dates``.
 
     Series order is **stack-friendly**: ``Others`` first (so it renders
-    at the bottom of the stacked area in a neutral colour), then named
+    at the bottom of the stacked area in a neutral color), then named
     users smallest-to-largest by latest-snapshot bytes (so the largest
     user sits on top of the stack — easiest to scan against the
     capacity bar). The chart layer reverses the legend so the visual
@@ -421,7 +421,7 @@ def get_disk_usage_timeseries_by_user(
     rest_users = ranked[top_n:]
 
     series: List[Dict[str, Any]] = []
-    # `Others` first → bottom of the stack, neutral colour at the chart
+    # `Others` first → bottom of the stack, neutral color at the chart
     # layer.
     if rest_users:
         others_values = [0] * len(dates)

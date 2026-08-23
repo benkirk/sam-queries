@@ -305,7 +305,7 @@ def _validate_user(lookup, username: str, errs: ActionErrors,
     ⚠️ **An inactive user is returned, not dropped.** It reported an error, so
     ``raise_if_any()`` will stop the action before anything reads the row — but the
     handlers used to re-fetch unconditionally and would have got it, so returning it
-    keeps this a pure de-duplication of queries rather than a behaviour change.
+    keeps this a pure de-duplication of queries rather than a behavior change.
 
     ⚠️ **Reporting is per occurrence, deliberately.** Called three times for one
     person in three roles, this reports three times — the strings differ per role

@@ -38,7 +38,7 @@ explodes.
 ``management_transaction`` rolls the entire session back on exception
 (``sam/manage/transaction.py``), so an audit row enrolled in it would vanish in exactly
 the case it exists for. :func:`_record` and :func:`_finish` therefore open short-lived
-sessions of their own and commit immediately. This is the one behaviour here that no
+sessions of their own and commit immediately. This is the one behavior here that no
 happy-path test would catch.
 
 Status codes are a deliberate improvement, not a port: legacy answers 500 with an
@@ -251,7 +251,7 @@ def _fit(value, width):
 
     Two ways to raise, and this guards both. Length is the obvious one. Encoding is
     the other: every column reached through here is **utf8mb3**, which cannot hold a
-    4-byte character — see :func:`_strip_astral`. Sanitise *before* slicing, so a
+    4-byte character — see :func:`_strip_astral`. Sanitize *before* slicing, so a
     replacement character cannot be cut in half.
 
     ``width`` counts **characters**, correctly: MySQL ``VARCHAR(n)`` is n characters,
@@ -548,7 +548,7 @@ def post_action(action_id=None, request_id=None, action_type=None):
     ``/v1/actions``, the only form legacy maps — but the ACCESS/XRAS specification
     documents ``/v1/actions/<actionId>/<requestId>/<actionType>``. If the broker is
     ever corrected to match its own published spec, every post would 404. The path
-    segments are ignored in favour of the body, which is authoritative and which the
+    segments are ignored in favor of the body, which is authoritative and which the
     bare form has always relied on.
 
     ``@csrf.exempt`` is required: ``CSRFProtect`` covers every POST, and a token-auth

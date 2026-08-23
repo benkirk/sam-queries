@@ -98,7 +98,7 @@ class TestWhatADoublePostCosts:
     def test_a_repeated_supplement_is_additive(self, session, mapped, monkeypatch):
         """250,000 posted three times leaves 750,000 added.
 
-        Correct per-post behaviour and the wrong total — `awardedAmount` is the
+        Correct per-post behavior and the wrong total — `awardedAmount` is the
         INCREMENT, not the new total, which is the most consequential porting semantic
         in the sprint. This is the number behind the `action_id` verdict.
         """

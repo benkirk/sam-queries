@@ -166,7 +166,7 @@ projects_data = ProjectListSchema(many=True).dump(projects)
 }
 ```
 
-For detailed schema documentation, see [CLAUDE.md](../../CLAUDE.md#marshmallow-sqlalchemy-schemas).
+For detailed schema documentation, see [CLAUDE.md](../../CLAUDE.md#serialization-schemas-samschemas).
 
 ## Authentication & Authorization
 

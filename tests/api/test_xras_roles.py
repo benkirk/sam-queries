@@ -3,7 +3,7 @@
 Legacy endpoint #7, ported late: an audit of the deployed ``ROOT.war`` found it mapped in
 Java and absent here. These tests pin the contract that port implements, which is
 **deliberately not** what the deployed code does — see ``webapp/api/xras/roles.py`` for
-why (in short: legacy's four-branch error ladder can never fire, so its real behaviour is
+why (in short: legacy's four-branch error ladder can never fire, so its real behavior is
 400-for-everything carrying a leaked ``ValidationException:`` string).
 
 House convention applies (CLAUDE.md § Testing): the HTTP tier covers auth, validation,
@@ -42,7 +42,7 @@ def _path(request_number='ABC1234', role='pi', username='someone'):
 def capture_off(app):
     """Open the interlock for one test, and always close it again.
 
-    ``XRAS_ACTIONS_CAPTURE_ONLY`` defaults on, and this endpoint honours it for the same
+    ``XRAS_ACTIONS_CAPTURE_ONLY`` defaults on, and this endpoint honors it for the same
     reason ``POST /actions`` does: while legacy is still the system of record, applying
     the change here would fight it.
     """

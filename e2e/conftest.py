@@ -283,7 +283,7 @@ def set_theme(page, base_url, theme):
     """Pin the server-rendered theme for this page's browsing context.
 
     Set on the context rather than by clicking the toggle: the toggle's own
-    behaviour is unit-tested (tests/unit/test_theme_transport.py), and driving
+    behavior is unit-tested (tests/unit/test_theme_transport.py), and driving
     it here would add a reload to every parameterized case for no extra
     coverage.
     """

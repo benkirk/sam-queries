@@ -2,10 +2,10 @@
 
 Most of these tests exist because ``docs/plans/implemented/SCHEDULED_TASKS.md``
 § 3.1 turned ``scripts/cleanup_status_data.py`` from a thing to port into a set
-of decisions to make. Each decision that changed behaviour gets a test here, so
+of decisions to make. Each decision that changed behavior gets a test here, so
 the agenda leaves evidence rather than a changelog entry:
 
-* the cutoff is honoured exactly, and is naive UTC (the script used local time);
+* the cutoff is honored exactly, and is naive UTC (the script used local time);
 * curated tables are untouched (the script pruned them);
 * spans are pruned on their own row, not inherited from a parent's CASCADE;
 * 365 is the default everywhere a consumer could disagree.

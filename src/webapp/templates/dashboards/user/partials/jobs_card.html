@@ -88,7 +88,7 @@
 {# Persisted-window markers, repeated on every tab button: the
    configRequest handler in nav-view-persistence.js only injects into
    elements that carry them THEMSELVES, so each tab has to opt in for its
-   panel fetch to honour a stored window. #}
+   panel fetch to honor a stored window. #}
 {% macro _persist(pid) -%}
 {%- if pid %} data-chart-persist-id="{{ pid }}" data-chart-persist-keys="days"{% endif -%}
 {%- endmacro %}

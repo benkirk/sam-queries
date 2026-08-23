@@ -4,10 +4,10 @@
 reasons: it tests ``actionType.equals("Adjust")`` while XRAS sends ``"Adjustment"``
 (defect 4), and it carries a copy-pasted ``> 0`` gate that drops the negatives an
 adjustment exists for. So everything asserted here is reasoned from the Java rather
-than confirmed against behaviour, and the two divergences below are the ones to argue
+than confirmed against behavior, and the two divergences below are the ones to argue
 with:
 
-* negatives are honoured — the point of the handler
+* negatives are honored — the point of the handler
 * an adjustment that would take an allocation **below zero** is rejected, which legacy
   does not do because legacy never applies one
 
@@ -35,11 +35,11 @@ pytestmark = pytest.mark.unit
 
 def action_for(projcode, *resources, action_type='Adjustment',
                allocation_type='Small'):
-    """``allocationType`` defaults to ``'Small'``, which is **not** panel-authorised.
+    """``allocationType`` defaults to ``'Small'``, which is **not** panel-authorized.
 
     That default is load-bearing for every test below that does not name one — see
     ``TestTheRowShape.test_auth_at_panel_mtg_is_not_set``. ``'Large'`` resolves through
-    ``LargeStrategy`` to the ``CHAP`` type and *is* panel-authorised.
+    ``LargeStrategy`` to the ``CHAP`` type and *is* panel-authorized.
     """
     return {'actionType': action_type, 'requestNumber': projcode,
             'allocationType': allocation_type, 'resources': list(resources),
@@ -330,7 +330,7 @@ class TestSharedWithSupplement:
         The bug this pins: ``auth`` was computed, threaded through the creations tuple
         and unpacked, and then never applied. It was invisible because every other
         Adjustment test uses the default ``allocationType='Small'``, which is not
-        panel-authorised, so the flag was ``False`` either way.
+        panel-authorized, so the flag was ``False`` either way.
         """
         from factories import make_contract, make_project, make_project_contract
         from sam.accounting.allocations import Allocation

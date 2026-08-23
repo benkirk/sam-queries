@@ -332,7 +332,7 @@ def _search_contracts_for_project(q, active_only):
     Deliberately ignores ``active_only``: this picker has no checkbox, and a
     project can legitimately be linked to a contract whose grant period has
     lapsed. The sibling ``_search_contracts`` behind /admin/contracts does
-    honour it — it has the checkbox.
+    honor it — it has the checkbox.
 
     No ``with_details``: the FK result template reads only ``contract_id``,
     ``contract_number`` and ``title``, so the eager loads would be waste.

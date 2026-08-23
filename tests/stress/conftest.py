@@ -108,7 +108,7 @@ def dispatching(app):
 
 @pytest.fixture
 def committing_route(monkeypatch):
-    """Neutralise the handler commit for scenarios that let a real handler run.
+    """Neutralize the handler commit for scenarios that let a real handler run.
 
     ⚠️ Route-driven, so this is **not** the same hazard the unit tier's ``committing``
     fixture handles. Here the handler runs on Flask-SQLAlchemy's ``db.session``, a

@@ -3,7 +3,7 @@
 Scope follows the house convention: the HTTP tier covers **auth, 404 and render
 smoke**. Route handlers use Flask-SQLAlchemy's ``db.session`` on its own
 connection and only see committed snapshot rows, so happy-path writes are
-covered a layer down — replay's behaviour lives in
+covered a layer down — replay's behavior lives in
 ``tests/api/test_xras_access.py::TestReplay``.
 
 What is genuinely worth pinning here is the **two-permission split**, because it
@@ -404,8 +404,8 @@ class TestDefaultWindowUpperBound:
         assert 'UCUB0166' in html
 
     def test_an_explicit_end_date_still_bounds(self):
-        """Unbounded is the DEFAULT, not the behaviour — an explicit To date is
-        still honoured, normalised to the end of that day."""
+        """Unbounded is the DEFAULT, not the behavior — an explicit To date is
+        still honored, normalized to the end of that day."""
         from werkzeug.datastructures import MultiDict
 
         from webapp.dashboards.allocations.xras._shared import _parse_xras_filters
@@ -552,7 +552,7 @@ class TestActivationModalBodies:
 
     def test_dismiss_form_does_not_promise_to_hide_the_row(
             self, auth_client, active_project):
-        """The copy outlived the behaviour once already. Dismissing stopped
+        """The copy outlived the behavior once already. Dismissing stopped
         removing anything when the card became a ledger keyed on actions —
         a modal still promising to hide the project describes the old card."""
         resp = auth_client.get(
@@ -616,14 +616,14 @@ class TestStatusVocabularyIsRenderable:
 
     The vocabulary tuples and ``badges.html`` are files that have to agree, and
     nothing else makes them. The macro falls back to ``bg-secondary`` with the raw string
-    for an unknown state, so a missing entry does not raise — it renders a grey chip
-    labelled ``unmapped`` with no explanation, on the page an operator reaches for when
+    for an unknown state, so a missing entry does not raise — it renders a gray chip
+    labeled ``unmapped`` with no explanation, on the page an operator reaches for when
     something has gone wrong. Silent, and exactly when it matters most.
 
     ``badges.html`` is a **shared** namespace: three domains' vocabularies live in one
     flat set of dicts. Only XRAS was gated here originally; notification statuses and
     scheduled-task run states are covered now too, so the next domain to join cannot
-    quietly render grey. (The collision that namespace already carries is ``manual``,
+    quietly render gray. (The collision that namespace already carries is ``manual``,
     which is XRAS's — scheduled-task *triggers* are deliberately NOT rendered through
     this macro for that reason. See the note in badges.html.)
 

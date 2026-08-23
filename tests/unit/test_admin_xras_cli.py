@@ -9,7 +9,7 @@ both cases.
 
 The `--recheck` path is deliberately NOT exercised end-to-end here: it builds a
 full Flask app to get an application context (see `XrasCommand._replay` for why
-that is the right call rather than a second write path). Its behaviour is covered
+that is the right call rather than a second write path). Its behavior is covered
 at `tests/api/test_xras_access.py::TestReplay`; what is tested here is the
 option plumbing around it.
 """

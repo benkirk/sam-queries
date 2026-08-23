@@ -53,7 +53,7 @@
                     '&period=' ~ period, aria='Timeline metric') }}
 
     {# Granularity. Auto-selected from the window; an explicit choice is
-       honoured only while it fits the bar budget, so a stale 'day' from
+       honored only while it fits the bar budget, so a stale 'day' from
        localStorage can't be replayed against a five-year window. #}
     <div class="btn-group btn-group-sm me-1" role="group" aria-label="Granularity">
       {% for p in period_choices %}

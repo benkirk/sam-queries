@@ -1147,7 +1147,7 @@ def _canonicalise_master(master: dict) -> dict:
     allocation_id). Our port adds a primary-key tiebreaker so its output is at
     least reproducible.
 
-    Sorting both sides by the serialised allocation keeps the *content* check
+    Sorting both sides by the serialized allocation keeps the *content* check
     exact — every field, value and key order still has to match — while
     ignoring an order neither side can be held to. Same reasoning as the
     `masters[]` relaxation, one level down.
@@ -1193,7 +1193,7 @@ def _masters_check(name: str, legacy: bytes, new: bytes) -> CheckResult:
 
     shared = sorted(set(lm) & set(nm))
     for code in shared:
-        # Re-serialise each master with the same writer, so the comparison sees
+        # Re-serialize each master with the same writer, so the comparison sees
         # field order and value formatting but not the enclosing array order.
         lb = json.dumps(lm[code], separators=(',', ':'), ensure_ascii=False)
         nb = json.dumps(nm[code], separators=(',', ':'), ensure_ascii=False)

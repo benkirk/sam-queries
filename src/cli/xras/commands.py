@@ -347,7 +347,7 @@ class XrasCommand(BaseCommand):
     # -- helpers ----------------------------------------------------------
 
     def _filters(self, status, action_type, request_number, last):
-        """Normalise CLI options into query kwargs.
+        """Normalize CLI options into query kwargs.
 
         ``--last`` wins over nothing: with no window given the command shows all
         time rather than a silent default. The dashboard defaults to 30 days

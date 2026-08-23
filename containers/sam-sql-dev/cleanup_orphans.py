@@ -94,7 +94,7 @@ def cleanup_orphans():
     except Exception:
         # All-or-nothing, deliberately. A half-applied sweep leaves the clone in a
         # state neither this script nor the FK re-apply step can reason about — and
-        # it is precisely the rollback-on-error behaviour that saved the database
+        # it is precisely the rollback-on-error behavior that saved the database
         # when the old predicate was live (see the module docstring).
         conn.rollback()
         raise

@@ -350,7 +350,7 @@ class TestAOneHundredIsNotSuccess:
         assert result.status == 'verified'
 
     def test_a_200_that_changed_nothing_is_not_verified(self, monkeypatch):
-        """The isReconciled lesson, generalised: green and inert."""
+        """The isReconciled lesson, generalized: green and inert."""
         reader = _FakeReader(_reports_request(actions=((7, 'Approved'),)))
         client = _client(monkeypatch, [_response(200)], reader=reader)
         result = client.withdraw_action(1, 7, request_number='EXAM0001',

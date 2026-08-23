@@ -56,7 +56,7 @@ and falls through. `test_a_mapped_row_whose_type_has_no_panel_falls_through`.
 Arm 1 — the payload carries `allocationType` — runs the chain, and is the one
 that had to change. Arm 2 reads the **stored** `project.allocation_type`, which
 is already map-consistent because the mapped resolver is what wrote it.
-Repointing arm 2 at the map would change behaviour for payloads that omit
+Repointing arm 2 at the map would change behavior for payloads that omit
 `allocationType` entirely, which is a different question. Both are now
 documented in place, and the consistency invariant is asserted across the whole
 corpus by `TestPanelAuthorisationAgreesWithTheResolvedType`.
@@ -259,7 +259,7 @@ This phase is the entire safety argument. It is independently shippable.
 
 ### 4.1 Table + ORM
 
-`xras_opportunity_allocation_type`, modelled on `XrasResourceRepositoryKeyResource`:
+`xras_opportunity_allocation_type`, modeled on `XrasResourceRepositoryKeyResource`:
 
 - `opportunity_id` — PK, from the wire
 - `allocation_type_id` — FK → `allocation_type.allocation_type_id`, NOT NULL
@@ -285,13 +285,13 @@ row.allocation_type.allocation_type)`. A miss falls through to the existing
 > ⚠️ **THE TRAP — both call sites must use it.**
 > `auth_at_panel_meeting(session, action)` (`handlers/_allocations.py:222`)
 > calls the **pure** entry point directly and tests
-> `parms.allocation_type in {'CSL','CHAP'}` (`_PANEL_AUTHORISED`,
+> `parms.allocation_type in {'CSL','CHAP'}` (`_PANEL_AUTHORIZED`,
 > `_allocations.py:59`) to set `auth_at_panel_mtg` on written
 > **allocation_transaction** rows. It is called from `new.py:122`,
 > `update.py:168`, `supplement.py:65`, `adjustment.py:88`.
 >
 > Wiring only `resolve_allocation_type` would let a project's allocation type
-> come from the map while its transactions' panel-authorisation flag still came
+> come from the map while its transactions' panel-authorization flag still came
 > from the ladder — inconsistent rows, written, silently. It already takes a
 > session, so it can share the same lookup. Do that.
 
@@ -299,7 +299,7 @@ row.allocation_type.allocation_type)`. A miss falls through to the existing
 
 Seed the 9 known ids with **the pair the ladder already produces today**, then
 assert the corpus is unchanged. That is what makes this a drop-in rather than a
-behaviour change: divergence becomes a later, deliberate, visible edit.
+behavior change: divergence becomes a later, deliberate, visible edit.
 
 ---
 
@@ -370,7 +370,7 @@ FK; this table has one.
   `panel.facility_id` differs — since that is what reaches `next_projcode`.
 - **Consistency.** `auth_at_panel_meeting` agrees with `resolve_allocation_type`
   for both a mapped and an unmapped action.
-- **Schema tier.** A per-table guard modelled on
+- **Schema tier.** A per-table guard modeled on
   `tests/integration/test_schema_validation.py:561` (the existing
   `test_xras_resource_repository_key_resource_schema`, which exists because that
   model *was wrong once, with 5 columns instead of 2*).

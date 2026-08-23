@@ -96,7 +96,7 @@ _PENDING_KEY = 'worklist'
 _REQUESTS_KEY = 'requests_index'
 
 #: Test seam, matching the awards / fs-scans / jobs idiom: ``_adapters`` IS
-#: the cache's memo dict, so clearing it re-initialises the cache.
+#: the cache's memo dict, so clearing it re-initializes the cache.
 _adapters = _CACHE._adapters
 
 

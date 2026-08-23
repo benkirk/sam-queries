@@ -56,7 +56,7 @@ Registration
 ------------
 Handlers register themselves by importing this module and calling :func:`register`.
 Until one does, its service selects and then falls through to ``manual`` — exactly the
-behaviour the route had hardcoded before this module existed. That is what lets each
+behavior the route had hardcoded before this module existed. That is what lets each
 handler land as its own commit without touching the route again.
 
 See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *The dispatcher*.

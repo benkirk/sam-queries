@@ -254,7 +254,7 @@ def login_or_token_required(
         def decorated_function(*args, **kwargs):
             # ── Token path ────────────────────────────────────────────────────
             # Presence of request.authorization means "Authorization: Basic ..."
-            # was sent. Honour this path only; do not fall back to session auth.
+            # was sent. Honor this path only; do not fall back to session auth.
             if request.authorization:
                 auth = request.authorization
                 if not auth.username or not auth.password:

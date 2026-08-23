@@ -147,7 +147,7 @@ def scheduled_tasks_log():
     total = count_recent_task_runs(db.session, **filters)
 
     # Self-excluding rollups: each dimension's chips ignore its OWN filter
-    # while honouring every other one. See querykit.facet_counts.
+    # while honoring every other one. See querykit.facet_counts.
     state_counts = facet_task_runs(db.session, 'state', **filters)
     trigger_counts = facet_task_runs(db.session, 'trigger_type', **filters)
     task_counts = facet_task_runs(db.session, 'task_name', **filters)

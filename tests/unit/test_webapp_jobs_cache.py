@@ -25,7 +25,7 @@ import pytest
 def _reset_jobs_cache(monkeypatch):
     """Start each test with the cache disabled; reset the singleton after.
 
-    A stored ``None`` per bucket means "initialised but disabled"; the
+    A stored ``None`` per bucket means "initialized but disabled"; the
     cache-behavior tests below re-enable by clearing ``_adapters``.
 
     CACHE_REDIS_URL is dropped so re-init always builds the in-process

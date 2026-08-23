@@ -93,7 +93,7 @@ class TestTheCorpusOracle:
     The 11 marked ``derived`` are the ``NCAR####`` request tokens. No project exists
     under a token (the New that carried it minted a projcode instead), so there is
     nothing to check against and these entries pin *our own* output. They are
-    regression protection, not evidence — and they are labelled so nobody reads the
+    regression protection, not evidence — and they are labeled so nobody reads the
     count as 41 verified.
 
     One derived entry does get corroborated, by accident of the retry pair: NCAR4236
@@ -215,7 +215,7 @@ class TestStrategyOneShortCircuit:
                 == SelectionParms(*expected))
 
     def test_staff_allocations_must_match_the_whole_string_not_a_substring(self):
-        """``lcon.equals("staff allocations")`` — equality, unlike its two neighbours
+        """``lcon.equals("staff allocations")`` — equality, unlike its two neighbors
         which are ``contains``."""
         assert select_allocation_type_parms(
             action(opportunityName='NCAR Staff Allocations 2026')) is None
@@ -223,7 +223,7 @@ class TestStrategyOneShortCircuit:
     def test_an_empty_allocation_type_is_treated_as_absent(self):
         """Declared divergence: Java's POJO default of ``""`` takes the exact-lookup
         branch (which can only miss), while JSON ``null`` takes the opportunity branch.
-        marshmallow gives ``None`` for both, so we take the null behaviour — which
+        marshmallow gives ``None`` for both, so we take the null behavior — which
         resolves here where Java would have declined."""
         assert (select_allocation_type_parms(
             action(allocationType='  ', opportunityName='Discover Allocations'))
@@ -292,7 +292,7 @@ class TestStrategyOrder:
 
     def test_non_nsf_wins_when_an_opportunity_carries_both_markers(self):
         """``SmallNonNSFStrategy`` is registered before ``SmallNSFStrategy``, so an
-        opportunity naming both resolves non-NSF. Order *is* the behaviour."""
+        opportunity naming both resolves non-NSF. Order *is* the behavior."""
         assert (select_allocation_type_parms(
             action(opportunityName='Small Allocation, unsponsored'))
             == SelectionParms('UNIV USS', 'Small (No NSF award)'))
@@ -548,7 +548,7 @@ class TestResolveContract:
         assert not errs
 
     def test_a_unique_suffix_match_resolves_it(self, session):
-        """Step 2 — legacy's own behaviour, unchanged."""
+        """Step 2 — legacy's own behavior, unchanged."""
         from factories import make_contract
         contract = make_contract(session, contract_number='AGS-9990002')
         errs = ActionErrors()
@@ -865,7 +865,7 @@ class TestTheOpportunityMapIsAdditive:
         assert len(pairs) == 5
 
     def test_the_seeded_map_is_equivalent_to_the_ladder(self, session, empty_map):
-        """The nine production rows are a **drop-in**, not a behaviour change.
+        """The nine production rows are a **drop-in**, not a behavior change.
 
         Seeding the pair the ladder already produces is what makes any future
         divergence a deliberate, visible data edit rather than a silent one.

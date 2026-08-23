@@ -33,9 +33,9 @@ pytestmark = pytest.mark.unit
 def runner():
     """A runner with a wide terminal.
 
-    Rich honours ``COLUMNS``, and the result tables ellipsize to fit. At the
+    Rich honors ``COLUMNS``, and the result tables ellipsize to fit. At the
     default 80 columns the factory-generated contract numbers get cut, so
-    row-content assertions would be testing layout instead of behaviour.
+    row-content assertions would be testing layout instead of behavior.
     """
     return CliRunner(env={'COLUMNS': '200'})
 

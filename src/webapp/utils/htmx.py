@@ -57,7 +57,7 @@ def read_theme(default: str = 'light') -> str:
 
     Deliberately the same shape as :func:`read_layout`, because it is the same
     problem: a per-user rendering mode the server must know *before* it
-    renders, since charts are matplotlib SVGs with baked-in colours that no
+    renders, since charts are matplotlib SVGs with baked-in colors that no
     stylesheet can retheme. If these two functions ever stop being readable
     side by side, something has been reasoned about wrongly.
 
@@ -124,7 +124,7 @@ def read_active_only(args, default=False):
     from the admin search boxes.
 
     Pass ``default=True`` only for endpoints with no checkbox behind them
-    (the FK pickers), where active-only is the intended fixed behaviour.
+    (the FK pickers), where active-only is the intended fixed behavior.
 
     Args:
         args:    ``request.args`` or ``request.form`` (anything with .get).

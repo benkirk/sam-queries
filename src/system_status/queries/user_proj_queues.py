@@ -246,7 +246,7 @@ def get_user_proj_timeseries(
         }
 
     Series ordering matches ``get_disk_usage_timeseries_by_user``: Others
-    first (so it stacks at the bottom under a neutral colour), then named
+    first (so it stacks at the bottom under a neutral color), then named
     series smallest-to-largest by the rank value so the largest sits on
     top of the stack.
 
