@@ -1,7 +1,7 @@
 # Doc slimming — comment density in source and configs
 
-**Status: Phases 0, 1 and 1b landed 2026-08-22 on `deslop_opus5` (PR #471).
-Phases 2-9 open.**
+**Status: Phases 0, 1, 1b and 2 landed 2026-08-22 on `deslop_opus5` (PR #471).
+Phases 3-9 open.**
 
 This file is the handoff record. Each phase updates the table in section 5
 in the same commit as its work, so a new session resumes from this document
@@ -155,7 +155,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 0 | Tooling and rules | ~8 | none | suite green | **DONE 2026-08-22** |
 | 1 | Mechanical sweep | 433 | none | script-verified | **DONE 2026-08-22** |
 | 1b | Changelog phrasing (45 lines) | 45 | medium | `PHRASING_EXEMPT` emptied | **DONE 2026-08-22** |
-| 2 | Configs and JS headers | ~8 | low | `helm template` byte-identical | open |
+| 2 | Configs and JS headers | 6 | low | `helm template` byte-identical | **DONE 2026-08-22** |
 | 3 | Module docstrings >= 30 lines | 64 | medium | suite green | open |
 | 4 | `Args:`/`Returns:` restatement | ~40 | low | suite green | open |
 | 5-8 | Narrative prose, ~12 files each | ~48 | **high** | suite green, per-file review | open |
@@ -172,6 +172,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 0 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 1 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 1b | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
+| 2 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than

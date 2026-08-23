@@ -1,4 +1,4 @@
-replicaCount: 2                           # Number of identical pods to run
+replicaCount: 2
 
 # Rollout safety: never drop below replicaCount Ready pods during an update.
 # maxUnavailable:0 + maxSurge:1 means "bring up one new pod, wait for it to
@@ -31,60 +31,16 @@ topologySpread:
   topologyKey: kubernetes.io/hostname
   whenUnsatisfiable: ScheduleAnyway
 
-# Centralized Redis backend used by:
-#   - Flask-Caching chart cache (CACHE_REDIS_URL -> DB 0)
-#   - Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI -> DB 1)
-# Single replica, no persistence, no HA. Eviction = allkeys-lru.
-# See docs/plans/implemented/REDIS.md.
+# Centralized Redis: Flask-Caching chart cache (CACHE_REDIS_URL -> DB 0) and
+# Flask-Limiter rate-limit counters (RATELIMIT_STORAGE_URI -> DB 1).
+# Single replica, no persistence, no HA.
 #
-# maxmemory sizing: one instance holds all 15 chart SVG caches, both jobs
-# aggregation buckets, both fs-scans buckets, the allocation-usage cache
-# and the whole Flask-Caching layer. The jobs explorer multiplies the
-# distinct chart keys in flight (one per filter set viewed inside the
-# 10-minute chart TTL).
-#
-# Per-SVG sizes dropped ~58% when charts switched to `svg.fonttype: none`
-# (real <text> instead of per-glyph path outlines — see charts/theme.py).
-# Measured across all 32 chart sample cases: 1.34 MB -> 0.57 MB total;
-# pies save most (~70%, they are mostly legend text), bar histograms least
-# (~40%, they are mostly real paths). A cached jobs pie went from ~49 KB to
-# ~15 KB; the live jobs timeline measures ~35 KB and its histogram ~10 KB.
-#
-# maxmemory is DELIBERATELY NOT reduced to match. The freed headroom is
-# earmarked for the layout and theme render axes, and both layout passes came
-# in cheaper than a 4x budget: a smaller
-# figure carries fewer path points and less text, so it costs less than its
-# desktop twin rather than the same. Measured across the same 32 sample cases:
-#
-#   desktop  562 KB  1.00x
-#   tablet   483 KB  0.86x
-#   mobile   417 KB  0.74x
-#   ------------------------
-#   all three         2.60x
-#
-# The layout axis is therefore complete at 2.6x, not the 3x a third profile
-# suggests. With the theme axis doubling that, six combinations land near
-# **5.2x** — up from the 3.1x this comment budgeted for four. Against a base
-# that dropped 58% when charts switched to `svg.fonttype: none`, 5.2x of the
-# post-drop base is ~2.2x of the pre-drop one, which is what 192 MB was
-# already sized for.
-#
-# Note the multiplier applies only to charts actually *requested* in more than
-# one combination inside the 600s TTL. Desktop-light remains the overwhelming
-# majority of traffic, so the real working set grows well under 2.6x.
-#
-# One caveat specific to the tablet profile: `PieChart` declares tablet *as*
-# its desktop figure (a pie's bbox is already narrower than any card that
-# renders one), so the five pies pay for a duplicate cache entry holding
-# byte-identical SVG. That is ~5% of the chart working set, and the
-# alternative — a layout that renders identically but keys differently —
-# would be a special case in `chart_view._key` for no measured gain.
-#
-# Headroom is the safe direction anyway because
-# allkeys-lru is instance-GLOBAL: under pressure it is free to evict the
-# rate limiter's DB 1 counters. Container limit keeps ~1.7x maxmemory for
-# redis overhead and fragmentation. Watch `INFO stats: evicted_keys` and
-# `INFO memory: used_memory_peak_human` before changing it again.
+# allkeys-lru is instance-GLOBAL: under memory pressure Redis is free to evict
+# the rate limiter's DB 1 counters, so headroom is the safe direction. The
+# container limit keeps ~1.7x maxmemory for overhead and fragmentation.
+# Before changing maxmemoryMB, check `INFO stats: evicted_keys` and
+# `INFO memory: used_memory_peak_human`. Sizing measurements and what drove
+# 192 MB: docs/plans/implemented/REDIS.md, "Sizing history".
 cache:
   enabled: true
   name: samuel-redis
@@ -114,9 +70,9 @@ cache:
         drop: ["ALL"]
 
 webapp:
-  name: samuel                            # Name for k8s objects
-  group: samuel                           # Group label for related resources
-  path: /                                 # URL path suffix
+  name: samuel
+  group: samuel
+  path: /
   tls:
     # Platform-primary name: unique, ends in .k8s.ucar.edu, and becomes the CN
     # of the issued certificate. Keep it — CIRRUS automation and the parity /
@@ -188,15 +144,15 @@ webapp:
       allowPrivilegeEscalation: false
       capabilities:
         drop: ["ALL"]
-  container:                              # full image path
+  container:
     image: ghcr.io/benkirk/sam-queries/webapp:main
-    port: 5050                            # Port your container listens on
+    port: 5050
     requests:
-      memory: 4096M                       # Guaranteed memory allocation
-      cpu: 4                              # Guaranteed CPU allocation
+      memory: 4096M
+      cpu: 4
     limits:
-      memory: 12G                         # Maximum memory allowed
-      cpu: 16                             # Maximum CPU allowed
+      memory: 12G
+      cpu: 16
   # Gunicorn concurrency (see deployment.yaml env block + gunicorn_config.py).
   # Threaded workers: a slow fs-scans scan holds a thread, not a process. The
   # 12G memory limit above is a candidate to lower once gthread per-pod usage
@@ -308,25 +264,20 @@ webapp:
     FS_SCAN_PG_PORT: "5432"
     FS_SCAN_PG_DB: "campaign"
     FS_SCAN_RESOURCE_DATABASES: "Campaign_Store:campaign,Destor:destor"
-    # XRAS action ingestion. CAPTURE_ONLY is the safety interlock: while it is "1" the
+    # XRAS action ingestion. CAPTURE_ONLY is the safety interlock: at "1" the
     # endpoint authenticates, parses and audits every post but dispatches nothing.
     #
-    # RELEASED 2026-08-19, deliberately AHEAD of XRAS repointing its base URL to
-    # sam.hpc.ucar.edu. The two directions are not symmetric:
+    # WARNING: never flip this to "0" on a stack XRAS is ALREADY posting to. That
+    # double-applies actions legacy has already applied, against live allocations,
+    # with no undo. The precondition is checked, not assumed: no status='received'
+    # rows in xras_action_log before the flip.
     #
-    #   - flipping early costs nothing — XRAS still posts to sam.ucar.edu, so the
-    #     dispatching arm sees no traffic at all until the repoint;
-    #   - flipping late strands every post in the gap as status='received', and
-    #     `sam-admin xras --recheck` CANNOT apply one (validate_only returns before
-    #     management_transaction opens). Recovery is asking the XRAS admin to push the
-    #     button again, per action.
+    # Flipping late is the other failure: every post in the gap strands as
+    # status='received', and `sam-admin xras --recheck` CANNOT apply one
+    # (validate_only returns before management_transaction opens). Recovery is
+    # asking the XRAS admin to push the button again, per action.
     #
-    # WARNING: What this must NOT do is flip early on a stack XRAS is ALREADY posting to —
-    # that double-applies actions legacy has already applied, against live allocations,
-    # with no undo. The precondition is therefore checked, not assumed: no
-    # status='received' rows in xras_action_log before this lands.
-    #
-    # Setting it back to "1" stops all dispatch, at the cost above. To park one
+    # Setting it back to "1" stops all dispatch, at that cost. To park one
     # misbehaving action type instead, narrow XRAS_ACTIONS_ENABLED below.
     # Triage: docs/xras/incoming/XRAS_TRIAGE_PLAYBOOK.md
     XRAS_ACTIONS_CAPTURE_ONLY: "0"
@@ -343,10 +294,10 @@ webapp:
     # renders its unconfigured state, the xras_sweep task records a skip, and
     # sam-admin degrades — nothing raises for lack of a key.
     #
-    # WARNING: ON. The `xras_sweep` task SKIPS while this is "0", and the Feed-B tab
-    # renders what that task publishes — so turning the task on without this
-    # would produce a permanently empty tab and a ledger full of `skipped`.
-    # The two switches are one decision.
+    # WARNING: this and the `xras_sweep` task are ONE decision. The task SKIPS
+    # while this is "0", and the Feed-B tab renders what the task publishes, so
+    # enabling the task without this gives a permanently empty tab and a ledger
+    # full of `skipped`.
     #
     # WARNING: The KEY is not here. It arrives from OpenBao via the
     # webapp.xrasApiCredentials ExternalSecret below, injected as XRAS_API_KEY
@@ -357,13 +308,12 @@ webapp:
     # Required header on every call; scopes nothing outside /v1/requests, which
     # this client never reads. The value XRAS provisioned for the ARC scripts.
     XRAS_API_USER: "arcguest"
-    # WARNING: SEPARATE lever for the WRITE client (sam/integration/xras_api/admin_client.py),
-    # which is a different class from the read client above and lives in the `submit`
-    # XRAS context. OFF, and it stays off until the remediation UI is signed off.
-    #
-    # What it unlocks is not symmetric with reading: the same key can MERGE one person
-    # into another — XRAS deletes the source — withdraw an approved action, and change
-    # a request's roster. Merge has no undo.
+    # WARNING: SEPARATE lever for the WRITE client
+    # (sam/integration/xras_api/admin_client.py), a different class from the read
+    # client above, in the `submit` XRAS context. What it unlocks is not symmetric
+    # with reading: the same key can MERGE one person into another — XRAS deletes
+    # the source — withdraw an approved action, and change a request's roster.
+    # Merge has no undo.
     #
     # This is webapp-only ON PURPOSE. cronjob-tasks.yaml renders `.Values.tasks.env`
     # plus a hand-listed set and inherits NOTHING from here, so a scheduled task cannot
@@ -376,6 +326,10 @@ webapp:
     # mysterious.
     XRAS_WRITE_ENABLED: "0"
 
+  # Each block below syncs one secret from OpenBao. `enabled: false` skips it;
+  # `useExternalSecret: false` skips the ExternalSecret CRD so the secret can be
+  # injected by hand. The *Key fields name the keys inside the OpenBao path.
+  #
   # system_status DB credentials (injected as STATUS_DB_USERNAME / STATUS_DB_PASSWORD).
   # MUST be a non-superuser role — connecting as the postgres SUPERUSER causes
   # SAM's idle pool to consume the cluster's superuser_reserved_connections
@@ -392,32 +346,32 @@ webapp:
   #   ALTER DEFAULT PRIVILEGES IN SCHEMA public
   #     GRANT USAGE, SELECT ON SEQUENCES TO pguser;
   dbCredentials:
-    enabled: true                         # Enable syncing credentials from OpenBao
-    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
-    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
     secretPath: csg/pg-appuser            # pguser role (NOT csg/pg-superuser — see comment above)
-    usernameKey: username                 # Key in OpenBao for username
-    passwordKey: password                 # Key in OpenBao for password
+    usernameKey: username
+    passwordKey: password
 
   samDbCredentials:
-    enabled: true                         # Enable syncing SAM DB credentials from OpenBao
-    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
-    secretStoreRefName: csg-ro            # Name of the SecretStore to use
-    secretPath: csg/sam-writeuser         # Path in OpenBao where SAM DB credentials are stored
-    usernameKey: username                 # Key in OpenBao for username
-    passwordKey: password                 # Key in OpenBao for password
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
+    secretPath: csg/sam-writeuser
+    usernameKey: username
+    passwordKey: password
 
   # hpc-usage-queries plugin's per-machine job_history Postgres
   # (derecho_jobs / casper_jobs on csg-postgres-ro.k8s.ucar.edu).
   # Read-only application user — distinct from dbCredentials' pg-superuser
   # since the plugin only needs SELECT on the job_history tables.
   jhDbCredentials:
-    enabled: true                         # Enable syncing credentials from OpenBao
-    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
-    secretStoreRefName: csg-ro            # Name of the SecretStore to use
-    secretPath: csg/pg-appuser            # Path in OpenBao where credentials are stored
-    usernameKey: username                 # Key in OpenBao for username
-    passwordKey: password                 # Key in OpenBao for password
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
+    secretPath: csg/pg-appuser
+    usernameKey: username
+    passwordKey: password
 
   # fs-scans plugin's filesystem-scan Postgres (campaign DB / per-collection
   # schemas on csg-postgres-ro.k8s.ucar.edu). Reuses the SAME csg/pg-appuser role
@@ -425,19 +379,19 @@ webapp:
   # tables) — kept as a distinct block so the integration can be toggled and
   # rotated independently. Injected as FS_SCAN_PG_USER / FS_SCAN_PG_PASSWORD.
   fsDbCredentials:
-    enabled: true                         # Enable syncing credentials from OpenBao
-    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
-    secretStoreRefName: csg-ro            # Name of the SecretStore to use
-    secretPath: csg/pg-appuser            # Path in OpenBao where credentials are stored
-    usernameKey: username                 # Key in OpenBao for username
-    passwordKey: password                 # Key in OpenBao for password
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
+    secretPath: csg/pg-appuser
+    usernameKey: username
+    passwordKey: password
 
   jupyterhubCredentials:
-    enabled: true                         # Enable syncing JupyterHub credentials from OpenBao
-    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
-    secretStoreRefName: csg-ro            # Name of the SecretStore to use
-    secretPath: csg/jh-api-token          # Path in OpenBao where JupyterHub credentials are stored
-    tokenKey: token                       # Key in OpenBao for the token
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
+    secretPath: csg/jh-api-token
+    tokenKey: token
 
   # XRAS Allocations API key — SAM calling OUT to XRAS. Same five-key shape as
   # jupyterhubCredentials above, and the same single-value payload.
@@ -445,23 +399,23 @@ webapp:
   # CronJob (the xras_sweep task). They share no env anchor, so the secretKeyRef
   # is written out in both — the same cross-referencing trap NOTIFY_* hit.
   xrasApiCredentials:
-    enabled: true                         # Enable syncing the XRAS API key from OpenBao
-    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
-    secretStoreRefName: csg-ro            # Name of the SecretStore to use
-    secretPath: csg/xras-api-key          # Path in OpenBao where the XRAS API key is stored
-    tokenKey: token                       # Key in OpenBao for the token
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
+    secretPath: csg/xras-api-key
+    tokenKey: token
 
   # OIDC SSO credentials + Flask session-signing key.
   # secretPath convention: csg/sam-{env}-oidc when multiple environments coexist.
   # csg/sam-oidc is shorthand for the production-equivalent (samuel.k8s.ucar.edu) deployment.
   # Future staging k8s deployment should override secretPath: csg/sam-staging-oidc in values-staging.yaml.
   oidcCredentials:
-    enabled: true                         # Enable syncing OIDC credentials from OpenBao
-    useExternalSecret: true               # Create ExternalSecret CRD (set false to inject secrets manually)
-    secretStoreRefName: csg-ro            # Name of the SecretStore to use
+    enabled: true
+    useExternalSecret: true
+    secretStoreRefName: csg-ro
     secretPath: csg/sam-oidc              # Path in OpenBao for OIDC client + Flask session key
     clientIdKey: client_id                # OIDC client ID (Microsoft Entra app registration)
-    clientSecretKey: client_secret        # OIDC client secret
+    clientSecretKey: client_secret
     issuerKey: issuer                     # OIDC issuer URL (e.g. https://login.microsoftonline.com/{tenant}/v2.0)
     flaskSecretKeyKey: flask_secret_key   # Per-environment Flask session signing key (32-byte hex)
 
@@ -557,41 +511,30 @@ tasks:
     # when it bites, and the cap selects NEWEST first — a just-posted opportunity
     # is the case the feature exists for; a historical backfill can wait a slot.
     SAM_TASKS_XRAS_MAP_MAX: "20"
-    # WARNING: Comma-separated task names to skip, WITHOUT a code deploy. This is a
-    # staged-enable control: the live set is enumerated below and the rest are
-    # named here until each has been reviewed on its own.
+    # Comma-separated task names to skip, WITHOUT a code deploy. A staged-enable
+    # control: the live set is enumerated here and the rest are named in the value
+    # below until each has been reviewed on its own.
     #
     # Live:     cleanup_status_snapshots     (daily 02:15 MT, status DB only)
     #           deactivate_expired_projects  (writes inactivate_time in SAM)
-    #           xras_sweep                   (reads api.xras.org; one narrow write)
+    #           xras_sweep                   (reads api.xras.org; one narrow write --
+    #                                         xras_opportunity_allocation_type rows,
+    #                                         only where two derivations agree, never
+    #                                         overwriting. Ingestion does not depend
+    #                                         on this task or on api.xras.org.)
     # Disabled: expiration_notices           (mails external PIs)
     #           xras_notices                 (mails external PIs)
     #
-    # `xras_sweep` was enabled once its output became a queue rather than a
-    # census (see its module docstring). It calls out to api.xras.org and
-    # publishes a cache entry the dashboard reads.
+    # WARNING: this is an ENUMERATION and it is fail-OPEN. `disabled_tasks()` in
+    # src/scheduling/runner.py is a case-sensitive exact match against registry
+    # keys -- there is NO wildcard, `all`/`*`/`none` are names that match nothing,
+    # and an unknown name is neither validated nor warned about. A task added to
+    # src/scheduling/tasks/ therefore dispatches on the next hourly wake unless its
+    # name is added here in the SAME change. That is what makes an image promotion
+    # carrying a new task a non-event rather than a live rollout.
     #
-    # WARNING: It is NOT read-only, and its own comment here said so until #459. It
-    # inserts xras_opportunity_allocation_type rows — "the only write this task
-    # performs", src/scheduling/tasks/xras_sweep.py — and only where two
-    # independent derivations agree, never overwriting an existing row. An
-    # inbound action still reads that table locally and never calls out, so
-    # ingestion does not depend on this task or on api.xras.org being up.
-    #
-    # WARNING: There is NO wildcard. `disabled_tasks()` in src/scheduling/runner.py
-    # is a case-sensitive exact match against registry keys — `all`, `*` and
-    # `none` are just names that match nothing, and an unknown name is not
-    # validated or warned about. So this list is an ENUMERATION, and it is
-    # fail-OPEN: a task added to src/scheduling/tasks/ dispatches on the next
-    # hourly wake unless its name is added here in the same change.
-    #
-    # Every disabled task above is exactly that case. Each was registered in
-    # code, and without being named here the image promotion carrying it would
-    # have put it into production live — no soak, no separate review. Naming
-    # them here is what makes that promotion a non-event.
-    #
-    # A disabled task still writes a terminal `skipped` row that SETTLES its
-    # slot, so re-enabling one mid-slot does not backfill — the first real run
-    # is the next occurrence. The switch is also checked ahead of `only`/
-    # `force`, so `sam-admin tasks --run X --force` cannot override it.
+    # A disabled task still writes a terminal `skipped` row that SETTLES its slot,
+    # so re-enabling one mid-slot does not backfill: the first real run is the next
+    # occurrence. The switch is checked ahead of `only`/`force`, so
+    # `sam-admin tasks --run X --force` cannot override it.
     SAM_TASKS_DISABLED: "expiration_notices,xras_notices"
