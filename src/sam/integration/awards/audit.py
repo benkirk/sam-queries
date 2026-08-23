@@ -1,34 +1,27 @@
 """Compare a stored contract against what the funding agency says.
 
-The network half of ``sam-admin contracts --validate --check-sources``.  It
-lives here rather than in the CLI because it is an awards-integration concern:
-it needs :func:`resolve_award`, and mapping an agency person onto a SAM user is
-:func:`resolve_person`'s job and nothing else's (see :mod:`.people`).  The CLI
-is then just a throttled loop with a progress bar.
+The network half of ``sam-admin contracts --validate --check-sources``. It
+lives here rather than in the CLI because it needs :func:`resolve_award`, and
+mapping an agency person onto a SAM user is :func:`resolve_person`'s job.
 
-This is the check that justifies the flag.  Nothing local surfaces a *stale*
-value — only a missing or self-inconsistent one — and the research behind
-docs/plans/implemented/CONTRACT_IMPORTING_PLAN.md measured SAM's Monitor as
-stale versus NSF in roughly one of three sampled contracts (``OCE-2242033``:
-SAM says Baris Uz, NSF says Sean Kennan).
+This is the check that justifies the flag: nothing local surfaces a *stale*
+value, only a missing or self-inconsistent one. SAM's Monitor measured stale
+versus NSF in roughly one of three sampled contracts.
 
 Four rules keep the output from being noise, and all four cost real findings if
 dropped:
 
-1. A field named in :attr:`AwardRecord.unavailable_fields` is skipped.
-   USAspending has no program-officer concept at all, so a blank Monitor there
-   is structural, not a divergence.
-2. :func:`resolve_person` returning ``None`` is **not** a divergence — it means
-   the agency's person is not a SAM user (314 of 387 monitors exist purely as
-   contract contacts).  It is reported as a hint carrying the raw name/email,
-   matching the create form's suggest-don't-impose stance.
-3. Contract numbers are normalized before comparison.  ``NsfAwardProvider``
+1. A field in :attr:`AwardRecord.unavailable_fields` is skipped -- USAspending
+   has no program-officer concept, so a blank Monitor there is structural.
+2. :func:`resolve_person` returning ``None`` is NOT a divergence: the agency's
+   person is not a SAM user (314 of 387 monitors exist purely as contract
+   contacts). Reported as a hint carrying the raw name/email.
+3. Contract numbers are normalized before comparison. ``NsfAwardProvider``
    rebuilds the number as ``{divAbbr}-{award_id}``, so a raw compare flags
-   every hand-entered ``OCE- 1419584`` / ``AGS - 2410913`` as divergent.
-4. ``url`` is **never** compared.  NSF emits the modern ``show-award?AWD_ID=``
-   form while ~1,895 legacy bulk-loaded rows carry the old scheme-less
-   ``showAward?…``; comparing them would flag almost every legacy row.  The
-   provider URL is offered as a hint only where SAM has none.
+   every hand-entered ``OCE- 1419584`` as divergent.
+4. ``url`` is NEVER compared. NSF emits the modern ``show-award?AWD_ID=`` form
+   while ~1,895 legacy bulk-loaded rows carry the old ``showAward?...``;
+   comparing them would flag almost every legacy row.
 """
 
 from __future__ import annotations

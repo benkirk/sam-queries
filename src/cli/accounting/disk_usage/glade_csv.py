@@ -1,36 +1,22 @@
 """Reader for the ``acct.<host>.YYYY-MM-DD`` disk usage CSV format.
 
-A daily/weekly per-(user, project) disk usage snapshot. Each row covers
-the storage held by one user on one project's directory tree at the
-snapshot moment. Three feeds share this format:
+A per-(user, project) disk usage snapshot. Three feeds share it:
+``acct.glade.*`` (Campaign Store, per-user rows), ``acct.quasar.*`` and
+``acct.desc1.*`` (per-project rollups, username='total').
 
-  - ``acct.glade.*``  — GPFS Campaign Store (per-user rows)
-  - ``acct.quasar.*`` — GPFS Quasar (per-project rollup; username='total')
-  - ``acct.desc1.*``  — Lustre Destor   (per-project rollup; username='total')
+Columns, no header: activity_date, directory_path, projcode (lowercase in
+source, SAM stores upper), username (numeric-only "uid" rows are rejected),
+number_of_files, file_size_total, then two OPTIONAL columns -- reporting_int
+and cos_id.
 
-CSV columns (no header):
+WARNING: column 6 is **KiB**, not bytes; bytes = col6 * 1024. Verified
+2026-04-27 against a disk_charge_summary row, where DB.bytes / col6 is exactly
+1024. It is on-disk physical occupancy, matching GPFS ``mmlsquota``.
 
-  1. activity_date    "2026-04-18"
-  2. directory_path   "/gpfs/csfs1/cesm"
-  3. projcode         "cesm"          (lowercase in source; SAM stores upper)
-  4. username         "gdicker"       (also rejects numeric-only "uid" rows)
-  5. number_of_files  "4986"
-  6. file_size_total  "688092272"     (KiB; bytes = col6 * 1024)
-  7. reporting_int    "7"   OPTIONAL  (legacy; charging now derives the
-                                       interval from snapshot tick spacing,
-                                       so this column is vestigial)
-  8. cos_id           "0"   OPTIONAL  (class-of-service id; not currently
-                                       written — disk_cos_id is hardcoded 0)
-
-Columns 7-8 are optional: the GPFS feeds emit all 8 (always "7","0" across
-every observed row), the Lustre/Destor feed ships only the first 6. When
-absent they default to 7 and 0 respectively (matching DiskUsageEntry's
-defaults); when present they are parsed but their values don't affect
-charging.
-
-Verified 2026-04-27 against an existing disk_charge_summary row: the
-ratio (DB.bytes / col6) is exactly 1024, confirming KiB units. Bytes
-is the on-disk physical occupancy (matches GPFS mmlsquota usage).
+The GPFS feeds emit all 8 columns (always "7","0"); the Lustre/Destor feed
+ships only the first 6, and the missing two default to 7 and 0. Both are
+vestigial: charging derives the interval from snapshot tick spacing, and
+``disk_cos_id`` is hardcoded 0.
 """
 
 import csv

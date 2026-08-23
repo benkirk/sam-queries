@@ -156,7 +156,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 1 | Mechanical sweep | 433 | none | script-verified | **DONE 2026-08-22** |
 | 1b | Changelog phrasing (45 lines) | 45 | medium | `PHRASING_EXEMPT` emptied | **DONE 2026-08-22** |
 | 2 | Configs and JS headers | 6 | low | `helm template` byte-identical | **DONE 2026-08-22** |
-| 3 | Module docstrings >= 30 lines | 64 | medium | suite green | **29 of 64 done** |
+| 3 | Module docstrings >= 30 lines | 64 | medium | suite green | **DONE 2026-08-22** |
 | 4 | `Args:`/`Returns:` restatement | ~40 | low | suite green | open |
 | 5-8 | Narrative prose, ~12 files each | ~48 | **high** | suite green, per-file review | open |
 | 9 | `CLAUDE.md` + `README.md` | 2 | medium | links resolve | open |
@@ -174,6 +174,7 @@ the recorded starting number still holds. Nothing else from prior sessions is ne
 | 1b | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 2 | 37.0% | 34.6% | 21.8% | 41.9% | **34.3%** |
 | 3 (29/64) | 36.5% | 33.9% | 21.8% | 41.9% | **33.9%** |
+| 3 | 36.3% | 33.6% | 21.7% | 41.7% | **33.6%** |
 
 Phases 0 and 1 move the ratio by design: neither removes prose. Phase 0 lands
 the gate, and Phase 1 rewrites decorative characters in place rather than
@@ -299,8 +300,24 @@ third candidate — judge it when you get there.
 Phase 3 relocates the 64 headers >= 30 lines; Phase 4 removes `Args:`/`Returns:`
 blocks that restate annotated signatures.
 
-**Phase 3 is partly done: 29 of 64 files, 1,381 docstring lines -> 686.** The
-remaining 35 are all in the 30-48 line band. What has emerged doing them:
+**DONE 2026-08-22: 59 of 64 files.** Module docstrings at or over 30 lines went
+from 64 files / 2,810 lines to 18 files / 744, removing 1,090 lines of `src/`
+overall and moving the ratio 34.3% -> 33.6%.
+
+**Five files were deliberately left whole**, all on the do-not-cut list:
+`schemas/forms/xras.py` (58), `tasks/xras_sweep.py` (53), `xras/errors.py` (50),
+`tasks/xras_notices.py` (48), `manage/xras_remediation.py` (47). Their headers
+are the specification — exact-byte error strings, a 41-payload corpus
+measurement, the fail-open registry trap. Trimming them is the one edit in this
+sprint that would cost more than it saves.
+
+Twelve more land between 30 and 46 lines by intent rather than by omission:
+`dispatch.py`, `roster.py`, `serialize.py`, `handlers/base.py`,
+`admin_client.py` and similar are reverse-engineered wire spec. **The 10-line
+budget is for modules, not for specifications** — that distinction is now
+part of the rule in CONTRIBUTING.md.
+
+What emerged doing them:
 
 - Roughly a third is genuinely relocatable, and the destination usually already
   exists and already says it — `static_assets.py`'s 87 lines were covered by
@@ -313,6 +330,11 @@ remaining 35 are all in the 30-48 line band. What has emerged doing them:
   not facts, and land at 25-40 lines rather than the 10-line budget. **That is
   the right outcome**; the budget is for modules, not for specifications.
 - The rest is navigation prose and worked examples, which compress hard.
+
+**Sizing the phases that remain.** Module docstrings were only 2,810 of `src/`'s
+33,982 doc lines — about 8%. The bulk is function docstrings (16,699) and
+in-body comments, which is Phases 4-8. Phase 3 was the cheapest third of the
+work, not the biggest.
 
 ### Phases 5-8 — narrative prose
 Where the volume is (~2,300 lines across `blueprint.py`, `jobs/routes.py`, `htmx.py`,

@@ -1,32 +1,19 @@
-"""
-Role-Based Access Control (RBAC) utilities for SAM Web UI.
+"""Role-Based Access Control for the SAM Web UI.
 
-Defines permissions, POSIX-group-to-permission mappings, and utility
-functions for checking access. Works with both Flask-Admin views and
-custom API endpoints.
+Permissions, POSIX-group-to-permission bundles, and the access checks used by
+both Flask-Admin views and API endpoints.
 
-Authorization model
--------------------
-A user's permissions are derived from two sources, unioned together:
+A user's permissions are the union of two sources: the ``GROUP_PERMISSIONS``
+bundle of each POSIX group they belong to (read from
+``adhoc_system_account_entry`` in dev, test and production alike), plus any
+``USER_PERMISSION_OVERRIDES`` granted to them by name.
 
-1. **POSIX group membership** — each group the user belongs to may map
-   to a bundle of permissions in ``GROUP_PERMISSIONS``. Group membership
-   is read from ``adhoc_system_account_entry`` via
-   ``get_user_group_access()`` in dev, test, and production alike.
+WARNING: there is NO dependency on the SAM ``role_user`` / ``role`` tables --
+the webapp's RBAC layer never consults them.
 
-2. **Per-user overrides** — ``USER_PERMISSION_OVERRIDES`` grants
-   additional permissions to specific usernames on top of whatever
-   their groups confer. Useful for one-off privilege grants without
-   touching group membership.
-
-There is **no dependency on the SAM ``role_user`` / ``role`` tables**;
-those are not consulted by the webapp's RBAC layer.
-
-The string set returned by ``AuthUser.roles`` is the set of POSIX group
-names the user belongs to that have a ``GROUP_PERMISSIONS`` bundle.
-This keeps ``has_role('csg')``-style checks working as a coarse display
-label, but the source of truth for authorization is the permission set,
-not the role label.
+``AuthUser.roles`` returns the POSIX group names that have a bundle, which
+keeps ``has_role('csg')`` working as a coarse display label. The source of
+truth for authorization is the permission set, not the role label.
 """
 
 from enum import Enum

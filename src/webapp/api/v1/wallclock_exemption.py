@@ -1,37 +1,12 @@
-"""
-Wallclock Exemption API endpoints (v1).
+"""Wallclock Exemption API endpoints (v1).
 
-Provides the active per-user queue wallclock overrides consumed by batch
-schedulers.  Reproduces the output of the legacy SAM Java endpoint:
-  GET /api/protected/admin/ssg/wallClockExemption
+Active per-user queue wallclock overrides for batch schedulers. Reproduces
+legacy ``GET /api/protected/admin/ssg/wallClockExemption``, which has no
+per-resource variant -- the ``/<Resource>`` filter here is an addition,
+symmetric with the queue API.
 
-The legacy endpoint has no per-resource variant; a symmetric
-``/<Resource>`` filter is added here for convenience (parallel to the queue API).
-
-Example usage:
-    GET  /api/v1/wallclock_exemption/                — all active exemptions
-    GET  /api/v1/wallclock_exemption/Derecho          — filtered to one resource
-    GET  /api/v1/wallclock_exemption/Derecho%20GPU    — resource with space
-    POST /api/v1/wallclock_exemption/refresh          — invalidate cache
-
-Response format::
-
-    {
-        "name": "exemptions",
-        "resources": [
-            {
-                "resourceName": "Derecho",
-                "queues": [
-                    {
-                        "queueName": "main",
-                        "limits": [
-                            {"username": "benkirk", "wallClockLimit": 48.0}
-                        ]
-                    }
-                ]
-            }
-        ]
-    }
+``POST /refresh`` invalidates the cache. Response shape:
+``docs/apis/SYSTEMS_INTEGRATION_APIs.md``.
 """
 
 from flask import Blueprint, jsonify, abort, request

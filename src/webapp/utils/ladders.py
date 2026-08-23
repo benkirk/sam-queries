@@ -1,33 +1,25 @@
 """Value ladders: the numeric counterpart to :mod:`webapp.utils.age_bands`.
 
-A **ladder** is an ordered ``((label, lo, hi), ...)`` tuple where the last band's
-``hi`` is ``None`` (open-ended). This is the shape of both plugin vocabularies
-the filter controls draw on — fs-scans' ``SIZE_BUCKETS`` and job-history's
-``*_HIST_BUCKETS`` — which is why one module serves both.
+A ladder is an ordered ``((label, lo, hi), ...)`` whose last ``hi`` is ``None``.
+Both plugin vocabularies the filter controls draw on share that shape --
+fs-scans' ``SIZE_BUCKETS`` and job-history's ``*_HIST_BUCKETS`` -- which is why
+one module serves both. :func:`span_bounds` turns a span into the two values
+that select it; :func:`span_for` turns two values back into a span, or ``None``
+when they do not land on band edges.
 
-Two directions are needed, and having both here is the point:
+WARNING: inclusivity is the SOURCE's business, not this module's. fs-scans'
+buckets are half-open (1024 is both band 0's ``hi`` and band 1's ``lo``) while
+job-history's are inclusive (band 0 ends at 1023). Nothing here adds,
+subtracts, or compares against the interior of a band -- edges pass through
+verbatim in both directions. That is what keeps one module honest for both, and
+what makes a slider position and the equivalent chart-bar click produce
+byte-identical filters.
 
-* :func:`span_bounds` — a *span* of bands -> the two values that select it.
-* :func:`span_for` — the two values -> the span, or ``None`` when they don't land
-  on band edges. This is what lets a server-rendered control put its thumbs where
-  the current filter actually is, and fall back to a "custom" state when the
-  filter was typed rather than picked.
-
-WARNING: **Inclusivity is the source's business, not this module's.** fs-scans'
-``SIZE_BUCKETS`` are half-open — ``1024`` is both band 0's ``hi`` and band 1's
-``lo`` — while job-history's histogram tables are inclusive, with band 0 ending
-at ``1023``. Nothing here adds, subtracts or compares against the *interior* of a
-band: edges are passed through verbatim in both directions. That is what keeps
-one module honest for both, and it is not an accident — it is the same
-pass-through the existing band drill-downs already rely on
-(``_size_band_bounds``, ``_bucket_drill_url``), so a slider position and the
-equivalent chart-bar click produce byte-identical filters.
-
-WARNING: **A ladder floor of 0 is a real bound, not a missing one.** ``span_for(l, 0,
-…)`` must return band 0, and the control must submit ``0`` rather than an empty
-string — see the ``|| ''`` note in ``static/js/actions.js``. Unlike the age
-ladders, whose values are date strings, every falsy check here is a bug waiting
-to happen.
+WARNING: a ladder floor of 0 is a real bound, not a missing one.
+``span_for(l, 0, ...)`` must return band 0, and the control must submit ``0``
+rather than an empty string -- see the ``|| ''`` note in ``static/js/actions.js``.
+Unlike the age ladders, whose values are date strings, every falsy check here
+is a bug waiting to happen.
 """
 
 from __future__ import annotations

@@ -1,37 +1,27 @@
-"""New — 21% of traffic at **30% success**, the hardest of the six, and the only one
-that mints a projcode.
+"""New -- 21% of traffic at 30% success, and the only handler that mints a projcode.
 
 ``AddProjectAssembler`` marks its own order ``// the order below is important!!``:
+**AddProject -> AddContract -> AddAllocation x N -> AddUser x N ->
+InactivateNewProject**. It cannot be rearranged, and both reasons are enforced
+by exceptions: an allocation cannot be added to an inactive project, and
+accounts exist only as a side effect of adding an allocation while user
+assignment requires an account.
 
-**AddProject -> AddContract -> AddAllocation×N -> AddUser×N -> InactivateNewProject**
+WARNING: the project is created ACTIVE and deactivated at the end. That is not
+a quirk to tidy -- ``InactivateNewProject`` running last is the whole reason the
+middle steps can run. The resulting ``active = 0`` is by design: the success
+email is the human trigger to approve it, and 21 of 23 XRAS-created projects
+have since been activated by hand.
 
-and it cannot be rearranged, for two reasons that are both enforced by exceptions:
+The 70% failure rate is not from this code. The measured causes are data: an
+unresolvable mnemonic (24%, a frozen ``user_organization`` table), unreconciled
+ARC placeholder identities (55%), and resource keys with no mapping row. Each
+now arrives as a reviewable 422 carrying the string legacy emitted, rather than
+an opaque 500 -- which is the actual deliverable.
 
-* ``Project.addAllocation`` throws ``Cannot add allocation to inactive project %s`` and
-  ``Account.isAssignable()`` requires ``project.isActive()`` — so the project is created
-  **active** and inactivated only at the very end.
-* Accounts exist as a side effect of adding an allocation, and user assignment requires
-  an account. Allocations must precede users; SAM's ``add_user_to_project`` raises for
-  the same reason, so the constraint survives the port unchanged.
-
-WARNING: **The project is created active and then deactivated.** That is not a quirk to tidy:
-``InactivateNewProject`` running last is the whole reason the middle steps can run at
-all, and the resulting ``active = 0`` is by design — the success email is the human
-trigger to approve it. Production agrees: 21 of 23 XRAS-created projects have since
-been activated by hand.
-
-Where the 70% failure rate comes from
-------------------------------------
-Not from this code. The measured causes are data: an unresolvable mnemonic (24%, a
-frozen ``user_organization`` table), unreconciled ARC placeholder identities (55%), and
-resource keys with no mapping row. Every one of those now arrives as a reviewable 422
-with the string legacy emitted, rather than as an opaque 500 — which is the actual
-deliverable here.
-
-Verified against ``~/codes/sam`` at tag 2.0.3 (``AddProjectAssembler``,
-``AddProjectActionCommandFactory``, ``ProjectActionCommandFactoryBase``). Ported
-against ``src/webapp/dashboards/admin/projects_routes.py``'s create flow rather than
-against the Java, per the plan. See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *New*.
+Verified against ``~/codes/sam`` at tag 2.0.3, but ported against
+``projects_routes.py``'s create flow rather than the Java. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *New*.
 """
 
 import logging

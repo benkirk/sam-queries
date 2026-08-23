@@ -1,46 +1,27 @@
-"""The XRAS account-creation worklist — who must exist in SAM before a handoff works.
+"""The XRAS account-creation worklist -- who must exist in SAM before a handoff works.
 
-The problem
------------
-``src/sam/xras/handlers/new.py:24-27`` records the measured causes of the legacy
-70% failure rate, and the largest single one — **55%** — is unreconciled ARC
-placeholder identities: a researcher XRAS names on a request who has no SAM
-account. Account creation is manual, so the fix is not code that creates
-accounts; it is a worklist telling an operator *who*, *why*, and *with what
-detail*.
+The largest single cause of the legacy 70% failure rate, at **55%**, is
+unreconciled ARC placeholder identities: a researcher XRAS names on a request
+who has no SAM account. Account creation is manual, so the fix is not code that
+creates accounts; it is a worklist saying who, why, and with what detail.
 
-Two feeds, one classifier
--------------------------
-::
+Two feeds, one classifier, joined at :class:`RosterRecord`: Feed A is
+``xras_action_log.raw_payload`` at push time, Feed B is
+``GET /v1/reports/requests`` ahead of the push. Feed B reaches people Feed A
+structurally cannot -- a brand-new PI on a solo New request, connected to
+nobody SAM knows -- and neither feed should imply a second copy of the rules.
 
-    Feed A  xras_action_log.raw_payload
-            (inbound pushes, at push time) normalized        classify vs
- RosterRecord ->  users  -> rows
-    Feed B  GET /v1/reports/requests (feed-neutral)   absent/inactive
-            (enumeration, ahead of push)
-
-The feed-agnostic seam is :class:`RosterRecord`. It is the one decision that
-keeps the classifier, the card, the CLI and the eventual operator-notes table
-single-sourced — Feed B reaches people Feed A structurally cannot (a brand-new
-PI on a solo New request, connected to nobody SAM knows, *before* the push),
-and neither feed should imply a second copy of the classification rules.
-
-WARNING: Not exported from ``sam/queries/__init__.py``
-------------------------------------------------
-That module imports its submodules eagerly, so listing this one would drag
-``requests`` and the cache layer into every ``from sam.queries import ...``.
-Same reasoning as ``expiration_notices`` and ``xras_notices``; import it by
-module path. For the same reason the default person lookup is resolved by a
-**deferred import** inside :func:`enrich_worklist` rather than at module scope —
-``src/scheduling/`` imports this module, and
+WARNING: not exported from ``sam/queries/__init__.py``, which imports its
+submodules eagerly -- listing this would drag ``requests`` and the cache layer
+into every ``from sam.queries import ...``. Import it by module path. For the
+same reason the default person lookup is a DEFERRED import inside
+:func:`enrich_worklist`: ``src/scheduling/`` imports this module, and
 ``test_task_ledger.py::TestPortabilityBoundary`` walks what that drags in.
 
-WARNING: Regime-proof by construction
---------------------------------
-Classification is a check against the **current** state of ``users``, never
-against the action's ``status``. Actions in the log may be ``received`` (under
-capture-only) or ``processed``/``failed``/``manual`` (under live dispatch), and
-the worklist must mean the same thing on both sides of that flip.
+WARNING: classification checks the CURRENT state of ``users``, never the
+action's ``status``. Actions may be ``received`` under capture-only or
+``processed``/``failed``/``manual`` under live dispatch, and the worklist must
+mean the same thing on both sides of that flip.
 """
 
 from __future__ import annotations

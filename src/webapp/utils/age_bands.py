@@ -1,37 +1,30 @@
 """Age-band ladders: the shared vocabulary behind the age-range filter controls.
 
-A **ladder** is an ordered ``((label, upper_days), ...)`` tuple where ``upper_days``
-is a *cumulative* age threshold and the final band's is ``None`` (open-ended). Band
-*i* therefore covers ages ``[lower, upper)`` days, where ``lower`` is band *i-1*'s
-``upper``. This is the shape of the fs-scans plugin's ``ATIME_BUCKETS``, which is
-where the idea comes from and which remains the single source of truth for the disk
-surfaces.
+A ladder is an ordered ``((label, upper_days), ...)`` where ``upper_days`` is a
+*cumulative* threshold and the last is ``None``. Band *i* covers
+``[lower, upper)`` days. Same shape as the fs-scans plugin's ``ATIME_BUCKETS``,
+which remains the source of truth for the disk surfaces.
 
-Two directions are needed, and having both here is the point:
+Both directions live here on purpose: :func:`band_bounds` turns a span of bands
+into the two date strings that select it, and :func:`bands_for` turns two date
+strings back into a span, or ``None`` when they do not land on band edges --
+which is what lets a server-rendered control put its thumbs where the filter
+actually is and fall back to "custom" when it was typed rather than picked.
 
-* :func:`band_bounds` — a *span* of bands -> the two date strings that select it.
-  ``_atime_band_bounds`` in ``webapp/disk_scans/service.py`` has always done this for
-  a single band; a range control needs the same thing for ``lo..hi``.
-* :func:`bands_for` — the two date strings -> the span, or ``None`` when they don't
-  land on band edges. This is what lets a server-rendered control put its thumbs
-  where the current filter actually is, and fall back to a "custom" state when the
-  filter was typed rather than picked.
+WARNING: ages count back from an ANCHOR, not from today. The disk surfaces
+anchor on ``reference_scan_date`` -- the newest scan -- because a file's age is
+measured from when it was *observed*, and a scan can be days old. Passing
+``date.today()`` there silently shifts every band. Time-anchored surfaces
+(jobs) do anchor on today.
 
-WARNING: **Ages count back from an anchor, not from today.** The disk surfaces anchor on
-``reference_scan_date`` — the newest scan — because a file's age is measured from
-when it was *observed*, and a scan can be days old. Passing ``date.today()`` there
-would silently shift every band. Time-anchored surfaces (jobs) do anchor on today.
-
-WARNING: **The bounds are half-open by construction, and the consumers rely on it.**
-``before`` is the newer edge and ``after`` the older one. Dates *decrease* as the band
-index rises — a later band is an older file — so band *i*'s ``after`` is deliberately
-equal to band *i+1*'s ``before``. The fs-scans query builder compares strictly on both
-sides (``max_atime > :accessed_after``, ``max_atime < :accessed_before``), so exactly
-one band claims any given instant and the access-history drill-downs partition the
-total. Anything that makes either bound inclusive has to re-derive the edges here, or
-adjacent bands will double-count a whole boundary day — which is visible only as
-drill-downs summing to more than their parent. :func:`tiles_without_overlap` is the
-guard.
+WARNING: the bounds are half-open by construction and consumers rely on it.
+``before`` is the newer edge, ``after`` the older; dates decrease as the band
+index rises, so band *i*'s ``after`` deliberately equals band *i+1*'s
+``before``. The fs-scans query builder compares strictly on both sides, so
+exactly one band claims any instant and the drill-downs partition the total.
+Making either bound inclusive means re-deriving the edges here, or adjacent
+bands double-count a boundary day -- visible only as drill-downs summing to
+more than their parent. :func:`tiles_without_overlap` is the guard.
 """
 
 from __future__ import annotations

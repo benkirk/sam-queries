@@ -1,47 +1,35 @@
-"""Adjustment — the handler to review hardest, because legacy has never run one.
+"""Adjustment -- the handler to review hardest, because legacy has never run one.
 
-Two independent legacy defects have kept ``AdjustProjectActionService`` dark for its
-entire existence:
+Two independent legacy defects kept ``AdjustProjectActionService`` dark for its
+entire existence: ``isServiceable`` tests ``actionType.equals("Adjust")`` while
+XRAS sends ``"Adjustment"`` (defect 4), and the factory is a near-verbatim copy
+of Supplement's INCLUDING its positive-amount guard, which silently drops the
+one thing an adjustment exists to do.
 
-1. **Defect 4, the spelling.** ``isServiceable`` tests
-   ``actionType.equals("Adjust")``; XRAS sends ``"Adjustment"``. They never match, so
-   every Adjustment falls through ``ProjectActionServiceSelector`` to the manual-email
-   fallback. The corpus confirms the wire spelling.
-2. **The copy-pasted ``> 0`` gate.** ``AdjustProjectAllocationActionCommandsFactory`` is
-   a near-verbatim copy of the supplement factory, *including* the positive-amount
-   guard — which silently drops the one thing an adjustment exists to do.
+So this is the only handler that will begin servicing traffic a human has
+always handled, with **no production outcome to diff against**. Everything here
+is reasoned from source rather than confirmed against behavior.
 
-So this is the only handler in the sprint that will begin servicing traffic a human has
-always handled, with **no production outcome to diff against**. Everything below is
-reasoned from the source rather than confirmed against behavior, and that is worth
-knowing when reading it.
+* **Negatives are honored** -- removing the ``> 0`` gate is the point. Nothing
+  depends on it, because nothing has ever run.
+* **A negative taking the allocation below zero is rejected.** Legacy has no
+  such guard, but legacy also never applies one. A below-zero amount makes every
+  ``remaining = allocated - used`` nonsense, and the guard can only reject,
+  never corrupt. A rejected Adjustment goes to a human -- where 100% of them go
+  today.
+* **Both spellings dispatch here**, via ``canonical_action_type``.
 
-Three consequences:
+Otherwise the shape is Supplement's, and the per-resource pieces are imported
+from it rather than copied. The differences are the transaction type and the sign.
 
-* **Negatives are honored.** Removing the ``> 0`` gate is the point of the handler.
-  Nothing depends on it, because nothing has ever run.
-* **A negative that would take the allocation below zero is rejected.** Legacy has no
-  such guard — ``verifyValidateState`` checks only the end date — but legacy also never
-  applies one. A below-zero ``amount`` makes every ``remaining = allocated − used``
-  nonsense, and the guard can only reject, never corrupt. A rejected Adjustment goes to
-  a human, which is where 100% of them go today.
-* **Both spellings dispatch here**, via the existing ``canonical_action_type``.
+WARNING: ``auth_at_panel_mtg`` splits by COMMAND, not by handler. The ADJUSTMENT
+row does not carry it, but the CREATE row this handler can also write does,
+because that builder is the copy taken verbatim from the supplement factory.
+Getting this half-right is what the original port did -- the flag was computed,
+carried through a tuple, unpacked, and then never applied.
 
-Otherwise the shape is Supplement's, and the per-resource pieces are imported from it
-rather than copied: same resource-key resolution, same amount parsing, same unfiltered
-account lookup, same create branch. The differences are the transaction type and the
-sign.
-
-WARNING: **``auth_at_panel_mtg`` splits by command, not by handler.** The ADJUSTMENT row does
-not carry it — ``buildAdjustAllocationCommand`` never calls ``.authAtPanelMeeting(...)``
-— but the CREATE row this handler can also write does, because
-``buildAddAllocationCommand`` is the copy taken verbatim from the supplement factory and
-that one does. Getting this half-right is what the original port did: the flag was
-computed, carried through the creations tuple, unpacked, and then never applied.
-
-Verified against ``~/codes/sam`` at tag 2.0.3
-(``AdjustProjectAllocationActionCommandsFactory``, ``Allocation.adjust``).
-See ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md`` § *Adjustment*.
+Verified against ``~/codes/sam`` at tag 2.0.3. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``, *Adjustment*.
 """
 
 import logging

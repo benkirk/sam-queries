@@ -1,54 +1,39 @@
-"""Write client for the XRAS Allocations API — the deliberate sibling of ``client.py``.
+"""Write client for the XRAS Allocations API -- the deliberate sibling of ``client.py``.
 
-Why a second class
-------------------
-:class:`~sam.integration.xras_api.client.XrasApiClient` is GET-only *by
-construction*: its only transport primitive is ``_get`` and
-``tests/unit/test_xras_api_client.py`` pins that no write verb exists on it.
-That pin is worth keeping, so this is a **sibling, never a subclass and never a
-relaxation** — the two classes share a config object and nothing else.
+:class:`~sam.integration.xras_api.client.XrasApiClient` is GET-only by
+construction and a test pins that no write verb exists on it. That pin is worth
+keeping, so this is a SIBLING -- never a subclass, never a relaxation. They
+share a config object and nothing else.
 
 They also cannot be merged, because they live in different XRAS contexts. The
-read client hardcodes ``XA-CONTEXT: report``; every write here needs
-``submit``. The two are not interchangeable in either direction:
+read client hardcodes ``XA-CONTEXT: report``; every write here needs ``submit``,
+and the Reports family 401s under ``submit``. So verification reads that need a
+roster or an action state are delegated to a read client
+(:attr:`XrasAdminClient.reader`). ``GET /v1/people/<u>`` is the one route
+answering under both, which is what lets merge verify itself on this connection.
 
-* the Reports family (``/v1/reports/*``) answers under ``report`` and **401s
-  under ``submit``** — which is why verification reads that need a roster or an
-  action state are delegated to a read client (:attr:`XrasAdminClient.reader`)
-  rather than issued here;
-* the write routes answer under ``submit``.
-
-``GET /v1/people/<u>`` is the one route that answers under both (probe P0),
-which is what lets merge verify itself on this client's own connection.
-
-What this client may do, measured
----------------------------------
-Every verb below was proven against production on 2026-08-21 and is recorded in
-``docs/xras/outgoing/XRAS_WRITE_PROBES.md``. Three facts from that probe shape
-this module and are not obvious from the published API docs:
+Three facts from the 2026-08-21 production probe shape this module and are not
+obvious from the published docs (``docs/xras/outgoing/XRAS_WRITE_PROBES.md``):
 
 1. **One authorization rule covers every request-scoped write**: ``XA-USER``
-   must hold a role on *that* request, else 401. ``arcguest`` — the config
-   default — is never sufficient. So request ops take an explicit *xa_user* and
-   refuse to guess it, while person ops (merge) take none at all.
+   must hold a role on THAT request, else 401. ``arcguest`` is never
+   sufficient, so request ops take an explicit *xa_user* and refuse to guess;
+   person ops (merge) take none.
 2. **``roleType`` is encoded differently by the two role families.** The route
-   used here, ``/v1/requests/<rid>/roles/<roleType>/<username>``, takes the
-   **string** (``User``) and 400s on the numeric id. :data:`ROLE_TYPES` carries
-   all three representations so a caller cannot pick the wrong one silently.
+   used here takes the STRING (``User``) and 400s on the numeric id.
+   :data:`ROLE_TYPES` carries all three representations so a caller cannot pick
+   the wrong one silently.
 3. **A 200 proves only that the call was allowed.** ``POST .../submit`` returns
    a ``null`` body where the docs promise the request object, and
    ``POST /v1/people`` returns 200 while ignoring the parameter it was given.
-   So **every write here verifies by re-reading**, and the verdict travels in
-   :class:`XrasWriteResult` rather than being collapsed into an exception.
+   So every write here VERIFIES BY RE-READING, and the verdict travels in
+   :class:`XrasWriteResult` rather than collapsing into an exception.
 
-Retry policy — the inverse of the read client
----------------------------------------------
-Reads retry; **writes get exactly one attempt**. A retried merge could delete a
-second person, and a retried submit could double-fire XRAS's review workflow.
-When a write's outcome is ambiguous (a 5xx, or a socket that died mid-flight)
-the answer is not another attempt — it is the verifying read, which runs
-regardless and settles what actually happened. Only a definite refusal (4xx)
-short-circuits it, because nothing happened to verify.
+WARNING: reads retry; **writes get exactly one attempt**. A retried merge could
+delete a second person and a retried submit could double-fire XRAS's review
+workflow. When an outcome is ambiguous the answer is the verifying read, which
+runs regardless. Only a definite 4xx short-circuits it, because nothing
+happened to verify.
 """
 
 from __future__ import annotations

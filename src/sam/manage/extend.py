@@ -1,32 +1,23 @@
-"""
-Extend allocation logic — push ``end_date`` forward on existing allocations
-without creating new rows.
+"""Extend allocation logic -- push ``end_date`` forward without creating rows.
 
-Two entry points with deliberately different scopes, and picking the wrong one
-is the kind of mistake that shows up as a silent no-op:
+Two entry points with deliberately different scopes; picking the wrong one
+shows up as a silent no-op:
 
-* :func:`extend_project_allocations` — **project-tree** scoped, driven by a list
-  of resource ids, and *forgiving*: it skips anything it cannot extend. That is
-  right for the operator-facing Extend Allocation flow, where a partial extension
-  beats an error dialog.
-* :func:`extend_account_allocation` — **single-allocation** scoped and *strict*:
-  a shrink or a null end date raises. That is what the XRAS integration needs,
-  because legacy errors where the operator flow shrugs, and because legacy walks
+* :func:`extend_project_allocations` -- project-tree scoped, driven by resource
+  ids, and FORGIVING: it skips anything it cannot extend. Right for the
+  operator-facing Extend flow, where a partial extension beats an error dialog.
+  It skips when a resource has no root-project source active at
+  ``source_active_at``, when a source allocation is open-ended, and when one
+  already ends on or after the requested date.
+* :func:`extend_account_allocation` -- single-allocation scoped and STRICT: a
+  shrink or a null end date raises. What the XRAS integration needs, because
+  legacy errors where the operator flow shrugs, and because legacy walks
   accounts rather than resources.
 
-Both mirror Renew's tree-awareness but mutate existing allocations in place and
-log ``AllocationTransactionType.EXTENSION`` instead of creating new rows under
-``RENEW``. Use Renew when you want a fresh allocation period; use Extend when
-you want a grace-period push on the current grant.
-
-``extend_project_allocations`` skips silently when:
-  - a resource has no root-project source active at ``source_active_at``
-  - a source allocation is open-ended (``end_date IS NULL``)
-  - a source allocation already ends on/after the requested new date
-    (would be a no-op or a shortening — use Edit Allocation for that)
-
-``extend_account_allocation`` raises on the middle two and skips only the exact
-no-op. See its docstring for why that is a separate function rather than a flag.
+Both mirror Renew's tree-awareness but mutate in place and log
+``AllocationTransactionType.EXTENSION`` rather than creating rows under
+``RENEW``. Use Renew for a fresh allocation period, Extend for a grace-period
+push on the current grant.
 """
 
 from datetime import datetime

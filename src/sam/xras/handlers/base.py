@@ -1,53 +1,38 @@
-"""The contract every XRAS handler follows, as a template method rather than as prose.
+"""The contract every XRAS handler follows, as a template method.
 
-Assemble -> check once -> execute
--------------------------------
-Legacy assembles the entire command list first, reporting every problem it finds into a
-``LinkedHashSet``, then raises **once** with the whole list
-(``AbstractServiceableProjectActionService.addOrUpdate``). Nothing is written unless
-assembly was clean. That is what lets an operator fix a request in one pass instead of
-five, and it is the single most important behavioral property of this package.
+Assemble -> check once -> execute. Legacy assembles the whole command list
+first, reporting every problem into one set, then raises ONCE with the lot;
+nothing is written unless assembly was clean. That is what lets an operator fix
+a request in one pass instead of five, and it is the most important behavioral
+property of this package. :meth:`ActionHandler.run` expresses it once so
+handler seven cannot get it subtly wrong.
 
-Sprint C stated that contract in three docstrings and then re-implemented it six times.
-:meth:`ActionHandler.run` is the same contract expressed once, so handler seven cannot
-get it subtly wrong — the ordering is no longer something each author has to remember.
+WARNING: ``run()`` deliberately catches NOTHING. Two exception types cross it
+and both must propagate: :class:`~sam.xras.errors.XrasActionRejected` from
+``raise_if_any()`` -- the 422, raised *before* the transaction opens, which is
+what makes "nothing was written" true -- and
+:class:`~sam.xras.handlers.new.XrasProjectCreationFailed` from inside
+``execute()``, an operational failure that ``management_transaction`` rolls back
+and re-raises. A ``try`` here turns either into a silent partial write.
 
-WARNING: **``run()`` deliberately does not catch anything.** Two exception types cross it and
-both must propagate untouched:
+WARNING: ``management_transaction`` is imported HERE AND NOWHERE ELSE under
+``sam.xras``; ``tests/unit/test_xras_transaction_seam.py`` scans module globals
+at runtime to enforce it. Handler tests neutralize the commit by monkeypatching
+that name in module globals, and per-test isolation is a SAVEPOINT that a real
+COMMIT releases, leaking rows into the shared xdist database. While five modules
+each held their own binding, a missed patch was SILENT -- rows exist, assertions
+pass, damage appears in someone else's test run.
 
-- :class:`~sam.xras.errors.XrasActionRejected` from ``raise_if_any()`` — the 422, raised
-  *before* the transaction opens, which is what makes "nothing was written" true.
-- :class:`~sam.xras.handlers.new.XrasProjectCreationFailed` from inside ``execute()`` —
-  an operational failure, not a payload one. ``management_transaction`` rolls back and
-  re-raises; a ``try`` here would turn that into a silent partial write.
-
-The one transaction seam
-------------------------
-WARNING: ``management_transaction`` is imported **here and nowhere else** under ``sam.xras``,
-and ``tests/unit/test_xras_transaction_seam.py`` enforces that by scanning module
-globals at runtime.
-
-The reason is a failure that has already happened. Handler tests neutralize the commit
-by monkeypatching the name in the handler's module globals; the suite's per-test
-isolation is a SAVEPOINT, and a real ``COMMIT`` releases it and leaks rows into the
-shared xdist database. While five modules each held their own binding, every such test
-had to patch five things and a missed one was **silent** — the rows exist, the
-assertions pass, and the damage shows up in someone else's test run.
-
-What subclasses get
--------------------
-State that would otherwise be threaded through tuples and re-derived per call
-site: the projcode, the project it names, the panel-authorization flag, the error
-accumulator. ``Project.get_by_projcode`` resolves once per action, not three times.
-
-WARNING: **``panel_authorized`` is a plain attribute, not a lazy property, and that is
-load-bearing.** It must be assigned during :meth:`assemble`, because
+WARNING: ``panel_authorized`` is a plain attribute, not a lazy property, and
+must be assigned during :meth:`assemble`.
 :func:`~sam.xras.handlers._allocations.auth_at_panel_meeting`'s second arm reads
-``project.allocation_type`` — a column Update *writes*, through ``project.update()``,
-which flushes. A lazily-evaluated version whose first read happened inside
-:meth:`execute` would read back the type the action had just installed. Four visible
-assignments beat one invisible ordering dependency.
+``project.allocation_type`` -- a column Update *writes* and flushes -- so a lazy
+version first read inside :meth:`execute` would read back the type the action
+had just installed. Four visible assignments beat one invisible ordering
+dependency.
 
+Subclasses get the projcode, its project, the panel-authorization flag and the
+error accumulator, resolved once per action.
 See ``docs/xras/incoming/implemented/XRAS_HANDLER_REFACTOR.md``.
 """
 

@@ -1,32 +1,14 @@
-"""
-Caching facade — the single entry point for every cache layer in the webapp.
+"""Caching facade -- the single entry point for every cache layer in the webapp.
 
 Owns the Flask-Caching extension and the chart SVG caches, and proxies the
-sam-package allocation usage cache for unified stats and clear semantics.
+sam-package allocation usage cache so stats and clear semantics are unified::
 
-Usage
------
-
-In the application factory::
-
-    from webapp.caching import caching
-    caching.init_app(app)
-
-Decorating an HTTP route (Flask-Caching pass-through)::
-
-    from webapp.caching import caching
+    caching.init_app(app)                       # in the application factory
     @caching.flask.cached(timeout=300, query_string=True)
-    def my_view(): ...
-
-Decorating a chart-generating function::
-
     @caching.chart_cached(name='usage_timeseries', maxsize=128)
-    def generate_usage_timeseries(daily_charges) -> str: ...
 
-Inspecting all caches (used by the admin Configuration card)::
-
-    caching.stats()            # -> dict for the template
-    caching.clear('chart')     # category in {'flask','chart','usage','scans','jobs',None}
+    caching.stats()          # the admin Configuration card
+    caching.clear('chart')   # 'flask' | 'chart' | 'usage' | 'scans' | 'jobs' | None
 """
 
 import importlib

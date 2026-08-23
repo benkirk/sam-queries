@@ -1,32 +1,26 @@
-"""BucketedTTLCache — one lazily-initialized TTL cache with named buckets.
+"""BucketedTTLCache -- one lazily-initialized TTL cache with named buckets.
 
 Three call sites grew the same ~120-line skeleton independently
 (``sam.queries.usage_cache``, ``webapp.disk_scans.cache``,
-``webapp.jobs.cache``): read TTL/size from Flask config or env, lazily build
-a ``RedisTTLAdapter`` when ``CACHE_REDIS_URL`` is reachable and a per-worker
+``webapp.jobs.cache``): read TTL/size from Flask config or env, lazily build a
+``RedisTTLAdapter`` when ``CACHE_REDIS_URL`` is reachable and a per-worker
 ``TTLCacheAdapter`` otherwise, then get-under-lock / compute-outside-lock /
 store-under-lock. This is that skeleton, once.
 
-What each call site still owns — because it is what genuinely differs — is
-the **cache key**:
+Each call site still owns its **cache key**, because that is what genuinely
+differs: fs-scans keys embed scan dates so invalidation is content-addressed
+and the TTL is only a backstop; jobs have no freshness signature, so the TTL IS
+the staleness bound; allocation usage keys on query parameters at day
+granularity.
 
-* fs-scans keys embed the per-collection scan dates, so invalidation is
-  content-addressed and the TTL is only a memory backstop.
-* jobs have no freshness signature (records append continuously), so the TTL
-  *is* the staleness bound.
-* allocation usage keys on the query parameters at day granularity.
+Buckets let one mechanism serve two populations with different staleness
+tolerance under a single Redis instance. A bucket is disabled by config when
+either its TTL or its size is 0.
 
-Buckets exist so one mechanism can serve two populations with different
-staleness tolerance under a single Redis instance — e.g. fs-scans' long-lived
-passive queries vs the explorer's volatile filter permutations. A bucket is
-disabled by config when either its TTL or its size is 0.
-
-Registry
---------
-Instances self-register at construction so the webapp's ``Caching`` facade can
-enumerate every bucketed cache (for the Admin -> Configuration card, for
-``caching.clear(category)``, and for deriving the flask adapter's
-foreign-keyspace skip list) without hand-maintaining parallel lists.
+Instances self-register at construction, so the webapp's ``Caching`` facade can
+enumerate every bucketed cache -- for the admin card, for
+``caching.clear(category)``, and for the flask adapter's foreign-keyspace skip
+list -- without hand-maintained parallel lists.
 """
 
 from __future__ import annotations

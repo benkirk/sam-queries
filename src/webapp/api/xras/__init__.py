@@ -1,37 +1,24 @@
-"""
-XRAS integration API — a Python reimplementation of legacy Java SAM's
+"""XRAS integration API -- a Python reimplementation of legacy Java SAM's
 ``/api/xras/*`` surface (deployed build ``2.0.3``).
 
-**LEGACY-COMPAT BLUEPRINT — DO NOT REFACTOR.** Like ``api/v1/queue.py`` and
-``api/v1/wallclock_exemption.py``, this blueprint intentionally reproduces a
-legacy Java wire contract byte for byte. The XRAS broker at
+**LEGACY-COMPAT BLUEPRINT -- DO NOT REFACTOR.** The XRAS broker at
 https://admin-ncar.xras.org/ is the sole caller and pulls identity and request
-data from these endpoints; response bytes must not change. Additive changes only.
+data from these endpoints; response bytes must not change. Additive only.
 
-Endpoints — the whole of legacy's mapped surface::
+The whole of legacy's mapped surface: ``GET /v1/people`` and
+``/v1/people/{username}`` (bare, no envelope); ``GET /v1/requests/request/...``,
+``/requests/user/...``, ``/requests/role/{role}/{username}``,
+``/dates/requests/...`` and ``POST /v1/actions`` (all
+``{message, result}``); ``POST /v1/roles/{requestNumber}/{role}/{username}``
+(empty body). Plus a catch-all (:mod:`webapp.api.xras.unmapped`) turning
+anything else under this prefix into an ``xras_action_log`` row.
 
-    GET  /api/xras/v1/people                            bare array,  no envelope
-    GET  /api/xras/v1/people/{username}                 bare object, no envelope
-    GET  /api/xras/v1/requests/request/{requestNumber}  {message, result}
-    GET  /api/xras/v1/requests/user/{username}          {message, result}
-    GET  /api/xras/v1/requests/role/{role}/{username}   {message, result}
-    GET  /api/xras/v1/dates/requests/{requestNumbers}   {message, result}
-    POST /api/xras/v1/actions                           {message, result}
-    POST /api/xras/v1/roles/{requestNumber}/{role}/{username}   empty body
-
-...plus a catch-all (:mod:`webapp.api.xras.unmapped`) that turns a request for
-anything else under this prefix into an ``xras_action_log`` row. It exists because
-``/v1/roles`` went unported for a whole build and nothing surfaced it: an unmapped
-path left no trace, so only an audit of the deployed ``ROOT.war`` could find it.
-
-Serialization — including why ``jsonify`` is unusable here and why null handling
-is per-DTO rather than global — lives in :mod:`webapp.api.xras.serialize`.
-
-Deliberate divergences from legacy, and their reasons, are recorded in
-``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` section 7. In short: we do not reproduce
-the 431-byte Tomcat HTML error pages, we answer an unrecognised ``{role}`` with
-400 rather than 500, and we sort ``masters[]`` by projcode rather than emulating
-Java ``HashMap`` bucket order.
+Serialization -- including why ``jsonify`` is unusable and why null handling is
+per-DTO -- is in :mod:`webapp.api.xras.serialize`. Deliberate divergences are
+recorded in ``docs/xras/incoming/XRAS_REIMPLEMENTATION.md`` section 7: no
+431-byte Tomcat HTML error pages, 400 rather than 500 for an unrecognized
+``{role}``, and ``masters[]`` sorted by projcode rather than emulating Java
+``HashMap`` bucket order.
 """
 
 import base64

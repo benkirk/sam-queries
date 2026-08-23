@@ -1,33 +1,28 @@
-"""XRAS Remediations — the operator write surface on Allocations -> XRAS.
+"""XRAS Remediations -- the operator write surface on Allocations -> XRAS.
 
-A scoped **subset** of the external XRAS admin dashboard, never a replacement:
+A scoped SUBSET of the external XRAS admin dashboard, never a replacement:
 resolve an erroneously-reconciled placeholder by merge, withdraw a stale or
 in-flight submission, re-submit, and fix a roster. `MANAGE_XRAS` only,
 conditional on the outgoing write lever, never automated.
 
-Its own module in the ``allocations/xras/`` package, on the dashboard's shared
-``bp``, registered for its route side effects by ``xras/__init__.py``.
+Three things a reader coming from the sibling cards must know:
 
-Three things a reader coming from the sibling cards must know
-------------------------------------------------------------
 **1. These routes write to a system SAM does not own, and the write is done
-before the response is.** Nothing here is undone by an exception, a rollback,
-or a browser closing. The service layer (``sam.manage.xras_remediation``)
-commits its audit row on a private session *before* dispatching, precisely so
-the record survives everything the request does not.
+before the response is.** Nothing here is undone by an exception, a rollback, or
+a browser closing. ``sam.manage.xras_remediation`` commits its audit row on a
+private session BEFORE dispatching, precisely so the record survives everything
+the request does not.
 
 **2. ``perform()`` opens ``management_transaction`` and writes nothing to it.**
-The handler base wraps every ``perform()`` that way, and these handlers do
-their persistence on the service's own connections. So each POST holds an idle
-SAM transaction across an HTTP call to ``api.xras.org``. That is accepted
-rather than engineered around: the alternative is a second handler base whose
-only difference is the missing wrapper, and the calls are single-attempt with a
-10 s timeout.
+The handler base wraps every ``perform()`` that way; these handlers persist on
+the service's own connections. So each POST holds an idle SAM transaction across
+an HTTP call to ``api.xras.org``. Accepted rather than engineered around -- the
+alternative is a second handler base differing only in the missing wrapper, and
+the calls are single-attempt with a 10 s timeout.
 
-**3. Every modal GET degrades with a 200, not a 4xx.** Remediation needs live
-reads — a roster, a person, a preflight — and htmx will not swap a 4xx body
-into an already-open modal, so an XRAS outage rendered as an error status is an
-empty modal with no explanation. The degraded body says what happened instead.
+**3. Every modal GET degrades with a 200, not a 4xx.** htmx will not swap a 4xx
+body into an already-open modal, so an XRAS outage rendered as an error status
+is an empty modal with no explanation. The degraded body says what happened.
 """
 
 from __future__ import annotations

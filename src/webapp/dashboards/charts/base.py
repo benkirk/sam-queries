@@ -1,37 +1,32 @@
-"""`BaseChart` — the figure lifecycle, and `chart_view` — the cache binder.
+"""`BaseChart` -- the figure lifecycle, and `chart_view` -- the cache binder.
 
-Shaped after `webapp/utils/form_handler.py:HtmxFormHandler`: one concrete base
-with documented hooks and no abstract parent. Three levels total —
-`BaseChart` -> family -> concrete — because a fourth (abstract / matplotlib)
-would own about thirty lines and shield nothing: `figsize`, `ax.pie`,
-`stackplot`, `bbox_to_anchor` and `Artist.set_url` are matplotlib-shaped all
-the way to the leaf. The migration seam is bought with module boundaries
-instead — `links.py` and `series.py` import no matplotlib, enforced by test.
-
-## The lifecycle
+Shaped after `HtmxFormHandler`: one concrete base with documented hooks and no
+abstract parent. Three levels (`BaseChart` -> family -> concrete), because a
+fourth abstract/matplotlib layer would own about thirty lines and shield
+nothing -- `figsize`, `ax.pie`, `stackplot` and `Artist.set_url` are
+matplotlib-shaped all the way to the leaf. The migration seam is bought with
+module boundaries instead: `links.py` and `series.py` import no matplotlib,
+enforced by test.
 
     render(layout, theme)
-        self.layout/self.theme    resolved, for hooks that run pre-draw
-        prepare()                 raw payload -> plot-ready state on self
-        is_empty()  -> empty_state()      short-circuit
-        make_figure(layout)       plt.subplots(figsize=layout.figsize)
-        apply_tick_fontsize()     layout.base_fontsize on every Axes
-        draw(axes, ...)           REQUIRED — the family draws the marks
-        decorate(axes, ...)       labels, ticks, grid, scale, theme chrome
-        add_legend(axes, ...)     placement from layout, colors from theme
-        finish(fig, axes, ...)    autofmt_xdate, xlim, annotations
-        apply_chrome(...)         theme.text/spine onto every chrome artist
-        to_svg(fig)               the single savefig/close chokepoint
+        prepare()            raw payload -> plot-ready state on self
+        is_empty() -> empty_state()          short-circuit
+        make_figure(layout)  plt.subplots(figsize=layout.figsize)
+        apply_tick_fontsize()
+        draw(axes, ...)      REQUIRED -- the family draws the marks
+        decorate(axes, ...)  labels, ticks, grid, scale
+        add_legend(axes, ...)
+        finish(fig, axes, ...)
+        apply_chrome(...)    theme colors onto every chrome artist
+        to_svg(fig)          the single savefig/close chokepoint
 
 Hooks default to no-ops, so a leaf implements only what differs. State goes on
-`self` rather than through a threaded model object, matching the handler
-idiom — the alternative is passing a five-field tuple through seven methods.
+`self` rather than a threaded model object, matching the handler idiom.
 
-`BaseChart` must **not** swallow exceptions. Callers own that today and do it
-inconsistently: `disk_scans/routes.py` wraps its chart call (incidentally —
-the `try` is really around the data fetch) while `jobs/routes.py` closes its
-`try` immediately before calling. Catching here would silently turn the
-disk-scans error card into a blank one.
+WARNING: `BaseChart` must NOT swallow exceptions. Callers own that and do it
+inconsistently -- `disk_scans/routes.py` wraps its call while `jobs/routes.py`
+does not -- so catching here would silently turn the disk-scans error card into
+a blank one.
 """
 
 import functools

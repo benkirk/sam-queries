@@ -1,63 +1,44 @@
-"""``POST /api/xras/v1/actions`` — the only writing surface on the XRAS integration.
+"""``POST /api/xras/v1/actions`` -- the only writing surface on the XRAS integration.
 
-The endpoint authenticates, parses, audits, and then dispatches — unless
-``XRAS_ACTIONS_CAPTURE_ONLY`` is on, which it is by default. The audit row is written
-*in front of* dispatch rather than behind it, which is what turns every production post
-into a harvested payload and what makes replay possible when a handler explodes.
+Authenticate, parse, audit, then dispatch -- unless ``XRAS_ACTIONS_CAPTURE_ONLY``
+is on. Two flags gate dispatch and they are not the same flag: that one is the
+interlock, while ``XRAS_ACTIONS_ENABLED`` is the per-type triage lever checked
+inside :mod:`sam.xras.dispatch`.
 
-Two flags gate dispatch and they are not the same flag. ``XRAS_ACTIONS_CAPTURE_ONLY``
-is the interlock — while legacy is still the system of record, dispatching would apply
-an action it has already applied. ``XRAS_ACTIONS_ENABLED`` is the per-type triage
-lever, checked inside :mod:`sam.xras.dispatch`; see that module for why it keys on
-action type.
+Order of operations, and the part that is not negotiable::
 
-Order of operations, and the part that is not negotiable
---------------------------------------------------------
+    JSON parse fails -> row (status='failed', action_type=NULL) -> 400
+    schema rejects   -> row (status='failed')                   -> 422
+    row (status='received')        <- BEFORE dispatch
+    dispatch
+      capture-only   -> stays 'received'                        -> 200
+      success        -> 'processed' + projcode_result           -> 200
+      validation errs-> 'failed' + error_messages               -> 422
+      no serviceable -> 'manual'                                -> 200
 
-::
+Legacy's only record of an action is an email and its only replay mechanism is
+pasting JSON into a form, so a row written only on success would be a success
+log rather than an audit trail. Persisting first is what makes replay possible
+when a handler explodes.
 
-    read raw body
- JSON parse fails > write row (status='failed', action_type=NULL) > 400
- schema rejects > write row (status='failed') > 422
- write row (status='received')          <- BEFORE dispatch
- dispatch
- capture-only    -> row stays 'received'                      -> 200
- success         -> 'processed' + projcode_result             -> 200
- validation errs -> 'failed' + error_messages                 -> 422
- no serviceable  -> 'manual'                                  -> 200 †
+WARNING: the row is committed on its OWN connection, outside the handler
+transaction. ``management_transaction`` rolls the whole session back on
+exception, so an audit row enrolled in it would vanish in exactly the case it
+exists for. :func:`_record` and :func:`_finish` open short-lived sessions and
+commit immediately. No happy-path test would catch this.
 
-Legacy's only record of an action is an email and its only replay mechanism is pasting
-JSON into a form, so a row written *only on success* would be a success log rather than
-an audit trail. Persisting before dispatch is what makes replay possible when a handler
-explodes.
+Status codes are a deliberate improvement, not a port: legacy answers 500 with
+an opaque timestamp for both a malformed body and a failed validation, and 200
+for an action it silently parked. Here 400 is a malformed body and 422 a failed
+validation, and the 422 body carries the accumulated ordered error list because
+XRAS admins read it directly in their "Accounting Service Posts" panel.
 
-WARNING: **The row is committed on its own connection, outside the handler transaction.**
-``management_transaction`` rolls the entire session back on exception
-(``sam/manage/transaction.py``), so an audit row enrolled in it would vanish in exactly
-the case it exists for. :func:`_record` and :func:`_finish` therefore open short-lived
-sessions of their own and commit immediately. This is the one behavior here that no
-happy-path test would catch.
-
-Status codes are a deliberate improvement, not a port: legacy answers 500 with an
-opaque timestamp for both a malformed body and a failed validation, and 200 for an
-action it silently parked for a human. Ours separates the malformed body (400) from the
-failed validation (422). The 422 body is the headline deliverable — XRAS admins read it
-directly in their "Accounting Service Posts" panel — so it carries the accumulated,
-ordered error list rather than a summary. ACCESS confirmed on 2026-08-11 that this is
-wanted: *"the response body is saved and made available in xras_admin for the admin to
-see, so it's nice to include something informative"*, quoting legacy's opaque
-``Unhandled SAM exception ... (timestamp ...)`` as the thing to fix.
-
-† **A parked action is distinguished on the wire** — this is the one place the POST
-contract deliberately leaves legacy behind. Legacy answered a bare ``'OK'`` for an action
-it had silently deferred to a human, byte-identical to a success, so the admin who pushed
-the button was told it worked. That stopped being hypothetical once ``Date Adjustment``
-was discovered: it parks, and it is 4 of the 41 corpus payloads. ACCESS asked for exactly
-this on 2026-08-11 — *"the response body is saved and made available in xras_admin for the
-admin to see, so it's nice to include something informative"* — so ``manual`` now answers
-:data:`_MANUAL_MESSAGE` while ``processed`` keeps ``'OK'``. The **status stays 200**:
-ACCESS treats any other status as an error, and a parked action is not one. Decision
-recorded at ``docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`` § gate 4.
+A parked action is distinguished on the wire -- the one place this contract
+deliberately leaves legacy behind, which answered a bare ``'OK'`` byte-identical
+to a success. ``manual`` answers :data:`_MANUAL_MESSAGE` while ``processed``
+keeps ``'OK'``. The **status stays 200**: ACCESS treats any other status as an
+error, and a parked action is not one. Decision recorded at
+``docs/xras/incoming/XRAS_CUTOVER_RUNBOOK.md`` gate 4.
 """
 
 import json

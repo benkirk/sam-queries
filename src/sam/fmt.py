@@ -1,33 +1,19 @@
 """Centralized display formatting for SAM.
 
-All number, percentage, date, and size formatting should go through these
-functions so that output style can be controlled from one place.
+All number, percentage, date and size formatting goes through here so output
+style is controlled from one place::
 
-Module-level defaults are seeded from SAMConfig / env-vars at import time
-and can be overridden once at application / CLI startup via configure().
-Each public function also accepts per-call keyword overrides.
+    fmt.number(68_567_808)   # '68.6M'      fmt.pct(0.4)     # '0.4%'
+    fmt.size(1_234_567_890)  # '1.15 GiB'   fmt.date_str(dt) # '2024-10-01'
 
-Env vars
---------
-SAM_RAW_OUTPUT=1    Skip compact notation; emit bare comma-separated integers.
-SAM_SIG_FIGS=3      Significant figures for compact number / size display.
+Defaults are seeded from SAMConfig / env at import and can be overridden once
+at startup via ``configure()``; every public function also takes per-call
+keyword overrides. ``SAM_RAW_OUTPUT=1`` skips compact notation entirely,
+``SAM_SIG_FIGS`` sets significant figures.
 
-Quick reference
----------------
-    from sam import fmt
-
-    fmt.number(68_567_808)          # '68.6M'
-    fmt.number(68_567_808, raw=True)# '68,567,808'
-    fmt.pct(0.4)                    # '0.4%'
-    fmt.date_str(some_dt)           # '2024-10-01'
-    fmt.size(1_234_567_890_123)     # '1.12 TiB'
-
-    # Jinja2 (call once in create_app)
-    fmt.register_jinja_filters(app)
-    # -> {{ value | fmt_number }}  {{ value | fmt_pct }}  etc.
-
-    # matplotlib
-    ax.yaxis.set_major_formatter(fmt.mpl_number_formatter())
+``register_jinja_filters(app)`` exposes these as ``{{ x | fmt_number }}`` etc;
+``mpl_number_formatter()`` is the matplotlib tick formatter. Filter table:
+CLAUDE.md, *Display Formatting*.
 """
 import math
 import os

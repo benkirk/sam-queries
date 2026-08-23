@@ -1,36 +1,29 @@
-"""``TaskLedger`` — claim a slot, hold it, close it out.
+"""``TaskLedger`` -- claim a slot, hold it, close it out.
 
 Two locking primitives, chosen because they are the only ones that work
-everywhere this code runs. Production is Postgres (`csg-postgres`), the config
-default is MySQL, and tests are SQLite — so ``SELECT ... FOR UPDATE SKIP
-LOCKED`` (absent on SQLite), MySQL's ``GET_LOCK`` and Postgres advisory locks
-are all out. What remains is portable and, happily, sufficient:
+everywhere this runs. Production is Postgres, the config default is MySQL,
+tests are SQLite -- so ``SELECT ... FOR UPDATE SKIP LOCKED``, MySQL ``GET_LOCK``
+and Postgres advisory locks are all out.
 
-**A — claim a new occurrence: INSERT, catch the unique violation.** Whoever
-wins the ``uq_task_run_task_name_occurrence_key`` race owns the slot; the loser
-gets ``None`` and moves on.
-
-**B — reclaim a stale one: conditional UPDATE, check ``rowcount``.** A
+**A -- claim a new occurrence: INSERT, catch the unique violation.** Whoever
+wins the ``uq_task_run_task_name_occurrence_key`` race owns the slot.
+**B -- reclaim a stale one: conditional UPDATE, check ``rowcount``.** A
 single-statement compare-and-swap is atomic under every isolation level on all
-three backends, needs no explicit locking syntax, and gives exactly what
-``SELECT ... FOR UPDATE`` would with none of the portability cost.
+three backends.
 
-WARNING: **No dialect-specific SQL may enter this module** — no ``ON CONFLICT``, no
-``INSERT IGNORE``, no ``ON DUPLICATE KEY``. CI runs SQLite and production runs
-Postgres; ``tests/unit/test_task_ledger.py`` has an AST guard that is the only
+WARNING: no dialect-specific SQL may enter this module -- no ``ON CONFLICT``,
+no ``INSERT IGNORE``, no ``ON DUPLICATE KEY``. CI runs SQLite and production
+runs Postgres; the AST guard in ``tests/unit/test_task_ledger.py`` is the only
 thing standing between those two facts.
 
-**Session discipline, copied from ``sam.notify.ledger.NotificationLedger``.**
-Every method opens its own short-lived session from a ``session_factory``,
-commits, and closes — never enrolling in the caller's transaction. That is not
-stylistic here: on Postgres an ``IntegrityError`` aborts the entire
-transaction, and every subsequent statement on that connection fails with
-``InFailedSqlTransaction``. Claiming on the session the task body will then use
-would poison it. The ledger and the task's own work are deliberately separate
-transactions, so a task that rolls back its data changes still leaves an honest
-record that it ran and failed.
+WARNING: every method opens its OWN short-lived session, commits and closes --
+never enrolling in the caller's transaction. On Postgres an ``IntegrityError``
+aborts the whole transaction and every later statement fails with
+``InFailedSqlTransaction``, so claiming on the session the task body will use
+would poison it. It also means a task that rolls back its data changes still
+leaves an honest record that it ran and failed.
 
-See ``docs/plans/implemented/SCHEDULED_TASKS.md`` § 4.4 and § 4.5.
+See ``docs/plans/implemented/SCHEDULED_TASKS.md`` sections 4.4 and 4.5.
 """
 
 from __future__ import annotations

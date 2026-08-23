@@ -1,36 +1,21 @@
 """Template-method base class for HTMX form POST/PUT handlers.
 
-`handle_htmx_form_post` (utils/htmx.py) covers the straight-line
-create/edit flow with kwargs. This module is for the handlers that
-outgrew it — the ones with variation axes a function can't express:
-partial loads with PUT gating, ORM-dependent cross-field checks,
-domain-exception mapping, custom success responses, post-commit hooks.
-
-Lifecycle (`handle()`)::
+`handle_htmx_form_post` (utils/htmx.py) covers the straight-line create/edit
+flow. This is for handlers that outgrew it: partial loads with PUT gating,
+ORM-dependent cross-field checks, domain-exception mapping, custom success
+responses, post-commit hooks.
 
     form_input() -> load() -> clean()
         -> [management_transaction: perform()]
         -> after_commit() -> on_success()
 
-Every error path funnels through `render_errors()`, which re-renders
-`template` with ``errors`` (form-level list), ``field_errors`` (per-field
-dict for the form_fields.html inline macros), ``form=request.form``, and
-whatever `context()` returns.
+Every error path funnels through `render_errors()`, which re-renders `template`
+with ``errors`` (form-level), ``field_errors`` (per-field, for the
+form_fields.html inline macros), ``form=request.form``, and `context()`.
 
-A route stays a thin shell — load entities, instantiate, delegate::
-
-    @bp.route('/htmx/project-update/<projcode>', methods=['PUT'])
-    @login_required
-    @require_permission(Permission.EDIT_PROJECTS)
-    def htmx_project_update(projcode):
-        project = Project.get_by_projcode(db.session, projcode)
-        if not project:
-            return htmx_not_found('Project')
-        return _ProjectUpdateHandler(project=project).handle()
-
-Error rendering is **inline field errors** (`HtmxFormSchema.split_errors`)
-by design — the PR #336 unification. Cross-field messages (marshmallow's
-``_schema`` key, or `FormError`) land in the top alert panel.
+A route stays a thin shell -- load entities, instantiate, delegate. Error
+rendering is inline field errors by design; cross-field messages
+(marshmallow's ``_schema`` key, or `FormError`) land in the top alert panel.
 """
 
 from flask import flash, make_response, render_template, request

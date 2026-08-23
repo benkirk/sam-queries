@@ -1,47 +1,19 @@
 """HTMX fragment routes for the Job History card (per-job rows + aggregations).
 
-Project-mode endpoints (url_prefix ``/dashboards/user/jobs``):
+Project-mode endpoints under ``/dashboards/user/jobs``: the per-job table
+(``/<projcode>``), the per-user usage pie (``/by-user``), three histograms
+(``/wait-times``, ``/job-sizes``, ``/durations``) and the tab shell itself
+(``/card``, the period pills' target).
 
-  GET /<projcode>             — per-job table (the Jobs tab; original route)
-  GET /<projcode>/by-user     — per-user usage pie + drillable rows
-  GET /<projcode>/wait-times  — wait-time histogram (dimension pinned 'wait')
-  GET /<projcode>/job-sizes   — resource-needs histogram (?dimension=
-                                nodes|cpus|gpus|memory)
-  GET /<projcode>/durations   — elapsed-time histogram (pinned 'duration')
-  GET /<projcode>/card        — the tab shell itself, re-rendered for a new
-                                lookback (?days=); the period pills' target
+Query params are documented on the service functions. Two are non-obvious:
+``days`` outranks ``start``/``end`` -- the period pills can only append to a
+URL whose window was baked in at render time -- and is normalized back to
+``start=`` before anything downstream sees it; ``machine`` is required.
 
-Jobs-tab query params: ``GET /dashboards/user/jobs/<projcode>``
-
-Query params (all optional unless noted):
-  machine   (required) — 'derecho' or 'casper'
-  start, end           — YYYY-MM-DD; filters on Job.end
-  days                 — lookback in days, one of
-                         service.JOBS_WINDOW_CHOICES; outranks start/end
-                         (the card's period pills, which can only append
-                         to a URL whose window was baked in at render
-                         time). Normalized back to start= before anything
-                         downstream sees it.
-  user                 — limit to a single PBS username
-  queue                — limit to a single queue
-  qos                  — limit to a single QoS / priority class
-                         (e.g. 'premium', 'regular', 'economy',
-                         'uncharged', 'special')
-  exit_status          — limit to a single PBS exit code as text
-                         (e.g. '0' = success, '1', '271')
-  page                 — int ≥ 1; default 1
-  per_page             — int in [10, 200]; default 50
-  sort_by              — any _DEFAULT_COLS key (e.g. 'user', 'start',
-                         'elapsed', 'qos', 'cpu_charges'); default None
-                         (plugin orders by ``Job.end DESC``)
-  sort_dir             — 'asc' | 'desc'; default 'desc'
-
-Access control mirrors the rest of the project-scoped UI: the
-``require_project_access`` decorator looks the project up by ``projcode``,
-verifies the user can see it (VIEW_PROJECTS permission OR project
-membership), then hands the route a Project object. The service layer
-additionally pins ``Job.account = project.projcode`` so a malformed
-filter cannot leak cross-project rows.
+Access control mirrors the rest of the project-scoped UI:
+``require_project_access`` resolves ``projcode`` and hands the route a Project.
+The service layer additionally pins ``Job.account = project.projcode`` so a
+malformed filter cannot leak cross-project rows.
 """
 
 from __future__ import annotations

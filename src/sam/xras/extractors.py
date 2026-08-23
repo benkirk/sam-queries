@@ -1,42 +1,34 @@
-"""Turning wire fields into SAM rows: allocation type, area of interest, mnemonic,
-contract.
+"""Turning wire fields into SAM rows: allocation type, area of interest,
+mnemonic, contract.
 
-Four independent lookups that every project-shaped handler needs, extracted here
-because legacy extracts them here too — and because each one is a place where a
-plausible reading of the payload gives the wrong answer.
+Four independent lookups every project-shaped handler needs, each a place where
+a plausible reading of the payload gives the wrong answer.
 
-The contract they all share
----------------------------
-**They report; they do not raise.** ``ProjectActionCommandFactoryBase`` catches
-``AttributeExtractionException`` from the area-of-interest (`:79-81`), allocation-type
-(`:103-105`) and mnemonic (`:115-117`) extractors and funnels ``e.getMessage()`` into
-the observer, so an unresolvable mnemonic and a missing title arrive in the *same*
-422. Every function below takes an :class:`~sam.xras.errors.ActionErrors`, reports
-into it, and returns ``None`` — never raises for a data problem.
+Three shared contracts:
 
-**They return ORM rows, not ids or names.** Legacy returns an ``Integer`` id from the
-allocation-type extractor and a ``String`` name from the area-of-interest one, because
-its downstream commands re-resolve them. Ours have no such commands, so returning the
-row is both cheaper and harder to misuse — and the allocation-type row carries the
-panel, which ``getAuthAtPanelMeeting()`` needs.
+**They report; they do not raise.** Legacy funnels every extraction failure
+into one observer, so an unresolvable mnemonic and a missing title arrive in
+the SAME 422. Every function takes an
+:class:`~sam.xras.errors.ActionErrors`, reports into it, and returns ``None``.
 
-**They are pure where they can be.** :func:`select_allocation_type_parms` takes no
-session: the eleven-strategy chain is string matching, and the database is consulted
-only to turn the resulting pair into a row. That split is what lets the strategy
+**They return ORM rows, not ids or names.** Legacy returns an id or a string
+because its downstream commands re-resolve them; ours have none, so the row is
+cheaper and harder to misuse -- and the allocation-type row carries the panel,
+which ``getAuthAtPanelMeeting()`` needs.
+
+**They are pure where they can be.** :func:`select_allocation_type_parms` takes
+no session: the eleven-strategy chain is string matching, and the database is
+consulted only to turn the pair into a row. That is what lets the strategy
 order be tested against the corpus without a database.
 
-Where the traps are
--------------------
-Each function's docstring carries its own; the two that would silently produce wrong
-data are worth naming up front:
+Two traps would silently produce wrong data:
 
-1. ``fosNum`` is an ``area_of_interest_id``, **not** an ``fos_aoi.fos_id``. See
-   :func:`resolve_area_of_interest`.
-2. A ``(panel, type)`` pair must be resolved to an id **at runtime**. ``Small`` and
-   ``Education`` each name two different ``allocation_type`` rows.
+1. ``fosNum`` is an ``area_of_interest_id``, NOT an ``fos_aoi.fos_id``.
+2. A ``(panel, type)`` pair must be resolved to an id AT RUNTIME -- ``Small``
+   and ``Education`` each name two different ``allocation_type`` rows.
 
-Verified against ``~/codes/sam`` at tag 2.0.3. Design notes and the production
-measurements behind them: ``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
+Verified against ``~/codes/sam`` at tag 2.0.3. See
+``docs/xras/incoming/implemented/XRAS_SPRINT_C.md``.
 """
 
 import re

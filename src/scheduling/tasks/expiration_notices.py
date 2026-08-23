@@ -1,35 +1,31 @@
-"""``expiration_notices`` — email upcoming allocation expirations, weekly.
+"""``expiration_notices`` -- email upcoming allocation expirations, weekly.
 
-Monday 09:00 America/Denver. The first real consumer of both `sam/notify/`
-and this package, and the first task at all that declares ``needs=('sam',)``.
+Monday 09:00 America/Denver. The first consumer of `sam/notify/` and the first
+task declaring ``needs=('sam',)``.
 
-WARNING: **A task computes from ``ctx.occurrence``, never from the wall clock.**
-Here that is doubly load-bearing, because `ctx.occurrence` is naive **UTC**
-while ``Allocation.end_date`` is naive **Mountain**: comparing them raw is a
-6-7 hour skew, and a run dispatched 20 hours late would select a different
-cohort than a punctual one. Both are fixed by converting to the schedule's
-zone and truncating to local midnight — see :func:`window_start`.
+WARNING: a task computes from ``ctx.occurrence``, never the wall clock, and
+here that is doubly load-bearing: ``ctx.occurrence`` is naive UTC while
+``Allocation.end_date`` is naive Mountain. Comparing them raw is a 6-7 hour
+skew, and a run dispatched 20 hours late would select a different cohort than a
+punctual one. Both are fixed by converting to the schedule's zone and
+truncating to local midnight -- see :func:`window_start`.
 
-**Why weekly, not monthly.** Runs 7 days apart with a 40-day band mean each
-expiration is selected on 5-6 consecutive runs, so a skipped or failed week
-is recovered by the next one and dedup prevents the double-send. A monthly
-cadence gets one shot per expiration.
+**Weekly, not monthly**, because runs 7 days apart with a 40-day band select
+each expiration on 5-6 consecutive runs: a skipped or failed week is recovered
+by the next, and dedup prevents the double-send. Monthly gets one shot.
 
-**Volume is spiky, not smooth.** 97% of allocations end on a month's last
-day, and month-ends are ~30 days apart, so a weekly run's newly-entering
-cohort — the 7-day band ``[run+33, run+40)`` — catches at most one cluster.
-Measured against the snapshot: ~12 loaded runs a year peaking at ~535
-messages, and ~40 runs sending 0-15. That shape is why the pre-filter in
-:func:`_drop_already_notified` is permanent rather than an optimization.
+**Volume is spiky, not smooth.** 97% of allocations end on a month's last day,
+so a weekly run's newly-entering cohort catches at most one cluster -- ~12
+loaded runs a year peaking at ~535 messages, and ~40 runs sending 0-15. That
+shape is why :func:`_drop_already_notified` is permanent rather than an
+optimization.
 
-**Kill recovery.** Killed mid-send (an `activeDeadlineSeconds` timeout, say)
-leaves the ledger row `running`; the next hourly dispatch reclaims the stale
-lease and re-runs; the re-run's `already_sent_many` suppresses everyone
-already `sent`, so only the remainder goes. Nothing is sent twice and nothing
-is lost — which is only true because the lease outlives the pod deadline. See
-`expected_runtime` below.
+**Kill recovery.** Killed mid-send leaves the ledger row `running`; the next
+hourly dispatch reclaims the stale lease and re-runs, and ``already_sent_many``
+suppresses everyone already `sent`. Nothing is sent twice and nothing is lost --
+true only because the lease outlives the pod deadline. See `expected_runtime`.
 
-Design: ``docs/plans/EXPIRATION_NOTICES.md``.
+Design: ``docs/plans/implemented/EXPIRATION_NOTICES.md``.
 """
 
 from __future__ import annotations
