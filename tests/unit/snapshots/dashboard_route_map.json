@@ -1652,6 +1652,13 @@
     ]
   ],
   [
+    "allocations_dashboard.xras_recheck_request",
+    "/allocations/xras_recheck_request/<path:request_number>",
+    [
+      "POST"
+    ]
+  ],
+  [
     "allocations_dashboard.xras_remediations_fragment",
     "/allocations/xras_remediations",
     [

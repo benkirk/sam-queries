@@ -128,6 +128,12 @@ class ActionRef:
     source: str = SOURCE_ACTION_LOG
     #: ``dispatch_action(validate_only=True)``'s verdict. ``None`` = not run.
     would_succeed: Optional[bool] = None
+    #: The richer verdict behind ``would_succeed``: ``rechecked`` (would land) /
+    #: ``failed`` (would 422) / ``manual`` (nothing would run — parked) /
+    #: ``unchecked`` (preflight raised) / ``None`` (not run). ``would_succeed``
+    #: is ``status == 'rechecked'``; ``manual`` is NOT success (its reason rides
+    #: ``reject_messages``) — the trap Phase 0 fixed.
+    preflight_status: Optional[str] = None
     #: Verbatim, **display-only**. These are a byte-pinned wire contract
     #: (``sam/xras/errors.py``), not an interface — never parse them.
     reject_messages: Tuple[str, ...] = ()
@@ -258,10 +264,10 @@ def records_from_action_log(session: Session, *,
         if not usernames:
             continue
 
-        would_succeed, messages = None, ()
+        preflight_status, messages = None, ()
         if validate and row.status in VALIDATE_STATUSES:
-            would_succeed, messages = _validate(session, action,
-                                                row.xras_action_log_id)
+            preflight_status, messages = _validate(session, action,
+                                                   row.xras_action_log_id)
 
         records.append(RosterRecord(
             ref=ActionRef(action_log_id=row.xras_action_log_id,
@@ -270,7 +276,8 @@ def records_from_action_log(session: Session, *,
                           status=row.status,
                           received_time=row.received_time,
                           source=SOURCE_ACTION_LOG,
-                          would_succeed=would_succeed,
+                          would_succeed=_would_succeed(preflight_status),
+                          preflight_status=preflight_status,
                           reject_messages=messages),
             usernames=usernames,
             roles_by_username={k: tuple(v) for k, v in roles.items()},
@@ -278,23 +285,39 @@ def records_from_action_log(session: Session, *,
     return records
 
 
+def _would_succeed(status: Optional[str]) -> Optional[bool]:
+    """``rechecked`` is the only success; ``manual`` is not (Phase 0 trap)."""
+    if status is None or status == 'unchecked':
+        return None
+    return status == 'rechecked'
+
+
 def _validate(session: Session, action, action_log_id
-              ) -> Tuple[Optional[bool], Tuple[str, ...]]:
-    """Run the dispatch pre-flight, catching its rejection."""
+              ) -> Tuple[Optional[str], Tuple[str, ...]]:
+    """Run the dispatch pre-flight; return its ``(status, messages)`` verdict.
+
+    Registers the handlers first (import side effect) — the CLI/sweep path
+    imports none, so without this every dispatch parks as ``manual``. ``manual``
+    is a real not-success answer here, its reason carried in ``messages``; only
+    ``rechecked`` is success.
+    """
     from sam.xras.dispatch import dispatch_action
     from sam.xras.errors import XrasActionRejected
+    import sam.xras.handlers  # noqa: F401 — registers handlers by side effect
 
     try:
-        dispatch_action(session, action, validate_only=True)
-        return True, ()
+        result = dispatch_action(session, action, validate_only=True)
     except XrasActionRejected as exc:
-        return False, tuple(exc.messages)
+        return 'failed', tuple(exc.messages)
     except Exception as exc:                     # noqa: BLE001
         # The worklist is a report. A handler blowing up on one action must
         # not take the whole card down — record "we could not tell".
         logger.warning('xras worklist: validate failed for action %s (%s)',
                        action_log_id, exc)
-        return None, ()
+        return 'unchecked', ()
+    if result.status == 'manual':
+        return 'manual', (result.reason,) if result.reason else ()
+    return 'rechecked', ()
 
 
 # Feed B: the outbound enumeration
@@ -325,6 +348,20 @@ def iter_roster_entries(
             person = {}
         roles = [r for r in (entry.get('roles') or ()) if isinstance(r, dict)]
         yield person, roles
+
+
+def _report_action_type(payload: dict) -> Optional[str]:
+    """The request's representative ``actionType`` — never ``requestType``.
+
+    ``requestType`` is ``New``/``Renewal`` on every row and does not select a
+    handler (``schemas/forms/xras.py``); the dispatching type lives on each
+    action. A request usually carries one action; take the first that names a
+    type, falling back to ``requestType`` only when none do.
+    """
+    for action in payload.get('actions') or ():
+        if isinstance(action, dict) and action.get('actionType'):
+            return action.get('actionType')
+    return payload.get('requestType')
 
 
 def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]:
@@ -366,7 +403,7 @@ def records_from_report_requests(payloads: Iterable[dict]) -> List[RosterRecord]
         records.append(RosterRecord(
             ref=ActionRef(action_log_id=None,
                           request_number=payload.get('requestNumber'),
-                          action_type=payload.get('requestType'),
+                          action_type=_report_action_type(payload),
                           status=payload.get('requestStatus'),
                           received_time=None,
                           submit_date=(str(payload.get('submitDate'))[:10]
@@ -523,6 +560,7 @@ def classify_accounts(session: Session,
                 'submit_date': record.ref.submit_date,
                 'source': record.ref.source,
                 'would_succeed': record.ref.would_succeed,
+                'preflight_status': record.ref.preflight_status,
                 'reject_messages': list(record.ref.reject_messages),
             })
 

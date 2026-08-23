@@ -61,6 +61,15 @@
         Open in XRAS <i class="fas fa-arrow-up-right-from-square"></i>
     </a>
     {% endif %}
+    {# Re-run the never-writes preflight for this request now and patch the
+       snapshot, so the verdicts below update in the same interaction rather than
+       waiting for the next hourly sweep. Read-only; needs only the read client. #}
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary{% if not payload.publicURL %} ms-auto{% endif %}"
+            title="Re-run SAM's push-readiness pre-flight for this request. Nothing is applied."
+            hx-post="{{ url_for('allocations_dashboard.xras_recheck_request',
+                                request_number=request_number) }}"
+            hx-swap="none">Re-check now</button>
 </div>
 
 {% if payload.isDeleted %}
@@ -270,6 +279,65 @@
             {%- if doc.filename %} <span class="text-muted">({{ doc.filename }}{% if doc.size %}, {{ doc.size | fmt_size }}{% endif %})</span>{% endif %}
         </span>{% if not loop.last %};{% endif %}
         {% endfor %}
+    </div>
+    {% endif %}
+
+    {# SAM pre-flight — a never-writes verdict: "if XRAS pushed this action today,
+       would SAM's ingest accept it?" Advisory, computed from the reports payload
+       by the hourly sweep; the messages are the exact ordered 422 a real push
+       would return. Absent when nobody checked (no candidate in the window). #}
+    {% set pf = action.preflight %}
+    {% if pf %}
+    <div class="border rounded p-2 mt-2 small">
+        <div class="d-flex align-items-center gap-2">
+            <span class="text-uppercase text-muted">SAM pre-flight</span>
+            {% if pf.status == 'rechecked' %}
+            <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle">would land</span>
+            {% elif pf.status == 'failed' %}
+            <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle">would fail ({{ pf.messages | length }})</span>
+            {% elif pf.status == 'manual' %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">would park</span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">unchecked</span>
+            {% endif %}
+            {% if pf.stage and pf.stage != 'Approved' %}
+            <span class="text-muted">provisional — {{ pf.stage }} stage</span>
+            {% endif %}
+            {% if pf.push_state == 'seen_in_log' %}
+            <span class="text-muted">· pushed{% if pf.push_detail and pf.push_detail.status %} ({{ pf.push_detail.status }}){% endif %}</span>
+            {% elif pf.push_state == 'applied_inferred' %}
+            <span class="text-muted">· SAM state already reflects it</span>
+            {% elif pf.push_state == 'pending' %}
+            <span class="text-muted">· not yet pushed</span>
+            {% endif %}
+        </div>
+        {% if pf.messages %}
+        <ul class="mb-1 mt-1 ps-3">
+            {% for m in pf.messages %}<li class="text-danger-emphasis">{{ m }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% if pf.resolved and pf.resolved.series %}
+        <div class="text-muted">Would mint in series <span class="font-monospace">{{ pf.resolved.series }}</span>{% if pf.resolved.allocation_type %} · {{ pf.resolved.allocation_type }}{% endif %}</div>
+        {% endif %}
+        {% if pf.gaps %}
+        <div class="text-muted">Not synthesized: {{ pf.gaps | join(', ') }}</div>
+        {% endif %}
+        {# Calibration: the prediction beside what actually happened when XRAS
+           pushed this action. Present only once a real push has landed. #}
+        {% if action.actual %}
+        <div class="mt-1 pt-1 border-top">
+            <span class="text-muted">Predicted</span>
+            {% if pf.status == 'rechecked' %}would land{% elif pf.status == 'failed' %}would fail ({{ pf.messages | length }}){% elif pf.status == 'manual' %}would park{% else %}unchecked{% endif %}
+            <span class="text-muted">· Actual</span>
+            <span class="font-monospace">{{ action.actual.status }}{% if action.actual.http_status %} {{ action.actual.http_status }}{% endif %}</span>
+            {% if action.actual.raw_payload %}
+            <details class="mt-1">
+                <summary class="text-muted">Payload XRAS sent</summary>
+                <pre class="small mt-1 mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ action.actual.raw_payload }}</pre>
+            </details>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 </div>

@@ -122,6 +122,10 @@ DEFAULT_STATUS = 'Approved'
 #: and the cache means the card's own renders do not repeat them.
 DEFAULT_MAX_PEOPLE = 250
 
+#: Preflight lookback in days back from the slot. Bounds the never-writes verdict
+#: to recently-entered actions — the recent slice, not every action ever.
+DEFAULT_PREFLIGHT_DAYS = 120
+
 #: Opportunity mapping rows writable per run. See :func:`map_max`.
 DEFAULT_MAP_MAX = 20
 
@@ -196,6 +200,16 @@ def window_days(env: Optional[dict] = None) -> int:
                          DEFAULT_WINDOW_DAYS)
 
 
+def preflight_days(env: Optional[dict] = None) -> int:
+    """Preflight lookback, from ``$SAM_TASKS_XRAS_PREFLIGHT_DAYS``.
+
+    Bounds cost and noise: every action across the enumeration is thousands, the
+    recent slice is tens to low hundreds. The window is reported in ``detail``.
+    """
+    return _positive_int(env, 'SAM_TASKS_XRAS_PREFLIGHT_DAYS',
+                         DEFAULT_PREFLIGHT_DAYS)
+
+
 def sweep_status(env: Optional[dict] = None) -> Optional[str]:
     """Which request status to enumerate; ``None`` means every status.
 
@@ -241,6 +255,169 @@ def overlaps_window(payload: dict, *, window_start: date) -> bool:
         return date.fromisoformat(str(raw)[:10]) >= window_start
     except ValueError:
         return True
+
+
+def _resource_key_map(ctx, client, detail) -> Optional[dict]:
+    """``resourceId -> resourceRepositoryKey`` from ``/v1/resources``, or None.
+
+    None (a read failure) makes every resource a synthesis gap rather than a
+    fabricated key — the pure preflight never calls out itself.
+    """
+    try:
+        catalog = client.get_resources()
+    except Exception as exc:                            # noqa: BLE001
+        detail['unavailable_errors'] += 1
+        ctx.logger.warning('xras_sweep: resource catalog fetch failed: %s', exc)
+        return None
+    mapping = {}
+    for resource in catalog or ():
+        if not isinstance(resource, dict):
+            continue
+        rid, key = resource.get('resourceId'), resource.get('resourceRepositoryKey')
+        if rid is not None and key is not None:
+            try:
+                mapping[int(rid)] = int(key)
+            except (TypeError, ValueError):
+                continue
+    return mapping
+
+
+def _opportunity_map(ctx, client, opportunity_ids, detail) -> Optional[dict]:
+    """``opportunityId -> opportunity dict`` for the cohort, or None on failure."""
+    ids = {int(i) for i in opportunity_ids if i is not None}
+    if not ids:
+        return {}
+    try:
+        found = client.get_opportunities(sorted(ids))
+    except Exception as exc:                            # noqa: BLE001
+        detail['unavailable_errors'] += 1
+        ctx.logger.warning('xras_sweep: opportunity resolve for preflight failed: %s', exc)
+        return None
+    return {o['opportunityId']: o for o in (found or ())
+            if isinstance(o, dict) and o.get('opportunityId') is not None}
+
+
+def _run_preflights(ctx, client, session, all_payloads, *, since, detail):
+    """Preflight every recent candidate action; return ``(by_number, numbers)``.
+
+    ``by_number`` maps ``requestNumber`` to ``{action_id: verdict_dict}``;
+    ``numbers`` is the set of requests carrying at least one candidate action.
+    Injects the resource/opportunity maps; a raising preflight costs that action.
+    """
+    from sam.integration.xras import XrasActionLog
+    from sam.xras.preflight import (iter_candidate_actions, preflight_action,
+                                    verdict_to_dict)
+
+    candidates = [(p, a) for p in all_payloads if isinstance(p, dict)
+                  for a in iter_candidate_actions(p, since=since)]
+    summary = {'window_days': preflight_days(), 'candidates': len(candidates),
+               'rechecked': 0, 'failed': 0, 'manual': 0, 'unchecked': 0,
+               'by_push_state': {}, 'by_stage': {}}
+    detail['preflight'] = summary
+    # Calibration: when a candidate has ALSO been pushed for real, compare the
+    # prediction against the log outcome — the only way to grade the field map.
+    calibration = {'compared': 0, 'agree': 0, 'sample': []}
+    detail['preflight_calibration'] = calibration
+    if not candidates:
+        return {}, set()
+
+    action_ids = {a.get('actionId') for _, a in candidates
+                  if a.get('actionId') is not None}
+    log_seen = {}
+    try:
+        for row in (session.query(XrasActionLog)
+                    .filter(XrasActionLog.action_id.in_(action_ids)).all()):
+            log_seen[row.action_id] = {
+                'status': row.status,
+                'received_time': (row.received_time.isoformat()
+                                  if row.received_time else None),
+                'log_id': row.xras_action_log_id}
+    except Exception as exc:                            # noqa: BLE001
+        ctx.logger.warning('xras_sweep: log_seen lookup failed: %s', exc)
+
+    resource_keys = _resource_key_map(ctx, client, detail)
+    opportunities = _opportunity_map(
+        ctx, client, {p.get('opportunityId') for p, _ in candidates}, detail)
+
+    by_number: dict = {}
+    numbers: set = set()
+    for payload, action in candidates:
+        number = str(payload.get('requestNumber') or '').strip()
+        if number:
+            numbers.add(number)
+        try:
+            verdict = preflight_action(session, payload, action,
+                                       resource_keys=resource_keys,
+                                       opportunities=opportunities,
+                                       enabled=None, log_seen=log_seen)
+        except Exception as exc:                        # noqa: BLE001
+            summary['unchecked'] += 1
+            ctx.logger.warning('xras_sweep: preflight raised for %s (%s)',
+                               action.get('actionId'), exc)
+            continue
+        summary[verdict.status] = summary.get(verdict.status, 0) + 1
+        summary['by_push_state'][verdict.push_state] = \
+            summary['by_push_state'].get(verdict.push_state, 0) + 1
+        summary['by_stage'][verdict.stage] = \
+            summary['by_stage'].get(verdict.stage, 0) + 1
+        _calibrate(calibration, verdict, log_seen.get(verdict.action_id))
+        if number and verdict.action_id is not None:
+            by_number.setdefault(number, {})[verdict.action_id] = \
+                verdict_to_dict(verdict)
+    return by_number, numbers
+
+
+#: Predicted preflight status -> the ``xras_action_log.status`` it should match
+#: if the field map is right. ``unchecked`` makes no prediction to grade.
+_CALIBRATION_EXPECTED = {'rechecked': 'processed', 'failed': 'failed',
+                         'manual': 'manual'}
+
+
+def _calibrate(calibration, verdict, seen) -> None:
+    """Tally one prediction against the real push outcome, when there is one."""
+    expected = _CALIBRATION_EXPECTED.get(verdict.status)
+    actual = (seen or {}).get('status')
+    if expected is None or actual not in ('processed', 'failed', 'manual'):
+        return
+    calibration['compared'] += 1
+    agree = expected == actual
+    if agree:
+        calibration['agree'] += 1
+    if len(calibration['sample']) < _MAX_REPORTED:
+        calibration['sample'].append(
+            {'action_id': verdict.action_id, 'predicted': verdict.status,
+             'actual': actual, 'agree': agree})
+
+
+def _apply_worklist_preflights(enumerated, index_entries) -> None:
+    """Stamp each Feed-B worklist action with its request's roll-up verdict.
+
+    The index already carries a per-action verdict; a Feed-B worklist row is
+    request-keyed, so it takes the worst verdict across that request's actions.
+    A Feed-A row (posted, already had ``_validate``) is left alone.
+    """
+    from sam.queries.xras_requests import _preflight_rollup
+
+    rollup: dict = {}
+    for entry in index_entries or ():
+        number = entry.get('request_number')
+        verdicts = {a['action_id']: a['preflight'] for a in entry.get('actions', ())
+                    if a.get('preflight')}
+        status = _preflight_rollup(verdicts)
+        if not status:
+            continue
+        worst = next(v for v in verdicts.values() if v['status'] == status)
+        rollup[number] = worst
+
+    for row in enumerated or ():
+        for action in row.get('actions', ()):
+            if action.get('source') != 'reports' or action.get('preflight_status'):
+                continue
+            worst = rollup.get(action.get('request_number'))
+            if worst:
+                action['would_succeed'] = worst['would_succeed']
+                action['preflight_status'] = worst['status']
+                action['reject_messages'] = list(worst['messages'])
 
 
 def _build_requests_index(ctx, client, session, approved_payloads, detail):
@@ -320,11 +497,21 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
         return None
     pending = numbers - known
 
-    # Approved requests that HAVE been pushed drop out here; the extra statuses
-    # are kept whatever SAM knows, because a Submitted request having a project
-    # already is itself worth an operator's eye.
+    # Preflight every recent candidate action across the whole enumeration,
+    # before the cohort filter — an already-pushed Approved request with a fresh
+    # Extension is exactly the row the operator wants to see.
+    since = (to_local_naive(ctx.occurrence, ZoneInfo(DEFAULT_TZ)).date()
+             - timedelta(days=preflight_days()))
+    preflights_by_number, candidate_numbers = _run_preflights(
+        ctx, client, session, payloads + extra_payloads, since=since, detail=detail)
+
+    # Approved requests that HAVE been pushed normally drop out here — but one
+    # carrying a candidate action is kept (rendered pending_push=False). The
+    # extra statuses are kept whatever SAM knows, because a Submitted request
+    # having a project already is itself worth an operator's eye.
+    keep = pending | candidate_numbers
     cohort = [p for p in payloads
-              if str(p.get('requestNumber') or '').strip() in pending]
+              if str(p.get('requestNumber') or '').strip() in keep]
     cohort.extend(p for p in extra_payloads if isinstance(p, dict))
 
     entries, indexed = [], set()
@@ -337,7 +524,8 @@ def _build_requests_index(ctx, client, session, approved_payloads, detail):
             # patch rewrites only the first match. First copy wins; the
             # primary copy comes first and carries the same classification.
             continue
-        entry = request_index_entry(payload, pending_push=number in pending)
+        entry = request_index_entry(payload, pending_push=number in pending,
+                                    preflights=preflights_by_number.get(number))
         if entry is not None:
             entries.append(entry)
             indexed.add(number)
@@ -521,6 +709,12 @@ def xras_sweep(ctx) -> TaskResult:
         'index_requests': 0,
         'index_published': False,
         'index_publish_backend': '',
+        # Push-readiness: filled by `_run_preflights`. `{}` means the index build
+        # did not reach the preflight (no requests, or an early build failure) —
+        # distinct from a run that checked and found nothing.
+        'preflight': {},
+        # Predicted-vs-actual, for the actions that have since been pushed.
+        'preflight_calibration': {},
     }
 
     if not xras_api_configured():
@@ -693,6 +887,11 @@ def xras_sweep(ctx) -> TaskResult:
 
     # 4b. the Remediations index
     index_entries = _build_requests_index(ctx, client, session, unwindowed, detail)
+
+    # 4c. fill the Pending Users tab's Pre-flight column for Feed-B rows from the
+    # per-request roll-up the index just computed. The worklist's pending
+    # requests are a subset of the index cohort, so no second preflight is run.
+    _apply_worklist_preflights(enumerated, index_entries)
 
     # 5. publish for the dashboard
     #

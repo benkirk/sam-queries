@@ -164,6 +164,12 @@ write direction.
 
 ### 2.2 The mnemonic unblock report — tier A, a pivot of § 2.1
 
+**BUILT 2026-08-23** (stacked on the push-readiness PR): `sam-admin xras --mnemonic-report`
++ a summary strip on the allocations/xras Remediations card (both from
+`sam/queries/xras_mnemonic_report.py`), plus the create-mnemonic linker on the Organizations
+admin card. Admin/Orgs stays XRAS-free (the fix surface); the XRAS page owns the ranking and
+links to Admin. Covers both families; the "no current affiliation" cohort is its own bucket.
+
 The playbook calls the organization-mnemonic fix "the highest-leverage data fix available"
 (24% of legacy's XRAS failures; 153 of 171 active organizations have no soft link). Four
 corrections from the code, each of which changes the tool:

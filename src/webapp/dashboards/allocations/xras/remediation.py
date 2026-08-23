@@ -116,6 +116,13 @@ def xras_remediations_fragment():
     configured = xras_api_configured()
     write_enabled = xras_write_configured()
 
+    # The mnemonic-unblock ranking rides the same snapshot the card already loaded —
+    # no extra fetch. It resolves each failing PI's org against the DB (why it needs
+    # db.session). The strip points at Admin -> Organizations to fix; the write action
+    # lives there, so this page stays read-only about org metadata.
+    from sam.queries.xras_mnemonic_report import mnemonic_unblock_report
+    mnemonic_summary = mnemonic_unblock_report(db.session, payload)
+
     rows = list(payload.get('rows') or []) if payload else []
     swept_total = len(rows)
 
@@ -135,24 +142,32 @@ def xras_remediations_fragment():
     selected_opportunities = [o for o in request.args.getlist('opportunity') if o]
     selected_push = [p for p in request.args.getlist('push') if p]
     selected_requests = [n for n in request.args.getlist('request_number') if n]
+    selected_readiness = [r for r in request.args.getlist('readiness') if r]
 
     # Self-excluding facets: each dimension counts over the set filtered by the
     # *other* dimensions, so a chip never shows a zero that its own selection
     # caused and clicking one never empties the row it lives in.
     status_values = _facet(rows, 'status',
                            _apply(rows, opportunities=selected_opportunities,
-                                  push=selected_push, requests=selected_requests))
+                                  push=selected_push, requests=selected_requests,
+                                  readiness=selected_readiness))
     opportunity_values = _facet(rows, 'opportunity_name',
                                 _apply(rows, statuses=selected_statuses,
                                        push=selected_push,
-                                       requests=selected_requests))
+                                       requests=selected_requests,
+                                       readiness=selected_readiness))
     push_values = _push_facet(_apply(rows, statuses=selected_statuses,
                                      opportunities=selected_opportunities,
-                                     requests=selected_requests))
+                                     requests=selected_requests,
+                                     readiness=selected_readiness))
+    readiness_values = _readiness_facet(_apply(
+        rows, statuses=selected_statuses, opportunities=selected_opportunities,
+        push=selected_push, requests=selected_requests))
 
     rows = _apply(rows, statuses=selected_statuses,
                   opportunities=selected_opportunities,
-                  push=selected_push, requests=selected_requests)
+                  push=selected_push, requests=selected_requests,
+                  readiness=selected_readiness)
 
     return render_template(
         _CARD,
@@ -162,6 +177,7 @@ def xras_remediations_fragment():
         window_total=window_total,
         search=search,
         snapshot=payload,
+        mnemonic_summary=mnemonic_summary,
         configured=configured,
         write_enabled=write_enabled,
         # Distinguishes "no sweep at all" from "a sweep that predates this
@@ -170,16 +186,42 @@ def xras_remediations_fragment():
         status_values=status_values,
         opportunity_values=opportunity_values,
         push_values=push_values,
+        readiness_values=readiness_values,
         selected_statuses=selected_statuses,
         selected_opportunities=selected_opportunities,
         selected_push=selected_push,
         selected_requests=selected_requests,
+        selected_readiness=selected_readiness,
         request_values=[{'value': n, 'label': n, 'count': 1}
                         for n in selected_requests],
         form_id=_REMEDIATION_FORM_ID,
         fragment_url=url_for('allocations_dashboard.xras_remediations_fragment'),
         target_id=_REMEDIATION_TARGET,
     )
+
+
+@bp.route('/xras_recheck_request/<path:request_number>', methods=['POST'])
+@login_required
+@require_permission(Permission.MANAGE_XRAS)
+def xras_recheck_request(request_number: str):
+    """Re-run the never-writes preflight for one request and patch the snapshot.
+
+    Read-only against XRAS and never-writes against SAM. Degrades with a **200**
+    when the read client is unavailable — htmx will not swap a 4xx into an open
+    modal, and this fires from one.
+    """
+    result = remediation.recheck_readiness(request_number, session=db.session)
+    if not result['available']:
+        return htmx_success_message(
+            {}, 'XRAS could not be reached — the pre-flight was not re-run.',
+            detail='The card keeps its last swept verdicts. Try again shortly.')
+    counts = result['counts']
+    checked = sum(counts.values())
+    return htmx_success_message(
+        {'refreshXrasTab': {}},
+        f'Re-checked {request_number}: {checked} action(s) — '
+        f'{counts.get("rechecked", 0)} would land, {counts.get("failed", 0)} would fail.',
+        detail='Nothing was applied. The card shows the fresh verdicts.')
 
 
 def _has_worklist():
@@ -240,7 +282,8 @@ def _search(rows, needle):
             if any(wanted in str(v).casefold() for v in haystack(r) if v)]
 
 
-def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=()):
+def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=(),
+           readiness=()):
     out = list(rows)
     if statuses:
         out = [r for r in out if r.get('status') in statuses]
@@ -251,6 +294,8 @@ def _apply(rows, *, statuses=(), opportunities=(), push=(), requests=()):
                if ('pending' if r.get('pending_push') else 'pushed') in push]
     if requests:
         out = [r for r in out if r.get('request_number') in requests]
+    if readiness:
+        out = [r for r in out if (r.get('preflight_rollup') or 'none') in readiness]
     return out
 
 
@@ -271,6 +316,22 @@ def _push_facet(scoped_rows):
         counts['pending' if row.get('pending_push') else 'pushed'] += 1
     return [{'value': 'pending', 'label': 'No SAM project', 'count': counts['pending']},
             {'value': 'pushed', 'label': 'Project exists', 'count': counts['pushed']}]
+
+
+#: Readiness facet vocabulary and labels, worst first. ``none`` is a real bucket:
+#: a swept request with no candidate action in the preflight window.
+_READINESS_LABELS = (('failed', 'Would fail'), ('manual', 'Would park'),
+                     ('unchecked', 'Unchecked'), ('rechecked', 'Would land'),
+                     ('none', 'Not checked'))
+
+
+def _readiness_facet(scoped_rows):
+    counts = {}
+    for row in scoped_rows:
+        key = row.get('preflight_rollup') or 'none'
+        counts[key] = counts.get(key, 0) + 1
+    return [{'value': v, 'label': label, 'count': counts.get(v, 0)}
+            for v, label in _READINESS_LABELS if counts.get(v, 0)]
 
 
 def _group_by_opportunity(rows):

@@ -316,6 +316,38 @@ class TestFeedA:
         # The classification stands on the users table alone.
         assert all(r['classification'] in ('absent', 'inactive') for r in rows)
 
+    def test_a_parked_action_is_not_reported_as_success(self, session):
+        """Phase 0's trap: a Date Adjustment has no service, so dispatch parks
+        it ``manual``. That must read as not-success, with the parking reason
+        carried — never as ``would_succeed``."""
+        self._log_row(session, 'date_adjustment_uwas0141_manual.json',
+                      request_number='UWAS0141')
+        records = records_from_action_log(session, validate=True)
+        # Not records[0]: a sibling test may COMMIT its own action-log row into
+        # the shared xdist DB, so scope to the row this test created.
+        ref = next(r.ref for r in records if r.ref.request_number == 'UWAS0141')
+        assert ref.preflight_status == 'manual'
+        assert ref.would_succeed is False
+        assert ref.reject_messages and 'service' in ref.reject_messages[0]
+
+    def test_the_verdict_registers_the_handlers(self, session):
+        """Handlers register only by import side effect; the CLI/sweep path
+        imports none, so ``_validate`` must pull them in itself — otherwise
+        every dispatch parks ``manual`` for the wrong reason."""
+        import subprocess
+        import sys
+        # A fresh interpreter: dispatch starts with no handlers; importing what
+        # _validate imports must populate the registry.
+        code = (
+            'import sam.xras.dispatch as d\n'
+            'assert d.registered_services() == frozenset()\n'
+            'import sam.xras.handlers  # what _validate imports\n'
+            'assert d.registered_services(), "handlers did not register"\n'
+        )
+        proc = subprocess.run([sys.executable, '-c', code],
+                              capture_output=True, text=True)
+        assert proc.returncode == 0, proc.stderr
+
 
 # Feed B
 
@@ -356,6 +388,17 @@ class TestFeedB:
         rows = classify_accounts(session, records)
         assert rows[0]['is_reconciled'] is False
         assert rows[0]['person']['residenceCountry'] == 'United States'
+
+    def test_action_type_reads_the_action_not_request_type(self, session):
+        """``requestType`` is ``New``/``Renewal`` on every row and selects no
+        handler; the dispatching type lives on the action."""
+        payload = dict(REPORT_REQUEST, requestType='Renewal',
+                       actions=[{'actionId': 1, 'actionType': 'Extension'}])
+        records = records_from_report_requests([payload])
+        assert records[0].ref.action_type == 'Extension'
+        # With no actions, it falls back rather than inventing one.
+        assert records_from_report_requests(
+            [REPORT_REQUEST])[0].ref.action_type == 'New'
 
     def test_both_feeds_reach_the_same_classifier_identically(self, session):
         """The feed-agnostic proof."""
